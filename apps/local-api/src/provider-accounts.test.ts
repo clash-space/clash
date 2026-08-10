@@ -232,6 +232,61 @@ describe("provider accounts", () => {
     });
   });
 
+  it("normalizes plugin-defined provider accounts without a built-in enum entry", () => {
+    const account = normalizeProviderAccountInput({
+      id: "hilo-hub-primary",
+      providerId: "hilo-hub",
+      upstreamId: "hilo-hub",
+      apiShape: "hilo-hub",
+      enabled: true,
+    });
+
+    expect(account).toMatchObject({
+      id: "hilo-hub-primary",
+      providerId: "hilo-hub",
+      upstreamId: "hilo-hub",
+      apiShape: "hilo-hub",
+      enabled: true,
+    });
+    expect(publicProviderAccounts([account!], "local-user", [{
+      providerId: "hilo-hub",
+      accountId: "hilo-hub-primary",
+      status: "authorized",
+      accessToken: "hub-token",
+    }])).toMatchObject([{
+      id: "hilo-hub-primary",
+      providerId: "hilo-hub",
+      upstreamId: "hilo-hub",
+      availableOAuth: ["hilo-hub"],
+    }]);
+  });
+
+  it("turns an authorized plugin OAuth record into a runtime account with an opaque API key", () => {
+    const oauth = [{
+      userId: "user-1",
+      providerId: "hilo-hub",
+      accountId: "hilo-hub-primary",
+      accountLabel: "MiniMax Hub",
+      status: "authorized" as const,
+      accessToken: "hub-oauth-token",
+    }];
+
+    expect(providerAccountsForRuntime([], "user-1", oauth)).toEqual([
+      expect.objectContaining({
+        id: "hilo-hub-primary",
+        label: "MiniMax Hub",
+        providerId: "hilo-hub",
+        upstreamId: "hilo-hub",
+        credentials: { apiKey: "hub-oauth-token" },
+        configuredCredentials: ["apiKey"],
+        availableOAuth: ["hilo-hub"],
+      }),
+    ]);
+    expect(publicProviderAccounts([], "user-1", oauth)).toEqual([
+      expect.not.objectContaining({ credentials: expect.anything() }),
+    ]);
+  });
+
   it("preserves multiple API-key accounts for the same provider", () => {
     expect(normalizeProviderAccountInput({
       id: "replicate-secondary",

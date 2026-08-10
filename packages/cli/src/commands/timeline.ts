@@ -742,7 +742,7 @@ timelineCommand
     const version = listed.versions[timeline.id] ?? projectTimelineReadToken(timeline);
     mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, yaml, "utf8");
-    const transcriptProjection = writeTimelineTranscriptProjection({
+    const transcriptProjection = await writeTimelineTranscriptProjection({
       cwd: process.cwd(),
       timelineFilePath: filePath,
       timelineId: timeline.id,

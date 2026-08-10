@@ -6,6 +6,7 @@ import { downloadAssetById, replaceCanvasAssetNode } from "./canvas";
 import { apiFetch } from "../lib/api";
 import { requireDestructiveConfirmation } from "../lib/destructive-guardrails";
 import { isJsonMode, printJson } from "../lib/output";
+import { assetMetadataCommand } from "./asset-metadata";
 import { resolveProjectStatus } from "./projects";
 import {
   forgetAgentObservation,
@@ -921,3 +922,5 @@ assetsCommand
       process.exit(1);
     }
   });
+
+assetsCommand.addCommand(assetMetadataCommand);

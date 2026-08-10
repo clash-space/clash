@@ -224,10 +224,11 @@ test("the bundled host is a persistent user daemon rather than an MCP-owned chil
 });
 
 test("the persistent daemon owns a packaged Remotion renderer without a second service port", async () => {
-  const [entry, hostBuild, packageJson] = await Promise.all([
+  const [entry, hostBuild, packageJson, rootPackageJson] = await Promise.all([
     readFile(new URL("./local-api-entry.ts", import.meta.url), "utf8"),
     readFile(new URL("../scripts/build-host-runtime.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../../../package.json", import.meta.url), "utf8").then(JSON.parse),
   ]);
 
   assert.match(entry, /createRemotionTimelineRenderer/);
@@ -237,7 +238,10 @@ test("the persistent daemon owns a packaged Remotion renderer without a second s
   assert.match(hostBuild, /\.remotion-bundle/);
   assert.match(hostBuild, /remotion-bundle/);
   assert.match(hostBuild, /external:\s*\["@remotion\/renderer"\]/);
-  assert.equal(packageJson.dependencies?.["@remotion/renderer"], "4.0.370");
+  assert.equal(
+    packageJson.dependencies?.["@remotion/renderer"],
+    rootPackageJson.pnpm?.overrides?.["@remotion/*"],
+  );
 });
 
 test("the bundled Clash CLI and stdio MCP are peer clients of the same daemon bootstrap", async () => {

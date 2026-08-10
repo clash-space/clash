@@ -10639,6 +10639,77 @@ var require_dist = __commonJS({
   }
 });
 
+// ../../packages/shared-runtime/dist/metadata-body-blobs.js
+function metadataBodyContentHash(body) {
+  return `sha256:${(0, import_node_crypto.createHash)("sha256").update(body, "utf8").digest("hex")}`;
+}
+function metadataBodyBlobPath(dataDir, contentHash) {
+  const digest = /^sha256:([a-f0-9]{64})$/u.exec(contentHash)?.[1];
+  if (!digest)
+    throw new Error(`Invalid metadata body content hash: ${contentHash}`);
+  return (0, import_node_path.join)(dataDir, METADATA_BODY_BLOB_DIRNAME, digest.slice(0, 2), `${digest}.json`);
+}
+function canonicalMetadataBody(body) {
+  const canonical = (value) => {
+    if (Array.isArray(value))
+      return value.map(canonical);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, item]) => [key, canonical(item)]));
+    }
+    return value;
+  };
+  return JSON.stringify(canonical(body));
+}
+async function storeMetadataBody(options) {
+  const serialized = canonicalMetadataBody(options.body);
+  const contentHash = metadataBodyContentHash(serialized);
+  if (options.expectedContentHash && options.expectedContentHash !== contentHash) {
+    throw new Error(`metadata body content hash mismatch: expected ${options.expectedContentHash}, got ${contentHash}`);
+  }
+  const path = metadataBodyBlobPath(options.dataDir, contentHash);
+  const bytes = Buffer.byteLength(serialized);
+  const existing = await (0, import_promises.readFile)(path, "utf8").catch((error51) => {
+    if (error51 && typeof error51 === "object" && error51.code === "ENOENT") {
+      return null;
+    }
+    throw error51;
+  });
+  if (existing !== null) {
+    if (existing !== serialized) {
+      throw new Error(`metadata body blob ${contentHash} already exists with different content`);
+    }
+    return { contentHash, path, bytes, deduplicated: true };
+  }
+  await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
+  await (0, import_promises.writeFile)(path, serialized, { encoding: "utf8", mode: 292 });
+  await (0, import_promises.chmod)(path, 292).catch(() => void 0);
+  return { contentHash, path, bytes, deduplicated: false };
+}
+async function readMetadataBody(options) {
+  const path = metadataBodyBlobPath(options.dataDir, options.contentHash);
+  const serialized = await (0, import_promises.readFile)(path, "utf8").catch((error51) => {
+    if (error51 && typeof error51 === "object" && error51.code === "ENOENT") {
+      throw new Error(`metadata body ${options.contentHash} is not stored`);
+    }
+    throw error51;
+  });
+  const actual = metadataBodyContentHash(serialized);
+  if (actual !== options.contentHash) {
+    throw new Error(`metadata body blob is corrupt: ${options.contentHash} contains ${actual}`);
+  }
+  return JSON.parse(serialized);
+}
+var import_node_crypto, import_promises, import_node_path, METADATA_BODY_BLOB_DIRNAME;
+var init_metadata_body_blobs = __esm({
+  "../../packages/shared-runtime/dist/metadata-body-blobs.js"() {
+    "use strict";
+    import_node_crypto = require("node:crypto");
+    import_promises = require("node:fs/promises");
+    import_node_path = require("node:path");
+    METADATA_BODY_BLOB_DIRNAME = "metadata-blobs";
+  }
+});
+
 // ../../packages/shared-runtime/dist/cascade-scheduler.js
 var init_cascade_scheduler = __esm({
   "../../packages/shared-runtime/dist/cascade-scheduler.js"() {
@@ -10745,6 +10816,7 @@ function buildProjectStatus(context, options) {
   const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
   const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
   const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
+  const metadataBodyBlobRoot = joinPath(localApiDataDir, "metadata-blobs");
   const loroReplicaRoot = joinPath(localApiProjectRoot, "loro");
   const loroSnapshotPath = joinPath(loroReplicaRoot, "snapshot.bin");
   const loroUpdatesLogPath = joinPath(loroReplicaRoot, "updates.log");
@@ -10765,6 +10837,7 @@ function buildProjectStatus(context, options) {
     loroUpdatesLogPath,
     mediaAssetBlobRoot,
     textRevisionBlobRoot,
+    metadataBodyBlobRoot,
     runtimeRoot
   ];
   const currentWorkspace = {
@@ -10896,6 +10969,13 @@ function buildProjectStatus(context, options) {
             kind: "content-addressed-files",
             path: textRevisionBlobRoot,
             mediaType: "text/markdown",
+            immutable: true,
+            agentWritable: false
+          },
+          assetMetadataBodies: {
+            kind: "content-addressed-files",
+            path: metadataBodyBlobRoot,
+            mediaType: "application/json",
             immutable: true,
             agentWritable: false
           }
@@ -11277,7 +11357,7 @@ function markerString2(markerPath, source, key) {
 async function existingInitialization(markerPath, requestedProjectId) {
   let source;
   try {
-    source = await (0, import_promises.readFile)(markerPath, "utf8");
+    source = await (0, import_promises2.readFile)(markerPath, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT")
       return void 0;
@@ -11294,13 +11374,13 @@ async function existingInitialization(markerPath, requestedProjectId) {
   return { projectId, markerPath, workspaceId, reused: true };
 }
 async function initializeClashWorkspace(options = {}) {
-  const cwd = (0, import_node_path.resolve)(options.cwd ?? process.cwd());
-  const markerPath = (0, import_node_path.join)(cwd, ".clash", "project.toml");
+  const cwd = (0, import_node_path2.resolve)(options.cwd ?? process.cwd());
+  const markerPath = (0, import_node_path2.join)(cwd, ".clash", "project.toml");
   const requestedProjectId = options.projectId?.trim() || void 0;
   const existing = await existingInitialization(markerPath, requestedProjectId);
   if (existing)
     return existing;
-  const projectId = requestedProjectId ?? `local_${(0, import_node_crypto.randomUUID)()}`;
+  const projectId = requestedProjectId ?? `local_${(0, import_node_crypto2.randomUUID)()}`;
   const workspaceId = projectWorkspaceId("managed", projectId, cwd);
   const marker = [
     "schema_version = 1",
@@ -11309,9 +11389,9 @@ async function initializeClashWorkspace(options = {}) {
     'store = "managed"',
     ""
   ].join("\n");
-  await (0, import_promises.mkdir)((0, import_node_path.dirname)(markerPath), { recursive: true });
+  await (0, import_promises2.mkdir)((0, import_node_path2.dirname)(markerPath), { recursive: true });
   try {
-    await (0, import_promises.writeFile)(markerPath, marker, { encoding: "utf8", flag: "wx" });
+    await (0, import_promises2.writeFile)(markerPath, marker, { encoding: "utf8", flag: "wx" });
   } catch (error51) {
     if (error51.code !== "EEXIST")
       throw error51;
@@ -11322,13 +11402,13 @@ async function initializeClashWorkspace(options = {}) {
   }
   return { projectId, markerPath, workspaceId, reused: false };
 }
-var import_node_crypto, import_promises, import_node_path;
+var import_node_crypto2, import_promises2, import_node_path2;
 var init_workspace_init = __esm({
   "../../packages/shared-runtime/dist/workspace-init.js"() {
     "use strict";
-    import_node_crypto = require("node:crypto");
-    import_promises = require("node:fs/promises");
-    import_node_path = require("node:path");
+    import_node_crypto2 = require("node:crypto");
+    import_promises2 = require("node:fs/promises");
+    import_node_path2 = require("node:path");
     init_project_status();
   }
 });
@@ -11426,6 +11506,7 @@ var LOCAL_HOST_RECORD_SCHEMA_VERSION, LOCAL_HOST_PROTOCOL_VERSION, desktopChrome
 var init_dist = __esm({
   "../../packages/shared-runtime/dist/index.js"() {
     "use strict";
+    init_metadata_body_blobs();
     init_cascade_scheduler();
     init_text_generation();
     init_prompt_content();
@@ -13702,7 +13783,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes3, createHash: createHash17 } = require("crypto");
+    var { randomBytes: randomBytes3, createHash: createHash18 } = require("crypto");
     var { Duplex, Readable: Readable2 } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -14370,7 +14451,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash17("sha1").update(key + GUID).digest("base64");
+        const digest = createHash18("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -14739,7 +14820,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash: createHash17 } = require("crypto");
+    var { createHash: createHash18 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -15046,7 +15127,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash17("sha1").update(key + GUID).digest("base64");
+        const digest = createHash18("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -25582,7 +25663,7 @@ var init_schemas = __esm({
             })));
           }
         }
-
+        
         if (${id}.value === undefined) {
           if (${k2} in input) {
             newResult[${k2}] = undefined;
@@ -25590,7 +25671,7 @@ var init_schemas = __esm({
         } else {
           newResult[${k2}] = ${id}.value;
         }
-
+        
       `);
           } else if (!isOptionalIn) {
             doc.write(`
@@ -25627,7 +25708,7 @@ var init_schemas = __esm({
             path: iss.path ? [${k2}, ...iss.path] : [${k2}]
           })));
         }
-
+        
         if (${id}.value === undefined) {
           if (${k2} in input) {
             newResult[${k2}] = undefined;
@@ -25635,7 +25716,7 @@ var init_schemas = __esm({
         } else {
           newResult[${k2}] = ${id}.value;
         }
-
+        
       `);
           }
         }
@@ -55259,7 +55340,7 @@ function clashMetadata(meta3) {
   const entries = Object.entries(meta3).filter(([key]) => key.startsWith("clash/"));
   return entries.length ? Object.fromEntries(entries) : void 0;
 }
-var CLASH_ROOT_TOOL_NAME, CLASH_COMMAND_TOOL_NAMES, CLASH_MCP_INSTRUCTIONS, ClashMcpServer;
+var CLASH_ROOT_TOOL_NAME, CLASH_CANVAS_TOOL_NAME, CLASH_COMPOSITION_TOOL_NAME, LEGACY_CLASH_GROUP_TOOL_NAMES, CLASH_MCP_INSTRUCTIONS, ClashMcpServer;
 var init_server4 = __esm({
   "../../packages/shared-mcp/dist/server.js"() {
     "use strict";
@@ -55272,15 +55353,19 @@ var init_server4 = __esm({
     init_tool_guidance();
     init_wire_schema();
     CLASH_ROOT_TOOL_NAME = "clash";
-    CLASH_COMMAND_TOOL_NAMES = {
-      canvas: "clash_canvas",
+    CLASH_CANVAS_TOOL_NAME = "clash_canvas";
+    CLASH_COMPOSITION_TOOL_NAME = "clash_composition";
+    LEGACY_CLASH_GROUP_TOOL_NAMES = {
       director: "clash_director",
       timeline: "clash_timeline"
     };
     CLASH_MCP_INSTRUCTIONS = [
       "Clash discloses product operations progressively.",
-      `Call the root ${CLASH_ROOT_TOOL_NAME} tool to see its command menu, then use the fixed clash_canvas, clash_director, or clash_timeline command tool to reveal and execute that command's operations.`,
-      "A command tool with no operation returns live contracts; passing operation and arguments validates and executes that registered leaf without requiring a tools/list refresh.",
+      `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+      "Timeline is temporal composition; Director Stage is spatial composition.",
+      "Call a dispatcher without operation for live contracts, then pass its command-local operation and arguments to execute exactly once.",
+      "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
+      "The advertised tool list stays fixed and does not require a tools/list refresh.",
       "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth."
     ].join(" ");
     ClashMcpServer = class extends McpServer {
@@ -55296,20 +55381,23 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         super.registerTool(CLASH_ROOT_TOOL_NAME, {
           title: "Clash",
           description: describeClashTool({
-            useWhen: "you need the compact Clash command menu or want to navigate to another product command",
-            effect: "returns fixed command-group entry points and operation counts without changing the advertised tool list",
-            returns: "available commands and the fixed dispatcher for the selected command",
-            next: "call clash_canvas, clash_director, or clash_timeline without arguments to inspect live contracts, then pass operation and arguments to that group tool"
+            useWhen: "you need the compact Clash command menu or the stable dispatcher for a product command",
+            effect: "returns command counts and navigation without expanding leaf operations into the advertised tool list",
+            returns: "the command menu and selected Canvas or composition dispatcher",
+            next: "call clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only"
           }),
           inputSchema: {
             command: external_exports.enum(CLASH_MCP_COMMAND_IDS).optional().describe("Root command to reveal; omit to show the root menu and fold leaf operations away"),
-            operation: external_exports.string().min(1).optional().describe("Exact registered operation name to execute; use a name returned by the selected command view"),
+            operation: external_exports.string().min(1).optional().describe("Complete registered clash_* leaf name for compatibility; use a dispatcher for command-local short names"),
             arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
           },
           _meta: { ui: { visibility: ["model"] } }
         }, async ({ command, operation, arguments: operationArguments }, extra) => {
           const selectedCommand = command;
           if (operation) {
+            if (!operation.startsWith("clash_")) {
+              throw new Error("Clash root compatibility execution requires a complete clash_* leaf name.");
+            }
             return this.#dispatchOperation({
               operation,
               arguments: operationArguments ?? {},
@@ -55333,14 +55421,72 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           return {
             content: [{
               type: "text",
-              text: selectedCommand ? `Use ${view.selectedDispatcher} to inspect ${operationCount} ${selectedCommand} operation${operationCount === 1 ? "" : "s"}.` : `Clash offers ${view.commands.filter(({ availableOperations }) => availableOperations > 0).length} available commands.`
+              text: selectedCommand ? `Use ${view.selectedDispatcher}${view.selectedKind ? ` with kind=${view.selectedKind}` : ""} for ${selectedCommand}.` : `Clash offers ${view.commands.filter(({ availableOperations }) => availableOperations > 0).length} available commands.`
             }],
             structuredContent: view
           };
         });
-        for (const command of Object.keys(CLASH_COMMAND_TOOL_NAMES)) {
+        const canvasDefinition = getClashMcpCommand("canvas");
+        super.registerTool(CLASH_CANVAS_TOOL_NAME, {
+          title: canvasDefinition.title,
+          description: describeClashTool({
+            useWhen: "you need to inspect or execute Canvas node operations",
+            effect: "returns live Canvas contracts when operation is omitted, or validates and executes one Canvas leaf exactly once",
+            returns: "typed Canvas operation contracts or the selected leaf operation's exact result",
+            next: "choose the smallest matching operation, then call clash_canvas with operation and arguments"
+          }),
+          inputSchema: {
+            operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Canvas operation or complete clash_canvas_* leaf name"),
+            arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
+          },
+          _meta: { ui: { visibility: ["model"] } }
+        }, async ({ operation, arguments: operationArguments }, extra) => {
+          if (operation) {
+            return this.#dispatchOperation({
+              operation,
+              arguments: operationArguments ?? {},
+              selectedCommand: "canvas",
+              extra
+            });
+          }
+          return this.#commandResult("canvas");
+        });
+        super.registerTool(CLASH_COMPOSITION_TOOL_NAME, {
+          title: "Composition",
+          description: describeClashTool({
+            useWhen: "you need Timeline temporal composition or Director Stage spatial composition operations",
+            effect: "returns live contracts for one composition kind, or validates and executes one matching composition leaf exactly once",
+            returns: "typed Timeline or Director Stage contracts, or the selected leaf operation's exact result",
+            next: "set kind to timeline or director-stage, choose the smallest matching operation, then pass operation and arguments"
+          }),
+          inputSchema: {
+            kind: external_exports.enum(["timeline", "director-stage"]).optional().describe("Required for contract disclosure and command-local short operations; complete leaf names may infer it"),
+            operation: external_exports.string().min(1).optional().describe("Omit this field entirely to reveal live contracts for the selected kind; never send an empty string, list_operations, or contracts. Otherwise pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name"),
+            arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
+          },
+          _meta: { ui: { visibility: ["model"] } }
+        }, async ({ kind, operation, arguments: operationArguments }, extra) => {
+          const selectedCommand = kind === "timeline" ? "timeline" : kind === "director-stage" ? "director" : void 0;
+          if (operation) {
+            if (!selectedCommand && !operation.startsWith("clash_")) {
+              throw new Error(`Clash composition short operation ${operation} requires kind.`);
+            }
+            return this.#dispatchOperation({
+              operation,
+              arguments: operationArguments ?? {},
+              selectedCommand,
+              allowedCommands: ["timeline", "director"],
+              extra
+            });
+          }
+          if (!selectedCommand) {
+            throw new Error("Clash composition disclosure requires kind=timeline or kind=director-stage.");
+          }
+          return this.#commandResult(selectedCommand);
+        });
+        for (const command of Object.keys(LEGACY_CLASH_GROUP_TOOL_NAMES)) {
           const commandDefinition = getClashMcpCommand(command);
-          const toolName = CLASH_COMMAND_TOOL_NAMES[command];
+          const toolName = LEGACY_CLASH_GROUP_TOOL_NAMES[command];
           super.registerTool(toolName, {
             title: commandDefinition.title,
             description: describeClashTool({
@@ -55363,30 +55509,12 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
                 extra
               });
             }
-            const view = this.#commandView(command);
-            const operationCount = view.operations?.length ?? 0;
-            if (operationCount === 0) {
-              return {
-                content: [{
-                  type: "text",
-                  text: `The ${command} command has no operations in this Clash host.`
-                }],
-                structuredContent: view,
-                isError: true
-              };
-            }
-            return {
-              content: [{
-                type: "text",
-                text: `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`
-              }],
-              structuredContent: view
-            };
+            return this.#commandResult(command);
           });
         }
       }
       registerTool(name, config2, callback) {
-        if (name === CLASH_ROOT_TOOL_NAME || Object.values(CLASH_COMMAND_TOOL_NAMES).includes(name)) {
+        if (name === CLASH_ROOT_TOOL_NAME || name === CLASH_CANVAS_TOOL_NAME || name === CLASH_COMPOSITION_TOOL_NAME || Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(name)) {
           throw new Error(`${name} is provided by ClashMcpServer`);
         }
         const handle = super.registerTool(name, config2, callback);
@@ -55411,6 +55539,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           const outputSchema = outputJsonSchemaOf(handle);
           return {
             name,
+            operation: this.#commandLocalOperation(name),
             title: handle.title ?? name,
             description: handle.description ?? "",
             readOnly: annotationsOf(handle).readOnlyHint === true,
@@ -55431,12 +55560,42 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           belongsToCommand: (operation, command) => classifyClashMcpTool(operation.name) === command.id
         });
       }
+      #commandResult(command) {
+        const view = this.#commandView(command);
+        const operationCount = view.operations?.length ?? 0;
+        if (operationCount === 0) {
+          return {
+            content: [{
+              type: "text",
+              text: `The ${command} command has no operations in this Clash host.`
+            }],
+            structuredContent: view,
+            isError: true
+          };
+        }
+        return {
+          content: [{
+            type: "text",
+            text: `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`
+          }],
+          structuredContent: view
+        };
+      }
       #rootView(selectedCommand) {
         const menu = this.#commandView();
-        const commands = menu.commands.map((command) => ({
-          ...command,
-          ...command.id === "workspace" ? command.availableOperations > 0 ? { dispatcher: "clash_workspace_init" } : {} : { dispatcher: CLASH_COMMAND_TOOL_NAMES[command.id] }
-        }));
+        const commands = menu.commands.map((command) => {
+          if (command.id === "workspace") {
+            return {
+              ...command,
+              ...command.availableOperations > 0 ? { dispatcher: "clash_workspace_init" } : {}
+            };
+          }
+          if (command.id === "canvas") {
+            return { ...command, dispatcher: CLASH_CANVAS_TOOL_NAME };
+          }
+          const kind = command.id === "timeline" ? "timeline" : "director-stage";
+          return { ...command, dispatcher: CLASH_COMPOSITION_TOOL_NAME, kind };
+        });
         if (!selectedCommand)
           return { ...menu, commands };
         const selected = commands.find(({ id }) => id === selectedCommand);
@@ -55444,17 +55603,43 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
           ...menu,
           commands,
           selectedCommand,
-          ...selected?.dispatcher ? { selectedDispatcher: selected.dispatcher } : {}
+          ...selected?.dispatcher ? { selectedDispatcher: selected.dispatcher } : {},
+          ...selected?.kind ? { selectedKind: selected.kind } : {}
         };
       }
+      #commandLocalOperation(name) {
+        const family = classifyClashMcpTool(name);
+        const prefixes = family === "workspace" ? ["clash_workspace_", "clash_studio_"] : family === "other" ? [] : [`clash_${family}_`];
+        const prefix = prefixes.find((candidate) => name.startsWith(candidate));
+        return prefix ? name.slice(prefix.length) : name;
+      }
+      #resolveOperationName(operation, selectedCommand) {
+        if (operation.startsWith("clash_"))
+          return operation;
+        if (!selectedCommand) {
+          throw new Error(`Clash short operation ${operation} requires an explicit command.`);
+        }
+        const matches = this.#liveModelTools().filter(({ name }) => classifyClashMcpTool(name) === selectedCommand && this.#commandLocalOperation(name) === operation);
+        if (matches.length === 0) {
+          throw new Error(`Clash ${selectedCommand} operation ${operation} is not registered, enabled, and model-visible in this host.`);
+        }
+        if (matches.length > 1) {
+          throw new Error(`Clash ${selectedCommand} operation ${operation} is ambiguous; use a complete clash_* leaf name.`);
+        }
+        return matches[0].name;
+      }
       async #dispatchOperation(input) {
-        const registered = this.#liveModelTools().find(({ name }) => name === input.operation);
+        const operationName = this.#resolveOperationName(input.operation, input.selectedCommand);
+        const registered = this.#liveModelTools().find(({ name }) => name === operationName);
         if (!registered) {
-          throw new Error(`Clash operation ${input.operation} is not registered, enabled, and model-visible in this host.`);
+          throw new Error(`Clash operation ${operationName} is not registered, enabled, and model-visible in this host.`);
         }
         const family = classifyClashMcpTool(registered.name);
         if (family === "other") {
           throw new Error(`Clash operation ${registered.name} is not part of a root command.`);
+        }
+        if (input.allowedCommands && !input.allowedCommands.includes(family)) {
+          throw new Error(`Clash operation ${registered.name} is not available through this dispatcher.`);
         }
         if (input.selectedCommand && family !== input.selectedCommand) {
           throw new Error(`Clash operation ${registered.name} belongs to ${family}, not ${input.selectedCommand}.`);
@@ -55491,7 +55676,9 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         return tools.filter((tool) => {
           if (typeof tool.name !== "string")
             return false;
-          if (tool.name === CLASH_ROOT_TOOL_NAME || Object.values(CLASH_COMMAND_TOOL_NAMES).includes(tool.name) || tool.name === "clash_workspace_init")
+          if (Object.values(LEGACY_CLASH_GROUP_TOOL_NAMES).includes(tool.name))
+            return false;
+          if (tool.name === CLASH_ROOT_TOOL_NAME || tool.name === CLASH_CANVAS_TOOL_NAME || tool.name === CLASH_COMPOSITION_TOOL_NAME || tool.name === "clash_workspace_init")
             return true;
           return classifyClashMcpTool(tool.name) === "other";
         });
@@ -56269,13 +56456,13 @@ var init_webStandardStreamableHttp = __esm({
         }
         const primingEventId = await this._eventStore.storeEvent(streamId, {});
         let primingEvent = `id: ${primingEventId}
-data:
+data: 
 
 `;
         if (this._retryInterval !== void 0) {
           primingEvent = `id: ${primingEventId}
 retry: ${this._retryInterval}
-data:
+data: 
 
 `;
         }
@@ -75724,10 +75911,10 @@ var require_view = __commonJS({
     var debug = require_src()("express:view");
     var path = require("node:path");
     var fs = require("node:fs");
-    var dirname48 = path.dirname;
+    var dirname49 = path.dirname;
     var basename13 = path.basename;
     var extname7 = path.extname;
-    var join60 = path.join;
+    var join62 = path.join;
     var resolve47 = path.resolve;
     module2.exports = View;
     function View(name, options) {
@@ -75763,7 +75950,7 @@ var require_view = __commonJS({
       for (var i = 0; i < roots.length && !path2; i++) {
         var root = roots[i];
         var loc = resolve47(root, name);
-        var dir = dirname48(loc);
+        var dir = dirname49(loc);
         var file2 = basename13(loc);
         path2 = this.resolve(dir, file2);
       }
@@ -75789,12 +75976,12 @@ var require_view = __commonJS({
     };
     View.prototype.resolve = function resolve48(dir, file2) {
       var ext = this.ext;
-      var path2 = join60(dir, file2);
+      var path2 = join62(dir, file2);
       var stat7 = tryStat(path2);
       if (stat7 && stat7.isFile()) {
         return path2;
       }
-      path2 = join60(dir, basename13(file2, ext), "index" + ext);
+      path2 = join62(dir, basename13(file2, ext), "index" + ext);
       stat7 = tryStat(path2);
       if (stat7 && stat7.isFile()) {
         return path2;
@@ -79614,7 +79801,7 @@ var require_send = __commonJS({
     var Stream = require("stream");
     var util3 = require("util");
     var extname7 = path.extname;
-    var join60 = path.join;
+    var join62 = path.join;
     var normalize4 = path.normalize;
     var resolve47 = path.resolve;
     var sep26 = path.sep;
@@ -79786,7 +79973,7 @@ var require_send = __commonJS({
           return res;
         }
         parts = path2.split(sep26);
-        path2 = normalize4(join60(root, path2));
+        path2 = normalize4(join62(root, path2));
       } else {
         if (UP_PATH_REGEXP.test(path2)) {
           debug('malicious path "%s"', path2);
@@ -79919,7 +80106,7 @@ var require_send = __commonJS({
           if (err) return self2.onStatError(err);
           return self2.error(404);
         }
-        var p2 = join60(path2, self2._index[i]);
+        var p2 = join62(path2, self2._index[i]);
         debug('stat "%s"', p2);
         fs.stat(p2, function(err2, stat7) {
           if (err2) return next(err2);
@@ -81361,7 +81548,7 @@ async function startClashMcpHttpServer(options = {}) {
   const { StreamableHTTPServerTransport: StreamableHTTPServerTransport2 } = streamableModule;
   const { createMcpExpressApp: createMcpExpressApp2 } = expressModule;
   const { isInitializeRequest: isInitializeRequest2 } = typesModule;
-  const { randomUUID: randomUUID8 } = cryptoModule;
+  const { randomUUID: randomUUID9 } = cryptoModule;
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 0;
   const sessions = /* @__PURE__ */ new Map();
@@ -81383,7 +81570,7 @@ async function startClashMcpHttpServer(options = {}) {
     }
     if (!sessionId && isInitializeRequest2(request.body)) {
       const transport = new StreamableHTTPServerTransport2({
-        sessionIdGenerator: randomUUID8,
+        sessionIdGenerator: randomUUID9,
         onsessioninitialized: (id) => {
           sessions.set(id, { transport, server });
         }
@@ -81690,24 +81877,24 @@ var {
 } = import_index.default;
 
 // ../../packages/cli/src/plugin.ts
-var import_node_path61 = require("node:path");
+var import_node_path63 = require("node:path");
 var import_node_url = require("node:url");
 
 // ../../packages/cli/src/commands/auth.ts
-var import_node_crypto3 = require("node:crypto");
+var import_node_crypto4 = require("node:crypto");
 var import_node_child_process = require("node:child_process");
 var import_node_http = require("node:http");
 
 // ../../packages/cli/src/lib/config.ts
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto3 = require("node:crypto");
 var import_node_fs = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 var import_yaml = __toESM(require_dist());
 init_dist();
 
 // ../../packages/shared-runtime/dist/local-paths.js
 var import_node_os = require("node:os");
-var import_node_path2 = require("node:path");
+var import_node_path3 = require("node:path");
 function resolveClashProfile(env = process.env) {
   const profile = env.CLASH_PROFILE?.trim() || "prod";
   if (profile === "dev" || profile === "prod")
@@ -81717,19 +81904,19 @@ function resolveClashProfile(env = process.env) {
 function defaultClashHome(env = process.env) {
   const explicit = env.CLASH_HOME?.trim();
   if (explicit)
-    return (0, import_node_path2.resolve)(explicit);
-  const root = (0, import_node_path2.join)((0, import_node_os.homedir)(), ".clash");
-  return resolveClashProfile(env) === "dev" ? (0, import_node_path2.join)(root, "profiles", "dev") : root;
+    return (0, import_node_path3.resolve)(explicit);
+  const root = (0, import_node_path3.join)((0, import_node_os.homedir)(), ".clash");
+  return resolveClashProfile(env) === "dev" ? (0, import_node_path3.join)(root, "profiles", "dev") : root;
 }
 function defaultLocalApiDataDir(env = process.env) {
   const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
-  return explicit ? (0, import_node_path2.resolve)(explicit) : (0, import_node_path2.join)(defaultClashHome(env), "local-api");
+  return explicit ? (0, import_node_path3.resolve)(explicit) : (0, import_node_path3.join)(defaultClashHome(env), "local-api");
 }
 function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
   if (explicitClashHome?.trim())
-    return (0, import_node_path2.resolve)(explicitClashHome);
-  const resolved = (0, import_node_path2.resolve)(localDataDir);
-  return (0, import_node_path2.basename)(resolved) === "local-api" ? (0, import_node_path2.dirname)(resolved) : resolved;
+    return (0, import_node_path3.resolve)(explicitClashHome);
+  const resolved = (0, import_node_path3.resolve)(localDataDir);
+  return (0, import_node_path3.basename)(resolved) === "local-api" ? (0, import_node_path3.dirname)(resolved) : resolved;
 }
 
 // ../../packages/cli/src/lib/clash-home.ts
@@ -81738,20 +81925,20 @@ function resolveClashRoot(env = process.env) {
 }
 
 // ../../packages/cli/src/lib/host-discovery.ts
-var import_promises2 = require("node:fs/promises");
-var import_node_path3 = require("node:path");
+var import_promises3 = require("node:fs/promises");
+var import_node_path4 = require("node:path");
 init_dist();
 function getDefaultHostDiscoveryRunDir() {
-  return (0, import_node_path3.join)(resolveClashRoot(), "run");
+  return (0, import_node_path4.join)(resolveClashRoot(), "run");
 }
 function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()) {
-  return (0, import_node_path3.join)(runDir, "host.json");
+  return (0, import_node_path4.join)(runDir, "host.json");
 }
 async function getHostDiscoveryStatus(options = {}) {
   const filePath = getHostDiscoveryPath(options.runDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises2.readFile)(filePath, "utf8"));
+    parsed = JSON.parse(await (0, import_promises3.readFile)(filePath, "utf8"));
   } catch (error51) {
     if (isNotFound(error51)) return { status: "inactive" };
     throw error51;
@@ -81772,13 +81959,13 @@ async function removeHostDiscovery(hostId, options = {}) {
   const filePath = getHostDiscoveryPath(options.runDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises2.readFile)(filePath, "utf8"));
+    parsed = JSON.parse(await (0, import_promises3.readFile)(filePath, "utf8"));
   } catch (error51) {
     if (isNotFound(error51)) return;
     throw error51;
   }
   if (!isLocalHostDiscoveryRecord(parsed) || parsed.hostId !== hostId) return;
-  await (0, import_promises2.rm)(filePath, { force: true });
+  await (0, import_promises3.rm)(filePath, { force: true });
 }
 function defaultPidExists(pid) {
   try {
@@ -81797,10 +81984,10 @@ function configDir(env = process.env) {
   return resolveClashRoot(env);
 }
 function configFilePath(env = process.env) {
-  return (0, import_node_path4.join)(configDir(env), "config.yaml");
+  return (0, import_node_path5.join)(configDir(env), "config.yaml");
 }
 function credentialsFilePath(env = process.env) {
-  return (0, import_node_path4.join)(configDir(env), "credentials.json");
+  return (0, import_node_path5.join)(configDir(env), "credentials.json");
 }
 function isRecord(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -81815,7 +82002,7 @@ function readObject(path) {
   }
 }
 function atomicWrite(path, contents) {
-  const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto2.randomUUID)()}.tmp`;
+  const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto3.randomUUID)()}.tmp`;
   (0, import_node_fs.writeFileSync)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
   (0, import_node_fs.chmodSync)(temporaryPath, 384);
   (0, import_node_fs.renameSync)(temporaryPath, path);
@@ -81827,13 +82014,13 @@ function wait(milliseconds) {
 function withConfigLock(dir, task) {
   (0, import_node_fs.mkdirSync)(dir, { recursive: true, mode: 448 });
   (0, import_node_fs.chmodSync)(dir, 448);
-  const lockPath = (0, import_node_path4.join)(dir, ".config.lock");
+  const lockPath = (0, import_node_path5.join)(dir, ".config.lock");
   const deadline = Date.now() + 5e3;
   while (true) {
     try {
       (0, import_node_fs.mkdirSync)(lockPath, { mode: 448 });
       (0, import_node_fs.writeFileSync)(
-        (0, import_node_path4.join)(lockPath, "owner"),
+        (0, import_node_path5.join)(lockPath, "owner"),
         `pid=${process.pid}
 created_at=${(/* @__PURE__ */ new Date()).toISOString()}
 `,
@@ -81886,7 +82073,7 @@ function updateCliCredential(path, apiKey) {
 }
 function migrateLegacyConfig(env = process.env) {
   const dir = configDir(env);
-  const legacyPath = (0, import_node_path4.join)(dir, "config.json");
+  const legacyPath = (0, import_node_path5.join)(dir, "config.json");
   if (!(0, import_node_fs.existsSync)(legacyPath)) return;
   const legacy = readObject(legacyPath);
   const configPath = configFilePath(env);
@@ -81990,7 +82177,7 @@ function redactApiKeyForDisplay(apiKey) {
   return suffix ? `${prefix}...${suffix}` : `${prefix}...`;
 }
 function createPkceChallenge(verifier) {
-  return (0, import_node_crypto3.createHash)("sha256").update(verifier, "ascii").digest("base64url");
+  return (0, import_node_crypto4.createHash)("sha256").update(verifier, "ascii").digest("base64url");
 }
 function normalizeHttpOrigin(value, label) {
   const url2 = new URL(value);
@@ -82173,8 +82360,8 @@ async function runCliLogin(options = {}) {
   const readConfig = options.loadConfig ?? loadConfig;
   const writeConfig = options.saveConfig ?? saveConfig;
   const log = options.log ?? console.log;
-  const state = (0, import_node_crypto3.randomBytes)(32).toString("base64url");
-  const verifier = (0, import_node_crypto3.randomBytes)(32).toString("base64url");
+  const state = (0, import_node_crypto4.randomBytes)(32).toString("base64url");
+  const verifier = (0, import_node_crypto4.randomBytes)(32).toString("base64url");
   const challenge = createPkceChallenge(verifier);
   const callback = await startLoopbackCallback(state, timeoutMs);
   const authorizationUrl = buildAuthorizationUrl(
@@ -82267,7 +82454,7 @@ authCommand.command("logout").description("Remove saved API key").action(() => {
 
 // ../../packages/cli/src/commands/projects.ts
 var import_node_os2 = require("node:os");
-var import_node_path9 = require("node:path");
+var import_node_path10 = require("node:path");
 init_dist();
 
 // ../../packages/cli/src/lib/api.ts
@@ -82324,13 +82511,13 @@ function requireDestructiveConfirmation(options, subject) {
 // ../../packages/cli/src/lib/product-replication-state.ts
 var import_node_fs2 = require("node:fs");
 var import_node_module = require("node:module");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var import_yaml2 = __toESM(require_dist());
 var require2 = (0, import_node_module.createRequire)(process.execPath);
 function readProductReplicationState(options) {
   const fallback = syncStateFromEnv(options.env ?? {});
   if (fallback.mode === "cloud-sync") return fallback;
-  const configPath = (0, import_node_path5.join)(options.localApiDataDir, "..", "config.yaml");
+  const configPath = (0, import_node_path6.join)(options.localApiDataDir, "..", "config.yaml");
   if ((0, import_node_fs2.existsSync)(configPath)) {
     try {
       const root = (0, import_yaml2.parse)((0, import_node_fs2.readFileSync)(configPath, "utf8"));
@@ -82340,7 +82527,7 @@ function readProductReplicationState(options) {
       return { mode: "unknown" };
     }
   }
-  const sqlitePath = (0, import_node_path5.join)(options.localApiDataDir, "local.sqlite");
+  const sqlitePath = (0, import_node_path6.join)(options.localApiDataDir, "local.sqlite");
   if (!(0, import_node_fs2.existsSync)(sqlitePath)) return fallback;
   let db;
   try {
@@ -82424,11 +82611,11 @@ function printTable(rows, columns) {
 }
 
 // ../../packages/cli/src/lib/project-context.ts
-var import_promises3 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
-var MARKER_PATH = (0, import_node_path6.join)(".clash", "project.toml");
+var import_promises4 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
+var MARKER_PATH = (0, import_node_path7.join)(".clash", "project.toml");
 function projectMarkerPath(cwd) {
-  return (0, import_node_path6.join)(cwd, MARKER_PATH);
+  return (0, import_node_path7.join)(cwd, MARKER_PATH);
 }
 async function writeProjectMarker(cwd, marker) {
   const projectId = cleanProjectId(marker.projectId);
@@ -82441,12 +82628,12 @@ async function writeProjectMarker(cwd, marker) {
     schemaVersion: 1,
     projectId
   };
-  await (0, import_promises3.mkdir)((0, import_node_path6.dirname)(markerPath), { recursive: true });
-  await (0, import_promises3.writeFile)(markerPath, serializeProjectMarkerToml(normalized), "utf-8");
+  await (0, import_promises4.mkdir)((0, import_node_path7.dirname)(markerPath), { recursive: true });
+  await (0, import_promises4.writeFile)(markerPath, serializeProjectMarkerToml(normalized), "utf-8");
   return markerPath;
 }
 async function readProjectMarker(markerPath) {
-  const text = await (0, import_promises3.readFile)(markerPath, "utf-8");
+  const text = await (0, import_promises4.readFile)(markerPath, "utf-8");
   const marker = parseProjectMarkerToml(markerPath, text);
   const projectId = cleanProjectId(marker.projectId);
   if (!projectId) {
@@ -82519,16 +82706,16 @@ function stringValue(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
 async function findProjectMarker(startCwd) {
-  let current = (0, import_node_path6.resolve)(startCwd);
+  let current = (0, import_node_path7.resolve)(startCwd);
   while (true) {
     const candidate = projectMarkerPath(current);
     try {
-      const info = await (0, import_promises3.stat)(candidate);
+      const info = await (0, import_promises4.stat)(candidate);
       if (info.isFile()) return candidate;
     } catch (error51) {
       if (error51.code !== "ENOENT") throw error51;
     }
-    const parent = (0, import_node_path6.dirname)(current);
+    const parent = (0, import_node_path7.dirname)(current);
     if (parent === current) return void 0;
     current = parent;
   }
@@ -82542,7 +82729,7 @@ async function resolveProjectContext(options = {}) {
     return {
       projectId: explicitProjectId,
       source: "explicit",
-      ...markerPath ? { markerPath, workspaceRoot: (0, import_node_path6.dirname)((0, import_node_path6.dirname)(markerPath)) } : {}
+      ...markerPath ? { markerPath, workspaceRoot: (0, import_node_path7.dirname)((0, import_node_path7.dirname)(markerPath)) } : {}
     };
   }
   const marker = markerPath ? await readProjectMarker(markerPath) : void 0;
@@ -82557,7 +82744,7 @@ async function resolveProjectContext(options = {}) {
       projectId: marker.projectId,
       source: "marker",
       markerPath,
-      workspaceRoot: (0, import_node_path6.dirname)((0, import_node_path6.dirname)(markerPath))
+      workspaceRoot: (0, import_node_path7.dirname)((0, import_node_path7.dirname)(markerPath))
     };
   }
   if (envProjectId) {
@@ -82577,16 +82764,16 @@ function message(error51) {
 }
 
 // ../../packages/cli/src/lib/worktree-observations.ts
-var import_node_crypto5 = require("node:crypto");
-var import_promises4 = require("node:fs/promises");
-var import_node_path8 = require("node:path");
+var import_node_crypto6 = require("node:crypto");
+var import_promises5 = require("node:fs/promises");
+var import_node_path9 = require("node:path");
 
 // ../../packages/cli/src/lib/projection-cas.ts
-var import_node_crypto4 = require("node:crypto");
+var import_node_crypto5 = require("node:crypto");
 var import_node_fs3 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 function hashProjectionContent(content) {
-  return (0, import_node_crypto4.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_node_crypto5.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function assertProjectionFilePathInsideCwd(options) {
   return assertProjectionPathInsideCwd({
@@ -82605,10 +82792,10 @@ function assertAgentFilePathInsideCwd(options) {
   });
 }
 function assertProjectionPathInsideCwd(options) {
-  const cwd = (0, import_node_path7.resolve)(options.cwd);
+  const cwd = (0, import_node_path8.resolve)(options.cwd);
   const filePath = normalizeProjectionPathForCompare(options.path, cwd);
-  const relativePath2 = (0, import_node_path7.relative)(cwd, filePath);
-  const escapes = relativePath2 === ".." || relativePath2.startsWith(`..${import_node_path7.sep}`) || (0, import_node_path7.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path8.relative)(cwd, filePath);
+  const escapes = relativePath2 === ".." || relativePath2.startsWith(`..${import_node_path8.sep}`) || (0, import_node_path8.isAbsolute)(relativePath2);
   const inside = relativePath2 === "" || !escapes;
   if (!inside) {
     return {
@@ -82642,8 +82829,8 @@ function assertExistingProjectionPathRealpathInsideCwd(options) {
   } catch {
     return { ok: true };
   }
-  const realRelativePath = (0, import_node_path7.relative)(cwdRealPath, existingRealPath);
-  const escapes = realRelativePath === ".." || realRelativePath.startsWith(`..${import_node_path7.sep}`) || (0, import_node_path7.isAbsolute)(realRelativePath);
+  const realRelativePath = (0, import_node_path8.relative)(cwdRealPath, existingRealPath);
+  const escapes = realRelativePath === ".." || realRelativePath.startsWith(`..${import_node_path8.sep}`) || (0, import_node_path8.isAbsolute)(realRelativePath);
   if (!escapes) return { ok: true };
   return {
     ok: false,
@@ -82653,7 +82840,7 @@ function assertExistingProjectionPathRealpathInsideCwd(options) {
 function nearestExistingPath(filePath) {
   let candidate = filePath;
   while (!(0, import_node_fs3.existsSync)(candidate)) {
-    const parent = (0, import_node_path7.dirname)(candidate);
+    const parent = (0, import_node_path8.dirname)(candidate);
     if (parent === candidate) return null;
     candidate = parent;
   }
@@ -82680,8 +82867,8 @@ function resolveAgentFilePathInsideCwd(options) {
   return filePath;
 }
 function normalizeProjectionPathForCompare(path, cwd) {
-  if ((0, import_node_path7.isAbsolute)(path)) return (0, import_node_path7.resolve)(path);
-  return (0, import_node_path7.resolve)(cwd ?? process.cwd(), path);
+  if ((0, import_node_path8.isAbsolute)(path)) return (0, import_node_path8.resolve)(path);
+  return (0, import_node_path8.resolve)(cwd ?? process.cwd(), path);
 }
 
 // ../../packages/cli/src/lib/worktree-observations.ts
@@ -82690,7 +82877,7 @@ var WRITE_LOCK_TIMEOUT_MS = 1e4;
 var OWNERLESS_LOCK_GRACE_MS = WRITE_LOCK_TIMEOUT_MS;
 var localWriteQueues = /* @__PURE__ */ new Map();
 function worktreeObservationPath(workspaceRoot) {
-  return (0, import_node_path8.join)(workspaceRoot, ".clash", "observed.json");
+  return (0, import_node_path9.join)(workspaceRoot, ".clash", "observed.json");
 }
 async function readWorktreeObservation(options) {
   const state = await readState(options.workspaceRoot);
@@ -82731,7 +82918,7 @@ async function readState(workspaceRoot) {
   const filePath = resolveWorktreeObservationPath(workspaceRoot);
   let raw;
   try {
-    raw = await (0, import_promises4.readFile)(filePath, "utf8");
+    raw = await (0, import_promises5.readFile)(filePath, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT") return void 0;
     throw error51;
@@ -82749,14 +82936,14 @@ async function readState(workspaceRoot) {
 }
 async function writeState(workspaceRoot, state) {
   const filePath = resolveWorktreeObservationPath(workspaceRoot);
-  await (0, import_promises4.mkdir)((0, import_node_path8.dirname)(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${(0, import_node_crypto5.randomUUID)()}.tmp`;
-  await (0, import_promises4.writeFile)(tempPath, `${JSON.stringify(state, null, 2)}
+  await (0, import_promises5.mkdir)((0, import_node_path9.dirname)(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${(0, import_node_crypto6.randomUUID)()}.tmp`;
+  await (0, import_promises5.writeFile)(tempPath, `${JSON.stringify(state, null, 2)}
 `, {
     encoding: "utf8",
     mode: 384
   });
-  await (0, import_promises4.rename)(tempPath, filePath);
+  await (0, import_promises5.rename)(tempPath, filePath);
 }
 async function withWriteLock(workspaceRoot, operation) {
   const filePath = resolveWorktreeObservationPath(workspaceRoot);
@@ -82779,17 +82966,17 @@ async function withWriteLock(workspaceRoot, operation) {
 }
 async function withFilesystemWriteLock(filePath, operation) {
   const lockPath = `${filePath}.lock`;
-  const ownerPath = (0, import_node_path8.join)(lockPath, "owner.json");
+  const ownerPath = (0, import_node_path9.join)(lockPath, "owner.json");
   const startedAt = Date.now();
-  await (0, import_promises4.mkdir)((0, import_node_path8.dirname)(filePath), { recursive: true });
+  await (0, import_promises5.mkdir)((0, import_node_path9.dirname)(filePath), { recursive: true });
   while (true) {
     try {
-      await (0, import_promises4.mkdir)(lockPath);
-      const ownerTempPath = (0, import_node_path8.join)(lockPath, `.owner.${process.pid}.${(0, import_node_crypto5.randomUUID)()}.tmp`);
+      await (0, import_promises5.mkdir)(lockPath);
+      const ownerTempPath = (0, import_node_path9.join)(lockPath, `.owner.${process.pid}.${(0, import_node_crypto6.randomUUID)()}.tmp`);
       try {
-        await (0, import_promises4.writeFile)(ownerTempPath, `${JSON.stringify({ pid: process.pid })}
+        await (0, import_promises5.writeFile)(ownerTempPath, `${JSON.stringify({ pid: process.pid })}
 `, "utf8");
-        await (0, import_promises4.rename)(ownerTempPath, ownerPath);
+        await (0, import_promises5.rename)(ownerTempPath, ownerPath);
       } catch (error51) {
         await retireWriteLock(lockPath);
         throw error51;
@@ -82814,14 +83001,14 @@ async function withFilesystemWriteLock(filePath, operation) {
   }
 }
 async function retireWriteLock(lockPath) {
-  const retiredPath = `${lockPath}.retired.${process.pid}.${(0, import_node_crypto5.randomUUID)()}`;
+  const retiredPath = `${lockPath}.retired.${process.pid}.${(0, import_node_crypto6.randomUUID)()}`;
   try {
-    await (0, import_promises4.rename)(lockPath, retiredPath);
+    await (0, import_promises5.rename)(lockPath, retiredPath);
   } catch (error51) {
     if (error51.code === "ENOENT") return;
     throw error51;
   }
-  await (0, import_promises4.rm)(retiredPath, { recursive: true, force: true });
+  await (0, import_promises5.rm)(retiredPath, { recursive: true, force: true });
 }
 function resolveWorktreeObservationPath(workspaceRoot) {
   return resolveAgentFilePathInsideCwd({
@@ -82832,7 +83019,7 @@ function resolveWorktreeObservationPath(workspaceRoot) {
 }
 async function canReclaimWriteLock(lockPath, ownerPath) {
   try {
-    const parsed = JSON.parse(await (0, import_promises4.readFile)(ownerPath, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises5.readFile)(ownerPath, "utf8"));
     if (!Number.isInteger(parsed.pid) || parsed.pid <= 0) {
       return isOwnerlessLockStale(lockPath);
     }
@@ -82848,7 +83035,7 @@ async function canReclaimWriteLock(lockPath, ownerPath) {
 }
 async function isOwnerlessLockStale(lockPath) {
   try {
-    const lockStat = await (0, import_promises4.stat)(lockPath);
+    const lockStat = await (0, import_promises5.stat)(lockPath);
     return Date.now() - lockStat.mtimeMs >= OWNERLESS_LOCK_GRACE_MS;
   } catch (error51) {
     if (error51.code === "ENOENT") return false;
@@ -82977,7 +83164,7 @@ function projectRecoveryPolicyHint(policy) {
   return " (cloud conflict review required)";
 }
 async function linkProject(projectId, options = {}) {
-  const cwd = (0, import_node_path9.resolve)(options.cwd ?? process.cwd());
+  const cwd = (0, import_node_path10.resolve)(options.cwd ?? process.cwd());
   const canonicalProjectId = projectId.trim();
   return writeProjectMarker(cwd, {
     schemaVersion: 1,
@@ -82991,8 +83178,8 @@ async function initProject(options = {}) {
 }
 async function resolveProjectStatus(options = {}) {
   const env = options.env ?? process.env;
-  const cwd = (0, import_node_path9.resolve)(options.cwd ?? process.cwd());
-  const clashRoot = options.clashRoot ?? (options.homeDir ? (0, import_node_path9.join)(options.homeDir, ".clash") : resolveClashRoot(env));
+  const cwd = (0, import_node_path10.resolve)(options.cwd ?? process.cwd());
+  const clashRoot = options.clashRoot ?? (options.homeDir ? (0, import_node_path10.join)(options.homeDir, ".clash") : resolveClashRoot(env));
   const context = await resolveProjectContext({
     project: options.project,
     cwd,
@@ -83004,7 +83191,7 @@ async function resolveProjectStatus(options = {}) {
     marker = candidate.projectId === context.projectId ? candidate : null;
   }
   const replicationState = options.replicationState === void 0 ? readProductReplicationState({
-    localApiDataDir: (0, import_node_path9.join)(clashRoot, "local-api"),
+    localApiDataDir: (0, import_node_path10.join)(clashRoot, "local-api"),
     env
   }) : options.replicationState;
   return buildProjectStatus2(context, {
@@ -83016,7 +83203,7 @@ async function resolveProjectStatus(options = {}) {
   });
 }
 function buildProjectStatus2(context, options = {}) {
-  const clashRoot = options.clashRoot ?? (0, import_node_path9.join)(options.homeDir ?? (0, import_node_os2.homedir)(), ".clash");
+  const clashRoot = options.clashRoot ?? (0, import_node_path10.join)(options.homeDir ?? (0, import_node_os2.homedir)(), ".clash");
   return buildProjectStatus(context, {
     marker: options.marker,
     replicationState: options.replicationState,
@@ -83225,7 +83412,7 @@ var wrapper_default = import_websocket.default;
 
 // ../../packages/cli/src/commands/canvas.ts
 var import_node_fs6 = require("node:fs");
-var import_node_path13 = require("node:path");
+var import_node_path14 = require("node:path");
 
 // ../../node_modules/.pnpm/zod@3.24.4/node_modules/zod/lib/index.mjs
 var util;
@@ -87460,7 +87647,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-2B4Z6TLC.js
+// ../../packages/shared-types/dist/chunk-O4B43KB4.js
 var ModelKindSchema = z.enum(["image", "video", "audio", "text", "asr"]);
 var ModelTaskSchema = z.enum([
   "speech-to-text",
@@ -87660,7 +87847,7 @@ var GEMINI_TTS_VOICES = [
   { label: "Sulafat - Warm", value: "Sulafat" }
 ];
 var ModelParameterTypeSchema = z.enum(["select", "slider", "number", "text", "boolean"]);
-var ProviderSchema = z.enum([
+var BuiltinProviderSchema = z.enum([
   "local",
   "official",
   "fal",
@@ -87676,6 +87863,10 @@ var ProviderSchema = z.enum([
   "mock",
   "custom"
 ]);
+var ProviderSchema = z.string().trim().regex(
+  /^[a-z0-9][a-z0-9._-]*$/,
+  "Provider ids must be lowercase plugin-safe identifiers."
+);
 var ReferenceBindingSchema = z.discriminatedUnion("type", [
   z.object({
     /** Provider receives the prompt and reference collections as separate fields. */
@@ -87854,6 +88045,12 @@ var ModelProviderImplementationSchema = z.object({
   /** Plugin that owns projectorExportId. The resolver selects an installed
    * exact version and persists it on the Canvas node. */
   projectorPluginId: z.string().min(1).optional(),
+  /** Function export that owns the full submit/poll/result lifecycle for a
+   * plugin-defined provider. Built-in adapters may omit it. */
+  executorExportId: z.string().min(1).optional(),
+  /** Plugin that owns executorExportId. Package composition fills this from
+   * immutable plugin provenance when omitted in a binding document. */
+  executorPluginId: z.string().min(1).optional(),
   priority: z.number().optional(),
   weight: z.number().optional(),
   requiredCredentials: z.array(z.string()).optional(),
@@ -87870,12 +88067,20 @@ var ModelProviderImplementationSchema = z.object({
    * the effective Card instead of being rendered and silently discarded. */
   excludedParameterIds: z.array(z.string().min(1)).optional()
 }).superRefine((implementation, ctx) => {
-  if (!implementation.projectorPluginId || implementation.projectorExportId) return;
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    path: ["projectorExportId"],
-    message: "projectorExportId is required when projectorPluginId is configured."
-  });
+  if (implementation.projectorPluginId && !implementation.projectorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["projectorExportId"],
+      message: "projectorExportId is required when projectorPluginId is configured."
+    });
+  }
+  if (implementation.executorPluginId && !implementation.executorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["executorExportId"],
+      message: "executorExportId is required when executorPluginId is configured."
+    });
+  }
 });
 var ModelCardSchema = z.object({
   id: z.string(),
@@ -90528,6 +90733,16 @@ var ExecutablePluginCardExportSchema = z.object({
   kind: z.enum(["model-card", "action-card"]),
   path: PluginRelativePathSchema
 });
+var ExecutablePluginProviderExportSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z.literal("provider"),
+  path: PluginRelativePathSchema
+});
+var ExecutablePluginModelBindingExportSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z.literal("model-provider-binding"),
+  path: PluginRelativePathSchema
+});
 var ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("form")
@@ -90654,9 +90869,70 @@ var ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
     spec: ExecutableActionCardSchema
   }).strict()
 ]);
+var ExecutablePluginProviderAuthSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("api-key"),
+    credentialId: z.string().trim().min(1).default("apiKey"),
+    label: z.string().trim().min(1).optional()
+  }).strict(),
+  z.object({
+    type: z.literal("oauth"),
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    flow: z.literal("browser"),
+    authorizationUrl: z.string().url(),
+    callback: z.object({
+      type: z.literal("custom-scheme"),
+      scheme: z.string().trim().regex(/^[a-z][a-z0-9+.-]*$/)
+    }).strict(),
+    accessTokenField: z.string().trim().min(1).default("accessToken")
+  }).strict(),
+  z.object({
+    type: z.literal("local-token-import"),
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    label: z.string().trim().min(1).optional(),
+    source: z.object({
+      format: z.literal("electron-store-aes-256-gcm-v2"),
+      appDataSubdirectory: PluginRelativePathSchema,
+      configFile: PluginRelativePathSchema,
+      keyFile: PluginRelativePathSchema,
+      tokenPath: z.array(
+        z.string().trim().regex(/^[A-Za-z0-9_-]+$/).refine(
+          (segment) => !["__proto__", "constructor", "prototype"].includes(segment),
+          "Token path contains a reserved property."
+        )
+      ).min(1)
+    }).strict()
+  }).strict()
+]);
+var ExecutablePluginProviderDefinitionSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  name: z.string().trim().min(1),
+  description: z.string().trim().min(1).optional(),
+  upstreamId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  apiShape: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  executorExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  auth: z.array(ExecutablePluginProviderAuthSchema).default([])
+}).strict();
+var ExecutablePluginProviderDocumentSchema = z.object({
+  apiVersion: z.literal("clash.provider/v1"),
+  kind: z.literal("provider"),
+  spec: ExecutablePluginProviderDefinitionSchema
+}).strict();
+var ExecutablePluginModelBindingSpecSchema = z.intersection(
+  z.object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    modelId: z.string().trim().min(1)
+  }),
+  ModelProviderImplementationSchema
+);
+var ExecutablePluginModelBindingDocumentSchema = z.object({
+  apiVersion: z.literal("clash.binding/v1"),
+  kind: z.literal("model-provider-binding"),
+  spec: ExecutablePluginModelBindingSpecSchema
+}).strict();
 var ExecutablePluginFunctionExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  kind: z.enum(["action", "provider-projector"]),
+  kind: z.enum(["action", "provider-projector", "provider-executor"]),
   handler: z.string().trim().min(1)
 });
 var PluginNetworkPermissionsSchema = z.object({
@@ -90688,6 +90964,19 @@ var ExecutablePluginCardRegistrationSchema = z.object({
   runtime: ExecutablePluginRuntimeSchema,
   permissions: ExecutablePluginPermissionsSchema,
   document: ExecutablePluginCardDocumentSchema
+}).strict();
+var ExecutablePluginArtifactRegistrationBaseSchema = z.object({
+  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  version: z.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z.string().regex(SHA256_PATTERN),
+  runtime: ExecutablePluginRuntimeSchema,
+  permissions: ExecutablePluginPermissionsSchema
+});
+var ExecutablePluginProviderRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
+  document: ExecutablePluginProviderDocumentSchema
+}).strict();
+var ExecutablePluginModelBindingRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
+  document: ExecutablePluginModelBindingDocumentSchema
 }).strict();
 var ExecutablePluginBindingSchema = z.object({
   pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
@@ -90733,7 +91022,7 @@ var ExecutablePluginInvocationSchema = z.object({
   projectId: z.string().trim().min(1),
   nodeId: z.string().trim().min(1).optional(),
   target: ExecutablePluginBindingSchema.extend({
-    kind: z.enum(["action", "provider-projector"])
+    kind: z.enum(["action", "provider-projector", "provider-executor"])
   }),
   input: z.object({
     values: z.record(ExecutablePluginJsonValueSchema).default({}),
@@ -90757,7 +91046,7 @@ var HostedExecutablePluginCapabilitySchema = z.object({
     projectId: z.string().trim().min(1),
     nodeId: z.string().trim().min(1).optional(),
     target: ExecutablePluginBindingSchema.extend({
-      kind: z.enum(["action", "provider-projector"])
+      kind: z.enum(["action", "provider-projector", "provider-executor"])
     }),
     actor: z.object({
       kind: z.enum(["user", "agent", "system"]),
@@ -90902,7 +91191,7 @@ var ExecutablePluginContractTestDocumentSchema = z.object({
   description: z.string().trim().min(1).optional(),
   target: z.object({
     exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    kind: z.enum(["action", "provider-projector"])
+    kind: z.enum(["action", "provider-projector", "provider-executor"])
   }).strict(),
   context: z.object({
     projectId: z.string().trim().min(1).default("contract-test-project"),
@@ -90939,6 +91228,8 @@ var ExecutablePluginManifestSchema = z.object({
   runtime: ExecutablePluginRuntimeSchema,
   exports: z.object({
     cards: z.array(ExecutablePluginCardExportSchema).default([]),
+    providers: z.array(ExecutablePluginProviderExportSchema).default([]),
+    modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
     functions: z.array(ExecutablePluginFunctionExportSchema).default([])
   }),
   permissions: ExecutablePluginPermissionsSchema,
@@ -90948,6 +91239,8 @@ var ExecutablePluginManifestSchema = z.object({
 }).superRefine((manifest, ctx) => {
   for (const [key, values] of [
     ["cards", manifest.exports.cards],
+    ["providers", manifest.exports.providers],
+    ["modelBindings", manifest.exports.modelBindings],
     ["functions", manifest.exports.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -90972,6 +91265,20 @@ var ExecutablePluginManifestSchema = z.object({
       });
     }
     cardPaths.add(card.path);
+  }
+  const artifactPaths = new Set(cardPaths);
+  for (const artifact of [
+    ...manifest.exports.providers,
+    ...manifest.exports.modelBindings
+  ]) {
+    if (artifactPaths.has(artifact.path)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["exports"],
+        message: "Plugin declarative artifact paths must be unique."
+      });
+    }
+    artifactPaths.add(artifact.path);
   }
   const contractTestPaths = /* @__PURE__ */ new Set();
   for (const path of manifest.contractTests) {
@@ -91034,10 +91341,12 @@ var ExecutablePluginActivationReceiptSchema = z.object({
   contentHash: z.string().regex(SHA256_PATTERN),
   activatedAt: z.string().datetime()
 }).strict();
-function validateExecutablePluginPackage(manifestInput, cardDocuments, contractTestDocuments = {}) {
+function validateExecutablePluginPackage(manifestInput, cardDocuments, contractTestDocuments = {}, artifacts = {}) {
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
   const functions = new Map(manifest.exports.functions.map((entry) => [entry.id, entry]));
   const cards = {};
+  const providers = {};
+  const modelBindings = {};
   const contractTests = {};
   for (const cardExport of manifest.exports.cards) {
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
@@ -91071,6 +91380,52 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     cards[cardExport.path] = card;
   }
+  for (const providerExport of manifest.exports.providers) {
+    const input = artifacts.providers?.[providerExport.path];
+    if (input === void 0) {
+      throw new Error(`Missing declared Provider document: ${providerExport.path}`);
+    }
+    const provider = ExecutablePluginProviderDocumentSchema.parse(input);
+    if (provider.spec.id !== providerExport.id) {
+      throw new Error(
+        `Provider ${providerExport.path} id ${provider.spec.id} does not match export id ${providerExport.id}.`
+      );
+    }
+    const executor = functions.get(provider.spec.executorExportId);
+    if (!executor || executor.kind !== "provider-executor") {
+      throw new Error(
+        `Provider ${provider.spec.id} requires provider executor export ${provider.spec.executorExportId}.`
+      );
+    }
+    providers[providerExport.path] = provider;
+  }
+  for (const bindingExport of manifest.exports.modelBindings) {
+    const input = artifacts.modelBindings?.[bindingExport.path];
+    if (input === void 0) {
+      throw new Error(`Missing declared model Provider binding: ${bindingExport.path}`);
+    }
+    const binding = ExecutablePluginModelBindingDocumentSchema.parse(input);
+    if (binding.spec.id !== bindingExport.id) {
+      throw new Error(
+        `Model Provider binding ${bindingExport.path} id ${binding.spec.id} does not match export id ${bindingExport.id}.`
+      );
+    }
+    for (const [exportId, kind] of [
+      [binding.spec.projectorExportId, "provider-projector"],
+      [binding.spec.executorExportId, "provider-executor"]
+    ]) {
+      if (!exportId) continue;
+      const ownerId = kind === "provider-projector" ? binding.spec.projectorPluginId : binding.spec.executorPluginId;
+      if (ownerId && ownerId !== manifest.id) continue;
+      const implementation = functions.get(exportId);
+      if (!implementation || implementation.kind !== kind) {
+        throw new Error(
+          `Model Provider binding ${binding.spec.id} requires ${kind} export ${exportId}.`
+        );
+      }
+    }
+    modelBindings[bindingExport.path] = binding;
+  }
   for (const path of manifest.contractTests) {
     if (!Object.prototype.hasOwnProperty.call(contractTestDocuments, path)) {
       throw new Error(`Missing declared contract test: ${path}`);
@@ -91086,7 +91441,7 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     contractTests[path] = contractTest;
   }
-  return { manifest, cards, contractTests };
+  return { manifest, cards, providers, modelBindings, contractTests };
 }
 function addedValues(before, after) {
   const existing = new Set(before);
@@ -92395,7 +92750,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-PVL2FXUQ.js
+// ../../packages/shared-types/dist/chunk-XAYWVA4T.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -92938,13 +93293,39 @@ var FiniteNumberSchema = z.number().finite();
 var NonnegativeFrameSchema = z.number().int().nonnegative();
 var PositiveFrameSchema = z.number().int().positive();
 var CssColorSchema = z.string().min(1);
+var TIMELINE_ITEM_TRANSFORM_SEMANTICS = {
+  position: {
+    fields: ["properties.x", "properties.y"],
+    unit: "composition-pixels",
+    origin: "composition-center"
+  },
+  staticSize: {
+    fields: ["properties.width", "properties.height"],
+    unit: "unitless-source-size-multiplier",
+    outputPixels: false,
+    defaults: { width: 1, height: 1 },
+    oneByOneBehavior: "contain-fit-within-composition"
+  },
+  animatedScale: {
+    field: "keyframes.scale",
+    unit: "unitless-multiplier-of-static-size"
+  }
+};
 var TimelineItemPropertiesSchema = z.object({
-  x: FiniteNumberSchema,
-  y: FiniteNumberSchema,
-  width: FiniteNumberSchema,
-  height: FiniteNumberSchema,
-  rotation: FiniteNumberSchema.optional(),
-  opacity: z.number().finite().min(0).max(1).optional()
+  x: FiniteNumberSchema.describe(
+    "Horizontal center offset in composition pixels; 0 is the composition center."
+  ),
+  y: FiniteNumberSchema.describe(
+    "Vertical center offset in composition pixels; 0 is the composition center."
+  ),
+  width: FiniteNumberSchema.describe(
+    "Unitless multiplier of resolved source natural width; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+  ),
+  height: FiniteNumberSchema.describe(
+    "Unitless multiplier of resolved source natural height; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+  ),
+  rotation: FiniteNumberSchema.describe("Clockwise rotation in degrees.").optional(),
+  opacity: z.number().finite().min(0).max(1).describe("Unitless opacity from 0 through 1.").optional()
 });
 var TimelineEffectParamValueSchema = z.union([
   z.string(),
@@ -93163,7 +93544,7 @@ var itemBaseFields = {
     editor: noControl,
     runtimeConsumers: ["asset-loader", "canvas-link", "render"]
   }),
-  properties: authored(TimelineItemPropertiesSchema, "Static item transform used as fallback outside animated keyframe channels.", {
+  properties: authored(TimelineItemPropertiesSchema, "Static item transform: x/y are composition-center pixel offsets; width/height are unitless source-size multipliers, never output pixels.", {
     required: false,
     editor: propertiesControl,
     runtimeConsumers: ["editor", "preview", "render", "export"],
@@ -94375,32 +94756,171 @@ function parseFromExpression(raw) {
   return null;
 }
 var TIMELINE_DSL_GLOBAL_SEMANTIC_RULES = [
-  { id: "timeline.track.duplicate-id", kind: "unique-field", objectPath: "tracks[]", field: "id" },
-  { id: "timeline.item.duplicate-id", kind: "unique-field-global", objectPath: "tracks[].items[]", field: "id" },
-  { id: "timeline.primary-track.reference", kind: "reference", objectPath: "primaryTrackId", targetPath: "tracks[].id" },
-  { id: "timeline.primary-track.category", kind: "referenced-object-field", objectPath: "primaryTrackId", field: "category", allowedValues: ["primary"] },
-  { id: "timeline.track.category-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "category" },
-  { id: "timeline.track.role-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "role" },
-  { id: "timeline.track.role-category", kind: "owner-field-consistency", objectPath: "tracks[]", fields: ["role", "category"], mapping: TIMELINE_DSL_ROLE_CATEGORIES },
-  { id: "timeline.track.category-order", kind: "ordered-enum", objectPath: "tracks[]", field: "category", order: TIMELINE_DSL_TRACK_CATEGORIES },
-  { id: "timeline.track.mixed-categories", kind: "single-structural-category", objectPath: "tracks[]" },
-  { id: "timeline.item.from-expression", kind: "expression-grammar", objectPath: "tracks[].items[]", field: "from" },
-  { id: "timeline.item.frame-integer", kind: "integer-frame", objectPath: "tracks[].items[]", field: "from" },
-  { id: "timeline.item.from-reference", kind: "reference", objectPath: "tracks[].items[].from", targetPath: "tracks[].items[].id" },
-  { id: "timeline.item.from-cycle", kind: "acyclic-reference", objectPath: "tracks[].items[].from" },
-  { id: "timeline.item.source-required", kind: "requires-any-field", objectPath: "tracks[].items[]", fields: ["src", "assetId", "sourceNodeId"] },
-  { id: "timeline.item.animation-duration", kind: "maximum-by-owner-field", objectPath: "tracks[].items[]", fields: ["entranceAnimation.durationInFrames", "exitAnimation.durationInFrames"], maximumPath: "durationInFrames" },
-  { id: "timeline.audio.ducking-track-role", kind: "field-requires-owner-value", objectPath: "tracks[].items[]", field: "audioDucking", ownerField: "role", ownerValue: "music" },
-  { id: "timeline.composition.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["sourcePath", "renderedAssetPath"] },
-  { id: "timeline.composition.preview-contract", kind: "conditional-required", objectPath: "tracks[].items[]" },
-  { id: "timeline.caption.structured", kind: "conditional-required", objectPath: "tracks[].items[]" },
-  { id: "timeline.caption.lineage", kind: "cross-field-lineage", objectPath: "tracks[].items[]" },
-  { id: "timeline.derived-overlay.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["src"] },
-  { id: "timeline.derived-overlay.copy-on-write", kind: "distinct-fields", objectPath: "tracks[].items[]", fields: ["sourceAssetId", "derivedAssetId"] },
-  { id: "timeline.transition.reference", kind: "references", objectPath: "tracks[].items[]", fields: ["fromItemId", "toItemId"] },
-  { id: "timeline.transition.continuity", kind: "same-track-contiguous-references", objectPath: "tracks[].items[]" },
-  { id: "timeline.transition.centered-range", kind: "centered-on-reference-boundary", objectPath: "tracks[].items[]" },
-  { id: "timeline.transition.duration-handles", kind: "maximum-by-reference-handles", objectPath: "tracks[].items[]" }
+  {
+    id: "timeline.track.duplicate-id",
+    kind: "unique-field",
+    objectPath: "tracks[]",
+    field: "id"
+  },
+  {
+    id: "timeline.item.duplicate-id",
+    kind: "unique-field-global",
+    objectPath: "tracks[].items[]",
+    field: "id"
+  },
+  {
+    id: "timeline.primary-track.reference",
+    kind: "reference",
+    objectPath: "primaryTrackId",
+    targetPath: "tracks[].id"
+  },
+  {
+    id: "timeline.primary-track.category",
+    kind: "referenced-object-field",
+    objectPath: "primaryTrackId",
+    field: "category",
+    allowedValues: ["primary"]
+  },
+  {
+    id: "timeline.track.category-item-mismatch",
+    kind: "allowed-item-types",
+    objectPath: "tracks[]",
+    discriminator: "category"
+  },
+  {
+    id: "timeline.track.role-item-mismatch",
+    kind: "allowed-item-types",
+    objectPath: "tracks[]",
+    discriminator: "role"
+  },
+  {
+    id: "timeline.track.role-category",
+    kind: "owner-field-consistency",
+    objectPath: "tracks[]",
+    fields: ["role", "category"],
+    mapping: TIMELINE_DSL_ROLE_CATEGORIES
+  },
+  {
+    id: "timeline.track.category-order",
+    kind: "ordered-enum",
+    objectPath: "tracks[]",
+    field: "category",
+    order: TIMELINE_DSL_TRACK_CATEGORIES
+  },
+  {
+    id: "timeline.track.mixed-categories",
+    kind: "single-structural-category",
+    objectPath: "tracks[]"
+  },
+  {
+    id: "timeline.item.from-expression",
+    kind: "expression-grammar",
+    objectPath: "tracks[].items[]",
+    field: "from"
+  },
+  {
+    id: "timeline.item.frame-integer",
+    kind: "integer-frame",
+    objectPath: "tracks[].items[]",
+    field: "from"
+  },
+  {
+    id: "timeline.item.from-reference",
+    kind: "reference",
+    objectPath: "tracks[].items[].from",
+    targetPath: "tracks[].items[].id"
+  },
+  {
+    id: "timeline.item.from-cycle",
+    kind: "acyclic-reference",
+    objectPath: "tracks[].items[].from"
+  },
+  {
+    id: "timeline.item.source-required",
+    kind: "requires-any-field",
+    objectPath: "tracks[].items[]",
+    fields: ["src", "assetId", "sourceNodeId"]
+  },
+  {
+    id: "timeline.item.animation-duration",
+    kind: "maximum-by-owner-field",
+    objectPath: "tracks[].items[]",
+    fields: [
+      "entranceAnimation.durationInFrames",
+      "exitAnimation.durationInFrames"
+    ],
+    maximumPath: "durationInFrames"
+  },
+  {
+    id: "timeline.item.scale-unit",
+    kind: "maximum-absolute-value",
+    objectPath: "tracks[].items[]",
+    fields: ["properties.width", "properties.height"],
+    maximum: 4,
+    unit: "unitless-source-size-multiplier"
+  },
+  {
+    id: "timeline.audio.ducking-track-role",
+    kind: "field-requires-owner-value",
+    objectPath: "tracks[].items[]",
+    field: "audioDucking",
+    ownerField: "role",
+    ownerValue: "music"
+  },
+  {
+    id: "timeline.composition.local-path",
+    kind: "local-path",
+    objectPath: "tracks[].items[]",
+    fields: ["sourcePath", "renderedAssetPath"]
+  },
+  {
+    id: "timeline.composition.preview-contract",
+    kind: "conditional-required",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.caption.structured",
+    kind: "conditional-required",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.caption.lineage",
+    kind: "cross-field-lineage",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.derived-overlay.local-path",
+    kind: "local-path",
+    objectPath: "tracks[].items[]",
+    fields: ["src"]
+  },
+  {
+    id: "timeline.derived-overlay.copy-on-write",
+    kind: "distinct-fields",
+    objectPath: "tracks[].items[]",
+    fields: ["sourceAssetId", "derivedAssetId"]
+  },
+  {
+    id: "timeline.transition.reference",
+    kind: "references",
+    objectPath: "tracks[].items[]",
+    fields: ["fromItemId", "toItemId"]
+  },
+  {
+    id: "timeline.transition.continuity",
+    kind: "same-track-contiguous-references",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.transition.centered-range",
+    kind: "centered-on-reference-boundary",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.transition.duration-handles",
+    kind: "maximum-by-reference-handles",
+    objectPath: "tracks[].items[]"
+  }
 ];
 function issue(ruleId, path, message2) {
   return { ruleId, path, message: message2 };
@@ -94441,11 +94961,13 @@ function pushReferenceCycleIssues(indexedItems, itemById, issues) {
         for (const cyclicId of path.slice(existing)) {
           const cyclic = itemById.get(cyclicId);
           if (!cyclic) continue;
-          issues.push(issue(
-            "timeline.item.from-cycle",
-            ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
-            `from expression for ${cyclicId} participates in a reference cycle`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.from-cycle",
+              ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
+              `from expression for ${cyclicId} participates in a reference cycle`
+            )
+          );
         }
         break;
       }
@@ -94465,31 +94987,42 @@ function validateTransition(indexed, itemById, issues) {
   const from = nonEmptyString2(fromId) ? itemById.get(fromId) : void 0;
   const to = nonEmptyString2(toId) ? itemById.get(toId) : void 0;
   if (!from || !to) {
-    issues.push(issue(
-      "timeline.transition.reference",
-      [...itemPath],
-      "transition must reference two existing Timeline items"
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.reference",
+        [...itemPath],
+        "transition must reference two existing Timeline items"
+      )
+    );
     return;
   }
-  const transitionClipTypes = /* @__PURE__ */ new Set(["video", "image", "solid", "text"]);
+  const transitionClipTypes = /* @__PURE__ */ new Set([
+    "video",
+    "image",
+    "solid",
+    "text"
+  ]);
   const boundary = typeof from.item.from === "number" ? from.item.from + from.item.durationInFrames : Number.NaN;
   if (from.track.id !== to.track.id || !transitionClipTypes.has(from.item.type) || !transitionClipTypes.has(to.item.type) || boundary !== to.item.from) {
-    issues.push(issue(
-      "timeline.transition.continuity",
-      [...itemPath],
-      "transition references must be contiguous visual clips on the same track"
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.continuity",
+        [...itemPath],
+        "transition references must be contiguous visual clips on the same track"
+      )
+    );
     return;
   }
   if (typeof item.from === "number") {
     const expectedFrom = boundary - Math.floor(item.durationInFrames / 2);
     if (item.from !== expectedFrom) {
-      issues.push(issue(
-        "timeline.transition.centered-range",
-        [...itemPath, "from"],
-        `transition range must be centered on frame ${boundary}`
-      ));
+      issues.push(
+        issue(
+          "timeline.transition.centered-range",
+          [...itemPath, "from"],
+          `transition range must be centered on frame ${boundary}`
+        )
+      );
     }
   }
   const maximum = Math.max(
@@ -94497,11 +95030,13 @@ function validateTransition(indexed, itemById, issues) {
     Math.min(from.item.durationInFrames, to.item.durationInFrames) * 2
   );
   if (item.durationInFrames > maximum) {
-    issues.push(issue(
-      "timeline.transition.duration-handles",
-      [...itemPath, "durationInFrames"],
-      `transition duration cannot exceed ${maximum} frames for these clips`
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.duration-handles",
+        [...itemPath, "durationInFrames"],
+        `transition duration cannot exceed ${maximum} frames for these clips`
+      )
+    );
   }
 }
 function validFrameRange(start, end) {
@@ -94509,37 +95044,44 @@ function validFrameRange(start, end) {
 }
 function validateCaption(indexed, issues) {
   const { item, track, trackIndex, itemIndex } = indexed;
-  if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues)) return;
+  if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues))
+    return;
   const itemPath = ["tracks", trackIndex, "items", itemIndex];
   const cues = Array.isArray(item.cues) ? item.cues : [];
   const wordRefs = Array.isArray(item.wordRefs) ? item.wordRefs : [];
   const mappings = Array.isArray(item.sourceToOutputMap) ? item.sourceToOutputMap : [];
   if (cues.length === 0 || wordRefs.length === 0 || mappings.length === 0) {
-    issues.push(issue(
-      "timeline.caption.structured",
-      [...itemPath],
-      "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
-    ));
+    issues.push(
+      issue(
+        "timeline.caption.structured",
+        [...itemPath],
+        "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
+      )
+    );
     return;
   }
   const wordIds = /* @__PURE__ */ new Set();
   wordRefs.forEach((word, wordIndex) => {
     if (nonEmptyString2(word.id)) wordIds.add(word.id);
     if (!nonEmptyString2(word.id) || !validFrameRange(word.sourceStartFrame, word.sourceEndFrame)) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "wordRefs", wordIndex],
-        "caption word reference requires an id and a valid source frame range"
-      ));
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "wordRefs", wordIndex],
+          "caption word reference requires an id and a valid source frame range"
+        )
+      );
     }
   });
   mappings.forEach((mapping, mappingIndex) => {
     if (!validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) || !validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame)) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "sourceToOutputMap", mappingIndex],
-        "caption source-to-output mapping requires valid source and output frame ranges"
-      ));
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "sourceToOutputMap", mappingIndex],
+          "caption source-to-output mapping requires valid source and output frame ranges"
+        )
+      );
     }
   });
   cues.forEach((cue, cueIndex) => {
@@ -94547,13 +95089,19 @@ function validateCaption(indexed, issues) {
     const cueDuration = cue.durationInFrames;
     const cueEnd = typeof cueStart === "number" && typeof cueDuration === "number" ? cueStart + cueDuration : Number.NaN;
     const cueWordIds = Array.isArray(cue.wordIds) ? cue.wordIds : [];
-    const covered = mappings.some((mapping) => validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame);
-    if (!nonEmptyString2(cue.id) || !nonEmptyString2(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some((wordId) => !nonEmptyString2(wordId) || !wordIds.has(wordId)) || !covered) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "cues", cueIndex],
-        "caption cue must fit the item and be covered by valid source word and frame lineage"
-      ));
+    const covered = mappings.some(
+      (mapping) => validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame
+    );
+    if (!nonEmptyString2(cue.id) || !nonEmptyString2(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some(
+      (wordId) => !nonEmptyString2(wordId) || !wordIds.has(wordId)
+    ) || !covered) {
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "cues", cueIndex],
+          "caption cue must fit the item and be covered by valid source word and frame lineage"
+        )
+      );
     }
   });
 }
@@ -94577,175 +95125,233 @@ function evaluateStructuralSemanticRules(context) {
   let previousCategoryRank = -1;
   timeline.tracks.forEach((track, trackIndex) => {
     if (trackIds.has(track.id)) {
-      issues.push(issue(
-        "timeline.track.duplicate-id",
-        ["tracks", trackIndex, "id"],
-        `track id ${track.id} is duplicated`
-      ));
+      issues.push(
+        issue(
+          "timeline.track.duplicate-id",
+          ["tracks", trackIndex, "id"],
+          `track id ${track.id} is duplicated`
+        )
+      );
     }
     trackIds.add(track.id);
     if (track.category) {
       const rank = TIMELINE_DSL_TRACK_CATEGORIES.indexOf(track.category);
       if (rank < previousCategoryRank) {
-        issues.push(issue(
-          "timeline.track.category-order",
-          ["tracks", trackIndex, "category"],
-          "track categories must follow effect, text, visual, primary, audio order"
-        ));
+        issues.push(
+          issue(
+            "timeline.track.category-order",
+            ["tracks", trackIndex, "category"],
+            "track categories must follow effect, text, visual, primary, audio order"
+          )
+        );
       }
       previousCategoryRank = Math.max(previousCategoryRank, rank);
     }
     if (track.role && track.category) {
       const expectedCategory = TIMELINE_DSL_ROLE_CATEGORIES[track.role];
       if (expectedCategory !== null && expectedCategory !== track.category) {
-        issues.push(issue(
-          "timeline.track.role-category",
-          ["tracks", trackIndex, "category"],
-          `track role ${track.role} requires category ${expectedCategory}`
-        ));
+        issues.push(
+          issue(
+            "timeline.track.role-category",
+            ["tracks", trackIndex, "category"],
+            `track role ${track.role} requires category ${expectedCategory}`
+          )
+        );
       }
     }
-    const structuralCategories = new Set(track.items.map((item) => structuralCategory(item.type)));
+    const structuralCategories = new Set(
+      track.items.map((item) => structuralCategory(item.type))
+    );
     const legacyPrimary = timeline.primaryTrackId === track.id || track.role === "primary-video";
     const primaryCompatible = track.items.every(
       (item) => TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES.primary.includes(item.type)
     );
     if (!track.category && structuralCategories.size > 1 && !(legacyPrimary && primaryCompatible)) {
-      issues.push(issue(
-        "timeline.track.mixed-categories",
-        ["tracks", trackIndex, "items"],
-        `track ${track.id} mixes incompatible structural item categories`
-      ));
+      issues.push(
+        issue(
+          "timeline.track.mixed-categories",
+          ["tracks", trackIndex, "items"],
+          `track ${track.id} mixes incompatible structural item categories`
+        )
+      );
     }
     track.items.forEach((item, itemIndex) => {
       const itemPath = ["tracks", trackIndex, "items", itemIndex];
       if (itemIds.has(item.id)) {
-        issues.push(issue(
-          "timeline.item.duplicate-id",
-          [...itemPath, "id"],
-          `Timeline item id ${item.id} is duplicated`
-        ));
+        issues.push(
+          issue(
+            "timeline.item.duplicate-id",
+            [...itemPath, "id"],
+            `Timeline item id ${item.id} is duplicated`
+          )
+        );
       }
       itemIds.add(item.id);
       if (track.category) {
         const allowed = TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES[track.category];
         if (!allowed.includes(item.type)) {
-          issues.push(issue(
-            "timeline.track.category-item-mismatch",
-            [...itemPath],
-            `track category ${track.category} cannot contain ${item.type} items`
-          ));
+          issues.push(
+            issue(
+              "timeline.track.category-item-mismatch",
+              [...itemPath],
+              `track category ${track.category} cannot contain ${item.type} items`
+            )
+          );
         }
       }
       if (track.role) {
         const allowed = TIMELINE_DSL_ROLE_ALLOWED_ITEM_TYPES[track.role];
         if (!allowed.includes(item.type)) {
-          issues.push(issue(
-            "timeline.track.role-item-mismatch",
-            [...itemPath],
-            `track role ${track.role} cannot contain ${item.type} items`
-          ));
+          issues.push(
+            issue(
+              "timeline.track.role-item-mismatch",
+              [...itemPath],
+              `track role ${track.role} cannot contain ${item.type} items`
+            )
+          );
         }
       }
       const expression = parseFromExpression(item.from);
       const negativeNumericString = typeof item.from === "string" && Number.isFinite(Number(item.from.trim())) && Number(item.from.trim()) < 0;
       if (!expression || negativeNumericString) {
-        issues.push(issue(
-          "timeline.item.from-expression",
-          [...itemPath, "from"],
-          "from must be a non-negative frame or a valid Timeline relative expression"
-        ));
+        issues.push(
+          issue(
+            "timeline.item.from-expression",
+            [...itemPath, "from"],
+            "from must be a non-negative frame or a valid Timeline relative expression"
+          )
+        );
       } else if (expression.kind === "reference" && expression.refId !== "prev" && !itemById.has(expression.refId)) {
-        issues.push(issue(
-          "timeline.item.from-reference",
-          [...itemPath, "from"],
-          `from expression references unknown item ${expression.refId}`
-        ));
+        issues.push(
+          issue(
+            "timeline.item.from-reference",
+            [...itemPath, "from"],
+            `from expression references unknown item ${expression.refId}`
+          )
+        );
       }
       if (expression && (expression.kind === "absolute" ? !Number.isInteger(expression.value) : !Number.isInteger(expression.offset))) {
-        issues.push(issue(
-          "timeline.item.frame-integer",
-          [...itemPath, "from"],
-          "Timeline frame positions and expression offsets must be integers"
-        ));
+        issues.push(
+          issue(
+            "timeline.item.frame-integer",
+            [...itemPath, "from"],
+            "Timeline frame positions and expression offsets must be integers"
+          )
+        );
       }
       if (["video", "audio", "image", "sticker"].includes(item.type)) {
         if (![item.src, item.assetId, item.sourceNodeId].some(nonEmptyString2)) {
-          issues.push(issue(
-            "timeline.item.source-required",
-            [...itemPath],
-            `${item.type} item must provide src, assetId, or sourceNodeId`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.source-required",
+              [...itemPath],
+              `${item.type} item must provide src, assetId, or sourceNodeId`
+            )
+          );
         }
       }
-      for (const animationField of ["entranceAnimation", "exitAnimation"]) {
+      for (const animationField of [
+        "entranceAnimation",
+        "exitAnimation"
+      ]) {
         const animation = item[animationField];
         if (animation && typeof animation.durationInFrames === "number" && animation.durationInFrames > item.durationInFrames) {
-          issues.push(issue(
-            "timeline.item.animation-duration",
-            [...itemPath, animationField, "durationInFrames"],
-            `${animationField} cannot exceed the owning item duration`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.animation-duration",
+              [...itemPath, animationField, "durationInFrames"],
+              `${animationField} cannot exceed the owning item duration`
+            )
+          );
+        }
+      }
+      const properties = item.properties;
+      for (const field2 of ["width", "height"]) {
+        const value = properties?.[field2];
+        if (typeof value === "number" && Math.abs(value) > 4) {
+          issues.push(
+            issue(
+              "timeline.item.scale-unit",
+              [...itemPath, "properties", field2],
+              `properties.${field2} is a unitless source-size multiplier, not pixels, and must be at most 4`
+            )
+          );
         }
       }
       if (item.type === "audio" && item.audioDucking !== void 0 && track.role !== "music") {
-        issues.push(issue(
-          "timeline.audio.ducking-track-role",
-          [...itemPath, "audioDucking"],
-          "audioDucking is only valid for audio items on a music track"
-        ));
+        issues.push(
+          issue(
+            "timeline.audio.ducking-track-role",
+            [...itemPath, "audioDucking"],
+            "audioDucking is only valid for audio items on a music track"
+          )
+        );
       }
       if (item.type === "composition") {
         if (!isLocalProjectPath(item.sourcePath)) {
-          issues.push(issue(
-            "timeline.composition.local-path",
-            [...itemPath, "sourcePath"],
-            "composition sourcePath must be a local project path"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.local-path",
+              [...itemPath, "sourcePath"],
+              "composition sourcePath must be a local project path"
+            )
+          );
         }
         if (item.renderedAssetPath !== void 0 && !isLocalProjectPath(item.renderedAssetPath)) {
-          issues.push(issue(
-            "timeline.composition.local-path",
-            [...itemPath, "renderedAssetPath"],
-            "composition renderedAssetPath must be a local project path"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.local-path",
+              [...itemPath, "renderedAssetPath"],
+              "composition renderedAssetPath must be a local project path"
+            )
+          );
         }
         if (item.compositionKind === "motion-graphics" && item.runtime !== "remotion") {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "runtime"],
-            "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "runtime"],
+              "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
+            )
+          );
         }
         if (item.runtime === "remotion" && (typeof item.sourceNodeId !== "string" || item.sourceNodeId.length === 0)) {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "sourceNodeId"],
-            "Remotion compositions require a live Canvas sourceNodeId"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "sourceNodeId"],
+              "Remotion compositions require a live Canvas sourceNodeId"
+            )
+          );
         }
         if (item.runtime === "react" && !isLocalProjectPath(item.renderedAssetPath)) {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "renderedAssetPath"],
-            "React compositions require a local renderedAssetPath"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "renderedAssetPath"],
+              "React compositions require a local renderedAssetPath"
+            )
+          );
         }
       }
       if (item.type === "derived-overlay") {
         if (!isLocalProjectPath(item.src)) {
-          issues.push(issue(
-            "timeline.derived-overlay.local-path",
-            [...itemPath, "src"],
-            "derived overlay src must be a local project or asset path"
-          ));
+          issues.push(
+            issue(
+              "timeline.derived-overlay.local-path",
+              [...itemPath, "src"],
+              "derived overlay src must be a local project or asset path"
+            )
+          );
         }
         if (item.sourceAssetId === item.derivedAssetId || nonEmptyString2(item.assetId) && item.assetId !== item.derivedAssetId) {
-          issues.push(issue(
-            "timeline.derived-overlay.copy-on-write",
-            [...itemPath],
-            "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
-          ));
+          issues.push(
+            issue(
+              "timeline.derived-overlay.copy-on-write",
+              [...itemPath],
+              "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
+            )
+          );
         }
       }
     });
@@ -94756,19 +95362,25 @@ function evaluatePrimaryTrackSemanticRules(context) {
   const { timeline } = context;
   const issues = [];
   if (nonEmptyString2(timeline.primaryTrackId)) {
-    const primaryTrack = timeline.tracks.find((track) => track.id === timeline.primaryTrackId);
+    const primaryTrack = timeline.tracks.find(
+      (track) => track.id === timeline.primaryTrackId
+    );
     if (!primaryTrack) {
-      issues.push(issue(
-        "timeline.primary-track.reference",
-        ["primaryTrackId"],
-        "primaryTrackId must reference an existing track"
-      ));
+      issues.push(
+        issue(
+          "timeline.primary-track.reference",
+          ["primaryTrackId"],
+          "primaryTrackId must reference an existing track"
+        )
+      );
     } else if (primaryTrack.category && primaryTrack.category !== "primary") {
-      issues.push(issue(
-        "timeline.primary-track.category",
-        ["primaryTrackId"],
-        "primaryTrackId must reference a primary category track"
-      ));
+      issues.push(
+        issue(
+          "timeline.primary-track.category",
+          ["primaryTrackId"],
+          "primaryTrackId must reference a primary category track"
+        )
+      );
     }
   }
   return issues;
@@ -94785,7 +95397,9 @@ function evaluateCaptionSemanticRules(context) {
 }
 function evaluateTransitionSemanticRules(context) {
   const issues = [];
-  context.indexedItems.forEach((indexed) => validateTransition(indexed, context.itemById, issues));
+  context.indexedItems.forEach(
+    (indexed) => validateTransition(indexed, context.itemById, issues)
+  );
   return issues;
 }
 var TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
@@ -94804,6 +95418,7 @@ var TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
   "timeline.item.from-cycle": evaluateReferenceCycleSemanticRules,
   "timeline.item.source-required": evaluateStructuralSemanticRules,
   "timeline.item.animation-duration": evaluateStructuralSemanticRules,
+  "timeline.item.scale-unit": evaluateStructuralSemanticRules,
   "timeline.audio.ducking-track-role": evaluateStructuralSemanticRules,
   "timeline.composition.local-path": evaluateStructuralSemanticRules,
   "timeline.composition.preview-contract": evaluateStructuralSemanticRules,
@@ -94822,17 +95437,18 @@ function timelineDslSemanticIssues(input) {
   const compositeEvaluators = new Set(
     Object.values(TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS)
   );
-  for (const evaluator of compositeEvaluators) issues.push(...evaluator(context));
+  for (const evaluator of compositeEvaluators)
+    issues.push(...evaluator(context));
   return issues;
 }
 var itemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => {
   const baseShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-    { overrides: {
-      type: z.literal(type).describe(
-        TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description
-      )
-    } }
+    {
+      overrides: {
+        type: z.literal(type).describe(TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description)
+      }
+    }
   );
   const variantShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
@@ -94845,7 +95461,9 @@ var TimelineDslItemVariantSchema = z.discriminatedUnion(
 );
 var itemFieldOwners = /* @__PURE__ */ new Map();
 for (const type of TIMELINE_DSL_ITEM_TYPES) {
-  for (const fieldName of Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type])) {
+  for (const fieldName of Object.keys(
+    TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
+  )) {
     const owners = itemFieldOwners.get(fieldName) ?? /* @__PURE__ */ new Set();
     owners.add(type);
     itemFieldOwners.set(fieldName, owners);
@@ -94854,14 +95472,18 @@ for (const type of TIMELINE_DSL_ITEM_TYPES) {
 var maskKeyframeChannels = new Set(TIMELINE_MASK_KEYFRAME_CHANNELS);
 var itemBaseFieldApplicabilityRules = Object.entries(
   TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase
-).flatMap(([fieldName, annotation2]) => annotation2.appliesToItemTypes && annotation2.applicabilityRuleId ? [{
-  id: annotation2.applicabilityRuleId,
-  kind: "allowed-item-types-when-present",
-  objectPath: "tracks[].items[]",
-  field: fieldName,
-  allowedItemTypes: annotation2.appliesToItemTypes,
-  ...annotation2.applicabilityMessage ? { message: annotation2.applicabilityMessage } : {}
-}] : []);
+).flatMap(
+  ([fieldName, annotation2]) => annotation2.appliesToItemTypes && annotation2.applicabilityRuleId ? [
+    {
+      id: annotation2.applicabilityRuleId,
+      kind: "allowed-item-types-when-present",
+      objectPath: "tracks[].items[]",
+      field: fieldName,
+      allowedItemTypes: annotation2.appliesToItemTypes,
+      ...annotation2.applicabilityMessage ? { message: annotation2.applicabilityMessage } : {}
+    }
+  ] : []
+);
 var clipMaskRequiresMaskRule = {
   id: "timeline.clip-mask.requires-mask",
   kind: "requires-field-when-any-channel-present",
@@ -94907,7 +95529,9 @@ var TIMELINE_DSL_SEMANTIC_RULES = {
   ]
 };
 function hasMaskKeyframes(keyframes) {
-  return Object.keys(keyframes ?? {}).some((channel) => maskKeyframeChannels.has(channel));
+  return Object.keys(keyframes ?? {}).some(
+    (channel) => maskKeyframeChannels.has(channel)
+  );
 }
 function timelineMaskKeyframeSemanticIssues(item) {
   const issues = [];
@@ -94927,7 +95551,10 @@ function timelineMaskKeyframeSemanticIssues(item) {
       message: "mask keyframes require a mask"
     });
   }
-  for (const frameIssue of timelineKeyframeFrameIssues(item.keyframes, item.durationInFrames)) {
+  for (const frameIssue of timelineKeyframeFrameIssues(
+    item.keyframes,
+    item.durationInFrames
+  )) {
     issues.push({
       ruleId: frameIssue.reason === "duplicate" ? timelineKeyframeUniqueFrameRule.id : timelineKeyframeRangeRule.id,
       path: ["keyframes", frameIssue.channel, frameIssue.index, "frame"],
@@ -94936,45 +95563,51 @@ function timelineMaskKeyframeSemanticIssues(item) {
   }
   return issues;
 }
-var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine((item, ctx) => {
-  const typedItem = item;
-  for (const [fieldName, owners] of itemFieldOwners) {
-    if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine(
+  (item, ctx) => {
+    const typedItem = item;
+    for (const [fieldName, owners] of itemFieldOwners) {
+      if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [fieldName],
+          message: `${fieldName} is not valid on ${typedItem.type} items`,
+          params: { ruleId: timelineItemFieldApplicabilityRule.id }
+        });
+      }
+    }
+    for (const issue22 of timelineMaskKeyframeSemanticIssues(typedItem)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: [fieldName],
-        message: `${fieldName} is not valid on ${typedItem.type} items`,
-        params: { ruleId: timelineItemFieldApplicabilityRule.id }
+        path: issue22.path,
+        message: issue22.message,
+        params: { ruleId: issue22.ruleId }
       });
     }
   }
-  for (const issue22 of timelineMaskKeyframeSemanticIssues(typedItem)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: issue22.path,
-      message: issue22.message,
-      params: { ruleId: issue22.ruleId }
-    });
+).describe("TimelineDslItem");
+var TimelineDslTrackSchema = z.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.track, {
+    overrides: { items: z.array(TimelineDslItemSchema) }
+  })
+).passthrough().describe("TimelineDslTrack");
+var TimelineDslSchemaBase = z.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.root, {
+    overrides: { tracks: z.array(TimelineDslTrackSchema) }
+  })
+).passthrough();
+var TimelineDslSchema = TimelineDslSchemaBase.superRefine(
+  (timeline, context) => {
+    for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: semanticIssue.path,
+        message: semanticIssue.message,
+        params: { ruleId: semanticIssue.ruleId }
+      });
+    }
   }
-}).describe("TimelineDslItem");
-var TimelineDslTrackSchema = z.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
-  { overrides: { items: z.array(TimelineDslItemSchema) } }
-)).passthrough().describe("TimelineDslTrack");
-var TimelineDslSchemaBase = z.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.root,
-  { overrides: { tracks: z.array(TimelineDslTrackSchema) } }
-)).passthrough();
-var TimelineDslSchema = TimelineDslSchemaBase.superRefine((timeline, context) => {
-  for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: semanticIssue.path,
-      message: semanticIssue.message,
-      params: { ruleId: semanticIssue.ruleId }
-    });
-  }
-}).describe("TimelineDsl");
+).describe("TimelineDsl");
 function validateTimelineDsl(state) {
   const parsed = TimelineDslSchema.safeParse(state);
   if (parsed.success) return { ok: true, value: parsed.data };
@@ -94996,10 +95629,13 @@ var timelineItemMaskJsonSchema = zodToJsonSchema(TimelineItemMaskSchema, {
   name: "TimelineItemMask",
   target: "jsonSchema7"
 });
-var timelineItemKeyframesJsonSchema = zodToJsonSchema(TimelineItemKeyframesSchema, {
-  name: "TimelineItemKeyframes",
-  target: "jsonSchema7"
-});
+var timelineItemKeyframesJsonSchema = zodToJsonSchema(
+  TimelineItemKeyframesSchema,
+  {
+    name: "TimelineItemKeyframes",
+    target: "jsonSchema7"
+  }
+);
 function jsonSchemaObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Timeline DSL JSON Schema is missing ${label}`);
@@ -95089,20 +95725,24 @@ var TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE = {
   compositionHeight: 1080,
   fps: 30,
   durationInFrames: 60,
-  tracks: [{
-    id: "visual-overlays",
-    name: "Visual overlays",
-    category: "visual",
-    items: [{
-      id: "masked-image",
-      type: "image",
-      from: 0,
-      durationInFrames: 60,
-      sourceNodeId: "source-image-node",
-      mask: timelineMaskExample,
-      keyframes: timelineMaskKeyframesExample
-    }]
-  }]
+  tracks: [
+    {
+      id: "visual-overlays",
+      name: "Visual overlays",
+      category: "visual",
+      items: [
+        {
+          id: "masked-image",
+          type: "image",
+          from: 0,
+          durationInFrames: 60,
+          sourceNodeId: "source-image-node",
+          mask: timelineMaskExample,
+          keyframes: timelineMaskKeyframesExample
+        }
+      ]
+    }
+  ]
 };
 var timelineMaskDslFeature = {
   yamlPath: TIMELINE_MASK_CAPABILITY_ANNOTATION.yamlPath,
@@ -95112,16 +95752,18 @@ var timelineMaskDslFeature = {
   animatedChannels: TIMELINE_MASK_CAPABILITY_ANNOTATION.animatedChannels,
   defaultMask: TIMELINE_MASK_CAPABILITY_ANNOTATION.defaultMask,
   fieldDefinitions: Object.fromEntries(
-    Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(([field2, annotation2]) => [
-      field2,
-      {
-        description: annotation2.description,
-        invalidValueDescription: annotation2.invalidValueDescription,
-        unit: annotation2.unit,
-        defaultValue: annotation2.defaultValue,
-        animatedChannel: "animation" in annotation2 ? annotation2.animation?.channel ?? null : null
-      }
-    ])
+    Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(
+      ([field2, annotation2]) => [
+        field2,
+        {
+          description: annotation2.description,
+          invalidValueDescription: annotation2.invalidValueDescription,
+          unit: annotation2.unit,
+          defaultValue: annotation2.defaultValue,
+          animatedChannel: "animation" in annotation2 ? annotation2.animation?.channel ?? null : null
+        }
+      ]
+    )
   ),
   operations: TIMELINE_MASK_CAPABILITY_ANNOTATION.operations,
   runtimeBehavior: TIMELINE_MASK_CAPABILITY_ANNOTATION.runtimeBehavior,
@@ -95132,7 +95774,9 @@ function canonicalTimelineDslContractJson(value) {
     return `[${value.map(canonicalTimelineDslContractJson).join(",")}]`;
   }
   if (value && typeof value === "object") {
-    return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`).join(",")}}`;
+    return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(
+      ([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`
+    ).join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
 }
@@ -95146,7 +95790,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -95179,11 +95823,15 @@ var timelineDslSerializableDefinition = {
   jsonSchema: {
     ...timelineDslJsonSchema,
     "x-clash-fragments": timelineDslJsonSchemaFragments,
-    "x-clash-features": { clipMask: timelineMaskDslFeature },
+    "x-clash-features": {
+      clipMask: timelineMaskDslFeature,
+      itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS
+    },
     "x-clash-semantic-rules": TIMELINE_DSL_SEMANTIC_RULES
   },
   features: {
-    clipMask: timelineMaskDslFeature
+    clipMask: timelineMaskDslFeature,
+    itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS
   },
   examples: {
     maskKeyframes: TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE
@@ -101279,7 +101927,11 @@ var DOStateSchema = z.object({
   created_at: z.number(),
   updated_at: z.number()
 });
-var ModelUpstreamIdSchema = z.enum([
+var DynamicProviderIdSchema = z.string().trim().regex(
+  /^[a-z0-9][a-z0-9._-]*$/,
+  "Provider ecosystem ids must be lowercase plugin-safe identifiers."
+);
+var BuiltinModelUpstreamIdSchema = z.enum([
   "local",
   "mock",
   "fal",
@@ -101299,7 +101951,8 @@ var ModelUpstreamIdSchema = z.enum([
   "elevenlabs",
   "suno"
 ]);
-var ModelUpstreamApiShapeSchema = z.enum([
+var ModelUpstreamIdSchema = DynamicProviderIdSchema;
+var BuiltinModelUpstreamApiShapeSchema = z.enum([
   "local-asr",
   "local-tts",
   "fal",
@@ -101321,10 +101974,12 @@ var ModelUpstreamApiShapeSchema = z.enum([
   "elevenlabs",
   "suno"
 ]);
-var ProviderOAuthIdSchema = z.enum([
+var ModelUpstreamApiShapeSchema = DynamicProviderIdSchema;
+var BuiltinProviderOAuthIdSchema = z.enum([
   "dreamina"
 ]);
-var ProviderAccountIdSchema = z.enum([
+var ProviderOAuthIdSchema = DynamicProviderIdSchema;
+var BuiltinProviderAccountIdSchema = z.enum([
   "local",
   "official",
   "fal",
@@ -101355,6 +102010,7 @@ var UserModelCardConfigSchema = z.object({
   createdAt: z.string().optional(),
   updatedAt: z.string().optional()
 });
+var API_KEY_CREDENTIAL = "apiKey";
 function falMock(modelCode, kind, upstreamModel) {
   return {
     modelCode,
@@ -101416,7 +102072,9 @@ function routesFromModelCard(model) {
     ...implementation.defaultParamOverrides ? { defaultParamOverrides: { ...implementation.defaultParamOverrides } } : {},
     ...implementation.excludedParameterIds?.length ? { excludedParameterIds: [...implementation.excludedParameterIds] } : {},
     ...implementation.projectorPluginId ? { projectorPluginId: implementation.projectorPluginId } : {},
-    ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {}
+    ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {},
+    ...implementation.executorPluginId ? { executorPluginId: implementation.executorPluginId } : {},
+    ...implementation.executorExportId ? { executorExportId: implementation.executorExportId } : {}
   }));
 }
 function routesFromModelCards(models) {
@@ -101437,6 +102095,420 @@ var MODEL_UPSTREAM_ROUTES = [
   ...MOCK_DECLARED_ROUTES,
   ...MOCK_ROUTES
 ];
+function directFalRoute(query) {
+  if (!query.modelCode.startsWith("fal-ai/") && !query.modelCode.startsWith("bytedance/")) {
+    return null;
+  }
+  return {
+    modelCode: query.modelCode,
+    kind: query.kind ?? "image",
+    providerId: query.allowMock ? "mock" : "fal",
+    upstreamId: query.allowMock ? "mock" : "fal",
+    upstreamModel: query.modelCode,
+    apiShape: "fal",
+    priority: 50,
+    requiredCredentials: query.allowMock ? void 0 : [API_KEY_CREDENTIAL]
+  };
+}
+function providerIdForRoute(route) {
+  if (route.providerId) return route.providerId;
+  if (route.upstreamId === "local") return "local";
+  if (route.upstreamId === "openai" || route.upstreamId === "google-ai-studio" || route.upstreamId === "google-agent-platform" || route.upstreamId === "anthropic") return "official";
+  if (route.upstreamId === "fal" || route.upstreamId === "pika" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
+    return route.upstreamId;
+  }
+  return "custom";
+}
+function upstreamIndex(configuredUpstreams, upstreamId) {
+  if (!configuredUpstreams) return Number.POSITIVE_INFINITY;
+  const index = configuredUpstreams.findIndex((upstream) => upstream.upstreamId === upstreamId);
+  return index >= 0 ? index : Number.POSITIVE_INFINITY;
+}
+function upstreamConfig(configuredUpstreams, upstreamId) {
+  return configuredUpstreams?.find((upstream) => upstream.upstreamId === upstreamId);
+}
+function matchesProviderAccount(route, provider) {
+  if (provider.providerId !== providerIdForRoute(route)) return false;
+  if (route.accountId && provider.id !== route.accountId) return false;
+  if (provider.upstreamId && provider.upstreamId !== route.upstreamId) return false;
+  if (provider.region && route.region && provider.region !== route.region) return false;
+  if (provider.supportedModelIds?.length && !provider.supportedModelIds.map((modelId) => normalizeModelId(modelId) ?? modelId.trim()).includes(route.modelCode)) return false;
+  return true;
+}
+function providerCandidates(configuredProviders, route) {
+  return (configuredProviders ?? []).map((provider, index) => ({ provider, index })).filter((candidate) => matchesProviderAccount(route, candidate.provider));
+}
+function compareProviderCandidates(a, b) {
+  const priority = (a.provider.priority ?? 1e3) - (b.provider.priority ?? 1e3);
+  if (priority !== 0) return priority;
+  const weight = (b.provider.weight ?? 0) - (a.provider.weight ?? 0);
+  if (weight !== 0) return weight;
+  return a.index - b.index;
+}
+function compareProviderCandidatesForModel(a, b, modelCode) {
+  const aModelPriority = modelPriority(a.provider, modelCode);
+  const bModelPriority = modelPriority(b.provider, modelCode);
+  if (aModelPriority !== void 0 || bModelPriority !== void 0) {
+    const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
+    if (priority !== 0) return priority;
+  }
+  return compareProviderCandidates(a, b);
+}
+function canServeRoute(route, provider) {
+  return provider.enabled !== false && modelRouteCredentialsSatisfied(route, provider) && hasRequiredOAuth(route, provider);
+}
+function providerCandidate(configuredProviders, route) {
+  const candidates = providerCandidates(configuredProviders, route);
+  if (!candidates.length) return void 0;
+  const compare = (a, b) => compareProviderCandidatesForModel(a, b, route.modelCode);
+  const runnable = candidates.filter((candidate) => canServeRoute(route, candidate.provider)).sort(compare);
+  if (runnable[0]) return runnable[0];
+  const enabled = candidates.filter((candidate) => candidate.provider.enabled !== false).sort(compare);
+  if (enabled[0]) return enabled[0];
+  return candidates.sort(compare)[0];
+}
+function providerIndex(configuredProviders, route) {
+  return providerCandidate(configuredProviders, route)?.index ?? Number.POSITIVE_INFINITY;
+}
+function providerConfig(configuredProviders, route) {
+  return providerCandidate(configuredProviders, route)?.provider;
+}
+function modelPriority(config2, modelCode) {
+  if (!config2 || !("modelPriorities" in config2)) return void 0;
+  const priorities = config2.modelPriorities ?? {};
+  const priority = priorities[modelCode] ?? Object.entries(priorities).find(([candidate]) => (normalizeModelId(candidate) ?? candidate.trim()) === modelCode)?.[1];
+  return typeof priority === "number" && Number.isFinite(priority) ? priority : void 0;
+}
+function modelPriorityForRoute(query, route, modelCode) {
+  if (query.configuredProviders) {
+    const priorities = providerCandidates(query.configuredProviders, route).map((candidate) => modelPriority(candidate.provider, modelCode)).filter((priority) => priority !== void 0);
+    return priorities.length ? Math.min(...priorities) : void 0;
+  }
+  return modelPriority(upstreamConfig(query.configuredUpstreams, route.upstreamId), modelCode);
+}
+function configForRoute(query, route) {
+  if (query.configuredProviders) return providerConfig(query.configuredProviders, route);
+  return upstreamConfig(query.configuredUpstreams, route.upstreamId);
+}
+function missingModelRouteCredentials(route, config2) {
+  if (!route.requiredCredentials?.length && !route.credentialRequirements) return [];
+  if (!config2) return [];
+  const configured = new Set(config2.configuredCredentials ?? []);
+  const commonMissing = (route.requiredCredentials ?? []).filter((credential) => !configured.has(credential));
+  const alternatives = route.credentialRequirements?.anyOf;
+  if (!alternatives?.length) return commonMissing;
+  const alternativeChecks = alternatives.map((credentials) => ({
+    missing: credentials.filter((credential) => !configured.has(credential)),
+    matched: credentials.filter((credential) => configured.has(credential)).length
+  }));
+  if (alternativeChecks.some((check6) => check6.missing.length === 0)) return commonMissing;
+  const nearest = [...alternativeChecks].sort(
+    (a, b) => a.missing.length - b.missing.length || b.matched - a.matched
+  )[0]?.missing ?? [];
+  return [.../* @__PURE__ */ new Set([...commonMissing, ...nearest])];
+}
+function modelRouteCredentialsSatisfied(route, config2) {
+  if (!route.requiredCredentials?.length && !route.credentialRequirements) return true;
+  if (!config2) return true;
+  if (missingModelRouteCredentials(route, config2).length > 0) return false;
+  const alternatives = route.credentialRequirements?.anyOf;
+  if (!alternatives?.length) return true;
+  const configured = new Set(config2.configuredCredentials ?? []);
+  const satisfied = alternatives.filter(
+    (credentials) => credentials.every((credential) => configured.has(credential))
+  );
+  return route.credentialRequirements?.exclusive ? satisfied.length === 1 : satisfied.length > 0;
+}
+function missingRequiredOAuth(route, config2) {
+  if (!route.requiredOAuth?.length) return [];
+  if (!config2) return [];
+  if (config2.availableOAuth === void 0) return [...route.requiredOAuth];
+  return route.requiredOAuth.filter((provider) => !config2.availableOAuth?.includes(provider));
+}
+function hasRequiredOAuth(route, config2) {
+  if (!route.requiredOAuth?.length) return true;
+  if (!config2) return true;
+  return missingRequiredOAuth(route, config2).length === 0;
+}
+function isEnabled(route, query) {
+  if (route.upstreamId === "local") return true;
+  if (route.upstreamId === "mock" && !query.allowMock) return false;
+  if (!query.configuredUpstreams && !query.configuredProviders) return true;
+  const config2 = configForRoute(query, route);
+  if (!config2 || config2.enabled === false) return false;
+  return modelRouteCredentialsSatisfied(route, config2) && hasRequiredOAuth(route, config2);
+}
+function candidateRoutes(query) {
+  const direct = directFalRoute(query);
+  const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
+  const routes = query.models ? [
+    ...routesFromModelCards(query.models),
+    ...query.allowMock ? MOCK_ROUTES : []
+  ] : MODEL_UPSTREAM_ROUTES;
+  return direct ? [direct] : routes.filter(
+    (route) => route.modelCode === modelCode && (!query.kind || route.kind === query.kind)
+  );
+}
+function listModelUpstreamRoutes(query) {
+  const candidates = candidateRoutes(query);
+  const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
+  const sorted = candidates.filter((route) => isEnabled(route, query)).sort((a, b) => {
+    const aConfig = configForRoute(query, a);
+    const bConfig = configForRoute(query, b);
+    const aModelPriority = modelPriorityForRoute(query, a, modelCode);
+    const bModelPriority = modelPriorityForRoute(query, b, modelCode);
+    if (aModelPriority !== void 0 || bModelPriority !== void 0) {
+      const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
+      if (priority !== 0) return priority;
+    }
+    const aWeight = (aConfig?.weight ?? 0) + (a.weight ?? 0);
+    const bWeight = (bConfig?.weight ?? 0) + (b.weight ?? 0);
+    if (aWeight !== bWeight) return bWeight - aWeight;
+    if (aConfig?.priority !== void 0 || bConfig?.priority !== void 0) {
+      const priority = (aConfig?.priority ?? Number.POSITIVE_INFINITY) - (bConfig?.priority ?? Number.POSITIVE_INFINITY);
+      if (priority !== 0) return priority;
+    }
+    const aIndex = query.configuredProviders ? providerIndex(query.configuredProviders, a) : upstreamIndex(query.configuredUpstreams, a.upstreamId);
+    const bIndex = query.configuredProviders ? providerIndex(query.configuredProviders, b) : upstreamIndex(query.configuredUpstreams, b.upstreamId);
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return a.priority - b.priority;
+  });
+  if (!query.configuredProviders) return sorted;
+  return sorted.map((route) => {
+    const account = providerConfig(query.configuredProviders, route);
+    return account?.id && !route.accountId ? { ...route, accountId: account.id } : route;
+  });
+}
+function applyModelProviderImplementation(model, route) {
+  if (!route) return model;
+  const excludedParameterIds = new Set(route.excludedParameterIds ?? []);
+  const overrides = new Map((route.parameterOverrides ?? []).map((parameter) => [parameter.id, parameter]));
+  const parameterIds = new Set(model.parameters.map((parameter) => parameter.id));
+  const parameters = model.parameters.filter((parameter) => !excludedParameterIds.has(parameter.id)).map((parameter) => overrides.get(parameter.id) ?? parameter);
+  for (const parameter of route.parameterOverrides ?? []) {
+    if (!parameterIds.has(parameter.id) && !excludedParameterIds.has(parameter.id)) parameters.push(parameter);
+  }
+  const defaultParams = Object.fromEntries(
+    Object.entries(model.defaultParams).filter(([parameterId]) => !excludedParameterIds.has(parameterId))
+  );
+  return ModelCardSchema.parse({
+    ...model,
+    parameters,
+    defaultParams: { ...defaultParams, ...route.defaultParamOverrides ?? {} },
+    input: route.referenceBinding ? { ...model.input, referenceBinding: route.referenceBinding } : model.input
+  });
+}
+function uniqueProviderIds(routes) {
+  return [...new Set(routes.map(providerIdForRoute))];
+}
+function shouldAllowMockCatalogRoutes(options) {
+  if (options.allowMock) return true;
+  if (options.configuredProviders?.some((provider) => provider.providerId === "mock" && provider.enabled !== false)) return true;
+  return !!options.configuredUpstreams?.some((upstream) => upstream.upstreamId === "mock" && upstream.enabled !== false);
+}
+function listModelCatalogEntries(options = {}) {
+  const allowMock = shouldAllowMockCatalogRoutes(options);
+  const models = options.models ?? (allowMock ? [...MODEL_CARDS, ...MOCK_MODEL_CARDS] : MODEL_CARDS);
+  return models.map((model) => {
+    const query = {
+      modelCode: model.id,
+      kind: model.kind,
+      models,
+      configuredProviders: options.configuredProviders,
+      configuredUpstreams: options.configuredUpstreams,
+      allowMock
+    };
+    const allRoutes = candidateRoutes({ modelCode: model.id, kind: model.kind, models, allowMock });
+    const routes = listModelUpstreamRoutes(query);
+    const selectedRoute = routes[0] ?? null;
+    const configuredCandidates = allRoutes.filter((route) => {
+      const config2 = configForRoute(query, route);
+      return !!config2 && config2.enabled !== false;
+    });
+    const missingCredentials = [
+      ...new Set(configuredCandidates.flatMap((route) => missingModelRouteCredentials(route, configForRoute(query, route))))
+    ];
+    const missingOAuth = [
+      ...new Set(configuredCandidates.flatMap((route) => missingRequiredOAuth(route, configForRoute(query, route))))
+    ];
+    const tier = selectedRoute ? "available" : configuredCandidates.length > 0 ? "configured-provider" : "all";
+    return {
+      model: applyModelProviderImplementation(model, selectedRoute),
+      tier,
+      routes,
+      selectedRoute,
+      candidateProviders: uniqueProviderIds(configuredCandidates.length ? configuredCandidates : allRoutes),
+      missingCredentials,
+      missingOAuth
+    };
+  });
+}
+var MediaTranscriptMetadataSchema = z.object({
+  schemaVersion: z.literal(1),
+  kind: z.literal("media.transcript"),
+  backendId: z.string().min(1),
+  modelId: z.string().min(1),
+  language: z.string().min(1).optional(),
+  /** The media this grid was transcribed from. */
+  sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  /**
+   * The word grid itself. Downstream wordIds only mean anything against this,
+   * and it survives a reflow of `text` or `segments` unchanged.
+   */
+  contentHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  /**
+   * Where the full body is stored. Distinct from `contentHash` on purpose: this
+   * addresses the whole document, so restating the same grid moves it.
+   */
+  bodyHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  summary: z.object({
+    wordCount: z.number().int().nonnegative(),
+    durationMs: z.number().int().min(0),
+    segmentCount: z.number().int().nonnegative().optional(),
+    averageConfidence: z.number().min(0).max(1).optional()
+  })
+});
+var BUILT_IN_KINDS = [
+  "audio.beat-analysis",
+  "audio.stem-separation",
+  "audio.lyrics-alignment",
+  "talking-head.analysis",
+  "reference-video.analysis",
+  "reference.download",
+  "video.visual-moments",
+  "image.storyboard-consistency",
+  "image.semantic-reference-roles",
+  "image.product-logo-qa",
+  "analysis.backend-benchmark",
+  "image.embedding-store",
+  "image.comfyui-runner",
+  "ad.delivery-spec",
+  "ad.visual-qa",
+  "provenance.content-credentials"
+];
+var declaredKinds = /* @__PURE__ */ new Map();
+function registerAssetMetadataKind(declaration) {
+  const issuesFor = (probe) => {
+    const result = declaration.schema.safeParse(probe);
+    return result.success ? [] : result.error.issues;
+  };
+  const complainsAbout = (issues, field2) => issues.some((issue3) => issue3.path.length === 1 && issue3.path[0] === field2);
+  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
+    );
+  }
+  if (!complainsAbout(issuesFor({ kind: declaration.kind }), "schemaVersion")) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schemaVersion`
+    );
+  }
+  declaredKinds.set(declaration.kind, declaration);
+}
+function listDeclaredAssetMetadataKinds() {
+  return [...BUILT_IN_KINDS, ...declaredKinds.keys()].sort();
+}
+function isBuiltInAssetMetadataKind(kind) {
+  return BUILT_IN_KINDS.includes(kind);
+}
+var FillActionEnvelopeSchema = z.object({
+  actionId: z.string().min(1),
+  targetAssetId: z.string().min(1),
+  metadataKind: z.string().min(1),
+  metadata: z.object({ kind: z.string().min(1) }).passthrough(),
+  producer: z.string().min(1),
+  createdAt: z.string().optional()
+});
+function parseAssetMetadataFillAction(value) {
+  const envelope = FillActionEnvelopeSchema.parse(value);
+  if (envelope.metadata.kind !== envelope.metadataKind) {
+    throw new Error(
+      `metadata kind mismatch: ${envelope.metadataKind} does not match ${envelope.metadata.kind}`
+    );
+  }
+  const declared = declaredKinds.get(envelope.metadataKind);
+  if (declared) {
+    return {
+      ...envelope,
+      metadata: declared.schema.parse(envelope.metadata)
+    };
+  }
+  if (!BUILT_IN_KINDS.includes(envelope.metadataKind)) {
+    throw new Error(
+      `Undeclared asset metadata kind: ${envelope.metadataKind}. Declare it with registerAssetMetadataKind first.`
+    );
+  }
+  return AssetMetadataFillActionSchema.parse(value);
+}
+function parseDeclaredAssetMetadata(kind, value) {
+  const declared = declaredKinds.get(kind);
+  if (declared) return declared.schema.parse(value);
+  if (!BUILT_IN_KINDS.includes(kind)) {
+    throw new Error(`Undeclared asset metadata kind: ${kind}`);
+  }
+  return ProductionMetadataSchema.parse(value);
+}
+registerAssetMetadataKind({
+  kind: "media.transcript",
+  schema: MediaTranscriptMetadataSchema
+});
+function isLocalAsrModelEntry(entry) {
+  return entry.model.kind === "asr" && (entry.selectedRoute?.apiShape === "local-asr" || (entry.candidateProviders ?? []).map(String).includes("local"));
+}
+function isLocalTtsModelEntry(entry) {
+  return entry.selectedRoute?.apiShape === "local-tts" || (entry.routes ?? []).some((route) => route.apiShape === "local-tts");
+}
+function localSpeechCapability(entry) {
+  if (isLocalAsrModelEntry(entry)) return "speech-to-text";
+  if (isLocalTtsModelEntry(entry)) return "text-to-speech";
+  return null;
+}
+function defaultParamModel(entry, key) {
+  const defaultParams = entry.model.defaultParams;
+  const value = defaultParams?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function asrModelValue(entry) {
+  if (typeof entry.selectedRoute?.upstreamModel === "string" && entry.selectedRoute.upstreamModel) {
+    return entry.selectedRoute.upstreamModel;
+  }
+  return defaultParamModel(entry, "asr_model") ?? entry.model.id;
+}
+function ttsModelValue(entry) {
+  if (typeof entry.selectedRoute?.upstreamModel === "string" && entry.selectedRoute.upstreamModel) {
+    return entry.selectedRoute.upstreamModel;
+  }
+  return defaultParamModel(entry, "tts_model") ?? entry.model.id;
+}
+function localSpeechModelValue(entry) {
+  return isLocalTtsModelEntry(entry) ? ttsModelValue(entry) : asrModelValue(entry);
+}
+function localSpeechModelCard(entry) {
+  const capability2 = localSpeechCapability(entry);
+  if (!capability2) return void 0;
+  return {
+    cardId: entry.model.id,
+    model: localSpeechModelValue(entry),
+    capability: capability2,
+    ...typeof entry.model.name === "string" ? { name: entry.model.name } : {},
+    ...typeof entry.model.provider === "string" ? { provider: entry.model.provider } : {},
+    ...typeof entry.model.description === "string" ? { description: entry.model.description } : {},
+    ...typeof entry.model.promptGuidance === "string" ? { guidance: entry.model.promptGuidance } : {}
+  };
+}
+function listLocalSpeechModelCards(entries, capability2) {
+  return entries.flatMap((entry) => {
+    const card = localSpeechModelCard(entry);
+    if (!card) return [];
+    if (capability2 && card.capability !== capability2) return [];
+    return [card];
+  });
+}
+function resolveLocalSpeechModelId(entries, capability2, requested) {
+  const cards = listLocalSpeechModelCards(entries, capability2);
+  const wanted = requested.trim();
+  return cards.find((card) => card.cardId === wanted)?.model ?? cards.find((card) => card.model === wanted)?.model;
+}
 var PROJECT_ASSET_RENDER_CANVAS_ID = "__project-asset-renders__";
 function renderableTimelineDsl(state) {
   if (!state || typeof state !== "object" || Array.isArray(state)) return null;
@@ -102464,14 +103536,14 @@ var ProviderUsageAuditEventSchema = z.object({
 // ../../packages/cli/src/lib/daemon.ts
 var import_node_net = require("node:net");
 var import_node_fs5 = require("node:fs");
-var import_node_path12 = require("node:path");
-var import_node_crypto7 = require("node:crypto");
+var import_node_path13 = require("node:path");
+var import_node_crypto8 = require("node:crypto");
 
 // ../../packages/cli/src/lib/actions-host.ts
 var import_node_child_process2 = require("node:child_process");
-var import_promises5 = require("node:fs/promises");
+var import_promises6 = require("node:fs/promises");
 var import_node_fs4 = require("node:fs");
-var import_node_path10 = require("node:path");
+var import_node_path11 = require("node:path");
 var RESTART_BACKOFF_MIN_MS = 1e3;
 var RESTART_BACKOFF_MAX_MS = 6e4;
 var HEALTHY_UPTIME_MS = 6e4;
@@ -102505,31 +103577,31 @@ var CliActionsHost = class {
     const root = actionsDir();
     let entries;
     try {
-      entries = await (0, import_promises5.readdir)(root);
+      entries = await (0, import_promises6.readdir)(root);
     } catch (e) {
       if (e.code === "ENOENT") return { spawned };
       throw e;
     }
     for (const entry of entries) {
-      const dir = (0, import_node_path10.join)(root, entry);
+      const dir = (0, import_node_path11.join)(root, entry);
       try {
-        const s = await (0, import_promises5.stat)(dir);
+        const s = await (0, import_promises6.stat)(dir);
         if (!s.isDirectory()) continue;
       } catch {
         continue;
       }
-      const manifestPath = (0, import_node_path10.join)(dir, "manifest.json");
+      const manifestPath = (0, import_node_path11.join)(dir, "manifest.json");
       if (!(0, import_node_fs4.existsSync)(manifestPath)) continue;
       let manifest;
       try {
-        manifest = JSON.parse(await (0, import_promises5.readFile)(manifestPath, "utf-8"));
+        manifest = JSON.parse(await (0, import_promises6.readFile)(manifestPath, "utf-8"));
       } catch {
         continue;
       }
       if (!manifest.id) continue;
       if (manifest.runtime && manifest.runtime !== "local") continue;
       const entrypoint = manifest.entrypoint ?? "handler.py";
-      if (!(0, import_node_fs4.existsSync)((0, import_node_path10.join)(dir, entrypoint))) continue;
+      if (!(0, import_node_fs4.existsSync)((0, import_node_path11.join)(dir, entrypoint))) continue;
       const sup = {
         manifest,
         dir,
@@ -102585,7 +103657,7 @@ var CliActionsHost = class {
     if (this.stopping || sup.stopping) return false;
     const { manifest, dir } = sup;
     const entrypoint = manifest.entrypoint ?? "handler.py";
-    const entrypointPath = (0, import_node_path10.join)(dir, entrypoint);
+    const entrypointPath = (0, import_node_path11.join)(dir, entrypoint);
     const sdkPythonDir = resolveSdkPythonDir();
     const childEnv = {
       ...process.env,
@@ -102666,20 +103738,20 @@ var CliActionsHost = class {
   }
 };
 function actionsDir() {
-  return (0, import_node_path10.join)(resolveClashRoot(), "actions");
+  return (0, import_node_path11.join)(resolveClashRoot(), "actions");
 }
 function credsPath() {
-  return (0, import_node_path10.join)(resolveClashRoot(), "credentials.json");
+  return (0, import_node_path11.join)(resolveClashRoot(), "credentials.json");
 }
 function managedPythonVenvDir() {
-  return process.env.CLASH_ACTIONS_VENV || (0, import_node_path10.join)(actionsDir(), ".venv");
+  return process.env.CLASH_ACTIONS_VENV || (0, import_node_path11.join)(actionsDir(), ".venv");
 }
 function managedPythonBin(venvDir) {
-  return process.platform === "win32" ? (0, import_node_path10.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path10.join)(venvDir, "bin", "python");
+  return process.platform === "win32" ? (0, import_node_path11.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path11.join)(venvDir, "bin", "python");
 }
 function explicitPythonStampDir(pythonBin) {
   const key = Buffer.from(pythonBin).toString("base64url").slice(0, 80);
-  return (0, import_node_path10.join)(actionsDir(), ".python-deps", key);
+  return (0, import_node_path11.join)(actionsDir(), ".python-deps", key);
 }
 function prepareExplicitPythonRuntime(opts) {
   return preparePythonRuntimeDeps({
@@ -102715,8 +103787,8 @@ function preparePythonRuntimeDeps(opts) {
   const { pythonBin } = opts;
   const stamp = readPythonDepsStamp(opts.stampDir);
   let changed = false;
-  if (opts.sdkPythonDir && (0, import_node_fs4.existsSync)((0, import_node_path10.join)(opts.sdkPythonDir, "pyproject.toml"))) {
-    const sdkKey = `${opts.sdkPythonDir}:${fileVersionKey((0, import_node_path10.join)(opts.sdkPythonDir, "pyproject.toml"))}`;
+  if (opts.sdkPythonDir && (0, import_node_fs4.existsSync)((0, import_node_path11.join)(opts.sdkPythonDir, "pyproject.toml"))) {
+    const sdkKey = `${opts.sdkPythonDir}:${fileVersionKey((0, import_node_path11.join)(opts.sdkPythonDir, "pyproject.toml"))}`;
     const sdkStampMatches = stamp.sdk === sdkKey;
     const sdkImportsOk = sdkStampMatches ? canImportPythonSdkRuntimeDeps(pythonBin, opts.logPrefix, opts.actionId, false) : false;
     if (!sdkStampMatches || !sdkImportsOk) {
@@ -102732,7 +103804,7 @@ function preparePythonRuntimeDeps(opts) {
       return null;
     }
   }
-  const requirementsPath = (0, import_node_path10.join)(opts.actionDir, "requirements.txt");
+  const requirementsPath = (0, import_node_path11.join)(opts.actionDir, "requirements.txt");
   if ((0, import_node_fs4.existsSync)(requirementsPath)) {
     const requirements = stamp.requirements ?? {};
     const requirementsKey = fileVersionKey(requirementsPath);
@@ -102777,7 +103849,7 @@ function runPythonSetup(bin, args, logPrefix, actionId) {
   return false;
 }
 function readPythonDepsStamp(venvDir) {
-  const path = (0, import_node_path10.join)(venvDir, PYTHON_DEPS_STAMP);
+  const path = (0, import_node_path11.join)(venvDir, PYTHON_DEPS_STAMP);
   if (!(0, import_node_fs4.existsSync)(path)) return {};
   try {
     return JSON.parse((0, import_node_fs4.readFileSync)(path, "utf-8"));
@@ -102787,7 +103859,7 @@ function readPythonDepsStamp(venvDir) {
 }
 function writePythonDepsStamp(venvDir, stamp) {
   (0, import_node_fs4.mkdirSync)(venvDir, { recursive: true });
-  (0, import_node_fs4.writeFileSync)((0, import_node_path10.join)(venvDir, PYTHON_DEPS_STAMP), JSON.stringify(stamp, null, 2) + "\n");
+  (0, import_node_fs4.writeFileSync)((0, import_node_path11.join)(venvDir, PYTHON_DEPS_STAMP), JSON.stringify(stamp, null, 2) + "\n");
 }
 function fileVersionKey(path) {
   const s = (0, import_node_fs4.statSync)(path);
@@ -102805,10 +103877,10 @@ function resolveSdkPythonDir() {
 }
 
 // ../../packages/cli/src/lib/text-projection.ts
-var import_node_crypto6 = require("node:crypto");
-var import_node_path11 = require("node:path");
+var import_node_crypto7 = require("node:crypto");
+var import_node_path12 = require("node:path");
 function resolveTextFilePath(options) {
-  const filePath = options.file ? options.file : (0, import_node_path11.join)(options.cwd, "projections", "text", `${textFileSlug(options.nodeId)}.md`);
+  const filePath = options.file ? options.file : (0, import_node_path12.join)(options.cwd, "projections", "text", `${textFileSlug(options.nodeId)}.md`);
   return resolveProjectionFilePathInsideCwd({
     filePath,
     cwd: options.cwd
@@ -102850,8 +103922,8 @@ function createTextCowNodeData(options) {
   };
 }
 function createTextAppliedRevision(options) {
-  const cwd = (0, import_node_path11.resolve)(options.cwd);
-  const absolutePath = (0, import_node_path11.isAbsolute)(options.filePath) ? (0, import_node_path11.resolve)(options.filePath) : (0, import_node_path11.resolve)(cwd, options.filePath);
+  const cwd = (0, import_node_path12.resolve)(options.cwd);
+  const absolutePath = (0, import_node_path12.isAbsolute)(options.filePath) ? (0, import_node_path12.resolve)(options.filePath) : (0, import_node_path12.resolve)(cwd, options.filePath);
   if (!isInsideOrEqual(cwd, absolutePath)) {
     throw new Error("Text revision source path must stay inside the current project cwd");
   }
@@ -102865,7 +103937,7 @@ function createTextAppliedRevision(options) {
     createdAt,
     actor: options.actor ?? null
   };
-  const revisionSuffix = (0, import_node_crypto6.createHash)("sha256").update(stableJsonForHash(revisionSeed)).digest("hex").slice(0, 12);
+  const revisionSuffix = (0, import_node_crypto7.createHash)("sha256").update(stableJsonForHash(revisionSeed)).digest("hex").slice(0, 12);
   return {
     schemaVersion: 1,
     kind: "clash.text.revision",
@@ -102887,11 +103959,11 @@ function textFileSlug(raw) {
   return slug2 || "text";
 }
 function isInsideOrEqual(root, target) {
-  const rel = (0, import_node_path11.relative)(root, target);
-  return rel === "" || !rel.startsWith(`..${import_node_path11.sep}`) && rel !== ".." && !(0, import_node_path11.isAbsolute)(rel);
+  const rel = (0, import_node_path12.relative)(root, target);
+  return rel === "" || !rel.startsWith(`..${import_node_path12.sep}`) && rel !== ".." && !(0, import_node_path12.isAbsolute)(rel);
 }
 function toProjectPath(cwd, absolutePath) {
-  return (0, import_node_path11.relative)(cwd, absolutePath).split(import_node_path11.sep).join("/");
+  return (0, import_node_path12.relative)(cwd, absolutePath).split(import_node_path12.sep).join("/");
 }
 function stableJsonForHash(value) {
   if (Array.isArray(value)) return `[${value.map(stableJsonForHash).join(",")}]`;
@@ -102905,21 +103977,21 @@ function stableJsonForHash(value) {
 // ../../packages/cli/src/lib/daemon.ts
 var IDLE_TIMEOUT_MS = 10 * 60 * 1e3;
 var HEARTBEAT_INTERVAL_MS = 30 * 1e3;
-var DAEMON_READ_RECEIPT_SECRET = (0, import_node_crypto7.randomBytes)(32).toString("hex");
+var DAEMON_READ_RECEIPT_SECRET = (0, import_node_crypto8.randomBytes)(32).toString("hex");
 function daemonSocketDir(env = process.env) {
-  return (0, import_node_path12.join)(resolveClashRoot(env), "sockets");
+  return (0, import_node_path13.join)(resolveClashRoot(env), "sockets");
 }
 function daemonProjectKey(projectId) {
-  return (0, import_node_crypto7.createHash)("sha256").update(projectId).digest("hex").slice(0, 32);
+  return (0, import_node_crypto8.createHash)("sha256").update(projectId).digest("hex").slice(0, 32);
 }
 function getSocketPath(projectId, env = process.env) {
-  return (0, import_node_path12.join)(daemonSocketDir(env), `${daemonProjectKey(projectId)}.sock`);
+  return (0, import_node_path13.join)(daemonSocketDir(env), `${daemonProjectKey(projectId)}.sock`);
 }
 function getPidPath(projectId, env = process.env) {
-  return (0, import_node_path12.join)(daemonSocketDir(env), `${daemonProjectKey(projectId)}.pid`);
+  return (0, import_node_path13.join)(daemonSocketDir(env), `${daemonProjectKey(projectId)}.pid`);
 }
 function getMcpPath(projectId, env = process.env) {
-  return (0, import_node_path12.join)(daemonSocketDir(env), `${daemonProjectKey(projectId)}.mcp.json`);
+  return (0, import_node_path13.join)(daemonSocketDir(env), `${daemonProjectKey(projectId)}.mcp.json`);
 }
 function getDaemonMcpEndpoint(projectId) {
   try {
@@ -102929,21 +104001,34 @@ function getDaemonMcpEndpoint(projectId) {
     return void 0;
   }
 }
-function isDaemonRunning(projectId) {
-  const pidPath = getPidPath(projectId);
+function isDaemonRunning(projectId, options = {}) {
+  const env = options.env ?? process.env;
+  const pidPath = getPidPath(projectId, env);
   if (!(0, import_node_fs5.existsSync)(pidPath)) return false;
+  let pid;
   try {
-    const pid = parseInt((0, import_node_fs5.readFileSync)(pidPath, "utf-8").trim(), 10);
-    process.kill(pid, 0);
-    return true;
+    const contents = (0, import_node_fs5.readFileSync)(pidPath, "utf-8").trim();
+    if (!/^[1-9]\d*$/.test(contents)) throw new Error("Invalid daemon pid");
+    pid = Number(contents);
+    if (!Number.isSafeInteger(pid)) throw new Error("Invalid daemon pid");
   } catch {
-    cleanup(projectId);
+    cleanup(projectId, env);
+    return false;
+  }
+  try {
+    (options.probeProcess ?? process.kill)(pid, 0);
+    return true;
+  } catch (error51) {
+    if (typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "EPERM") {
+      return true;
+    }
+    cleanup(projectId, env);
     return false;
   }
 }
-function cleanup(projectId) {
-  const sockPath = getSocketPath(projectId);
-  const pidPath = getPidPath(projectId);
+function cleanup(projectId, env = process.env) {
+  const sockPath = getSocketPath(projectId, env);
+  const pidPath = getPidPath(projectId, env);
   try {
     (0, import_node_fs5.unlinkSync)(sockPath);
   } catch {
@@ -102953,18 +104038,18 @@ function cleanup(projectId) {
   } catch {
   }
   try {
-    (0, import_node_fs5.unlinkSync)(getMcpPath(projectId));
+    (0, import_node_fs5.unlinkSync)(getMcpPath(projectId, env));
   } catch {
   }
 }
 function daemonCanvasReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`canvas-node:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`canvas-node:${readToken}`).digest("base64url");
 }
 function daemonCanvasEdgesReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`canvas-edges:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`canvas-edges:${readToken}`).digest("base64url");
 }
 function daemonCanvasBatchDeleteReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`canvas-batch-delete:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`canvas-batch-delete:${readToken}`).digest("base64url");
 }
 function canvasNodeReceiptReadToken(node) {
   const readToken = canvasNodeReadToken(node);
@@ -102987,7 +104072,7 @@ function verifyDaemonCanvasBatchDeleteReadReceipt(proof) {
   return proof.namespace === "canvas-batch-delete" && proof.receipt === daemonCanvasBatchDeleteReadReceipt(proof.baseReadToken);
 }
 function daemonProjectCanvasReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`project-canvas:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`project-canvas:${readToken}`).digest("base64url");
 }
 function projectCanvasReceiptReadToken(canvas) {
   const readToken = projectCanvasReadToken(canvas);
@@ -103000,7 +104085,7 @@ function verifyDaemonProjectCanvasReadReceipt(proof) {
   return proof.namespace === "canvas" && proof.receipt === daemonProjectCanvasReadReceipt(proof.baseReadToken);
 }
 function daemonProjectTimelineReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`project-timeline:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`project-timeline:${readToken}`).digest("base64url");
 }
 function projectTimelineReceiptReadToken(timeline) {
   const readToken = projectTimelineReadToken(timeline);
@@ -103029,7 +104114,7 @@ function validateDaemonProjectTimelineRead(options) {
   });
 }
 function daemonProjectDirectorStageReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`project-director-stage:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`project-director-stage:${readToken}`).digest("base64url");
 }
 function projectDirectorStageReceiptReadToken(stage) {
   const readToken = projectDirectorStageReadToken(stage);
@@ -103064,7 +104149,7 @@ function guardError(guard) {
   };
 }
 function daemonTextReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`text:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", DAEMON_READ_RECEIPT_SECRET).update(`text:${readToken}`).digest("base64url");
 }
 function textNodeReceiptReadToken(options) {
   const readToken = textReadToken(options);
@@ -103252,7 +104337,7 @@ async function startDaemon(projectId, serverUrl, token, presence = { clientType:
 }
 function handleCommand(client, cmd) {
   const { action } = cmd;
-  const projectWorkspaceAction = action === "list_canvases" || action === "create_canvas" || action === "rename_canvas" || action === "delete_canvas" || action === "list_timelines" || action === "create_timeline" || action === "update_timeline_state" || action === "attach_timeline" || action === "detach_timeline" || action === "copy_timeline_action" || action === "list_director_stages" || action === "create_director_stage" || action === "update_director_stage_state" || action === "attach_director_stage" || action === "detach_director_stage";
+  const projectWorkspaceAction = action === "list_canvases" || action === "create_canvas" || action === "rename_canvas" || action === "delete_canvas" || action === "list_timeline_renders" || action === "list_timelines" || action === "create_timeline" || action === "update_timeline_state" || action === "attach_timeline" || action === "detach_timeline" || action === "copy_timeline_action" || action === "list_director_stages" || action === "create_director_stage" || action === "update_director_stage_state" || action === "attach_director_stage" || action === "detach_director_stage";
   if (!projectWorkspaceAction) {
     client.selectCanvas(
       typeof cmd.canvasId === "string" && cmd.canvasId.trim() ? cmd.canvasId : DEFAULT_CANVAS_ID
@@ -103331,6 +104416,34 @@ function handleCommand(client, cmd) {
         versions: Object.fromEntries(
           timelines.map((timeline) => [timeline.id, projectTimelineReceiptReadToken(timeline)])
         )
+      };
+    }
+    case "list_timeline_renders": {
+      const status = cmd.status ?? "completed";
+      if (status !== "completed" && status !== "all") {
+        return {
+          error: "Timeline render status must be 'completed' or 'all'"
+        };
+      }
+      const renders = client.canvasFor(PROJECT_ASSET_RENDER_CANVAS_ID).listNodes("video").filter((node) => status === "all" || node.data.status === "completed").sort((left, right) => left.id.localeCompare(right.id)).map((node) => {
+        const version2 = canvasNodeReadToken(node);
+        return {
+          node,
+          lineage: {
+            sourceTimelineId: typeof node.data.sourceTimelineId === "string" ? node.data.sourceTimelineId : null,
+            sourceTimelineRevisionId: typeof node.data.sourceTimelineRevisionId === "string" ? node.data.sourceTimelineRevisionId : null,
+            renderTarget: node.data.renderTarget ?? null,
+            assetId: typeof node.data.assetId === "string" ? node.data.assetId : null,
+            status: typeof node.data.status === "string" ? node.data.status : null
+          },
+          version: version2,
+          readToken: canvasNodeReceiptReadToken(node)
+        };
+      });
+      return {
+        canvasId: PROJECT_ASSET_RENDER_CANVAS_ID,
+        status,
+        renders
       };
     }
     case "create_timeline": {
@@ -104569,7 +105682,7 @@ canvasCommand.command("delete-plan").description("Read a graph-aware batch delet
   }
 });
 function assetCacheDir(env = process.env) {
-  return (0, import_node_path13.join)(resolveClashRoot(env), "cache", "assets");
+  return (0, import_node_path14.join)(resolveClashRoot(env), "cache", "assets");
 }
 function resolveAssetDownloadUrl(signedUrl, serverUrl = getServerUrl()) {
   return new URL(signedUrl, `${serverUrl.replace(/\/+$/, "")}/`).toString();
@@ -104581,7 +105694,7 @@ async function downloadAssetById(assetId) {
     const safeId = assetId.replace(/[/\\:]/g, "_");
     for (const name of (0, import_node_fs6.readdirSync)(cacheDir)) {
       if (name === safeId || name.startsWith(`${safeId}.`)) {
-        const cachedPath = (0, import_node_path13.join)(cacheDir, name);
+        const cachedPath = (0, import_node_path14.join)(cacheDir, name);
         try {
           (0, import_node_fs6.chmodSync)(cachedPath, 292);
         } catch {
@@ -104593,7 +105706,7 @@ async function downloadAssetById(assetId) {
     if (!metaRes.ok) return null;
     const asset = await metaRes.json();
     const ext = asset.srcR2Key.match(/\.[a-zA-Z0-9]+$/)?.[0] ?? "";
-    const filePath = (0, import_node_path13.join)(cacheDir, `${safeId}${ext}`);
+    const filePath = (0, import_node_path14.join)(cacheDir, `${safeId}${ext}`);
     const fullUrl = resolveAssetDownloadUrl(asset.signedUrl);
     const res = await fetch(fullUrl);
     if (!res.ok) return null;
@@ -105600,14 +106713,14 @@ tasksCommand.command("wait").description("Wait for a task to complete").required
 
 // ../../packages/cli/src/commands/actions.ts
 var import_node_fs7 = require("node:fs");
-var import_promises7 = require("node:fs/promises");
-var import_node_path14 = require("node:path");
+var import_promises8 = require("node:fs/promises");
+var import_node_path15 = require("node:path");
 
-// ../../packages/clash-bridge/dist/chunk-55XZ4QEM.js
+// ../../packages/clash-bridge/dist/chunk-GIPR7AIY.js
 var import_child_process2 = require("child_process");
 var import_crypto2 = require("crypto");
 var import_assert = require("assert");
-var import_promises6 = require("fs/promises");
+var import_promises7 = require("fs/promises");
 var import_fs2 = require("fs");
 var import_path = require("path");
 var import_readline = require("readline");
@@ -105781,9 +106894,15 @@ function isExecutablePluginManifest(manifest) {
   return "apiVersion" in manifest && manifest.apiVersion === "clash.plugin/v1";
 }
 async function readHostedPackage(dir) {
-  const raw = JSON.parse(await (0, import_promises6.readFile)((0, import_path.join)(dir, "manifest.json"), "utf8"));
+  const raw = JSON.parse(await (0, import_promises7.readFile)((0, import_path.join)(dir, "manifest.json"), "utf8"));
   if (raw.apiVersion !== "clash.plugin/v1") {
-    return { manifest: raw, cards: {}, contractTests: {} };
+    return {
+      manifest: raw,
+      cards: {},
+      providers: {},
+      modelBindings: {},
+      contractTests: {}
+    };
   }
   const manifest = ExecutablePluginManifestSchema.parse(raw);
   if (manifest.runtime.kind !== "local") {
@@ -105791,13 +106910,24 @@ async function readHostedPackage(dir) {
   }
   const cards = {};
   for (const card of manifest.exports.cards) {
-    cards[card.path] = JSON.parse(await (0, import_promises6.readFile)((0, import_path.join)(dir, card.path), "utf8"));
+    cards[card.path] = JSON.parse(await (0, import_promises7.readFile)((0, import_path.join)(dir, card.path), "utf8"));
+  }
+  const providers = {};
+  for (const provider of manifest.exports.providers) {
+    providers[provider.path] = JSON.parse(await (0, import_promises7.readFile)((0, import_path.join)(dir, provider.path), "utf8"));
+  }
+  const modelBindings = {};
+  for (const binding of manifest.exports.modelBindings) {
+    modelBindings[binding.path] = JSON.parse(await (0, import_promises7.readFile)((0, import_path.join)(dir, binding.path), "utf8"));
   }
   const contractTests = {};
   for (const path of manifest.contractTests) {
-    contractTests[path] = JSON.parse(await (0, import_promises6.readFile)((0, import_path.join)(dir, path), "utf8"));
+    contractTests[path] = JSON.parse(await (0, import_promises7.readFile)((0, import_path.join)(dir, path), "utf8"));
   }
-  return validateExecutablePluginPackage(manifest, cards, contractTests);
+  return validateExecutablePluginPackage(manifest, cards, contractTests, {
+    providers,
+    modelBindings
+  });
 }
 function canonicalJson2(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson2).join(",")}]`;
@@ -105806,22 +106936,24 @@ function canonicalJson2(value) {
   }
   return JSON.stringify(value);
 }
-function executablePluginSchemaHash(manifest, cards) {
+function executablePluginSchemaHash(manifest, cards, providers = {}, modelBindings = {}) {
   return `sha256:${(0, import_crypto2.createHash)("sha256").update(canonicalJson2({
     apiVersion: manifest.apiVersion,
     id: manifest.id,
     version: manifest.version,
     exports: manifest.exports,
     permissions: manifest.permissions,
-    cards
+    cards,
+    providers,
+    modelBindings
   })).digest("hex")}`;
 }
 async function executablePluginContentFiles(root, directory, output) {
-  const entries = await (0, import_promises6.readdir)(directory, { withFileTypes: true });
+  const entries = await (0, import_promises7.readdir)(directory, { withFileTypes: true });
   for (const entry of entries) {
     const absolutePath = (0, import_path.join)(directory, entry.name);
     const path = (0, import_path.relative)(root, absolutePath).split("\\").join("/");
-    const metadata = await (0, import_promises6.lstat)(absolutePath);
+    const metadata = await (0, import_promises7.lstat)(absolutePath);
     if (metadata.isSymbolicLink()) {
       throw new Error(`Executable plugin content cannot contain symbolic links: ${path}`);
     }
@@ -105829,7 +106961,7 @@ async function executablePluginContentFiles(root, directory, output) {
       await executablePluginContentFiles(root, absolutePath, output);
       continue;
     }
-    if (metadata.isFile()) output.push({ path, contents: await (0, import_promises6.readFile)(absolutePath) });
+    if (metadata.isFile()) output.push({ path, contents: await (0, import_promises7.readFile)(absolutePath) });
   }
 }
 async function executablePluginDirectoryContentHash(pluginDirInput) {
@@ -105860,7 +106992,12 @@ async function createExecutablePluginActivationReceipt(pluginDir) {
     apiVersion: "clash.plugin.activation/v1",
     pluginId: hostedPackage.manifest.id,
     version: hostedPackage.manifest.version,
-    schemaHash: executablePluginSchemaHash(hostedPackage.manifest, hostedPackage.cards),
+    schemaHash: executablePluginSchemaHash(
+      hostedPackage.manifest,
+      hostedPackage.cards,
+      hostedPackage.providers,
+      hostedPackage.modelBindings
+    ),
     contentHash: await executablePluginDirectoryContentHash(pluginDir),
     activatedAt: (/* @__PURE__ */ new Date()).toISOString()
   });
@@ -106028,7 +107165,7 @@ ${details}` : ""}`
 // ../../packages/cli/src/commands/actions.ts
 var REGISTRY_URL = "https://raw.githubusercontent.com/clash-community/awesome-actions/main/registry.json";
 function localActionsDir(env = process.env) {
-  return (0, import_node_path14.join)(resolveClashRoot(env), "actions");
+  return (0, import_node_path15.join)(resolveClashRoot(env), "actions");
 }
 function customActionSecretHint(runtime) {
   return runtime === "local" ? "  \u2192 Local actions read credentials from their local runtime environment." : "  \u2192 Remote worker action secrets are managed in hosted/remote Settings.";
@@ -106101,6 +107238,30 @@ function validateDownloadedActionPackage(input) {
         throw new Error(`Invalid Card JSON at ${card.path}: ${error51.message}`);
       }
     }
+    const providerDocuments = {};
+    for (const provider of parsedManifest.exports.providers) {
+      const encoded = files[provider.path];
+      if (typeof encoded !== "string") {
+        throw new Error(`Missing declared Provider document: ${provider.path}`);
+      }
+      try {
+        providerDocuments[provider.path] = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+      } catch (error51) {
+        throw new Error(`Invalid Provider JSON at ${provider.path}: ${error51.message}`);
+      }
+    }
+    const modelBindingDocuments = {};
+    for (const binding of parsedManifest.exports.modelBindings) {
+      const encoded = files[binding.path];
+      if (typeof encoded !== "string") {
+        throw new Error(`Missing declared model Provider binding: ${binding.path}`);
+      }
+      try {
+        modelBindingDocuments[binding.path] = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+      } catch (error51) {
+        throw new Error(`Invalid model Provider binding JSON at ${binding.path}: ${error51.message}`);
+      }
+    }
     const contractTestDocuments = {};
     for (const path of parsedManifest.contractTests) {
       const encoded = files[path];
@@ -106116,7 +107277,11 @@ function validateDownloadedActionPackage(input) {
     const validated = validateExecutablePluginPackage(
       parsedManifest,
       cardDocuments,
-      contractTestDocuments
+      contractTestDocuments,
+      {
+        providers: providerDocuments,
+        modelBindings: modelBindingDocuments
+      }
     );
     return {
       id,
@@ -106156,15 +107321,15 @@ function permissionUpgradeForDownloadedPackage(input, existingManifest) {
 async function writeExecutablePluginActivationReceipt(root, pluginDir) {
   const receipt = await createExecutablePluginActivationReceipt(pluginDir);
   const target = executablePluginActivationReceiptPath(root, receipt.pluginId);
-  await (0, import_promises7.mkdir)((0, import_node_path14.dirname)(target), { recursive: true });
-  const staging = await (0, import_promises7.mkdtemp)((0, import_node_path14.join)((0, import_node_path14.dirname)(target), `.${receipt.pluginId}-`));
-  const stagedReceipt = (0, import_node_path14.join)(staging, "receipt.json");
+  await (0, import_promises8.mkdir)((0, import_node_path15.dirname)(target), { recursive: true });
+  const staging = await (0, import_promises8.mkdtemp)((0, import_node_path15.join)((0, import_node_path15.dirname)(target), `.${receipt.pluginId}-`));
+  const stagedReceipt = (0, import_node_path15.join)(staging, "receipt.json");
   try {
-    await (0, import_promises7.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
+    await (0, import_promises8.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
 `);
-    await (0, import_promises7.rename)(stagedReceipt, target);
+    await (0, import_promises8.rename)(stagedReceipt, target);
   } finally {
-    if ((0, import_node_fs7.existsSync)(staging)) await (0, import_promises7.rm)(staging, { recursive: true, force: true });
+    if ((0, import_node_fs7.existsSync)(staging)) await (0, import_promises8.rm)(staging, { recursive: true, force: true });
   }
 }
 async function checkoutExecutablePluginDraft(options) {
@@ -106173,15 +107338,15 @@ async function checkoutExecutablePluginDraft(options) {
     throw new Error(`Invalid executable plugin id ${id}.`);
   }
   const root = options.root ?? localActionsDir();
-  const sourceDir = (0, import_node_path14.join)(root, id);
-  const targetDir = (0, import_node_path14.resolve)(options.pluginDir);
+  const sourceDir = (0, import_node_path15.join)(root, id);
+  const targetDir = (0, import_node_path15.resolve)(options.pluginDir);
   const pkg = await packageExecutablePluginDraft(sourceDir);
   if (pkg.id !== id) {
     throw new Error(`Active directory ${id} contains plugin ${pkg.id}.`);
   }
   const receiptPath = executablePluginActivationReceiptPath(root, id);
   const storedReceipt = ExecutablePluginActivationReceiptSchema.parse(
-    JSON.parse(await (0, import_promises7.readFile)(receiptPath, "utf8"))
+    JSON.parse(await (0, import_promises8.readFile)(receiptPath, "utf8"))
   );
   const currentReceipt = await createExecutablePluginActivationReceipt(sourceDir);
   if (storedReceipt.pluginId !== currentReceipt.pluginId || storedReceipt.version !== currentReceipt.version || storedReceipt.schemaHash !== currentReceipt.schemaHash || storedReceipt.contentHash !== currentReceipt.contentHash) {
@@ -106189,9 +107354,9 @@ async function checkoutExecutablePluginDraft(options) {
       `Active plugin ${id} differs from its activation receipt; restore or reactivate it before checkout.`
     );
   }
-  await (0, import_promises7.mkdir)((0, import_node_path14.dirname)(targetDir), { recursive: true });
+  await (0, import_promises8.mkdir)((0, import_node_path15.dirname)(targetDir), { recursive: true });
   try {
-    await (0, import_promises7.mkdir)(targetDir);
+    await (0, import_promises8.mkdir)(targetDir);
   } catch (error51) {
     if (error51.code === "EEXIST") {
       throw new Error(`Plugin draft directory already exists: ${targetDir}`);
@@ -106199,18 +107364,18 @@ async function checkoutExecutablePluginDraft(options) {
     throw error51;
   }
   try {
-    await (0, import_promises7.writeFile)(
-      (0, import_node_path14.join)(targetDir, "manifest.json"),
-      await (0, import_promises7.readFile)((0, import_node_path14.join)(sourceDir, "manifest.json"))
+    await (0, import_promises8.writeFile)(
+      (0, import_node_path15.join)(targetDir, "manifest.json"),
+      await (0, import_promises8.readFile)((0, import_node_path15.join)(sourceDir, "manifest.json"))
     );
     for (const [relativePath2, encoded] of Object.entries(pkg.files)) {
-      const destination = (0, import_node_path14.join)(targetDir, relativePath2);
-      await (0, import_promises7.mkdir)((0, import_node_path14.dirname)(destination), { recursive: true });
-      await (0, import_promises7.writeFile)(destination, Buffer.from(encoded, "base64"));
+      const destination = (0, import_node_path15.join)(targetDir, relativePath2);
+      await (0, import_promises8.mkdir)((0, import_node_path15.dirname)(destination), { recursive: true });
+      await (0, import_promises8.writeFile)(destination, Buffer.from(encoded, "base64"));
     }
     return { pluginDir: targetDir, id, version: currentReceipt.version };
   } catch (error51) {
-    await (0, import_promises7.rm)(targetDir, { recursive: true, force: true });
+    await (0, import_promises8.rm)(targetDir, { recursive: true, force: true });
     throw error51;
   }
 }
@@ -106222,7 +107387,7 @@ function defaultPluginName(id) {
   return id.split(/[._-]+/).filter(Boolean).map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`).join(" ");
 }
 async function scaffoldExecutablePluginDraft(options) {
-  const pluginDir = (0, import_node_path14.resolve)(options.pluginDir);
+  const pluginDir = (0, import_node_path15.resolve)(options.pluginDir);
   const id = options.id.trim();
   const name = options.name?.trim() || defaultPluginName(id);
   const kind = options.kind ?? "action";
@@ -106298,9 +107463,9 @@ async function scaffoldExecutablePluginDraft(options) {
     { [cardPath]: card },
     { [contractTestPath]: contractTest }
   );
-  await (0, import_promises7.mkdir)((0, import_node_path14.dirname)(pluginDir), { recursive: true });
+  await (0, import_promises8.mkdir)((0, import_node_path15.dirname)(pluginDir), { recursive: true });
   try {
-    await (0, import_promises7.mkdir)(pluginDir);
+    await (0, import_promises8.mkdir)(pluginDir);
   } catch (error51) {
     if (error51.code === "EEXIST") {
       throw new Error(`Plugin draft directory already exists: ${pluginDir}`);
@@ -106308,12 +107473,12 @@ async function scaffoldExecutablePluginDraft(options) {
     throw error51;
   }
   try {
-    await (0, import_promises7.mkdir)((0, import_node_path14.join)(pluginDir, "cards"));
-    await (0, import_promises7.mkdir)((0, import_node_path14.join)(pluginDir, "contract-tests"));
-    await (0, import_promises7.writeFile)((0, import_node_path14.join)(pluginDir, "manifest.json"), jsonDocument(manifest));
-    await (0, import_promises7.writeFile)((0, import_node_path14.join)(pluginDir, cardPath), jsonDocument(card));
-    await (0, import_promises7.writeFile)((0, import_node_path14.join)(pluginDir, contractTestPath), jsonDocument(contractTest));
-    await (0, import_promises7.writeFile)((0, import_node_path14.join)(pluginDir, "handler.mjs"), [
+    await (0, import_promises8.mkdir)((0, import_node_path15.join)(pluginDir, "cards"));
+    await (0, import_promises8.mkdir)((0, import_node_path15.join)(pluginDir, "contract-tests"));
+    await (0, import_promises8.writeFile)((0, import_node_path15.join)(pluginDir, "manifest.json"), jsonDocument(manifest));
+    await (0, import_promises8.writeFile)((0, import_node_path15.join)(pluginDir, cardPath), jsonDocument(card));
+    await (0, import_promises8.writeFile)((0, import_node_path15.join)(pluginDir, contractTestPath), jsonDocument(contractTest));
+    await (0, import_promises8.writeFile)((0, import_node_path15.join)(pluginDir, "handler.mjs"), [
       'import { createInterface } from "node:readline";',
       "",
       `const exportId = ${JSON.stringify(id)};`,
@@ -106344,7 +107509,7 @@ async function scaffoldExecutablePluginDraft(options) {
       "});",
       ""
     ].join("\n"));
-    await (0, import_promises7.writeFile)((0, import_node_path14.join)(pluginDir, "AGENTS.md"), [
+    await (0, import_promises8.writeFile)((0, import_node_path15.join)(pluginDir, "AGENTS.md"), [
       "# Executable Plugin Authoring",
       "",
       "This directory is intentionally agent-editable.",
@@ -106360,25 +107525,25 @@ async function scaffoldExecutablePluginDraft(options) {
     const validated = await validateExecutablePluginDraft(pluginDir);
     return {
       pluginDir,
-      manifestPath: (0, import_node_path14.join)(pluginDir, "manifest.json"),
-      cardPath: (0, import_node_path14.join)(pluginDir, cardPath),
-      contractTestPath: (0, import_node_path14.join)(pluginDir, contractTestPath),
+      manifestPath: (0, import_node_path15.join)(pluginDir, "manifest.json"),
+      cardPath: (0, import_node_path15.join)(pluginDir, cardPath),
+      contractTestPath: (0, import_node_path15.join)(pluginDir, contractTestPath),
       contractTests: validated.contractTests
     };
   } catch (error51) {
-    await (0, import_promises7.rm)(pluginDir, { recursive: true, force: true });
+    await (0, import_promises8.rm)(pluginDir, { recursive: true, force: true });
     throw error51;
   }
 }
 async function collectPluginDraftFiles(root, directory, output) {
-  for (const entry of await (0, import_promises7.readdir)(directory, { withFileTypes: true })) {
+  for (const entry of await (0, import_promises8.readdir)(directory, { withFileTypes: true })) {
     if (entry.name === "node_modules") continue;
-    const absolutePath = (0, import_node_path14.join)(directory, entry.name);
+    const absolutePath = (0, import_node_path15.join)(directory, entry.name);
     const relativePath2 = absolutePath.slice(root.length + 1).split("\\").join("/");
     if (!isSafePluginRelativePath(relativePath2)) {
       throw new Error(`Refusing suspicious draft path: ${relativePath2}`);
     }
-    const metadata = await (0, import_promises7.lstat)(absolutePath);
+    const metadata = await (0, import_promises8.lstat)(absolutePath);
     if (metadata.isSymbolicLink()) {
       throw new Error(`Executable plugin drafts cannot contain symbolic links: ${relativePath2}`);
     }
@@ -106387,11 +107552,11 @@ async function collectPluginDraftFiles(root, directory, output) {
       continue;
     }
     if (!metadata.isFile() || relativePath2 === "manifest.json") continue;
-    output[relativePath2] = (await (0, import_promises7.readFile)(absolutePath)).toString("base64");
+    output[relativePath2] = (await (0, import_promises8.readFile)(absolutePath)).toString("base64");
   }
 }
 async function packageExecutablePluginDraft(pluginDir) {
-  const manifest = JSON.parse(await (0, import_promises7.readFile)((0, import_node_path14.join)(pluginDir, "manifest.json"), "utf8"));
+  const manifest = JSON.parse(await (0, import_promises8.readFile)((0, import_node_path15.join)(pluginDir, "manifest.json"), "utf8"));
   if (typeof manifest.id !== "string") {
     throw new Error("Executable plugin draft manifest id is required.");
   }
@@ -106411,10 +107576,10 @@ async function validateExecutablePluginDraft(pluginDir) {
 async function activateExecutablePluginDraft(options) {
   const validated = await validateExecutablePluginDraft(options.pluginDir);
   const root = options.root ?? localActionsDir();
-  const existingManifestPath = (0, import_node_path14.join)(root, validated.package.id, "manifest.json");
+  const existingManifestPath = (0, import_node_path15.join)(root, validated.package.id, "manifest.json");
   let existingManifest;
   if ((0, import_node_fs7.existsSync)(existingManifestPath)) {
-    existingManifest = JSON.parse(await (0, import_promises7.readFile)(existingManifestPath, "utf8"));
+    existingManifest = JSON.parse(await (0, import_promises8.readFile)(existingManifestPath, "utf8"));
   }
   const permissionIncrease = permissionUpgradeForDownloadedPackage(
     validated.package,
@@ -106431,10 +107596,10 @@ async function activateExecutablePluginDraft(options) {
 }
 async function activateDownloadedActionPackage(input, root = localActionsDir()) {
   const pkg = validateDownloadedActionPackage(input);
-  const targetDir = (0, import_node_path14.join)(root, pkg.id);
-  if (pkg.format === "executable-plugin" && (0, import_node_fs7.existsSync)((0, import_node_path14.join)(targetDir, "manifest.json"))) {
+  const targetDir = (0, import_node_path15.join)(root, pkg.id);
+  if (pkg.format === "executable-plugin" && (0, import_node_fs7.existsSync)((0, import_node_path15.join)(targetDir, "manifest.json"))) {
     const existing = ExecutablePluginManifestSchema.parse(
-      JSON.parse(await (0, import_promises7.readFile)((0, import_node_path14.join)(targetDir, "manifest.json"), "utf8"))
+      JSON.parse(await (0, import_promises8.readFile)((0, import_node_path15.join)(targetDir, "manifest.json"), "utf8"))
     );
     const next = ExecutablePluginManifestSchema.parse(pkg.manifest);
     if (existing.version === next.version) {
@@ -106443,18 +107608,18 @@ async function activateDownloadedActionPackage(input, root = localActionsDir()) 
       );
     }
   }
-  await (0, import_promises7.mkdir)(root, { recursive: true });
-  const stagingDir = await (0, import_promises7.mkdtemp)(`${root}.staging-${pkg.id}-`);
+  await (0, import_promises8.mkdir)(root, { recursive: true });
+  const stagingDir = await (0, import_promises8.mkdtemp)(`${root}.staging-${pkg.id}-`);
   let rollbackDir;
   let contractTests;
   try {
     for (const [relPath, encoded] of Object.entries(pkg.files)) {
-      const destination = (0, import_node_path14.join)(stagingDir, relPath);
-      await (0, import_promises7.mkdir)((0, import_node_path14.join)(destination, ".."), { recursive: true });
-      await (0, import_promises7.writeFile)(destination, Buffer.from(encoded, "base64"));
+      const destination = (0, import_node_path15.join)(stagingDir, relPath);
+      await (0, import_promises8.mkdir)((0, import_node_path15.join)(destination, ".."), { recursive: true });
+      await (0, import_promises8.writeFile)(destination, Buffer.from(encoded, "base64"));
     }
-    await (0, import_promises7.writeFile)(
-      (0, import_node_path14.join)(stagingDir, "manifest.json"),
+    await (0, import_promises8.writeFile)(
+      (0, import_node_path15.join)(stagingDir, "manifest.json"),
       `${JSON.stringify(pkg.manifest, null, 2)}
 `
     );
@@ -106465,28 +107630,28 @@ async function activateDownloadedActionPackage(input, root = localActionsDir()) 
       }
     }
     if ((0, import_node_fs7.existsSync)(targetDir)) {
-      const rollbackRoot = (0, import_node_path14.join)(root, ".rollback", pkg.id);
-      await (0, import_promises7.mkdir)(rollbackRoot, { recursive: true });
-      const existing = JSON.parse(await (0, import_promises7.readFile)((0, import_node_path14.join)(targetDir, "manifest.json"), "utf8"));
-      rollbackDir = (0, import_node_path14.join)(
+      const rollbackRoot = (0, import_node_path15.join)(root, ".rollback", pkg.id);
+      await (0, import_promises8.mkdir)(rollbackRoot, { recursive: true });
+      const existing = JSON.parse(await (0, import_promises8.readFile)((0, import_node_path15.join)(targetDir, "manifest.json"), "utf8"));
+      rollbackDir = (0, import_node_path15.join)(
         rollbackRoot,
         `${String(Date.now()).padStart(16, "0")}-${existing.version ?? "unknown"}`
       );
-      await (0, import_promises7.rename)(targetDir, rollbackDir);
+      await (0, import_promises8.rename)(targetDir, rollbackDir);
     }
     try {
-      await (0, import_promises7.rename)(stagingDir, targetDir);
+      await (0, import_promises8.rename)(stagingDir, targetDir);
       if (pkg.format === "executable-plugin") {
         await writeExecutablePluginActivationReceipt(root, targetDir);
       }
     } catch (error51) {
       if ((0, import_node_fs7.existsSync)(targetDir) && !(0, import_node_fs7.existsSync)(stagingDir)) {
         try {
-          await (0, import_promises7.rename)(targetDir, stagingDir);
+          await (0, import_promises8.rename)(targetDir, stagingDir);
         } catch {
         }
       }
-      if (rollbackDir && !(0, import_node_fs7.existsSync)(targetDir)) await (0, import_promises7.rename)(rollbackDir, targetDir);
+      if (rollbackDir && !(0, import_node_fs7.existsSync)(targetDir)) await (0, import_promises8.rename)(rollbackDir, targetDir);
       throw error51;
     }
     return {
@@ -106495,26 +107660,26 @@ async function activateDownloadedActionPackage(input, root = localActionsDir()) 
       ...contractTests ? { contractTests } : {}
     };
   } catch (error51) {
-    if ((0, import_node_fs7.existsSync)(stagingDir)) await (0, import_promises7.rm)(stagingDir, { recursive: true, force: true });
+    if ((0, import_node_fs7.existsSync)(stagingDir)) await (0, import_promises8.rm)(stagingDir, { recursive: true, force: true });
     throw error51;
   }
 }
 async function rollbackDownloadedActionPackage(root, id) {
-  const rollbackRoot = (0, import_node_path14.join)(root, ".rollback", id);
-  const entries = (await (0, import_promises7.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
+  const rollbackRoot = (0, import_node_path15.join)(root, ".rollback", id);
+  const entries = (await (0, import_promises8.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
   const selected = entries[0];
   if (!selected) throw new Error(`No rollback version is available for ${id}.`);
-  const targetDir = (0, import_node_path14.join)(root, id);
-  const selectedDir = (0, import_node_path14.join)(rollbackRoot, selected);
-  const displacedDir = (0, import_node_path14.join)(root, ".rollback-displaced", id, String(Date.now()));
+  const targetDir = (0, import_node_path15.join)(root, id);
+  const selectedDir = (0, import_node_path15.join)(rollbackRoot, selected);
+  const displacedDir = (0, import_node_path15.join)(root, ".rollback-displaced", id, String(Date.now()));
   if ((0, import_node_fs7.existsSync)(targetDir)) {
-    await (0, import_promises7.mkdir)((0, import_node_path14.join)(displacedDir, ".."), { recursive: true });
-    await (0, import_promises7.rename)(targetDir, displacedDir);
+    await (0, import_promises8.mkdir)((0, import_node_path15.join)(displacedDir, ".."), { recursive: true });
+    await (0, import_promises8.rename)(targetDir, displacedDir);
   }
   try {
-    await (0, import_promises7.rename)(selectedDir, targetDir);
+    await (0, import_promises8.rename)(selectedDir, targetDir);
     const restoredManifest = JSON.parse(
-      await (0, import_promises7.readFile)((0, import_node_path14.join)(targetDir, "manifest.json"), "utf8")
+      await (0, import_promises8.readFile)((0, import_node_path15.join)(targetDir, "manifest.json"), "utf8")
     );
     if (restoredManifest.apiVersion === "clash.plugin/v1") {
       await writeExecutablePluginActivationReceipt(root, targetDir);
@@ -106522,14 +107687,14 @@ async function rollbackDownloadedActionPackage(root, id) {
   } catch (error51) {
     if ((0, import_node_fs7.existsSync)(targetDir) && !(0, import_node_fs7.existsSync)(selectedDir)) {
       try {
-        await (0, import_promises7.rename)(targetDir, selectedDir);
+        await (0, import_promises8.rename)(targetDir, selectedDir);
       } catch {
       }
     }
-    if ((0, import_node_fs7.existsSync)(displacedDir) && !(0, import_node_fs7.existsSync)(targetDir)) await (0, import_promises7.rename)(displacedDir, targetDir);
+    if ((0, import_node_fs7.existsSync)(displacedDir) && !(0, import_node_fs7.existsSync)(targetDir)) await (0, import_promises8.rename)(displacedDir, targetDir);
     throw error51;
   }
-  const manifest = JSON.parse(await (0, import_promises7.readFile)((0, import_node_path14.join)(targetDir, "manifest.json"), "utf8"));
+  const manifest = JSON.parse(await (0, import_promises8.readFile)((0, import_node_path15.join)(targetDir, "manifest.json"), "utf8"));
   return { targetDir, version: manifest.version ?? "0.0.0" };
 }
 async function connectToProject3(projectId) {
@@ -106550,7 +107715,7 @@ var actionsCommand = new Command("action").description("Create, validate, activa
 actionsCommand.command("init-plugin").description("Create a complete agent-editable plugin draft with a Card, handler, and contract").argument("<directory>", "New plugin draft directory (must not already exist)").requiredOption("--id <id>", "Stable plugin and export id").option("--name <name>", "User-facing plugin and Card name").option("--kind <kind>", "action or provider-projector", "action").option("--json", "Output as JSON").action(async (directory, options) => {
   try {
     const created = await scaffoldExecutablePluginDraft({
-      pluginDir: (0, import_node_path14.resolve)(directory),
+      pluginDir: (0, import_node_path15.resolve)(directory),
       id: options.id,
       name: options.name,
       kind: options.kind
@@ -106579,7 +107744,7 @@ actionsCommand.command("checkout").description("Copy an attested active plugin t
   try {
     const checkedOut = await checkoutExecutablePluginDraft({
       id,
-      pluginDir: (0, import_node_path14.resolve)(directory)
+      pluginDir: (0, import_node_path15.resolve)(directory)
     });
     const result = { checkedOut: true, ...checkedOut };
     if (isJsonMode(options)) printJson(result);
@@ -106593,7 +107758,7 @@ actionsCommand.command("checkout").description("Copy an attested active plugin t
   }
 });
 actionsCommand.command("validate").description("Validate an agent-edited executable plugin draft and run all declared contracts").argument("<directory>", "Unpacked plugin draft directory").option("--json", "Output as JSON").action(async (directory, options) => {
-  const pluginDir = (0, import_node_path14.resolve)(directory);
+  const pluginDir = (0, import_node_path15.resolve)(directory);
   try {
     const validated = await validateExecutablePluginDraft(pluginDir);
     const result = {
@@ -106615,7 +107780,7 @@ actionsCommand.command("validate").description("Validate an agent-edited executa
   }
 });
 actionsCommand.command("activate").description("Validate, contract-test, approve capabilities, and atomically activate a plugin draft").argument("<directory>", "Unpacked plugin draft directory").option("-y, --yes", "Approve requested capability increases without an interactive prompt").option("--json", "Output as JSON").action(async (directory, options) => {
-  const pluginDir = (0, import_node_path14.resolve)(directory);
+  const pluginDir = (0, import_node_path15.resolve)(directory);
   try {
     const activated = await activateExecutablePluginDraft({
       pluginDir,
@@ -106626,7 +107791,7 @@ Approve and activate? [y/N] `
       )
     });
     const manifest = JSON.parse(
-      await (0, import_promises7.readFile)((0, import_node_path14.join)(activated.targetDir, "manifest.json"), "utf8")
+      await (0, import_promises8.readFile)((0, import_node_path15.join)(activated.targetDir, "manifest.json"), "utf8")
     );
     const result = {
       activated: true,
@@ -106804,7 +107969,7 @@ ${actions.length} action(s)`);
   }
 });
 actionsCommand.command("uninstall").description("Remove a locally-installed action package from $CLASH_HOME/actions/").argument("<id>", "Action id").option("-y, --yes", "Skip confirmation prompt").option("--json", "Output as JSON").action(async (id, options) => {
-  const dir = (0, import_node_path14.join)(localActionsDir(), id);
+  const dir = (0, import_node_path15.join)(localActionsDir(), id);
   if (!(0, import_node_fs7.existsSync)(dir)) {
     console.error(`Not installed: ${dir}`);
     process.exit(1);
@@ -106957,8 +108122,8 @@ async function installFromRegistry(id, options) {
     console.error(`Server returned a package with mismatched id (${pkg.id} != ${id})`);
     process.exit(1);
   }
-  const targetDir = (0, import_node_path14.join)(localActionsDir(), id);
-  const manifestPath = (0, import_node_path14.join)(targetDir, "manifest.json");
+  const targetDir = (0, import_node_path15.join)(localActionsDir(), id);
+  const manifestPath = (0, import_node_path15.join)(targetDir, "manifest.json");
   const newVersion = pkg.manifest.version ?? "0.0.0";
   let existingManifest;
   if ((0, import_node_fs7.existsSync)(manifestPath)) {
@@ -107022,8 +108187,8 @@ function readLocalInstalls() {
     return [];
   }
   for (const entry of entries) {
-    const dir = (0, import_node_path14.join)(actionsDir2, entry);
-    const manifestPath = (0, import_node_path14.join)(dir, "manifest.json");
+    const dir = (0, import_node_path15.join)(actionsDir2, entry);
+    const manifestPath = (0, import_node_path15.join)(dir, "manifest.json");
     if (!(0, import_node_fs7.existsSync)(manifestPath)) continue;
     try {
       const m2 = JSON.parse((0, import_node_fs7.readFileSync)(manifestPath, "utf-8"));
@@ -107050,7 +108215,7 @@ async function confirm(question) {
 }
 
 // ../../packages/cli/src/commands/models.ts
-var import_promises8 = require("node:fs/promises");
+var import_promises9 = require("node:fs/promises");
 var defaultLocalAudioModelDependencies = {
   apiJson: (path, options) => apiJson(path, options),
   recordObservation: recordAgentObservation,
@@ -107065,12 +108230,46 @@ function normalizeLocalModelId(value) {
   if (typeof value === "string" && value.trim()) return value.trim();
   throw new Error("model must be a non-empty model id");
 }
+async function resolveConfiguredLocalAudioModel(capability2, dependencies = defaultLocalAudioModelDependencies) {
+  const normalized = normalizeLocalSpeechCapability(capability2);
+  const config2 = await dependencies.apiJson("/api/v1/local/audio");
+  const section = normalized === "speech-to-text" ? config2.asr : config2.tts;
+  const model = normalizeLocalModelId(section?.model);
+  const ready = section?.ready === true;
+  const setupStatus = typeof section?.setup?.status === "string" ? section.setup.status : ready ? "ready" : "unknown";
+  return {
+    capability: normalized,
+    model,
+    ready,
+    setupStatus,
+    ...ready ? {} : {
+      nextStep: `clash models local install --capability ${normalized} --model ${model}`
+    }
+  };
+}
+async function resolveLocalAudioModelId(input, dependencies) {
+  if (input.model === void 0) {
+    const configured = await resolveConfiguredLocalAudioModel(input.capability, dependencies);
+    return configured.model;
+  }
+  const requested = normalizeLocalModelId(input.model);
+  return resolveLocalSpeechModelId(localSpeechCatalogEntries(), input.capability, requested) ?? requested;
+}
+function localSpeechCatalogEntries() {
+  return listModelCatalogEntries({});
+}
+function listLocalAudioModelCatalog(capability2) {
+  return listLocalSpeechModelCards(
+    localSpeechCatalogEntries(),
+    capability2 === void 0 ? void 0 : normalizeLocalSpeechCapability(capability2)
+  );
+}
 function publicLocalAudioModelResult(result) {
   return publicAgentCommandResult(result);
 }
 async function getLocalAudioModelStatus(input, dependencies = defaultLocalAudioModelDependencies) {
   const capability2 = normalizeLocalSpeechCapability(input.capability);
-  const model = normalizeLocalModelId(input.model);
+  const model = await resolveLocalAudioModelId({ capability: capability2, model: input.model }, dependencies);
   const query = new URLSearchParams({ capability: capability2, model });
   const data = await dependencies.apiJson(
     `/api/v1/local/audio/models/status?${query.toString()}`
@@ -107084,7 +108283,7 @@ async function getLocalAudioModelStatus(input, dependencies = defaultLocalAudioM
 }
 async function mutateLocalAudioModel(operation, input, dependencies = defaultLocalAudioModelDependencies) {
   const capability2 = normalizeLocalSpeechCapability(input.capability);
-  const model = normalizeLocalModelId(input.model);
+  const model = await resolveLocalAudioModelId({ capability: capability2, model: input.model }, dependencies);
   const observedVersion = await dependencies.requireObservation({
     entityKind: "local-config",
     entityId: "audio"
@@ -107127,7 +108326,7 @@ async function providerCredentialsFromOptions(options) {
   if (typeof options.vertexCredentialsFile !== "string" || !options.vertexCredentialsFile.trim()) {
     return void 0;
   }
-  const contents = await (0, import_promises8.readFile)(options.vertexCredentialsFile.trim(), "utf8");
+  const contents = await (0, import_promises9.readFile)(options.vertexCredentialsFile.trim(), "utf8");
   const parsed = JSON.parse(contents);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Vertex credentials file must contain a JSON object");
@@ -107213,13 +108412,26 @@ modelsCommand.command("catalog").description("List model catalog entries with av
   }
 });
 var localModelsCommand = modelsCommand.command("local").description("Inspect and manage downloadable local ASR and TTS models");
+localModelsCommand.command("catalog").description("List the local ASR and TTS models this build can download").option("--capability <text-to-speech|speech-to-text>", "Filter by capability").option("--json", "Output as JSON").action(async (options) => {
+  const cards = listLocalAudioModelCatalog(options.capability);
+  if (isJsonMode(options)) {
+    printJson(cards);
+    return;
+  }
+  for (const card of cards) {
+    console.log(`${card.cardId}  ${card.name ?? ""}${card.provider ? ` (${card.provider})` : ""}`);
+    console.log(`  model: ${card.model}`);
+    if (card.description) console.log(`  ${card.description}`);
+  }
+  if (cards.length === 0) console.log("No local speech models in this build.");
+});
 localModelsCommand.command("status").description("Read whether one local audio model is installed and executable").requiredOption(
   "--capability <text-to-speech|speech-to-text>",
   "Capability: speech-to-text or text-to-speech"
-).requiredOption("--model <id>", "Local runtime model id").option("--json", "Output as JSON").action(async (options) => {
+).option("--model <id>", "Catalog card id or runtime model id; defaults to the configured model").option("--json", "Output as JSON").action(async (options) => {
   const result = await getLocalAudioModelStatus({
     capability: options.capability,
-    model: options.model
+    ...options.model === void 0 ? {} : { model: options.model }
   });
   if (isJsonMode(options)) {
     printJson(result);
@@ -107236,10 +108448,10 @@ for (const operation of ["install", "remove"]) {
   ).requiredOption(
     "--capability <text-to-speech|speech-to-text>",
     "Capability: speech-to-text or text-to-speech"
-  ).requiredOption("--model <id>", "Local runtime model id").option("--json", "Output as JSON").action(async (options) => {
+  ).option("--model <id>", "Catalog card id or runtime model id; defaults to the configured model").option("--json", "Output as JSON").action(async (options) => {
     const result = await mutateLocalAudioModel(operation, {
       capability: options.capability,
-      model: options.model
+      ...options.model === void 0 ? {} : { model: options.model }
     });
     if (isJsonMode(options)) {
       printJson(result);
@@ -107291,16 +108503,1111 @@ hostCommand.command("status").description("Show local host discovery status").op
 });
 
 // ../../packages/cli/src/commands/timeline.ts
-var import_node_crypto10 = require("node:crypto");
+var import_node_crypto12 = require("node:crypto");
 var import_node_fs10 = require("node:fs");
-var import_node_path19 = require("node:path");
+var import_node_path22 = require("node:path");
 
 // ../../packages/cli/src/commands/assets.ts
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 var import_node_fs8 = require("node:fs");
-var import_node_path15 = require("node:path");
+var import_node_path18 = require("node:path");
+
+// ../../packages/cli/src/commands/asset-metadata.ts
+var import_promises11 = require("node:fs/promises");
+var import_node_path17 = require("node:path");
+
+// ../../packages/cli/src/lib/attach-asset-metadata.ts
+var import_node_crypto9 = require("node:crypto");
+init_dist();
+
+// ../../packages/cli/src/lib/production-actions.ts
+var import_promises10 = require("node:fs/promises");
+var import_node_path16 = require("node:path");
+async function applyProductionMetadataAction(options) {
+  const cwd = options.cwd;
+  const actionPath = options.actionPath === void 0 ? void 0 : resolveLocalPath(cwd, options.actionPath, "action");
+  const assetsPath = resolveLocalPath(cwd, options.assetsPath ?? (0, import_node_path16.join)("assets", "manifest.json"), "asset manifest");
+  const rawAction = actionPath === void 0 ? options.action : JSON.parse(await (0, import_promises10.readFile)(actionPath, "utf8"));
+  const fill = parseAssetMetadataFillAction(rawAction);
+  const action = isBuiltInAssetMetadataKind(fill.metadataKind) ? AssetMetadataFillActionSchema.parse(rawAction) : void 0;
+  const targetAssetFileStem = safeProjectionFileSegment(fill.targetAssetId, "targetAssetId");
+  const metadataKindFileStem = safeProjectionFileSegment(fill.metadataKind, "metadataKind");
+  const branchFileStems = action ? productionMetadataFileStems(action.metadata) : {};
+  if (action) preflightProductionMetadataGeneratedAssetPaths(action.metadata);
+  const metadataPath = resolveProjectionFilePathInsideCwd({
+    cwd,
+    filePath: (0, import_node_path16.join)(
+      cwd,
+      "projections",
+      "metadata",
+      `${targetAssetFileStem}.${metadataKindFileStem}.json`
+    )
+  });
+  const metadataManifestPath = assetMetadataManifestPath(cwd, metadataPath);
+  const manifest = parseAssetManifest(await (0, import_promises10.readFile)(assetsPath, "utf8"), assetsPath);
+  const assetIndex = manifest.assets.findIndex((asset) => asset.id === fill.targetAssetId);
+  if (assetIndex < 0) {
+    throw new Error(`Asset ${fill.targetAssetId} not found in ${assetsPath}`);
+  }
+  const updatedAsset = applyAssetMetadataFill(manifest.assets[assetIndex], fill);
+  manifest.assets[assetIndex] = updatedAsset;
+  await writeJson(assetsPath, manifest);
+  await writeJson(metadataPath, fill.metadata);
+  const metadataManifest = {
+    schemaVersion: 1,
+    kind: "clash.asset.metadata.manifest",
+    targetAssetId: fill.targetAssetId,
+    metadataKind: fill.metadataKind,
+    metadataPath: toProjectPath2(cwd, metadataPath),
+    baseMetadataHash: productionMetadataHash(fill.metadata),
+    ...actionPath === void 0 ? {} : { sourceActionPath: toProjectPath2(cwd, actionPath) },
+    sourceActionHash: productionMetadataHash(fill)
+  };
+  await writeJson(metadataManifestPath, metadataManifest);
+  const result = {
+    applied: true,
+    targetAssetId: fill.targetAssetId,
+    metadataKind: fill.metadataKind,
+    assetsPath,
+    metadataPath,
+    metadataManifestPath,
+    version: assetMetadataObservationVersion(
+      metadataManifest,
+      metadataManifest.baseMetadataHash,
+      metadataManifest.sourceActionHash
+    )
+  };
+  const writeDerivedProjectionJson = async (projectionPath, _projectionKind, value) => {
+    const safeProjectionPath = resolveProjectionFilePathInsideCwd({ filePath: projectionPath, cwd });
+    await writeJson(safeProjectionPath, value);
+  };
+  if (!action) return result;
+  switch (action.metadata.kind) {
+    case "audio.beat-analysis": {
+      const hintsPath = (0, import_node_path16.join)(cwd, "projections", "timeline-hints", `${targetAssetFileStem}.beat-hints.json`);
+      await writeDerivedProjectionJson(hintsPath, "audio-beat-hints", {
+        assetId: action.targetAssetId,
+        metadataKind: action.metadataKind,
+        hints: buildBeatEditHints(action.metadata),
+        sections: action.metadata.sections,
+        energyCurve: action.metadata.energyCurve,
+        cuts: buildBeatSectionCutPlan(action.metadata)
+      });
+      result.timelineProjectionPath = hintsPath;
+      break;
+    }
+    case "audio.lyrics-alignment": {
+      const lyricsProjectionPath = (0, import_node_path16.join)(cwd, "projections", "lyrics", `${targetAssetFileStem}.lyrics-alignment.json`);
+      await writeDerivedProjectionJson(lyricsProjectionPath, "audio-lyrics-alignment", {
+        schemaVersion: 1,
+        kind: "clash.audio.lyrics-alignment.projection",
+        targetAssetId: action.targetAssetId,
+        fps: action.metadata.fps,
+        lyricsSource: action.metadata.lyricsSource,
+        vocalStemAssetId: action.metadata.vocalStemAssetId,
+        units: action.metadata.units,
+        unmatchedRanges: action.metadata.unmatchedRanges,
+        reviewRequired: action.metadata.units.some((unit) => unit.confidence < 0.7)
+      });
+      const captionItem = buildCaptionItemFromLyricsAlignmentMetadata(
+        `${action.targetAssetId}-lyrics`,
+        action.metadata,
+        0
+      );
+      const timelinePath = (0, import_node_path16.join)(cwd, "projections", "timelines", `${targetAssetFileStem}.lyrics.caption.timeline.yaml`);
+      const timelineYaml = timelineDslToYaml({
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        fps: action.metadata.fps,
+        durationInFrames: captionItem.durationInFrames,
+        tracks: [
+          {
+            id: "lyrics",
+            name: "Lyrics",
+            role: "subtitle",
+            items: [captionItem]
+          }
+        ]
+      });
+      await writeText(timelinePath, timelineYaml);
+      result.timelineProjectionPath = timelinePath;
+      break;
+    }
+    case "audio.stem-separation": {
+      const stemProjectionPath = (0, import_node_path16.join)(
+        cwd,
+        "projections",
+        "audio",
+        `${targetAssetFileStem}.${branchFileStems.separationId}.stem-separation.json`
+      );
+      await writeDerivedProjectionJson(stemProjectionPath, "audio-stem-separation", {
+        schemaVersion: 1,
+        kind: "clash.audio.stem-separation.projection",
+        targetAssetId: action.targetAssetId,
+        separationId: action.metadata.separationId,
+        sourceAssetId: action.metadata.sourceAssetId,
+        sourcePath: action.metadata.sourcePath,
+        backendId: action.metadata.backendId,
+        modelId: action.metadata.modelId,
+        stems: action.metadata.stems,
+        vocalStemAssetId: action.metadata.vocalStemAssetId,
+        decisionLog: action.metadata.decisionLog
+      });
+      upsertAudioStemAssets(manifest, action.metadata);
+      await writeJson(assetsPath, manifest);
+      result.timelineProjectionPath = stemProjectionPath;
+      break;
+    }
+    case "talking-head.analysis": {
+      if (action.metadata.asr) {
+        const transcriptProjectionPath = (0, import_node_path16.join)(
+          cwd,
+          "projections",
+          "transcripts",
+          `${targetAssetFileStem}.asr-transcript.json`
+        );
+        await writeDerivedProjectionJson(transcriptProjectionPath, "talking-head-asr-transcript", {
+          schemaVersion: 1,
+          targetAssetId: action.targetAssetId,
+          ...action.metadata.asr,
+          transcriptKind: action.metadata.asr.kind,
+          kind: "clash.talking-head.asr-transcript.projection",
+          words: action.metadata.words
+        });
+        result.transcriptProjectionPath = transcriptProjectionPath;
+      }
+      const captionItem = buildCaptionItemFromTalkingHeadMetadata(
+        `${action.targetAssetId}-captions`,
+        action.metadata,
+        0
+      );
+      const transcriptCutPlanPath = (0, import_node_path16.join)(
+        cwd,
+        "projections",
+        "media-cuts",
+        `${targetAssetFileStem}.transcript-cut-plan.json`
+      );
+      await writeDerivedProjectionJson(transcriptCutPlanPath, "talking-head-transcript-cut-plan", {
+        schemaVersion: 1,
+        kind: "clash.talking-head.transcript-cut-plan.projection",
+        sourceAssetId: action.targetAssetId,
+        strategy: "conservative",
+        fps: action.metadata.fps,
+        asr: action.metadata.asr,
+        disfluencies: action.metadata.disfluencies,
+        cuts: action.metadata.cuts,
+        sourceToOutputMap: captionItem.sourceToOutputMap,
+        captionTrack: captionItem
+      });
+      result.transcriptCutPlanPath = transcriptCutPlanPath;
+      const timelinePath = (0, import_node_path16.join)(cwd, "projections", "timelines", `${targetAssetFileStem}.caption.timeline.yaml`);
+      const timelineYaml = timelineDslToYaml({
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        fps: action.metadata.fps,
+        durationInFrames: captionItem.durationInFrames,
+        tracks: [
+          {
+            id: "subtitles",
+            name: "Subtitles",
+            role: "subtitle",
+            items: [captionItem]
+          }
+        ]
+      });
+      await writeText(timelinePath, timelineYaml);
+      result.timelineProjectionPath = timelinePath;
+      break;
+    }
+    case "reference-video.analysis": {
+      let blockedReason;
+      try {
+        assertReferenceCanBeRemixed(action.metadata);
+      } catch (error51) {
+        blockedReason = error51 instanceof Error ? error51.message : String(error51);
+      }
+      const rightsLedger = buildReferenceRightsLedger(action.targetAssetId, action.metadata);
+      const rightsLedgerPath = (0, import_node_path16.join)(cwd, "projections", "rights", `${targetAssetFileStem}.rights-ledger.json`);
+      await writeDerivedProjectionJson(rightsLedgerPath, "reference-rights-ledger", rightsLedger);
+      const shotAnalysisPath = (0, import_node_path16.join)(cwd, "projections", "references", `${targetAssetFileStem}.shot-analysis.json`);
+      await writeDerivedProjectionJson(shotAnalysisPath, "reference-shot-analysis", {
+        schemaVersion: 1,
+        kind: "clash.reference.shot-analysis.projection",
+        targetAssetId: action.targetAssetId,
+        sourceUrl: action.metadata.sourceUrl,
+        rightsLedgerPath,
+        analysisOnly: true,
+        mediaCopied: false,
+        finalExportAllowed: rightsLedger.remixAllowed,
+        allowedUses: rightsLedger.allowedUses,
+        prohibitedUses: rightsLedger.prohibitedUses,
+        shots: action.metadata.shots
+      });
+      const reviewPath = (0, import_node_path16.join)(cwd, "projections", "references", `${targetAssetFileStem}.reference-review.json`);
+      await writeDerivedProjectionJson(reviewPath, "reference-review", {
+        assetId: action.targetAssetId,
+        remixAllowed: !blockedReason,
+        blockedReason,
+        rightsLedgerPath,
+        sourceUrl: action.metadata.sourceUrl,
+        rights: action.metadata.rights,
+        nonCopyingQa: action.metadata.nonCopyingQa,
+        shots: action.metadata.shots
+      });
+      result.blockedReason = blockedReason;
+      result.rightsLedgerPath = rightsLedgerPath;
+      result.shotAnalysisProjectionPath = shotAnalysisPath;
+      break;
+    }
+    case "video.visual-moments": {
+      const visualMomentsPath = (0, import_node_path16.join)(
+        cwd,
+        "projections",
+        "visual-moments",
+        `${targetAssetFileStem}.visual-moments.json`
+      );
+      await writeDerivedProjectionJson(visualMomentsPath, "video-visual-moments", {
+        schemaVersion: 1,
+        kind: "clash.video.visual-moments.projection",
+        sourceVideoAssetId: action.metadata.sourceVideoAssetId,
+        fps: action.metadata.fps,
+        sourcePath: action.metadata.sourcePath,
+        sceneChanges: action.metadata.sceneChanges,
+        candidates: action.metadata.candidates,
+        recommendedClips: buildVisualMomentClipLibrary(action.metadata)
+      });
+      break;
+    }
+    case "image.storyboard-consistency": {
+      const storyboardPath = (0, import_node_path16.join)(cwd, "projections", "storyboards", `${targetAssetFileStem}.storyboard.json`);
+      await writeDerivedProjectionJson(storyboardPath, "image-storyboard", {
+        assetId: action.targetAssetId,
+        characters: action.metadata.characters,
+        scenes: action.metadata.scenes,
+        panels: action.metadata.panels
+      });
+      upsertCharacterReferenceSheetAssets(manifest, action.targetAssetId, action.metadata.characters);
+      upsertStoryboardPanelAssets(manifest, action.targetAssetId, action.metadata.panels);
+      await writeJson(assetsPath, manifest);
+      break;
+    }
+    case "image.semantic-reference-roles": {
+      const projectionPath = (0, import_node_path16.join)(
+        cwd,
+        "projections",
+        "references",
+        `${targetAssetFileStem}.semantic-reference-roles.json`
+      );
+      await writeDerivedProjectionJson(projectionPath, "image-semantic-reference-roles", {
+        schemaVersion: 1,
+        kind: "clash.image.semantic-reference-roles.projection",
+        targetAssetId: action.targetAssetId,
+        roles: action.metadata.roles,
+        copyOnWriteRequired: action.metadata.roles.every((role) => role.copyOnWriteRequired)
+      });
+      upsertSemanticReferenceRoleAssets(manifest, action.targetAssetId, action.metadata.roles);
+      await writeJson(assetsPath, manifest);
+      break;
+    }
+    case "image.product-logo-qa": {
+      const qaPath = (0, import_node_path16.join)(cwd, "projections", "qa", `${targetAssetFileStem}.product-logo-qa.json`);
+      await writeDerivedProjectionJson(qaPath, "image-product-logo-qa", {
+        schemaVersion: 1,
+        kind: "clash.image.product-logo-qa.projection",
+        targetAssetId: action.targetAssetId,
+        referencePackAssetId: action.metadata.referencePackAssetId,
+        requiredReferenceAssetIds: action.metadata.requiredReferenceAssetIds,
+        references: action.metadata.references,
+        checks: action.metadata.checks,
+        verdict: action.metadata.verdict,
+        blockedReasons: action.metadata.blockedReasons,
+        copyOnWriteRequired: action.metadata.copyOnWriteRequired
+      });
+      break;
+    }
+    case "analysis.backend-benchmark": {
+      const analysisPath = (0, import_node_path16.join)(
+        cwd,
+        "projections",
+        "analysis",
+        `${targetAssetFileStem}.${branchFileStems.benchmarkId}.backend-benchmark.json`
+      );
+      await writeDerivedProjectionJson(analysisPath, "analysis-backend-benchmark", {
+        schemaVersion: 1,
+        kind: "clash.analysis.backend-benchmark.projection",
+        targetAssetId: action.targetAssetId,
+        benchmarkId: action.metadata.benchmarkId,
+        targetCapability: action.metadata.targetCapability,
+        fixtureSetPath: action.metadata.fixtureSetPath,
+        candidates: action.metadata.candidates,
+        selectedBackendId: action.metadata.selectedBackendId,
+        verdict: action.metadata.verdict,
+        blockedReasons: action.metadata.blockedReasons,
+        decisionLog: action.metadata.decisionLog
+      });
+      break;
+    }
+    case "image.embedding-store": {
+      const embeddingPath = (0, import_node_path16.join)(
+        cwd,
+        "projections",
+        "embeddings",
+        `${targetAssetFileStem}.${branchFileStems.embeddingSetId}.embedding-store.json`
+      );
+      await writeDerivedProjectionJson(embeddingPath, "image-embedding-store", {
+        schemaVersion: 1,
+        kind: "clash.image.embedding-store.projection",
+        targetAssetId: action.targetAssetId,
+        embeddingSetId: action.metadata.embeddingSetId,
+        modelId: action.metadata.modelId,
+        dimension: action.metadata.dimension,
+        distanceMetric: action.metadata.distanceMetric,
+        items: action.metadata.items,
+        copyOnWriteRequired: action.metadata.copyOnWriteRequired
+      });
+      upsertImageEmbeddingAssets(manifest, action.metadata.embeddingSetId, action.metadata.items);
+      await writeJson(assetsPath, manifest);
+      break;
+    }
+    case "image.comfyui-runner": {
+      const comfyuiPath = (0, import_node_path16.join)(
+        cwd,
+        "projections",
+        "image",
+        `${targetAssetFileStem}.${branchFileStems.workflowId}.comfyui-runner.json`
+      );
+      await writeDerivedProjectionJson(comfyuiPath, "image-comfyui-runner", {
+        schemaVersion: 1,
+        kind: "clash.image.comfyui-runner.projection",
+        targetAssetId: action.targetAssetId,
+        workflowId: action.metadata.workflowId,
+        workflowPath: action.metadata.workflowPath,
+        workflowHash: action.metadata.workflowHash,
+        apiFormat: action.metadata.apiFormat,
+        backendId: action.metadata.backendId,
+        models: action.metadata.models,
+        customNodes: action.metadata.customNodes,
+        inputs: action.metadata.inputs,
+        outputs: action.metadata.outputs,
+        execution: action.metadata.execution,
+        decisionLog: action.metadata.decisionLog
+      });
+      upsertComfyuiOutputAssets(manifest, action.targetAssetId, action.metadata);
+      await writeJson(assetsPath, manifest);
+      result.timelineProjectionPath = comfyuiPath;
+      break;
+    }
+    case "ad.delivery-spec": {
+      const deliveryPath = (0, import_node_path16.join)(cwd, "projections", "delivery", `${targetAssetFileStem}.delivery-spec.json`);
+      await writeDerivedProjectionJson(deliveryPath, "ad-delivery-spec", {
+        schemaVersion: 1,
+        kind: "clash.ad.delivery-spec.projection",
+        targetAssetId: action.targetAssetId,
+        brand: action.metadata.brand,
+        fps: action.metadata.fps,
+        platforms: action.metadata.platforms,
+        variants: action.metadata.variants,
+        packshot: action.metadata.packshot,
+        endCard: action.metadata.endCard,
+        rightsLedgerAssetId: action.metadata.rightsLedgerAssetId,
+        checklist: buildAdDeliveryChecklist(action.metadata)
+      });
+      break;
+    }
+    case "ad.visual-qa": {
+      const qaPath = (0, import_node_path16.join)(
+        cwd,
+        "projections",
+        "qa",
+        `${targetAssetFileStem}.${branchFileStems.variantId}.ad-visual-qa.json`
+      );
+      await writeDerivedProjectionJson(qaPath, "ad-visual-qa", {
+        schemaVersion: 1,
+        kind: "clash.ad.visual-qa.projection",
+        targetAssetId: action.targetAssetId,
+        variantId: action.metadata.variantId,
+        renderedPath: action.metadata.renderedPath,
+        evidencePath: action.metadata.evidencePath,
+        checks: action.metadata.checks,
+        verdict: action.metadata.verdict,
+        blockedReasons: action.metadata.blockedReasons,
+        visualQa: action.metadata.visualQa,
+        decisionLog: action.metadata.decisionLog
+      });
+      result.timelineProjectionPath = qaPath;
+      break;
+    }
+    case "provenance.content-credentials": {
+      const provenancePath = (0, import_node_path16.join)(
+        cwd,
+        "projections",
+        "provenance",
+        `${targetAssetFileStem}.${branchFileStems.credentialId}.content-credentials.json`
+      );
+      await writeDerivedProjectionJson(provenancePath, "provenance-content-credentials", {
+        schemaVersion: 1,
+        kind: "clash.provenance.content-credentials.projection",
+        targetAssetId: action.targetAssetId,
+        credentialId: action.metadata.credentialId,
+        targetPath: action.metadata.targetPath,
+        targetHash: action.metadata.targetHash,
+        mode: action.metadata.mode,
+        signatureStatus: action.metadata.signatureStatus,
+        c2paManifestPath: action.metadata.c2paManifestPath,
+        c2paManifestHash: action.metadata.c2paManifestHash,
+        issuer: action.metadata.issuer,
+        ingredients: action.metadata.ingredients,
+        actions: action.metadata.actions,
+        assertions: action.metadata.assertions,
+        decisionLog: action.metadata.decisionLog
+      });
+      result.timelineProjectionPath = provenancePath;
+      break;
+    }
+  }
+  return result;
+}
+async function applyProductionMetadataProjection(options) {
+  const cwd = options.cwd;
+  const metadataPath = resolveLocalPath(cwd, options.filePath, "metadata projection");
+  const metadataManifestPath = assetMetadataManifestPath(cwd, metadataPath);
+  const assetsPath = resolveLocalPath(cwd, options.assetsPath ?? (0, import_node_path16.join)("assets", "manifest.json"), "asset manifest");
+  const metadataManifest = await readAssetMetadataManifest(metadataManifestPath);
+  if (metadataManifest.metadataPath !== toProjectPath2(cwd, metadataPath)) {
+    throw new Error("READ_REQUIRED: This metadata file was not projected from the current cwd path.");
+  }
+  const metadata = ProductionMetadataSchema.parse(
+    JSON.parse(await (0, import_promises10.readFile)(metadataPath, "utf8"))
+  );
+  if (metadata.kind !== metadataManifest.metadataKind) {
+    throw new Error(`metadata kind mismatch: ${metadata.kind} does not match manifest ${metadataManifest.metadataKind}`);
+  }
+  const manifest = parseAssetManifest(await (0, import_promises10.readFile)(assetsPath, "utf8"), assetsPath);
+  const assetIndex = manifest.assets.findIndex((asset) => asset.id === metadataManifest.targetAssetId);
+  if (assetIndex < 0) {
+    throw new Error(`Asset ${metadataManifest.targetAssetId} not found in ${assetsPath}`);
+  }
+  const currentMetadata = manifest.assets[assetIndex].metadata?.[metadataManifest.metadataKind];
+  const beforeMetadataHash = productionMetadataHash(currentMetadata ?? null);
+  const currentSourceActionHash = metadataManifest.sourceActionPath === void 0 ? metadataManifest.sourceActionHash : productionMetadataHash(
+    AssetMetadataFillActionSchema.parse(
+      JSON.parse(
+        await (0, import_promises10.readFile)(
+          resolveLocalPath(cwd, metadataManifest.sourceActionPath, "source action"),
+          "utf8"
+        )
+      )
+    )
+  );
+  const currentVersion = assetMetadataObservationVersion(
+    metadataManifest,
+    beforeMetadataHash,
+    currentSourceActionHash
+  );
+  if (!options.expectedVersion) {
+    throw new Error("READ_REQUIRED: Run `clash production apply-metadata` before applying the metadata projection.");
+  }
+  if (options.expectedVersion !== currentVersion) {
+    throw new Error(
+      "STALE_READ: Asset metadata or its source action changed after it was read. Run `clash production apply-metadata` again and reconcile before applying."
+    );
+  }
+  const afterMetadataHash = productionMetadataHash(metadata);
+  manifest.assets[assetIndex] = applyAssetMetadataFill(manifest.assets[assetIndex], {
+    actionId: `metadata-projection-apply:${afterMetadataHash}`,
+    targetAssetId: metadataManifest.targetAssetId,
+    metadataKind: metadataManifest.metadataKind,
+    metadata,
+    producer: "clash production apply-metadata-projection",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  });
+  await writeJson(assetsPath, manifest);
+  const nextMetadataManifest = {
+    ...metadataManifest,
+    baseMetadataHash: afterMetadataHash,
+    sourceActionHash: currentSourceActionHash
+  };
+  await writeJson(metadataManifestPath, nextMetadataManifest);
+  return {
+    applied: true,
+    targetAssetId: metadataManifest.targetAssetId,
+    metadataKind: metadataManifest.metadataKind,
+    assetsPath,
+    metadataPath,
+    metadataManifestPath,
+    beforeMetadataHash,
+    afterMetadataHash,
+    version: assetMetadataObservationVersion(
+      nextMetadataManifest,
+      afterMetadataHash,
+      currentSourceActionHash
+    )
+  };
+}
+function upsertImageEmbeddingAssets(manifest, embeddingSetId, items) {
+  for (const item of items) {
+    const existingIndex = manifest.assets.findIndex((asset) => asset.id === item.assetId);
+    const embeddingMetadata = {
+      embeddingSetId,
+      ...item.roleId ? { roleId: item.roleId } : {},
+      ...item.subjectId ? { subjectId: item.subjectId } : {},
+      path: normalizeProjectRelativePath(item.path, `embedding item ${item.assetId} path`),
+      vectorPath: normalizeProjectRelativePath(item.vectorPath, `embedding item ${item.assetId} vectorPath`),
+      vectorHash: item.vectorHash,
+      dimension: item.dimension,
+      baselineFor: item.baselineFor,
+      locked: item.locked,
+      copyOnWriteRequired: item.copyOnWriteRequired,
+      tags: item.tags
+    };
+    if (existingIndex >= 0) {
+      const existing = manifest.assets[existingIndex];
+      manifest.assets[existingIndex] = {
+        ...existing,
+        path: existing.path ?? embeddingMetadata.path,
+        metadata: {
+          ...existing.metadata ?? {},
+          "image.embedding": embeddingMetadata
+        }
+      };
+    } else {
+      manifest.assets.push({
+        id: item.assetId,
+        type: "image",
+        path: embeddingMetadata.path,
+        metadata: {
+          "image.embedding": embeddingMetadata
+        }
+      });
+    }
+  }
+}
+function upsertAudioStemAssets(manifest, metadata) {
+  for (const stem of metadata.stems) {
+    const filePath = normalizeProjectRelativePath(stem.filePath, `audio stem ${stem.stemAssetId} filePath`);
+    const existingIndex = manifest.assets.findIndex((asset) => asset.id === stem.stemAssetId);
+    const stemMetadata = {
+      separationId: metadata.separationId,
+      sourceAssetId: metadata.sourceAssetId,
+      stemAssetId: stem.stemAssetId,
+      stemType: stem.stemType,
+      filePath,
+      fileHash: stem.fileHash,
+      ...stem.codec ? { codec: stem.codec } : {},
+      ...stem.durationSeconds === void 0 ? {} : { durationSeconds: stem.durationSeconds },
+      ...stem.sampleRate === void 0 ? {} : { sampleRate: stem.sampleRate },
+      ...stem.channels === void 0 ? {} : { channels: stem.channels }
+    };
+    if (existingIndex >= 0) {
+      const existing = manifest.assets[existingIndex];
+      manifest.assets[existingIndex] = {
+        ...existing,
+        path: existing.path ?? filePath,
+        metadata: {
+          ...existing.metadata ?? {},
+          "audio.stem": stemMetadata
+        }
+      };
+    } else {
+      manifest.assets.push({
+        id: stem.stemAssetId,
+        type: "audio-stem",
+        path: filePath,
+        metadata: {
+          "audio.stem": stemMetadata
+        }
+      });
+    }
+  }
+}
+function upsertComfyuiOutputAssets(manifest, targetAssetId, metadata) {
+  for (const output of metadata.outputs) {
+    const outputPath = normalizeProjectRelativePath(output.path, `ComfyUI output ${output.outputAssetId} path`);
+    const existingIndex = manifest.assets.findIndex((asset) => asset.id === output.outputAssetId);
+    const outputMetadata = {
+      workflowId: metadata.workflowId,
+      sourceJobAssetId: targetAssetId,
+      workflowPath: metadata.workflowPath,
+      workflowHash: metadata.workflowHash,
+      nodeId: output.nodeId,
+      ...output.outputName ? { outputName: output.outputName } : {},
+      mediaType: output.mediaType,
+      path: outputPath,
+      ...output.fileHash ? { fileHash: output.fileHash } : {},
+      status: output.status,
+      backendId: metadata.backendId,
+      models: metadata.models,
+      customNodes: metadata.customNodes
+    };
+    const assetType = output.mediaType === "image" ? "image" : output.mediaType;
+    if (existingIndex >= 0) {
+      const existing = manifest.assets[existingIndex];
+      manifest.assets[existingIndex] = {
+        ...existing,
+        type: existing.type || assetType,
+        path: existing.path ?? outputPath,
+        metadata: {
+          ...existing.metadata ?? {},
+          "image.comfyui-output": outputMetadata
+        }
+      };
+    } else {
+      manifest.assets.push({
+        id: output.outputAssetId,
+        type: assetType,
+        path: outputPath,
+        metadata: {
+          "image.comfyui-output": outputMetadata
+        }
+      });
+    }
+  }
+}
+function upsertSemanticReferenceRoleAssets(manifest, rolePackAssetId, roles) {
+  for (const role of roles) {
+    const existingIndex = manifest.assets.findIndex((asset) => asset.id === role.assetId);
+    const roleMetadata = {
+      rolePackAssetId,
+      roleId: role.roleId,
+      role: role.role,
+      ...role.subjectId ? { subjectId: role.subjectId } : {},
+      path: normalizeProjectRelativePath(role.path, `reference role ${role.roleId} path`),
+      locked: role.locked,
+      copyOnWriteRequired: role.copyOnWriteRequired,
+      downstreamUsage: role.downstreamUsage,
+      constraints: role.constraints
+    };
+    if (existingIndex >= 0) {
+      const existing = manifest.assets[existingIndex];
+      manifest.assets[existingIndex] = {
+        ...existing,
+        path: existing.path ?? roleMetadata.path,
+        metadata: {
+          ...existing.metadata ?? {},
+          "image.semantic-reference-role": roleMetadata
+        }
+      };
+    } else {
+      manifest.assets.push({
+        id: role.assetId,
+        type: "reference",
+        path: roleMetadata.path,
+        metadata: {
+          "image.semantic-reference-role": roleMetadata
+        }
+      });
+    }
+  }
+}
+function upsertCharacterReferenceSheetAssets(manifest, storyboardAssetId, characters) {
+  for (const character of characters) {
+    for (const reference of character.referenceViews) {
+      const referencePath = normalizeProjectRelativePath(
+        reference.path,
+        `character reference ${character.id} ${reference.view} path`
+      );
+      const referenceMetadata = {
+        storyboardAssetId,
+        characterId: character.id,
+        view: reference.view,
+        path: referencePath,
+        locked: reference.locked,
+        copyOnWriteRequired: reference.copyOnWriteRequired,
+        downstreamUsage: "identity-reference"
+      };
+      const existingIndex = manifest.assets.findIndex((asset) => asset.id === reference.assetId);
+      if (existingIndex >= 0) {
+        const existing = manifest.assets[existingIndex];
+        manifest.assets[existingIndex] = {
+          ...existing,
+          path: existing.path ?? referencePath,
+          metadata: {
+            ...existing.metadata ?? {},
+            "image.character-reference-sheet": referenceMetadata
+          }
+        };
+      } else {
+        manifest.assets.push({
+          id: reference.assetId,
+          type: "character-reference-sheet",
+          path: referencePath,
+          metadata: {
+            "image.character-reference-sheet": referenceMetadata
+          }
+        });
+      }
+    }
+  }
+}
+function upsertStoryboardPanelAssets(manifest, storyboardAssetId, panels) {
+  for (const panel of panels) {
+    const metadata = {
+      storyboardAssetId,
+      panelId: panel.id,
+      sceneId: panel.sceneId,
+      characterIds: panel.characterIds,
+      ...panel.consistencyScore === void 0 ? {} : { consistencyScore: panel.consistencyScore }
+    };
+    const existingIndex = manifest.assets.findIndex((asset) => asset.id === panel.assetId);
+    const safePath = panel.path ? normalizeProjectRelativePath(panel.path, `panel ${panel.id} path`) : void 0;
+    if (existingIndex >= 0) {
+      const existing = manifest.assets[existingIndex];
+      manifest.assets[existingIndex] = {
+        ...existing,
+        ...safePath ? { path: existing.path ?? safePath } : {},
+        metadata: {
+          ...existing.metadata ?? {},
+          "image.storyboard-panel": metadata
+        }
+      };
+    } else {
+      manifest.assets.push({
+        id: panel.assetId,
+        type: "storyboard-panel",
+        ...safePath ? { path: safePath } : {},
+        metadata: {
+          "image.storyboard-panel": metadata
+        }
+      });
+    }
+  }
+}
+function normalizeProjectRelativePath(path, label) {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
+    throw new Error(`${label} must be a local project-relative path, not a URL`);
+  }
+  if ((0, import_node_path16.isAbsolute)(path)) {
+    throw new Error(`${label} must be project-relative, not absolute`);
+  }
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  if (parts.includes("..")) {
+    throw new Error(`${label} must stay inside the project`);
+  }
+  return parts.join("/");
+}
+function safeProjectionFileSegment(value, label) {
+  const segment = value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(segment) || segment === "." || segment === "..") {
+    throw new Error(`${label} must be safe for projection file names`);
+  }
+  return segment;
+}
+function productionMetadataFileStems(metadata) {
+  switch (metadata.kind) {
+    case "audio.stem-separation":
+      return { separationId: safeProjectionFileSegment(metadata.separationId, "separationId") };
+    case "analysis.backend-benchmark":
+      return { benchmarkId: safeProjectionFileSegment(metadata.benchmarkId, "benchmarkId") };
+    case "image.embedding-store":
+      return { embeddingSetId: safeProjectionFileSegment(metadata.embeddingSetId, "embeddingSetId") };
+    case "image.comfyui-runner":
+      return { workflowId: safeProjectionFileSegment(metadata.workflowId, "workflowId") };
+    case "ad.visual-qa":
+      return { variantId: safeProjectionFileSegment(metadata.variantId, "variantId") };
+    case "provenance.content-credentials":
+      return { credentialId: safeProjectionFileSegment(metadata.credentialId, "credentialId") };
+    default:
+      return {};
+  }
+}
+function preflightProductionMetadataGeneratedAssetPaths(metadata) {
+  switch (metadata.kind) {
+    case "audio.stem-separation": {
+      for (const stem of metadata.stems) {
+        normalizeProjectRelativePath(stem.filePath, `audio stem ${stem.stemAssetId} filePath`);
+      }
+      break;
+    }
+    case "image.embedding-store": {
+      for (const item of metadata.items) {
+        normalizeProjectRelativePath(item.path, `embedding item ${item.assetId} path`);
+        normalizeProjectRelativePath(item.vectorPath, `embedding item ${item.assetId} vectorPath`);
+      }
+      break;
+    }
+    case "image.comfyui-runner": {
+      for (const output of metadata.outputs) {
+        normalizeProjectRelativePath(output.path, `ComfyUI output ${output.outputAssetId} path`);
+      }
+      break;
+    }
+    case "image.semantic-reference-roles": {
+      for (const role of metadata.roles) {
+        normalizeProjectRelativePath(role.path, `reference role ${role.roleId} path`);
+      }
+      break;
+    }
+    case "image.storyboard-consistency": {
+      for (const character of metadata.characters) {
+        for (const reference of character.referenceViews) {
+          normalizeProjectRelativePath(
+            reference.path,
+            `character reference ${character.id} ${reference.view} path`
+          );
+        }
+      }
+      for (const panel of metadata.panels) {
+        if (panel.path) {
+          normalizeProjectRelativePath(panel.path, `panel ${panel.id} path`);
+        }
+      }
+      break;
+    }
+  }
+}
+function assetMetadataManifestPath(cwd, metadataPath) {
+  const extension2 = (0, import_node_path16.extname)(metadataPath);
+  return resolveProjectionFilePathInsideCwd({
+    cwd,
+    filePath: (0, import_node_path16.join)((0, import_node_path16.dirname)(metadataPath), `${(0, import_node_path16.basename)(metadataPath, extension2)}.manifest.json`)
+  });
+}
+async function readAssetMetadataManifest(manifestPath) {
+  let value;
+  try {
+    value = JSON.parse(await (0, import_promises10.readFile)(manifestPath, "utf8"));
+  } catch (error51) {
+    throw new Error(
+      `READ_REQUIRED: Run \`clash production apply-metadata\` before writing. ${error51 instanceof Error ? error51.message : String(error51)}`
+    );
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("READ_REQUIRED: Invalid asset metadata manifest");
+  }
+  const manifest = value;
+  if (manifest.schemaVersion !== 1 || manifest.kind !== "clash.asset.metadata.manifest" || typeof manifest.targetAssetId !== "string" || typeof manifest.metadataKind !== "string" || typeof manifest.metadataPath !== "string" || typeof manifest.baseMetadataHash !== "string" || typeof manifest.sourceActionPath !== "string" || typeof manifest.sourceActionHash !== "string") {
+    throw new Error("READ_REQUIRED: Invalid asset metadata manifest");
+  }
+  return manifest;
+}
+function assetMetadataObservationVersion(manifest, baseMetadataHash, currentSourceActionHash) {
+  const hash2 = productionMetadataHash({
+    targetAssetId: manifest.targetAssetId,
+    metadataKind: manifest.metadataKind,
+    metadataPath: manifest.metadataPath,
+    baseMetadataHash,
+    sourceActionPath: manifest.sourceActionPath,
+    sourceActionHash: currentSourceActionHash
+  });
+  return `asset-metadata-v1:${hash2}`;
+}
+function productionMetadataObservationId(options) {
+  const metadataPath = resolveLocalPath(options.cwd, options.filePath, "metadata projection");
+  return toProjectPath2(options.cwd, metadataPath);
+}
+function productionMetadataHash(value) {
+  return hashProjectionContent(stableJson2(value));
+}
+function parseAssetManifest(raw, path) {
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed.assets)) {
+    throw new Error(`Invalid asset manifest at ${path}: expected assets array`);
+  }
+  return {
+    ...parsed,
+    assets: parsed.assets.map((asset) => ({
+      ...asset,
+      metadata: asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata) ? asset.metadata : {}
+    }))
+  };
+}
+function resolveLocalPath(cwd, path, label) {
+  if (!path || typeof path !== "string") {
+    throw new Error(`${label} path is required`);
+  }
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
+    throw new Error(`${label} path must be a local project path, not a URL`);
+  }
+  const root = (0, import_node_path16.resolve)(cwd);
+  const resolved = (0, import_node_path16.isAbsolute)(path) ? (0, import_node_path16.resolve)(path) : (0, import_node_path16.resolve)(root, path);
+  const relativePath2 = (0, import_node_path16.relative)(root, resolved);
+  if (relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path16.isAbsolute)(relativePath2)) {
+    return resolved;
+  }
+  throw new Error(`${label} path must stay inside the current project cwd`);
+}
+function toProjectPath2(cwd, absolutePath) {
+  return (0, import_node_path16.relative)((0, import_node_path16.resolve)(cwd), absolutePath).split(/[\\/]+/).join("/");
+}
+function stableJson2(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => item === void 0 ? "null" : stableJson2(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record2 = value;
+    const keys = Object.keys(record2).filter((key) => record2[key] !== void 0).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson2(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+async function writeJson(path, value) {
+  await writeText(path, `${JSON.stringify(value, null, 2)}
+`);
+}
+async function writeText(path, value) {
+  await (0, import_promises10.mkdir)((0, import_node_path16.dirname)(path), { recursive: true });
+  await (0, import_promises10.writeFile)(path, value, "utf8");
+}
+
+// ../../packages/cli/src/lib/attach-asset-metadata.ts
+async function attachAssetMetadata(options) {
+  const dataDir = options.dataDir ?? defaultLocalApiDataDir();
+  const bodyHashField = options.bodyHashField ?? "bodyHash";
+  let metadata = { ...options.metadata, kind: options.metadataKind };
+  let stored;
+  if (options.body !== void 0) {
+    const declared = metadata[bodyHashField];
+    stored = await storeMetadataBody({
+      dataDir,
+      body: options.body,
+      // If the caller already pinned the identity, a mismatch is a real error and
+      // not something to quietly paper over by rehashing.
+      ...typeof declared === "string" ? { expectedContentHash: declared } : {}
+    });
+    metadata = { ...metadata, [bodyHashField]: stored.contentHash };
+  }
+  const result = await applyProductionMetadataAction({
+    cwd: options.cwd,
+    ...options.assetsPath ? { assetsPath: options.assetsPath } : {},
+    action: {
+      actionId: `attach-${(0, import_node_crypto9.randomUUID)()}`,
+      targetAssetId: options.assetId,
+      metadataKind: options.metadataKind,
+      producer: options.producer,
+      metadata,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  });
+  return {
+    attached: true,
+    assetId: result.targetAssetId,
+    metadataKind: result.metadataKind,
+    metadataPath: result.metadataPath,
+    version: result.version,
+    ...stored ? {
+      body: {
+        contentHash: stored.contentHash,
+        bytes: stored.bytes,
+        deduplicated: stored.deduplicated
+      }
+    } : {}
+  };
+}
+async function readAssetMetadataBody(options) {
+  return readMetadataBody({
+    dataDir: options.dataDir ?? defaultLocalApiDataDir(),
+    contentHash: options.contentHash
+  });
+}
+
+// ../../packages/cli/src/commands/asset-metadata.ts
+var assetMetadataCommand = new Command("metadata").description("Read and attach declared metadata on an asset");
+async function readJsonArgument(value) {
+  const contents = value === "-" ? await (0, import_promises11.readFile)(0, "utf8") : await (0, import_promises11.readFile)(value, "utf8");
+  return JSON.parse(contents);
+}
+async function readAssetManifest(cwd, assetsPath) {
+  const path = assetsPath ?? (0, import_node_path17.join)(cwd, "assets", "manifest.json");
+  const manifest = JSON.parse(await (0, import_promises11.readFile)(path, "utf8"));
+  return { path, manifest };
+}
+assetMetadataCommand.command("kinds").description("List every metadata kind this build declares").option("--json", "Output as JSON").action((options) => {
+  const kinds = listDeclaredAssetMetadataKinds();
+  if (isJsonMode(options)) {
+    printJson(kinds);
+    return;
+  }
+  for (const kind of kinds) console.log(kind);
+});
+assetMetadataCommand.command("list").description("List the metadata attached to one asset").requiredOption("--asset <id>", "Asset id").option("--assets <path>", "Asset manifest path").option("--json", "Output as JSON").action(async (options) => {
+  try {
+    const { manifest } = await readAssetManifest(process.cwd(), options.assets);
+    const asset = manifest.assets?.find((candidate) => candidate.id === options.asset);
+    if (!asset) throw new Error(`Asset ${options.asset} not found`);
+    const attached = Object.entries(asset.metadata ?? {}).filter(([key, value]) => key !== "metadataFills" && value && typeof value === "object" && !Array.isArray(value)).map(([kind, value]) => ({
+      kind,
+      ...value
+    }));
+    if (isJsonMode(options)) {
+      printJson(attached);
+      return;
+    }
+    for (const entry of attached) {
+      console.log(`${entry.kind}${entry.bodyHash ? `  body ${String(entry.bodyHash).slice(0, 19)}\u2026` : ""}`);
+    }
+    if (attached.length === 0) console.log("No metadata attached.");
+  } catch (error51) {
+    console.error(error51 instanceof Error ? error51.message : String(error51));
+    process.exit(1);
+  }
+});
+assetMetadataCommand.command("get").description("Read one attached metadata kind, or its stored body").requiredOption("--asset <id>", "Asset id").requiredOption("--kind <kind>", "Declared metadata kind").option("--body", "Print the stored body instead of the attached identity").option("--assets <path>", "Asset manifest path").option("--json", "Output as JSON").action(async (options) => {
+  try {
+    const { manifest } = await readAssetManifest(process.cwd(), options.assets);
+    const asset = manifest.assets?.find((candidate) => candidate.id === options.asset);
+    if (!asset) throw new Error(`Asset ${options.asset} not found`);
+    const attached = asset.metadata?.[options.kind];
+    if (!attached) throw new Error(`Asset ${options.asset} has no ${options.kind} metadata`);
+    if (!options.body) {
+      printJson(attached);
+      return;
+    }
+    const bodyHash = attached.bodyHash;
+    if (typeof bodyHash !== "string") {
+      throw new Error(`${options.kind} on ${options.asset} has no stored body`);
+    }
+    printJson(await readAssetMetadataBody({ contentHash: bodyHash }));
+  } catch (error51) {
+    console.error(error51 instanceof Error ? error51.message : String(error51));
+    process.exit(1);
+  }
+});
+assetMetadataCommand.command("set").description("Attach declared metadata to an asset, storing any body out of line").requiredOption("--asset <id>", "Asset id").requiredOption("--kind <kind>", "Declared metadata kind").requiredOption("--metadata <path>", "Metadata JSON path, or - for stdin").option("--body <path>", "Body JSON path stored as an immutable blob").option("--producer <id>", "Who produced this metadata", "clash.cli").option("--assets <path>", "Asset manifest path").option("--json", "Output as JSON").action(async (options) => {
+  try {
+    const metadata = await readJsonArgument(options.metadata);
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      throw new Error("metadata must be a JSON object");
+    }
+    const body = options.body === void 0 ? void 0 : await readJsonArgument(options.body);
+    const result = await attachAssetMetadata({
+      cwd: process.cwd(),
+      assetId: options.asset,
+      metadataKind: options.kind,
+      metadata,
+      producer: options.producer,
+      ...body === void 0 ? {} : { body },
+      ...options.assets ? { assetsPath: options.assets } : {}
+    });
+    if (isJsonMode(options)) {
+      printJson(result);
+      return;
+    }
+    console.log(`attached ${result.metadataKind} to ${result.assetId}`);
+    if (result.body) {
+      console.log(`body: ${result.body.contentHash} (${result.body.bytes} bytes${result.body.deduplicated ? ", deduplicated" : ""})`);
+    }
+  } catch (error51) {
+    console.error(error51 instanceof Error ? error51.message : String(error51));
+    process.exit(1);
+  }
+});
+assetMetadataCommand.command("validate").description("Check a metadata document against its declared schema without writing").requiredOption("--kind <kind>", "Declared metadata kind").requiredOption("--metadata <path>", "Metadata JSON path, or - for stdin").option("--json", "Output as JSON").action(async (options) => {
+  try {
+    parseDeclaredAssetMetadata(options.kind, await readJsonArgument(options.metadata));
+    if (isJsonMode(options)) {
+      printJson({ valid: true, kind: options.kind });
+      return;
+    }
+    console.log(`${options.kind}: valid`);
+  } catch (error51) {
+    console.error(error51 instanceof Error ? error51.message : String(error51));
+    process.exit(1);
+  }
+});
+
+// ../../packages/cli/src/commands/assets.ts
 function resolveAssetLinkName(assetId, sourcePath, requestedName) {
-  const raw = requestedName?.trim() || (0, import_node_path15.basename)(sourcePath) || assetId;
+  const raw = requestedName?.trim() || (0, import_node_path18.basename)(sourcePath) || assetId;
   if (!raw || raw === "." || raw === ".." || /[/\\]/.test(raw)) {
     throw new Error("asset link name must be a single file name");
   }
@@ -107314,7 +109621,7 @@ function assetIdForContentHash(hash2) {
 }
 function createAssetLink(options) {
   const linkName = resolveAssetLinkName(options.assetId, options.sourcePath, options.name);
-  const linkPath = (0, import_node_path15.join)(options.assetLinksRoot, linkName);
+  const linkPath = (0, import_node_path18.join)(options.assetLinksRoot, linkName);
   (0, import_node_fs8.mkdirSync)(options.assetLinksRoot, { recursive: true });
   if ((0, import_node_fs8.existsSync)(linkPath)) {
     const existing = (0, import_node_fs8.lstatSync)(linkPath);
@@ -107362,7 +109669,7 @@ async function linkAssetIntoProject(options) {
   };
 }
 async function importAssetFile(options) {
-  const sourcePath = (0, import_node_path15.resolve)(options.filePath);
+  const sourcePath = (0, import_node_path18.resolve)(options.filePath);
   const info = (0, import_node_fs8.statSync)(sourcePath);
   if (!info.isFile()) throw new Error(`asset import source is not a file: ${sourcePath}`);
   const status = await resolveProjectStatus({
@@ -107373,13 +109680,13 @@ async function importAssetFile(options) {
   });
   const contentHash = await hashFileSha256(sourcePath);
   const assetId = assetIdForContentHash(contentHash);
-  const blobDir = (0, import_node_path15.join)(status.clashHome, "assets", "blobs", contentHash);
+  const blobDir = (0, import_node_path18.join)(status.clashHome, "assets", "blobs", contentHash);
   const existingBlobPath = findExistingOriginalBlob(blobDir);
   let blobPath = existingBlobPath;
   let deduplicated = true;
   if (!blobPath) {
     const extension2 = safeExtension(sourcePath);
-    blobPath = (0, import_node_path15.join)(blobDir, `original${extension2}`);
+    blobPath = (0, import_node_path18.join)(blobDir, `original${extension2}`);
     (0, import_node_fs8.mkdirSync)(blobDir, { recursive: true });
     (0, import_node_fs8.copyFileSync)(sourcePath, blobPath);
     deduplicated = false;
@@ -107407,12 +109714,12 @@ async function importAssetFile(options) {
       localBlobKey: localBlobKeyForBlobPath(status.clashHome, blobPath),
       bytes: info.size,
       contentType: contentTypeForPath(blobPath),
-      originalName: (0, import_node_path15.basename)(sourcePath)
+      originalName: (0, import_node_path18.basename)(sourcePath)
     });
     result.registered = true;
   }
   if (options.link !== false) {
-    const extension2 = (0, import_node_path15.extname)(blobPath);
+    const extension2 = (0, import_node_path18.extname)(blobPath);
     const defaultName = `${assetId}${extension2}`;
     const link = createAssetLink({
       assetId,
@@ -107587,7 +109894,7 @@ function agentWriteHeaders(options) {
   return headers;
 }
 async function hashFileSha256(path) {
-  const hash2 = (0, import_node_crypto8.createHash)("sha256");
+  const hash2 = (0, import_node_crypto10.createHash)("sha256");
   for await (const chunk of (0, import_node_fs8.createReadStream)(path)) {
     hash2.update(chunk);
   }
@@ -107596,14 +109903,14 @@ async function hashFileSha256(path) {
 function findExistingOriginalBlob(blobDir) {
   if (!(0, import_node_fs8.existsSync)(blobDir)) return null;
   const existing = (0, import_node_fs8.readdirSync)(blobDir).filter((name) => name === "original" || name.startsWith("original.")).sort()[0];
-  return existing ? (0, import_node_path15.join)(blobDir, existing) : null;
+  return existing ? (0, import_node_path18.join)(blobDir, existing) : null;
 }
 function safeExtension(path) {
-  const extension2 = (0, import_node_path15.extname)(path);
+  const extension2 = (0, import_node_path18.extname)(path);
   return /^[.][A-Za-z0-9_-]+$/.test(extension2) ? extension2 : "";
 }
 function localBlobKeyForBlobPath(clashHome, blobPath) {
-  const prefix = (0, import_node_path15.join)(clashHome, "assets") + "/";
+  const prefix = (0, import_node_path18.join)(clashHome, "assets") + "/";
   const normalized = blobPath.replace(/\\/g, "/");
   const normalizedPrefix = prefix.replace(/\\/g, "/");
   if (!normalized.startsWith(normalizedPrefix)) {
@@ -107616,7 +109923,7 @@ function normalizeAssetKind(kind) {
   return normalized === "image" || normalized === "video" || normalized === "audio" || normalized === "model" ? normalized : null;
 }
 function inferAssetKind(path) {
-  const extension2 = (0, import_node_path15.extname)(path).toLowerCase();
+  const extension2 = (0, import_node_path18.extname)(path).toLowerCase();
   if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension2)) return "image";
   if ([".mp4", ".mov", ".webm", ".m4v"].includes(extension2)) return "video";
   if ([".mp3", ".wav", ".m4a", ".aac", ".flac"].includes(extension2)) return "audio";
@@ -107624,7 +109931,7 @@ function inferAssetKind(path) {
   return null;
 }
 function contentTypeForPath(path) {
-  const extension2 = (0, import_node_path15.extname)(path).toLowerCase();
+  const extension2 = (0, import_node_path18.extname)(path).toLowerCase();
   if (extension2 === ".png") return "image/png";
   if (extension2 === ".jpg" || extension2 === ".jpeg") return "image/jpeg";
   if (extension2 === ".gif") return "image/gif";
@@ -107653,7 +109960,7 @@ function assetGcObservationId(options) {
     protectedAssetIds: [...options.protectedAssetIds ?? []].sort(),
     projectIds: [...options.projectIds ?? []].sort()
   });
-  return (0, import_node_crypto8.createHash)("sha256").update(scope2).digest("hex").slice(0, 16);
+  return (0, import_node_crypto10.createHash)("sha256").update(scope2).digest("hex").slice(0, 16);
 }
 assetsCommand.command("get").description("Read an asset row").requiredOption("--asset <id>", "Asset ID").option("--json", "Output result as JSON").action(async (options) => {
   try {
@@ -107863,9 +110170,10 @@ assetsCommand.command("gc").description("Garbage collect unreferenced local asse
     process.exit(1);
   }
 });
+assetsCommand.addCommand(assetMetadataCommand);
 
 // ../../packages/cli/src/lib/timeline-projection.ts
-var import_node_path16 = require("node:path");
+var import_node_path19 = require("node:path");
 var import_yaml4 = __toESM(require_dist());
 var OMIT_TIMELINE_FIELD = Symbol("omit-timeline-field");
 function normalizeAnnotatedTimelineFields(source, fields, normalizers) {
@@ -107888,7 +110196,7 @@ function timelineExtensionFields(source, fields) {
   );
 }
 function resolveTimelineFilePath(options) {
-  const filePath = options.file ? options.file : (0, import_node_path16.join)(options.cwd, "timelines", `${timelineFileSlug(options.timeline ?? "main")}.timeline.yaml`);
+  const filePath = options.file ? options.file : (0, import_node_path19.join)(options.cwd, "timelines", `${timelineFileSlug(options.timeline ?? "main")}.timeline.yaml`);
   return resolveProjectionFilePathInsideCwd({
     filePath,
     cwd: options.cwd
@@ -107897,8 +110205,8 @@ function resolveTimelineFilePath(options) {
 function timelineProjectionCasApply(options) {
   const timeline = options.timeline ?? "main";
   const targetFilePath = resolveTimelineFilePath({ cwd: options.cwd, timeline });
-  const projectionPath = toProjectPath2(options.cwd, options.filePath);
-  const targetProjectPath = toProjectPath2(options.cwd, targetFilePath);
+  const projectionPath = toProjectPath3(options.cwd, options.filePath);
+  const targetProjectPath = toProjectPath3(options.cwd, targetFilePath);
   return {
     casApply: {
       target: "timeline",
@@ -107945,12 +110253,12 @@ function timelineHash(dsl) {
   return hashProjectionContent(timelineDslCanonicalJson(normalizeTimelineDslForYaml(dsl)));
 }
 function createTimelineSourceProvenance(options) {
-  const cwd = (0, import_node_path16.resolve)(options.cwd);
-  const absolutePath = (0, import_node_path16.isAbsolute)(options.filePath) ? (0, import_node_path16.resolve)(options.filePath) : (0, import_node_path16.resolve)(cwd, options.filePath);
+  const cwd = (0, import_node_path19.resolve)(options.cwd);
+  const absolutePath = (0, import_node_path19.isAbsolute)(options.filePath) ? (0, import_node_path19.resolve)(options.filePath) : (0, import_node_path19.resolve)(cwd, options.filePath);
   if (!isInsideOrEqual2(cwd, absolutePath)) {
     throw new Error("Timeline provenance path must stay inside the current project cwd");
   }
-  const sourceTimelinePath = toProjectPath2(cwd, absolutePath);
+  const sourceTimelinePath = toProjectPath3(cwd, absolutePath);
   const sourceTimelineHash = timelineHash(options.dsl);
   if (options.timelineRevision) {
     if (options.timelineRevision.timelineHash !== sourceTimelineHash) {
@@ -108019,12 +110327,12 @@ function timelineFileSlug(raw) {
   const slug2 = raw.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "main";
 }
-function toProjectPath2(cwd, absolutePath) {
-  return (0, import_node_path16.relative)(cwd, absolutePath).split(import_node_path16.sep).join("/");
+function toProjectPath3(cwd, absolutePath) {
+  return (0, import_node_path19.relative)(cwd, absolutePath).split(import_node_path19.sep).join("/");
 }
 function isInsideOrEqual2(parent, child) {
-  const relativePath2 = (0, import_node_path16.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path16.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path19.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path19.isAbsolute)(relativePath2);
 }
 function normalizeTrackForYaml(raw, index) {
   const track = raw && typeof raw === "object" ? raw : {};
@@ -108071,18 +110379,18 @@ function normalizeItemForYaml(item, trackId, itemIndex) {
 }
 
 // ../../packages/cli/src/lib/timeline-transcript-projection.ts
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto11 = require("node:crypto");
 var import_node_fs9 = require("node:fs");
-var import_node_path17 = require("node:path");
+var import_node_path20 = require("node:path");
 function fileSlug(value) {
   const slug2 = value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "asset";
 }
 function projectRelativePath(cwd, absolutePath) {
-  return (0, import_node_path17.relative)(cwd, absolutePath).split(import_node_path17.sep).join("/");
+  return (0, import_node_path20.relative)(cwd, absolutePath).split(import_node_path20.sep).join("/");
 }
 function timelineProjectionStem(timelineFilePath) {
-  const fileName = (0, import_node_path17.basename)(timelineFilePath);
+  const fileName = (0, import_node_path20.basename)(timelineFilePath);
   return fileName.replace(/\.timeline\.ya?ml$/i, "").replace(/\.ya?ml$/i, "");
 }
 function asFiniteNumber(value, fallback) {
@@ -108159,8 +110467,8 @@ function writeTimelineTranscriptProjection(input) {
   const fps = asFiniteNumber(state.fps, 30);
   const durationFrames = Math.max(0, Math.round(asFiniteNumber(state.durationInFrames, 0)));
   const transcripts = state.assetTranscripts ?? {};
-  const sourceDirectory = (0, import_node_path17.join)(
-    (0, import_node_path17.dirname)(input.timelineFilePath),
+  const sourceDirectory = (0, import_node_path20.join)(
+    (0, import_node_path20.dirname)(input.timelineFilePath),
     `${timelineProjectionStem(input.timelineFilePath)}.transcripts`
   );
   const transcriptFiles = /* @__PURE__ */ new Map();
@@ -108196,8 +110504,8 @@ function writeTimelineTranscriptProjection(input) {
           words: transcript.words,
           segments: []
         });
-        const assetHash = (0, import_node_crypto9.createHash)("sha256").update(item.assetId).digest("hex").slice(0, 8);
-        const sourceFilePath = (0, import_node_path17.join)(
+        const assetHash = (0, import_node_crypto11.createHash)("sha256").update(item.assetId).digest("hex").slice(0, 8);
+        const sourceFilePath = (0, import_node_path20.join)(
           sourceDirectory,
           `${fileSlug(item.assetId)}-${assetHash}.json`
         );
@@ -108207,7 +110515,7 @@ function writeTimelineTranscriptProjection(input) {
         (0, import_node_fs9.writeFileSync)(sourceFilePath, sourceContents, "utf8");
         source = {
           sourcePath: projectRelativePath(input.cwd, sourceFilePath),
-          sourceHash: `sha256:${(0, import_node_crypto9.createHash)("sha256").update(sourceContents).digest("hex")}`,
+          sourceHash: `sha256:${(0, import_node_crypto11.createHash)("sha256").update(sourceContents).digest("hex")}`,
           words: projectAsrTimedTranscriptWords(timedTranscript, fps)
         };
         transcriptFiles.set(item.assetId, source);
@@ -108240,11 +110548,11 @@ function writeTimelineTranscriptProjection(input) {
     durationFrames,
     clips
   });
-  const filePath = (0, import_node_path17.join)(
-    (0, import_node_path17.dirname)(input.timelineFilePath),
+  const filePath = (0, import_node_path20.join)(
+    (0, import_node_path20.dirname)(input.timelineFilePath),
     `${timelineProjectionStem(input.timelineFilePath)}.transcript.json`
   );
-  (0, import_node_fs9.mkdirSync)((0, import_node_path17.dirname)(filePath), { recursive: true });
+  (0, import_node_fs9.mkdirSync)((0, import_node_path20.dirname)(filePath), { recursive: true });
   (0, import_node_fs9.writeFileSync)(filePath, `${JSON.stringify(projection, null, 2)}
 `, "utf8");
   return {
@@ -108255,8 +110563,8 @@ function writeTimelineTranscriptProjection(input) {
 }
 
 // ../../packages/cli/src/lib/stale-projection-recovery.ts
-var import_promises9 = require("node:fs/promises");
-var import_node_path18 = require("node:path");
+var import_promises12 = require("node:fs/promises");
+var import_node_path21 = require("node:path");
 var StaleProjectionRecoveryError = class extends Error {
   constructor(label, recovery) {
     super([
@@ -108272,19 +110580,19 @@ var StaleProjectionRecoveryError = class extends Error {
   code = "STALE_READ";
 };
 async function recoverStaleProjection(options) {
-  const workspaceRoot = (0, import_node_path18.resolve)(options.workspaceRoot);
+  const workspaceRoot = (0, import_node_path21.resolve)(options.workspaceRoot);
   const entityId = normalize2(options.entityId, "entity id");
   const segment = projectionSegment(entityId);
   const suffix = options.entityKind === "timeline" ? ".timeline.yaml" : ".director-stage.json";
-  const recoveryDirectory = (0, import_node_path18.join)(workspaceRoot, ".clash", "recovery", options.entityKind);
+  const recoveryDirectory = (0, import_node_path21.join)(workspaceRoot, ".clash", "recovery", options.entityKind);
   const latestAbsolutePath = resolveAgentFilePathInsideCwd({
     cwd: workspaceRoot,
-    filePath: (0, import_node_path18.join)(recoveryDirectory, `${segment}.latest${suffix}`),
+    filePath: (0, import_node_path21.join)(recoveryDirectory, `${segment}.latest${suffix}`),
     writeVerb: "Stale projection recovery"
   });
   const receiptAbsolutePath = resolveAgentFilePathInsideCwd({
     cwd: workspaceRoot,
-    filePath: (0, import_node_path18.join)(recoveryDirectory, `${segment}.recovery.json`),
+    filePath: (0, import_node_path21.join)(recoveryDirectory, `${segment}.recovery.json`),
     writeVerb: "Stale projection recovery"
   });
   const editedAbsolutePath = resolveAgentFilePathInsideCwd({
@@ -108304,9 +110612,9 @@ async function recoverStaleProjection(options) {
     next: "Merge the edited projection into the latest projection, then retry the apply command.",
     resubmitted: false
   };
-  await (0, import_promises9.mkdir)((0, import_node_path18.dirname)(latestAbsolutePath), { recursive: true });
-  await (0, import_promises9.writeFile)(latestAbsolutePath, options.latestContent, { encoding: "utf8", mode: 384 });
-  await (0, import_promises9.writeFile)(receiptAbsolutePath, `${JSON.stringify(recovery, null, 2)}
+  await (0, import_promises12.mkdir)((0, import_node_path21.dirname)(latestAbsolutePath), { recursive: true });
+  await (0, import_promises12.writeFile)(latestAbsolutePath, options.latestContent, { encoding: "utf8", mode: 384 });
+  await (0, import_promises12.writeFile)(receiptAbsolutePath, `${JSON.stringify(recovery, null, 2)}
 `, {
     encoding: "utf8",
     mode: 384
@@ -108327,7 +110635,7 @@ function projectionSegment(value) {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^\.+/, "") || "projection";
 }
 function relativePath(workspaceRoot, absolutePath) {
-  const value = (0, import_node_path18.relative)(workspaceRoot, absolutePath);
+  const value = (0, import_node_path21.relative)(workspaceRoot, absolutePath);
   if (!value || value.startsWith("..")) {
     throw new Error("Stale projection recovery paths must stay inside the current project cwd.");
   }
@@ -108399,7 +110707,7 @@ async function requestTimelineRenderWithReadback(options) {
     timelineId: options.timelineId,
     actorUserId: options.actor.actorUserId,
     ...options.actor.actorAgentId ? { actorAgentId: options.actor.actorAgentId } : {},
-    generateId: options.generateId ?? (() => (0, import_node_crypto10.randomUUID)().slice(0, 8))
+    generateId: options.generateId ?? (() => (0, import_node_crypto12.randomUUID)().slice(0, 8))
   });
   if (!requested.ok) throw new Error(requested.error);
   options.client.doc.commit({ origin: "agent:timeline-render" });
@@ -108627,7 +110935,7 @@ timelineCommand.command("attach").description(TIMELINE_OPERATION_CATALOG.agent["
   const context = await resolveCanvasProjectContext(options);
   const timelineId = String(options.timeline);
   const observedVersion = await requireTimelineObservation(context, timelineId);
-  const actionNodeId = options.node?.trim() || (0, import_node_crypto10.randomUUID)().slice(0, 8);
+  const actionNodeId = options.node?.trim() || (0, import_node_crypto12.randomUUID)().slice(0, 8);
   let result;
   if (isDaemonRunning(context.projectId)) {
     result = await sendCommand(context.projectId, {
@@ -108706,8 +111014,8 @@ timelineCommand.command("copy").description(TIMELINE_OPERATION_CATALOG.agent["ti
   const context = await resolveCanvasProjectContext(options);
   const timelineId = String(options.timeline);
   const observedVersion = await requireTimelineObservation(context, timelineId);
-  const newTimelineId = options.newTimeline?.trim() || (0, import_node_crypto10.randomUUID)().slice(0, 8);
-  const newActionNodeId = options.newNode?.trim() || (0, import_node_crypto10.randomUUID)().slice(0, 8);
+  const newTimelineId = options.newTimeline?.trim() || (0, import_node_crypto12.randomUUID)().slice(0, 8);
+  const newActionNodeId = options.newNode?.trim() || (0, import_node_crypto12.randomUUID)().slice(0, 8);
   let result;
   if (isDaemonRunning(context.projectId)) {
     result = await sendCommand(context.projectId, {
@@ -108803,7 +111111,7 @@ timelineCommand.command("pull").description(TIMELINE_OPERATION_CATALOG.agent["ti
   const currentDsl = normalizeTimelineDslForYaml(timeline.state);
   const yaml = timelineDslToYaml(currentDsl);
   const version2 = listed.versions[timeline.id] ?? projectTimelineReadToken(timeline);
-  (0, import_node_fs10.mkdirSync)((0, import_node_path19.dirname)(filePath), { recursive: true });
+  (0, import_node_fs10.mkdirSync)((0, import_node_path22.dirname)(filePath), { recursive: true });
   (0, import_node_fs10.writeFileSync)(filePath, yaml, "utf8");
   const transcriptProjection = writeTimelineTranscriptProjection({
     cwd: process.cwd(),
@@ -108975,14 +111283,14 @@ async function connectToProject4(projectId) {
 }
 
 // ../../packages/cli/src/commands/doctor.ts
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto13 = require("node:crypto");
 var import_node_module2 = require("node:module");
-var import_promises10 = require("node:fs/promises");
-var import_node_path20 = require("node:path");
+var import_promises13 = require("node:fs/promises");
+var import_node_path23 = require("node:path");
 init_dist();
 var require3 = (0, import_node_module2.createRequire)(process.execPath);
 async function runStorageDoctor(options = {}) {
-  const cwd = (0, import_node_path20.resolve)(options.cwd ?? process.cwd());
+  const cwd = (0, import_node_path23.resolve)(options.cwd ?? process.cwd());
   const checks = [];
   const repairs = [];
   let status;
@@ -109104,7 +111412,7 @@ async function runStorageDoctor(options = {}) {
   checks.push(await inspectAssetLinksRoot(status.roots.assetLinks));
   await pushPathCheck(checks, {
     id: "protected-runtime-root",
-    path: (0, import_node_path20.join)(status.projectWorkspaceRoot, "runtime"),
+    path: (0, import_node_path23.join)(status.projectWorkspaceRoot, "runtime"),
     kind: "directory",
     missingLevel: "warning",
     existsMessage: "Protected runtime root exists.",
@@ -109168,7 +111476,7 @@ function inspectStorageContract(status) {
       label: "text view files",
       contract: storage.workspace.viewFiles?.texts,
       expectedKind: "agent-editable-projection-files",
-      expectedPath: (0, import_node_path20.join)(status.roots.projections, "text"),
+      expectedPath: (0, import_node_path23.join)(status.roots.projections, "text"),
       expectedPathDescription: "projections/text",
       defaultFilePattern: "<node-id>.md",
       applyCommand: "clash text apply"
@@ -109187,7 +111495,7 @@ function inspectStorageContract(status) {
       label: "timeline projection files",
       contract: storage.workspace.viewFiles?.timelineProjections,
       expectedKind: "agent-editable-projection-files",
-      expectedPath: (0, import_node_path20.join)(status.roots.projections, "timelines"),
+      expectedPath: (0, import_node_path23.join)(status.roots.projections, "timelines"),
       expectedPathDescription: "projections/timelines",
       defaultFilePattern: PROJECT_TIMELINE_FILE_PATTERN,
       applyCommand: PROJECT_TIMELINE_APPLY_COMMAND
@@ -109231,7 +111539,7 @@ function inspectStorageContract(status) {
       if (mediaAssets.kind !== "content-addressed-files") {
         problems.push("canonical media asset blob root is not content-addressed-files");
       }
-      if (mediaAssets.path !== (0, import_node_path20.join)(status.clashHome, "assets", "blobs")) {
+      if (mediaAssets.path !== (0, import_node_path23.join)(status.clashHome, "assets", "blobs")) {
         problems.push("canonical media asset blob path does not match Clash asset blob store");
       }
       if (mediaAssets.storageKeyPrefix !== "local-blobs/") {
@@ -109255,7 +111563,7 @@ function inspectStorageContract(status) {
       {
         label: "text revision",
         store: contentBlobs?.textRevisions,
-        path: (0, import_node_path20.join)(status.localApiDataDir, "text-revision-blobs"),
+        path: (0, import_node_path23.join)(status.localApiDataDir, "text-revision-blobs"),
         mediaType: "text/markdown"
       }
     ];
@@ -109325,7 +111633,7 @@ function validateMachineLocalConfigContract(problems, status, localConfig) {
   if (localConfig.format !== "yaml") {
     problems.push("machine-local config format is wrong");
   }
-  if (localConfig.path !== (0, import_node_path20.join)(status.clashHome, "config.yaml")) {
+  if (localConfig.path !== (0, import_node_path23.join)(status.clashHome, "config.yaml")) {
     problems.push("machine-local config path is wrong");
   }
   const expectedSections = [
@@ -109371,7 +111679,7 @@ function validateLocalSecretsContract(problems, status, localSecrets) {
       label: "bridge credentials",
       file: localSecrets.files?.bridgeCredentials,
       kind: "machine-credential-store",
-      path: (0, import_node_path20.join)(status.clashHome, "credentials.json")
+      path: (0, import_node_path23.join)(status.clashHome, "credentials.json")
     }
   ];
   for (const expected of expectedFiles) {
@@ -109675,16 +111983,16 @@ async function findSecondaryCanvasReplicaPaths(status, cwd) {
   const found = /* @__PURE__ */ new Set();
   const roots = dedupe([cwd, status.projectWorkspaceRoot]);
   const commonReplicaFiles = [
-    (0, import_node_path20.join)("loro", "snapshot.bin"),
-    (0, import_node_path20.join)("loro", "updates.log"),
+    (0, import_node_path23.join)("loro", "snapshot.bin"),
+    (0, import_node_path23.join)("loro", "updates.log"),
     "snapshot.bin",
     "updates.log",
-    (0, import_node_path20.join)(".clash", "loro", "snapshot.bin"),
-    (0, import_node_path20.join)(".clash", "loro", "updates.log")
+    (0, import_node_path23.join)(".clash", "loro", "snapshot.bin"),
+    (0, import_node_path23.join)(".clash", "loro", "updates.log")
   ];
   for (const root of roots) {
     for (const relativePath2 of commonReplicaFiles) {
-      const candidate = (0, import_node_path20.join)(root, relativePath2);
+      const candidate = (0, import_node_path23.join)(root, relativePath2);
       if (!isCanonicalCanvasPath(status, candidate) && await pathExists(candidate, "file")) {
         found.add(candidate);
       }
@@ -109704,7 +112012,7 @@ function textRevisionBlobIntegrityOptions(status) {
       return match?.[1] ?? null;
     },
     async contentHash(content) {
-      return (0, import_node_crypto11.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+      return (0, import_node_crypto13.createHash)("sha256").update(content).digest("hex").slice(0, 16);
     }
   };
 }
@@ -109723,20 +112031,20 @@ async function repairRevisionBlobPermissionsFor(options) {
   if (entries === null) return [];
   const repairs = [];
   for (const filePath of entries) {
-    const fileName = (0, import_node_path20.basename)(filePath);
+    const fileName = (0, import_node_path23.basename)(filePath);
     const expectedHash = options.expectedHashFromName(fileName);
     if (!expectedHash) continue;
-    const info = await (0, import_promises10.lstat)(filePath);
+    const info = await (0, import_promises13.lstat)(filePath);
     if (info.isSymbolicLink() || !info.isFile() || (info.mode & 146) === 0) continue;
     let actualHash;
     try {
-      actualHash = await options.contentHash(await (0, import_promises10.readFile)(filePath, "utf8"));
+      actualHash = await options.contentHash(await (0, import_promises13.readFile)(filePath, "utf8"));
     } catch {
       continue;
     }
     if (actualHash !== expectedHash) continue;
     const readOnlyMode = info.mode & 511 & ~146;
-    await (0, import_promises10.chmod)(filePath, readOnlyMode);
+    await (0, import_promises13.chmod)(filePath, readOnlyMode);
     repairs.push({
       id: "revision-blob-permissions",
       message: `Made ${options.label.toLowerCase()} file read-only after validating its content hash.`,
@@ -109758,10 +112066,10 @@ async function inspectRevisionBlobIntegrity(options) {
   const problems = [];
   let firstProblemPath;
   for (const filePath of entries) {
-    const fileName = (0, import_node_path20.basename)(filePath);
+    const fileName = (0, import_node_path23.basename)(filePath);
     const expectedHash = options.expectedHashFromName(fileName);
     const fileProblems = [];
-    const info = await (0, import_promises10.lstat)(filePath);
+    const info = await (0, import_promises13.lstat)(filePath);
     if (info.isSymbolicLink()) {
       fileProblems.push("symlink is not allowed");
     } else if (!info.isFile()) {
@@ -109774,7 +112082,7 @@ async function inspectRevisionBlobIntegrity(options) {
         fileProblems.push("invalid content hash filename");
       } else {
         try {
-          const actualHash = await options.contentHash(await (0, import_promises10.readFile)(filePath, "utf8"));
+          const actualHash = await options.contentHash(await (0, import_promises13.readFile)(filePath, "utf8"));
           if (actualHash !== expectedHash) {
             fileProblems.push(`hash mismatch expected ${expectedHash} actual ${actualHash}`);
           }
@@ -109810,13 +112118,13 @@ async function collectRevisionBlobFiles(root, extension2) {
   async function visit(directory, depth) {
     let entries;
     try {
-      entries = await (0, import_promises10.readdir)(directory, { withFileTypes: true });
+      entries = await (0, import_promises13.readdir)(directory, { withFileTypes: true });
     } catch (error51) {
       if (error51.code === "ENOENT" && depth === 0) return;
       throw error51;
     }
     for (const entry of entries) {
-      const entryPath = (0, import_node_path20.join)(directory, entry.name);
+      const entryPath = (0, import_node_path23.join)(directory, entry.name);
       if (entry.isDirectory()) {
         if (depth < 2) await visit(entryPath, depth + 1);
         continue;
@@ -109837,13 +112145,13 @@ async function collectCanvasReplicaFiles(root, status, found, maxDepth, depth = 
   if (isSameOrInside(root, status.roots.runtime)) return;
   let entries;
   try {
-    entries = await (0, import_promises10.readdir)(root, { withFileTypes: true });
+    entries = await (0, import_promises13.readdir)(root, { withFileTypes: true });
   } catch (error51) {
     if (error51.code === "ENOENT") return;
     throw error51;
   }
   for (const entry of entries) {
-    const entryPath = (0, import_node_path20.join)(root, entry.name);
+    const entryPath = (0, import_node_path23.join)(root, entry.name);
     if (isCanonicalCanvasPath(status, entryPath)) continue;
     if (entry.isDirectory()) {
       if ([".git", "node_modules", "dist", "build", ".next", ".tmp"].includes(entry.name)) continue;
@@ -109860,9 +112168,9 @@ function isCanonicalCanvasPath(status, targetPath) {
 }
 async function compareSecondaryCanvasRecovery(options) {
   const status = await resolveProjectStatus(options);
-  const recoveryRoot = (0, import_node_path20.join)(status.roots.runtime, "recovery", "secondary-canvas-replicas");
-  const manifestPath = (0, import_node_path20.resolve)(options.manifestPath);
-  if ((0, import_node_path20.basename)(manifestPath) !== "manifest.json" || !isSameOrInside(manifestPath, recoveryRoot)) {
+  const recoveryRoot = (0, import_node_path23.join)(status.roots.runtime, "recovery", "secondary-canvas-replicas");
+  const manifestPath = (0, import_node_path23.resolve)(options.manifestPath);
+  if ((0, import_node_path23.basename)(manifestPath) !== "manifest.json" || !isSameOrInside(manifestPath, recoveryRoot)) {
     throw new Error(`Secondary canvas recovery manifest is outside current project recovery root: ${manifestPath}`);
   }
   await assertRegularFile(
@@ -109873,7 +112181,7 @@ async function compareSecondaryCanvasRecovery(options) {
     throw new Error(`Secondary canvas recovery manifest is outside current project recovery root: ${manifestPath}`);
   }
   const manifest = parseSecondaryCanvasReplicaManifest(
-    JSON.parse(await (0, import_promises10.readFile)(manifestPath, "utf8")),
+    JSON.parse(await (0, import_promises13.readFile)(manifestPath, "utf8")),
     manifestPath
   );
   if (manifest.projectId !== status.projectId) {
@@ -109886,15 +112194,15 @@ async function compareSecondaryCanvasRecovery(options) {
     snapshotPath: status.loro.snapshotPath,
     updatesLogPath: status.loro.updatesLogPath
   };
-  if ((0, import_node_path20.resolve)(manifest.canonicalReplica.replicaRoot) !== (0, import_node_path20.resolve)(canonicalReplica.replicaRoot) || (0, import_node_path20.resolve)(manifest.canonicalReplica.snapshotPath) !== (0, import_node_path20.resolve)(canonicalReplica.snapshotPath) || (0, import_node_path20.resolve)(manifest.canonicalReplica.updatesLogPath) !== (0, import_node_path20.resolve)(canonicalReplica.updatesLogPath)) {
+  if ((0, import_node_path23.resolve)(manifest.canonicalReplica.replicaRoot) !== (0, import_node_path23.resolve)(canonicalReplica.replicaRoot) || (0, import_node_path23.resolve)(manifest.canonicalReplica.snapshotPath) !== (0, import_node_path23.resolve)(canonicalReplica.snapshotPath) || (0, import_node_path23.resolve)(manifest.canonicalReplica.updatesLogPath) !== (0, import_node_path23.resolve)(canonicalReplica.updatesLogPath)) {
     throw new Error(
       `Secondary canvas recovery manifest canonical replica does not match current project ${status.projectId}`
     );
   }
-  const recoverySetRoot = (0, import_node_path20.dirname)(manifestPath);
+  const recoverySetRoot = (0, import_node_path23.dirname)(manifestPath);
   const files = [];
   for (const file2 of manifest.files) {
-    const destinationPath = (0, import_node_path20.resolve)(file2.destinationPath);
+    const destinationPath = (0, import_node_path23.resolve)(file2.destinationPath);
     if (!isSameOrInside(destinationPath, recoverySetRoot)) {
       throw new Error(`Secondary canvas recovery file destination is outside recovery set root: ${destinationPath}`);
     }
@@ -109951,21 +112259,21 @@ async function restoreSecondaryCanvasRecovery(options) {
   if (before.files.length === 0) {
     throw new Error(`Secondary canvas recovery manifest has no files to restore: ${before.manifestPath}`);
   }
-  const recoverySetRoot = (0, import_node_path20.dirname)((0, import_node_path20.resolve)(options.manifestPath));
-  const backupsRoot = (0, import_node_path20.join)(recoverySetRoot, "canonical-before-restore", (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-"));
+  const recoverySetRoot = (0, import_node_path23.dirname)((0, import_node_path23.resolve)(options.manifestPath));
+  const backupsRoot = (0, import_node_path23.join)(recoverySetRoot, "canonical-before-restore", (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-"));
   const files = [];
   for (const file2 of before.files) {
     if (!file2.quarantined.exists) {
       throw new Error(`Secondary canvas recovery file is missing and cannot be restored: ${file2.destinationPath}`);
     }
     const canonicalPath = file2.kind === "snapshot" ? before.canonicalReplica.snapshotPath : before.canonicalReplica.updatesLogPath;
-    const backupPath = file2.canonical.exists ? (0, import_node_path20.join)(backupsRoot, file2.kind === "snapshot" ? "snapshot.bin" : "updates.log") : void 0;
-    await (0, import_promises10.mkdir)((0, import_node_path20.dirname)(canonicalPath), { recursive: true });
+    const backupPath = file2.canonical.exists ? (0, import_node_path23.join)(backupsRoot, file2.kind === "snapshot" ? "snapshot.bin" : "updates.log") : void 0;
+    await (0, import_promises13.mkdir)((0, import_node_path23.dirname)(canonicalPath), { recursive: true });
     if (backupPath) {
-      await (0, import_promises10.mkdir)((0, import_node_path20.dirname)(backupPath), { recursive: true });
-      await (0, import_promises10.copyFile)(canonicalPath, backupPath);
+      await (0, import_promises13.mkdir)((0, import_node_path23.dirname)(backupPath), { recursive: true });
+      await (0, import_promises13.copyFile)(canonicalPath, backupPath);
     }
-    await (0, import_promises10.copyFile)(file2.destinationPath, canonicalPath);
+    await (0, import_promises13.copyFile)(file2.destinationPath, canonicalPath);
     files.push({
       kind: file2.kind,
       sourcePath: file2.sourcePath,
@@ -109980,7 +112288,7 @@ async function restoreSecondaryCanvasRecovery(options) {
     });
   }
   const after = await compareSecondaryCanvasRecovery(options);
-  const receiptPath = (0, import_node_path20.join)(backupsRoot, "restore-receipt.json");
+  const receiptPath = (0, import_node_path23.join)(backupsRoot, "restore-receipt.json");
   const report = {
     schemaVersion: 1,
     status: "restored",
@@ -109996,8 +112304,8 @@ async function restoreSecondaryCanvasRecovery(options) {
     receiptPath,
     files
   };
-  await (0, import_promises10.mkdir)((0, import_node_path20.dirname)(receiptPath), { recursive: true });
-  await (0, import_promises10.writeFile)(receiptPath, `${JSON.stringify(report, null, 2)}
+  await (0, import_promises13.mkdir)((0, import_node_path23.dirname)(receiptPath), { recursive: true });
+  await (0, import_promises13.writeFile)(receiptPath, `${JSON.stringify(report, null, 2)}
 `, "utf8");
   return report;
 }
@@ -110019,12 +112327,12 @@ function secondaryCanvasRecoveryPolicy(status) {
   return buildProjectRecoveryPolicy(status);
 }
 async function collectSecondaryCanvasRecoveryInventory(status) {
-  const recoveryRoot = (0, import_node_path20.join)(status.roots.runtime, "recovery", "secondary-canvas-replicas");
+  const recoveryRoot = (0, import_node_path23.join)(status.roots.runtime, "recovery", "secondary-canvas-replicas");
   const sets = [];
   const invalidEntries = [];
   let entries;
   try {
-    entries = await (0, import_promises10.readdir)(recoveryRoot, { withFileTypes: true });
+    entries = await (0, import_promises13.readdir)(recoveryRoot, { withFileTypes: true });
   } catch (error51) {
     if (error51.code === "ENOENT") {
       return { recoveryRoot, sets, invalidEntries };
@@ -110033,7 +112341,7 @@ async function collectSecondaryCanvasRecoveryInventory(status) {
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const manifestPath = (0, import_node_path20.join)(recoveryRoot, entry.name, "manifest.json");
+    const manifestPath = (0, import_node_path23.join)(recoveryRoot, entry.name, "manifest.json");
     try {
       await assertRegularFile(
         manifestPath,
@@ -110043,7 +112351,7 @@ async function collectSecondaryCanvasRecoveryInventory(status) {
         throw new Error(`Secondary canvas recovery manifest is outside current project recovery root: ${manifestPath}`);
       }
       const manifest = parseSecondaryCanvasReplicaManifest(
-        JSON.parse(await (0, import_promises10.readFile)(manifestPath, "utf8")),
+        JSON.parse(await (0, import_promises13.readFile)(manifestPath, "utf8")),
         manifestPath
       );
       if (manifest.projectId !== status.projectId) {
@@ -110053,9 +112361,9 @@ async function collectSecondaryCanvasRecoveryInventory(status) {
         });
         continue;
       }
-      const recoverySetRoot = (0, import_node_path20.dirname)(manifestPath);
+      const recoverySetRoot = (0, import_node_path23.dirname)(manifestPath);
       for (const file2 of manifest.files) {
-        const destinationPath = (0, import_node_path20.resolve)(file2.destinationPath);
+        const destinationPath = (0, import_node_path23.resolve)(file2.destinationPath);
         if (!isSameOrInside(destinationPath, recoverySetRoot)) {
           throw new Error(`Secondary canvas recovery file destination is outside recovery set root: ${destinationPath}`);
         }
@@ -110097,11 +112405,11 @@ async function collectSecondaryCanvasRecoveryInventory(status) {
   };
 }
 async function collectSecondaryCanvasRecoveryRestoreReceipts(options) {
-  const receiptsRoot = (0, import_node_path20.join)(options.recoverySetRoot, "canonical-before-restore");
+  const receiptsRoot = (0, import_node_path23.join)(options.recoverySetRoot, "canonical-before-restore");
   const restoreReceipts = [];
   const invalidEntries = [];
   try {
-    const receiptsRootInfo = await (0, import_promises10.lstat)(receiptsRoot);
+    const receiptsRootInfo = await (0, import_promises13.lstat)(receiptsRoot);
     if (receiptsRootInfo.isSymbolicLink() && !await realPathIsSameOrInside(receiptsRoot, options.recoverySetRoot)) {
       invalidEntries.push({
         path: receiptsRoot,
@@ -110131,7 +112439,7 @@ async function collectSecondaryCanvasRecoveryRestoreReceipts(options) {
   }
   let entries;
   try {
-    entries = await (0, import_promises10.readdir)(receiptsRoot, { withFileTypes: true });
+    entries = await (0, import_promises13.readdir)(receiptsRoot, { withFileTypes: true });
   } catch (error51) {
     if (error51.code === "ENOENT") {
       return { restoreReceipts, invalidEntries };
@@ -110140,7 +112448,7 @@ async function collectSecondaryCanvasRecoveryRestoreReceipts(options) {
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const receiptPath = (0, import_node_path20.join)(receiptsRoot, entry.name, "restore-receipt.json");
+    const receiptPath = (0, import_node_path23.join)(receiptsRoot, entry.name, "restore-receipt.json");
     try {
       await assertRegularFile(
         receiptPath,
@@ -110150,7 +112458,7 @@ async function collectSecondaryCanvasRecoveryRestoreReceipts(options) {
         throw new Error(`Secondary canvas recovery restore receipt is outside recovery set root: ${receiptPath}`);
       }
       restoreReceipts.push(parseSecondaryCanvasRecoveryRestoreReceiptSummary({
-        input: JSON.parse(await (0, import_promises10.readFile)(receiptPath, "utf8")),
+        input: JSON.parse(await (0, import_promises13.readFile)(receiptPath, "utf8")),
         receiptPath,
         createdAt: entry.name,
         manifestPath: options.manifestPath,
@@ -110180,10 +112488,10 @@ function parseSecondaryCanvasRecoveryRestoreReceiptSummary(options) {
   if (record2.projectId !== projectId) {
     throw new Error(`Secondary canvas recovery restore receipt project ${record2.projectId} does not match current project ${projectId}`);
   }
-  if ((0, import_node_path20.resolve)(record2.manifestPath) !== (0, import_node_path20.resolve)(manifestPath)) {
+  if ((0, import_node_path23.resolve)(record2.manifestPath) !== (0, import_node_path23.resolve)(manifestPath)) {
     throw new Error(`Secondary canvas recovery restore receipt manifest ${record2.manifestPath} does not match recovery manifest ${manifestPath}`);
   }
-  if (typeof record2.receiptPath === "string" && (0, import_node_path20.resolve)(record2.receiptPath) !== (0, import_node_path20.resolve)(receiptPath)) {
+  if (typeof record2.receiptPath === "string" && (0, import_node_path23.resolve)(record2.receiptPath) !== (0, import_node_path23.resolve)(receiptPath)) {
     throw new Error(`Secondary canvas recovery restore receipt path ${record2.receiptPath} does not match inventory path ${receiptPath}`);
   }
   return {
@@ -110234,14 +112542,14 @@ function parseSecondaryCanvasReplicaManifest(input, manifestPath) {
   };
 }
 async function assertRegularFile(filePath, message2) {
-  const info = await (0, import_promises10.lstat)(filePath);
+  const info = await (0, import_promises13.lstat)(filePath);
   if (!info.isFile()) {
     throw new Error(message2);
   }
 }
 async function assertRegularFileIfPresent(filePath, message2) {
   try {
-    const info = await (0, import_promises10.lstat)(filePath);
+    const info = await (0, import_promises13.lstat)(filePath);
     if (!info.isFile()) {
       throw new Error(message2);
     }
@@ -110251,7 +112559,7 @@ async function assertRegularFileIfPresent(filePath, message2) {
   }
 }
 async function realPathIsSameOrInside(childPath, parentPath) {
-  const [childRealPath, parentRealPath] = await Promise.all([(0, import_promises10.realpath)(childPath), (0, import_promises10.realpath)(parentPath)]);
+  const [childRealPath, parentRealPath] = await Promise.all([(0, import_promises13.realpath)(childPath), (0, import_promises13.realpath)(parentPath)]);
   return isSameOrInside(childRealPath, parentRealPath);
 }
 async function realPathIsSameOrInsideIfPresent(childPath, parentPath) {
@@ -110261,7 +112569,7 @@ async function realPathIsSameOrInsideIfPresent(childPath, parentPath) {
     if (error51.code !== "ENOENT") throw error51;
   }
   try {
-    const [childParentRealPath, parentRealPath] = await Promise.all([(0, import_promises10.realpath)((0, import_node_path20.dirname)(childPath)), (0, import_promises10.realpath)(parentPath)]);
+    const [childParentRealPath, parentRealPath] = await Promise.all([(0, import_promises13.realpath)((0, import_node_path23.dirname)(childPath)), (0, import_promises13.realpath)(parentPath)]);
     return isSameOrInside(childParentRealPath, parentRealPath);
   } catch (error51) {
     if (error51.code === "ENOENT") return true;
@@ -110270,7 +112578,7 @@ async function realPathIsSameOrInsideIfPresent(childPath, parentPath) {
 }
 async function readFileCompareEvidence(filePath) {
   try {
-    const [info, bytes] = await Promise.all([(0, import_promises10.stat)(filePath), (0, import_promises10.readFile)(filePath)]);
+    const [info, bytes] = await Promise.all([(0, import_promises13.stat)(filePath), (0, import_promises13.readFile)(filePath)]);
     if (!info.isFile()) {
       return { path: filePath, exists: false };
     }
@@ -110278,7 +112586,7 @@ async function readFileCompareEvidence(filePath) {
       path: filePath,
       exists: true,
       size: info.size,
-      sha256: (0, import_node_crypto11.createHash)("sha256").update(bytes).digest("hex")
+      sha256: (0, import_node_crypto13.createHash)("sha256").update(bytes).digest("hex")
     };
   } catch (error51) {
     if (error51.code === "ENOENT") {
@@ -110291,38 +112599,38 @@ function secondaryCanvasRecoveryReadToken(report) {
   const payload = {
     schemaVersion: report.schemaVersion,
     projectId: report.projectId,
-    manifestPath: (0, import_node_path20.resolve)(report.manifestPath),
+    manifestPath: (0, import_node_path23.resolve)(report.manifestPath),
     canonicalReplica: {
-      replicaRoot: (0, import_node_path20.resolve)(report.canonicalReplica.replicaRoot),
-      snapshotPath: (0, import_node_path20.resolve)(report.canonicalReplica.snapshotPath),
-      updatesLogPath: (0, import_node_path20.resolve)(report.canonicalReplica.updatesLogPath)
+      replicaRoot: (0, import_node_path23.resolve)(report.canonicalReplica.replicaRoot),
+      snapshotPath: (0, import_node_path23.resolve)(report.canonicalReplica.snapshotPath),
+      updatesLogPath: (0, import_node_path23.resolve)(report.canonicalReplica.updatesLogPath)
     },
     recoveryPolicy: report.recoveryPolicy,
     files: [...report.files].sort((a, b) => a.kind.localeCompare(b.kind) || a.destinationPath.localeCompare(b.destinationPath)).map((file2) => ({
       kind: file2.kind,
       sourcePath: file2.sourcePath,
-      destinationPath: (0, import_node_path20.resolve)(file2.destinationPath),
+      destinationPath: (0, import_node_path23.resolve)(file2.destinationPath),
       quarantined: {
         exists: file2.quarantined.exists,
         size: file2.quarantined.size ?? null,
         sha256: file2.quarantined.sha256 ?? null
       },
       canonical: {
-        path: (0, import_node_path20.resolve)(file2.canonical.path),
+        path: (0, import_node_path23.resolve)(file2.canonical.path),
         exists: file2.canonical.exists,
         size: file2.canonical.size ?? null,
         sha256: file2.canonical.sha256 ?? null
       }
     }))
   };
-  const hash2 = (0, import_node_crypto11.createHash)("sha256").update(JSON.stringify(payload)).digest("hex");
+  const hash2 = (0, import_node_crypto13.createHash)("sha256").update(JSON.stringify(payload)).digest("hex");
   return `secondary-canvas-recovery:${hash2}`;
 }
 async function repairSecondaryCanvasReplicas(status, cwd) {
   const paths2 = await findSecondaryCanvasReplicaPaths(status, cwd);
   if (paths2.length === 0) return [];
   const runId = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-  const quarantineRoot = (0, import_node_path20.join)(
+  const quarantineRoot = (0, import_node_path23.join)(
     status.roots.runtime,
     "recovery",
     "secondary-canvas-replicas",
@@ -110342,13 +112650,13 @@ async function repairSecondaryCanvasReplicas(status, cwd) {
   };
   for (const [index, sourcePath] of paths2.entries()) {
     const kind = sourcePath.endsWith("updates.log") ? "updates-log" : "snapshot";
-    const destination = (0, import_node_path20.join)(
+    const destination = (0, import_node_path23.join)(
       quarantineRoot,
       String(index + 1).padStart(3, "0"),
       kind === "updates-log" ? "updates.log" : "snapshot.bin"
     );
-    await (0, import_promises10.mkdir)((0, import_node_path20.dirname)(destination), { recursive: true });
-    await (0, import_promises10.rename)(sourcePath, destination);
+    await (0, import_promises13.mkdir)((0, import_node_path23.dirname)(destination), { recursive: true });
+    await (0, import_promises13.rename)(sourcePath, destination);
     manifest.files.push({
       kind,
       sourcePath,
@@ -110361,7 +112669,7 @@ async function repairSecondaryCanvasReplicas(status, cwd) {
       path: destination
     });
   }
-  await (0, import_promises10.writeFile)((0, import_node_path20.join)(quarantineRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
+  await (0, import_promises13.writeFile)((0, import_node_path23.join)(quarantineRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
 `, "utf8");
   return repairs;
 }
@@ -110401,7 +112709,7 @@ async function pushPathCheck(checks, options) {
 }
 async function pathExists(path, kind) {
   try {
-    const info = await (0, import_promises10.stat)(path);
+    const info = await (0, import_promises13.stat)(path);
     return kind === "file" ? info.isFile() : info.isDirectory();
   } catch (error51) {
     if (error51.code === "ENOENT") return false;
@@ -110411,7 +112719,7 @@ async function pathExists(path, kind) {
 async function inspectAssetLinksRoot(assetLinksRoot) {
   let entries;
   try {
-    entries = await (0, import_promises10.readdir)(assetLinksRoot, { withFileTypes: true });
+    entries = await (0, import_promises13.readdir)(assetLinksRoot, { withFileTypes: true });
   } catch (error51) {
     if (error51.code === "ENOENT") {
       return {
@@ -110426,11 +112734,11 @@ async function inspectAssetLinksRoot(assetLinksRoot) {
   const broken = [];
   const invalid = [];
   for (const entry of entries) {
-    const entryPath = (0, import_node_path20.join)(assetLinksRoot, entry.name);
-    const info = await (0, import_promises10.lstat)(entryPath);
+    const entryPath = (0, import_node_path23.join)(assetLinksRoot, entry.name);
+    const info = await (0, import_promises13.lstat)(entryPath);
     if (info.isSymbolicLink()) {
       try {
-        const target = await (0, import_promises10.stat)(entryPath);
+        const target = await (0, import_promises13.stat)(entryPath);
         if (!target.isFile()) invalid.push(`${entry.name} (symlink target is not a file)`);
       } catch (error51) {
         if (error51.code === "ENOENT") {
@@ -110468,11 +112776,11 @@ async function repairProjectWorkspace(status) {
     { id: "editable-drafts-root", path: status.roots.drafts, message: "Created editable drafts root." },
     { id: "editable-projections-root", path: status.roots.projections, message: "Created editable projections root." },
     { id: "editable-timelines-root", path: status.roots.timelines, message: "Created editable timeline view root." },
-    { id: "editable-projections-text-root", path: (0, import_node_path20.join)(status.roots.projections, "text"), message: "Created editable text projections root." },
-    { id: "editable-projections-timelines-root", path: (0, import_node_path20.join)(status.roots.projections, "timelines"), message: "Created editable timeline projections root." },
-    { id: "editable-projections-storyboards-root", path: (0, import_node_path20.join)(status.roots.projections, "storyboards"), message: "Created editable storyboard projections root." },
-    { id: "editable-projections-prompts-root", path: (0, import_node_path20.join)(status.roots.projections, "prompts"), message: "Created editable prompt projections root." },
-    { id: "editable-projections-metadata-root", path: (0, import_node_path20.join)(status.roots.projections, "metadata"), message: "Created editable metadata projections root." },
+    { id: "editable-projections-text-root", path: (0, import_node_path23.join)(status.roots.projections, "text"), message: "Created editable text projections root." },
+    { id: "editable-projections-timelines-root", path: (0, import_node_path23.join)(status.roots.projections, "timelines"), message: "Created editable timeline projections root." },
+    { id: "editable-projections-storyboards-root", path: (0, import_node_path23.join)(status.roots.projections, "storyboards"), message: "Created editable storyboard projections root." },
+    { id: "editable-projections-prompts-root", path: (0, import_node_path23.join)(status.roots.projections, "prompts"), message: "Created editable prompt projections root." },
+    { id: "editable-projections-metadata-root", path: (0, import_node_path23.join)(status.roots.projections, "metadata"), message: "Created editable metadata projections root." },
     { id: "editable-sessions-root", path: status.roots.sessions, message: "Created editable sessions root." },
     { id: "editable-asset-links-root", path: status.roots.assetLinks, message: "Created editable asset links root." },
     { id: "protected-runtime-root", path: status.roots.runtime, message: "Created protected runtime root." }
@@ -110480,7 +112788,7 @@ async function repairProjectWorkspace(status) {
   const repairs = [];
   for (const item of paths2) {
     const existed = await pathExists(item.path, "directory");
-    await (0, import_promises10.mkdir)(item.path, { recursive: true });
+    await (0, import_promises13.mkdir)(item.path, { recursive: true });
     if (!existed) {
       repairs.push({ id: item.id, message: item.message, path: item.path });
     }
@@ -110488,7 +112796,7 @@ async function repairProjectWorkspace(status) {
   return repairs;
 }
 async function repairLocalSqliteSchema(sqlitePath) {
-  await (0, import_promises10.mkdir)((0, import_node_path20.dirname)(sqlitePath), { recursive: true });
+  await (0, import_promises13.mkdir)((0, import_node_path23.dirname)(sqlitePath), { recursive: true });
   let db;
   try {
     const { DatabaseSync } = require3("node:sqlite");
@@ -111283,10 +113591,10 @@ function inspectSqliteTableSchema(db, problems, options) {
   }
 }
 function isSameOrInside(childPath, parentPath) {
-  const child = (0, import_node_path20.resolve)(childPath);
-  const parent = (0, import_node_path20.resolve)(parentPath);
-  const relation = (0, import_node_path20.relative)(parent, child);
-  return relation === "" || !relation.startsWith("..") && !(0, import_node_path20.isAbsolute)(relation);
+  const child = (0, import_node_path23.resolve)(childPath);
+  const parent = (0, import_node_path23.resolve)(parentPath);
+  const relation = (0, import_node_path23.relative)(parent, child);
+  return relation === "" || !relation.startsWith("..") && !(0, import_node_path23.isAbsolute)(relation);
 }
 var doctorCommand = new Command("doctor").description("Inspect local Clash project health");
 doctorCommand.command("storage").description("Inspect local project storage roots and protected paths").option("--project <id>", "Project ID").option("--repair", "Create missing workspace roots and repair known local SQLite schema gaps").option("--json", "Output as JSON").action(async (options) => {
@@ -111372,9 +113680,9 @@ storageRecoveryCommand.command("restore").description("Explicitly restore a quar
 });
 
 // ../../packages/cli/src/commands/text.ts
-var import_node_crypto12 = require("node:crypto");
+var import_node_crypto14 = require("node:crypto");
 var import_node_fs11 = require("node:fs");
-var import_node_path21 = require("node:path");
+var import_node_path24 = require("node:path");
 function isAgentTextClient() {
   return resolveCanvasPresenceOptions().clientType === "agent";
 }
@@ -111443,7 +113751,7 @@ textCommand.command("pull").description("Export a canvas text node's content to 
   }
   const content = textContentFromNode(node);
   const version2 = node.readToken ?? textReadToken({ projectId, nodeId: options.node, content });
-  (0, import_node_fs11.mkdirSync)((0, import_node_path21.dirname)(filePath), { recursive: true });
+  (0, import_node_fs11.mkdirSync)((0, import_node_path24.dirname)(filePath), { recursive: true });
   (0, import_node_fs11.writeFileSync)(filePath, content, "utf8");
   await recordTextObservation(context, options.node, version2);
   const payload = {
@@ -111617,7 +113925,7 @@ textCommand.command("content").description("Fetch an applied text revision's Mar
         filePath: options.out,
         writeVerb: "Text revision content output"
       });
-      (0, import_node_fs11.mkdirSync)((0, import_node_path21.dirname)(filePath), { recursive: true });
+      (0, import_node_fs11.mkdirSync)((0, import_node_path24.dirname)(filePath), { recursive: true });
       (0, import_node_fs11.writeFileSync)(filePath, content, "utf8");
       const payload = {
         projectId,
@@ -111783,12 +114091,12 @@ async function restoreTextRevisionContent(options, deps = {}) {
   const apply = deps.apply ?? applyTextContent;
   const replace = deps.replace ?? replaceTextContent;
   const register = deps.register ?? registerTextRevisionIndex;
-  const mkdir40 = deps.mkdir ?? import_node_fs11.mkdirSync;
-  const writeFile39 = deps.writeFile ?? import_node_fs11.writeFileSync;
+  const mkdir41 = deps.mkdir ?? import_node_fs11.mkdirSync;
+  const writeFile40 = deps.writeFile ?? import_node_fs11.writeFileSync;
   const filePath = resolveTextFilePath({
     cwd: options.cwd,
     nodeId: options.nodeId,
-    file: options.file ?? (0, import_node_path21.join)(options.cwd, "revisions", `${revisionFileStem(options.revisionId)}.md`)
+    file: options.file ?? (0, import_node_path24.join)(options.cwd, "revisions", `${revisionFileStem(options.revisionId)}.md`)
   });
   const content = await fetchContent(options.projectId, options.revisionId);
   const currentNode = await readCurrentNode(options.projectId, options.nodeId);
@@ -111801,8 +114109,8 @@ async function restoreTextRevisionContent(options, deps = {}) {
     nodeId: options.nodeId,
     content: textContentFromNode(currentNode)
   });
-  mkdir40((0, import_node_path21.dirname)(filePath), { recursive: true });
-  writeFile39(filePath, content, "utf8");
+  mkdir41((0, import_node_path24.dirname)(filePath), { recursive: true });
+  writeFile40(filePath, content, "utf8");
   const sharedCas = {
     observedVersion,
     filePath,
@@ -111995,7 +114303,7 @@ async function replaceTextContent(projectId, nodeId, content, cas) {
       type: current.type,
       data: current.data
     });
-    const newNodeId = cas.newNodeId?.trim() || (0, import_node_crypto12.randomUUID)().slice(0, 8);
+    const newNodeId = cas.newNodeId?.trim() || (0, import_node_crypto14.randomUUID)().slice(0, 8);
     const textRevision = createTextAppliedRevision({
       projectId,
       nodeId: newNodeId,
@@ -112042,935 +114350,14 @@ async function replaceTextContent(projectId, nodeId, content, cas) {
 }
 
 // ../../packages/cli/src/commands/production.ts
-var import_node_crypto18 = require("node:crypto");
-var import_promises43 = require("node:fs/promises");
-var import_node_path53 = require("node:path");
-
-// ../../packages/cli/src/lib/production-actions.ts
-var import_promises11 = require("node:fs/promises");
-var import_node_path22 = require("node:path");
-async function applyProductionMetadataAction(options) {
-  const cwd = options.cwd;
-  const actionPath = resolveLocalPath(cwd, options.actionPath, "action");
-  const assetsPath = resolveLocalPath(cwd, options.assetsPath ?? (0, import_node_path22.join)("assets", "manifest.json"), "asset manifest");
-  const action = AssetMetadataFillActionSchema.parse(
-    JSON.parse(await (0, import_promises11.readFile)(actionPath, "utf8"))
-  );
-  const targetAssetFileStem = safeProjectionFileSegment(action.targetAssetId, "targetAssetId");
-  const metadataKindFileStem = safeProjectionFileSegment(action.metadataKind, "metadataKind");
-  const branchFileStems = productionMetadataFileStems(action.metadata);
-  preflightProductionMetadataGeneratedAssetPaths(action.metadata);
-  const metadataPath = resolveProjectionFilePathInsideCwd({
-    cwd,
-    filePath: (0, import_node_path22.join)(
-      cwd,
-      "projections",
-      "metadata",
-      `${targetAssetFileStem}.${metadataKindFileStem}.json`
-    )
-  });
-  const metadataManifestPath = assetMetadataManifestPath(cwd, metadataPath);
-  const manifest = parseAssetManifest(await (0, import_promises11.readFile)(assetsPath, "utf8"), assetsPath);
-  const assetIndex = manifest.assets.findIndex((asset) => asset.id === action.targetAssetId);
-  if (assetIndex < 0) {
-    throw new Error(`Asset ${action.targetAssetId} not found in ${assetsPath}`);
-  }
-  const updatedAsset = applyAssetMetadataFill(manifest.assets[assetIndex], action);
-  manifest.assets[assetIndex] = updatedAsset;
-  await writeJson(assetsPath, manifest);
-  await writeJson(metadataPath, action.metadata);
-  const metadataManifest = {
-    schemaVersion: 1,
-    kind: "clash.asset.metadata.manifest",
-    targetAssetId: action.targetAssetId,
-    metadataKind: action.metadataKind,
-    metadataPath: toProjectPath3(cwd, metadataPath),
-    baseMetadataHash: productionMetadataHash(action.metadata),
-    sourceActionPath: toProjectPath3(cwd, actionPath),
-    sourceActionHash: productionMetadataHash(action)
-  };
-  await writeJson(metadataManifestPath, metadataManifest);
-  const result = {
-    applied: true,
-    targetAssetId: action.targetAssetId,
-    metadataKind: action.metadataKind,
-    assetsPath,
-    metadataPath,
-    metadataManifestPath,
-    version: assetMetadataObservationVersion(
-      metadataManifest,
-      metadataManifest.baseMetadataHash,
-      metadataManifest.sourceActionHash
-    )
-  };
-  const writeDerivedProjectionJson = async (projectionPath, _projectionKind, value) => {
-    const safeProjectionPath = resolveProjectionFilePathInsideCwd({ filePath: projectionPath, cwd });
-    await writeJson(safeProjectionPath, value);
-  };
-  switch (action.metadata.kind) {
-    case "audio.beat-analysis": {
-      const hintsPath = (0, import_node_path22.join)(cwd, "projections", "timeline-hints", `${targetAssetFileStem}.beat-hints.json`);
-      await writeDerivedProjectionJson(hintsPath, "audio-beat-hints", {
-        assetId: action.targetAssetId,
-        metadataKind: action.metadataKind,
-        hints: buildBeatEditHints(action.metadata),
-        sections: action.metadata.sections,
-        energyCurve: action.metadata.energyCurve,
-        cuts: buildBeatSectionCutPlan(action.metadata)
-      });
-      result.timelineProjectionPath = hintsPath;
-      break;
-    }
-    case "audio.lyrics-alignment": {
-      const lyricsProjectionPath = (0, import_node_path22.join)(cwd, "projections", "lyrics", `${targetAssetFileStem}.lyrics-alignment.json`);
-      await writeDerivedProjectionJson(lyricsProjectionPath, "audio-lyrics-alignment", {
-        schemaVersion: 1,
-        kind: "clash.audio.lyrics-alignment.projection",
-        targetAssetId: action.targetAssetId,
-        fps: action.metadata.fps,
-        lyricsSource: action.metadata.lyricsSource,
-        vocalStemAssetId: action.metadata.vocalStemAssetId,
-        units: action.metadata.units,
-        unmatchedRanges: action.metadata.unmatchedRanges,
-        reviewRequired: action.metadata.units.some((unit) => unit.confidence < 0.7)
-      });
-      const captionItem = buildCaptionItemFromLyricsAlignmentMetadata(
-        `${action.targetAssetId}-lyrics`,
-        action.metadata,
-        0
-      );
-      const timelinePath = (0, import_node_path22.join)(cwd, "projections", "timelines", `${targetAssetFileStem}.lyrics.caption.timeline.yaml`);
-      const timelineYaml = timelineDslToYaml({
-        compositionWidth: 1080,
-        compositionHeight: 1920,
-        fps: action.metadata.fps,
-        durationInFrames: captionItem.durationInFrames,
-        tracks: [
-          {
-            id: "lyrics",
-            name: "Lyrics",
-            role: "subtitle",
-            items: [captionItem]
-          }
-        ]
-      });
-      await writeText(timelinePath, timelineYaml);
-      result.timelineProjectionPath = timelinePath;
-      break;
-    }
-    case "audio.stem-separation": {
-      const stemProjectionPath = (0, import_node_path22.join)(
-        cwd,
-        "projections",
-        "audio",
-        `${targetAssetFileStem}.${branchFileStems.separationId}.stem-separation.json`
-      );
-      await writeDerivedProjectionJson(stemProjectionPath, "audio-stem-separation", {
-        schemaVersion: 1,
-        kind: "clash.audio.stem-separation.projection",
-        targetAssetId: action.targetAssetId,
-        separationId: action.metadata.separationId,
-        sourceAssetId: action.metadata.sourceAssetId,
-        sourcePath: action.metadata.sourcePath,
-        backendId: action.metadata.backendId,
-        modelId: action.metadata.modelId,
-        stems: action.metadata.stems,
-        vocalStemAssetId: action.metadata.vocalStemAssetId,
-        decisionLog: action.metadata.decisionLog
-      });
-      upsertAudioStemAssets(manifest, action.metadata);
-      await writeJson(assetsPath, manifest);
-      result.timelineProjectionPath = stemProjectionPath;
-      break;
-    }
-    case "talking-head.analysis": {
-      if (action.metadata.asr) {
-        const transcriptProjectionPath = (0, import_node_path22.join)(
-          cwd,
-          "projections",
-          "transcripts",
-          `${targetAssetFileStem}.asr-transcript.json`
-        );
-        await writeDerivedProjectionJson(transcriptProjectionPath, "talking-head-asr-transcript", {
-          schemaVersion: 1,
-          targetAssetId: action.targetAssetId,
-          ...action.metadata.asr,
-          transcriptKind: action.metadata.asr.kind,
-          kind: "clash.talking-head.asr-transcript.projection",
-          words: action.metadata.words
-        });
-        result.transcriptProjectionPath = transcriptProjectionPath;
-      }
-      const captionItem = buildCaptionItemFromTalkingHeadMetadata(
-        `${action.targetAssetId}-captions`,
-        action.metadata,
-        0
-      );
-      const transcriptCutPlanPath = (0, import_node_path22.join)(
-        cwd,
-        "projections",
-        "media-cuts",
-        `${targetAssetFileStem}.transcript-cut-plan.json`
-      );
-      await writeDerivedProjectionJson(transcriptCutPlanPath, "talking-head-transcript-cut-plan", {
-        schemaVersion: 1,
-        kind: "clash.talking-head.transcript-cut-plan.projection",
-        sourceAssetId: action.targetAssetId,
-        strategy: "conservative",
-        fps: action.metadata.fps,
-        asr: action.metadata.asr,
-        disfluencies: action.metadata.disfluencies,
-        cuts: action.metadata.cuts,
-        sourceToOutputMap: captionItem.sourceToOutputMap,
-        captionTrack: captionItem
-      });
-      result.transcriptCutPlanPath = transcriptCutPlanPath;
-      const timelinePath = (0, import_node_path22.join)(cwd, "projections", "timelines", `${targetAssetFileStem}.caption.timeline.yaml`);
-      const timelineYaml = timelineDslToYaml({
-        compositionWidth: 1080,
-        compositionHeight: 1920,
-        fps: action.metadata.fps,
-        durationInFrames: captionItem.durationInFrames,
-        tracks: [
-          {
-            id: "subtitles",
-            name: "Subtitles",
-            role: "subtitle",
-            items: [captionItem]
-          }
-        ]
-      });
-      await writeText(timelinePath, timelineYaml);
-      result.timelineProjectionPath = timelinePath;
-      break;
-    }
-    case "reference-video.analysis": {
-      let blockedReason;
-      try {
-        assertReferenceCanBeRemixed(action.metadata);
-      } catch (error51) {
-        blockedReason = error51 instanceof Error ? error51.message : String(error51);
-      }
-      const rightsLedger = buildReferenceRightsLedger(action.targetAssetId, action.metadata);
-      const rightsLedgerPath = (0, import_node_path22.join)(cwd, "projections", "rights", `${targetAssetFileStem}.rights-ledger.json`);
-      await writeDerivedProjectionJson(rightsLedgerPath, "reference-rights-ledger", rightsLedger);
-      const shotAnalysisPath = (0, import_node_path22.join)(cwd, "projections", "references", `${targetAssetFileStem}.shot-analysis.json`);
-      await writeDerivedProjectionJson(shotAnalysisPath, "reference-shot-analysis", {
-        schemaVersion: 1,
-        kind: "clash.reference.shot-analysis.projection",
-        targetAssetId: action.targetAssetId,
-        sourceUrl: action.metadata.sourceUrl,
-        rightsLedgerPath,
-        analysisOnly: true,
-        mediaCopied: false,
-        finalExportAllowed: rightsLedger.remixAllowed,
-        allowedUses: rightsLedger.allowedUses,
-        prohibitedUses: rightsLedger.prohibitedUses,
-        shots: action.metadata.shots
-      });
-      const reviewPath = (0, import_node_path22.join)(cwd, "projections", "references", `${targetAssetFileStem}.reference-review.json`);
-      await writeDerivedProjectionJson(reviewPath, "reference-review", {
-        assetId: action.targetAssetId,
-        remixAllowed: !blockedReason,
-        blockedReason,
-        rightsLedgerPath,
-        sourceUrl: action.metadata.sourceUrl,
-        rights: action.metadata.rights,
-        nonCopyingQa: action.metadata.nonCopyingQa,
-        shots: action.metadata.shots
-      });
-      result.blockedReason = blockedReason;
-      result.rightsLedgerPath = rightsLedgerPath;
-      result.shotAnalysisProjectionPath = shotAnalysisPath;
-      break;
-    }
-    case "video.visual-moments": {
-      const visualMomentsPath = (0, import_node_path22.join)(
-        cwd,
-        "projections",
-        "visual-moments",
-        `${targetAssetFileStem}.visual-moments.json`
-      );
-      await writeDerivedProjectionJson(visualMomentsPath, "video-visual-moments", {
-        schemaVersion: 1,
-        kind: "clash.video.visual-moments.projection",
-        sourceVideoAssetId: action.metadata.sourceVideoAssetId,
-        fps: action.metadata.fps,
-        sourcePath: action.metadata.sourcePath,
-        sceneChanges: action.metadata.sceneChanges,
-        candidates: action.metadata.candidates,
-        recommendedClips: buildVisualMomentClipLibrary(action.metadata)
-      });
-      break;
-    }
-    case "image.storyboard-consistency": {
-      const storyboardPath = (0, import_node_path22.join)(cwd, "projections", "storyboards", `${targetAssetFileStem}.storyboard.json`);
-      await writeDerivedProjectionJson(storyboardPath, "image-storyboard", {
-        assetId: action.targetAssetId,
-        characters: action.metadata.characters,
-        scenes: action.metadata.scenes,
-        panels: action.metadata.panels
-      });
-      upsertCharacterReferenceSheetAssets(manifest, action.targetAssetId, action.metadata.characters);
-      upsertStoryboardPanelAssets(manifest, action.targetAssetId, action.metadata.panels);
-      await writeJson(assetsPath, manifest);
-      break;
-    }
-    case "image.semantic-reference-roles": {
-      const projectionPath = (0, import_node_path22.join)(
-        cwd,
-        "projections",
-        "references",
-        `${targetAssetFileStem}.semantic-reference-roles.json`
-      );
-      await writeDerivedProjectionJson(projectionPath, "image-semantic-reference-roles", {
-        schemaVersion: 1,
-        kind: "clash.image.semantic-reference-roles.projection",
-        targetAssetId: action.targetAssetId,
-        roles: action.metadata.roles,
-        copyOnWriteRequired: action.metadata.roles.every((role) => role.copyOnWriteRequired)
-      });
-      upsertSemanticReferenceRoleAssets(manifest, action.targetAssetId, action.metadata.roles);
-      await writeJson(assetsPath, manifest);
-      break;
-    }
-    case "image.product-logo-qa": {
-      const qaPath = (0, import_node_path22.join)(cwd, "projections", "qa", `${targetAssetFileStem}.product-logo-qa.json`);
-      await writeDerivedProjectionJson(qaPath, "image-product-logo-qa", {
-        schemaVersion: 1,
-        kind: "clash.image.product-logo-qa.projection",
-        targetAssetId: action.targetAssetId,
-        referencePackAssetId: action.metadata.referencePackAssetId,
-        requiredReferenceAssetIds: action.metadata.requiredReferenceAssetIds,
-        references: action.metadata.references,
-        checks: action.metadata.checks,
-        verdict: action.metadata.verdict,
-        blockedReasons: action.metadata.blockedReasons,
-        copyOnWriteRequired: action.metadata.copyOnWriteRequired
-      });
-      break;
-    }
-    case "analysis.backend-benchmark": {
-      const analysisPath = (0, import_node_path22.join)(
-        cwd,
-        "projections",
-        "analysis",
-        `${targetAssetFileStem}.${branchFileStems.benchmarkId}.backend-benchmark.json`
-      );
-      await writeDerivedProjectionJson(analysisPath, "analysis-backend-benchmark", {
-        schemaVersion: 1,
-        kind: "clash.analysis.backend-benchmark.projection",
-        targetAssetId: action.targetAssetId,
-        benchmarkId: action.metadata.benchmarkId,
-        targetCapability: action.metadata.targetCapability,
-        fixtureSetPath: action.metadata.fixtureSetPath,
-        candidates: action.metadata.candidates,
-        selectedBackendId: action.metadata.selectedBackendId,
-        verdict: action.metadata.verdict,
-        blockedReasons: action.metadata.blockedReasons,
-        decisionLog: action.metadata.decisionLog
-      });
-      break;
-    }
-    case "image.embedding-store": {
-      const embeddingPath = (0, import_node_path22.join)(
-        cwd,
-        "projections",
-        "embeddings",
-        `${targetAssetFileStem}.${branchFileStems.embeddingSetId}.embedding-store.json`
-      );
-      await writeDerivedProjectionJson(embeddingPath, "image-embedding-store", {
-        schemaVersion: 1,
-        kind: "clash.image.embedding-store.projection",
-        targetAssetId: action.targetAssetId,
-        embeddingSetId: action.metadata.embeddingSetId,
-        modelId: action.metadata.modelId,
-        dimension: action.metadata.dimension,
-        distanceMetric: action.metadata.distanceMetric,
-        items: action.metadata.items,
-        copyOnWriteRequired: action.metadata.copyOnWriteRequired
-      });
-      upsertImageEmbeddingAssets(manifest, action.metadata.embeddingSetId, action.metadata.items);
-      await writeJson(assetsPath, manifest);
-      break;
-    }
-    case "image.comfyui-runner": {
-      const comfyuiPath = (0, import_node_path22.join)(
-        cwd,
-        "projections",
-        "image",
-        `${targetAssetFileStem}.${branchFileStems.workflowId}.comfyui-runner.json`
-      );
-      await writeDerivedProjectionJson(comfyuiPath, "image-comfyui-runner", {
-        schemaVersion: 1,
-        kind: "clash.image.comfyui-runner.projection",
-        targetAssetId: action.targetAssetId,
-        workflowId: action.metadata.workflowId,
-        workflowPath: action.metadata.workflowPath,
-        workflowHash: action.metadata.workflowHash,
-        apiFormat: action.metadata.apiFormat,
-        backendId: action.metadata.backendId,
-        models: action.metadata.models,
-        customNodes: action.metadata.customNodes,
-        inputs: action.metadata.inputs,
-        outputs: action.metadata.outputs,
-        execution: action.metadata.execution,
-        decisionLog: action.metadata.decisionLog
-      });
-      upsertComfyuiOutputAssets(manifest, action.targetAssetId, action.metadata);
-      await writeJson(assetsPath, manifest);
-      result.timelineProjectionPath = comfyuiPath;
-      break;
-    }
-    case "ad.delivery-spec": {
-      const deliveryPath = (0, import_node_path22.join)(cwd, "projections", "delivery", `${targetAssetFileStem}.delivery-spec.json`);
-      await writeDerivedProjectionJson(deliveryPath, "ad-delivery-spec", {
-        schemaVersion: 1,
-        kind: "clash.ad.delivery-spec.projection",
-        targetAssetId: action.targetAssetId,
-        brand: action.metadata.brand,
-        fps: action.metadata.fps,
-        platforms: action.metadata.platforms,
-        variants: action.metadata.variants,
-        packshot: action.metadata.packshot,
-        endCard: action.metadata.endCard,
-        rightsLedgerAssetId: action.metadata.rightsLedgerAssetId,
-        checklist: buildAdDeliveryChecklist(action.metadata)
-      });
-      break;
-    }
-    case "ad.visual-qa": {
-      const qaPath = (0, import_node_path22.join)(
-        cwd,
-        "projections",
-        "qa",
-        `${targetAssetFileStem}.${branchFileStems.variantId}.ad-visual-qa.json`
-      );
-      await writeDerivedProjectionJson(qaPath, "ad-visual-qa", {
-        schemaVersion: 1,
-        kind: "clash.ad.visual-qa.projection",
-        targetAssetId: action.targetAssetId,
-        variantId: action.metadata.variantId,
-        renderedPath: action.metadata.renderedPath,
-        evidencePath: action.metadata.evidencePath,
-        checks: action.metadata.checks,
-        verdict: action.metadata.verdict,
-        blockedReasons: action.metadata.blockedReasons,
-        visualQa: action.metadata.visualQa,
-        decisionLog: action.metadata.decisionLog
-      });
-      result.timelineProjectionPath = qaPath;
-      break;
-    }
-    case "provenance.content-credentials": {
-      const provenancePath = (0, import_node_path22.join)(
-        cwd,
-        "projections",
-        "provenance",
-        `${targetAssetFileStem}.${branchFileStems.credentialId}.content-credentials.json`
-      );
-      await writeDerivedProjectionJson(provenancePath, "provenance-content-credentials", {
-        schemaVersion: 1,
-        kind: "clash.provenance.content-credentials.projection",
-        targetAssetId: action.targetAssetId,
-        credentialId: action.metadata.credentialId,
-        targetPath: action.metadata.targetPath,
-        targetHash: action.metadata.targetHash,
-        mode: action.metadata.mode,
-        signatureStatus: action.metadata.signatureStatus,
-        c2paManifestPath: action.metadata.c2paManifestPath,
-        c2paManifestHash: action.metadata.c2paManifestHash,
-        issuer: action.metadata.issuer,
-        ingredients: action.metadata.ingredients,
-        actions: action.metadata.actions,
-        assertions: action.metadata.assertions,
-        decisionLog: action.metadata.decisionLog
-      });
-      result.timelineProjectionPath = provenancePath;
-      break;
-    }
-  }
-  return result;
-}
-async function applyProductionMetadataProjection(options) {
-  const cwd = options.cwd;
-  const metadataPath = resolveLocalPath(cwd, options.filePath, "metadata projection");
-  const metadataManifestPath = assetMetadataManifestPath(cwd, metadataPath);
-  const assetsPath = resolveLocalPath(cwd, options.assetsPath ?? (0, import_node_path22.join)("assets", "manifest.json"), "asset manifest");
-  const metadataManifest = await readAssetMetadataManifest(metadataManifestPath);
-  if (metadataManifest.metadataPath !== toProjectPath3(cwd, metadataPath)) {
-    throw new Error("READ_REQUIRED: This metadata file was not projected from the current cwd path.");
-  }
-  const metadata = ProductionMetadataSchema.parse(
-    JSON.parse(await (0, import_promises11.readFile)(metadataPath, "utf8"))
-  );
-  if (metadata.kind !== metadataManifest.metadataKind) {
-    throw new Error(`metadata kind mismatch: ${metadata.kind} does not match manifest ${metadataManifest.metadataKind}`);
-  }
-  const manifest = parseAssetManifest(await (0, import_promises11.readFile)(assetsPath, "utf8"), assetsPath);
-  const assetIndex = manifest.assets.findIndex((asset) => asset.id === metadataManifest.targetAssetId);
-  if (assetIndex < 0) {
-    throw new Error(`Asset ${metadataManifest.targetAssetId} not found in ${assetsPath}`);
-  }
-  const currentMetadata = manifest.assets[assetIndex].metadata?.[metadataManifest.metadataKind];
-  const beforeMetadataHash = productionMetadataHash(currentMetadata ?? null);
-  const sourceActionPath = resolveLocalPath(cwd, metadataManifest.sourceActionPath, "source action");
-  const sourceAction = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises11.readFile)(sourceActionPath, "utf8")));
-  const currentSourceActionHash = productionMetadataHash(sourceAction);
-  const currentVersion = assetMetadataObservationVersion(
-    metadataManifest,
-    beforeMetadataHash,
-    currentSourceActionHash
-  );
-  if (!options.expectedVersion) {
-    throw new Error("READ_REQUIRED: Run `clash production apply-metadata` before applying the metadata projection.");
-  }
-  if (options.expectedVersion !== currentVersion) {
-    throw new Error(
-      "STALE_READ: Asset metadata or its source action changed after it was read. Run `clash production apply-metadata` again and reconcile before applying."
-    );
-  }
-  const afterMetadataHash = productionMetadataHash(metadata);
-  manifest.assets[assetIndex] = applyAssetMetadataFill(manifest.assets[assetIndex], {
-    actionId: `metadata-projection-apply:${afterMetadataHash}`,
-    targetAssetId: metadataManifest.targetAssetId,
-    metadataKind: metadataManifest.metadataKind,
-    metadata,
-    producer: "clash production apply-metadata-projection",
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  });
-  await writeJson(assetsPath, manifest);
-  const nextMetadataManifest = {
-    ...metadataManifest,
-    baseMetadataHash: afterMetadataHash,
-    sourceActionHash: currentSourceActionHash
-  };
-  await writeJson(metadataManifestPath, nextMetadataManifest);
-  return {
-    applied: true,
-    targetAssetId: metadataManifest.targetAssetId,
-    metadataKind: metadataManifest.metadataKind,
-    assetsPath,
-    metadataPath,
-    metadataManifestPath,
-    beforeMetadataHash,
-    afterMetadataHash,
-    version: assetMetadataObservationVersion(
-      nextMetadataManifest,
-      afterMetadataHash,
-      currentSourceActionHash
-    )
-  };
-}
-function upsertImageEmbeddingAssets(manifest, embeddingSetId, items) {
-  for (const item of items) {
-    const existingIndex = manifest.assets.findIndex((asset) => asset.id === item.assetId);
-    const embeddingMetadata = {
-      embeddingSetId,
-      ...item.roleId ? { roleId: item.roleId } : {},
-      ...item.subjectId ? { subjectId: item.subjectId } : {},
-      path: normalizeProjectRelativePath(item.path, `embedding item ${item.assetId} path`),
-      vectorPath: normalizeProjectRelativePath(item.vectorPath, `embedding item ${item.assetId} vectorPath`),
-      vectorHash: item.vectorHash,
-      dimension: item.dimension,
-      baselineFor: item.baselineFor,
-      locked: item.locked,
-      copyOnWriteRequired: item.copyOnWriteRequired,
-      tags: item.tags
-    };
-    if (existingIndex >= 0) {
-      const existing = manifest.assets[existingIndex];
-      manifest.assets[existingIndex] = {
-        ...existing,
-        path: existing.path ?? embeddingMetadata.path,
-        metadata: {
-          ...existing.metadata ?? {},
-          "image.embedding": embeddingMetadata
-        }
-      };
-    } else {
-      manifest.assets.push({
-        id: item.assetId,
-        type: "image",
-        path: embeddingMetadata.path,
-        metadata: {
-          "image.embedding": embeddingMetadata
-        }
-      });
-    }
-  }
-}
-function upsertAudioStemAssets(manifest, metadata) {
-  for (const stem of metadata.stems) {
-    const filePath = normalizeProjectRelativePath(stem.filePath, `audio stem ${stem.stemAssetId} filePath`);
-    const existingIndex = manifest.assets.findIndex((asset) => asset.id === stem.stemAssetId);
-    const stemMetadata = {
-      separationId: metadata.separationId,
-      sourceAssetId: metadata.sourceAssetId,
-      stemAssetId: stem.stemAssetId,
-      stemType: stem.stemType,
-      filePath,
-      fileHash: stem.fileHash,
-      ...stem.codec ? { codec: stem.codec } : {},
-      ...stem.durationSeconds === void 0 ? {} : { durationSeconds: stem.durationSeconds },
-      ...stem.sampleRate === void 0 ? {} : { sampleRate: stem.sampleRate },
-      ...stem.channels === void 0 ? {} : { channels: stem.channels }
-    };
-    if (existingIndex >= 0) {
-      const existing = manifest.assets[existingIndex];
-      manifest.assets[existingIndex] = {
-        ...existing,
-        path: existing.path ?? filePath,
-        metadata: {
-          ...existing.metadata ?? {},
-          "audio.stem": stemMetadata
-        }
-      };
-    } else {
-      manifest.assets.push({
-        id: stem.stemAssetId,
-        type: "audio-stem",
-        path: filePath,
-        metadata: {
-          "audio.stem": stemMetadata
-        }
-      });
-    }
-  }
-}
-function upsertComfyuiOutputAssets(manifest, targetAssetId, metadata) {
-  for (const output of metadata.outputs) {
-    const outputPath = normalizeProjectRelativePath(output.path, `ComfyUI output ${output.outputAssetId} path`);
-    const existingIndex = manifest.assets.findIndex((asset) => asset.id === output.outputAssetId);
-    const outputMetadata = {
-      workflowId: metadata.workflowId,
-      sourceJobAssetId: targetAssetId,
-      workflowPath: metadata.workflowPath,
-      workflowHash: metadata.workflowHash,
-      nodeId: output.nodeId,
-      ...output.outputName ? { outputName: output.outputName } : {},
-      mediaType: output.mediaType,
-      path: outputPath,
-      ...output.fileHash ? { fileHash: output.fileHash } : {},
-      status: output.status,
-      backendId: metadata.backendId,
-      models: metadata.models,
-      customNodes: metadata.customNodes
-    };
-    const assetType = output.mediaType === "image" ? "image" : output.mediaType;
-    if (existingIndex >= 0) {
-      const existing = manifest.assets[existingIndex];
-      manifest.assets[existingIndex] = {
-        ...existing,
-        type: existing.type || assetType,
-        path: existing.path ?? outputPath,
-        metadata: {
-          ...existing.metadata ?? {},
-          "image.comfyui-output": outputMetadata
-        }
-      };
-    } else {
-      manifest.assets.push({
-        id: output.outputAssetId,
-        type: assetType,
-        path: outputPath,
-        metadata: {
-          "image.comfyui-output": outputMetadata
-        }
-      });
-    }
-  }
-}
-function upsertSemanticReferenceRoleAssets(manifest, rolePackAssetId, roles) {
-  for (const role of roles) {
-    const existingIndex = manifest.assets.findIndex((asset) => asset.id === role.assetId);
-    const roleMetadata = {
-      rolePackAssetId,
-      roleId: role.roleId,
-      role: role.role,
-      ...role.subjectId ? { subjectId: role.subjectId } : {},
-      path: normalizeProjectRelativePath(role.path, `reference role ${role.roleId} path`),
-      locked: role.locked,
-      copyOnWriteRequired: role.copyOnWriteRequired,
-      downstreamUsage: role.downstreamUsage,
-      constraints: role.constraints
-    };
-    if (existingIndex >= 0) {
-      const existing = manifest.assets[existingIndex];
-      manifest.assets[existingIndex] = {
-        ...existing,
-        path: existing.path ?? roleMetadata.path,
-        metadata: {
-          ...existing.metadata ?? {},
-          "image.semantic-reference-role": roleMetadata
-        }
-      };
-    } else {
-      manifest.assets.push({
-        id: role.assetId,
-        type: "reference",
-        path: roleMetadata.path,
-        metadata: {
-          "image.semantic-reference-role": roleMetadata
-        }
-      });
-    }
-  }
-}
-function upsertCharacterReferenceSheetAssets(manifest, storyboardAssetId, characters) {
-  for (const character of characters) {
-    for (const reference of character.referenceViews) {
-      const referencePath = normalizeProjectRelativePath(
-        reference.path,
-        `character reference ${character.id} ${reference.view} path`
-      );
-      const referenceMetadata = {
-        storyboardAssetId,
-        characterId: character.id,
-        view: reference.view,
-        path: referencePath,
-        locked: reference.locked,
-        copyOnWriteRequired: reference.copyOnWriteRequired,
-        downstreamUsage: "identity-reference"
-      };
-      const existingIndex = manifest.assets.findIndex((asset) => asset.id === reference.assetId);
-      if (existingIndex >= 0) {
-        const existing = manifest.assets[existingIndex];
-        manifest.assets[existingIndex] = {
-          ...existing,
-          path: existing.path ?? referencePath,
-          metadata: {
-            ...existing.metadata ?? {},
-            "image.character-reference-sheet": referenceMetadata
-          }
-        };
-      } else {
-        manifest.assets.push({
-          id: reference.assetId,
-          type: "character-reference-sheet",
-          path: referencePath,
-          metadata: {
-            "image.character-reference-sheet": referenceMetadata
-          }
-        });
-      }
-    }
-  }
-}
-function upsertStoryboardPanelAssets(manifest, storyboardAssetId, panels) {
-  for (const panel of panels) {
-    const metadata = {
-      storyboardAssetId,
-      panelId: panel.id,
-      sceneId: panel.sceneId,
-      characterIds: panel.characterIds,
-      ...panel.consistencyScore === void 0 ? {} : { consistencyScore: panel.consistencyScore }
-    };
-    const existingIndex = manifest.assets.findIndex((asset) => asset.id === panel.assetId);
-    const safePath = panel.path ? normalizeProjectRelativePath(panel.path, `panel ${panel.id} path`) : void 0;
-    if (existingIndex >= 0) {
-      const existing = manifest.assets[existingIndex];
-      manifest.assets[existingIndex] = {
-        ...existing,
-        ...safePath ? { path: existing.path ?? safePath } : {},
-        metadata: {
-          ...existing.metadata ?? {},
-          "image.storyboard-panel": metadata
-        }
-      };
-    } else {
-      manifest.assets.push({
-        id: panel.assetId,
-        type: "storyboard-panel",
-        ...safePath ? { path: safePath } : {},
-        metadata: {
-          "image.storyboard-panel": metadata
-        }
-      });
-    }
-  }
-}
-function normalizeProjectRelativePath(path, label) {
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
-    throw new Error(`${label} must be a local project-relative path, not a URL`);
-  }
-  if ((0, import_node_path22.isAbsolute)(path)) {
-    throw new Error(`${label} must be project-relative, not absolute`);
-  }
-  const parts = path.split(/[\\/]+/).filter(Boolean);
-  if (parts.includes("..")) {
-    throw new Error(`${label} must stay inside the project`);
-  }
-  return parts.join("/");
-}
-function safeProjectionFileSegment(value, label) {
-  const segment = value.trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(segment) || segment === "." || segment === "..") {
-    throw new Error(`${label} must be safe for projection file names`);
-  }
-  return segment;
-}
-function productionMetadataFileStems(metadata) {
-  switch (metadata.kind) {
-    case "audio.stem-separation":
-      return { separationId: safeProjectionFileSegment(metadata.separationId, "separationId") };
-    case "analysis.backend-benchmark":
-      return { benchmarkId: safeProjectionFileSegment(metadata.benchmarkId, "benchmarkId") };
-    case "image.embedding-store":
-      return { embeddingSetId: safeProjectionFileSegment(metadata.embeddingSetId, "embeddingSetId") };
-    case "image.comfyui-runner":
-      return { workflowId: safeProjectionFileSegment(metadata.workflowId, "workflowId") };
-    case "ad.visual-qa":
-      return { variantId: safeProjectionFileSegment(metadata.variantId, "variantId") };
-    case "provenance.content-credentials":
-      return { credentialId: safeProjectionFileSegment(metadata.credentialId, "credentialId") };
-    default:
-      return {};
-  }
-}
-function preflightProductionMetadataGeneratedAssetPaths(metadata) {
-  switch (metadata.kind) {
-    case "audio.stem-separation": {
-      for (const stem of metadata.stems) {
-        normalizeProjectRelativePath(stem.filePath, `audio stem ${stem.stemAssetId} filePath`);
-      }
-      break;
-    }
-    case "image.embedding-store": {
-      for (const item of metadata.items) {
-        normalizeProjectRelativePath(item.path, `embedding item ${item.assetId} path`);
-        normalizeProjectRelativePath(item.vectorPath, `embedding item ${item.assetId} vectorPath`);
-      }
-      break;
-    }
-    case "image.comfyui-runner": {
-      for (const output of metadata.outputs) {
-        normalizeProjectRelativePath(output.path, `ComfyUI output ${output.outputAssetId} path`);
-      }
-      break;
-    }
-    case "image.semantic-reference-roles": {
-      for (const role of metadata.roles) {
-        normalizeProjectRelativePath(role.path, `reference role ${role.roleId} path`);
-      }
-      break;
-    }
-    case "image.storyboard-consistency": {
-      for (const character of metadata.characters) {
-        for (const reference of character.referenceViews) {
-          normalizeProjectRelativePath(
-            reference.path,
-            `character reference ${character.id} ${reference.view} path`
-          );
-        }
-      }
-      for (const panel of metadata.panels) {
-        if (panel.path) {
-          normalizeProjectRelativePath(panel.path, `panel ${panel.id} path`);
-        }
-      }
-      break;
-    }
-  }
-}
-function assetMetadataManifestPath(cwd, metadataPath) {
-  const extension2 = (0, import_node_path22.extname)(metadataPath);
-  return resolveProjectionFilePathInsideCwd({
-    cwd,
-    filePath: (0, import_node_path22.join)((0, import_node_path22.dirname)(metadataPath), `${(0, import_node_path22.basename)(metadataPath, extension2)}.manifest.json`)
-  });
-}
-async function readAssetMetadataManifest(manifestPath) {
-  let value;
-  try {
-    value = JSON.parse(await (0, import_promises11.readFile)(manifestPath, "utf8"));
-  } catch (error51) {
-    throw new Error(
-      `READ_REQUIRED: Run \`clash production apply-metadata\` before writing. ${error51 instanceof Error ? error51.message : String(error51)}`
-    );
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("READ_REQUIRED: Invalid asset metadata manifest");
-  }
-  const manifest = value;
-  if (manifest.schemaVersion !== 1 || manifest.kind !== "clash.asset.metadata.manifest" || typeof manifest.targetAssetId !== "string" || typeof manifest.metadataKind !== "string" || typeof manifest.metadataPath !== "string" || typeof manifest.baseMetadataHash !== "string" || typeof manifest.sourceActionPath !== "string" || typeof manifest.sourceActionHash !== "string") {
-    throw new Error("READ_REQUIRED: Invalid asset metadata manifest");
-  }
-  return manifest;
-}
-function assetMetadataObservationVersion(manifest, baseMetadataHash, currentSourceActionHash) {
-  const hash2 = productionMetadataHash({
-    targetAssetId: manifest.targetAssetId,
-    metadataKind: manifest.metadataKind,
-    metadataPath: manifest.metadataPath,
-    baseMetadataHash,
-    sourceActionPath: manifest.sourceActionPath,
-    sourceActionHash: currentSourceActionHash
-  });
-  return `asset-metadata-v1:${hash2}`;
-}
-function productionMetadataObservationId(options) {
-  const metadataPath = resolveLocalPath(options.cwd, options.filePath, "metadata projection");
-  return toProjectPath3(options.cwd, metadataPath);
-}
-function productionMetadataHash(value) {
-  return hashProjectionContent(stableJson2(value));
-}
-function parseAssetManifest(raw, path) {
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed.assets)) {
-    throw new Error(`Invalid asset manifest at ${path}: expected assets array`);
-  }
-  return {
-    ...parsed,
-    assets: parsed.assets.map((asset) => ({
-      ...asset,
-      metadata: asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata) ? asset.metadata : {}
-    }))
-  };
-}
-function resolveLocalPath(cwd, path, label) {
-  if (!path || typeof path !== "string") {
-    throw new Error(`${label} path is required`);
-  }
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
-    throw new Error(`${label} path must be a local project path, not a URL`);
-  }
-  const root = (0, import_node_path22.resolve)(cwd);
-  const resolved = (0, import_node_path22.isAbsolute)(path) ? (0, import_node_path22.resolve)(path) : (0, import_node_path22.resolve)(root, path);
-  const relativePath2 = (0, import_node_path22.relative)(root, resolved);
-  if (relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path22.isAbsolute)(relativePath2)) {
-    return resolved;
-  }
-  throw new Error(`${label} path must stay inside the current project cwd`);
-}
-function toProjectPath3(cwd, absolutePath) {
-  return (0, import_node_path22.relative)((0, import_node_path22.resolve)(cwd), absolutePath).split(/[\\/]+/).join("/");
-}
-function stableJson2(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => item === void 0 ? "null" : stableJson2(item)).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    const record2 = value;
-    const keys = Object.keys(record2).filter((key) => record2[key] !== void 0).sort();
-    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson2(value[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-async function writeJson(path, value) {
-  await writeText(path, `${JSON.stringify(value, null, 2)}
-`);
-}
-async function writeText(path, value) {
-  await (0, import_promises11.mkdir)((0, import_node_path22.dirname)(path), { recursive: true });
-  await (0, import_promises11.writeFile)(path, value, "utf8");
-}
+var import_node_crypto20 = require("node:crypto");
+var import_promises45 = require("node:fs/promises");
+var import_node_path55 = require("node:path");
 
 // ../../packages/cli/src/lib/pipeline-manifest-validation.ts
 var import_node_fs12 = require("node:fs");
-var import_promises12 = require("node:fs/promises");
-var import_node_path23 = require("node:path");
+var import_promises14 = require("node:fs/promises");
+var import_node_path25 = require("node:path");
 var ARTIFACT_KINDS = [
   "action",
   "metadata",
@@ -112981,9 +114368,9 @@ var ARTIFACT_KINDS = [
 ];
 var COVERAGE_KEYS = ["action", "metadata", "asset", "projection", "reviewGate", "export"];
 async function validatePipelineManifest(options) {
-  const cwd = (0, import_node_path23.resolve)(options.cwd);
+  const cwd = (0, import_node_path25.resolve)(options.cwd);
   const pipelinePath = resolveProjectPath(cwd, options.pipelinePath, "pipeline manifest");
-  const manifest = parsePipelineManifest(JSON.parse(await (0, import_promises12.readFile)(pipelinePath, "utf8")));
+  const manifest = parsePipelineManifest(JSON.parse(await (0, import_promises14.readFile)(pipelinePath, "utf8")));
   const pipelineProjectPath = toProjectPath4(cwd, pipelinePath);
   const artifacts = manifest.artifacts.map((artifact) => ({
     ...artifact,
@@ -113002,7 +114389,7 @@ async function validatePipelineManifest(options) {
     cwd,
     filePath: resolveProjectPath(
       cwd,
-      options.outPath ?? (0, import_node_path23.join)("qa", "pipeline", `${safeFileStem(manifest.projectKind)}.pipeline-validation.json`),
+      options.outPath ?? (0, import_node_path25.join)("qa", "pipeline", `${safeFileStem(manifest.projectKind)}.pipeline-validation.json`),
       "pipeline validation report"
     ),
     writeVerb: "Pipeline validation report"
@@ -113117,9 +114504,9 @@ function resolveProjectPath(cwd, path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local file path, not a URL`);
   }
-  const absolutePath = (0, import_node_path23.isAbsolute)(path) ? (0, import_node_path23.resolve)(path) : (0, import_node_path23.resolve)(cwd, path);
-  const relativePath2 = (0, import_node_path23.relative)(cwd, absolutePath);
-  if (relativePath2.startsWith("..") || (0, import_node_path23.isAbsolute)(relativePath2)) {
+  const absolutePath = (0, import_node_path25.isAbsolute)(path) ? (0, import_node_path25.resolve)(path) : (0, import_node_path25.resolve)(cwd, path);
+  const relativePath2 = (0, import_node_path25.relative)(cwd, absolutePath);
+  if (relativePath2.startsWith("..") || (0, import_node_path25.isAbsolute)(relativePath2)) {
     throw new Error(`${label} must stay inside the project`);
   }
   return absolutePath;
@@ -113128,7 +114515,7 @@ function normalizeProjectRelativePath2(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path23.isAbsolute)(path)) {
+  if ((0, import_node_path25.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -113138,30 +114525,30 @@ function normalizeProjectRelativePath2(path, label) {
   return parts.join("/");
 }
 function toProjectPath4(cwd, path) {
-  return normalizeProjectRelativePath2((0, import_node_path23.relative)(cwd, path), "project path");
+  return normalizeProjectRelativePath2((0, import_node_path25.relative)(cwd, path), "project path");
 }
 function safeFileStem(value) {
   const stem = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return stem.length > 0 ? stem : "pipeline";
 }
 async function writeJson2(path, value) {
-  await (0, import_promises12.mkdir)((0, import_node_path23.dirname)(path), { recursive: true });
-  await (0, import_promises12.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises14.mkdir)((0, import_node_path25.dirname)(path), { recursive: true });
+  await (0, import_promises14.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/composition-route-plan.ts
-var import_promises13 = require("node:fs/promises");
-var import_node_path24 = require("node:path");
+var import_promises15 = require("node:fs/promises");
+var import_node_path26 = require("node:path");
 async function planCompositionRoute(options) {
-  const cwd = (0, import_node_path24.resolve)(options.cwd);
+  const cwd = (0, import_node_path26.resolve)(options.cwd);
   const requestPath = resolveProjectPath2(cwd, options.requestPath, "composition route request");
-  const request = parseCompositionRouteRequest(JSON.parse(await (0, import_promises13.readFile)(requestPath, "utf8")));
+  const request = parseCompositionRouteRequest(JSON.parse(await (0, import_promises15.readFile)(requestPath, "utf8")));
   const planPath = resolveAgentFilePathInsideCwd({
     cwd,
     filePath: resolveProjectPath2(
       cwd,
-      options.outPath ?? (0, import_node_path24.join)("plans", "routes", `${safeSlug2(request.compositionId)}.route.json`),
+      options.outPath ?? (0, import_node_path26.join)("plans", "routes", `${safeSlug2(request.compositionId)}.route.json`),
       "composition route plan"
     ),
     writeVerb: "Composition route plan"
@@ -113349,7 +114736,7 @@ function resolveProjectPath2(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path24.isAbsolute)(rawPath) ? (0, import_node_path24.resolve)(rawPath) : (0, import_node_path24.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path26.isAbsolute)(rawPath) ? (0, import_node_path26.resolve)(rawPath) : (0, import_node_path26.resolve)(cwd, rawPath);
   if (!isInsideOrEqual3(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -113357,31 +114744,31 @@ function resolveProjectPath2(cwd, rawPath, label) {
 }
 function normalizeProjectRelativePath3(cwd, rawPath, label) {
   const resolved = resolveProjectPath2(cwd, rawPath, label);
-  return (0, import_node_path24.relative)(cwd, resolved).split(import_node_path24.sep).join("/");
+  return (0, import_node_path26.relative)(cwd, resolved).split(import_node_path26.sep).join("/");
 }
 function isInsideOrEqual3(parent, child) {
-  const relativePath2 = (0, import_node_path24.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path24.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path26.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path26.isAbsolute)(relativePath2);
 }
 function safeSlug2(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "composition";
 }
 async function writeJson3(path, value) {
-  await (0, import_promises13.mkdir)((0, import_node_path24.dirname)(path), { recursive: true });
-  await (0, import_promises13.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises15.mkdir)((0, import_node_path26.dirname)(path), { recursive: true });
+  await (0, import_promises15.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/review-stage-gate.ts
-var import_node_crypto13 = require("node:crypto");
-var import_promises14 = require("node:fs/promises");
+var import_node_crypto15 = require("node:crypto");
+var import_promises16 = require("node:fs/promises");
 var import_node_fs13 = require("node:fs");
-var import_node_path25 = require("node:path");
+var import_node_path27 = require("node:path");
 async function planReviewStageGate(options) {
-  const cwd = (0, import_node_path25.resolve)(options.cwd);
+  const cwd = (0, import_node_path27.resolve)(options.cwd);
   const pipelinePath = resolveProjectPath3(cwd, options.pipelinePath, "pipeline manifest");
-  const pipeline = parsePipelineManifest2(JSON.parse(await (0, import_promises14.readFile)(pipelinePath, "utf8")));
+  const pipeline = parsePipelineManifest2(JSON.parse(await (0, import_promises16.readFile)(pipelinePath, "utf8")));
   const stage = requireNonEmpty3(options.stage, "stage");
   if (!pipeline.stages.includes(stage)) {
     throw new Error(`stage ${stage} is not listed in ${toProjectPath5(cwd, pipelinePath)}`);
@@ -113393,7 +114780,7 @@ async function planReviewStageGate(options) {
     cwd,
     filePath: resolveProjectPath3(
       cwd,
-      options.outPath ?? (0, import_node_path25.join)("reviews", "gates", `${safeSlug3(stage)}.review-gate.json`),
+      options.outPath ?? (0, import_node_path27.join)("reviews", "gates", `${safeSlug3(stage)}.review-gate.json`),
       "review gate"
     ),
     writeVerb: "Review gate"
@@ -113432,13 +114819,13 @@ async function planReviewStageGate(options) {
   };
 }
 async function approveReviewStageGate(options) {
-  const cwd = (0, import_node_path25.resolve)(options.cwd);
+  const cwd = (0, import_node_path27.resolve)(options.cwd);
   const gatePath = resolveAgentFilePathInsideCwd({
     cwd,
     filePath: resolveProjectPath3(cwd, options.gatePath, "review gate"),
     writeVerb: "Review gate"
   });
-  const gateText = await (0, import_promises14.readFile)(gatePath, "utf8");
+  const gateText = await (0, import_promises16.readFile)(gatePath, "utf8");
   const currentVersion = reviewGateVersion(gateText);
   if (!options.expectedVersion) {
     throw new Error("READ_REQUIRED: Plan or read the review gate before approving it.");
@@ -113595,12 +114982,12 @@ function requireNonEmpty3(value, label) {
 async function writeGate(gatePath, gate) {
   const gateText = `${JSON.stringify(gate, null, 2)}
 `;
-  await (0, import_promises14.mkdir)((0, import_node_path25.dirname)(gatePath), { recursive: true });
-  await (0, import_promises14.writeFile)(gatePath, gateText, "utf8");
+  await (0, import_promises16.mkdir)((0, import_node_path27.dirname)(gatePath), { recursive: true });
+  await (0, import_promises16.writeFile)(gatePath, gateText, "utf8");
   return reviewGateVersion(gateText);
 }
 function reviewGateObservationId(options) {
-  const cwd = (0, import_node_path25.resolve)(options.cwd);
+  const cwd = (0, import_node_path27.resolve)(options.cwd);
   const gatePath = resolveAgentFilePathInsideCwd({
     cwd,
     filePath: resolveProjectPath3(cwd, options.gatePath, "review gate"),
@@ -113612,7 +114999,7 @@ function reviewGateVersion(gateText) {
   return `review-gate-v1:${sha256(gateText).slice(0, 16)}`;
 }
 function sha256(value) {
-  return (0, import_node_crypto13.createHash)("sha256").update(value).digest("hex");
+  return (0, import_node_crypto15.createHash)("sha256").update(value).digest("hex");
 }
 function resolveProjectPath3(cwd, rawPath, label) {
   if (!rawPath || typeof rawPath !== "string") {
@@ -113621,18 +115008,18 @@ function resolveProjectPath3(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path25.isAbsolute)(rawPath) ? (0, import_node_path25.resolve)(rawPath) : (0, import_node_path25.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path27.isAbsolute)(rawPath) ? (0, import_node_path27.resolve)(rawPath) : (0, import_node_path27.resolve)(cwd, rawPath);
   if (!isInsideOrEqual4(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual4(parent, child) {
-  const relativePath2 = (0, import_node_path25.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path25.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path27.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path27.isAbsolute)(relativePath2);
 }
 function toProjectPath5(cwd, absolutePath) {
-  return (0, import_node_path25.relative)(cwd, absolutePath).split(import_node_path25.sep).join("/");
+  return (0, import_node_path27.relative)(cwd, absolutePath).split(import_node_path27.sep).join("/");
 }
 function safeSlug3(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -113640,17 +115027,17 @@ function safeSlug3(value) {
 }
 
 // ../../packages/cli/src/lib/dry-run-cost-gate.ts
-var import_promises15 = require("node:fs/promises");
-var import_node_path26 = require("node:path");
+var import_promises17 = require("node:fs/promises");
+var import_node_path28 = require("node:path");
 async function planDryRunCostGate(options) {
-  const cwd = (0, import_node_path26.resolve)(options.cwd);
+  const cwd = (0, import_node_path28.resolve)(options.cwd);
   const requestPath = resolveProjectPath4(cwd, options.requestPath, "dry-run cost gate request");
-  const request = parseDryRunCostGateRequest(JSON.parse(await (0, import_promises15.readFile)(requestPath, "utf8")));
+  const request = parseDryRunCostGateRequest(JSON.parse(await (0, import_promises17.readFile)(requestPath, "utf8")));
   const gatePath = resolveAgentFilePathInsideCwd({
     cwd,
     filePath: resolveProjectPath4(
       cwd,
-      options.outPath ?? (0, import_node_path26.join)(
+      options.outPath ?? (0, import_node_path28.join)(
         "reviews",
         "gates",
         `${safeSlug4(request.workflowId)}.${safeSlug4(request.stage)}.dry-run-cost-gate.json`
@@ -113814,34 +115201,34 @@ function resolveProjectPath4(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path26.isAbsolute)(rawPath) ? (0, import_node_path26.resolve)(rawPath) : (0, import_node_path26.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path28.isAbsolute)(rawPath) ? (0, import_node_path28.resolve)(rawPath) : (0, import_node_path28.resolve)(cwd, rawPath);
   if (!isInsideOrEqual5(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual5(parent, child) {
-  const relativePath2 = (0, import_node_path26.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path26.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path28.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path28.isAbsolute)(relativePath2);
 }
 function safeSlug4(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "dry-run-cost-gate";
 }
 async function writeJson4(path, value) {
-  await (0, import_promises15.mkdir)((0, import_node_path26.dirname)(path), { recursive: true });
-  await (0, import_promises15.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises17.mkdir)((0, import_node_path28.dirname)(path), { recursive: true });
+  await (0, import_promises17.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/reference-roles-plan.ts
-var import_promises16 = require("node:fs/promises");
-var import_node_path27 = require("node:path");
+var import_promises18 = require("node:fs/promises");
+var import_node_path29 = require("node:path");
 async function planReferenceRolesAction(options) {
-  const cwd = (0, import_node_path27.resolve)(options.cwd);
+  const cwd = (0, import_node_path29.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty5(options.targetAssetId, "target asset id");
   const rolesPath = resolveProjectPath5(cwd, options.rolesPath, "reference roles");
-  const roles = parseReferenceRoles(JSON.parse(await (0, import_promises16.readFile)(rolesPath, "utf8")));
+  const roles = parseReferenceRoles(JSON.parse(await (0, import_promises18.readFile)(rolesPath, "utf8")));
   const action = {
     actionId: `semantic-reference-roles-${safeSlug5(targetAssetId)}`,
     targetAssetId,
@@ -113857,7 +115244,7 @@ async function planReferenceRolesAction(options) {
     cwd,
     filePath: resolveProjectPath5(
       cwd,
-      options.outPath ?? (0, import_node_path27.join)("actions", `${safeSlug5(targetAssetId)}.semantic-reference-roles.json`),
+      options.outPath ?? (0, import_node_path29.join)("actions", `${safeSlug5(targetAssetId)}.semantic-reference-roles.json`),
       "reference roles action"
     ),
     writeVerb: "Reference roles action"
@@ -113932,7 +115319,7 @@ function resolveProjectPath5(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path27.isAbsolute)(rawPath) ? (0, import_node_path27.resolve)(rawPath) : (0, import_node_path27.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path29.isAbsolute)(rawPath) ? (0, import_node_path29.resolve)(rawPath) : (0, import_node_path29.resolve)(cwd, rawPath);
   if (!isInsideOrEqual6(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -113942,7 +115329,7 @@ function normalizeProjectRelativePath4(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path27.isAbsolute)(path)) {
+  if ((0, import_node_path29.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -113952,29 +115339,29 @@ function normalizeProjectRelativePath4(path, label) {
   return parts.join("/");
 }
 function isInsideOrEqual6(parent, child) {
-  const relativePath2 = (0, import_node_path27.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path27.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path29.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path29.isAbsolute)(relativePath2);
 }
 function safeSlug5(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "reference-roles";
 }
 async function writeJson5(path, value) {
-  await (0, import_promises16.mkdir)((0, import_node_path27.dirname)(path), { recursive: true });
-  await (0, import_promises16.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises18.mkdir)((0, import_node_path29.dirname)(path), { recursive: true });
+  await (0, import_promises18.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/product-logo-qa-plan.ts
-var import_promises17 = require("node:fs/promises");
-var import_node_path28 = require("node:path");
+var import_promises19 = require("node:fs/promises");
+var import_node_path30 = require("node:path");
 async function planProductLogoQaAction(options) {
-  const cwd = (0, import_node_path28.resolve)(options.cwd);
+  const cwd = (0, import_node_path30.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty6(options.targetAssetId, "target asset id");
   const referenceRolesPath = resolveProjectPath6(cwd, options.referenceRolesPath, "reference roles");
   const evidencePath = resolveProjectPath6(cwd, options.evidencePath, "product/logo QA evidence");
-  const roleInput = JSON.parse(await (0, import_promises17.readFile)(referenceRolesPath, "utf8"));
-  const evidenceInput = JSON.parse(await (0, import_promises17.readFile)(evidencePath, "utf8"));
+  const roleInput = JSON.parse(await (0, import_promises19.readFile)(referenceRolesPath, "utf8"));
+  const evidenceInput = JSON.parse(await (0, import_promises19.readFile)(evidencePath, "utf8"));
   const allRoles = parseSemanticReferenceRoles(roleInput);
   const referencePackAssetId = parseReferencePackAssetId(roleInput);
   const references = allRoles.filter(isProductLogoReferenceRole).map((role) => ({
@@ -114028,7 +115415,7 @@ async function planProductLogoQaAction(options) {
     cwd,
     filePath: resolveProjectPath6(
       cwd,
-      options.outPath ?? (0, import_node_path28.join)("actions", `${safeSlug6(targetAssetId)}.product-logo-qa.json`),
+      options.outPath ?? (0, import_node_path30.join)("actions", `${safeSlug6(targetAssetId)}.product-logo-qa.json`),
       "product/logo QA action"
     ),
     writeVerb: "Product/logo QA action"
@@ -114037,7 +115424,7 @@ async function planProductLogoQaAction(options) {
     cwd,
     filePath: resolveProjectPath6(
       cwd,
-      options.reportPath ?? (0, import_node_path28.join)("qa", "image", `${safeSlug6(targetAssetId)}.product-logo-qa.json`),
+      options.reportPath ?? (0, import_node_path30.join)("qa", "image", `${safeSlug6(targetAssetId)}.product-logo-qa.json`),
       "product/logo QA report"
     ),
     writeVerb: "Product/logo QA report"
@@ -114173,34 +115560,34 @@ function resolveProjectPath6(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path28.isAbsolute)(rawPath) ? (0, import_node_path28.resolve)(rawPath) : (0, import_node_path28.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path30.isAbsolute)(rawPath) ? (0, import_node_path30.resolve)(rawPath) : (0, import_node_path30.resolve)(cwd, rawPath);
   if (!isInsideOrEqual7(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual7(parent, child) {
-  const relativePath2 = (0, import_node_path28.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path28.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path30.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path30.isAbsolute)(relativePath2);
 }
 function safeSlug6(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "product-logo-qa";
 }
 async function writeJson6(path, value) {
-  await (0, import_promises17.mkdir)((0, import_node_path28.dirname)(path), { recursive: true });
-  await (0, import_promises17.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises19.mkdir)((0, import_node_path30.dirname)(path), { recursive: true });
+  await (0, import_promises19.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/analysis-benchmark-plan.ts
-var import_promises18 = require("node:fs/promises");
-var import_node_path29 = require("node:path");
+var import_promises20 = require("node:fs/promises");
+var import_node_path31 = require("node:path");
 async function planAnalysisBenchmarkAction(options) {
-  const cwd = (0, import_node_path29.resolve)(options.cwd);
+  const cwd = (0, import_node_path31.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty7(options.targetAssetId, "target asset id");
   const requestPath = resolveProjectPath7(cwd, options.requestPath, "analysis benchmark request");
-  const request = parseRequest(JSON.parse(await (0, import_promises18.readFile)(requestPath, "utf8")));
+  const request = parseRequest(JSON.parse(await (0, import_promises20.readFile)(requestPath, "utf8")));
   const candidates = await Promise.all(
     request.candidates.map((candidate) => buildCandidate(cwd, candidate, request.targetCapability))
   );
@@ -114248,7 +115635,7 @@ async function planAnalysisBenchmarkAction(options) {
     cwd,
     filePath: resolveProjectPath7(
       cwd,
-      options.outPath ?? (0, import_node_path29.join)("actions", `${safeSlug7(request.benchmarkId)}.analysis-benchmark.json`),
+      options.outPath ?? (0, import_node_path31.join)("actions", `${safeSlug7(request.benchmarkId)}.analysis-benchmark.json`),
       "analysis benchmark action"
     ),
     writeVerb: "Analysis benchmark action"
@@ -114257,7 +115644,7 @@ async function planAnalysisBenchmarkAction(options) {
     cwd,
     filePath: resolveProjectPath7(
       cwd,
-      options.reportPath ?? (0, import_node_path29.join)("qa", "analysis", `${safeSlug7(request.benchmarkId)}.backend-benchmark.json`),
+      options.reportPath ?? (0, import_node_path31.join)("qa", "analysis", `${safeSlug7(request.benchmarkId)}.backend-benchmark.json`),
       "analysis benchmark report"
     ),
     writeVerb: "Analysis benchmark report"
@@ -114331,7 +115718,7 @@ async function buildCandidate(cwd, candidate, targetCapability) {
     throw new Error(`candidate ${candidate.backendId} capability ${candidate.capability} does not match ${targetCapability}`);
   }
   resolveProjectPath7(cwd, candidate.resultPath, `candidate ${candidate.backendId} result`);
-  await (0, import_promises18.readFile)((0, import_node_path29.resolve)(cwd, candidate.resultPath), "utf8");
+  await (0, import_promises20.readFile)((0, import_node_path31.resolve)(cwd, candidate.resultPath), "utf8");
   const metrics = candidate.metrics.map(buildMetric);
   const weightedScore = weightedAverage(metrics);
   return {
@@ -114385,7 +115772,7 @@ function resolveProjectPath7(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path29.isAbsolute)(rawPath) ? (0, import_node_path29.resolve)(rawPath) : (0, import_node_path29.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path31.isAbsolute)(rawPath) ? (0, import_node_path31.resolve)(rawPath) : (0, import_node_path31.resolve)(cwd, rawPath);
   if (!isInsideOrEqual8(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -114395,7 +115782,7 @@ function normalizeProjectRelativePath5(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path29.isAbsolute)(path)) {
+  if ((0, import_node_path31.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -114405,28 +115792,28 @@ function normalizeProjectRelativePath5(path, label) {
   return parts.join("/");
 }
 function isInsideOrEqual8(parent, child) {
-  const relativePath2 = (0, import_node_path29.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path29.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path31.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path31.isAbsolute)(relativePath2);
 }
 function safeSlug7(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "analysis-benchmark";
 }
 async function writeJson7(path, value) {
-  await (0, import_promises18.mkdir)((0, import_node_path29.dirname)(path), { recursive: true });
-  await (0, import_promises18.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises20.mkdir)((0, import_node_path31.dirname)(path), { recursive: true });
+  await (0, import_promises20.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/image-embedding-store-plan.ts
-var import_node_crypto14 = require("node:crypto");
-var import_promises19 = require("node:fs/promises");
-var import_node_path30 = require("node:path");
+var import_node_crypto16 = require("node:crypto");
+var import_promises21 = require("node:fs/promises");
+var import_node_path32 = require("node:path");
 async function planImageEmbeddingStoreAction(options) {
-  const cwd = (0, import_node_path30.resolve)(options.cwd);
+  const cwd = (0, import_node_path32.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty8(options.targetAssetId, "target asset id");
   const embeddingsPath = resolveProjectPath8(cwd, options.embeddingsPath, "image embedding store request");
-  const request = parseRequest2(JSON.parse(await (0, import_promises19.readFile)(embeddingsPath, "utf8")));
+  const request = parseRequest2(JSON.parse(await (0, import_promises21.readFile)(embeddingsPath, "utf8")));
   const items = await Promise.all(
     request.items.map((item) => materializeEmbeddingItem(cwd, request.dimension, item))
   );
@@ -114466,7 +115853,7 @@ async function planImageEmbeddingStoreAction(options) {
     cwd,
     filePath: resolveProjectPath8(
       cwd,
-      options.outPath ?? (0, import_node_path30.join)("actions", `${safeSlug8(metadata.embeddingSetId)}.image-embedding-store.json`),
+      options.outPath ?? (0, import_node_path32.join)("actions", `${safeSlug8(metadata.embeddingSetId)}.image-embedding-store.json`),
       "image embedding store action"
     ),
     writeVerb: "Image embedding store action"
@@ -114475,7 +115862,7 @@ async function planImageEmbeddingStoreAction(options) {
     cwd,
     filePath: resolveProjectPath8(
       cwd,
-      options.reportPath ?? (0, import_node_path30.join)("qa", "image", `${safeSlug8(metadata.embeddingSetId)}.embedding-store.json`),
+      options.reportPath ?? (0, import_node_path32.join)("qa", "image", `${safeSlug8(metadata.embeddingSetId)}.embedding-store.json`),
       "image embedding store report"
     ),
     writeVerb: "Image embedding store report"
@@ -114539,7 +115926,7 @@ function parseRequestItem(input, index) {
 }
 async function materializeEmbeddingItem(cwd, expectedDimension, item) {
   const vectorPath = resolveProjectPath8(cwd, item.vectorPath, `embedding vector ${item.assetId}`);
-  const raw = await (0, import_promises19.readFile)(vectorPath, "utf8");
+  const raw = await (0, import_promises21.readFile)(vectorPath, "utf8");
   const parsed = JSON.parse(raw);
   if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== "number" || !Number.isFinite(value))) {
     throw new Error(`embedding vector ${item.vectorPath} must be a JSON array of finite numbers`);
@@ -114553,7 +115940,7 @@ async function materializeEmbeddingItem(cwd, expectedDimension, item) {
     ...item.subjectId ? { subjectId: item.subjectId } : {},
     path: item.path,
     vectorPath: item.vectorPath,
-    vectorHash: `sha256:${(0, import_node_crypto14.createHash)("sha256").update(raw).digest("hex")}`,
+    vectorHash: `sha256:${(0, import_node_crypto16.createHash)("sha256").update(raw).digest("hex")}`,
     dimension: parsed.length,
     baselineFor: item.baselineFor,
     locked: item.locked,
@@ -114585,7 +115972,7 @@ function resolveProjectPath8(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path30.isAbsolute)(rawPath) ? (0, import_node_path30.resolve)(rawPath) : (0, import_node_path30.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path32.isAbsolute)(rawPath) ? (0, import_node_path32.resolve)(rawPath) : (0, import_node_path32.resolve)(cwd, rawPath);
   if (!isInsideOrEqual9(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -114595,7 +115982,7 @@ function normalizeProjectRelativePath6(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path30.isAbsolute)(path)) {
+  if ((0, import_node_path32.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -114605,28 +115992,28 @@ function normalizeProjectRelativePath6(path, label) {
   return parts.join("/");
 }
 function isInsideOrEqual9(parent, child) {
-  const relativePath2 = (0, import_node_path30.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path30.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path32.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path32.isAbsolute)(relativePath2);
 }
 function safeSlug8(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "image-embedding-store";
 }
 async function writeJson8(path, value) {
-  await (0, import_promises19.mkdir)((0, import_node_path30.dirname)(path), { recursive: true });
-  await (0, import_promises19.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises21.mkdir)((0, import_node_path32.dirname)(path), { recursive: true });
+  await (0, import_promises21.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/audio-stem-separation-plan.ts
-var import_node_crypto15 = require("node:crypto");
-var import_promises20 = require("node:fs/promises");
-var import_node_path31 = require("node:path");
+var import_node_crypto17 = require("node:crypto");
+var import_promises22 = require("node:fs/promises");
+var import_node_path33 = require("node:path");
 async function planAudioStemSeparationAction(options) {
-  const cwd = (0, import_node_path31.resolve)(options.cwd);
+  const cwd = (0, import_node_path33.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty9(options.targetAssetId, "target asset id");
   const stemsPath = resolveProjectPath9(cwd, options.stemsPath, "audio stem separation request");
-  const request = parseRequest3(JSON.parse(await (0, import_promises20.readFile)(stemsPath, "utf8")));
+  const request = parseRequest3(JSON.parse(await (0, import_promises22.readFile)(stemsPath, "utf8")));
   if (request.sourceAssetId !== targetAssetId) {
     throw new Error(`stem separation sourceAssetId ${request.sourceAssetId} does not match ${targetAssetId}`);
   }
@@ -114673,7 +116060,7 @@ async function planAudioStemSeparationAction(options) {
     cwd,
     filePath: resolveProjectPath9(
       cwd,
-      options.outPath ?? (0, import_node_path31.join)("actions", `${safeSlug9(metadata.separationId)}.audio-stem-separation.json`),
+      options.outPath ?? (0, import_node_path33.join)("actions", `${safeSlug9(metadata.separationId)}.audio-stem-separation.json`),
       "audio stem separation action"
     ),
     writeVerb: "Audio stem separation action"
@@ -114682,7 +116069,7 @@ async function planAudioStemSeparationAction(options) {
     cwd,
     filePath: resolveProjectPath9(
       cwd,
-      options.reportPath ?? (0, import_node_path31.join)("qa", "audio", `${safeSlug9(metadata.separationId)}.stem-separation.json`),
+      options.reportPath ?? (0, import_node_path33.join)("qa", "audio", `${safeSlug9(metadata.separationId)}.stem-separation.json`),
       "audio stem separation report"
     ),
     writeVerb: "Audio stem separation report"
@@ -114739,12 +116126,12 @@ function parseRequestStem(input, index) {
 }
 async function materializeStem(cwd, stem) {
   const stemPath = resolveProjectPath9(cwd, stem.path, `audio stem ${stem.stemAssetId}`);
-  const raw = await (0, import_promises20.readFile)(stemPath);
+  const raw = await (0, import_promises22.readFile)(stemPath);
   return {
     stemAssetId: stem.stemAssetId,
     stemType: stem.stemType,
     filePath: stem.path,
-    fileHash: `sha256:${(0, import_node_crypto15.createHash)("sha256").update(raw).digest("hex")}`,
+    fileHash: `sha256:${(0, import_node_crypto17.createHash)("sha256").update(raw).digest("hex")}`,
     ...stem.codec ? { codec: stem.codec } : {},
     ...stem.durationSeconds === void 0 ? {} : { durationSeconds: stem.durationSeconds },
     ...stem.sampleRate === void 0 ? {} : { sampleRate: stem.sampleRate },
@@ -114786,7 +116173,7 @@ function resolveProjectPath9(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path31.isAbsolute)(rawPath) ? (0, import_node_path31.resolve)(rawPath) : (0, import_node_path31.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path33.isAbsolute)(rawPath) ? (0, import_node_path33.resolve)(rawPath) : (0, import_node_path33.resolve)(cwd, rawPath);
   if (!isInsideOrEqual10(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -114796,7 +116183,7 @@ function normalizeProjectRelativePath7(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path31.isAbsolute)(path)) {
+  if ((0, import_node_path33.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -114806,30 +116193,30 @@ function normalizeProjectRelativePath7(path, label) {
   return parts.join("/");
 }
 function isInsideOrEqual10(parent, child) {
-  const relativePath2 = (0, import_node_path31.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path31.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path33.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path33.isAbsolute)(relativePath2);
 }
 function safeSlug9(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "audio-stem-separation";
 }
 async function writeJson9(path, value) {
-  await (0, import_promises20.mkdir)((0, import_node_path31.dirname)(path), { recursive: true });
-  await (0, import_promises20.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises22.mkdir)((0, import_node_path33.dirname)(path), { recursive: true });
+  await (0, import_promises22.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/comfyui-workflow-plan.ts
-var import_node_crypto16 = require("node:crypto");
-var import_promises21 = require("node:fs/promises");
-var import_node_path32 = require("node:path");
+var import_node_crypto18 = require("node:crypto");
+var import_promises23 = require("node:fs/promises");
+var import_node_path34 = require("node:path");
 async function planComfyuiWorkflowAction(options) {
-  const cwd = (0, import_node_path32.resolve)(options.cwd);
+  const cwd = (0, import_node_path34.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty10(options.targetAssetId, "target asset id");
   const requestPath = resolveProjectPath10(cwd, options.requestPath, "ComfyUI workflow request");
-  const request = parseRequest4(JSON.parse(await (0, import_promises21.readFile)(requestPath, "utf8")));
+  const request = parseRequest4(JSON.parse(await (0, import_promises23.readFile)(requestPath, "utf8")));
   const workflowPath = resolveProjectPath10(cwd, request.workflowPath, "ComfyUI workflow");
-  const workflowRaw = await (0, import_promises21.readFile)(workflowPath);
+  const workflowRaw = await (0, import_promises23.readFile)(workflowPath);
   const outputs = await Promise.all(
     request.outputs.map((output) => materializeOutput(cwd, output))
   );
@@ -114841,7 +116228,7 @@ async function planComfyuiWorkflowAction(options) {
     kind: "image.comfyui-runner",
     workflowId: request.workflowId,
     workflowPath: request.workflowPath,
-    workflowHash: `sha256:${(0, import_node_crypto16.createHash)("sha256").update(workflowRaw).digest("hex")}`,
+    workflowHash: `sha256:${(0, import_node_crypto18.createHash)("sha256").update(workflowRaw).digest("hex")}`,
     apiFormat: request.apiFormat,
     backendId: request.backendId,
     models: request.models,
@@ -114879,7 +116266,7 @@ async function planComfyuiWorkflowAction(options) {
     cwd,
     filePath: resolveProjectPath10(
       cwd,
-      options.outPath ?? (0, import_node_path32.join)("actions", `${safeSlug10(metadata.workflowId)}.comfyui-runner.json`),
+      options.outPath ?? (0, import_node_path34.join)("actions", `${safeSlug10(metadata.workflowId)}.comfyui-runner.json`),
       "ComfyUI workflow action"
     ),
     writeVerb: "ComfyUI workflow action"
@@ -114888,7 +116275,7 @@ async function planComfyuiWorkflowAction(options) {
     cwd,
     filePath: resolveProjectPath10(
       cwd,
-      options.reportPath ?? (0, import_node_path32.join)("qa", "image", `${safeSlug10(metadata.workflowId)}.comfyui-runner.json`),
+      options.reportPath ?? (0, import_node_path34.join)("qa", "image", `${safeSlug10(metadata.workflowId)}.comfyui-runner.json`),
       "ComfyUI workflow report"
     ),
     writeVerb: "ComfyUI workflow report"
@@ -115019,14 +116406,14 @@ function parseExecution(input) {
 async function materializeOutput(cwd, output) {
   const outputPath = resolveProjectPath10(cwd, output.path, `ComfyUI output ${output.outputAssetId}`);
   try {
-    const raw = await (0, import_promises21.readFile)(outputPath);
+    const raw = await (0, import_promises23.readFile)(outputPath);
     return {
       outputAssetId: output.outputAssetId,
       nodeId: output.nodeId,
       ...output.outputName ? { outputName: output.outputName } : {},
       mediaType: output.mediaType,
       path: output.path,
-      fileHash: `sha256:${(0, import_node_crypto16.createHash)("sha256").update(raw).digest("hex")}`,
+      fileHash: `sha256:${(0, import_node_crypto18.createHash)("sha256").update(raw).digest("hex")}`,
       status: output.status ?? "materialized"
     };
   } catch (error51) {
@@ -115057,7 +116444,7 @@ function resolveProjectPath10(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path32.isAbsolute)(rawPath) ? (0, import_node_path32.resolve)(rawPath) : (0, import_node_path32.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path34.isAbsolute)(rawPath) ? (0, import_node_path34.resolve)(rawPath) : (0, import_node_path34.resolve)(cwd, rawPath);
   if (!isInsideOrEqual11(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -115067,7 +116454,7 @@ function normalizeProjectRelativePath8(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path32.isAbsolute)(path)) {
+  if ((0, import_node_path34.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -115077,28 +116464,28 @@ function normalizeProjectRelativePath8(path, label) {
   return parts.join("/");
 }
 function isInsideOrEqual11(parent, child) {
-  const relativePath2 = (0, import_node_path32.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path32.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path34.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path34.isAbsolute)(relativePath2);
 }
 function safeSlug10(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "comfyui-runner";
 }
 async function writeJson10(path, value) {
-  await (0, import_promises21.mkdir)((0, import_node_path32.dirname)(path), { recursive: true });
-  await (0, import_promises21.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises23.mkdir)((0, import_node_path34.dirname)(path), { recursive: true });
+  await (0, import_promises23.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/content-credentials-plan.ts
-var import_node_crypto17 = require("node:crypto");
-var import_promises22 = require("node:fs/promises");
-var import_node_path33 = require("node:path");
+var import_node_crypto19 = require("node:crypto");
+var import_promises24 = require("node:fs/promises");
+var import_node_path35 = require("node:path");
 async function planContentCredentialsAction(options) {
-  const cwd = (0, import_node_path33.resolve)(options.cwd);
+  const cwd = (0, import_node_path35.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty11(options.targetAssetId, "target asset id");
   const requestPath = resolveProjectPath11(cwd, options.requestPath, "content credentials request");
-  const request = parseRequest5(JSON.parse(await (0, import_promises22.readFile)(requestPath, "utf8")));
+  const request = parseRequest5(JSON.parse(await (0, import_promises24.readFile)(requestPath, "utf8")));
   if (request.targetAssetId !== targetAssetId) {
     throw new Error(`content credentials targetAssetId ${request.targetAssetId} does not match ${targetAssetId}`);
   }
@@ -115153,7 +116540,7 @@ async function planContentCredentialsAction(options) {
     cwd,
     filePath: resolveProjectPath11(
       cwd,
-      options.outPath ?? (0, import_node_path33.join)("actions", `${safeSlug11(metadata.credentialId)}.content-credentials.json`),
+      options.outPath ?? (0, import_node_path35.join)("actions", `${safeSlug11(metadata.credentialId)}.content-credentials.json`),
       "content credentials action"
     ),
     writeVerb: "Content credentials action"
@@ -115162,7 +116549,7 @@ async function planContentCredentialsAction(options) {
     cwd,
     filePath: resolveProjectPath11(
       cwd,
-      options.reportPath ?? (0, import_node_path33.join)("qa", "provenance", `${safeSlug11(metadata.credentialId)}.content-credentials.json`),
+      options.reportPath ?? (0, import_node_path35.join)("qa", "provenance", `${safeSlug11(metadata.credentialId)}.content-credentials.json`),
       "content credentials report"
     ),
     writeVerb: "Content credentials report"
@@ -115260,8 +116647,8 @@ async function materializeIngredient(cwd, ingredient) {
 }
 async function hashProjectFile(cwd, rawPath, label) {
   const filePath = resolveProjectPath11(cwd, rawPath, label);
-  const raw = await (0, import_promises22.readFile)(filePath);
-  return `sha256:${(0, import_node_crypto17.createHash)("sha256").update(raw).digest("hex")}`;
+  const raw = await (0, import_promises24.readFile)(filePath);
+  return `sha256:${(0, import_node_crypto19.createHash)("sha256").update(raw).digest("hex")}`;
 }
 function buildDecisionLog(credentialId, signatureStatus) {
   if (signatureStatus === "signed") {
@@ -115282,7 +116669,7 @@ function resolveProjectPath11(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path33.isAbsolute)(rawPath) ? (0, import_node_path33.resolve)(rawPath) : (0, import_node_path33.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path35.isAbsolute)(rawPath) ? (0, import_node_path35.resolve)(rawPath) : (0, import_node_path35.resolve)(cwd, rawPath);
   if (!isInsideOrEqual12(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -115292,7 +116679,7 @@ function normalizeProjectRelativePath9(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path33.isAbsolute)(path)) {
+  if ((0, import_node_path35.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -115302,16 +116689,16 @@ function normalizeProjectRelativePath9(path, label) {
   return parts.join("/");
 }
 function isInsideOrEqual12(parent, child) {
-  const relativePath2 = (0, import_node_path33.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path33.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path35.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path35.isAbsolute)(relativePath2);
 }
 function safeSlug11(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "content-credentials";
 }
 async function writeJson11(path, value) {
-  await (0, import_promises22.mkdir)((0, import_node_path33.dirname)(path), { recursive: true });
-  await (0, import_promises22.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises24.mkdir)((0, import_node_path35.dirname)(path), { recursive: true });
+  await (0, import_promises24.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
@@ -115527,15 +116914,15 @@ function normalizeToken(value) {
 
 // ../../packages/cli/src/lib/text-cut-media-export.ts
 var import_node_child_process3 = require("node:child_process");
-var import_promises23 = require("node:fs/promises");
-var import_node_path34 = require("node:path");
+var import_promises25 = require("node:fs/promises");
+var import_node_path36 = require("node:path");
 async function exportTextCutMedia(options) {
-  const cwd = (0, import_node_path34.resolve)(options.cwd);
-  const assetsPath = resolveProjectPath12(cwd, options.assetsPath ?? (0, import_node_path34.join)("assets", "manifest.json"), "assets path");
+  const cwd = (0, import_node_path36.resolve)(options.cwd);
+  const assetsPath = resolveProjectPath12(cwd, options.assetsPath ?? (0, import_node_path36.join)("assets", "manifest.json"), "assets path");
   const actionPath = resolveProjectPath12(cwd, options.actionPath, "action path");
   await assertExistingProjectPathRealpath(cwd, actionPath, "action path");
   const action = AssetMetadataFillActionSchema.parse(
-    JSON.parse(await (0, import_promises23.readFile)(actionPath, "utf8"))
+    JSON.parse(await (0, import_promises25.readFile)(actionPath, "utf8"))
   );
   if (action.metadata.kind !== "talking-head.analysis") {
     throw new Error(`export-text-cut-media requires talking-head.analysis metadata, got ${action.metadata.kind}`);
@@ -115543,7 +116930,7 @@ async function exportTextCutMedia(options) {
   const sourceActionPath = toProjectRelativePath(cwd, actionPath);
   const sourceActionHash2 = sourceActionHashForTextCut(action);
   const sourceAssetId = options.sourceAssetId ?? action.targetAssetId;
-  const manifest = parseAssetManifest2(await (0, import_promises23.readFile)(assetsPath, "utf8"), assetsPath);
+  const manifest = parseAssetManifest2(await (0, import_promises25.readFile)(assetsPath, "utf8"), assetsPath);
   const sourceAsset = manifest.assets.find((asset) => asset.id === sourceAssetId);
   if (!sourceAsset) {
     throw new Error(`Source asset ${sourceAssetId} not found in ${assetsPath}`);
@@ -115553,16 +116940,16 @@ async function exportTextCutMedia(options) {
   }
   const sourcePath = resolveProjectPath12(cwd, sourceAsset.path, `source asset ${sourceAssetId} path`);
   const outputRelativePath = normalizeProjectRelativePath10(
-    options.outPath ?? (0, import_node_path34.join)("assets", "video", `${safeFileStem2(options.outputAssetId)}.mp4`),
+    options.outPath ?? (0, import_node_path36.join)("assets", "video", `${safeFileStem2(options.outputAssetId)}.mp4`),
     "output path"
   );
   const outputPath = resolveProjectPath12(cwd, outputRelativePath, "output path");
-  const packageRelativePath = (0, import_node_path34.join)("projections", "media-cuts", `${safeFileStem2(options.outputAssetId)}.media-cut.json`);
-  const concatRelativePath = (0, import_node_path34.join)("projections", "media-cuts", `${safeFileStem2(options.outputAssetId)}.ffconcat`);
-  const ffmpegPlanRelativePath = (0, import_node_path34.join)("projections", "media-cuts", `${safeFileStem2(options.outputAssetId)}.ffmpeg-plan.json`);
-  const packagePath = (0, import_node_path34.resolve)(cwd, packageRelativePath);
-  const concatPath = (0, import_node_path34.resolve)(cwd, concatRelativePath);
-  const ffmpegPlanPath = (0, import_node_path34.resolve)(cwd, ffmpegPlanRelativePath);
+  const packageRelativePath = (0, import_node_path36.join)("projections", "media-cuts", `${safeFileStem2(options.outputAssetId)}.media-cut.json`);
+  const concatRelativePath = (0, import_node_path36.join)("projections", "media-cuts", `${safeFileStem2(options.outputAssetId)}.ffconcat`);
+  const ffmpegPlanRelativePath = (0, import_node_path36.join)("projections", "media-cuts", `${safeFileStem2(options.outputAssetId)}.ffmpeg-plan.json`);
+  const packagePath = (0, import_node_path36.resolve)(cwd, packageRelativePath);
+  const concatPath = (0, import_node_path36.resolve)(cwd, concatRelativePath);
+  const ffmpegPlanPath = (0, import_node_path36.resolve)(cwd, ffmpegPlanRelativePath);
   const keepSegments = buildKeepSegments(action.metadata.cuts, action.metadata.fps);
   const deletedRanges = buildDeletedRanges(action.metadata.cuts, action.metadata.fps);
   const reviewRanges = buildReviewRanges(action.metadata.cuts, action.metadata.fps);
@@ -115594,7 +116981,7 @@ async function exportTextCutMedia(options) {
   await writeJson12(ffmpegPlanPath, ffmpegPlan);
   let probe;
   if (shouldRender) {
-    await (0, import_promises23.mkdir)((0, import_node_path34.dirname)(outputPath), { recursive: true });
+    await (0, import_promises25.mkdir)((0, import_node_path36.dirname)(outputPath), { recursive: true });
     await runFfmpeg(ffmpegPlan.ffmpeg, ffmpegArgs);
     probe = await probeRenderedMedia(
       options.ffprobePath ?? process.env.CLASH_FFPROBE_PATH ?? process.env.FFPROBE_PATH ?? "ffprobe",
@@ -115800,17 +117187,17 @@ function resolveProjectPath12(cwd, path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local file path, not a URL`);
   }
-  const absolutePath = (0, import_node_path34.isAbsolute)(path) ? (0, import_node_path34.resolve)(path) : (0, import_node_path34.resolve)(cwd, path);
-  const relativePath2 = (0, import_node_path34.relative)(cwd, absolutePath);
-  if (relativePath2.startsWith("..") || (0, import_node_path34.isAbsolute)(relativePath2)) {
+  const absolutePath = (0, import_node_path36.isAbsolute)(path) ? (0, import_node_path36.resolve)(path) : (0, import_node_path36.resolve)(cwd, path);
+  const relativePath2 = (0, import_node_path36.relative)(cwd, absolutePath);
+  if (relativePath2.startsWith("..") || (0, import_node_path36.isAbsolute)(relativePath2)) {
     throw new Error(`${label} must stay inside the project`);
   }
   return absolutePath;
 }
 async function assertExistingProjectPathRealpath(cwd, path, label) {
-  const [realCwd, realPath] = await Promise.all([(0, import_promises23.realpath)(cwd), (0, import_promises23.realpath)(path)]);
-  const relativePath2 = (0, import_node_path34.relative)(realCwd, realPath);
-  if (relativePath2.startsWith("..") || (0, import_node_path34.isAbsolute)(relativePath2)) {
+  const [realCwd, realPath] = await Promise.all([(0, import_promises25.realpath)(cwd), (0, import_promises25.realpath)(path)]);
+  const relativePath2 = (0, import_node_path36.relative)(realCwd, realPath);
+  if (relativePath2.startsWith("..") || (0, import_node_path36.isAbsolute)(relativePath2)) {
     throw new Error(`${label} must stay inside the project`);
   }
 }
@@ -115818,7 +117205,7 @@ function normalizeProjectRelativePath10(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path34.isAbsolute)(path)) {
+  if ((0, import_node_path36.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -115828,7 +117215,7 @@ function normalizeProjectRelativePath10(path, label) {
   return parts.join("/");
 }
 function toProjectRelativePath(cwd, path) {
-  return normalizeProjectRelativePath10((0, import_node_path34.relative)(cwd, path), "artifact path");
+  return normalizeProjectRelativePath10((0, import_node_path36.relative)(cwd, path), "artifact path");
 }
 function safeFileStem2(value) {
   const stem = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -115925,26 +117312,26 @@ async function writeJson12(path, value) {
 `);
 }
 async function writeText2(path, value) {
-  await (0, import_promises23.mkdir)((0, import_node_path34.dirname)(path), { recursive: true });
-  await (0, import_promises23.writeFile)(path, value, "utf8");
+  await (0, import_promises25.mkdir)((0, import_node_path36.dirname)(path), { recursive: true });
+  await (0, import_promises25.writeFile)(path, value, "utf8");
 }
 
 // ../../packages/cli/src/lib/caption-lineage-verification.ts
-var import_promises24 = require("node:fs/promises");
-var import_node_path35 = require("node:path");
+var import_promises26 = require("node:fs/promises");
+var import_node_path37 = require("node:path");
 async function verifyCaptionLineage(options) {
-  const cwd = (0, import_node_path35.resolve)(options.cwd);
+  const cwd = (0, import_node_path37.resolve)(options.cwd);
   const timelinePath = resolveProjectPath13(cwd, options.timelinePath, "caption timeline");
   const reportPath = resolveAgentFilePathInsideCwd({
     cwd,
     filePath: resolveProjectPath13(
       cwd,
-      options.outPath ?? (0, import_node_path35.join)("qa", "captions", `${basenameWithoutTimeline(timelinePath)}.caption-lineage.json`),
+      options.outPath ?? (0, import_node_path37.join)("qa", "captions", `${basenameWithoutTimeline(timelinePath)}.caption-lineage.json`),
       "caption lineage verification report"
     ),
     writeVerb: "Caption lineage verification report"
   });
-  const parsed = timelineDslFromYaml(await (0, import_promises24.readFile)(timelinePath, "utf8"));
+  const parsed = timelineDslFromYaml(await (0, import_promises26.readFile)(timelinePath, "utf8"));
   const stats = parsed.ok ? collectCaptionStats(parsed.dsl) : emptyStats();
   const checks = buildChecks(parsed, stats);
   const blockedReasons = checks.filter((check6) => check6.status === "fail").map((check6) => `${check6.id}: ${check6.actual}`);
@@ -116074,30 +117461,30 @@ function resolveProjectPath13(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path35.isAbsolute)(rawPath) ? (0, import_node_path35.resolve)(rawPath) : (0, import_node_path35.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path37.isAbsolute)(rawPath) ? (0, import_node_path37.resolve)(rawPath) : (0, import_node_path37.resolve)(cwd, rawPath);
   if (!isInsideOrEqual13(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual13(parent, child) {
-  const relativePath2 = (0, import_node_path35.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path35.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path37.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path37.isAbsolute)(relativePath2);
 }
 function toProjectPath6(cwd, absolutePath) {
-  return (0, import_node_path35.relative)(cwd, absolutePath).split(import_node_path35.sep).join("/");
+  return (0, import_node_path37.relative)(cwd, absolutePath).split(import_node_path37.sep).join("/");
 }
 async function writeJson13(path, value) {
-  await (0, import_promises24.mkdir)((0, import_node_path35.dirname)(path), { recursive: true });
-  await (0, import_promises24.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises26.mkdir)((0, import_node_path37.dirname)(path), { recursive: true });
+  await (0, import_promises26.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/caption-export.ts
-var import_promises25 = require("node:fs/promises");
-var import_node_path36 = require("node:path");
+var import_promises27 = require("node:fs/promises");
+var import_node_path38 = require("node:path");
 async function exportCaptionFile(options) {
-  const cwd = (0, import_node_path36.resolve)(options.cwd);
+  const cwd = (0, import_node_path38.resolve)(options.cwd);
   const timelinePath = resolveProjectPath14(cwd, options.timelinePath, "timeline");
   const outputPath = resolveAgentOutputPath(cwd, options.outPath, "Caption output");
   const format = options.format ?? inferCaptionFormat(outputPath);
@@ -116106,7 +117493,7 @@ async function exportCaptionFile(options) {
     options.manifestPath ?? defaultManifestPath(outputPath),
     "Caption export manifest"
   );
-  const parsed = timelineDslFromYaml(await (0, import_promises25.readFile)(timelinePath, "utf8"));
+  const parsed = timelineDslFromYaml(await (0, import_promises27.readFile)(timelinePath, "utf8"));
   if (!parsed.ok) {
     throw new Error(`Invalid timeline YAML: ${parsed.error}`);
   }
@@ -116279,16 +117666,16 @@ function escapeAssText(text) {
   return normalizeCaptionText(text).replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}").replace(/\n/g, "\\N");
 }
 function inferCaptionFormat(outputPath) {
-  const ext = (0, import_node_path36.extname)(outputPath).toLowerCase();
+  const ext = (0, import_node_path38.extname)(outputPath).toLowerCase();
   if (ext === ".srt") return "srt";
   if (ext === ".vtt") return "vtt";
   if (ext === ".ass") return "ass";
   throw new Error("Caption export format must be passed with --format or inferred from .srt/.vtt/.ass output path");
 }
 function defaultManifestPath(outputPath) {
-  const ext = (0, import_node_path36.extname)(outputPath);
-  const base = (0, import_node_path36.basename)(outputPath, ext);
-  return (0, import_node_path36.join)((0, import_node_path36.dirname)(outputPath), `${base}.caption-export.json`);
+  const ext = (0, import_node_path38.extname)(outputPath);
+  const base = (0, import_node_path38.basename)(outputPath, ext);
+  return (0, import_node_path38.join)((0, import_node_path38.dirname)(outputPath), `${base}.caption-export.json`);
 }
 function resolveProjectPath14(cwd, rawPath, label) {
   if (!rawPath || typeof rawPath !== "string") {
@@ -116297,7 +117684,7 @@ function resolveProjectPath14(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path36.isAbsolute)(rawPath) ? (0, import_node_path36.resolve)(rawPath) : (0, import_node_path36.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path38.isAbsolute)(rawPath) ? (0, import_node_path38.resolve)(rawPath) : (0, import_node_path38.resolve)(cwd, rawPath);
   if (!isInsideOrEqual14(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -116311,19 +117698,19 @@ function resolveAgentOutputPath(cwd, rawPath, writeVerb) {
   });
 }
 function isInsideOrEqual14(parent, child) {
-  const relativePath2 = (0, import_node_path36.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path36.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path38.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path38.isAbsolute)(relativePath2);
 }
 function toProjectPath7(cwd, absolutePath) {
-  return (0, import_node_path36.relative)(cwd, absolutePath).split(import_node_path36.sep).join("/");
+  return (0, import_node_path38.relative)(cwd, absolutePath).split(import_node_path38.sep).join("/");
 }
 async function writeText3(path, content) {
-  await (0, import_promises25.mkdir)((0, import_node_path36.dirname)(path), { recursive: true });
-  await (0, import_promises25.writeFile)(path, content, "utf8");
+  await (0, import_promises27.mkdir)((0, import_node_path38.dirname)(path), { recursive: true });
+  await (0, import_promises27.writeFile)(path, content, "utf8");
 }
 async function writeJson14(path, value) {
-  await (0, import_promises25.mkdir)((0, import_node_path36.dirname)(path), { recursive: true });
-  await (0, import_promises25.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises27.mkdir)((0, import_node_path38.dirname)(path), { recursive: true });
+  await (0, import_promises27.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 function pad2(value) {
@@ -116334,10 +117721,10 @@ function pad3(value) {
 }
 
 // ../../packages/cli/src/lib/caption-overlay-projection.ts
-var import_promises26 = require("node:fs/promises");
-var import_node_path37 = require("node:path");
+var import_promises28 = require("node:fs/promises");
+var import_node_path39 = require("node:path");
 async function projectCaptionOverlayTimeline(options) {
-  const cwd = (0, import_node_path37.resolve)(options.cwd);
+  const cwd = (0, import_node_path39.resolve)(options.cwd);
   const sourceTimelinePath = resolveProjectPath15(cwd, options.timelinePath, "source timeline");
   const timelineProjectionPath = resolveProjectPath15(cwd, options.outPath, "caption overlay timeline");
   const manifestPath = resolveProjectPath15(
@@ -116345,7 +117732,7 @@ async function projectCaptionOverlayTimeline(options) {
     options.manifestPath ?? defaultManifestPath2(timelineProjectionPath),
     "caption overlay manifest"
   );
-  const parsed = timelineDslFromYaml(await (0, import_promises26.readFile)(sourceTimelinePath, "utf8"));
+  const parsed = timelineDslFromYaml(await (0, import_promises28.readFile)(sourceTimelinePath, "utf8"));
   if (!parsed.ok) {
     throw new Error(`Invalid timeline YAML: ${parsed.error}`);
   }
@@ -116485,9 +117872,9 @@ function timelineEndFrame(tracks) {
   return max;
 }
 function defaultManifestPath2(timelineProjectionPath) {
-  const ext = (0, import_node_path37.extname)(timelineProjectionPath);
-  const base = (0, import_node_path37.basename)(timelineProjectionPath, ext);
-  return (0, import_node_path37.join)((0, import_node_path37.dirname)(timelineProjectionPath), `${base}-manifest.json`);
+  const ext = (0, import_node_path39.extname)(timelineProjectionPath);
+  const base = (0, import_node_path39.basename)(timelineProjectionPath, ext);
+  return (0, import_node_path39.join)((0, import_node_path39.dirname)(timelineProjectionPath), `${base}-manifest.json`);
 }
 function resolveProjectPath15(cwd, rawPath, label) {
   if (!rawPath || typeof rawPath !== "string") {
@@ -116496,60 +117883,60 @@ function resolveProjectPath15(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path37.isAbsolute)(rawPath) ? (0, import_node_path37.resolve)(rawPath) : (0, import_node_path37.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path39.isAbsolute)(rawPath) ? (0, import_node_path39.resolve)(rawPath) : (0, import_node_path39.resolve)(cwd, rawPath);
   if (!isInsideOrEqual15(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual15(parent, child) {
-  const relativePath2 = (0, import_node_path37.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path37.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path39.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path39.isAbsolute)(relativePath2);
 }
 function toProjectPath8(cwd, absolutePath) {
-  return (0, import_node_path37.relative)(cwd, absolutePath).split(import_node_path37.sep).join("/");
+  return (0, import_node_path39.relative)(cwd, absolutePath).split(import_node_path39.sep).join("/");
 }
 async function writeJson15(path, value) {
   await writeText4(path, `${JSON.stringify(value, null, 2)}
 `);
 }
 async function writeText4(path, value) {
-  await (0, import_promises26.mkdir)((0, import_node_path37.dirname)(path), { recursive: true });
-  await (0, import_promises26.writeFile)(path, value, "utf8");
+  await (0, import_promises28.mkdir)((0, import_node_path39.dirname)(path), { recursive: true });
+  await (0, import_promises28.writeFile)(path, value, "utf8");
 }
 
 // ../../packages/cli/src/lib/caption-burn-export.ts
 var import_node_child_process4 = require("node:child_process");
-var import_promises27 = require("node:fs/promises");
-var import_node_path38 = require("node:path");
+var import_promises29 = require("node:fs/promises");
+var import_node_path40 = require("node:path");
 async function exportCaptionBurn(options) {
-  const cwd = (0, import_node_path38.resolve)(options.cwd);
+  const cwd = (0, import_node_path40.resolve)(options.cwd);
   const assetsPath = resolveAgentOutputPath2(
     cwd,
-    options.assetsPath ?? (0, import_node_path38.join)("assets", "manifest.json"),
+    options.assetsPath ?? (0, import_node_path40.join)("assets", "manifest.json"),
     "Caption burn asset manifest"
   );
   const sourceTimelinePath = resolveProjectPath16(cwd, options.timelinePath, "caption timeline");
-  const manifest = parseAssetManifest3(await (0, import_promises27.readFile)(assetsPath, "utf8"), assetsPath);
+  const manifest = parseAssetManifest3(await (0, import_promises29.readFile)(assetsPath, "utf8"), assetsPath);
   const sourceAsset = requireAsset(manifest, options.sourceAssetId, assetsPath);
   const sourceAssetPath = normalizeProjectRelativePath11(sourceAsset.path, `source asset ${sourceAsset.id} path`);
   const outputRelativePath = normalizeProjectRelativePath11(
-    options.outPath ?? (0, import_node_path38.join)("assets", "video", `${safeFileStem3(options.outputAssetId)}.mp4`),
+    options.outPath ?? (0, import_node_path40.join)("assets", "video", `${safeFileStem3(options.outputAssetId)}.mp4`),
     "caption burn output path"
   );
   const captionSidecarRelativePath = normalizeProjectRelativePath11(
-    options.captionSidecarPath ?? (0, import_node_path38.join)("exports", "captions", `${safeFileStem3(options.outputAssetId)}.burn-in.ass`),
+    options.captionSidecarPath ?? (0, import_node_path40.join)("exports", "captions", `${safeFileStem3(options.outputAssetId)}.burn-in.ass`),
     "caption burn sidecar path"
   );
   const packageRelativePath = normalizeProjectRelativePath11(
-    options.packagePath ?? (0, import_node_path38.join)("projections", "caption-burn", `${safeFileStem3(options.outputAssetId)}.caption-burn.json`),
+    options.packagePath ?? (0, import_node_path40.join)("projections", "caption-burn", `${safeFileStem3(options.outputAssetId)}.caption-burn.json`),
     "caption burn package path"
   );
   const ffmpegPlanRelativePath = normalizeProjectRelativePath11(
-    options.ffmpegPlanPath ?? (0, import_node_path38.join)("projections", "caption-burn", `${safeFileStem3(options.outputAssetId)}.ffmpeg-plan.json`),
+    options.ffmpegPlanPath ?? (0, import_node_path40.join)("projections", "caption-burn", `${safeFileStem3(options.outputAssetId)}.ffmpeg-plan.json`),
     "caption burn ffmpeg plan path"
   );
-  const parsed = timelineDslFromYaml(await (0, import_promises27.readFile)(sourceTimelinePath, "utf8"));
+  const parsed = timelineDslFromYaml(await (0, import_promises29.readFile)(sourceTimelinePath, "utf8"));
   if (!parsed.ok) {
     throw new Error(`Invalid caption timeline YAML: ${parsed.error}`);
   }
@@ -116606,7 +117993,7 @@ async function exportCaptionBurn(options) {
   });
   const shouldRender = options.render === true;
   if (shouldRender) {
-    await (0, import_promises27.mkdir)((0, import_node_path38.dirname)(outputPath), { recursive: true });
+    await (0, import_promises29.mkdir)((0, import_node_path40.dirname)(outputPath), { recursive: true });
     await runFfmpeg2(ffmpeg, ffmpegArgs);
   }
   await writeJson16(packagePath, {
@@ -116753,7 +118140,7 @@ function normalizeProjectRelativePath11(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project path, not a URL`);
   }
-  if ((0, import_node_path38.isAbsolute)(path)) {
+  if ((0, import_node_path40.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -116769,7 +118156,7 @@ function resolveProjectPath16(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path38.isAbsolute)(rawPath) ? (0, import_node_path38.resolve)(rawPath) : (0, import_node_path38.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path40.isAbsolute)(rawPath) ? (0, import_node_path40.resolve)(rawPath) : (0, import_node_path40.resolve)(cwd, rawPath);
   if (!isInsideOrEqual16(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -116783,11 +118170,11 @@ function resolveAgentOutputPath2(cwd, rawPath, writeVerb) {
   });
 }
 function isInsideOrEqual16(parent, child) {
-  const relativePath2 = (0, import_node_path38.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path38.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path40.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path40.isAbsolute)(relativePath2);
 }
 function toProjectRelativePath2(cwd, absolutePath) {
-  return (0, import_node_path38.relative)(cwd, absolutePath).split(import_node_path38.sep).join("/");
+  return (0, import_node_path40.relative)(cwd, absolutePath).split(import_node_path40.sep).join("/");
 }
 function escapeFfmpegFilterPath(path) {
   return path.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
@@ -116814,18 +118201,18 @@ async function writeJson16(path, value) {
 `);
 }
 async function writeText5(path, value) {
-  await (0, import_promises27.mkdir)((0, import_node_path38.dirname)(path), { recursive: true });
-  await (0, import_promises27.writeFile)(path, value, "utf8");
+  await (0, import_promises29.mkdir)((0, import_node_path40.dirname)(path), { recursive: true });
+  await (0, import_promises29.writeFile)(path, value, "utf8");
 }
 function safeFileStem3(value) {
   return value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "caption-burn";
 }
 
 // ../../packages/cli/src/lib/timeline-handoff-export.ts
-var import_promises28 = require("node:fs/promises");
-var import_node_path39 = require("node:path");
+var import_promises30 = require("node:fs/promises");
+var import_node_path41 = require("node:path");
 async function exportTimelineHandoff(options) {
-  const cwd = (0, import_node_path39.resolve)(options.cwd);
+  const cwd = (0, import_node_path41.resolve)(options.cwd);
   const timelinePath = resolveProjectPath17(cwd, options.timelinePath, "timeline");
   const outputPath = resolveAgentOutputPath3(cwd, options.outPath, "Timeline handoff output");
   const format = options.format ?? inferTimelineHandoffFormat(outputPath);
@@ -116834,7 +118221,7 @@ async function exportTimelineHandoff(options) {
     options.manifestPath ?? defaultManifestPath3(outputPath),
     "Timeline handoff manifest"
   );
-  const parsed = timelineDslFromYaml(await (0, import_promises28.readFile)(timelinePath, "utf8"));
+  const parsed = timelineDslFromYaml(await (0, import_promises30.readFile)(timelinePath, "utf8"));
   if (!parsed.ok) {
     throw new Error(`Invalid timeline YAML: ${parsed.error}`);
   }
@@ -116954,14 +118341,14 @@ function frameToTimecode(frame, fps) {
   return `${pad22(hours)}:${pad22(minutes)}:${pad22(seconds)}:${pad22(frames)}`;
 }
 function inferTimelineHandoffFormat(outputPath) {
-  if ((0, import_node_path39.extname)(outputPath).toLowerCase() === ".csv") return "csv";
+  if ((0, import_node_path41.extname)(outputPath).toLowerCase() === ".csv") return "csv";
   throw new Error("Timeline handoff format must be passed with --format csv or inferred from .csv output path");
 }
 function defaultManifestPath3(outputPath) {
-  const ext = (0, import_node_path39.extname)(outputPath);
-  const base = (0, import_node_path39.basename)(outputPath, ext);
+  const ext = (0, import_node_path41.extname)(outputPath);
+  const base = (0, import_node_path41.basename)(outputPath, ext);
   const suffix = base.endsWith(".timeline") ? ".handoff.json" : ".timeline.handoff.json";
-  return (0, import_node_path39.join)((0, import_node_path39.dirname)(outputPath), `${base}${suffix}`);
+  return (0, import_node_path41.join)((0, import_node_path41.dirname)(outputPath), `${base}${suffix}`);
 }
 function countBy(values) {
   const counts = {};
@@ -116984,7 +118371,7 @@ function resolveProjectPath17(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path39.isAbsolute)(rawPath) ? (0, import_node_path39.resolve)(rawPath) : (0, import_node_path39.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path41.isAbsolute)(rawPath) ? (0, import_node_path41.resolve)(rawPath) : (0, import_node_path41.resolve)(cwd, rawPath);
   if (!isInsideOrEqual17(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -116998,19 +118385,19 @@ function resolveAgentOutputPath3(cwd, rawPath, writeVerb) {
   });
 }
 function isInsideOrEqual17(parent, child) {
-  const relativePath2 = (0, import_node_path39.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path39.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path41.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path41.isAbsolute)(relativePath2);
 }
 function toProjectPath9(cwd, absolutePath) {
-  return (0, import_node_path39.relative)(cwd, absolutePath).split(import_node_path39.sep).join("/");
+  return (0, import_node_path41.relative)(cwd, absolutePath).split(import_node_path41.sep).join("/");
 }
 async function writeText6(path, content) {
-  await (0, import_promises28.mkdir)((0, import_node_path39.dirname)(path), { recursive: true });
-  await (0, import_promises28.writeFile)(path, content, "utf8");
+  await (0, import_promises30.mkdir)((0, import_node_path41.dirname)(path), { recursive: true });
+  await (0, import_promises30.writeFile)(path, content, "utf8");
 }
 async function writeJson17(path, value) {
-  await (0, import_promises28.mkdir)((0, import_node_path39.dirname)(path), { recursive: true });
-  await (0, import_promises28.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises30.mkdir)((0, import_node_path41.dirname)(path), { recursive: true });
+  await (0, import_promises30.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 function pad22(value) {
@@ -117018,13 +118405,13 @@ function pad22(value) {
 }
 
 // ../../packages/cli/src/lib/audio-beat-analysis.ts
-var import_promises29 = require("node:fs/promises");
+var import_promises31 = require("node:fs/promises");
 var LOCAL_RMS_SECTION_HEURISTIC = "local-rms-phrase-heuristic";
 async function analyzeWavBeatAction(options) {
   if (!Number.isFinite(options.fps) || options.fps <= 0) {
     throw new Error("fps must be a positive number");
   }
-  const wav = parsePcm16Wav(await (0, import_promises29.readFile)(options.audioPath));
+  const wav = parsePcm16Wav(await (0, import_promises31.readFile)(options.audioPath));
   const energies = frameRmsEnergy(wav.samples, wav.sampleRate, options.fps);
   const energyCurve = buildEnergyCurve(energies, options.fps);
   const peaks = detectBeatPeaks(energies, options.fps);
@@ -117483,12 +118870,12 @@ function msToFrame2(ms, fps) {
 }
 
 // ../../packages/cli/src/lib/mv-beat-timeline-projection.ts
-var import_promises30 = require("node:fs/promises");
-var import_node_path40 = require("node:path");
+var import_promises32 = require("node:fs/promises");
+var import_node_path42 = require("node:path");
 async function projectMvBeatCutsTimeline(options) {
-  const cwd = (0, import_node_path40.resolve)(options.cwd);
+  const cwd = (0, import_node_path42.resolve)(options.cwd);
   const actionPath = resolveProjectPath18(cwd, options.actionPath, "action");
-  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises30.readFile)(actionPath, "utf8")));
+  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises32.readFile)(actionPath, "utf8")));
   if (action.metadata.kind !== "audio.beat-analysis") {
     throw new Error(`Expected audio.beat-analysis action, got ${action.metadata.kind}`);
   }
@@ -117498,8 +118885,8 @@ async function projectMvBeatCutsTimeline(options) {
   const metadata = action.metadata;
   const audioSrc = normalizeAssetPath(options.audioSrc, "audio source");
   const clips = options.clips.map((clip, index) => normalizeClip(clip, index));
-  const assetsPath = resolveProjectPath18(cwd, options.assetsPath ?? (0, import_node_path40.join)("assets", "manifest.json"), "asset manifest");
-  const manifest = parseAssetManifest4(await (0, import_promises30.readFile)(assetsPath, "utf8"), assetsPath);
+  const assetsPath = resolveProjectPath18(cwd, options.assetsPath ?? (0, import_node_path42.join)("assets", "manifest.json"), "asset manifest");
+  const manifest = parseAssetManifest4(await (0, import_promises32.readFile)(assetsPath, "utf8"), assetsPath);
   assertRegisteredMvAssets({
     manifest,
     targetAssetId: action.targetAssetId,
@@ -117518,7 +118905,7 @@ async function projectMvBeatCutsTimeline(options) {
       sourceStartFrame: clip.sourceStartFrame
     };
   });
-  const timelineProjectionPath = (0, import_node_path40.join)(
+  const timelineProjectionPath = (0, import_node_path42.join)(
     cwd,
     "projections",
     "timelines",
@@ -117528,9 +118915,9 @@ async function projectMvBeatCutsTimeline(options) {
     cwd,
     filePath: timelineProjectionPath
   });
-  const manifestPath = (0, import_node_path40.join)(
-    (0, import_node_path40.dirname)(timelineProjectionPath),
-    `${(0, import_node_path40.basename)(timelineProjectionPath, ".yaml")}-manifest.json`
+  const manifestPath = (0, import_node_path42.join)(
+    (0, import_node_path42.dirname)(timelineProjectionPath),
+    `${(0, import_node_path42.basename)(timelineProjectionPath, ".yaml")}-manifest.json`
   );
   const timelineItems = assignments.map((assignment) => ({
     id: `mv-cut-${safeSlug12(assignment.sectionId)}`,
@@ -117673,7 +119060,7 @@ function normalizeAssetPath(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project path, not a URL`);
   }
-  if ((0, import_node_path40.isAbsolute)(path)) {
+  if ((0, import_node_path42.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -117689,21 +119076,21 @@ function resolveProjectPath18(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path40.isAbsolute)(rawPath) ? (0, import_node_path40.resolve)(rawPath) : (0, import_node_path40.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path42.isAbsolute)(rawPath) ? (0, import_node_path42.resolve)(rawPath) : (0, import_node_path42.resolve)(cwd, rawPath);
   if (!isInsideOrEqual18(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual18(parent, child) {
-  const relativePath2 = (0, import_node_path40.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path40.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path42.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path42.isAbsolute)(relativePath2);
 }
 function toProjectPath10(cwd, absolutePath) {
-  return (0, import_node_path40.relative)(cwd, absolutePath).split(import_node_path40.sep).join("/");
+  return (0, import_node_path42.relative)(cwd, absolutePath).split(import_node_path42.sep).join("/");
 }
 function toProjectDisplayPath(path) {
-  const normalized = path.split(import_node_path40.sep).join("/");
+  const normalized = path.split(import_node_path42.sep).join("/");
   const marker = "/assets/manifest.json";
   return normalized.endsWith(marker) ? "assets/manifest.json" : normalized;
 }
@@ -117716,17 +119103,17 @@ async function writeJson18(path, value) {
 `);
 }
 async function writeText7(path, value) {
-  await (0, import_promises30.mkdir)((0, import_node_path40.dirname)(path), { recursive: true });
-  await (0, import_promises30.writeFile)(path, value, "utf8");
+  await (0, import_promises32.mkdir)((0, import_node_path42.dirname)(path), { recursive: true });
+  await (0, import_promises32.writeFile)(path, value, "utf8");
 }
 
 // ../../packages/cli/src/lib/mv-beat-sync-verification.ts
-var import_promises31 = require("node:fs/promises");
-var import_node_path41 = require("node:path");
+var import_promises33 = require("node:fs/promises");
+var import_node_path43 = require("node:path");
 async function verifyMvBeatSync(options) {
-  const cwd = (0, import_node_path41.resolve)(options.cwd);
+  const cwd = (0, import_node_path43.resolve)(options.cwd);
   const actionPath = resolveProjectPath19(cwd, options.actionPath, "MV beat action");
-  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises31.readFile)(actionPath, "utf8")));
+  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises33.readFile)(actionPath, "utf8")));
   if (action.metadata.kind !== "audio.beat-analysis") {
     throw new Error(`Expected audio.beat-analysis action, got ${action.metadata.kind}`);
   }
@@ -117744,7 +119131,7 @@ async function verifyMvBeatSync(options) {
     cwd,
     filePath: resolveProjectPath19(
       cwd,
-      options.outPath ?? (0, import_node_path41.join)("qa", "mv", `${safeSlug13(action.targetAssetId)}.beat-sync-verification.json`),
+      options.outPath ?? (0, import_node_path43.join)("qa", "mv", `${safeSlug13(action.targetAssetId)}.beat-sync-verification.json`),
       "MV beat sync verification report"
     ),
     writeVerb: "MV beat sync verification report"
@@ -117879,7 +119266,7 @@ async function readProjectionManifest(cwd, projectionPath) {
   const path = resolveProjectPath19(cwd, projectionPath, "MV beat projection manifest");
   return {
     path,
-    manifest: JSON.parse(await (0, import_promises31.readFile)(path, "utf8"))
+    manifest: JSON.parse(await (0, import_promises33.readFile)(path, "utf8"))
   };
 }
 function check3(options) {
@@ -117905,26 +119292,26 @@ function resolveProjectPath19(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path41.isAbsolute)(rawPath) ? (0, import_node_path41.resolve)(rawPath) : (0, import_node_path41.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path43.isAbsolute)(rawPath) ? (0, import_node_path43.resolve)(rawPath) : (0, import_node_path43.resolve)(cwd, rawPath);
   if (!isInsideOrEqual19(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual19(parent, child) {
-  const relativePath2 = (0, import_node_path41.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path41.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path43.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path43.isAbsolute)(relativePath2);
 }
 function toProjectPath11(cwd, absolutePath) {
-  return (0, import_node_path41.relative)(cwd, absolutePath).split(import_node_path41.sep).join("/");
+  return (0, import_node_path43.relative)(cwd, absolutePath).split(import_node_path43.sep).join("/");
 }
 function safeSlug13(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "mv";
 }
 async function writeJson19(path, value) {
-  await (0, import_promises31.mkdir)((0, import_node_path41.dirname)(path), { recursive: true });
-  await (0, import_promises31.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises33.mkdir)((0, import_node_path43.dirname)(path), { recursive: true });
+  await (0, import_promises33.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
@@ -117996,16 +119383,16 @@ function durationSlug(value) {
 }
 
 // ../../packages/cli/src/lib/ad-visual-frame-extraction.ts
-var import_promises32 = require("node:fs/promises");
+var import_promises34 = require("node:fs/promises");
 var import_node_fs14 = require("node:fs");
 var import_node_child_process5 = require("node:child_process");
-var import_node_path42 = require("node:path");
+var import_node_path44 = require("node:path");
 async function extractAdVisualFrames(options) {
-  const cwd = (0, import_node_path42.resolve)(options.cwd);
+  const cwd = (0, import_node_path44.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty12(options.targetAssetId, "target asset id");
   const deliverySpecPath = resolveProjectPath20(cwd, options.deliverySpecPath, "delivery spec");
   const deliverySpec = AdDeliverySpecProjectionSchema.parse(
-    JSON.parse(await (0, import_promises32.readFile)(deliverySpecPath, "utf8"))
+    JSON.parse(await (0, import_promises34.readFile)(deliverySpecPath, "utf8"))
   );
   if (deliverySpec.targetAssetId !== targetAssetId) {
     throw new Error(`delivery spec target ${deliverySpec.targetAssetId} does not match ${targetAssetId}`);
@@ -118015,7 +119402,7 @@ async function extractAdVisualFrames(options) {
   const renderedPath = normalizeProjectRelativePath12(options.renderedPath, "rendered path");
   const renderedFullPath = resolveProjectPath20(cwd, renderedPath, "rendered media");
   const outDir = normalizeProjectRelativePath12(
-    options.outDir ?? (0, import_node_path42.join)("analysis", "visual", "frames", safeSlug14(variant.id)),
+    options.outDir ?? (0, import_node_path44.join)("analysis", "visual", "frames", safeSlug14(variant.id)),
     "output directory"
   );
   const samples = [
@@ -118052,7 +119439,7 @@ async function extractAdVisualFrames(options) {
     });
   }
   const manifestRelativePath = normalizeProjectRelativePath12(
-    options.manifestPath ?? (0, import_node_path42.join)("analysis", "visual", `${safeSlug14(variant.id)}.frame-extraction.json`),
+    options.manifestPath ?? (0, import_node_path44.join)("analysis", "visual", `${safeSlug14(variant.id)}.frame-extraction.json`),
     "frame extraction manifest"
   );
   const manifestPath = resolveProjectPath20(cwd, manifestRelativePath, "frame extraction manifest");
@@ -118082,7 +119469,7 @@ async function extractAdVisualFrames(options) {
   };
 }
 async function extractFrame(options) {
-  await (0, import_promises32.mkdir)((0, import_node_path42.dirname)(options.outputFullPath), { recursive: true });
+  await (0, import_promises34.mkdir)((0, import_node_path44.dirname)(options.outputFullPath), { recursive: true });
   const filter = `select=eq(n\\,${options.frame}),format=rgb24`;
   const args = [
     "-y",
@@ -118135,7 +119522,7 @@ function resolveProjectPath20(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path42.isAbsolute)(rawPath) ? (0, import_node_path42.resolve)(rawPath) : (0, import_node_path42.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path44.isAbsolute)(rawPath) ? (0, import_node_path44.resolve)(rawPath) : (0, import_node_path44.resolve)(cwd, rawPath);
   if (!isInsideOrEqual20(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -118145,7 +119532,7 @@ function normalizeProjectRelativePath12(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path42.isAbsolute)(path)) {
+  if ((0, import_node_path44.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -118158,28 +119545,28 @@ function joinProjectPath(...parts) {
   return parts.flatMap((part) => part.split(/[\\/]+/).filter(Boolean)).join("/");
 }
 function isInsideOrEqual20(parent, child) {
-  const relativePath2 = (0, import_node_path42.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path42.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path44.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path44.isAbsolute)(relativePath2);
 }
 function safeSlug14(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "ad-visual-frames";
 }
 async function writeJson20(path, value) {
-  await (0, import_promises32.mkdir)((0, import_node_path42.dirname)(path), { recursive: true });
-  await (0, import_promises32.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises34.mkdir)((0, import_node_path44.dirname)(path), { recursive: true });
+  await (0, import_promises34.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/ad-visual-pixel-analysis.ts
-var import_promises33 = require("node:fs/promises");
-var import_node_path43 = require("node:path");
+var import_promises35 = require("node:fs/promises");
+var import_node_path45 = require("node:path");
 async function analyzeAdVisualPixels(options) {
-  const cwd = (0, import_node_path43.resolve)(options.cwd);
+  const cwd = (0, import_node_path45.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty13(options.targetAssetId, "target asset id");
   const deliverySpecPath = resolveProjectPath21(cwd, options.deliverySpecPath, "delivery spec");
   const deliverySpec = AdDeliverySpecProjectionSchema.parse(
-    JSON.parse(await (0, import_promises33.readFile)(deliverySpecPath, "utf8"))
+    JSON.parse(await (0, import_promises35.readFile)(deliverySpecPath, "utf8"))
   );
   if (deliverySpec.targetAssetId !== targetAssetId) {
     throw new Error(`delivery spec target ${deliverySpec.targetAssetId} does not match ${targetAssetId}`);
@@ -118278,7 +119665,7 @@ async function analyzeAdVisualPixels(options) {
   };
   const evidencePath = resolveProjectPath21(
     cwd,
-    options.outPath ?? (0, import_node_path43.join)("analysis", "visual", `${safeSlug15(variant.id)}.pixel-evidence.json`),
+    options.outPath ?? (0, import_node_path45.join)("analysis", "visual", `${safeSlug15(variant.id)}.pixel-evidence.json`),
     "ad visual pixel evidence"
   );
   await writeJson21(evidencePath, evidence);
@@ -118292,7 +119679,7 @@ async function analyzeAdVisualPixels(options) {
   };
 }
 async function readPpm(path) {
-  const buffer = await (0, import_promises33.readFile)(path);
+  const buffer = await (0, import_promises35.readFile)(path);
   let cursor = 0;
   const magic = readPpmToken(buffer, cursor);
   cursor = magic.nextOffset;
@@ -118441,7 +119828,7 @@ function resolveProjectPath21(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path43.isAbsolute)(rawPath) ? (0, import_node_path43.resolve)(rawPath) : (0, import_node_path43.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path45.isAbsolute)(rawPath) ? (0, import_node_path45.resolve)(rawPath) : (0, import_node_path45.resolve)(cwd, rawPath);
   if (!isInsideOrEqual21(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -118451,7 +119838,7 @@ function normalizeProjectRelativePath13(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path43.isAbsolute)(path)) {
+  if ((0, import_node_path45.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -118461,28 +119848,28 @@ function normalizeProjectRelativePath13(path, label) {
   return parts.join("/");
 }
 function isInsideOrEqual21(parent, child) {
-  const relativePath2 = (0, import_node_path43.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path43.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path45.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path45.isAbsolute)(relativePath2);
 }
 function safeSlug15(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "ad-visual-pixels";
 }
 async function writeJson21(path, value) {
-  await (0, import_promises33.mkdir)((0, import_node_path43.dirname)(path), { recursive: true });
-  await (0, import_promises33.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises35.mkdir)((0, import_node_path45.dirname)(path), { recursive: true });
+  await (0, import_promises35.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/ad-visual-qa-plan.ts
-var import_promises34 = require("node:fs/promises");
-var import_node_path44 = require("node:path");
+var import_promises36 = require("node:fs/promises");
+var import_node_path46 = require("node:path");
 async function planAdVisualQaAction(options) {
-  const cwd = (0, import_node_path44.resolve)(options.cwd);
+  const cwd = (0, import_node_path46.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty14(options.targetAssetId, "target asset id");
   const deliverySpecPath = resolveProjectPath22(cwd, options.deliverySpecPath, "delivery spec");
   const deliverySpec = AdDeliverySpecProjectionSchema.parse(
-    JSON.parse(await (0, import_promises34.readFile)(deliverySpecPath, "utf8"))
+    JSON.parse(await (0, import_promises36.readFile)(deliverySpecPath, "utf8"))
   );
   if (deliverySpec.targetAssetId !== targetAssetId) {
     throw new Error(`delivery spec target ${deliverySpec.targetAssetId} does not match ${targetAssetId}`);
@@ -118491,7 +119878,7 @@ async function planAdVisualQaAction(options) {
   if (!variant) throw new Error(`delivery spec does not include variant ${options.variantId}`);
   const evidenceProjectPath = normalizeProjectRelativePath14(options.evidencePath, "evidence path");
   const evidencePath = resolveProjectPath22(cwd, evidenceProjectPath, "ad visual QA evidence");
-  const evidence = parseEvidence(JSON.parse(await (0, import_promises34.readFile)(evidencePath, "utf8")));
+  const evidence = parseEvidence(JSON.parse(await (0, import_promises36.readFile)(evidencePath, "utf8")));
   if (evidence.targetAssetId !== targetAssetId) {
     throw new Error(`ad visual QA target ${evidence.targetAssetId} does not match ${targetAssetId}`);
   }
@@ -118543,7 +119930,7 @@ async function planAdVisualQaAction(options) {
     cwd,
     filePath: resolveProjectPath22(
       cwd,
-      options.outPath ?? (0, import_node_path44.join)("actions", `${safeSlug16(metadata.variantId)}.ad-visual-qa.json`),
+      options.outPath ?? (0, import_node_path46.join)("actions", `${safeSlug16(metadata.variantId)}.ad-visual-qa.json`),
       "ad visual QA action"
     ),
     writeVerb: "Ad visual QA action"
@@ -118552,7 +119939,7 @@ async function planAdVisualQaAction(options) {
     cwd,
     filePath: resolveProjectPath22(
       cwd,
-      options.reportPath ?? (0, import_node_path44.join)("qa", "visual", `${safeSlug16(metadata.variantId)}.visual-qa.json`),
+      options.reportPath ?? (0, import_node_path46.join)("qa", "visual", `${safeSlug16(metadata.variantId)}.visual-qa.json`),
       "ad visual QA report"
     ),
     writeVerb: "Ad visual QA report"
@@ -118656,7 +120043,7 @@ function resolveProjectPath22(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path44.isAbsolute)(rawPath) ? (0, import_node_path44.resolve)(rawPath) : (0, import_node_path44.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path46.isAbsolute)(rawPath) ? (0, import_node_path46.resolve)(rawPath) : (0, import_node_path46.resolve)(cwd, rawPath);
   if (!isInsideOrEqual22(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
@@ -118666,7 +120053,7 @@ function normalizeProjectRelativePath14(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
   }
-  if ((0, import_node_path44.isAbsolute)(path)) {
+  if ((0, import_node_path46.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -118676,39 +120063,39 @@ function normalizeProjectRelativePath14(path, label) {
   return parts.join("/");
 }
 function isInsideOrEqual22(parent, child) {
-  const relativePath2 = (0, import_node_path44.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path44.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path46.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path46.isAbsolute)(relativePath2);
 }
 function safeSlug16(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "ad-visual-qa";
 }
 async function writeJson22(path, value) {
-  await (0, import_promises34.mkdir)((0, import_node_path44.dirname)(path), { recursive: true });
-  await (0, import_promises34.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises36.mkdir)((0, import_node_path46.dirname)(path), { recursive: true });
+  await (0, import_promises36.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/ad-delivery-validation.ts
 var import_node_child_process6 = require("node:child_process");
-var import_promises35 = require("node:fs/promises");
-var import_node_path45 = require("node:path");
+var import_promises37 = require("node:fs/promises");
+var import_node_path47 = require("node:path");
 async function validateAdDeliveryExport(options) {
-  const cwd = (0, import_node_path45.resolve)(options.cwd);
+  const cwd = (0, import_node_path47.resolve)(options.cwd);
   const deliverySpecPath = resolveProjectPath23(cwd, options.deliverySpecPath, "delivery spec");
   const deliverySpec = AdDeliverySpecProjectionSchema.parse(
-    JSON.parse(await (0, import_promises35.readFile)(deliverySpecPath, "utf8"))
+    JSON.parse(await (0, import_promises37.readFile)(deliverySpecPath, "utf8"))
   );
   const renderedProjectPath = normalizeProjectRelativePath15(options.renderedPath, "rendered path");
   const renderedAbsolutePath = resolveProjectPath23(cwd, renderedProjectPath, "rendered path");
   const probe = options.probePath ? AdDeliveryExportProbeSchema.parse(
-    JSON.parse(await (0, import_promises35.readFile)(resolveProjectPath23(cwd, options.probePath, "probe"), "utf8"))
+    JSON.parse(await (0, import_promises37.readFile)(resolveProjectPath23(cwd, options.probePath, "probe"), "utf8"))
   ) : await probeRenderedExport({
     outputPath: renderedAbsolutePath,
     ffprobePath: options.ffprobePath ?? process.env.CLASH_FFPROBE_PATH ?? process.env.FFPROBE_PATH ?? "ffprobe"
   });
   const visualQa = options.visualReportPath ? AdDeliveryVisualQaReportSchema.parse(
-    JSON.parse(await (0, import_promises35.readFile)(resolveProjectPath23(cwd, options.visualReportPath, "visual report"), "utf8"))
+    JSON.parse(await (0, import_promises37.readFile)(resolveProjectPath23(cwd, options.visualReportPath, "visual report"), "utf8"))
   ) : void 0;
   const receipt = buildAdDeliveryExportValidationReceipt({
     deliverySpec,
@@ -118721,7 +120108,7 @@ async function validateAdDeliveryExport(options) {
     cwd,
     filePath: resolveProjectPath23(
       cwd,
-      options.outPath ?? (0, import_node_path45.join)("qa", "delivery", `${safeFileStem4(options.variantId)}.validation.json`),
+      options.outPath ?? (0, import_node_path47.join)("qa", "delivery", `${safeFileStem4(options.variantId)}.validation.json`),
       "output"
     ),
     writeVerb: "Ad delivery validation receipt"
@@ -118799,20 +120186,20 @@ function parseFrameRate(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : void 0;
 }
 async function writeJson23(path, value) {
-  await (0, import_promises35.mkdir)((0, import_node_path45.dirname)(path), { recursive: true });
-  await (0, import_promises35.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises37.mkdir)((0, import_node_path47.dirname)(path), { recursive: true });
+  await (0, import_promises37.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 function resolveProjectPath23(cwd, path, label) {
-  const resolved = (0, import_node_path45.isAbsolute)(path) ? (0, import_node_path45.resolve)(path) : (0, import_node_path45.resolve)(cwd, path);
-  const rel = (0, import_node_path45.relative)(cwd, resolved);
-  if (rel === ".." || rel.startsWith(`..${import_node_path45.sep}`) || (0, import_node_path45.isAbsolute)(rel)) {
+  const resolved = (0, import_node_path47.isAbsolute)(path) ? (0, import_node_path47.resolve)(path) : (0, import_node_path47.resolve)(cwd, path);
+  const rel = (0, import_node_path47.relative)(cwd, resolved);
+  if (rel === ".." || rel.startsWith(`..${import_node_path47.sep}`) || (0, import_node_path47.isAbsolute)(rel)) {
     throw new Error(`${label} must stay inside the project cwd`);
   }
   return resolved;
 }
 function normalizeProjectRelativePath15(path, label) {
-  if ((0, import_node_path45.isAbsolute)(path)) {
+  if ((0, import_node_path47.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative`);
   }
   const normalized = path.split(/[\\/]+/).filter(Boolean).join("/");
@@ -118853,22 +120240,22 @@ function planReferenceReviewAction(options) {
 }
 
 // ../../packages/cli/src/lib/reference-download-plan.ts
-var import_promises36 = require("node:fs/promises");
-var import_node_path46 = require("node:path");
+var import_promises38 = require("node:fs/promises");
+var import_node_path48 = require("node:path");
 async function planReferenceDownload(options) {
-  const cwd = (0, import_node_path46.resolve)(options.cwd);
+  const cwd = (0, import_node_path48.resolve)(options.cwd);
   const targetAssetId = requireNonEmpty15(options.targetAssetId, "target asset id");
   const sourceUrl = normalizeReferenceUrl(options.sourceUrl);
   const outputDir = resolveProjectPath24(
     cwd,
-    options.outputDir ?? (0, import_node_path46.join)("references", "raw", safeSlug17(targetAssetId)),
+    options.outputDir ?? (0, import_node_path48.join)("references", "raw", safeSlug17(targetAssetId)),
     "reference output directory"
   );
   const planPath = resolveAgentFilePathInsideCwd({
     cwd,
     filePath: resolveProjectPath24(
       cwd,
-      options.outPath ?? (0, import_node_path46.join)("references", "downloads", `${safeSlug17(targetAssetId)}.download-plan.json`),
+      options.outPath ?? (0, import_node_path48.join)("references", "downloads", `${safeSlug17(targetAssetId)}.download-plan.json`),
       "reference download plan"
     ),
     writeVerb: "Reference download plan"
@@ -118949,38 +120336,38 @@ function resolveProjectPath24(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path46.isAbsolute)(rawPath) ? (0, import_node_path46.resolve)(rawPath) : (0, import_node_path46.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path48.isAbsolute)(rawPath) ? (0, import_node_path48.resolve)(rawPath) : (0, import_node_path48.resolve)(cwd, rawPath);
   if (!isInsideOrEqual23(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual23(parent, child) {
-  const relativePath2 = (0, import_node_path46.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path46.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path48.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path48.isAbsolute)(relativePath2);
 }
 function toProjectPath12(cwd, absolutePath) {
-  return (0, import_node_path46.relative)(cwd, absolutePath).split(import_node_path46.sep).join("/");
+  return (0, import_node_path48.relative)(cwd, absolutePath).split(import_node_path48.sep).join("/");
 }
 function safeSlug17(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "reference";
 }
 async function writeJson24(path, value) {
-  await (0, import_promises36.mkdir)((0, import_node_path46.dirname)(path), { recursive: true });
-  await (0, import_promises36.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises38.mkdir)((0, import_node_path48.dirname)(path), { recursive: true });
+  await (0, import_promises38.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/reference-download-execution.ts
-var import_promises37 = require("node:fs/promises");
+var import_promises39 = require("node:fs/promises");
 var import_node_child_process7 = require("node:child_process");
-var import_node_path47 = require("node:path");
+var import_node_path49 = require("node:path");
 async function executeReferenceDownload(options) {
-  const cwd = (0, import_node_path47.resolve)(options.cwd);
+  const cwd = (0, import_node_path49.resolve)(options.cwd);
   const planPath = resolveProjectPath25(cwd, options.planPath, "reference download plan");
   const assetsPath = resolveProjectPath25(cwd, options.assetsPath ?? "assets/manifest.json", "assets manifest");
-  const plan = parsePlan(JSON.parse(await (0, import_promises37.readFile)(planPath, "utf8")));
+  const plan = parsePlan(JSON.parse(await (0, import_promises39.readFile)(planPath, "utf8")));
   if (plan.status !== "planned" || plan.downloadAllowed !== true) {
     const reason = plan.blockedReasons.length > 0 ? plan.blockedReasons.join("; ") : "download is not allowed";
     throw new Error(`reference download plan is blocked: ${reason}`);
@@ -118992,7 +120379,7 @@ async function executeReferenceDownload(options) {
     throw new Error("reference final export requires derivative and redistribution rights");
   }
   const outputDir = resolveProjectPath25(cwd, plan.outputDir, "reference output directory");
-  await (0, import_promises37.mkdir)(outputDir, { recursive: true });
+  await (0, import_promises39.mkdir)(outputDir, { recursive: true });
   const before = new Set(await collectFiles(outputDir));
   await runDownloadCommand(cwd, plan.downloadCommand, options.runnerPath);
   const after = await collectFiles(outputDir);
@@ -119005,7 +120392,7 @@ async function executeReferenceDownload(options) {
   }
   const downloadedFilesWithSize = await Promise.all(downloadedFiles.map(async (file2) => ({
     ...file2,
-    sizeBytes: (await (0, import_promises37.stat)(resolveProjectPath25(cwd, file2.path, "downloaded reference file"))).size
+    sizeBytes: (await (0, import_promises39.stat)(resolveProjectPath25(cwd, file2.path, "downloaded reference file"))).size
   })));
   const decisionLog = [
     "executed controlled reference download from approved plan",
@@ -119030,7 +120417,7 @@ async function executeReferenceDownload(options) {
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     metadata
   });
-  const manifest = await readAssetManifest(assetsPath);
+  const manifest = await readAssetManifest2(assetsPath);
   const existingIndex = manifest.assets.findIndex((asset) => asset.id === plan.targetAssetId);
   const baseAsset = existingIndex >= 0 ? manifest.assets[existingIndex] : { id: plan.targetAssetId, type: "reference", path: metadata.downloadedFiles[0].path, metadata: {} };
   const updatedAsset = {
@@ -119063,7 +120450,7 @@ async function executeReferenceDownload(options) {
     cwd,
     filePath: resolveProjectPath25(
       cwd,
-      options.outPath ?? (0, import_node_path47.join)("references", "downloads", `${safeSlug18(plan.targetAssetId)}.download-receipt.json`),
+      options.outPath ?? (0, import_node_path49.join)("references", "downloads", `${safeSlug18(plan.targetAssetId)}.download-receipt.json`),
       "reference download receipt"
     ),
     writeVerb: "Reference download receipt"
@@ -119156,9 +120543,9 @@ function spawnCollect(command, args, cwd) {
   });
 }
 async function collectFiles(root) {
-  const entries = await (0, import_promises37.readdir)(root, { withFileTypes: true });
+  const entries = await (0, import_promises39.readdir)(root, { withFileTypes: true });
   const files = await Promise.all(entries.map(async (entry) => {
-    const absolutePath = (0, import_node_path47.join)(root, entry.name);
+    const absolutePath = (0, import_node_path49.join)(root, entry.name);
     if (entry.isDirectory()) return collectFiles(absolutePath);
     if (entry.isFile()) return [absolutePath];
     return [];
@@ -119166,20 +120553,20 @@ async function collectFiles(root) {
   return files.flat().sort();
 }
 function isSidecarFile(path) {
-  const extension2 = (0, import_node_path47.extname)(path).toLowerCase();
+  const extension2 = (0, import_node_path49.extname)(path).toLowerCase();
   return extension2 === ".json" || extension2 === ".part" || extension2 === ".ytdl";
 }
 function inferMediaType(path) {
-  const extension2 = (0, import_node_path47.extname)(path).toLowerCase();
+  const extension2 = (0, import_node_path49.extname)(path).toLowerCase();
   if ([".mp4", ".mov", ".webm", ".mkv"].includes(extension2)) return "video";
   if ([".wav", ".mp3", ".m4a", ".aac", ".flac"].includes(extension2)) return "audio";
   if ([".png", ".jpg", ".jpeg", ".webp"].includes(extension2)) return "image";
   if (extension2 === ".json") return "metadata";
   return "unknown";
 }
-async function readAssetManifest(path) {
+async function readAssetManifest2(path) {
   try {
-    const input = JSON.parse(await (0, import_promises37.readFile)(path, "utf8"));
+    const input = JSON.parse(await (0, import_promises39.readFile)(path, "utf8"));
     return {
       assets: Array.isArray(input.assets) ? input.assets.filter((asset) => Boolean(asset) && typeof asset === "object").filter((asset) => typeof asset.id === "string" && asset.id.trim().length > 0).map((asset) => ({
         ...asset,
@@ -119196,21 +120583,21 @@ async function readAssetManifest(path) {
 function resolveProjectPath25(cwd, rawPath, label) {
   if (!rawPath || typeof rawPath !== "string") throw new Error(`${label} path is required`);
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) throw new Error(`${label} path must be local`);
-  const resolved = (0, import_node_path47.isAbsolute)(rawPath) ? (0, import_node_path47.resolve)(rawPath) : (0, import_node_path47.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path49.isAbsolute)(rawPath) ? (0, import_node_path49.resolve)(rawPath) : (0, import_node_path49.resolve)(cwd, rawPath);
   if (!isInsideOrEqual24(cwd, resolved)) throw new Error(`${label} path must stay inside the current project cwd`);
   return resolved;
 }
 function resolveRunnerPath(cwd, rawPath) {
   if (!rawPath.trim()) throw new Error("runner path is required");
   if (!rawPath.includes("/") && !rawPath.includes("\\")) return rawPath;
-  return (0, import_node_path47.isAbsolute)(rawPath) ? rawPath : (0, import_node_path47.resolve)(cwd, rawPath);
+  return (0, import_node_path49.isAbsolute)(rawPath) ? rawPath : (0, import_node_path49.resolve)(cwd, rawPath);
 }
 function isInsideOrEqual24(parent, child) {
-  const relativePath2 = (0, import_node_path47.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path47.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path49.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path49.isAbsolute)(relativePath2);
 }
 function toProjectPath13(cwd, absolutePath) {
-  return (0, import_node_path47.relative)(cwd, absolutePath).split(import_node_path47.sep).join("/");
+  return (0, import_node_path49.relative)(cwd, absolutePath).split(import_node_path49.sep).join("/");
 }
 function requireString2(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) throw new Error(`${label} is required`);
@@ -119220,8 +120607,8 @@ function safeSlug18(value) {
   return value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "reference";
 }
 async function writeJson25(path, value) {
-  await (0, import_promises37.mkdir)((0, import_node_path47.dirname)(path), { recursive: true });
-  await (0, import_promises37.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises39.mkdir)((0, import_node_path49.dirname)(path), { recursive: true });
+  await (0, import_promises39.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
@@ -119359,14 +120746,14 @@ var STOP_WORDS = /* @__PURE__ */ new Set([
 ]);
 
 // ../../packages/cli/src/lib/reference-isolation-verification.ts
-var import_promises38 = require("node:fs/promises");
-var import_node_path48 = require("node:path");
+var import_promises40 = require("node:fs/promises");
+var import_node_path50 = require("node:path");
 async function verifyReferenceIsolation(options) {
-  const cwd = (0, import_node_path48.resolve)(options.cwd);
+  const cwd = (0, import_node_path50.resolve)(options.cwd);
   const timelinePath = resolveProjectPath26(cwd, options.timelinePath, "timeline");
-  const assetsPath = resolveProjectPath26(cwd, options.assetsPath ?? (0, import_node_path48.join)("assets", "manifest.json"), "assets manifest");
-  const rawAssets = collectRawReferenceAssets(await readAssetManifest2(assetsPath));
-  const parsed = timelineDslFromYaml(await (0, import_promises38.readFile)(timelinePath, "utf8"));
+  const assetsPath = resolveProjectPath26(cwd, options.assetsPath ?? (0, import_node_path50.join)("assets", "manifest.json"), "assets manifest");
+  const rawAssets = collectRawReferenceAssets(await readAssetManifest3(assetsPath));
+  const parsed = timelineDslFromYaml(await (0, import_promises40.readFile)(timelinePath, "utf8"));
   const timelineItems = parsed.ok ? collectTimelineItems(parsed.dsl) : [];
   const offenders = collectOffenders({ rawAssets, timelineItems });
   const checks = buildChecks3({
@@ -119381,7 +120768,7 @@ async function verifyReferenceIsolation(options) {
     cwd,
     filePath: resolveProjectPath26(
       cwd,
-      options.outPath ?? (0, import_node_path48.join)("qa", "reference", `${basenameWithoutYaml(timelinePath)}.reference-isolation.json`),
+      options.outPath ?? (0, import_node_path50.join)("qa", "reference", `${basenameWithoutYaml(timelinePath)}.reference-isolation.json`),
       "reference isolation report"
     ),
     writeVerb: "Reference isolation report"
@@ -119535,8 +120922,8 @@ function check4(options) {
     actual: options.actual
   };
 }
-async function readAssetManifest2(path) {
-  const parsed = JSON.parse(await (0, import_promises38.readFile)(path, "utf8"));
+async function readAssetManifest3(path) {
+  const parsed = JSON.parse(await (0, import_promises40.readFile)(path, "utf8"));
   return {
     assets: Array.isArray(parsed.assets) ? parsed.assets.filter((asset) => Boolean(asset) && typeof asset === "object") : []
   };
@@ -119563,22 +120950,22 @@ function resolveProjectPath26(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path48.isAbsolute)(rawPath) ? (0, import_node_path48.resolve)(rawPath) : (0, import_node_path48.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path50.isAbsolute)(rawPath) ? (0, import_node_path50.resolve)(rawPath) : (0, import_node_path50.resolve)(cwd, rawPath);
   if (!isInsideOrEqual25(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual25(parent, child) {
-  const relativePath2 = (0, import_node_path48.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path48.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path50.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path50.isAbsolute)(relativePath2);
 }
 function toProjectPath14(cwd, absolutePath) {
-  return (0, import_node_path48.relative)(cwd, absolutePath).split(import_node_path48.sep).join("/");
+  return (0, import_node_path50.relative)(cwd, absolutePath).split(import_node_path50.sep).join("/");
 }
 async function writeJson26(path, value) {
-  await (0, import_promises38.mkdir)((0, import_node_path48.dirname)(path), { recursive: true });
-  await (0, import_promises38.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises40.mkdir)((0, import_node_path50.dirname)(path), { recursive: true });
+  await (0, import_promises40.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
@@ -119713,12 +121100,12 @@ function roundScore2(value) {
 
 // ../../packages/cli/src/lib/storyboard-prompt-pack-projection.ts
 var import_node_fs15 = require("node:fs");
-var import_promises39 = require("node:fs/promises");
-var import_node_path49 = require("node:path");
+var import_promises41 = require("node:fs/promises");
+var import_node_path51 = require("node:path");
 async function projectStoryboardPromptPack(options) {
-  const cwd = (0, import_node_path49.resolve)(options.cwd);
+  const cwd = (0, import_node_path51.resolve)(options.cwd);
   const actionPath = resolveGuardedProjectPath(cwd, options.actionPath, "Storyboard source action");
-  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises39.readFile)(actionPath, "utf8")));
+  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises41.readFile)(actionPath, "utf8")));
   if (action.metadata.kind !== "image.storyboard-consistency") {
     throw new Error(`Expected image.storyboard-consistency action, got ${action.metadata.kind}`);
   }
@@ -119727,7 +121114,7 @@ async function projectStoryboardPromptPack(options) {
   }
   const promptPackPath = resolveGuardedProjectPath(
     cwd,
-    options.outPath ?? (0, import_node_path49.join)("plans", `${safeSlug19(action.targetAssetId)}.prompt-pack.json`),
+    options.outPath ?? (0, import_node_path51.join)("plans", `${safeSlug19(action.targetAssetId)}.prompt-pack.json`),
     "Storyboard prompt pack"
   );
   const projectionPath = managedPromptPackProjectionPath(cwd, action.targetAssetId);
@@ -119763,9 +121150,9 @@ async function projectStoryboardPromptPack(options) {
   };
 }
 async function applyStoryboardPromptPack(options) {
-  const cwd = (0, import_node_path49.resolve)(options.cwd);
+  const cwd = (0, import_node_path51.resolve)(options.cwd);
   const promptPackPath = resolveGuardedProjectPath(cwd, options.filePath, "Storyboard prompt pack");
-  const promptPack = StoryboardPromptPackSchema.parse(JSON.parse(await (0, import_promises39.readFile)(promptPackPath, "utf8")));
+  const promptPack = StoryboardPromptPackSchema.parse(JSON.parse(await (0, import_promises41.readFile)(promptPackPath, "utf8")));
   const manifestPath = promptPackManifestPath(cwd, promptPack.storyboardAssetId);
   const manifest = await readPromptPackManifest(manifestPath);
   assertPromptPackManifestIdentity(cwd, manifest, promptPack, promptPackPath);
@@ -119799,9 +121186,9 @@ async function applyStoryboardPromptPack(options) {
   };
 }
 async function replaceStoryboardPromptPack(options) {
-  const cwd = (0, import_node_path49.resolve)(options.cwd);
+  const cwd = (0, import_node_path51.resolve)(options.cwd);
   const promptPackPath = resolveGuardedProjectPath(cwd, options.filePath, "Storyboard prompt pack");
-  const promptPack = StoryboardPromptPackSchema.parse(JSON.parse(await (0, import_promises39.readFile)(promptPackPath, "utf8")));
+  const promptPack = StoryboardPromptPackSchema.parse(JSON.parse(await (0, import_promises41.readFile)(promptPackPath, "utf8")));
   const manifestPath = promptPackManifestPath(cwd, promptPack.storyboardAssetId);
   const manifest = await readPromptPackManifest(manifestPath);
   assertPromptPackManifestIdentity(cwd, manifest, promptPack, promptPackPath);
@@ -119873,7 +121260,7 @@ function parsePromptPackManifest(value) {
 }
 async function readPromptPackManifest(manifestPath) {
   try {
-    return parsePromptPackManifest(JSON.parse(await (0, import_promises39.readFile)(manifestPath, "utf8")));
+    return parsePromptPackManifest(JSON.parse(await (0, import_promises41.readFile)(manifestPath, "utf8")));
   } catch (error51) {
     throw new Error(
       `READ_REQUIRED: Run \`clash production project-storyboard-prompt-pack\` before writing. ${error51 instanceof Error ? error51.message : String(error51)}`
@@ -119892,7 +121279,7 @@ function assertPromptPackManifestIdentity(cwd, manifest, promptPack, promptPackP
 }
 async function currentPromptPackObservation(cwd, manifest, managedProjectionPath) {
   const sourceActionPath = resolveGuardedProjectPath(cwd, manifest.sourceActionPath, "Storyboard source action");
-  const sourceAction = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises39.readFile)(sourceActionPath, "utf8")));
+  const sourceAction = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises41.readFile)(sourceActionPath, "utf8")));
   const currentSourceActionHash = sourceActionHash(sourceAction);
   const currentPromptPack = await readManagedPromptPack(managedProjectionPath);
   const currentPromptPackHash = currentPromptPack ? promptPackHash(currentPromptPack) : manifest.basePromptPackHash;
@@ -119923,32 +121310,32 @@ function promptPackObservationVersion(manifest, basePromptPackHash, currentSourc
 }
 async function readManagedPromptPack(projectionPath) {
   if (!(0, import_node_fs15.existsSync)(projectionPath)) return null;
-  const projection = JSON.parse(await (0, import_promises39.readFile)(projectionPath, "utf8"));
+  const projection = JSON.parse(await (0, import_promises41.readFile)(projectionPath, "utf8"));
   return projection.promptPack ? StoryboardPromptPackSchema.parse(projection.promptPack) : null;
 }
 function managedPromptPackProjectionPath(cwd, storyboardAssetId) {
   return resolveAgentFilePathInsideCwd({
     cwd,
-    filePath: (0, import_node_path49.join)(cwd, "projections", "storyboards", `${safeSlug19(storyboardAssetId)}.prompt-pack.json`),
+    filePath: (0, import_node_path51.join)(cwd, "projections", "storyboards", `${safeSlug19(storyboardAssetId)}.prompt-pack.json`),
     writeVerb: "Storyboard managed prompt pack"
   });
 }
 function cowPromptPackProjectionPath(cwd, storyboardAssetId, promptPackHash2) {
   return resolveAgentFilePathInsideCwd({
     cwd,
-    filePath: (0, import_node_path49.join)(cwd, "projections", "storyboards", `${safeSlug19(storyboardAssetId)}.prompt-pack.${promptPackHash2}.cow.json`),
+    filePath: (0, import_node_path51.join)(cwd, "projections", "storyboards", `${safeSlug19(storyboardAssetId)}.prompt-pack.${promptPackHash2}.cow.json`),
     writeVerb: "Storyboard replacement prompt pack"
   });
 }
 function promptPackManifestPath(cwd, storyboardAssetId) {
   return resolveAgentFilePathInsideCwd({
     cwd,
-    filePath: (0, import_node_path49.join)(cwd, "projections", "storyboards", `${safeSlug19(storyboardAssetId)}.prompt-pack-manifest.json`),
+    filePath: (0, import_node_path51.join)(cwd, "projections", "storyboards", `${safeSlug19(storyboardAssetId)}.prompt-pack-manifest.json`),
     writeVerb: "Storyboard prompt-pack manifest"
   });
 }
 function storyboardPromptPackObservationId(options) {
-  const cwd = (0, import_node_path49.resolve)(options.cwd);
+  const cwd = (0, import_node_path51.resolve)(options.cwd);
   const promptPackPath = resolveGuardedProjectPath(cwd, options.filePath, "Storyboard prompt pack");
   return toProjectPath15(cwd, promptPackPath);
 }
@@ -119966,21 +121353,21 @@ function resolveProjectPath27(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path49.isAbsolute)(rawPath) ? (0, import_node_path49.resolve)(rawPath) : (0, import_node_path49.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path51.isAbsolute)(rawPath) ? (0, import_node_path51.resolve)(rawPath) : (0, import_node_path51.resolve)(cwd, rawPath);
   if (!isInsideOrEqual26(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual26(parent, child) {
-  const relativePath2 = (0, import_node_path49.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path49.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path51.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path51.isAbsolute)(relativePath2);
 }
 function toProjectPath15(cwd, absolutePath) {
-  return (0, import_node_path49.relative)(cwd, absolutePath).split(import_node_path49.sep).join("/");
+  return (0, import_node_path51.relative)(cwd, absolutePath).split(import_node_path51.sep).join("/");
 }
 function toProjectComparablePath(cwd, path) {
-  const absolutePath = (0, import_node_path49.isAbsolute)(path) ? (0, import_node_path49.resolve)(path) : (0, import_node_path49.resolve)(cwd, path);
+  const absolutePath = (0, import_node_path51.isAbsolute)(path) ? (0, import_node_path51.resolve)(path) : (0, import_node_path51.resolve)(cwd, path);
   return toProjectPath15(cwd, absolutePath);
 }
 function safeSlug19(value) {
@@ -119996,18 +121383,18 @@ function stableJson4(value) {
   return JSON.stringify(value);
 }
 async function writeJson27(path, value) {
-  await (0, import_promises39.mkdir)((0, import_node_path49.dirname)(path), { recursive: true });
-  await (0, import_promises39.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises41.mkdir)((0, import_node_path51.dirname)(path), { recursive: true });
+  await (0, import_promises41.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/storyboard-timeline-projection.ts
-var import_promises40 = require("node:fs/promises");
-var import_node_path50 = require("node:path");
+var import_promises42 = require("node:fs/promises");
+var import_node_path52 = require("node:path");
 async function projectStoryboardTimeline(options) {
-  const cwd = (0, import_node_path50.resolve)(options.cwd);
+  const cwd = (0, import_node_path52.resolve)(options.cwd);
   const actionPath = resolveProjectPath28(cwd, options.actionPath, "action");
-  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises40.readFile)(actionPath, "utf8")));
+  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises42.readFile)(actionPath, "utf8")));
   if (action.metadata.kind !== "image.storyboard-consistency") {
     throw new Error(`Expected image.storyboard-consistency action, got ${action.metadata.kind}`);
   }
@@ -120017,8 +121404,8 @@ async function projectStoryboardTimeline(options) {
   if (action.metadata.panels.length === 0) {
     throw new Error("Storyboard timeline projection requires at least one panel");
   }
-  const assetsPath = resolveProjectPath28(cwd, options.assetsPath ?? (0, import_node_path50.join)("assets", "manifest.json"), "asset manifest");
-  const manifest = parseAssetManifest5(await (0, import_promises40.readFile)(assetsPath, "utf8"), assetsPath);
+  const assetsPath = resolveProjectPath28(cwd, options.assetsPath ?? (0, import_node_path52.join)("assets", "manifest.json"), "asset manifest");
+  const manifest = parseAssetManifest5(await (0, import_promises42.readFile)(assetsPath, "utf8"), assetsPath);
   const panels = action.metadata.panels.map((panel, index) => {
     if (!panel.path) {
       throw new Error(`storyboard panel ${panel.id} must include a local path before timeline projection`);
@@ -120040,7 +121427,7 @@ async function projectStoryboardTimeline(options) {
     panels,
     assetsPath
   });
-  const timelineProjectionPath = (0, import_node_path50.join)(
+  const timelineProjectionPath = (0, import_node_path52.join)(
     cwd,
     "projections",
     "timelines",
@@ -120050,9 +121437,9 @@ async function projectStoryboardTimeline(options) {
     cwd,
     filePath: timelineProjectionPath
   });
-  const manifestPath = (0, import_node_path50.join)(
-    (0, import_node_path50.dirname)(timelineProjectionPath),
-    `${(0, import_node_path50.basename)(timelineProjectionPath, ".yaml")}-manifest.json`
+  const manifestPath = (0, import_node_path52.join)(
+    (0, import_node_path52.dirname)(timelineProjectionPath),
+    `${(0, import_node_path52.basename)(timelineProjectionPath, ".yaml")}-manifest.json`
   );
   const timelineItems = panels.map((panel) => ({
     id: `storyboard-${safeSlug20(panel.panelId)}`,
@@ -120131,7 +121518,7 @@ function normalizeAssetPath2(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project path, not a URL`);
   }
-  if ((0, import_node_path50.isAbsolute)(path)) {
+  if ((0, import_node_path52.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -120147,25 +121534,25 @@ function resolveProjectPath28(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path50.isAbsolute)(rawPath) ? (0, import_node_path50.resolve)(rawPath) : (0, import_node_path50.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path52.isAbsolute)(rawPath) ? (0, import_node_path52.resolve)(rawPath) : (0, import_node_path52.resolve)(cwd, rawPath);
   if (!isInsideOrEqual27(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual27(parent, child) {
-  const relativePath2 = (0, import_node_path50.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path50.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path52.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path52.isAbsolute)(relativePath2);
 }
 function toProjectPath16(cwd, absolutePath) {
-  return (0, import_node_path50.relative)(cwd, absolutePath).split(import_node_path50.sep).join("/");
+  return (0, import_node_path52.relative)(cwd, absolutePath).split(import_node_path52.sep).join("/");
 }
 function safeSlug20(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "storyboard";
 }
 function toProjectDisplayPath2(path) {
-  const normalized = path.split(import_node_path50.sep).join("/");
+  const normalized = path.split(import_node_path52.sep).join("/");
   const marker = "/assets/manifest.json";
   return normalized.endsWith(marker) ? "assets/manifest.json" : normalized;
 }
@@ -120174,26 +121561,26 @@ async function writeJson28(path, value) {
 `);
 }
 async function writeText8(path, value) {
-  await (0, import_promises40.mkdir)((0, import_node_path50.dirname)(path), { recursive: true });
-  await (0, import_promises40.writeFile)(path, value, "utf8");
+  await (0, import_promises42.mkdir)((0, import_node_path52.dirname)(path), { recursive: true });
+  await (0, import_promises42.writeFile)(path, value, "utf8");
 }
 
 // ../../packages/cli/src/lib/storyboard-timeline-verification.ts
-var import_promises41 = require("node:fs/promises");
-var import_node_path51 = require("node:path");
+var import_promises43 = require("node:fs/promises");
+var import_node_path53 = require("node:path");
 async function verifyStoryboardTimeline(options) {
-  const cwd = (0, import_node_path51.resolve)(options.cwd);
+  const cwd = (0, import_node_path53.resolve)(options.cwd);
   const actionPath = resolveProjectPath29(cwd, options.actionPath, "storyboard action");
   const manifestPath = resolveProjectPath29(cwd, options.manifestPath, "storyboard timeline manifest");
   const minConsistency = options.minConsistency ?? 0.75;
   if (!Number.isFinite(minConsistency) || minConsistency < 0 || minConsistency > 1) {
     throw new Error("min consistency must be between 0 and 1");
   }
-  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises41.readFile)(actionPath, "utf8")));
+  const action = AssetMetadataFillActionSchema.parse(JSON.parse(await (0, import_promises43.readFile)(actionPath, "utf8")));
   if (action.metadata.kind !== "image.storyboard-consistency") {
     throw new Error(`Expected image.storyboard-consistency action, got ${action.metadata.kind}`);
   }
-  const manifest = JSON.parse(await (0, import_promises41.readFile)(manifestPath, "utf8"));
+  const manifest = JSON.parse(await (0, import_promises43.readFile)(manifestPath, "utf8"));
   const stats = collectStats2({
     actionPanels: action.metadata.panels,
     manifest,
@@ -120210,7 +121597,7 @@ async function verifyStoryboardTimeline(options) {
     cwd,
     filePath: resolveProjectPath29(
       cwd,
-      options.outPath ?? (0, import_node_path51.join)("qa", "storyboards", `${safeSlug21(action.targetAssetId)}.timeline-verification.json`),
+      options.outPath ?? (0, import_node_path53.join)("qa", "storyboards", `${safeSlug21(action.targetAssetId)}.timeline-verification.json`),
       "storyboard timeline verification report"
     ),
     writeVerb: "Storyboard timeline verification report"
@@ -120353,7 +121740,7 @@ function readScore(value) {
 }
 function isSafeLocalAssetPath(path) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return false;
-  if ((0, import_node_path51.isAbsolute)(path)) return false;
+  if ((0, import_node_path53.isAbsolute)(path)) return false;
   const parts = path.split(/[\\/]+/).filter(Boolean);
   return !parts.includes("..");
 }
@@ -120364,36 +121751,36 @@ function resolveProjectPath29(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path51.isAbsolute)(rawPath) ? (0, import_node_path51.resolve)(rawPath) : (0, import_node_path51.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path53.isAbsolute)(rawPath) ? (0, import_node_path53.resolve)(rawPath) : (0, import_node_path53.resolve)(cwd, rawPath);
   if (!isInsideOrEqual28(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual28(parent, child) {
-  const relativePath2 = (0, import_node_path51.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path51.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path53.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path53.isAbsolute)(relativePath2);
 }
 function toProjectPath17(cwd, absolutePath) {
-  return (0, import_node_path51.relative)(cwd, absolutePath).split(import_node_path51.sep).join("/");
+  return (0, import_node_path53.relative)(cwd, absolutePath).split(import_node_path53.sep).join("/");
 }
 function safeSlug21(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "storyboard";
 }
 async function writeJson29(path, value) {
-  await (0, import_promises41.mkdir)((0, import_node_path51.dirname)(path), { recursive: true });
-  await (0, import_promises41.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises43.mkdir)((0, import_node_path53.dirname)(path), { recursive: true });
+  await (0, import_promises43.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
 // ../../packages/cli/src/lib/derived-overlay-projection.ts
-var import_promises42 = require("node:fs/promises");
-var import_node_path52 = require("node:path");
+var import_promises44 = require("node:fs/promises");
+var import_node_path54 = require("node:path");
 async function projectDerivedOverlayTimeline(options) {
-  const cwd = (0, import_node_path52.resolve)(options.cwd);
-  const assetsPath = resolveProjectPath30(cwd, options.assetsPath ?? (0, import_node_path52.join)("assets", "manifest.json"), "asset manifest");
-  const manifest = parseAssetManifest6(await (0, import_promises42.readFile)(assetsPath, "utf8"), assetsPath);
+  const cwd = (0, import_node_path54.resolve)(options.cwd);
+  const assetsPath = resolveProjectPath30(cwd, options.assetsPath ?? (0, import_node_path54.join)("assets", "manifest.json"), "asset manifest");
+  const manifest = parseAssetManifest6(await (0, import_promises44.readFile)(assetsPath, "utf8"), assetsPath);
   const sourceAsset = requireAsset2(manifest, options.sourceAssetId, assetsPath);
   const derivedAsset = requireAsset2(manifest, options.derivedAssetId, assetsPath);
   if (sourceAsset.id === derivedAsset.id) {
@@ -120421,7 +121808,7 @@ async function projectDerivedOverlayTimeline(options) {
       ...options.description ? { description: options.description } : {}
     }
   };
-  const timelineProjectionPath = (0, import_node_path52.join)(
+  const timelineProjectionPath = (0, import_node_path54.join)(
     cwd,
     "projections",
     "timelines",
@@ -120431,9 +121818,9 @@ async function projectDerivedOverlayTimeline(options) {
     cwd,
     filePath: timelineProjectionPath
   });
-  const manifestPath = (0, import_node_path52.join)(
-    (0, import_node_path52.dirname)(timelineProjectionPath),
-    `${(0, import_node_path52.basename)(timelineProjectionPath, ".yaml")}-manifest.json`
+  const manifestPath = (0, import_node_path54.join)(
+    (0, import_node_path54.dirname)(timelineProjectionPath),
+    `${(0, import_node_path54.basename)(timelineProjectionPath, ".yaml")}-manifest.json`
   );
   const timeline = {
     compositionWidth: 1080,
@@ -120495,7 +121882,7 @@ function normalizeAssetPath3(path, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project path, not a URL`);
   }
-  if ((0, import_node_path52.isAbsolute)(path)) {
+  if ((0, import_node_path54.isAbsolute)(path)) {
     throw new Error(`${label} must be project-relative, not absolute`);
   }
   const parts = path.split(/[\\/]+/).filter(Boolean);
@@ -120511,15 +121898,15 @@ function resolveProjectPath30(cwd, rawPath, label) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath)) {
     throw new Error(`${label} path must be a local project path, not a URL`);
   }
-  const resolved = (0, import_node_path52.isAbsolute)(rawPath) ? (0, import_node_path52.resolve)(rawPath) : (0, import_node_path52.resolve)(cwd, rawPath);
+  const resolved = (0, import_node_path54.isAbsolute)(rawPath) ? (0, import_node_path54.resolve)(rawPath) : (0, import_node_path54.resolve)(cwd, rawPath);
   if (!isInsideOrEqual29(cwd, resolved)) {
     throw new Error(`${label} path must stay inside the current project cwd`);
   }
   return resolved;
 }
 function isInsideOrEqual29(parent, child) {
-  const relativePath2 = (0, import_node_path52.relative)(parent, child);
-  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path52.isAbsolute)(relativePath2);
+  const relativePath2 = (0, import_node_path54.relative)(parent, child);
+  return relativePath2 === "" || !relativePath2.startsWith("..") && !(0, import_node_path54.isAbsolute)(relativePath2);
 }
 function safeSlug22(value) {
   const slug2 = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -120530,8 +121917,8 @@ async function writeJson30(path, value) {
 `);
 }
 async function writeText9(path, value) {
-  await (0, import_promises42.mkdir)((0, import_node_path52.dirname)(path), { recursive: true });
-  await (0, import_promises42.writeFile)(path, value, "utf8");
+  await (0, import_promises44.mkdir)((0, import_node_path54.dirname)(path), { recursive: true });
+  await (0, import_promises44.writeFile)(path, value, "utf8");
 }
 
 // ../../packages/cli/src/commands/production.ts
@@ -121008,7 +122395,7 @@ productionCommand.command("plan-text-cut").description(
   try {
     const cwd = process.cwd();
     const transcriptPath = resolveLocalPath2(cwd, options.transcript);
-    const transcriptRaw = await (0, import_promises43.readFile)(transcriptPath, "utf8");
+    const transcriptRaw = await (0, import_promises45.readFile)(transcriptPath, "utf8");
     const transcript = parseTranscriptJson(JSON.parse(transcriptRaw));
     const fps = options.fps ?? transcript.fps ?? 30;
     const words = transcript.timedTranscript ? projectAsrTimedTranscriptWords(transcript.timedTranscript, fps) : transcript.words;
@@ -121021,7 +122408,7 @@ productionCommand.command("plan-text-cut").description(
       asr: {
         kind: "asr-transcript",
         sourcePath: toProjectPath18(cwd, transcriptPath),
-        sourceHash: `sha256:${(0, import_node_crypto18.createHash)("sha256").update(transcriptRaw).digest("hex")}`,
+        sourceHash: `sha256:${(0, import_node_crypto20.createHash)("sha256").update(transcriptRaw).digest("hex")}`,
         backendId: transcript.backendId ?? "unknown-asr-backend",
         modelId: transcript.modelId ?? "unknown-asr-model",
         ...transcript.language ? { language: transcript.language } : {},
@@ -121032,7 +122419,7 @@ productionCommand.command("plan-text-cut").description(
     });
     const actionPath = resolveAgentOutputPath4(
       cwd,
-      options.out ?? (0, import_node_path53.join)("actions", `${options.targetAsset}.talking-head-text-cut.json`),
+      options.out ?? (0, import_node_path55.join)("actions", `${options.targetAsset}.talking-head-text-cut.json`),
       "Text-cut action"
     );
     await writeJson31(actionPath, action);
@@ -121237,7 +122624,7 @@ productionCommand.command("analyze-audio-beats").description(
     });
     const actionPath = resolveAgentOutputPath4(
       cwd,
-      options.out ?? (0, import_node_path53.join)("actions", `${options.targetAsset}.audio-beat-analysis.json`),
+      options.out ?? (0, import_node_path55.join)("actions", `${options.targetAsset}.audio-beat-analysis.json`),
       "Audio beat analysis action"
     );
     await writeJson31(actionPath, action);
@@ -121272,18 +122659,18 @@ productionCommand.command("plan-lyrics-alignment").description(
     const cwd = process.cwd();
     const lyricsPath = resolveLocalPath2(cwd, options.lyrics);
     const beatAction = AssetMetadataFillActionSchema.parse(
-      JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.beatAction), "utf8"))
+      JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.beatAction), "utf8"))
     );
     const action = planLyricsAlignmentAction({
       targetAssetId: options.targetAsset,
-      lyricsText: await (0, import_promises43.readFile)(lyricsPath, "utf8"),
+      lyricsText: await (0, import_promises45.readFile)(lyricsPath, "utf8"),
       beatAction,
       lyricsSource: options.source ?? options.lyrics,
       vocalStemAssetId: options.vocalStemAsset
     });
     const actionPath = resolveAgentOutputPath4(
       cwd,
-      options.out ?? (0, import_node_path53.join)("actions", `${options.targetAsset}.lyrics-alignment.json`),
+      options.out ?? (0, import_node_path55.join)("actions", `${options.targetAsset}.lyrics-alignment.json`),
       "Lyrics alignment action"
     );
     await writeJson31(actionPath, action);
@@ -121319,11 +122706,11 @@ productionCommand.command("plan-visual-moments").description(
       targetAssetId: options.targetAsset,
       fps: options.fps,
       sourcePath: options.sourcePath,
-      moments: JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.moments), "utf8"))
+      moments: JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.moments), "utf8"))
     });
     const actionPath = resolveAgentOutputPath4(
       cwd,
-      options.out ?? (0, import_node_path53.join)("actions", `${options.targetAsset}.visual-moments.json`),
+      options.out ?? (0, import_node_path55.join)("actions", `${options.targetAsset}.visual-moments.json`),
       "Visual moments action"
     );
     await writeJson31(actionPath, action);
@@ -121354,7 +122741,7 @@ productionCommand.command("project-mv-beat-cuts").description(
   try {
     const cwd = process.cwd();
     const clips = parseArrayJson(
-      JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.clips), "utf8")),
+      JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.clips), "utf8")),
       "clips"
     );
     const result = await projectMvBeatCutsTimeline({
@@ -121428,7 +122815,7 @@ productionCommand.command("plan-ad-delivery-spec").description(
     });
     const actionPath = resolveAgentOutputPath4(
       cwd,
-      options.out ?? (0, import_node_path53.join)("actions", `${options.targetAsset}.ad-delivery-spec.json`),
+      options.out ?? (0, import_node_path55.join)("actions", `${options.targetAsset}.ad-delivery-spec.json`),
       "Ad delivery spec action"
     );
     await writeJson31(actionPath, action);
@@ -121577,7 +122964,7 @@ productionCommand.command("plan-reference-review").description(
 ).requiredOption("--source-url <url>", "Public reference URL or local source identifier").requiredOption("--target-asset <id>", "Target reference asset id").option("--shots <path>", "Optional shot-analysis JSON array").option("--license <value>", "Rights license label", "unknown").option("--attribution <value>", "Attribution text", "unknown").option("--redistribution-allowed", "Mark redistribution as allowed").option("--derivative-allowed", "Mark derivative use as allowed").option("--qa-status <status>", "Non-copying QA status: passed, requires-review, failed", parseQaStatus, "requires-review").option("--similarity <score>", "Optional source similarity score from 0 to 1", parseScore3).option("--out <path>", "Output AssetMetadataFillAction JSON path").option("--json", "Output result as JSON").action(async (options) => {
   try {
     const cwd = process.cwd();
-    const shots = options.shots ? parseShotsJson(JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.shots), "utf8"))) : [];
+    const shots = options.shots ? parseShotsJson(JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.shots), "utf8"))) : [];
     const action = planReferenceReviewAction({
       targetAssetId: options.targetAsset,
       sourceUrl: options.sourceUrl,
@@ -121593,7 +122980,7 @@ productionCommand.command("plan-reference-review").description(
     });
     const actionPath = resolveAgentOutputPath4(
       cwd,
-      options.out ?? (0, import_node_path53.join)("actions", `${options.targetAsset}.reference-review.json`),
+      options.out ?? (0, import_node_path55.join)("actions", `${options.targetAsset}.reference-review.json`),
       "Reference review action"
     );
     await writeJson31(actionPath, action);
@@ -121680,8 +123067,8 @@ productionCommand.command("plan-reference-noncopying-qa").description(
 ).requiredOption("--reference <path>", "Reference analysis JSON with sourceLedger and shots").requiredOption("--proposal <path>", "Proposed treatment JSON with shots").requiredOption("--target-asset <id>", "Target reference asset id").option("--out <path>", "Output AssetMetadataFillAction JSON path").option("--report <path>", "Output non-copying QA report JSON path").option("--fps <number>", "Timeline/video fps for converting reference shot ranges", parsePositiveNumber2, 30).option("--similarity-threshold <score>", "Review threshold from 0 to 1", parseScore3, 0.5).option("--json", "Output result as JSON").action(async (options) => {
   try {
     const cwd = process.cwd();
-    const reference = JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.reference), "utf8"));
-    const proposal = JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.proposal), "utf8"));
+    const reference = JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.reference), "utf8"));
+    const proposal = JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.proposal), "utf8"));
     const { action, report } = planReferenceNonCopyingQaAction({
       targetAssetId: options.targetAsset,
       reference,
@@ -121691,12 +123078,12 @@ productionCommand.command("plan-reference-noncopying-qa").description(
     });
     const actionPath = resolveAgentOutputPath4(
       cwd,
-      options.out ?? (0, import_node_path53.join)("actions", `${options.targetAsset}.reference-noncopying-qa.json`),
+      options.out ?? (0, import_node_path55.join)("actions", `${options.targetAsset}.reference-noncopying-qa.json`),
       "Reference non-copying QA action"
     );
     const reportPath = resolveAgentOutputPath4(
       cwd,
-      options.report ?? (0, import_node_path53.join)("projections", "references", `${report.referenceId}.noncopying-qa.json`),
+      options.report ?? (0, import_node_path55.join)("projections", "references", `${report.referenceId}.noncopying-qa.json`),
       "Reference non-copying QA report"
     );
     await writeJson31(actionPath, action);
@@ -121754,9 +123141,9 @@ productionCommand.command("plan-storyboard-consistency-qa").description(
 ).requiredOption("--target-asset <id>", "Target storyboard/image asset id").option("--characters <path>", "Character/reference-sheet JSON array").option("--scenes <path>", "Scene JSON array").option("--panels <path>", "Storyboard panel JSON array").option("--out <path>", "Output AssetMetadataFillAction JSON path").option("--report <path>", "Output storyboard consistency QA report JSON path").option("--min-consistency <score>", "Minimum accepted panel consistency score from 0 to 1", parseScore3, 0.75).option("--json", "Output result as JSON").action(async (options) => {
   try {
     const cwd = process.cwd();
-    const characters = options.characters ? parseArrayJson(JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.characters), "utf8")), "characters") : [];
-    const scenes = options.scenes ? parseArrayJson(JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.scenes), "utf8")), "scenes") : [];
-    const panels = options.panels ? parseArrayJson(JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.panels), "utf8")), "panels") : [];
+    const characters = options.characters ? parseArrayJson(JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.characters), "utf8")), "characters") : [];
+    const scenes = options.scenes ? parseArrayJson(JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.scenes), "utf8")), "scenes") : [];
+    const panels = options.panels ? parseArrayJson(JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.panels), "utf8")), "panels") : [];
     const { action, report } = planStoryboardConsistencyQaAction({
       targetAssetId: options.targetAsset,
       characters,
@@ -121766,12 +123153,12 @@ productionCommand.command("plan-storyboard-consistency-qa").description(
     });
     const actionPath = resolveAgentOutputPath4(
       cwd,
-      options.out ?? (0, import_node_path53.join)("actions", `${options.targetAsset}.storyboard-consistency-qa.json`),
+      options.out ?? (0, import_node_path55.join)("actions", `${options.targetAsset}.storyboard-consistency-qa.json`),
       "Storyboard consistency QA action"
     );
     const reportPath = resolveAgentOutputPath4(
       cwd,
-      options.report ?? (0, import_node_path53.join)("projections", "storyboards", `${options.targetAsset}.consistency-qa.json`),
+      options.report ?? (0, import_node_path55.join)("projections", "storyboards", `${options.targetAsset}.consistency-qa.json`),
       "Storyboard consistency QA report"
     );
     await writeJson31(actionPath, action);
@@ -121804,9 +123191,9 @@ productionCommand.command("plan-storyboard-review").description(
 ).requiredOption("--target-asset <id>", "Target storyboard/image asset id").option("--characters <path>", "Character/reference-sheet JSON array").option("--scenes <path>", "Scene JSON array").option("--panels <path>", "Storyboard panel JSON array").option("--out <path>", "Output AssetMetadataFillAction JSON path").option("--json", "Output result as JSON").action(async (options) => {
   try {
     const cwd = process.cwd();
-    const characters = options.characters ? parseArrayJson(JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.characters), "utf8")), "characters") : [];
-    const scenes = options.scenes ? parseArrayJson(JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.scenes), "utf8")), "scenes") : [];
-    const panels = options.panels ? parseArrayJson(JSON.parse(await (0, import_promises43.readFile)(resolveLocalPath2(cwd, options.panels), "utf8")), "panels") : [];
+    const characters = options.characters ? parseArrayJson(JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.characters), "utf8")), "characters") : [];
+    const scenes = options.scenes ? parseArrayJson(JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.scenes), "utf8")), "scenes") : [];
+    const panels = options.panels ? parseArrayJson(JSON.parse(await (0, import_promises45.readFile)(resolveLocalPath2(cwd, options.panels), "utf8")), "panels") : [];
     const action = planStoryboardConsistencyAction({
       targetAssetId: options.targetAsset,
       characters,
@@ -121815,7 +123202,7 @@ productionCommand.command("plan-storyboard-review").description(
     });
     const actionPath = resolveAgentOutputPath4(
       cwd,
-      options.out ?? (0, import_node_path53.join)("actions", `${options.targetAsset}.storyboard-review.json`),
+      options.out ?? (0, import_node_path55.join)("actions", `${options.targetAsset}.storyboard-review.json`),
       "Storyboard review action"
     );
     await writeJson31(actionPath, action);
@@ -122137,7 +123524,7 @@ function parseArrayJson(input, label) {
   return input;
 }
 function resolveLocalPath2(cwd, path) {
-  return (0, import_node_path53.isAbsolute)(path) ? path : (0, import_node_path53.resolve)(cwd, path);
+  return (0, import_node_path55.isAbsolute)(path) ? path : (0, import_node_path55.resolve)(cwd, path);
 }
 function resolveAgentOutputPath4(cwd, path, writeVerb) {
   return resolveAgentFilePathInsideCwd({
@@ -122147,11 +123534,11 @@ function resolveAgentOutputPath4(cwd, path, writeVerb) {
   });
 }
 function toProjectPath18(cwd, absolutePath) {
-  return (0, import_node_path53.relative)(cwd, absolutePath).split(import_node_path53.sep).join("/");
+  return (0, import_node_path55.relative)(cwd, absolutePath).split(import_node_path55.sep).join("/");
 }
 async function writeJson31(path, value) {
-  await (0, import_promises43.mkdir)((0, import_node_path53.dirname)(path), { recursive: true });
-  await (0, import_promises43.writeFile)(path, `${JSON.stringify(value, null, 2)}
+  await (0, import_promises45.mkdir)((0, import_node_path55.dirname)(path), { recursive: true });
+  await (0, import_promises45.writeFile)(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
 }
 
@@ -122194,18 +123581,18 @@ auditCommand.command("mutations").description("List sanitized local host mutatio
 });
 
 // ../../packages/cli/src/commands/effects.ts
-var import_node_path55 = require("node:path");
+var import_node_path57 = require("node:path");
 
 // ../../packages/remotion-effects/src/authoring.ts
-var import_node_crypto19 = require("node:crypto");
-var import_promises44 = require("node:fs/promises");
-var import_node_path54 = require("node:path");
+var import_node_crypto21 = require("node:crypto");
+var import_promises46 = require("node:fs/promises");
+var import_node_path56 = require("node:path");
 async function validateEffectPackage(root) {
   const issues = [];
   const files = ["effect.json"];
   let rawManifest;
   try {
-    rawManifest = await (0, import_promises44.readFile)((0, import_node_path54.join)(root, "effect.json"), "utf8");
+    rawManifest = await (0, import_promises46.readFile)((0, import_node_path56.join)(root, "effect.json"), "utf8");
   } catch {
     return {
       ok: false,
@@ -122235,9 +123622,9 @@ async function validateEffectPackage(root) {
       });
       continue;
     }
-    const absolutePath = (0, import_node_path54.join)(root, fragment);
-    const relativePath2 = (0, import_node_path54.relative)(root, absolutePath);
-    if (relativePath2.startsWith(`..${import_node_path54.sep}`) || (0, import_node_path54.isAbsolute)(relativePath2)) {
+    const absolutePath = (0, import_node_path56.join)(root, fragment);
+    const relativePath2 = (0, import_node_path56.relative)(root, absolutePath);
+    if (relativePath2.startsWith(`..${import_node_path56.sep}`) || (0, import_node_path56.isAbsolute)(relativePath2)) {
       issues.push({
         code: "package.path_unsafe",
         message: `Shader path "${fragment}" must stay inside the effect package.`,
@@ -122246,8 +123633,8 @@ async function validateEffectPackage(root) {
       continue;
     }
     try {
-      const source = await (0, import_promises44.readFile)(absolutePath, "utf8");
-      files.push((0, import_node_path54.normalize)(fragment).split(import_node_path54.sep).join("/"));
+      const source = await (0, import_promises46.readFile)(absolutePath, "utf8");
+      files.push((0, import_node_path56.normalize)(fragment).split(import_node_path56.sep).join("/"));
       if (!source.trim()) {
         issues.push({ code: "package.shader_empty", message: "Shader source cannot be empty.", path: fragment });
       }
@@ -122274,9 +123661,9 @@ async function validateEffectPackage(root) {
   };
 }
 function isSafeRelativePath(path) {
-  if (!path || (0, import_node_path54.isAbsolute)(path)) return false;
-  const normalized = (0, import_node_path54.normalize)(path);
-  return normalized !== ".." && !normalized.startsWith(`..${import_node_path54.sep}`);
+  if (!path || (0, import_node_path56.isAbsolute)(path)) return false;
+  const normalized = (0, import_node_path56.normalize)(path);
+  return normalized !== ".." && !normalized.startsWith(`..${import_node_path56.sep}`);
 }
 function validateManifest(value, issues) {
   if (!isRecord8(value)) {
@@ -122391,8 +123778,8 @@ async function scaffoldEffectPackage(options) {
   if (!/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(options.id)) {
     throw new Error("Effect id must be a namespaced lower-case identifier such as agent/liquid-wipe.");
   }
-  await (0, import_promises44.mkdir)(options.target, { recursive: false });
-  await (0, import_promises44.mkdir)((0, import_node_path54.join)(options.target, "shaders"));
+  await (0, import_promises46.mkdir)(options.target, { recursive: false });
+  await (0, import_promises46.mkdir)((0, import_node_path56.join)(options.target, "shaders"));
   const inputs = scaffoldInputs(options.kind);
   const manifest = {
     schemaVersion: 1,
@@ -122422,10 +123809,10 @@ async function scaffoldEffectPackage(options) {
     ]
   };
   const files = ["README.md", "effect.json", "shaders/main.glsl"];
-  await (0, import_promises44.writeFile)((0, import_node_path54.join)(options.target, "effect.json"), `${JSON.stringify(manifest, null, 2)}
+  await (0, import_promises46.writeFile)((0, import_node_path56.join)(options.target, "effect.json"), `${JSON.stringify(manifest, null, 2)}
 `, "utf8");
-  await (0, import_promises44.writeFile)((0, import_node_path54.join)(options.target, "shaders/main.glsl"), scaffoldShader(options.kind), "utf8");
-  await (0, import_promises44.writeFile)((0, import_node_path54.join)(options.target, "README.md"), scaffoldReadme(options.id, options.kind), "utf8");
+  await (0, import_promises46.writeFile)((0, import_node_path56.join)(options.target, "shaders/main.glsl"), scaffoldShader(options.kind), "utf8");
+  await (0, import_promises46.writeFile)((0, import_node_path56.join)(options.target, "README.md"), scaffoldReadme(options.id, options.kind), "utf8");
   return { target: options.target, files };
 }
 function scaffoldInputs(kind) {
@@ -122497,7 +123884,7 @@ ${summary}`);
   }
   const files = await Promise.all(
     validation.files.map(async (path) => {
-      const content = await (0, import_promises44.readFile)((0, import_node_path54.join)(options.root, path));
+      const content = await (0, import_promises46.readFile)((0, import_node_path56.join)(options.root, path));
       return {
         path,
         sha256: sha2562(content),
@@ -122510,23 +123897,23 @@ ${summary}`);
     effect: validation.effect,
     files
   };
-  const output = options.output ?? (0, import_node_path54.join)(
+  const output = options.output ?? (0, import_node_path56.join)(
     options.root,
     `${validation.effect.id.replace("/", "-")}-${validation.effect.version}.clash-effect.json`
   );
-  await (0, import_promises44.mkdir)((0, import_node_path54.dirname)(output), { recursive: true });
-  await (0, import_promises44.writeFile)(output, `${JSON.stringify(bundle, null, 2)}
+  await (0, import_promises46.mkdir)((0, import_node_path56.dirname)(output), { recursive: true });
+  await (0, import_promises46.writeFile)(output, `${JSON.stringify(bundle, null, 2)}
 `, "utf8");
   return { output, bundle };
 }
 async function installEffectPackage(options) {
-  const bundleValue = JSON.parse(await (0, import_promises44.readFile)(options.bundle, "utf8"));
+  const bundleValue = JSON.parse(await (0, import_promises46.readFile)(options.bundle, "utf8"));
   const parsed = parseBundle(bundleValue);
   const [namespace, name] = parsed.effect.id.split("/");
-  const installPath = (0, import_node_path54.join)(options.effectsRoot, namespace, name, String(parsed.effect.version));
-  await (0, import_promises44.mkdir)((0, import_node_path54.dirname)(installPath), { recursive: true });
+  const installPath = (0, import_node_path56.join)(options.effectsRoot, namespace, name, String(parsed.effect.version));
+  await (0, import_promises46.mkdir)((0, import_node_path56.dirname)(installPath), { recursive: true });
   try {
-    await (0, import_promises44.mkdir)(installPath, { recursive: false });
+    await (0, import_promises46.mkdir)(installPath, { recursive: false });
   } catch (error51) {
     if (isRecord8(error51) && error51.code === "EEXIST") {
       throw new Error(`Effect "${parsed.effect.id}@${parsed.effect.version}" is already installed.`);
@@ -122534,9 +123921,9 @@ async function installEffectPackage(options) {
     throw error51;
   }
   for (const file2 of parsed.files) {
-    const output = (0, import_node_path54.join)(installPath, file2.path);
-    await (0, import_promises44.mkdir)((0, import_node_path54.dirname)(output), { recursive: true });
-    await (0, import_promises44.writeFile)(output, Buffer.from(file2.contentBase64, "base64"));
+    const output = (0, import_node_path56.join)(installPath, file2.path);
+    await (0, import_promises46.mkdir)((0, import_node_path56.dirname)(output), { recursive: true });
+    await (0, import_promises46.writeFile)(output, Buffer.from(file2.contentBase64, "base64"));
   }
   return { installPath, effect: parsed.effect };
 }
@@ -122571,7 +123958,7 @@ function parseBundle(value) {
   return { schemaVersion: 1, effect, files };
 }
 function sha2562(content) {
-  return (0, import_node_crypto19.createHash)("sha256").update(content).digest("hex");
+  return (0, import_node_crypto21.createHash)("sha256").update(content).digest("hex");
 }
 
 // ../../packages/cli/src/commands/effects.ts
@@ -122590,12 +123977,12 @@ function parseEffectKind(value) {
 }
 function defaultEffectDirectory(id) {
   const name = id.split("/").at(-1) || id;
-  return (0, import_node_path55.resolve)(process.cwd(), "effects", name);
+  return (0, import_node_path57.resolve)(process.cwd(), "effects", name);
 }
 var effectCommand = new Command("effect").description("Create, validate, package, and install local Timeline effects");
 effectCommand.command("create").description("Scaffold an Agent-editable effect package").argument("<id>", "Namespaced effect id, for example agent/liquid-wipe").option("--kind <kind>", "Effect kind", parseEffectKind, "transition").option("--directory <path>", "Output directory").option("--json", "Output result as JSON").action(async (id, options) => {
   const result = await scaffoldEffectPackage({
-    target: (0, import_node_path55.resolve)(options.directory ?? defaultEffectDirectory(id)),
+    target: (0, import_node_path57.resolve)(options.directory ?? defaultEffectDirectory(id)),
     id,
     kind: options.kind
   });
@@ -122607,7 +123994,7 @@ effectCommand.command("create").description("Scaffold an Agent-editable effect p
   for (const file2 of result.files) console.log(`  ${file2}`);
 });
 effectCommand.command("validate").description("Validate an effect manifest and every referenced shader without executing package code").argument("[directory]", "Effect package directory", ".").option("--json", "Output validation report as JSON").action(async (directory, options) => {
-  const root = (0, import_node_path55.resolve)(directory);
+  const root = (0, import_node_path57.resolve)(directory);
   const result = await validateEffectPackage(root);
   if (isJsonMode(options)) {
     printJson({ root, ...result });
@@ -122623,8 +124010,8 @@ effectCommand.command("validate").description("Validate an effect manifest and e
 });
 effectCommand.command("pack").description("Validate and create a deterministic .clash-effect.json bundle").argument("[directory]", "Effect package directory", ".").option("--output <path>", "Bundle output path").option("--json", "Output result as JSON").action(async (directory, options) => {
   const result = await packEffectPackage({
-    root: (0, import_node_path55.resolve)(directory),
-    output: options.output ? (0, import_node_path55.resolve)(options.output) : void 0
+    root: (0, import_node_path57.resolve)(directory),
+    output: options.output ? (0, import_node_path57.resolve)(options.output) : void 0
   });
   const output = { output: result.output, effect: result.bundle.effect };
   if (isJsonMode(options)) {
@@ -122635,30 +124022,30 @@ effectCommand.command("pack").description("Validate and create a deterministic .
 });
 effectCommand.command("install").description("Install a validated, immutable effect bundle under $CLASH_HOME/effects").argument("<bundle>", "Path to a .clash-effect.json bundle").option("--root <path>", "Effect registry root").option("--json", "Output result as JSON").action(async (bundle, options) => {
   const result = await installEffectPackage({
-    bundle: (0, import_node_path55.resolve)(bundle),
-    effectsRoot: (0, import_node_path55.resolve)(options.root ?? (0, import_node_path55.join)(resolveClashRoot(), "effects"))
+    bundle: (0, import_node_path57.resolve)(bundle),
+    effectsRoot: (0, import_node_path57.resolve)(options.root ?? (0, import_node_path57.join)(resolveClashRoot(), "effects"))
   });
   if (isJsonMode(options)) {
     printJson(result);
     return;
   }
   console.log(`Installed ${result.effect.id}@${result.effect.version} in ${result.installPath}`);
-  console.log(`Bundle: ${(0, import_node_path55.basename)(bundle)}`);
+  console.log(`Bundle: ${(0, import_node_path57.basename)(bundle)}`);
 });
 
 // ../../packages/cli/src/commands/director.ts
-var import_node_crypto20 = require("node:crypto");
+var import_node_crypto22 = require("node:crypto");
 var import_node_fs16 = require("node:fs");
-var import_node_path57 = require("node:path");
+var import_node_path59 = require("node:path");
 
 // ../../packages/cli/src/lib/director-stage-projection.ts
-var import_node_path56 = require("node:path");
+var import_node_path58 = require("node:path");
 function directorStageFileSlug(raw) {
   const slug2 = raw.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return slug2 || "main";
 }
 function resolveDirectorStageFilePath(options) {
-  const filePath = options.file ?? (0, import_node_path56.join)(
+  const filePath = options.file ?? (0, import_node_path58.join)(
     options.cwd,
     "director-stages",
     `${directorStageFileSlug(options.stage ?? "main")}.director-stage.json`
@@ -122815,7 +124202,7 @@ async function recoverStaleDirectorStageApply(options) {
   throw staleProjectionRecoveryError("Director Stage", recovery);
 }
 function captureSha256(value) {
-  return (0, import_node_crypto20.createHash)("sha256").update(value).digest("hex");
+  return (0, import_node_crypto22.createHash)("sha256").update(value).digest("hex");
 }
 function captureArtifactId(label) {
   const value = label.trim();
@@ -122825,10 +124212,10 @@ function captureArtifactId(label) {
   return value;
 }
 function resolveCaptureOutputDir(cwd, stageId, outputDir) {
-  const root = (0, import_node_path57.resolve)(cwd);
-  const target = outputDir?.trim() ? (0, import_node_path57.resolve)(root, outputDir) : (0, import_node_path57.join)(root, "director-stages", captureArtifactId(stageId), "captures");
-  const traversal = (0, import_node_path57.relative)(root, target);
-  if (traversal === ".." || traversal.startsWith(`..${import_node_path57.sep}`) || (0, import_node_path57.isAbsolute)(traversal)) {
+  const root = (0, import_node_path59.resolve)(cwd);
+  const target = outputDir?.trim() ? (0, import_node_path59.resolve)(root, outputDir) : (0, import_node_path59.join)(root, "director-stages", captureArtifactId(stageId), "captures");
+  const traversal = (0, import_node_path59.relative)(root, target);
+  if (traversal === ".." || traversal.startsWith(`..${import_node_path59.sep}`) || (0, import_node_path59.isAbsolute)(traversal)) {
     throw new Error("Director capture output directory must stay inside the current project cwd");
   }
   return target;
@@ -122937,7 +124324,7 @@ async function captureDirectorStageWithReadback(options) {
     if (bytes.length === 0 || captureSha256(bytes) !== frame.sha256) {
       throw new Error(`Director renderer returned invalid bytes for ${artifactId}`);
     }
-    const path = (0, import_node_path57.join)(outputDir, `${artifactId}.png`);
+    const path = (0, import_node_path59.join)(outputDir, `${artifactId}.png`);
     (0, import_node_fs16.writeFileSync)(path, bytes);
     return {
       artifactId,
@@ -122951,7 +124338,7 @@ async function captureDirectorStageWithReadback(options) {
       path
     };
   });
-  const receiptPath = (0, import_node_path57.join)(outputDir, "capture.json");
+  const receiptPath = (0, import_node_path59.join)(outputDir, "capture.json");
   const receipt = {
     captured: true,
     stageId: options.stageId,
@@ -123069,7 +124456,7 @@ directorCommand.command("create").description("Create a standalone Project Direc
 directorCommand.command("attach").description("Attach a standalone Director Stage to one Canvas action node").requiredOption("--stage <id>", "Director Stage ID").requiredOption("--canvas <id>", "Owning Canvas ID").option("--node <id>", "Canvas action node ID").option("--x <number>", "Canvas X position", "0").option("--y <number>", "Canvas Y position", "0").option("--project <id>", "Project ID").option("--json", "Output result as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
   const observedVersion = await requireDirectorStageObservation(context, options.stage);
-  const actionNodeId = options.node?.trim() || `director-stage-${(0, import_node_crypto20.randomUUID)().slice(0, 8)}`;
+  const actionNodeId = options.node?.trim() || `director-stage-${(0, import_node_crypto22.randomUUID)().slice(0, 8)}`;
   let result;
   if (isDaemonRunning(context.projectId)) {
     result = await sendCommand(context.projectId, {
@@ -123165,7 +124552,7 @@ directorCommand.command("capture").description("Capture exact-time PNG evidence 
     readStage: () => readDirectorStage(context, options.stage)
   });
   if (isJsonMode(options)) printJson(receipt);
-  else process.stderr.write(`captured ${receipt.frames.length} Director PNGs to ${(0, import_node_path57.dirname)(receipt.receiptPath)}
+  else process.stderr.write(`captured ${receipt.frames.length} Director PNGs to ${(0, import_node_path59.dirname)(receipt.receiptPath)}
 `);
 });
 directorCommand.command("pull").description("Export the current Director Stage revision to JSON").requiredOption("--stage <id>", "Director Stage ID").option("--project <id>", "Project ID").option("--file <path>", "Projection path").option("--json", "Output result as JSON").action(async (options) => {
@@ -123176,7 +124563,7 @@ directorCommand.command("pull").description("Export the current Director Stage r
     stage: stage.id,
     file: options.file
   });
-  (0, import_node_fs16.mkdirSync)((0, import_node_path57.dirname)(filePath), { recursive: true });
+  (0, import_node_fs16.mkdirSync)((0, import_node_path59.dirname)(filePath), { recursive: true });
   (0, import_node_fs16.writeFileSync)(filePath, directorStageCanonicalJson(stage.state), "utf8");
   const payload = {
     pulled: true,
@@ -123713,9 +125100,9 @@ addSharedOptions(actionCommand.command("remove").description("Remove a mannequin
 
 // ../../packages/shared-runtime/dist/local-daemon.js
 var import_node_child_process8 = require("node:child_process");
-var import_node_crypto21 = require("node:crypto");
-var import_promises45 = require("node:fs/promises");
-var import_node_path58 = require("node:path");
+var import_node_crypto23 = require("node:crypto");
+var import_promises47 = require("node:fs/promises");
+var import_node_path60 = require("node:path");
 init_dist();
 function isMissingFile(error51) {
   return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ENOENT");
@@ -123790,7 +125177,7 @@ function isLoopbackEndpoint(endpoint) {
 async function inspectLocalDaemon(options) {
   let value;
   try {
-    value = JSON.parse(await (0, import_promises45.readFile)((0, import_node_path58.join)(options.runDir, "host.json"), "utf8"));
+    value = JSON.parse(await (0, import_promises47.readFile)((0, import_node_path60.join)(options.runDir, "host.json"), "utf8"));
   } catch (error51) {
     if (isMissingFile(error51) || error51 instanceof SyntaxError)
       return { status: "absent" };
@@ -123806,20 +125193,20 @@ async function inspectLocalDaemon(options) {
   return await options.probe(value) ? { status: "healthy", record: value } : { status: "unhealthy", record: value };
 }
 async function acquireStartupLock(options) {
-  await (0, import_promises45.mkdir)(options.runDir, { recursive: true });
-  const lockPath = (0, import_node_path58.join)(options.runDir, "daemon-start.lock");
-  const token = (0, import_node_crypto21.randomUUID)();
+  await (0, import_promises47.mkdir)(options.runDir, { recursive: true });
+  const lockPath = (0, import_node_path60.join)(options.runDir, "daemon-start.lock");
+  const token = (0, import_node_crypto23.randomUUID)();
   const deadline = Date.now() + options.lockTimeoutMs;
   while (Date.now() < deadline) {
     try {
-      const handle = await (0, import_promises45.open)(lockPath, "wx", 384);
+      const handle = await (0, import_promises47.open)(lockPath, "wx", 384);
       await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }), "utf8");
       return async () => {
         await handle.close().catch(() => void 0);
         try {
-          const current = JSON.parse(await (0, import_promises45.readFile)(lockPath, "utf8"));
+          const current = JSON.parse(await (0, import_promises47.readFile)(lockPath, "utf8"));
           if (current.token === token)
-            await (0, import_promises45.rm)(lockPath, { force: true });
+            await (0, import_promises47.rm)(lockPath, { force: true });
         } catch (error51) {
           if (!isMissingFile(error51))
             throw error51;
@@ -123831,17 +125218,17 @@ async function acquireStartupLock(options) {
       }
     }
     try {
-      const lock = JSON.parse(await (0, import_promises45.readFile)(lockPath, "utf8"));
+      const lock = JSON.parse(await (0, import_promises47.readFile)(lockPath, "utf8"));
       const stale = typeof lock.pid !== "number" || !options.pidExists(lock.pid) || typeof lock.createdAt !== "number" || Date.now() - lock.createdAt > options.lockTimeoutMs * 2;
       if (stale) {
-        await (0, import_promises45.rm)(lockPath, { force: true });
+        await (0, import_promises47.rm)(lockPath, { force: true });
         continue;
       }
     } catch (error51) {
       if (isMissingFile(error51))
         continue;
       if (error51 instanceof SyntaxError) {
-        await (0, import_promises45.rm)(lockPath, { force: true });
+        await (0, import_promises47.rm)(lockPath, { force: true });
         continue;
       }
     }
@@ -123931,12 +125318,12 @@ function createLocalDaemonBootstrap(options) {
 }
 
 // ../../packages/cli/src/lib/local-daemon-bootstrap.ts
-var import_node_path59 = require("node:path");
+var import_node_path61 = require("node:path");
 async function ensureCliLocalDaemon(options) {
   const env = options.env ?? process.env;
   if (env.CLASH_API_URL?.trim()) return void 0;
   const dataDir = defaultLocalApiDataDir(env);
-  const runDir = (0, import_node_path59.join)(clashHomeForLocalDataDir(dataDir), "run");
+  const runDir = (0, import_node_path61.join)(clashHomeForLocalDataDir(dataDir), "run");
   const bootstrap = createLocalDaemonBootstrap({
     runDir,
     profile: resolveClashProfile(env),
@@ -123962,10 +125349,10 @@ async function ensureCliLocalDaemon(options) {
 
 // ../../packages/cli/src/lib/cli-trace.ts
 var import_node_fs17 = require("node:fs");
-var import_node_path60 = require("node:path");
+var import_node_path62 = require("node:path");
 function appendTrace(path, event) {
   try {
-    (0, import_node_fs17.mkdirSync)((0, import_node_path60.dirname)(path), { recursive: true });
+    (0, import_node_fs17.mkdirSync)((0, import_node_path62.dirname)(path), { recursive: true });
     (0, import_node_fs17.appendFileSync)(path, `${JSON.stringify(event)}
 `, "utf8");
   } catch {
@@ -123975,7 +125362,8 @@ function installCliTrace(input = {}) {
   const env = input.env ?? process.env;
   const configuredPath = env.CLASH_CLI_TRACE_PATH?.trim();
   if (!configuredPath) return;
-  const path = (0, import_node_path60.resolve)(configuredPath);
+  const origin = env.CLASH_CLI_TRACE_ORIGIN?.trim() === "mcp-transport" ? "mcp-transport" : void 0;
+  const path = (0, import_node_path62.resolve)(configuredPath);
   const now = input.now ?? (() => /* @__PURE__ */ new Date());
   const monotonicNow = input.monotonicNow ?? (() => process.hrtime.bigint());
   const startedMonotonic = monotonicNow();
@@ -123986,7 +125374,8 @@ function installCliTrace(input = {}) {
     parentPid: input.parentPid ?? process.ppid,
     cwd: input.cwd ?? process.cwd(),
     argv: input.argv ?? process.argv.slice(2),
-    ...env.CLASH_BENCH_CASE_ID ? { caseId: env.CLASH_BENCH_CASE_ID } : {}
+    ...env.CLASH_BENCH_CASE_ID ? { caseId: env.CLASH_BENCH_CASE_ID } : {},
+    ...origin ? { origin } : {}
   };
   appendTrace(path, started);
   let completed = false;
@@ -124004,7 +125393,8 @@ function installCliTrace(input = {}) {
       argv: started.argv,
       exitCode,
       signal: null,
-      ...started.caseId ? { caseId: started.caseId } : {}
+      ...started.caseId ? { caseId: started.caseId } : {},
+      ...started.origin ? { origin: started.origin } : {}
     });
   };
   const onExit = input.onExit ?? ((handler) => process.once("exit", handler));
@@ -124022,12 +125412,12 @@ program2.hook("preAction", async () => {
     ...requested ? { CLASH_PROFILE: requested } : {}
   });
   const cliEntryPath = (0, import_node_url.fileURLToPath)(__clash_import_meta_url);
-  const runtimeDir = (0, import_node_path61.dirname)(cliEntryPath);
+  const runtimeDir = (0, import_node_path63.dirname)(cliEntryPath);
   await ensureCliLocalDaemon({
-    daemonEntryPath: (0, import_node_path61.join)(runtimeDir, "local-api.cjs"),
+    daemonEntryPath: (0, import_node_path63.join)(runtimeDir, "local-api.cjs"),
     cliEntryPath,
-    agentBundleRoot: (0, import_node_path61.join)(runtimeDir, "agents"),
-    builtinPluginRoot: (0, import_node_path61.dirname)(runtimeDir)
+    agentBundleRoot: (0, import_node_path63.join)(runtimeDir, "agents"),
+    builtinPluginRoot: (0, import_node_path63.dirname)(runtimeDir)
   });
 });
 program2.addCommand(authCommand);

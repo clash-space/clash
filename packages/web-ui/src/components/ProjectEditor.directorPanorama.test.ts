@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { sourceContains, sourceMatches } from "../test-support/source-match";
 const source = readFileSync(
   new URL("./ProjectEditor.tsx", import.meta.url),
   "utf8",
@@ -19,9 +20,9 @@ describe("ProjectEditor director panorama media URLs", () => {
   it("uses a 2:1 reference image and rejects only mismatched aspect ratios", () => {
     expect(source).toContain("renderDirectorPanoramaReference");
     expect(source).toContain("createDirectorPanoramaReferenceFile");
-    expect(source).toContain(
+    expect(sourceContains(source, 
       'const directorPanoramaModel = MODEL_CARDS.find((card) => card.id === "gpt-image-2")',
-    );
+    ), `mechanism missing`).toBe(true);
     expect(source).toContain(
       'const modelId = directorPanoramaModel?.id ?? "gpt-image-2";',
     );

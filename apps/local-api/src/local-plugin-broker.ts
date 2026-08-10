@@ -4,13 +4,64 @@ import {
   executablePluginBrokerPermissionError,
   type PluginBroker,
 } from "@clash-space/bridge/actions-host";
+import { assetReachForRuntime, ExecutablePluginAssetReadResultSchema } from "@clash/shared-types";
 import type {
   AssetKind,
   ExecutablePluginAssetHandle,
+  ExecutablePluginAssetReadResult,
   ExecutablePluginJsonValue,
 } from "@clash/shared-types";
 
-import type { LocalProviderAccountConfig } from "./provider-accounts.js";
+import type { RuntimeProviderAccountAvailability } from "./provider-accounts.js";
+
+/**
+ * Resolves one asset into something the plugin can use, decided by its run mode.
+ *
+ * A published URL wins whenever one exists: nothing is read, encoded, or copied. Otherwise a
+ * `local` plugin gets the host's own asset endpoint, which it can fetch because it runs here, and
+ * a `hosted` plugin gets bytes -- handing it that same address would point it at whatever answers
+ * on its own network, and both forms are `https?://` strings that nothing downstream can
+ * distinguish.
+ *
+ * Nothing here reads a manifest field. `runtime.kind` is mandatory and already settles the
+ * question; a second declaration could only repeat it or disagree with it.
+ */
+export async function readAssetForPlugin(options: {
+  asset: ExecutablePluginAssetHandle;
+  runtimeKind: "local" | "hosted";
+  readAsset: (asset: { assetId: string; projectId?: string }) => Promise<{
+    kind: AssetKind;
+    bytes: Uint8Array;
+    mediaType?: string;
+  }>;
+  projectId?: string;
+  publicUrl?: () => string | undefined;
+  localUrl?: () => string | undefined;
+}): Promise<ExecutablePluginAssetReadResult> {
+  const reachable = assetReachForRuntime(options.runtimeKind);
+  const publicUrl = options.publicUrl?.();
+  const localUrl = reachable.includes("private") ? options.localUrl?.() : undefined;
+  const asset = await options.readAsset({
+    assetId: options.asset.assetId,
+    ...(options.projectId ? { projectId: options.projectId } : {}),
+  });
+  const common = {
+    handle: `clash-plugin-asset://${randomUUID()}`,
+    kind: asset.kind,
+    ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
+    byteLength: asset.bytes.byteLength,
+  };
+  if (publicUrl) {
+    return ExecutablePluginAssetReadResultSchema.parse({ ...common, url: publicUrl, reach: "public" });
+  }
+  if (localUrl) {
+    return ExecutablePluginAssetReadResultSchema.parse({ ...common, url: localUrl, reach: "private" });
+  }
+  return ExecutablePluginAssetReadResultSchema.parse({
+    ...common,
+    dataBase64: Buffer.from(asset.bytes).toString("base64"),
+  });
+}
 
 export interface LocalPluginBrokerAuditRecord {
   pluginId: string;
@@ -31,9 +82,21 @@ export interface LocalPluginBrokerAssetReadResult {
   bytes: Uint8Array;
 }
 
+export interface LocalPluginBrokerTrafficContext {
+  pluginId: string;
+  pluginVersion: string;
+  providerId?: string;
+  accountId?: string;
+}
+
 export interface LocalExecutablePluginBrokerOptions {
-  loadProviderAccounts: () => Promise<LocalProviderAccountConfig[]>;
+  loadProviderAccounts: () => Promise<RuntimeProviderAccountAvailability[]>;
   fetch?: typeof fetch;
+  /**
+   * Supplies a per-call fetch for outbound provider traffic so recorders can
+   * attribute each request to the plugin and provider account that caused it.
+   */
+  providerTrafficFetch?: (context: LocalPluginBrokerTrafficContext) => typeof fetch;
   readAsset?: (input: {
     assetId: string;
     projectId: string;
@@ -75,6 +138,7 @@ interface CredentialCapability {
 const CREDENTIAL_HEADER_NAMES = new Set([
   "authorization",
   "api-key",
+  "token",
   "x-api-key",
   "xi-api-key",
   "x-goog-api-key",
@@ -101,6 +165,9 @@ function authorizationHeaders(
   if (providerId === "fal") return { authorization: `Key ${apiKey}` };
   if (providerId === "replicate") return { authorization: `Token ${apiKey}` };
   if (providerId === "elevenlabs") return { "xi-api-key": apiKey };
+  if (providerId === "hilo-hub") {
+    return { authorization: `Bearer ${apiKey}`, token: apiKey };
+  }
   if (providerId === "google" || providerId === "google-ai-studio") {
     return { "x-goog-api-key": apiKey };
   }
@@ -163,7 +230,17 @@ export function createLocalExecutablePluginBroker(
 ): PluginBroker {
   const credentialCapabilities = new Map<string, CredentialCapability>();
   const now = options.now ?? Date.now;
-  const credentialHandleTtlMs = options.credentialHandleTtlMs ?? 15 * 60_000;
+  // Defaults to 30 minutes, comfortably above the executor's 25-minute polling
+  // ceiling (300 x 5s, whose final attempt starts at 24m55s before per-request
+  // network time), so a long video generation is never discarded after the
+  // upstream already billed it. Hosts may tune it via
+  // CLASH_PLUGIN_CREDENTIAL_TTL_MINUTES. The handle is a backstop, not the
+  // security boundary — the sandbox, the domain allowlist and the
+  // invocation/plugin binding are, and a plugin holding the matching provider:*
+  // permission can mint a fresh handle at any time. The TTL still bounds leaked
+  // handles and keeps the capability map from growing forever, since handles
+  // are only reclaimed on expiry.
+  const credentialHandleTtlMs = options.credentialHandleTtlMs ?? 30 * 60_000;
   const brokerFetch = options.fetch ?? fetch;
 
   return async (request, context) => {
@@ -240,7 +317,13 @@ export function createLocalExecutablePluginBroker(
           : typeof operation.body === "string"
             ? operation.body
             : JSON.stringify(operation.body);
-        const response = await brokerFetch(operation.url, {
+        const trafficFetch = options.providerTrafficFetch?.({
+          pluginId: context.manifest.id,
+          pluginVersion: context.manifest.version,
+          ...(credential?.providerId ? { providerId: credential.providerId } : {}),
+          ...(credential?.accountId ? { accountId: credential.accountId } : {}),
+        });
+        const response = await (trafficFetch ?? brokerFetch)(operation.url, {
           method: operation.method,
           headers,
           ...(body !== undefined ? { body } : {}),
@@ -262,13 +345,15 @@ export function createLocalExecutablePluginBroker(
             `Asset ${operation.asset.assetId} kind ${asset.kind} does not match ${operation.asset.kind}.`,
           );
         }
-        result = {
+        // Validated against the shared contract so the hosted broker can answer the same
+        // request with a short-lived `url` and no bytes, without any plugin change.
+        result = ExecutablePluginAssetReadResultSchema.parse({
           handle: `clash-plugin-asset://${randomUUID()}`,
           kind: asset.kind,
           ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
           byteLength: asset.bytes.byteLength,
           dataBase64: Buffer.from(asset.bytes).toString("base64"),
-        };
+        });
       } else if (operation.kind === "asset.write") {
         if (!options.writeAsset) throw new Error("Local asset write broker is unavailable.");
         if (!operation.dataBase64) {

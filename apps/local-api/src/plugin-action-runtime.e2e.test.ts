@@ -96,15 +96,16 @@ it("runs an agent-created action Card through activation, hot host discovery, an
     manifest.version = "0.2.0";
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-    const handlerPath = join(v2Draft, "handler.mjs");
-    const handler = await readFile(handlerPath, "utf8");
-    await writeFile(
-      handlerPath,
-      handler.replace(
-        '? { text: prompt } : { prompt };',
-        '? { text: `v2:${prompt}` } : { prompt };',
-      ),
-    );
+    // Edit the source the manifest declares, not the built entrypoint. The host compiles
+    // `runtime.build.source` during validation, so this also exercises that an edited
+    // draft is never checked against a stale bundle.
+    const sourcePath = join(v2Draft, "src", "stdio.ts");
+    const handler = await readFile(sourcePath, "utf8");
+    const edited = handler.replace("value: { text: prompt }", "value: { text: `v2:${prompt}` }");
+    if (edited === handler) {
+      throw new Error(`Scaffold output changed; update this edit. Source:\n${handler}`);
+    }
+    await writeFile(sourcePath, edited);
     const contractPath = join(v2Draft, "contract-tests", "caption-helper.json");
     const contract = JSON.parse(await readFile(contractPath, "utf8"));
     contract.expect.outputs[0].value.text = "v2:Describe the result";

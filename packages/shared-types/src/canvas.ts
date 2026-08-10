@@ -9,9 +9,11 @@
 
 import { z } from 'zod';
 import {
+  MODEL_CARDS,
   ModelConstraintRuleSchema,
   ModelInputRuleSchema,
   ModelParameterSchema,
+  normalizeModelId,
   resolveAspectRatio,
   type ModelCard,
 } from './models';
@@ -389,6 +391,25 @@ export function extractLabelFromPrompt(promptText: string, fallback: string): st
  * NodeProcessor picks up `status:"pending"` (no src field — assets live on
  * D1, server resolves via assetId).
  */
+/**
+ * The duration a pending video node should carry when nothing asked for one.
+ *
+ * Reads the Card: `defaultParams` first, then the parameter's own default, then the first
+ * candidate. Returns undefined for an unknown model so the field is simply omitted rather
+ * than filled with a guess.
+ */
+function pendingDurationFallback(modelId: string | undefined): number | string | undefined {
+  if (!modelId) return undefined;
+  const card = MODEL_CARDS.find(candidate => candidate.id === normalizeModelId(modelId) || candidate.id === modelId);
+  if (!card) return undefined;
+  const declared = card.defaultParams?.duration;
+  if (declared !== undefined) return declared as number | string;
+  const parameter = card.parameters.find(candidate => candidate.id === 'duration');
+  if (!parameter) return undefined;
+  if (parameter.defaultValue !== undefined) return parameter.defaultValue as number | string;
+  return parameter.options?.[0]?.value as number | string | undefined;
+}
+
 export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): PendingAssetNode {
   const {
     nodeId, prompt, modelId, modelParams, actionType,
@@ -480,8 +501,18 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
   }
 
   if (isVideo && !isCustom) {
-    const dur = modelParams.duration ?? 5;
-    data.duration = typeof dur === 'string' ? parseInt(dur, 10) : Number(dur) || 5;
+    // Carry what the Card offers, not a number of our own.
+    //
+    // A duration menu may list a sentinel next to the seconds -- `auto` means the provider
+    // picks -- so coercing to a number destroyed it twice: `parseInt('auto')` is NaN, and
+    // `NaN || 5` is 5. Five is absent from several menus, and the generation then failed its
+    // own validator before any request went out. `seedance-2-fast-startend` offers
+    // ["auto", 4, 6, 8, 10, 15].
+    const declared = modelParams.duration ?? pendingDurationFallback(modelId);
+    if (declared !== undefined) {
+      const numeric = typeof declared === 'number' ? declared : Number(declared);
+      data.duration = Number.isFinite(numeric) ? numeric : declared;
+    }
   }
 
   return { id: nodeId, type: rfType, data };

@@ -29,6 +29,9 @@ test("registers an agent-first Director Stage command surface", async () => {
       }>;
     }>;
   };
+  // Stage content is authored through the projection loop, so the per-concept
+  // mutation commands are retired: the JSON expresses strictly more than they
+  // could (it accepts `creature`, which `object add --kind` never did).
   assert.deepEqual(command.commands.map((candidate) => candidate.name()), [
     "list",
     "create",
@@ -37,56 +40,16 @@ test("registers an agent-first Director Stage command surface", async () => {
     "capture",
     "pull",
     "apply",
-    "object",
-    "camera",
-    "scene",
-    "keyframe",
-    "action",
   ]);
-  assert.deepEqual(
-    command.commands.find((candidate) => candidate.name() === "object")?.commands.map(
-      (candidate) => candidate.name(),
-    ),
-    ["add", "update", "remove", "group", "ungroup", "attach", "detach", "add-horse", "add-rider-horse"],
-  );
-  assert.deepEqual(
-    command.commands.find((candidate) => candidate.name() === "camera")?.commands.map(
-      (candidate) => candidate.name(),
-    ),
-    ["add", "update", "remove"],
-  );
-  assert.deepEqual(
-    command.commands.find((candidate) => candidate.name() === "scene")?.commands.map(
-      (candidate) => candidate.name(),
-    ),
-    ["update"],
-  );
-  assert.deepEqual(
-    command.commands.find((candidate) => candidate.name() === "keyframe")?.commands.map(
-      (candidate) => candidate.name(),
-    ),
-    ["upsert", "remove"],
-  );
-  assert.deepEqual(
-    command.commands.find((candidate) => candidate.name() === "action")?.commands.map(
-      (candidate) => candidate.name(),
-    ),
-    ["upsert", "remove"],
-  );
-  const actionUpsert = command.commands
-    .find((candidate) => candidate.name() === "action")
-    ?.commands.find((candidate) => candidate.name() === "upsert");
-  assert.equal(
-    actionUpsert?.options?.find((option) => option.long === "--action")?.argChoices?.includes("ride"),
-    true,
-  );
-  assert.equal(
-    actionUpsert?.options?.find((option) => option.long === "--action")?.argChoices?.includes("interact"),
-    true,
-  );
+  // Every retired group must stay absent.
+  for (const retired of ["object", "camera", "scene", "keyframe", "action"]) {
+    assert.equal(
+      command.commands.find((candidate) => candidate.name() === retired),
+      undefined,
+      `${retired} must stay retired in favour of the projection loop`,
+    );
+  }
 
-  const indexSource = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
-  assert.match(indexSource, /program\.addCommand\(directorCommand\)/);
 });
 
 test("Director Stage mutations use the shared command reducer and implicit read proof", async () => {
@@ -103,14 +66,10 @@ test("Director Stage mutations use the shared command reducer and implicit read 
   assert.match(source, /action: "update_director_stage_state"/);
   assert.match(source, /action: "attach_director_stage"/);
   assert.match(source, /action: "detach_director_stage"/);
-  assert.match(source, /--body-shape/);
-  assert.match(source, /bodyShape/);
-  for (const kind of ["prop", "set", "vehicle", "light"]) {
-    assert.match(source, new RegExp(`"${kind}"`));
-  }
-  for (const option of ["--prop-type", "--set-type", "--vehicle-type", "--light-type", "--intensity", "--range", "--angle"]) {
-    assert.match(source, new RegExp(option));
-  }
+  // The kind-specific flag families are retired with the mutation commands;
+  // an agent learns the object union from `clash projection schema --kind stage`.
+  assert.doesNotMatch(source, /--body-shape|--prop-type|--set-type|--vehicle-type|--light-type/);
+  assert.doesNotMatch(source, /add-horse|add-rider-horse/);
   assert.doesNotMatch(source, /--if-match|--force|--lock/);
 });
 

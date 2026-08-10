@@ -113,9 +113,13 @@ describe("AcpMessageList primitives", () => {
 
   it("lets Radix collapsible trigger state rotate ACP row chevrons", () => {
     const source = readCopilotSource("AcpMessageList.tsx");
-    const stateDrivenRotations = source.match(/group-data-\[state=open\]:rotate-90/g) ?? [];
+    // The rows use a *named* Tailwind group (`/acp-event`) so a nested row cannot
+    // be rotated by an ancestor's state. The original regex omitted the name and
+    // therefore matched nothing at all.
+    const stateDrivenRotations = source.match(/group-data-\[state=open\](?:\/[\w-]+)?:rotate-90/g) ?? [];
 
     expect(stateDrivenRotations.length).toBeGreaterThanOrEqual(5);
+    expect(stateDrivenRotations.every((match) => match.includes("/acp-event"))).toBe(true);
     expect(source).not.toContain("open && 'rotate-90'");
   });
 
@@ -146,8 +150,13 @@ describe("AcpMessageList primitives", () => {
     expect(source).toMatch(/<Button[\s\S]*ShellEventIcon/);
     expect(source).toMatch(/<Button[\s\S]*AcpEventIcon/);
     expect(source).toMatch(/<IconButton[\s\S]*Toggle progress/);
-    expect(source).not.toMatch(/<button[\s\S]*ShellEventIcon/);
-    expect(source).not.toMatch(/<button[\s\S]*AcpEventIcon/);
-    expect(source).not.toMatch(/<button[\s\S]*Toggle progress/);
+    // Scoped to a raw button's own body. The previous `[\s\S]*` form spanned the
+    // whole file, so an unrelated raw control anywhere above these icons -- the
+    // entity opener, the warning dismiss -- reported a violation that was not one.
+    const rawButtonBody = (needle: string) =>
+      new RegExp(`<button(?:(?!</button>)[\\s\\S])*?${needle}`);
+    expect(source).not.toMatch(rawButtonBody("ShellEventIcon"));
+    expect(source).not.toMatch(rawButtonBody("AcpEventIcon"));
+    expect(source).not.toMatch(rawButtonBody("Toggle progress"));
   });
 });

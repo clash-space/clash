@@ -146,6 +146,60 @@ describe("transport-neutral product operation evidence", () => {
     ]);
   });
 
+  it("treats Timeline creation as the initial persisted state without requiring a redundant save", () => {
+    expect(
+      matchRequiredProductOperations({
+        requiredProductOperations: ["timeline.create", "timeline.save"],
+        successfulMcpTools: ["clash_timeline_create"],
+        successfulCliArgv: [],
+      }),
+    ).toEqual({
+      observedProductOperations: [
+        {
+          operation: "timeline.create",
+          transport: "mcp",
+          invocation: "clash_timeline_create",
+        },
+        {
+          operation: "timeline.save",
+          transport: "mcp",
+          invocation: "clash_timeline_create",
+        },
+      ],
+      missingProductOperations: [],
+    });
+  });
+
+  it("summarizes large CLI arguments in reports while retaining verifiable size and content identity", () => {
+    expect(
+      matchRequiredProductOperations({
+        requiredProductOperations: ["canvas.update"],
+        successfulMcpTools: [],
+        successfulCliArgv: [
+          [
+            "canvas",
+            "update",
+            "--node",
+            "node-1",
+            "--content",
+            "x".repeat(1024),
+            "--json",
+          ],
+        ],
+      }),
+    ).toEqual({
+      observedProductOperations: [
+        {
+          operation: "canvas.update",
+          transport: "cli",
+          invocation:
+            "canvas update --node node-1 --content <arg:1024B sha256:49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7> --json",
+        },
+      ],
+      missingProductOperations: [],
+    });
+  });
+
   it("uses the canonical CLI pull/apply projections for get/save operations", () => {
     expect(
       matchRequiredProductOperations({

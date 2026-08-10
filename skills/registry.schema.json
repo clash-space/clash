@@ -127,7 +127,7 @@
             "required": ["mode", "command", "requiresLocalRuntime"],
             "properties": {
               "mode": { "const": "local-cli" },
-              "command": { "type": "string", "pattern": "^clash production " },
+              "command": { "type": "string", "pattern": "^clash " },
               "requiresLocalRuntime": { "const": true }
             }
           },
@@ -176,7 +176,7 @@
                 "casRequired": { "type": "boolean" },
                 "applyCommand": {
                   "enum": [
-                    "clash production apply-metadata",
+                    "clash assets metadata apply",
                     "clash timeline apply"
                   ]
                 },

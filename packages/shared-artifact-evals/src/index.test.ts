@@ -353,6 +353,86 @@ describe("artifact-first evaluation", () => {
     expect(report.status).toBe("pass");
   });
 
+  it("recognizes named Remotion Interactive layers as editable character parts", async () => {
+    const workspace = await mkdtemp(
+      join(tmpdir(), "clash-artifact-mg-interactive-"),
+    );
+    await writeFile(
+      join(workspace, "character.tsx"),
+      `import React from "react";
+import { AbsoluteFill, Interactive } from "remotion";
+export default function Character() {
+  return <AbsoluteFill>
+    <Interactive.Div name="Head" />
+    <Interactive.Div name="Torso" />
+    <Interactive.Div name="Left arm" />
+    <Interactive.Div name="Right arm" />
+    <Interactive.Div name="Left leg" />
+    <Interactive.Div name="Right leg" />
+  </AbsoluteFill>;
+}
+`,
+      "utf8",
+    );
+    await writeJson(join(workspace, "submission.json"), {
+      schemaVersion: 1,
+      taskId: "mg-interactive",
+      artifacts: [
+        { id: "character", kind: "remotion-component", path: "character.tsx" },
+      ],
+    });
+
+    const report = await evaluateSubmission({
+      workspace,
+      benchmark: {
+        id: "mg-interactive",
+        title: "Interactive MG",
+        category: "mg-character",
+        outcome: {
+          objective: "Create an interactively editable character.",
+          acceptanceCriteria: ["All six body parts are editable layers."],
+          deliverables: [
+            {
+              artifactId: "character",
+              kind: "remotion-component",
+              description: "Remotion source",
+            },
+          ],
+        },
+        passScore: 100,
+        timeoutMs: 30_000,
+        skills: [],
+        rubric: [
+          {
+            id: "character",
+            type: "mg-character",
+            artifactId: "character",
+            weight: 100,
+            required: true,
+            requiredBodyParts: [
+              "head",
+              "torso",
+              "arm-left",
+              "arm-right",
+              "leg-left",
+              "leg-right",
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(report.status).toBe("pass");
+    expect(report.checks[0]?.metrics?.bodyParts).toEqual([
+      "arm-left",
+      "arm-right",
+      "head",
+      "leg-left",
+      "leg-right",
+      "torso",
+    ]);
+  });
+
   it("fails a required gate even when optional points clear the score threshold", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "clash-artifact-required-"));
     await writeFile(join(workspace, "notes.txt"), "present", "utf8");

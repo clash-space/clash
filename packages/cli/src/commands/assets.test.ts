@@ -25,7 +25,7 @@ async function tempDir(): Promise<string> {
 
 test("assets command registers link subcommand", () => {
   assert.equal(assetsCommand.name(), "assets");
-  assert.deepEqual(assetsCommand.commands.map((command) => command.name()), ["get", "link", "import", "replace", "cover", "ref", "refs", "gc"]);
+  assert.deepEqual(assetsCommand.commands.map((command) => command.name()), ["get", "link", "import", "replace", "cover", "ref", "refs", "gc", "metadata"]);
   const get = assetsCommand.commands.find((command) => command.name() === "get");
   assert.ok(get);
   assert.ok(get.options.some((option) => option.long === "--asset"));

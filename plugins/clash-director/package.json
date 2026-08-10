@@ -3,15 +3,31 @@
   "version": "0.1.0",
   "description": "Installable Codex plugin exposing Clash Director Stage MCP tools",
   "type": "module",
-  "bin": { "clash-director-plugin": "./runtime/index.js" },
+  "bin": {
+    "clash-director-plugin": "./runtime/index.js"
+  },
   "main": "./runtime/index.js",
   "types": "./runtime/index.d.ts",
   "exports": {
-    ".": { "types": "./runtime/index.d.ts", "import": "./runtime/index.js" },
-    "./adapter": { "types": "./runtime/adapter.d.ts", "import": "./runtime/adapter.js" },
-    "./server": { "types": "./runtime/server.d.ts", "import": "./runtime/server.js" }
+    ".": {
+      "types": "./runtime/index.d.ts",
+      "import": "./runtime/index.js"
+    },
+    "./adapter": {
+      "types": "./runtime/adapter.d.ts",
+      "import": "./runtime/adapter.js"
+    },
+    "./server": {
+      "types": "./runtime/server.d.ts",
+      "import": "./runtime/server.js"
+    }
   },
-  "files": [".codex-plugin", ".mcp.json", "runtime", "skills"],
+  "files": [
+    ".codex-plugin",
+    ".mcp.json",
+    "runtime",
+    "skills"
+  ],
   "scripts": {
     "prebuild": "pnpm --filter @clash/shared-mcp build && pnpm --filter @clash/shared-types build",
     "build": "tsup && esbuild src/app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=runtime/app-client.js",
@@ -35,6 +51,8 @@
     "tsup": "^8.5.1",
     "typescript": "^5.9.0"
   },
-  "engines": { "node": ">=22.22.0" },
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "license": "MIT"
 }

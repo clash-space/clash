@@ -189,9 +189,11 @@ async function recordCanvasObservation(options: {
   entityId: string;
   revision: unknown;
 }): Promise<void> {
-  if (agentClientType() !== "agent") return;
+  // An observation is concurrency evidence, not a permission, so it is recorded
+  // for every client. Payload size picks the transport; it never picks the CAS
+  // contract.
   if (!options.context.workspaceRoot) {
-    throw new Error("Agent reads require a cwd linked through .clash/project.toml.");
+    throw new Error("Reads require a cwd linked through .clash/project.toml.");
   }
   if (typeof options.revision !== "string" || !options.revision.trim()) {
     throw new Error("Host read did not return an entity version.");
@@ -211,7 +213,6 @@ async function requireCanvasObservation(options: {
   entityKind: string;
   entityId: string;
 }): Promise<string | undefined> {
-  if (agentClientType() !== "agent") return undefined;
   if (!options.context.workspaceRoot) {
     throw new Error("READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and read the target first.");
   }
@@ -1035,11 +1036,17 @@ canvasCommand
     // ref edges are the source of truth, mirroring how the web
     // creates them (ActionBadge.addRefNode does the same).
     let refNodeIds: string[] = [];
+    let unresolvedReferences: string[] = [];
     if (isGenNode && allRefIds.length > 0) {
       const resolved = await resolveReferences(projectId, allRefIds);
       refNodeIds = resolved.refNodeIds;
       if (refNodeIds.length > 0) extraData.referenceImageOrder = refNodeIds;
-      if (resolved.missing.length > 0 && !isJsonMode(options)) {
+      // Report unresolved references in both modes. This warning used to be suppressed under
+      // `--json`, which is the one caller that cannot read stderr scrollback: an agent saw a node
+      // created successfully with no ref edges, and learned about it much later as a capability
+      // error naming the prompt it had written correctly.
+      if (resolved.missing.length > 0) {
+        unresolvedReferences = resolved.missing;
         console.error(
           `warning: ${resolved.missing.length} reference(s) couldn't be resolved (no canvas node or asset row found): ${resolved.missing.join(", ")}`,
         );
@@ -1092,7 +1099,13 @@ canvasCommand
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
       await wireRefEdges(daemonResult.node_id as string);
-      if (isJsonMode(options)) { printJson({ ...daemonResult, refNodeIds }); }
+      if (isJsonMode(options)) {
+        printJson({
+          ...daemonResult,
+          refNodeIds,
+          ...(unresolvedReferences.length > 0 ? { unresolvedReferences } : {}),
+        });
+      }
       else {
         console.log(`Created node: ${daemonResult.node_id} (${persistedNodeType})`);
         if (daemonResult.asset_id) console.log(`Asset ID:    ${daemonResult.asset_id}`);
@@ -1116,7 +1129,11 @@ canvasCommand
         client.canvas.insertEdge(`${sourceId}-${nodeId}`, sourceId, nodeId, "default");
       }
       if (isJsonMode(options)) {
-        printJson({ ...result, refNodeIds });
+        printJson({
+          ...result,
+          refNodeIds,
+          ...(unresolvedReferences.length > 0 ? { unresolvedReferences } : {}),
+        });
       } else {
         console.log(`Created node: ${result.node_id} (${persistedNodeType})`);
         if (result.asset_id) console.log(`Asset ID:    ${result.asset_id}`);
@@ -1278,6 +1295,17 @@ canvasCommand
       if (typeof options.content === "string") updates.content = options.content;
       const node = client.readNode(options.node);
       if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
+      // The daemon checks CAS server-side; without one the supplied proof has to
+      // be verified here or it is decoration.
+      if (observedVersion) {
+        const currentVersion = canvasNodeReadToken(node as CanvasReadProofNodeLike);
+        if (currentVersion !== observedVersion) {
+          console.error(
+            "STALE_READ: This node changed after it was read. Read it again, reconcile, then write.",
+          );
+          process.exit(1);
+        }
+      }
       const edges = client.canvas.listEdges();
       const contentGuard = validateCanvasContentPatch({
         nodeId: options.node,

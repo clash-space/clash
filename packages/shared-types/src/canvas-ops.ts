@@ -147,6 +147,17 @@ export class Canvas {
     private readonly doc: LoroDoc,
     private readonly broadcast: BroadcastFn,
     private readonly canvasId = "main",
+    /**
+     * The effective model catalogue this Canvas judges generations against.
+     *
+     * A plugin may ship model cards of its own, so the usable set is only knowable where
+     * those plugins are installed. `Canvas` runs in the CLI, the local host, and the web
+     * UI; while it read the first-party constant directly, each process judged a request
+     * against its own compiled-in copy and a stale client refused a model the host
+     * served. Hosts pass their composed set; the constant remains the default so a
+     * caller with no plugins keeps working.
+     */
+    private readonly modelCards: readonly ModelCard[] = MODEL_CARDS,
   ) {}
 
   // ── Read ─────────────────────────────────────────────
@@ -634,7 +645,7 @@ export class Canvas {
     } else {
       const requestedModelId = (nodeData.modelId as string) || (nodeData.model as string) || "";
       const modelId = normalizeModelId(requestedModelId) ?? requestedModelId;
-      const modelCard = MODEL_CARDS.find((c: ModelCard) => c.id === modelId);
+      const modelCard = this.modelCards.find((c: ModelCard) => c.id === modelId);
       if (!modelCard) {
         return {
           assetNodeId: "",

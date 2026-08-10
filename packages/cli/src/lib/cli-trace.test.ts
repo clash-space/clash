@@ -22,6 +22,7 @@ for (const entry of ["index.ts", "plugin.ts"] as const) {
         env: {
           ...process.env,
           CLASH_CLI_TRACE_PATH: tracePath,
+          CLASH_CLI_TRACE_ORIGIN: "mcp-transport",
         },
       });
       assert.equal(child.status, 0, child.stderr);
@@ -37,6 +38,10 @@ for (const entry of ["index.ts", "plugin.ts"] as const) {
       assert.equal(events[1].exitCode, 0);
       assert.equal(events[1].pid, events[0].pid);
       assert.equal(typeof events[1].durationMs, "number");
+      assert.deepEqual(events.map((event) => event.origin), [
+        "mcp-transport",
+        "mcp-transport",
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

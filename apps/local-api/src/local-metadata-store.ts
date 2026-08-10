@@ -214,6 +214,20 @@ function applySchema(db: SqliteDatabase): void {
       PRIMARY KEY (project_id, asset_id, position)
     );
 
+    CREATE TABLE IF NOT EXISTS asset_metadata_index (
+      asset_id TEXT NOT NULL,
+      metadata_kind TEXT NOT NULL,
+      project_id TEXT,
+      schema_version INTEGER,
+      content_hash TEXT,
+      body_hash TEXT,
+      producer TEXT NOT NULL,
+      summary_json TEXT,
+      identity_json TEXT NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      PRIMARY KEY (asset_id, metadata_kind)
+    );
+
     CREATE TABLE IF NOT EXISTS local_config (
       key TEXT PRIMARY KEY NOT NULL,
       value_json TEXT NOT NULL,
@@ -1421,6 +1435,102 @@ export function createLocalMetadataStore(dataDir: string) {
     return row ? textRevisionFromRow(row) : null;
   }
 
+  /**
+   * The queryable half of "manifest carries identities, blobs carry bodies":
+   * one row per attached kind, so "which assets have a transcript" is a WHERE
+   * clause instead of a walk over every workspace manifest.
+   */
+  async function upsertAssetMetadataIndex(record: {
+    assetId: string;
+    metadataKind: string;
+    projectId?: string;
+    schemaVersion?: number;
+    contentHash?: string;
+    bodyHash?: string;
+    producer: string;
+    summary?: unknown;
+    identity: unknown;
+  }): Promise<void> {
+    await withDb((db) => {
+      db.prepare(
+        `
+      INSERT INTO asset_metadata_index (
+        asset_id, metadata_kind, project_id, schema_version, content_hash,
+        body_hash, producer, summary_json, identity_json, recorded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(asset_id, metadata_kind) DO UPDATE SET
+        project_id = excluded.project_id,
+        schema_version = excluded.schema_version,
+        content_hash = excluded.content_hash,
+        body_hash = excluded.body_hash,
+        producer = excluded.producer,
+        summary_json = excluded.summary_json,
+        identity_json = excluded.identity_json,
+        recorded_at = excluded.recorded_at
+    `,
+      ).run(
+        record.assetId,
+        record.metadataKind,
+        record.projectId ?? null,
+        record.schemaVersion ?? null,
+        record.contentHash ?? null,
+        record.bodyHash ?? null,
+        record.producer,
+        record.summary === undefined ? null : JSON.stringify(record.summary),
+        JSON.stringify(record.identity),
+        Date.now(),
+      );
+    });
+  }
+
+  async function listAssetMetadataIndex(filter: {
+    assetId?: string;
+    metadataKind?: string;
+    projectId?: string;
+  } = {}): Promise<Array<Record<string, unknown>>> {
+    return withDb((db) => {
+      const conditions: string[] = [];
+      const params: SqlitePrimitive[] = [];
+      if (filter.assetId) {
+        conditions.push("asset_id = ?");
+        params.push(filter.assetId);
+      }
+      if (filter.metadataKind) {
+        conditions.push("metadata_kind = ?");
+        params.push(filter.metadataKind);
+      }
+      if (filter.projectId) {
+        conditions.push("project_id = ?");
+        params.push(filter.projectId);
+      }
+      const rows = db
+        .prepare(
+          `
+      SELECT asset_id, metadata_kind, project_id, schema_version, content_hash,
+             body_hash, producer, summary_json, identity_json, recorded_at
+        FROM asset_metadata_index
+        ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
+       ORDER BY asset_id, metadata_kind
+    `,
+        )
+        .all(...params);
+      return rows.map((row) => ({
+        assetId: row.asset_id,
+        metadataKind: row.metadata_kind,
+        ...(row.project_id === null ? {} : { projectId: row.project_id }),
+        ...(row.schema_version === null ? {} : { schemaVersion: row.schema_version }),
+        ...(row.content_hash === null ? {} : { contentHash: row.content_hash }),
+        ...(row.body_hash === null ? {} : { bodyHash: row.body_hash }),
+        producer: row.producer,
+        ...(typeof row.summary_json === "string"
+          ? { summary: JSON.parse(row.summary_json) as unknown }
+          : {}),
+        identity: JSON.parse(String(row.identity_json)) as unknown,
+        recordedAt: row.recorded_at,
+      }));
+    });
+  }
+
   return {
     path,
     load,
@@ -1434,5 +1544,7 @@ export function createLocalMetadataStore(dataDir: string) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
+    upsertAssetMetadataIndex,
+    listAssetMetadataIndex,
   };
 }

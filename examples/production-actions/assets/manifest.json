@@ -1,8 +1,0 @@
-{
-  "assets": [
-    { "id": "asset-song", "type": "audio", "path": "assets/audio/song.wav", "metadata": {} },
-    { "id": "asset-talk", "type": "video", "path": "assets/video/talking-head.mp4", "metadata": {} },
-    { "id": "asset-reference", "type": "reference", "path": "references/public-example.mp4", "metadata": {} },
-    { "id": "asset-storyboard", "type": "image", "path": "assets/storyboard/panel-1.png", "metadata": {} }
-  ]
-}

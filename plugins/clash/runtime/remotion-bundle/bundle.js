@@ -1,8 +1,8 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 6090:
-/***/ ((__unused_webpack_module, __unused_webpack___webpack_exports__, __webpack_require__) => {
+/***/ 9138
+(__unused_webpack_module, __unused_webpack___webpack_exports__, __webpack_require__) {
 
 "use strict";
 
@@ -11,8 +11,8 @@
 // EXTERNAL MODULE: ../../node_modules/.pnpm/react@19.2.5/node_modules/react/jsx-runtime.js
 var jsx_runtime = __webpack_require__(1627);
 var jsx_runtime_namespaceObject = /*#__PURE__*/__webpack_require__.t(jsx_runtime, 2);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/remotion@4.0.370_react-dom@19.2.5_react@19.2.5__react@19.2.5/node_modules/remotion/dist/esm/index.mjs
-var esm = __webpack_require__(2078);
+// EXTERNAL MODULE: ../../node_modules/.pnpm/remotion@4.0.507_react-dom@19.2.5_react@19.2.5__react@19.2.5/node_modules/remotion/dist/esm/index.mjs
+var esm = __webpack_require__(270);
 // EXTERNAL MODULE: ../../node_modules/.pnpm/react@19.2.5/node_modules/react/index.js
 var react = __webpack_require__(1979);
 var react_namespaceObject = /*#__PURE__*/__webpack_require__.t(react, 2);
@@ -4426,7 +4426,7 @@ var z = /*#__PURE__*/Object.freeze({
 ;// ../shared-types/dist/chunk-QT2SHN5K.js
 
 
-function chunk_QT2SHN5K_agentReadToken(options) {
+function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version = normalizeTokenPart(options.version ?? "v1", "version");
   return `${namespace}-${version}:${fnv1a64(stableJson(options.subject))}`;
@@ -4440,7 +4440,7 @@ function agentReadReceiptToken(options) {
   return `${parsed.baseReadToken}:receipt:${receipt}`;
 }
 function projectReadToken(project) {
-  return chunk_QT2SHN5K_agentReadToken({
+  return agentReadToken({
     namespace: "project",
     subject: {
       id: project.id,
@@ -4452,7 +4452,7 @@ function projectReadToken(project) {
   });
 }
 function sessionReadToken(session) {
-  return chunk_QT2SHN5K_agentReadToken({
+  return agentReadToken({
     namespace: "session",
     subject: {
       id: session.id,
@@ -4471,7 +4471,7 @@ function sessionReadToken(session) {
   });
 }
 function localConfigReadToken(config) {
-  return chunk_QT2SHN5K_agentReadToken({
+  return agentReadToken({
     namespace: "local-config",
     subject: {
       id: config.id,
@@ -4481,20 +4481,20 @@ function localConfigReadToken(config) {
   });
 }
 function providerAccountReadToken(account) {
-  return chunk_QT2SHN5K_agentReadToken({
+  return agentReadToken({
     namespace: "provider-account",
     subject: normalizeProviderAccount(account)
   });
 }
 function providerAccountsReadToken(accounts) {
   const providers = accounts.map(normalizeProviderAccount).sort((left, right) => providerAccountSortKey(left).localeCompare(providerAccountSortKey(right)));
-  return chunk_QT2SHN5K_agentReadToken({
+  return agentReadToken({
     namespace: "provider-accounts",
     subject: { providers }
   });
 }
 function providerOAuthReadToken(record) {
-  return chunk_QT2SHN5K_agentReadToken({
+  return agentReadToken({
     namespace: "provider-oauth",
     subject: {
       providerId: normalizeProjectText(record.providerId ?? record.provider_id),
@@ -4512,7 +4512,7 @@ function providerOAuthReadToken(record) {
     }
   });
 }
-function chunk_QT2SHN5K_validateAgentReadProof(options) {
+function validateAgentReadProof(options) {
   var _a, _b;
   const isAgent = options.actorClientType === "agent";
   const operation = options.operation.trim() || "write";
@@ -4669,7 +4669,7 @@ function fnv1a64(input) {
   }
   return hash.toString(16).padStart(16, "0");
 }
-var chunk_QT2SHN5K_AssetKindSchema = z.enum(["image", "video", "audio", "model"]);
+var AssetKindSchema = z.enum(["image", "video", "audio", "model"]);
 var AssetMetadataSchema = z.object({
   width: z.number().int().optional(),
   height: z.number().int().optional(),
@@ -4703,7 +4703,7 @@ var AssetSourceSchema = z.object({
 var AssetSchema = z.object({
   id: z.string(),
   userId: z.string(),
-  kind: chunk_QT2SHN5K_AssetKindSchema,
+  kind: AssetKindSchema,
   srcR2Key: z.string(),
   coverR2Key: z.string().nullable().optional(),
   metadata: AssetMetadataSchema.nullable().optional(),
@@ -4719,7 +4719,7 @@ var AssetSchema = z.object({
   updatedAt: z.number()
 });
 function assetReadToken(asset) {
-  return chunk_QT2SHN5K_agentReadToken({
+  return agentReadToken({
     namespace: "asset",
     subject: {
       id: asset.id,
@@ -4742,7 +4742,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 function assetRefReadToken(ref) {
-  return chunk_QT2SHN5K_agentReadToken({
+  return agentReadToken({
     namespace: "asset-ref",
     subject: {
       assetId: ref.assetId,
@@ -4753,7 +4753,8 @@ function assetRefReadToken(ref) {
 }
 
 
-;// ../shared-types/dist/chunk-2B4Z6TLC.js
+;// ../shared-types/dist/chunk-O4B43KB4.js
+/* unused harmony import specifier */ var z2;
 
 
 
@@ -4957,7 +4958,7 @@ var GEMINI_TTS_VOICES = [
   { label: "Sulafat - Warm", value: "Sulafat" }
 ];
 var ModelParameterTypeSchema = z.enum(["select", "slider", "number", "text", "boolean"]);
-var ProviderSchema = z.enum([
+var BuiltinProviderSchema = z.enum([
   "local",
   "official",
   "fal",
@@ -4973,6 +4974,10 @@ var ProviderSchema = z.enum([
   "mock",
   "custom"
 ]);
+var ProviderSchema = z.string().trim().regex(
+  /^[a-z0-9][a-z0-9._-]*$/,
+  "Provider ids must be lowercase plugin-safe identifiers."
+);
 var ReferenceBindingSchema = z.discriminatedUnion("type", [
   z.object({
     /** Provider receives the prompt and reference collections as separate fields. */
@@ -5151,6 +5156,12 @@ var ModelProviderImplementationSchema = z.object({
   /** Plugin that owns projectorExportId. The resolver selects an installed
    * exact version and persists it on the Canvas node. */
   projectorPluginId: z.string().min(1).optional(),
+  /** Function export that owns the full submit/poll/result lifecycle for a
+   * plugin-defined provider. Built-in adapters may omit it. */
+  executorExportId: z.string().min(1).optional(),
+  /** Plugin that owns executorExportId. Package composition fills this from
+   * immutable plugin provenance when omitted in a binding document. */
+  executorPluginId: z.string().min(1).optional(),
   priority: z.number().optional(),
   weight: z.number().optional(),
   requiredCredentials: z.array(z.string()).optional(),
@@ -5167,14 +5178,22 @@ var ModelProviderImplementationSchema = z.object({
    * the effective Card instead of being rendered and silently discarded. */
   excludedParameterIds: z.array(z.string().min(1)).optional()
 }).superRefine((implementation, ctx) => {
-  if (!implementation.projectorPluginId || implementation.projectorExportId) return;
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    path: ["projectorExportId"],
-    message: "projectorExportId is required when projectorPluginId is configured."
-  });
+  if (implementation.projectorPluginId && !implementation.projectorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["projectorExportId"],
+      message: "projectorExportId is required when projectorPluginId is configured."
+    });
+  }
+  if (implementation.executorPluginId && !implementation.executorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["executorExportId"],
+      message: "executorExportId is required when executorPluginId is configured."
+    });
+  }
 });
-var chunk_2B4Z6TLC_ModelCardSchema = z.object({
+var ModelCardSchema = z.object({
   id: z.string(),
   aliases: z.array(z.string()).default([]),
   name: z.string(),
@@ -5323,9 +5342,9 @@ var chunk_2B4Z6TLC_ModelCardSchema = z.object({
     });
   }
 });
-function chunk_2B4Z6TLC_resolveAspectRatio(modelId, modelParams) {
+function resolveAspectRatio(modelId, modelParams) {
   var _a;
-  const card = chunk_2B4Z6TLC_MODEL_CARDS.find((c) => c.id === modelId);
+  const card = MODEL_CARDS.find((c) => c.id === modelId);
   if (!card) return "16:9";
   const paramId = card.aspectRatioParam || "aspect_ratio";
   const arParam = card.parameters.find((p) => p.id === paramId);
@@ -5339,7 +5358,7 @@ function chunk_2B4Z6TLC_resolveAspectRatio(modelId, modelParams) {
 function snapAspectRatio(modelId, width, height) {
   var _a;
   if (!width || !height) return null;
-  const card = chunk_2B4Z6TLC_MODEL_CARDS.find((c) => c.id === modelId);
+  const card = MODEL_CARDS.find((c) => c.id === modelId);
   if (!card) return null;
   const paramId = card.aspectRatioParam || "aspect_ratio";
   const arParam = card.parameters.find((p) => p.id === paramId);
@@ -7768,21 +7787,21 @@ var MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS = MODEL_CARD_DEFINITION
   constraints: model.constraints ?? [],
   ...MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID[model.id] ? { providerImplementations: MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID[model.id] } : {}
 }));
-var chunk_2B4Z6TLC_MODEL_CARDS = z.array(chunk_2B4Z6TLC_ModelCardSchema).parse(MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS);
-var MODEL_IDS = new Set(chunk_2B4Z6TLC_MODEL_CARDS.map((model) => model.id));
+var MODEL_CARDS = z.array(ModelCardSchema).parse(MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS);
+var MODEL_IDS = new Set(MODEL_CARDS.map((model) => model.id));
 var MODEL_ALIAS_TO_ID = /* @__PURE__ */ new Map();
-for (const model of chunk_2B4Z6TLC_MODEL_CARDS) {
+for (const model of MODEL_CARDS) {
   for (const alias of model.aliases) {
     MODEL_ALIAS_TO_ID.set(alias, model.id);
   }
 }
-function chunk_2B4Z6TLC_normalizeModelId(modelId) {
+function normalizeModelId(modelId) {
   const trimmed = typeof modelId === "string" ? modelId.trim() : "";
   if (!trimmed) return null;
   if (MODEL_IDS.has(trimmed)) return trimmed;
   return MODEL_ALIAS_TO_ID.get(trimmed) ?? null;
 }
-var chunk_2B4Z6TLC_MOCK_MODEL_CARDS = z.array(chunk_2B4Z6TLC_ModelCardSchema).parse([
+var MOCK_MODEL_CARDS = z.array(ModelCardSchema).parse([
   {
     id: "mock-image-model",
     name: "Mock Image Model",
@@ -7857,6 +7876,16 @@ var ExecutablePluginRuntimeSchema = z.discriminatedUnion("kind", [
 var ExecutablePluginCardExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.enum(["model-card", "action-card"]),
+  path: PluginRelativePathSchema
+});
+var ExecutablePluginProviderExportSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z.literal("provider"),
+  path: PluginRelativePathSchema
+});
+var ExecutablePluginModelBindingExportSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z.literal("model-provider-binding"),
   path: PluginRelativePathSchema
 });
 var ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
@@ -7978,7 +8007,7 @@ var ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
   z.object({
     apiVersion: z.literal("clash.card/v1"),
     kind: z.literal("model-card"),
-    spec: chunk_2B4Z6TLC_ModelCardSchema
+    spec: ModelCardSchema
   }).strict(),
   z.object({
     apiVersion: z.literal("clash.card/v1"),
@@ -7986,9 +8015,70 @@ var ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
     spec: ExecutableActionCardSchema
   }).strict()
 ]);
+var ExecutablePluginProviderAuthSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("api-key"),
+    credentialId: z.string().trim().min(1).default("apiKey"),
+    label: z.string().trim().min(1).optional()
+  }).strict(),
+  z.object({
+    type: z.literal("oauth"),
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    flow: z.literal("browser"),
+    authorizationUrl: z.string().url(),
+    callback: z.object({
+      type: z.literal("custom-scheme"),
+      scheme: z.string().trim().regex(/^[a-z][a-z0-9+.-]*$/)
+    }).strict(),
+    accessTokenField: z.string().trim().min(1).default("accessToken")
+  }).strict(),
+  z.object({
+    type: z.literal("local-token-import"),
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    label: z.string().trim().min(1).optional(),
+    source: z.object({
+      format: z.literal("electron-store-aes-256-gcm-v2"),
+      appDataSubdirectory: PluginRelativePathSchema,
+      configFile: PluginRelativePathSchema,
+      keyFile: PluginRelativePathSchema,
+      tokenPath: z.array(
+        z.string().trim().regex(/^[A-Za-z0-9_-]+$/).refine(
+          (segment) => !["__proto__", "constructor", "prototype"].includes(segment),
+          "Token path contains a reserved property."
+        )
+      ).min(1)
+    }).strict()
+  }).strict()
+]);
+var ExecutablePluginProviderDefinitionSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  name: z.string().trim().min(1),
+  description: z.string().trim().min(1).optional(),
+  upstreamId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  apiShape: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  executorExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  auth: z.array(ExecutablePluginProviderAuthSchema).default([])
+}).strict();
+var ExecutablePluginProviderDocumentSchema = z.object({
+  apiVersion: z.literal("clash.provider/v1"),
+  kind: z.literal("provider"),
+  spec: ExecutablePluginProviderDefinitionSchema
+}).strict();
+var ExecutablePluginModelBindingSpecSchema = z.intersection(
+  z.object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    modelId: z.string().trim().min(1)
+  }),
+  ModelProviderImplementationSchema
+);
+var ExecutablePluginModelBindingDocumentSchema = z.object({
+  apiVersion: z.literal("clash.binding/v1"),
+  kind: z.literal("model-provider-binding"),
+  spec: ExecutablePluginModelBindingSpecSchema
+}).strict();
 var ExecutablePluginFunctionExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  kind: z.enum(["action", "provider-projector"]),
+  kind: z.enum(["action", "provider-projector", "provider-executor"]),
   handler: z.string().trim().min(1)
 });
 var PluginNetworkPermissionsSchema = z.object({
@@ -8021,10 +8111,24 @@ var ExecutablePluginCardRegistrationSchema = z.object({
   permissions: ExecutablePluginPermissionsSchema,
   document: ExecutablePluginCardDocumentSchema
 }).strict();
-function composeExecutablePluginModelCards(baseModelsInput, registrationsInput) {
+var ExecutablePluginArtifactRegistrationBaseSchema = z.object({
+  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  version: z.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z.string().regex(SHA256_PATTERN),
+  runtime: ExecutablePluginRuntimeSchema,
+  permissions: ExecutablePluginPermissionsSchema
+});
+var ExecutablePluginProviderRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
+  document: ExecutablePluginProviderDocumentSchema
+}).strict();
+var ExecutablePluginModelBindingRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
+  document: ExecutablePluginModelBindingDocumentSchema
+}).strict();
+function composeExecutablePluginModelCards(baseModelsInput, registrationsInput, modelBindingRegistrationsInput = []) {
   var _a;
-  const baseModels = z2.array(chunk_2B4Z6TLC_ModelCardSchema).parse(baseModelsInput);
+  const baseModels = z2.array(ModelCardSchema).parse(baseModelsInput);
   const registrations = z2.array(ExecutablePluginCardRegistrationSchema).parse(registrationsInput);
+  const modelBindingRegistrations = z2.array(ExecutablePluginModelBindingRegistrationSchema).parse(modelBindingRegistrationsInput);
   const pluginModels = /* @__PURE__ */ new Map();
   for (const registration of registrations) {
     if (registration.document.kind !== "model-card") continue;
@@ -8035,24 +8139,76 @@ function composeExecutablePluginModelCards(baseModelsInput, registrationsInput) 
         `Plugins ${existing.pluginId} and ${registration.pluginId} both export model Card ${id}.`
       );
     }
-    const model = chunk_2B4Z6TLC_ModelCardSchema.parse({
+    const model = ModelCardSchema.parse({
       ...registration.document.spec,
-      providerImplementations: (_a = registration.document.spec.providerImplementations) == null ? void 0 : _a.map(
-        (implementation) => implementation.projectorExportId && !implementation.projectorPluginId ? { ...implementation, projectorPluginId: registration.pluginId } : implementation
-      )
+      providerImplementations: (_a = registration.document.spec.providerImplementations) == null ? void 0 : _a.map((implementation) => ({
+        ...implementation,
+        ...implementation.projectorExportId && !implementation.projectorPluginId ? { projectorPluginId: registration.pluginId } : {},
+        ...implementation.executorExportId && !implementation.executorPluginId ? { executorPluginId: registration.pluginId } : {}
+      }))
     });
     pluginModels.set(id, { pluginId: registration.pluginId, model });
   }
   const baseIds = new Set(baseModels.map((model) => model.id));
-  return [
+  const composed = [
     ...baseModels.map((model) => {
       var _a2;
       return ((_a2 = pluginModels.get(model.id)) == null ? void 0 : _a2.model) ?? model;
     }),
     ...[...pluginModels.values()].map((entry) => entry.model).filter((model) => !baseIds.has(model.id)).sort((left, right) => left.id.localeCompare(right.id))
   ];
+  const bindingsByModel = /* @__PURE__ */ new Map();
+  for (const registration of modelBindingRegistrations) {
+    const { id: _id, modelId, ...implementationInput } = registration.document.spec;
+    const implementation = ModelProviderImplementationSchema.parse({
+      ...implementationInput,
+      ...implementationInput.projectorExportId && !implementationInput.projectorPluginId ? { projectorPluginId: registration.pluginId } : {},
+      ...implementationInput.executorExportId && !implementationInput.executorPluginId ? { executorPluginId: registration.pluginId } : {}
+    });
+    const entries = bindingsByModel.get(modelId) ?? [];
+    const routeKey = [implementation.providerId, implementation.accountId ?? "", implementation.region ?? ""].join(":");
+    const duplicate = entries.find((entry) => [
+      entry.implementation.providerId,
+      entry.implementation.accountId ?? "",
+      entry.implementation.region ?? ""
+    ].join(":") === routeKey);
+    if (duplicate) {
+      throw new Error(
+        `Plugins ${duplicate.pluginId} and ${registration.pluginId} both bind model Card ${modelId} to ${routeKey}.`
+      );
+    }
+    entries.push({ pluginId: registration.pluginId, implementation });
+    bindingsByModel.set(modelId, entries);
+  }
+  return composed.map((model) => {
+    const external = bindingsByModel.get(model.id) ?? [];
+    if (external.length === 0) return model;
+    const implementations = [...model.providerImplementations ?? []];
+    for (const entry of external) {
+      const routeKey = [entry.implementation.providerId, entry.implementation.accountId ?? "", entry.implementation.region ?? ""].join(":");
+      const duplicate = implementations.some((implementation) => [
+        implementation.providerId,
+        implementation.accountId ?? "",
+        implementation.region ?? ""
+      ].join(":") === routeKey);
+      if (duplicate) {
+        throw new Error(`Model Card ${model.id} already declares provider binding ${routeKey}.`);
+      }
+      implementations.push(entry.implementation);
+    }
+    const availableProviders = [.../* @__PURE__ */ new Set([
+      ...model.availableProviders ?? [],
+      ...implementations.map((implementation) => implementation.providerId)
+    ])];
+    return ModelCardSchema.parse({
+      ...model,
+      availableProviders,
+      defaultProvider: model.defaultProvider ?? availableProviders[0],
+      providerImplementations: implementations
+    });
+  });
 }
-var chunk_2B4Z6TLC_ExecutablePluginBindingSchema = z.object({
+var ExecutablePluginBindingSchema = z.object({
   pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
   version: z.string().trim().regex(SEMVER_PATTERN),
   exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
@@ -8071,7 +8227,7 @@ var ExecutablePluginJsonValueSchema = z.lazy(
 var ExecutablePluginAssetHandleSchema = z.object({
   assetId: z.string().trim().min(1),
   uri: z.string().regex(/^clash-asset:\/\/.+/),
-  kind: chunk_QT2SHN5K_AssetKindSchema,
+  kind: AssetKindSchema,
   mediaType: z.string().trim().min(1).optional()
 }).strict();
 var ExecutablePluginReferenceBaseSchema = z.object({
@@ -8095,8 +8251,8 @@ var ExecutablePluginInvocationSchema = z.object({
   taskId: z.string().trim().min(1),
   projectId: z.string().trim().min(1),
   nodeId: z.string().trim().min(1).optional(),
-  target: chunk_2B4Z6TLC_ExecutablePluginBindingSchema.extend({
-    kind: z.enum(["action", "provider-projector"])
+  target: ExecutablePluginBindingSchema.extend({
+    kind: z.enum(["action", "provider-projector", "provider-executor"])
   }),
   input: z.object({
     values: z.record(ExecutablePluginJsonValueSchema).default({}),
@@ -8119,8 +8275,8 @@ var HostedExecutablePluginCapabilitySchema = z.object({
     taskId: z.string().trim().min(1),
     projectId: z.string().trim().min(1),
     nodeId: z.string().trim().min(1).optional(),
-    target: chunk_2B4Z6TLC_ExecutablePluginBindingSchema.extend({
-      kind: z.enum(["action", "provider-projector"])
+    target: ExecutablePluginBindingSchema.extend({
+      kind: z.enum(["action", "provider-projector", "provider-executor"])
     }),
     actor: z.object({
       kind: z.enum(["user", "agent", "system"]),
@@ -8187,7 +8343,7 @@ var ExecutablePluginBrokerOperationSchema = z.union([
   z.object({
     kind: z.literal("asset.write"),
     slot: z.string().trim().min(1),
-    assetKind: chunk_QT2SHN5K_AssetKindSchema,
+    assetKind: AssetKindSchema,
     mediaType: z.string().trim().min(1).optional(),
     sourceHandle: z.string().regex(/^clash-plugin-output:\/\/.+/).optional(),
     dataBase64: z.string().max(128 * 1024 * 1024).regex(
@@ -8265,7 +8421,7 @@ var ExecutablePluginContractTestDocumentSchema = z.object({
   description: z.string().trim().min(1).optional(),
   target: z.object({
     exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    kind: z.enum(["action", "provider-projector"])
+    kind: z.enum(["action", "provider-projector", "provider-executor"])
   }).strict(),
   context: z.object({
     projectId: z.string().trim().min(1).default("contract-test-project"),
@@ -8302,6 +8458,8 @@ var ExecutablePluginManifestSchema = z.object({
   runtime: ExecutablePluginRuntimeSchema,
   exports: z.object({
     cards: z.array(ExecutablePluginCardExportSchema).default([]),
+    providers: z.array(ExecutablePluginProviderExportSchema).default([]),
+    modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
     functions: z.array(ExecutablePluginFunctionExportSchema).default([])
   }),
   permissions: ExecutablePluginPermissionsSchema,
@@ -8311,6 +8469,8 @@ var ExecutablePluginManifestSchema = z.object({
 }).superRefine((manifest, ctx) => {
   for (const [key, values] of [
     ["cards", manifest.exports.cards],
+    ["providers", manifest.exports.providers],
+    ["modelBindings", manifest.exports.modelBindings],
     ["functions", manifest.exports.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -8335,6 +8495,20 @@ var ExecutablePluginManifestSchema = z.object({
       });
     }
     cardPaths.add(card.path);
+  }
+  const artifactPaths = new Set(cardPaths);
+  for (const artifact of [
+    ...manifest.exports.providers,
+    ...manifest.exports.modelBindings
+  ]) {
+    if (artifactPaths.has(artifact.path)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["exports"],
+        message: "Plugin declarative artifact paths must be unique."
+      });
+    }
+    artifactPaths.add(artifact.path);
   }
   const contractTestPaths = /* @__PURE__ */ new Set();
   for (const path of manifest.contractTests) {
@@ -8397,10 +8571,13 @@ var ExecutablePluginActivationReceiptSchema = z.object({
   contentHash: z.string().regex(SHA256_PATTERN),
   activatedAt: z.string().datetime()
 }).strict();
-function validateExecutablePluginPackage(manifestInput, cardDocuments, contractTestDocuments = {}) {
+function validateExecutablePluginPackage(manifestInput, cardDocuments, contractTestDocuments = {}, artifacts = {}) {
+  var _a, _b;
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
   const functions = new Map(manifest.exports.functions.map((entry) => [entry.id, entry]));
   const cards = {};
+  const providers = {};
+  const modelBindings = {};
   const contractTests = {};
   for (const cardExport of manifest.exports.cards) {
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
@@ -8434,6 +8611,52 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     cards[cardExport.path] = card;
   }
+  for (const providerExport of manifest.exports.providers) {
+    const input = (_a = artifacts.providers) == null ? void 0 : _a[providerExport.path];
+    if (input === void 0) {
+      throw new Error(`Missing declared Provider document: ${providerExport.path}`);
+    }
+    const provider = ExecutablePluginProviderDocumentSchema.parse(input);
+    if (provider.spec.id !== providerExport.id) {
+      throw new Error(
+        `Provider ${providerExport.path} id ${provider.spec.id} does not match export id ${providerExport.id}.`
+      );
+    }
+    const executor = functions.get(provider.spec.executorExportId);
+    if (!executor || executor.kind !== "provider-executor") {
+      throw new Error(
+        `Provider ${provider.spec.id} requires provider executor export ${provider.spec.executorExportId}.`
+      );
+    }
+    providers[providerExport.path] = provider;
+  }
+  for (const bindingExport of manifest.exports.modelBindings) {
+    const input = (_b = artifacts.modelBindings) == null ? void 0 : _b[bindingExport.path];
+    if (input === void 0) {
+      throw new Error(`Missing declared model Provider binding: ${bindingExport.path}`);
+    }
+    const binding = ExecutablePluginModelBindingDocumentSchema.parse(input);
+    if (binding.spec.id !== bindingExport.id) {
+      throw new Error(
+        `Model Provider binding ${bindingExport.path} id ${binding.spec.id} does not match export id ${bindingExport.id}.`
+      );
+    }
+    for (const [exportId, kind] of [
+      [binding.spec.projectorExportId, "provider-projector"],
+      [binding.spec.executorExportId, "provider-executor"]
+    ]) {
+      if (!exportId) continue;
+      const ownerId = kind === "provider-projector" ? binding.spec.projectorPluginId : binding.spec.executorPluginId;
+      if (ownerId && ownerId !== manifest.id) continue;
+      const implementation = functions.get(exportId);
+      if (!implementation || implementation.kind !== kind) {
+        throw new Error(
+          `Model Provider binding ${binding.spec.id} requires ${kind} export ${exportId}.`
+        );
+      }
+    }
+    modelBindings[bindingExport.path] = binding;
+  }
   for (const path of manifest.contractTests) {
     if (!Object.prototype.hasOwnProperty.call(contractTestDocuments, path)) {
       throw new Error(`Missing declared contract test: ${path}`);
@@ -8449,7 +8672,7 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     contractTests[path] = contractTest;
   }
-  return { manifest, cards, contractTests };
+  return { manifest, cards, providers, modelBindings, contractTests };
 }
 function addedValues(before, after) {
   const existing = new Set(before);
@@ -9878,7 +10101,7 @@ const addMeta = (def, refs, jsonSchema) => {
 
 
 
-const zodToJsonSchema_zodToJsonSchema = (schema, options) => {
+const zodToJsonSchema = (schema, options) => {
     const refs = getRefs(options);
     let definitions = typeof options === "object" && options.definitions
         ? Object.entries(options.definitions).reduce((acc, [name, schema]) => ({
@@ -9964,6 +10187,7 @@ const zodToJsonSchema_zodToJsonSchema = (schema, options) => {
 
 
 ;// ../../node_modules/.pnpm/zod-to-json-schema@3.24.6_zod@3.24.4/node_modules/zod-to-json-schema/dist/esm/index.js
+/* unused harmony import specifier */ var esm_zodToJsonSchema;
 
 
 
@@ -10003,12 +10227,13 @@ const zodToJsonSchema_zodToJsonSchema = (schema, options) => {
 
 
 
-/* harmony default export */ const dist_esm = ((/* unused pure expression or super */ null && (zodToJsonSchema)));
+/* harmony default export */ const dist_esm = ((/* unused pure expression or super */ null && (esm_zodToJsonSchema)));
 
 ;// ../shared-types/dist/chunk-PVL2FXUQ.js
+/* unused harmony import specifier */ var z5;
 
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
-var chunk_PVL2FXUQ_DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
+var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
   frameSpace: "item-local",
   interpolationOwner: "left-keyframe",
@@ -10185,7 +10410,7 @@ var TIMELINE_MASK_STATIC_CONTROL_BINDINGS = Object.freeze(
     control: annotation2.staticControl
   }] : [])
 );
-var chunk_PVL2FXUQ_TIMELINE_MASK_KEYFRAME_CHANNELS = Object.freeze(
+var TIMELINE_MASK_KEYFRAME_CHANNELS = Object.freeze(
   TIMELINE_MASK_ANIMATION_BINDINGS.map(({ channel }) => channel)
 );
 var DEFAULT_TIMELINE_ITEM_MASK = Object.freeze(
@@ -10224,7 +10449,7 @@ var TIMELINE_MASK_CAPABILITY_ANNOTATION = {
   excludedItemTypes: TIMELINE_MASK_EXCLUDED_ITEM_TYPES,
   fields: TIMELINE_MASK_FIELD_ANNOTATIONS,
   staticFields: TIMELINE_MASK_FIELDS,
-  animatedChannels: chunk_PVL2FXUQ_TIMELINE_MASK_KEYFRAME_CHANNELS,
+  animatedChannels: TIMELINE_MASK_KEYFRAME_CHANNELS,
   defaultMask: DEFAULT_TIMELINE_ITEM_MASK,
   featherBlurDivisor: TIMELINE_MASK_FEATHER_BLUR_DIVISOR,
   semantics: {
@@ -10238,7 +10463,7 @@ var TIMELINE_MASK_CAPABILITY_ANNOTATION = {
     validFrameRange: "0..durationInFrames-1",
     interpolation: TIMELINE_KEYFRAME_INTERPOLATIONS,
     interpolationOwner: TIMELINE_KEYFRAME_SAMPLING_POLICY.interpolationOwner,
-    defaultNewKeyframeInterpolation: chunk_PVL2FXUQ_DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
+    defaultNewKeyframeInterpolation: DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
     beforeFirstKeyframe: TIMELINE_KEYFRAME_SAMPLING_POLICY.beforeFirstKeyframe,
     afterLastKeyframe: TIMELINE_KEYFRAME_SAMPLING_POLICY.afterLastKeyframe,
     emptyChannelFallback: "matching-item.mask-field",
@@ -10274,7 +10499,7 @@ function canMergeTimelineItemsAcrossMaskBoundary(left, right) {
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
-function chunk_PVL2FXUQ_validateTimelineItemMask(value) {
+function validateTimelineItemMask(value) {
   var _a;
   if (value === void 0) return null;
   if (!isRecord(value)) return "mask must be an object";
@@ -10405,7 +10630,7 @@ function channelValueError(channel) {
       return `keyframes.${channel} value is invalid`;
   }
 }
-function chunk_PVL2FXUQ_validateTimelineItemKeyframes(value, durationInFrames = 0) {
+function validateTimelineItemKeyframes(value, durationInFrames = 0) {
   if (value === void 0) return null;
   if (!isRecord2(value)) return "keyframes must be an object";
   const supportedChannels = new Set(TIMELINE_KEYFRAME_CHANNELS);
@@ -10492,7 +10717,7 @@ var TIMELINE_DSL_ITEM_TYPES = [
   "derived-overlay",
   "transition"
 ];
-var chunk_PVL2FXUQ_TIMELINE_DSL_TRACK_CATEGORIES = [
+var TIMELINE_DSL_TRACK_CATEGORIES = [
   "effect",
   "text",
   "visual",
@@ -10750,7 +10975,7 @@ var trackFields = {
     editor: timelineControl,
     runtimeConsumers: ["editor", "timeline-semantics", "audio-ducking", "transcript"]
   }),
-  category: authored(z.enum(chunk_PVL2FXUQ_TIMELINE_DSL_TRACK_CATEGORIES), "Structural lane category controlling order and allowed item types.", {
+  category: authored(z.enum(TIMELINE_DSL_TRACK_CATEGORIES), "Structural lane category controlling order and allowed item types.", {
     required: false,
     editor: timelineControl,
     runtimeConsumers: ["editor", "timeline-semantics", "render"]
@@ -11228,7 +11453,7 @@ var itemTypeFields = {
     })
   }
 };
-var chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS = {
+var TIMELINE_DSL_FIELD_ANNOTATIONS = {
   root: rootFields,
   track: trackFields,
   itemBase: itemBaseFields,
@@ -11343,7 +11568,7 @@ var TimelineRenderReceiptSchema = z.object({
 }).passthrough();
 var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z.object({
   ...timelineDslAnnotatedObjectShape(
-    chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
+    TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
     {
       requiredness: "runtime",
       overrides: {
@@ -11353,7 +11578,7 @@ var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z.o
     }
   ),
   ...timelineDslAnnotatedObjectShape(
-    chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type],
+    TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type],
     { requiredness: "runtime" }
   )
 }).strict());
@@ -11362,7 +11587,7 @@ var TimelineItemEnvelopeSchema = z.discriminatedUnion(
   timelineEditorItemVariantSchemas
 );
 var TimelineTrackEnvelopeSchema = z.object(timelineDslAnnotatedObjectShape(
-  chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.track,
+  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
   {
     requiredness: "runtime",
     overrides: { items: z.array(TimelineItemEnvelopeSchema) }
@@ -11723,8 +11948,8 @@ var editorCommands = {
   })
 };
 var itemUpdateFields = {
-  ...chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-  ...Object.assign({}, ...Object.values(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes))
+  ...TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
+  ...Object.assign({}, ...Object.values(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes))
 };
 var ItemUpdatesSchema = z.object(timelineDslAnnotatedObjectShape(
   itemUpdateFields,
@@ -11737,7 +11962,7 @@ var ItemUpdatesSchema = z.object(timelineDslAnnotatedObjectShape(
   "At least one item field must be updated."
 );
 var TrackUpdatesSchema = z.object(timelineDslAnnotatedObjectShape(
-  chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.track,
+  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
   {
     requiredness: "partial",
     overrides: { items: z.array(TimelineItemEnvelopeSchema) }
@@ -11975,10 +12200,10 @@ function catalogGroup(group) {
       const { inputSchema: _inputSchema, outputSchema: _outputSchema, ...metadata } = value;
       return [id, {
         ...metadata,
-        inputJsonSchema: zodToJsonSchema_zodToJsonSchema(value.inputSchema, {
+        inputJsonSchema: zodToJsonSchema(value.inputSchema, {
           target: "jsonSchema7"
         }),
-        outputJsonSchema: zodToJsonSchema_zodToJsonSchema(value.outputSchema, {
+        outputJsonSchema: zodToJsonSchema(value.outputSchema, {
           target: "jsonSchema7"
         })
       }];
@@ -11992,7 +12217,7 @@ var TIMELINE_OPERATION_CATALOG = Object.freeze({
 });
 var OFFSET_RE = /^(.+?)\s*([+-])\s*([0-9]+(?:\.[0-9]+)?)$/;
 var BARE_ID_RE = /^[A-Za-z0-9_.:-]+$/;
-function chunk_PVL2FXUQ_parseFromExpression(raw) {
+function parseFromExpression(raw) {
   if (typeof raw === "number" && Number.isFinite(raw)) {
     return { kind: "absolute", value: Math.max(0, raw) };
   }
@@ -12026,7 +12251,7 @@ var TIMELINE_DSL_GLOBAL_SEMANTIC_RULES = [
   { id: "timeline.track.category-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "category" },
   { id: "timeline.track.role-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "role" },
   { id: "timeline.track.role-category", kind: "owner-field-consistency", objectPath: "tracks[]", fields: ["role", "category"], mapping: TIMELINE_DSL_ROLE_CATEGORIES },
-  { id: "timeline.track.category-order", kind: "ordered-enum", objectPath: "tracks[]", field: "category", order: chunk_PVL2FXUQ_TIMELINE_DSL_TRACK_CATEGORIES },
+  { id: "timeline.track.category-order", kind: "ordered-enum", objectPath: "tracks[]", field: "category", order: TIMELINE_DSL_TRACK_CATEGORIES },
   { id: "timeline.track.mixed-categories", kind: "single-structural-category", objectPath: "tracks[]" },
   { id: "timeline.item.from-expression", kind: "expression-grammar", objectPath: "tracks[].items[]", field: "from" },
   { id: "timeline.item.frame-integer", kind: "integer-frame", objectPath: "tracks[].items[]", field: "from" },
@@ -12068,7 +12293,7 @@ function pushReferenceCycleIssues(indexedItems, itemById, issues) {
   const references = /* @__PURE__ */ new Map();
   for (const indexed of indexedItems) {
     if (typeof indexed.item.from !== "string") continue;
-    const expression = chunk_PVL2FXUQ_parseFromExpression(indexed.item.from);
+    const expression = parseFromExpression(indexed.item.from);
     if ((expression == null ? void 0 : expression.kind) === "reference" && expression.refId !== "prev") {
       references.set(indexed.item.id, expression.refId);
     }
@@ -12229,7 +12454,7 @@ function evaluateStructuralSemanticRules(context) {
     }
     trackIds.add(track.id);
     if (track.category) {
-      const rank = chunk_PVL2FXUQ_TIMELINE_DSL_TRACK_CATEGORIES.indexOf(track.category);
+      const rank = TIMELINE_DSL_TRACK_CATEGORIES.indexOf(track.category);
       if (rank < previousCategoryRank) {
         issues.push(issue(
           "timeline.track.category-order",
@@ -12291,7 +12516,7 @@ function evaluateStructuralSemanticRules(context) {
           ));
         }
       }
-      const expression = chunk_PVL2FXUQ_parseFromExpression(item.from);
+      const expression = parseFromExpression(item.from);
       const negativeNumericString = typeof item.from === "string" && Number.isFinite(Number(item.from.trim())) && Number(item.from.trim()) < 0;
       if (!expression || negativeNumericString) {
         issues.push(issue(
@@ -12473,15 +12698,15 @@ function timelineDslSemanticIssues(input) {
 
 var itemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => {
   const baseShape = timelineDslAnnotatedObjectShape(
-    chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
+    TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
     { overrides: {
       type: z.literal(type).describe(
-        chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description
+        TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description
       )
     } }
   );
   const variantShape = timelineDslAnnotatedObjectShape(
-    chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
+    TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
   );
   return z.object({ ...baseShape, ...variantShape }).passthrough();
 });
@@ -12491,15 +12716,15 @@ var TimelineDslItemVariantSchema = z.discriminatedUnion(
 );
 var itemFieldOwners = /* @__PURE__ */ new Map();
 for (const type of TIMELINE_DSL_ITEM_TYPES) {
-  for (const fieldName of Object.keys(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type])) {
+  for (const fieldName of Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type])) {
     const owners = itemFieldOwners.get(fieldName) ?? /* @__PURE__ */ new Set();
     owners.add(type);
     itemFieldOwners.set(fieldName, owners);
   }
 }
-var maskKeyframeChannels = new Set(chunk_PVL2FXUQ_TIMELINE_MASK_KEYFRAME_CHANNELS);
+var maskKeyframeChannels = new Set(TIMELINE_MASK_KEYFRAME_CHANNELS);
 var itemBaseFieldApplicabilityRules = Object.entries(
-  chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase
+  TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase
 ).flatMap(([fieldName, annotation2]) => annotation2.appliesToItemTypes && annotation2.applicabilityRuleId ? [{
   id: annotation2.applicabilityRuleId,
   kind: "allowed-item-types-when-present",
@@ -12513,7 +12738,7 @@ var clipMaskRequiresMaskRule = {
   kind: "requires-field-when-any-channel-present",
   objectPath: "tracks[].items[]",
   channelContainer: "keyframes",
-  channels: chunk_PVL2FXUQ_TIMELINE_MASK_KEYFRAME_CHANNELS,
+  channels: TIMELINE_MASK_KEYFRAME_CHANNELS,
   requiredField: "mask"
 };
 var timelineKeyframeRangeRule = {
@@ -12555,7 +12780,7 @@ var TIMELINE_DSL_SEMANTIC_RULES = {
 function hasMaskKeyframes(keyframes) {
   return Object.keys(keyframes ?? {}).some((channel) => maskKeyframeChannels.has(channel));
 }
-function chunk_PVL2FXUQ_timelineMaskKeyframeSemanticIssues(item) {
+function timelineMaskKeyframeSemanticIssues(item) {
   const issues = [];
   for (const rule of itemBaseFieldApplicabilityRules) {
     if (Object.prototype.hasOwnProperty.call(item, rule.field) && item[rule.field] !== void 0 && !rule.allowedItemTypes.includes(item.type)) {
@@ -12594,7 +12819,7 @@ var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine((item, ctx)
       });
     }
   }
-  for (const issue2 of chunk_PVL2FXUQ_timelineMaskKeyframeSemanticIssues(typedItem)) {
+  for (const issue2 of timelineMaskKeyframeSemanticIssues(typedItem)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: issue2.path,
@@ -12604,11 +12829,11 @@ var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine((item, ctx)
   }
 }).describe("TimelineDslItem");
 var TimelineDslTrackSchema = z.object(timelineDslAnnotatedObjectShape(
-  chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.track,
+  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
   { overrides: { items: z.array(TimelineDslItemSchema) } }
 )).passthrough().describe("TimelineDslTrack");
 var TimelineDslSchemaBase = z.object(timelineDslAnnotatedObjectShape(
-  chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.root,
+  TIMELINE_DSL_FIELD_ANNOTATIONS.root,
   { overrides: { tracks: z.array(TimelineDslTrackSchema) } }
 )).passthrough();
 var TimelineDslSchema = TimelineDslSchemaBase.superRefine((timeline, context) => {
@@ -12637,15 +12862,15 @@ function validateTimelineDsl(state) {
     })
   };
 }
-var timelineDslJsonSchema = zodToJsonSchema_zodToJsonSchema(TimelineDslSchema, {
+var timelineDslJsonSchema = zodToJsonSchema(TimelineDslSchema, {
   name: "TimelineDsl",
   target: "jsonSchema7"
 });
-var timelineItemMaskJsonSchema = zodToJsonSchema_zodToJsonSchema(TimelineItemMaskSchema, {
+var timelineItemMaskJsonSchema = zodToJsonSchema(TimelineItemMaskSchema, {
   name: "TimelineItemMask",
   target: "jsonSchema7"
 });
-var timelineItemKeyframesJsonSchema = zodToJsonSchema_zodToJsonSchema(TimelineItemKeyframesSchema, {
+var timelineItemKeyframesJsonSchema = zodToJsonSchema(TimelineItemKeyframesSchema, {
   name: "TimelineItemKeyframes",
   target: "jsonSchema7"
 });
@@ -12805,7 +13030,7 @@ var timelineDslSerializableDefinition = {
   operationCatalog: TIMELINE_OPERATION_CATALOG,
   taxonomy: {
     itemTypes: TIMELINE_DSL_ITEM_TYPES,
-    trackCategories: chunk_PVL2FXUQ_TIMELINE_DSL_TRACK_CATEGORIES,
+    trackCategories: TIMELINE_DSL_TRACK_CATEGORIES,
     trackRoles: TIMELINE_DSL_TRACK_ROLES,
     categoryAllowedItemTypes: TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES,
     roleAllowedItemTypes: TIMELINE_DSL_ROLE_ALLOWED_ITEM_TYPES,
@@ -12841,7 +13066,7 @@ var timelineDslSerializableDefinition = {
     maskKeyframes: TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE
   }
 };
-var chunk_PVL2FXUQ_TIMELINE_DSL_DEFINITION = {
+var TIMELINE_DSL_DEFINITION = {
   ...timelineDslSerializableDefinition,
   contractFingerprint: timelineDslContractFingerprint(
     timelineDslSerializableDefinition
@@ -13373,6 +13598,9 @@ finalize(instance.exports);
 
 
 ;// ../../node_modules/.pnpm/loro-crdt@1.13.6/node_modules/loro-crdt/browser/index.js
+/* unused harmony import specifier */ var LoroDoc;
+/* unused harmony import specifier */ var AwarenessWasm;
+/* unused harmony import specifier */ var EphemeralStoreWasm;
 
 
 
@@ -14891,7 +15119,7 @@ function relayoutToGrid(nodes, options = {}) {
   });
   return changed ? next : nodes;
 }
-var dist_NEEDS_LAYOUT_POSITION = { x: -1, y: -1 };
+var NEEDS_LAYOUT_POSITION = { x: -1, y: -1 };
 var GAP_X = 60;
 var GAP_Y = 30;
 var MAX_MEDIA_DIMENSION = 500;
@@ -14902,7 +15130,7 @@ function calculateScaledDimensions(naturalWidth, naturalHeight) {
 }
 function needsAutoLayout(node) {
   if (!node.position) return true;
-  return node.position.x === dist_NEEDS_LAYOUT_POSITION.x && node.position.y === dist_NEEDS_LAYOUT_POSITION.y;
+  return node.position.x === NEEDS_LAYOUT_POSITION.x && node.position.y === NEEDS_LAYOUT_POSITION.y;
 }
 function normalizeDimension2(value) {
   if (typeof value === "number") return value;
@@ -14933,14 +15161,14 @@ function findReferenceNode(nodeId, nodes, edges) {
   return sourceNode;
 }
 function calculateInsertPosition(node, referenceNode, nodes, edges) {
-  if (referenceNode && referenceNode.position && referenceNode.position.x !== dist_NEEDS_LAYOUT_POSITION.x) {
+  if (referenceNode && referenceNode.position && referenceNode.position.x !== NEEDS_LAYOUT_POSITION.x) {
     const refWidth = getNodeWidth(referenceNode);
     const childX = referenceNode.position.x + refWidth + GAP_X;
     const existingChildIds = new Set(
       edges.filter((e) => e.source === referenceNode.id).map((e) => e.target)
     );
     const existingChildren = nodes.filter(
-      (n) => existingChildIds.has(n.id) && n.id !== node.id && n.position && n.position.x !== dist_NEEDS_LAYOUT_POSITION.x
+      (n) => existingChildIds.has(n.id) && n.id !== node.id && n.position && n.position.x !== NEEDS_LAYOUT_POSITION.x
     );
     if (existingChildren.length === 0) {
       return { x: childX, y: referenceNode.position.y };
@@ -14956,7 +15184,7 @@ function calculateInsertPosition(node, referenceNode, nodes, edges) {
     if (n.id === node.id) return false;
     if (n.parentId !== node.parentId) return false;
     if (n.type === "group") return false;
-    if (!n.position || n.position.x === dist_NEEDS_LAYOUT_POSITION.x) return false;
+    if (!n.position || n.position.x === NEEDS_LAYOUT_POSITION.x) return false;
     return true;
   });
   if (siblings.length === 0) {
@@ -14979,7 +15207,7 @@ function getOverlappingSiblings(nodeId, nodeRect, parentId, nodes) {
     if (n.id === nodeId) return false;
     if (n.parentId !== parentId) return false;
     if (n.type === "group") return false;
-    if (!n.position || n.position.x === dist_NEEDS_LAYOUT_POSITION.x) return false;
+    if (!n.position || n.position.x === NEEDS_LAYOUT_POSITION.x) return false;
     const siblingRect = {
       x: n.position.x,
       y: n.position.y,
@@ -15015,7 +15243,7 @@ function chainPushDown(triggerNodeId, nodes, maxIterations = 20) {
     const siblings = nodes.filter((n) => {
       if (n.id === nodeId || n.parentId !== node.parentId || n.type === "group") return false;
       const pos = workingPositions.get(n.id);
-      return pos && pos.x !== dist_NEEDS_LAYOUT_POSITION.x;
+      return pos && pos.x !== NEEDS_LAYOUT_POSITION.x;
     });
     for (const sibling of siblings) {
       const siblingPos = workingPositions.get(sibling.id);
@@ -15042,7 +15270,7 @@ function findBottomY(parentId, nodes) {
   const siblings = nodes.filter(
     (n) => {
       var _a;
-      return n.parentId === parentId && ((_a = n.position) == null ? void 0 : _a.x) !== dist_NEEDS_LAYOUT_POSITION.x;
+      return n.parentId === parentId && ((_a = n.position) == null ? void 0 : _a.x) !== NEEDS_LAYOUT_POSITION.x;
     }
   );
   if (siblings.length === 0) return GAP_Y;
@@ -15053,7 +15281,7 @@ function findBottomY(parentId, nodes) {
   }
   return maxBottom + GAP_Y;
 }
-function dist_autoInsertNode(nodeId, nodes, edges) {
+function autoInsertNode(nodeId, nodes, edges) {
   const node = nodes.find((n) => n.id === nodeId);
   if (!node) {
     return { position: { x: GAP_X, y: GAP_Y }, pushedNodes: /* @__PURE__ */ new Map(), hasReference: false };
@@ -15085,7 +15313,7 @@ function processAutoLayoutNodes(nodes, edges) {
   if (nodesToLayout.length === 0) return { nodes, processed };
   let updatedNodes = [...nodes];
   for (const node of nodesToLayout) {
-    const result = dist_autoInsertNode(node.id, updatedNodes, edges);
+    const result = autoInsertNode(node.id, updatedNodes, edges);
     updatedNodes = applyAutoInsertResult(updatedNodes, node.id, result);
     processed.push(node.id);
   }
@@ -15095,39 +15323,39 @@ function processAutoLayoutNodes(nodes, edges) {
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/nodes/identity.js
 const ALIAS = Symbol.for('yaml.alias');
-const identity_DOC = Symbol.for('yaml.document');
-const identity_MAP = Symbol.for('yaml.map');
+const DOC = Symbol.for('yaml.document');
+const MAP = Symbol.for('yaml.map');
 const PAIR = Symbol.for('yaml.pair');
-const identity_SCALAR = Symbol.for('yaml.scalar');
-const identity_SEQ = Symbol.for('yaml.seq');
-const identity_NODE_TYPE = Symbol.for('yaml.node.type');
-const isAlias = (node) => !!node && typeof node === 'object' && node[identity_NODE_TYPE] === ALIAS;
-const identity_isDocument = (node) => !!node && typeof node === 'object' && node[identity_NODE_TYPE] === identity_DOC;
-const isMap = (node) => !!node && typeof node === 'object' && node[identity_NODE_TYPE] === identity_MAP;
-const identity_isPair = (node) => !!node && typeof node === 'object' && node[identity_NODE_TYPE] === PAIR;
-const identity_isScalar = (node) => !!node && typeof node === 'object' && node[identity_NODE_TYPE] === identity_SCALAR;
-const isSeq = (node) => !!node && typeof node === 'object' && node[identity_NODE_TYPE] === identity_SEQ;
-function identity_isCollection(node) {
+const SCALAR = Symbol.for('yaml.scalar');
+const SEQ = Symbol.for('yaml.seq');
+const NODE_TYPE = Symbol.for('yaml.node.type');
+const isAlias = (node) => !!node && typeof node === 'object' && node[NODE_TYPE] === ALIAS;
+const isDocument = (node) => !!node && typeof node === 'object' && node[NODE_TYPE] === DOC;
+const isMap = (node) => !!node && typeof node === 'object' && node[NODE_TYPE] === MAP;
+const isPair = (node) => !!node && typeof node === 'object' && node[NODE_TYPE] === PAIR;
+const isScalar = (node) => !!node && typeof node === 'object' && node[NODE_TYPE] === SCALAR;
+const isSeq = (node) => !!node && typeof node === 'object' && node[NODE_TYPE] === SEQ;
+function isCollection(node) {
     if (node && typeof node === 'object')
-        switch (node[identity_NODE_TYPE]) {
-            case identity_MAP:
-            case identity_SEQ:
+        switch (node[NODE_TYPE]) {
+            case MAP:
+            case SEQ:
                 return true;
         }
     return false;
 }
-function identity_isNode(node) {
+function isNode(node) {
     if (node && typeof node === 'object')
-        switch (node[identity_NODE_TYPE]) {
+        switch (node[NODE_TYPE]) {
             case ALIAS:
-            case identity_MAP:
-            case identity_SCALAR:
-            case identity_SEQ:
+            case MAP:
+            case SCALAR:
+            case SEQ:
                 return true;
         }
     return false;
 }
-const hasAnchor = (node) => (identity_isScalar(node) || identity_isCollection(node)) && !!node.anchor;
+const hasAnchor = (node) => (isScalar(node) || isCollection(node)) && !!node.anchor;
 
 
 
@@ -15167,9 +15395,9 @@ const REMOVE = Symbol('remove node');
  * and `Node` (alias, map, seq & scalar) targets. Of all these, only the most
  * specific defined one will be used for each node.
  */
-function visit_visit(node, visitor) {
+function visit(node, visitor) {
     const visitor_ = initVisitor(visitor);
-    if (identity_isDocument(node)) {
+    if (isDocument(node)) {
         const cd = visit_(null, node.contents, visitor_, Object.freeze([node]));
         if (cd === REMOVE)
             node.contents = null;
@@ -15181,19 +15409,19 @@ function visit_visit(node, visitor) {
 // namespace using `var`, but then complains about that because
 // `unique symbol` must be `const`.
 /** Terminate visit traversal completely */
-visit_visit.BREAK = BREAK;
+visit.BREAK = BREAK;
 /** Do not visit the children of the current node */
-visit_visit.SKIP = SKIP;
+visit.SKIP = SKIP;
 /** Remove the current node */
-visit_visit.REMOVE = REMOVE;
+visit.REMOVE = REMOVE;
 function visit_(key, node, visitor, path) {
     const ctrl = callVisitor(key, node, visitor, path);
-    if (identity_isNode(ctrl) || identity_isPair(ctrl)) {
+    if (isNode(ctrl) || isPair(ctrl)) {
         replaceNode(key, path, ctrl);
         return visit_(key, ctrl, visitor, path);
     }
     if (typeof ctrl !== 'symbol') {
-        if (identity_isCollection(node)) {
+        if (isCollection(node)) {
             path = Object.freeze(path.concat(node));
             for (let i = 0; i < node.items.length; ++i) {
                 const ci = visit_(i, node.items[i], visitor, path);
@@ -15207,7 +15435,7 @@ function visit_(key, node, visitor, path) {
                 }
             }
         }
-        else if (identity_isPair(node)) {
+        else if (isPair(node)) {
             path = Object.freeze(path.concat(node));
             const ck = visit_('key', node.key, visitor, path);
             if (ck === BREAK)
@@ -15256,7 +15484,7 @@ function visit_(key, node, visitor, path) {
  */
 async function visitAsync(node, visitor) {
     const visitor_ = initVisitor(visitor);
-    if (identity_isDocument(node)) {
+    if (isDocument(node)) {
         const cd = await visitAsync_(null, node.contents, visitor_, Object.freeze([node]));
         if (cd === REMOVE)
             node.contents = null;
@@ -15275,12 +15503,12 @@ visitAsync.SKIP = SKIP;
 visitAsync.REMOVE = REMOVE;
 async function visitAsync_(key, node, visitor, path) {
     const ctrl = await callVisitor(key, node, visitor, path);
-    if (identity_isNode(ctrl) || identity_isPair(ctrl)) {
+    if (isNode(ctrl) || isPair(ctrl)) {
         replaceNode(key, path, ctrl);
         return visitAsync_(key, ctrl, visitor, path);
     }
     if (typeof ctrl !== 'symbol') {
-        if (identity_isCollection(node)) {
+        if (isCollection(node)) {
             path = Object.freeze(path.concat(node));
             for (let i = 0; i < node.items.length; ++i) {
                 const ci = await visitAsync_(i, node.items[i], visitor, path);
@@ -15294,7 +15522,7 @@ async function visitAsync_(key, node, visitor, path) {
                 }
             }
         }
-        else if (identity_isPair(node)) {
+        else if (isPair(node)) {
             path = Object.freeze(path.concat(node));
             const ck = await visitAsync_('key', node.key, visitor, path);
             if (ck === BREAK)
@@ -15336,9 +15564,9 @@ function callVisitor(key, node, visitor, path) {
         return visitor.Map?.(key, node, path);
     if (isSeq(node))
         return visitor.Seq?.(key, node, path);
-    if (identity_isPair(node))
+    if (isPair(node))
         return visitor.Pair?.(key, node, path);
-    if (identity_isScalar(node))
+    if (isScalar(node))
         return visitor.Scalar?.(key, node, path);
     if (isAlias(node))
         return visitor.Alias?.(key, node, path);
@@ -15346,16 +15574,16 @@ function callVisitor(key, node, visitor, path) {
 }
 function replaceNode(key, path, node) {
     const parent = path[path.length - 1];
-    if (identity_isCollection(parent)) {
+    if (isCollection(parent)) {
         parent.items[key] = node;
     }
-    else if (identity_isPair(parent)) {
+    else if (isPair(parent)) {
         if (key === 'key')
             parent.key = node;
         else
             parent.value = node;
     }
-    else if (identity_isDocument(parent)) {
+    else if (isDocument(parent)) {
         parent.contents = node;
     }
     else {
@@ -15379,7 +15607,7 @@ const escapeChars = {
     '}': '%7D'
 };
 const escapeTagName = (tn) => tn.replace(/[!,[\]{}]/g, ch => escapeChars[ch]);
-class directives_Directives {
+class Directives {
     constructor(yaml, tags) {
         /**
          * The directives-end/doc-start marker `---`. If `null`, a marker may still be
@@ -15388,11 +15616,11 @@ class directives_Directives {
         this.docStart = null;
         /** The doc-end marker `...`.  */
         this.docEnd = false;
-        this.yaml = Object.assign({}, directives_Directives.defaultYaml, yaml);
-        this.tags = Object.assign({}, directives_Directives.defaultTags, tags);
+        this.yaml = Object.assign({}, Directives.defaultYaml, yaml);
+        this.tags = Object.assign({}, Directives.defaultTags, tags);
     }
     clone() {
-        const copy = new directives_Directives(this.yaml, this.tags);
+        const copy = new Directives(this.yaml, this.tags);
         copy.docStart = this.docStart;
         return copy;
     }
@@ -15401,7 +15629,7 @@ class directives_Directives {
      * update the stream state according to the current version's spec.
      */
     atDocument() {
-        const res = new directives_Directives(this.yaml, this.tags);
+        const res = new Directives(this.yaml, this.tags);
         switch (this.yaml.version) {
             case '1.1':
                 this.atNextDocument = true;
@@ -15409,10 +15637,10 @@ class directives_Directives {
             case '1.2':
                 this.atNextDocument = false;
                 this.yaml = {
-                    explicit: directives_Directives.defaultYaml.explicit,
+                    explicit: Directives.defaultYaml.explicit,
                     version: '1.2'
                 };
-                this.tags = Object.assign({}, directives_Directives.defaultTags);
+                this.tags = Object.assign({}, Directives.defaultTags);
                 break;
         }
         return res;
@@ -15423,8 +15651,8 @@ class directives_Directives {
      */
     add(line, onError) {
         if (this.atNextDocument) {
-            this.yaml = { explicit: directives_Directives.defaultYaml.explicit, version: '1.1' };
-            this.tags = Object.assign({}, directives_Directives.defaultTags);
+            this.yaml = { explicit: Directives.defaultYaml.explicit, version: '1.1' };
+            this.tags = Object.assign({}, Directives.defaultTags);
             this.atNextDocument = false;
         }
         const parts = line.trim().split(/[ \t]+/);
@@ -15520,10 +15748,10 @@ class directives_Directives {
             : [];
         const tagEntries = Object.entries(this.tags);
         let tagNames;
-        if (doc && tagEntries.length > 0 && identity_isNode(doc.contents)) {
+        if (doc && tagEntries.length > 0 && isNode(doc.contents)) {
             const tags = {};
-            visit_visit(doc.contents, (_key, node) => {
-                if (identity_isNode(node) && node.tag)
+            visit(doc.contents, (_key, node) => {
+                if (isNode(node) && node.tag)
                     tags[node.tag] = true;
             });
             tagNames = Object.keys(tags);
@@ -15539,12 +15767,15 @@ class directives_Directives {
         return lines.join('\n');
     }
 }
-directives_Directives.defaultYaml = { explicit: false, version: '1.2' };
-directives_Directives.defaultTags = { '!!': 'tag:yaml.org,2002:' };
+Directives.defaultYaml = { explicit: false, version: '1.2' };
+Directives.defaultTags = { '!!': 'tag:yaml.org,2002:' };
 
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/doc/anchors.js
+/* unused harmony import specifier */ var anchors_isScalar;
+/* unused harmony import specifier */ var anchors_isCollection;
+/* unused harmony import specifier */ var anchors_visit;
 
 
 
@@ -15561,9 +15792,9 @@ function anchorIsValid(anchor) {
     }
     return true;
 }
-function anchors_anchorNames(root) {
+function anchorNames(root) {
     const anchors = new Set();
-    visit(root, {
+    anchors_visit(root, {
         Value(_key, node) {
             if (node.anchor)
                 anchors.add(node.anchor);
@@ -15572,22 +15803,22 @@ function anchors_anchorNames(root) {
     return anchors;
 }
 /** Find a new anchor name with the given `prefix` and a one-indexed suffix. */
-function anchors_findNewAnchor(prefix, exclude) {
+function findNewAnchor(prefix, exclude) {
     for (let i = 1; true; ++i) {
         const name = `${prefix}${i}`;
         if (!exclude.has(name))
             return name;
     }
 }
-function anchors_createNodeAnchors(doc, prefix) {
+function createNodeAnchors(doc, prefix) {
     const aliasObjects = [];
     const sourceObjects = new Map();
     let prevAnchors = null;
     return {
         onAnchor: (source) => {
             aliasObjects.push(source);
-            prevAnchors ?? (prevAnchors = anchors_anchorNames(doc));
-            const anchor = anchors_findNewAnchor(prefix, prevAnchors);
+            prevAnchors ?? (prevAnchors = anchorNames(doc));
+            const anchor = findNewAnchor(prefix, prevAnchors);
             prevAnchors.add(anchor);
             return anchor;
         },
@@ -15601,7 +15832,7 @@ function anchors_createNodeAnchors(doc, prefix) {
                 const ref = sourceObjects.get(source);
                 if (typeof ref === 'object' &&
                     ref.anchor &&
-                    (isScalar(ref.node) || isCollection(ref.node))) {
+                    (anchors_isScalar(ref.node) || anchors_isCollection(ref.node))) {
                     ref.node.anchor = ref.anchor;
                 }
                 else {
@@ -15625,12 +15856,12 @@ function anchors_createNodeAnchors(doc, prefix) {
  *
  * Includes extensions for handling Map and Set objects.
  */
-function applyReviver_applyReviver(reviver, obj, key, val) {
+function applyReviver(reviver, obj, key, val) {
     if (val && typeof val === 'object') {
         if (Array.isArray(val)) {
             for (let i = 0, len = val.length; i < len; ++i) {
                 const v0 = val[i];
-                const v1 = applyReviver_applyReviver(reviver, val, String(i), v0);
+                const v1 = applyReviver(reviver, val, String(i), v0);
                 // eslint-disable-next-line @typescript-eslint/no-array-delete
                 if (v1 === undefined)
                     delete val[i];
@@ -15641,7 +15872,7 @@ function applyReviver_applyReviver(reviver, obj, key, val) {
         else if (val instanceof Map) {
             for (const k of Array.from(val.keys())) {
                 const v0 = val.get(k);
-                const v1 = applyReviver_applyReviver(reviver, val, k, v0);
+                const v1 = applyReviver(reviver, val, k, v0);
                 if (v1 === undefined)
                     val.delete(k);
                 else if (v1 !== v0)
@@ -15650,7 +15881,7 @@ function applyReviver_applyReviver(reviver, obj, key, val) {
         }
         else if (val instanceof Set) {
             for (const v0 of Array.from(val)) {
-                const v1 = applyReviver_applyReviver(reviver, val, v0, v0);
+                const v1 = applyReviver(reviver, val, v0, v0);
                 if (v1 === undefined)
                     val.delete(v0);
                 else if (v1 !== v0) {
@@ -15661,7 +15892,7 @@ function applyReviver_applyReviver(reviver, obj, key, val) {
         }
         else {
             for (const [k, v0] of Object.entries(val)) {
-                const v1 = applyReviver_applyReviver(reviver, val, k, v0);
+                const v1 = applyReviver(reviver, val, k, v0);
                 if (v1 === undefined)
                     delete val[k];
                 else if (v1 !== v0)
@@ -15687,10 +15918,10 @@ function applyReviver_applyReviver(reviver, obj, key, val) {
  *   `{ keep: true }` is not set, output should be suitable for JSON
  *   stringification.
  */
-function toJS_toJS(value, arg, ctx) {
+function toJS(value, arg, ctx) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     if (Array.isArray(value))
-        return value.map((v, i) => toJS_toJS(v, String(i), ctx));
+        return value.map((v, i) => toJS(v, String(i), ctx));
     if (value && typeof value.toJSON === 'function') {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         if (!ctx || !hasAnchor(value))
@@ -15720,7 +15951,7 @@ function toJS_toJS(value, arg, ctx) {
 
 class NodeBase {
     constructor(type) {
-        Object.defineProperty(this, identity_NODE_TYPE, { value: type });
+        Object.defineProperty(this, NODE_TYPE, { value: type });
     }
     /** Create a copy of this node.  */
     clone() {
@@ -15731,7 +15962,7 @@ class NodeBase {
     }
     /** A plain JavaScript representation of this node. */
     toJS(doc, { mapAsMap, maxAliasCount, onAnchor, reviver } = {}) {
-        if (!identity_isDocument(doc))
+        if (!isDocument(doc))
             throw new TypeError('A document argument is required');
         const ctx = {
             anchors: new Map(),
@@ -15741,12 +15972,12 @@ class NodeBase {
             mapKeyWarned: false,
             maxAliasCount: typeof maxAliasCount === 'number' ? maxAliasCount : 100
         };
-        const res = toJS_toJS(this, '', ctx);
+        const res = toJS(this, '', ctx);
         if (typeof onAnchor === 'function')
             for (const { count, res } of ctx.anchors.values())
                 onAnchor(res, count);
         return typeof reviver === 'function'
-            ? applyReviver_applyReviver(reviver, { '': res }, '', res)
+            ? applyReviver(reviver, { '': res }, '', res)
             : res;
     }
 }
@@ -15760,7 +15991,7 @@ class NodeBase {
 
 
 
-class Alias_Alias extends NodeBase {
+class Alias extends NodeBase {
     constructor(source) {
         super(ALIAS);
         this.source = source;
@@ -15783,7 +16014,7 @@ class Alias_Alias extends NodeBase {
         }
         else {
             nodes = [];
-            visit_visit(doc, {
+            visit(doc, {
                 Node: (_key, node) => {
                     if (isAlias(node) || hasAnchor(node))
                         nodes.push(node);
@@ -15813,7 +16044,7 @@ class Alias_Alias extends NodeBase {
         let data = anchors.get(source);
         if (!data) {
             // Resolve anchors for Node.prototype.toJS()
-            toJS_toJS(source, null, ctx);
+            toJS(source, null, ctx);
             data = anchors.get(source);
         }
         /* istanbul ignore if */
@@ -15852,7 +16083,7 @@ function getAliasCount(doc, node, anchors) {
         const anchor = anchors && source && anchors.get(source);
         return anchor ? anchor.count * anchor.aliasCount : 0;
     }
-    else if (identity_isCollection(node)) {
+    else if (isCollection(node)) {
         let count = 0;
         for (const item of node.items) {
             const c = getAliasCount(doc, item, anchors);
@@ -15861,7 +16092,7 @@ function getAliasCount(doc, node, anchors) {
         }
         return count;
     }
-    else if (identity_isPair(node)) {
+    else if (isPair(node)) {
         const kc = getAliasCount(doc, node.key, anchors);
         const vc = getAliasCount(doc, node.value, anchors);
         return Math.max(kc, vc);
@@ -15879,11 +16110,11 @@ function getAliasCount(doc, node, anchors) {
 const isScalarValue = (value) => !value || (typeof value !== 'function' && typeof value !== 'object');
 class Scalar extends NodeBase {
     constructor(value) {
-        super(identity_SCALAR);
+        super(SCALAR);
         this.value = value;
     }
     toJSON(arg, ctx) {
-        return ctx?.keep ? this.value : toJS_toJS(this.value, arg, ctx);
+        return ctx?.keep ? this.value : toJS(this.value, arg, ctx);
     }
     toString() {
         return String(this.value);
@@ -15913,13 +16144,13 @@ function findTagObject(value, tagName, tags) {
     }
     return tags.find(t => t.identify?.(value) && !t.format);
 }
-function createNode_createNode(value, tagName, ctx) {
-    if (identity_isDocument(value))
+function createNode(value, tagName, ctx) {
+    if (isDocument(value))
         value = value.contents;
-    if (identity_isNode(value))
+    if (isNode(value))
         return value;
-    if (identity_isPair(value)) {
-        const map = ctx.schema[identity_MAP].createNode?.(ctx.schema, null, ctx);
+    if (isPair(value)) {
+        const map = ctx.schema[MAP].createNode?.(ctx.schema, null, ctx);
         map.items.push(value);
         return map;
     }
@@ -15939,7 +16170,7 @@ function createNode_createNode(value, tagName, ctx) {
         ref = sourceObjects.get(value);
         if (ref) {
             ref.anchor ?? (ref.anchor = onAnchor(value));
-            return new Alias_Alias(ref.anchor);
+            return new Alias(ref.anchor);
         }
         else {
             ref = { anchor: null, node: null };
@@ -15962,10 +16193,10 @@ function createNode_createNode(value, tagName, ctx) {
         }
         tagObj =
             value instanceof Map
-                ? schema[identity_MAP]
+                ? schema[MAP]
                 : Symbol.iterator in Object(value)
-                    ? schema[identity_SEQ]
-                    : schema[identity_MAP];
+                    ? schema[SEQ]
+                    : schema[MAP];
     }
     if (onTagObj) {
         onTagObj(tagObj);
@@ -15992,7 +16223,7 @@ function createNode_createNode(value, tagName, ctx) {
 
 
 
-function Collection_collectionFromPath(schema, path, value) {
+function collectionFromPath(schema, path, value) {
     let v = value;
     for (let i = path.length - 1; i >= 0; --i) {
         const k = path[i];
@@ -16005,7 +16236,7 @@ function Collection_collectionFromPath(schema, path, value) {
             v = new Map([[k, v]]);
         }
     }
-    return createNode_createNode(v, undefined, {
+    return createNode(v, undefined, {
         aliasDuplicateObjects: false,
         keepUndefined: false,
         onAnchor: () => {
@@ -16017,7 +16248,7 @@ function Collection_collectionFromPath(schema, path, value) {
 }
 // Type guard is intentionally a little wrong so as to be more useful,
 // as it does not cover untypable empty non-string iterables (e.g. []).
-const Collection_isEmptyPath = (path) => path == null ||
+const isEmptyPath = (path) => path == null ||
     (typeof path === 'object' && !!path[Symbol.iterator]().next().done);
 class Collection extends NodeBase {
     constructor(type, schema) {
@@ -16038,7 +16269,7 @@ class Collection extends NodeBase {
         const copy = Object.create(Object.getPrototypeOf(this), Object.getOwnPropertyDescriptors(this));
         if (schema)
             copy.schema = schema;
-        copy.items = copy.items.map(it => identity_isNode(it) || identity_isPair(it) ? it.clone(schema) : it);
+        copy.items = copy.items.map(it => isNode(it) || isPair(it) ? it.clone(schema) : it);
         if (this.range)
             copy.range = this.range.slice();
         return copy;
@@ -16049,15 +16280,15 @@ class Collection extends NodeBase {
      * that already exists in the map.
      */
     addIn(path, value) {
-        if (Collection_isEmptyPath(path))
+        if (isEmptyPath(path))
             this.add(value);
         else {
             const [key, ...rest] = path;
             const node = this.get(key, true);
-            if (identity_isCollection(node))
+            if (isCollection(node))
                 node.addIn(rest, value);
             else if (node === undefined && this.schema)
-                this.set(key, Collection_collectionFromPath(this.schema, rest, value));
+                this.set(key, collectionFromPath(this.schema, rest, value));
             else
                 throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
         }
@@ -16071,7 +16302,7 @@ class Collection extends NodeBase {
         if (rest.length === 0)
             return this.delete(key);
         const node = this.get(key, true);
-        if (identity_isCollection(node))
+        if (isCollection(node))
             return node.deleteIn(rest);
         else
             throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
@@ -16085,18 +16316,18 @@ class Collection extends NodeBase {
         const [key, ...rest] = path;
         const node = this.get(key, true);
         if (rest.length === 0)
-            return !keepScalar && identity_isScalar(node) ? node.value : node;
+            return !keepScalar && isScalar(node) ? node.value : node;
         else
-            return identity_isCollection(node) ? node.getIn(rest, keepScalar) : undefined;
+            return isCollection(node) ? node.getIn(rest, keepScalar) : undefined;
     }
     hasAllNullValues(allowScalar) {
         return this.items.every(node => {
-            if (!identity_isPair(node))
+            if (!isPair(node))
                 return false;
             const n = node.value;
             return (n == null ||
                 (allowScalar &&
-                    identity_isScalar(n) &&
+                    isScalar(n) &&
                     n.value == null &&
                     !n.commentBefore &&
                     !n.comment &&
@@ -16111,7 +16342,7 @@ class Collection extends NodeBase {
         if (rest.length === 0)
             return this.has(key);
         const node = this.get(key, true);
-        return identity_isCollection(node) ? node.hasIn(rest) : false;
+        return isCollection(node) ? node.hasIn(rest) : false;
     }
     /**
      * Sets a value in this collection. For `!!set`, `value` needs to be a
@@ -16124,10 +16355,10 @@ class Collection extends NodeBase {
         }
         else {
             const node = this.get(key, true);
-            if (identity_isCollection(node))
+            if (isCollection(node))
                 node.setIn(rest, value);
             else if (node === undefined && this.schema)
-                this.set(key, Collection_collectionFromPath(this.schema, rest, value));
+                this.set(key, collectionFromPath(this.schema, rest, value));
             else
                 throw new Error(`Expected YAML collection at ${key}. Remaining path: ${rest}`);
         }
@@ -16145,15 +16376,15 @@ class Collection extends NodeBase {
  * and all other lines are prefixed with a `#`.
  */
 const stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, '#');
-function stringifyComment_indentComment(comment, indent) {
+function indentComment(comment, indent) {
     if (/^\n+$/.test(comment))
         return comment.substring(1);
     return indent ? comment.replace(/^(?! *$)/gm, indent) : comment;
 }
-const stringifyComment_lineComment = (str, indent, comment) => str.endsWith('\n')
-    ? stringifyComment_indentComment(comment, indent)
+const lineComment = (str, indent, comment) => str.endsWith('\n')
+    ? indentComment(comment, indent)
     : comment.includes('\n')
-        ? '\n' + stringifyComment_indentComment(comment, indent)
+        ? '\n' + indentComment(comment, indent)
         : (str.endsWith(' ') ? '' : ' ') + comment;
 
 
@@ -16603,7 +16834,7 @@ function plainString(item, ctx, onComment, onChompKeep) {
         ? str
         : foldFlowLines(str, indent, FOLD_FLOW, getFoldOptions(ctx, false));
 }
-function stringifyString_stringifyString(item, ctx, onComment, onChompKeep) {
+function stringifyString(item, ctx, onComment, onChompKeep) {
     const { implicitKey, inFlow } = ctx;
     const ss = typeof item.value === 'string'
         ? item
@@ -16650,7 +16881,7 @@ function stringifyString_stringifyString(item, ctx, onComment, onChompKeep) {
 
 
 
-function stringify_createStringifyContext(doc, options) {
+function createStringifyContext(doc, options) {
     const opt = Object.assign({
         blockQuote: true,
         commentString: stringifyComment,
@@ -16700,7 +16931,7 @@ function getTagObject(tags, item) {
     }
     let tagObj = undefined;
     let obj;
-    if (identity_isScalar(item)) {
+    if (isScalar(item)) {
         obj = item.value;
         let match = tags.filter(t => t.identify?.(obj));
         if (match.length > 1) {
@@ -16726,7 +16957,7 @@ function stringifyProps(node, tagObj, { anchors, doc }) {
     if (!doc.directives)
         return '';
     const props = [];
-    const anchor = (identity_isScalar(node) || identity_isCollection(node)) && node.anchor;
+    const anchor = (isScalar(node) || isCollection(node)) && node.anchor;
     if (anchor && anchorIsValid(anchor)) {
         anchors.add(anchor);
         props.push(`&${anchor}`);
@@ -16736,8 +16967,8 @@ function stringifyProps(node, tagObj, { anchors, doc }) {
         props.push(doc.directives.tagString(tag));
     return props.join(' ');
 }
-function stringify_stringify(item, ctx, onComment, onChompKeep) {
-    if (identity_isPair(item))
+function stringify(item, ctx, onComment, onChompKeep) {
+    if (isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
     if (isAlias(item)) {
         if (ctx.doc.directives)
@@ -16754,7 +16985,7 @@ function stringify_stringify(item, ctx, onComment, onChompKeep) {
         }
     }
     let tagObj = undefined;
-    const node = identity_isNode(item)
+    const node = isNode(item)
         ? item
         : ctx.doc.createNode(item, { onTagObj: o => (tagObj = o) });
     tagObj ?? (tagObj = getTagObject(ctx.doc.schema.tags, node));
@@ -16763,12 +16994,12 @@ function stringify_stringify(item, ctx, onComment, onChompKeep) {
         ctx.indentAtStart = (ctx.indentAtStart ?? 0) + props.length + 1;
     const str = typeof tagObj.stringify === 'function'
         ? tagObj.stringify(node, ctx, onComment, onChompKeep)
-        : identity_isScalar(node)
-            ? stringifyString_stringifyString(node, ctx, onComment, onChompKeep)
+        : isScalar(node)
+            ? stringifyString(node, ctx, onComment, onChompKeep)
             : node.toString(ctx, onComment, onChompKeep);
     if (!props)
         return str;
-    return identity_isScalar(node) || str[0] === '{' || str[0] === '['
+    return isScalar(node) || str[0] === '{' || str[0] === '['
         ? `${props} ${str}`
         : `${props}\n${ctx.indent}${str}`;
 }
@@ -16783,12 +17014,12 @@ function stringify_stringify(item, ctx, onComment, onChompKeep) {
 
 function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
     const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
-    let keyComment = (identity_isNode(key) && key.comment) || null;
+    let keyComment = (isNode(key) && key.comment) || null;
     if (simpleKeys) {
         if (keyComment) {
             throw new Error('With simple keys, key nodes cannot have comments');
         }
-        if (identity_isCollection(key) || (!identity_isNode(key) && typeof key === 'object')) {
+        if (isCollection(key) || (!isNode(key) && typeof key === 'object')) {
             const msg = 'With simple keys, collection cannot be used as a key value';
             throw new Error(msg);
         }
@@ -16796,8 +17027,8 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
     let explicitKey = !simpleKeys &&
         (!key ||
             (keyComment && value == null && !ctx.inFlow) ||
-            identity_isCollection(key) ||
-            (identity_isScalar(key)
+            isCollection(key) ||
+            (isScalar(key)
                 ? key.type === Scalar.BLOCK_FOLDED || key.type === Scalar.BLOCK_LITERAL
                 : typeof key === 'object'));
     ctx = Object.assign({}, ctx, {
@@ -16807,7 +17038,7 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
     });
     let keyCommentDone = false;
     let chompKeep = false;
-    let str = stringify_stringify(key, ctx, () => (keyCommentDone = true), () => (chompKeep = true));
+    let str = stringify(key, ctx, () => (keyCommentDone = true), () => (chompKeep = true));
     if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
             throw new Error('With simple keys, single line scalar must not span more than 1024 characters');
@@ -16823,7 +17054,7 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
     else if ((allNullValues && !simpleKeys) || (value == null && explicitKey)) {
         str = `? ${str}`;
         if (keyComment && !keyCommentDone) {
-            str += stringifyComment_lineComment(str, ctx.indent, commentString(keyComment));
+            str += lineComment(str, ctx.indent, commentString(keyComment));
         }
         else if (chompKeep && onChompKeep)
             onChompKeep();
@@ -16833,16 +17064,16 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
         keyComment = null;
     if (explicitKey) {
         if (keyComment)
-            str += stringifyComment_lineComment(str, ctx.indent, commentString(keyComment));
+            str += lineComment(str, ctx.indent, commentString(keyComment));
         str = `? ${str}\n${indent}:`;
     }
     else {
         str = `${str}:`;
         if (keyComment)
-            str += stringifyComment_lineComment(str, ctx.indent, commentString(keyComment));
+            str += lineComment(str, ctx.indent, commentString(keyComment));
     }
     let vsb, vcb, valueComment;
-    if (identity_isNode(value)) {
+    if (isNode(value)) {
         vsb = !!value.spaceBefore;
         vcb = value.commentBefore;
         valueComment = value.comment;
@@ -16855,7 +17086,7 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
             value = doc.createNode(value);
     }
     ctx.implicitKey = false;
-    if (!explicitKey && !keyComment && identity_isScalar(value))
+    if (!explicitKey && !keyComment && isScalar(value))
         ctx.indentAtStart = str.length + 1;
     chompKeep = false;
     if (!indentSeq &&
@@ -16870,13 +17101,13 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
         ctx.indent = ctx.indent.substring(2);
     }
     let valueCommentDone = false;
-    const valueStr = stringify_stringify(value, ctx, () => (valueCommentDone = true), () => (chompKeep = true));
+    const valueStr = stringify(value, ctx, () => (valueCommentDone = true), () => (chompKeep = true));
     let ws = ' ';
     if (keyComment || vsb || vcb) {
         ws = vsb ? '\n' : '';
         if (vcb) {
             const cs = commentString(vcb);
-            ws += `\n${stringifyComment_indentComment(cs, ctx.indent)}`;
+            ws += `\n${indentComment(cs, ctx.indent)}`;
         }
         if (valueStr === '' && !ctx.inFlow) {
             if (ws === '\n' && valueComment)
@@ -16886,7 +17117,7 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
             ws += `\n${ctx.indent}`;
         }
     }
-    else if (!explicitKey && identity_isCollection(value)) {
+    else if (!explicitKey && isCollection(value)) {
         const vs0 = valueStr[0];
         const nl0 = valueStr.indexOf('\n');
         const hasNewline = nl0 !== -1;
@@ -16917,7 +17148,7 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
             onComment();
     }
     else if (valueComment && !valueCommentDone) {
-        str += stringifyComment_lineComment(str, ctx.indent, commentString(valueComment));
+        str += lineComment(str, ctx.indent, commentString(valueComment));
     }
     else if (chompKeep && onChompKeep) {
         onChompKeep();
@@ -16932,7 +17163,7 @@ function debug(logLevel, ...messages) {
     if (logLevel === 'debug')
         console.log(...messages);
 }
-function log_warn(logLevel, warning) {
+function warn(logLevel, warning) {
     if (logLevel === 'debug' || logLevel === 'warn') {
         console.warn(warning);
     }
@@ -16952,7 +17183,7 @@ function log_warn(logLevel, warning) {
 // Keys in mapping nodes earlier in the sequence override keys specified in
 // later mapping nodes. -- http://yaml.org/type/merge.html
 const MERGE_KEY = '<<';
-const merge_merge = {
+const merge = {
     identify: value => value === MERGE_KEY ||
         (typeof value === 'symbol' && value.description === MERGE_KEY),
     default: 'key',
@@ -16963,11 +17194,11 @@ const merge_merge = {
     }),
     stringify: () => MERGE_KEY
 };
-const isMergeKey = (ctx, key) => (merge_merge.identify(key) ||
-    (identity_isScalar(key) &&
+const isMergeKey = (ctx, key) => (merge.identify(key) ||
+    (isScalar(key) &&
         (!key.type || key.type === Scalar.PLAIN) &&
-        merge_merge.identify(key.value))) &&
-    ctx?.doc.schema.tags.some(tag => tag.tag === merge_merge.tag && tag.default);
+        merge.identify(key.value))) &&
+    ctx?.doc.schema.tags.some(tag => tag.tag === merge.tag && tag.default);
 function addMergeToJSMap(ctx, map, value) {
     const source = resolveAliasValue(ctx, value);
     if (isSeq(source))
@@ -17017,22 +17248,22 @@ function resolveAliasValue(ctx, value) {
 
 
 function addPairToJSMap(ctx, map, { key, value }) {
-    if (identity_isNode(key) && key.addToJSMap)
+    if (isNode(key) && key.addToJSMap)
         key.addToJSMap(ctx, map, value);
     // TODO: Should drop this special case for bare << handling
     else if (isMergeKey(ctx, key))
         addMergeToJSMap(ctx, map, value);
     else {
-        const jsKey = toJS_toJS(key, '', ctx);
+        const jsKey = toJS(key, '', ctx);
         if (map instanceof Map) {
-            map.set(jsKey, toJS_toJS(value, jsKey, ctx));
+            map.set(jsKey, toJS(value, jsKey, ctx));
         }
         else if (map instanceof Set) {
             map.add(jsKey);
         }
         else {
             const stringKey = stringifyKey(key, jsKey, ctx);
-            const jsValue = toJS_toJS(value, stringKey, ctx);
+            const jsValue = toJS(value, stringKey, ctx);
             if (stringKey in map)
                 Object.defineProperty(map, stringKey, {
                     value: jsValue,
@@ -17052,8 +17283,8 @@ function stringifyKey(key, jsKey, ctx) {
     // eslint-disable-next-line @typescript-eslint/no-base-to-string
     if (typeof jsKey !== 'object')
         return String(jsKey);
-    if (identity_isNode(key) && ctx?.doc) {
-        const strCtx = stringify_createStringifyContext(ctx.doc, {});
+    if (isNode(key) && ctx?.doc) {
+        const strCtx = createStringifyContext(ctx.doc, {});
         strCtx.anchors = new Set();
         for (const node of ctx.anchors.keys())
             strCtx.anchors.add(node.anchor);
@@ -17064,7 +17295,7 @@ function stringifyKey(key, jsKey, ctx) {
             let jsonStr = JSON.stringify(strKey);
             if (jsonStr.length > 40)
                 jsonStr = jsonStr.substring(0, 36) + '..."';
-            log_warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
+            warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
             ctx.mapKeyWarned = true;
         }
         return strKey;
@@ -17081,23 +17312,23 @@ function stringifyKey(key, jsKey, ctx) {
 
 
 function createPair(key, value, ctx) {
-    const k = createNode_createNode(key, undefined, ctx);
-    const v = createNode_createNode(value, undefined, ctx);
-    return new Pair_Pair(k, v);
+    const k = createNode(key, undefined, ctx);
+    const v = createNode(value, undefined, ctx);
+    return new Pair(k, v);
 }
-class Pair_Pair {
+class Pair {
     constructor(key, value = null) {
-        Object.defineProperty(this, identity_NODE_TYPE, { value: PAIR });
+        Object.defineProperty(this, NODE_TYPE, { value: PAIR });
         this.key = key;
         this.value = value;
     }
     clone(schema) {
         let { key, value } = this;
-        if (identity_isNode(key))
+        if (isNode(key))
             key = key.clone(schema);
-        if (identity_isNode(value))
+        if (isNode(value))
             value = value.clone(schema);
-        return new Pair_Pair(key, value);
+        return new Pair(key, value);
     }
     toJSON(_, ctx) {
         const pair = ctx?.mapAsMap ? new Map() : {};
@@ -17130,15 +17361,15 @@ function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, fl
     for (let i = 0; i < items.length; ++i) {
         const item = items[i];
         let comment = null;
-        if (identity_isNode(item)) {
+        if (isNode(item)) {
             if (!chompKeep && item.spaceBefore)
                 lines.push('');
             addCommentBefore(ctx, lines, item.commentBefore, chompKeep);
             if (item.comment)
                 comment = item.comment;
         }
-        else if (identity_isPair(item)) {
-            const ik = identity_isNode(item.key) ? item.key : null;
+        else if (isPair(item)) {
+            const ik = isNode(item.key) ? item.key : null;
             if (ik) {
                 if (!chompKeep && ik.spaceBefore)
                     lines.push('');
@@ -17146,9 +17377,9 @@ function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, fl
             }
         }
         chompKeep = false;
-        let str = stringify_stringify(item, itemCtx, () => (comment = null), () => (chompKeep = true));
+        let str = stringify(item, itemCtx, () => (comment = null), () => (chompKeep = true));
         if (comment)
-            str += stringifyComment_lineComment(str, itemIndent, commentString(comment));
+            str += lineComment(str, itemIndent, commentString(comment));
         if (chompKeep && comment)
             chompKeep = false;
         lines.push(blockItemPrefix + str);
@@ -17165,7 +17396,7 @@ function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, fl
         }
     }
     if (comment) {
-        str += '\n' + stringifyComment_indentComment(commentString(comment), indent);
+        str += '\n' + indentComment(commentString(comment), indent);
         if (onComment)
             onComment();
     }
@@ -17187,15 +17418,15 @@ function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
     for (let i = 0; i < items.length; ++i) {
         const item = items[i];
         let comment = null;
-        if (identity_isNode(item)) {
+        if (isNode(item)) {
             if (item.spaceBefore)
                 lines.push('');
             addCommentBefore(ctx, lines, item.commentBefore, false);
             if (item.comment)
                 comment = item.comment;
         }
-        else if (identity_isPair(item)) {
-            const ik = identity_isNode(item.key) ? item.key : null;
+        else if (isPair(item)) {
+            const ik = isNode(item.key) ? item.key : null;
             if (ik) {
                 if (ik.spaceBefore)
                     lines.push('');
@@ -17203,7 +17434,7 @@ function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
                 if (ik.comment)
                     reqNewline = true;
             }
-            const iv = identity_isNode(item.value) ? item.value : null;
+            const iv = isNode(item.value) ? item.value : null;
             if (iv) {
                 if (iv.comment)
                     comment = iv.comment;
@@ -17216,7 +17447,7 @@ function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
         }
         if (comment)
             reqNewline = true;
-        let str = stringify_stringify(item, itemCtx, () => (comment = null));
+        let str = stringify(item, itemCtx, () => (comment = null));
         reqNewline || (reqNewline = lines.length > linesAtValue || str.includes('\n'));
         if (i < items.length - 1) {
             str += ',';
@@ -17232,7 +17463,7 @@ function stringifyFlowCollection({ items }, ctx, { flowChars, itemIndent }) {
             }
         }
         if (comment)
-            str += stringifyComment_lineComment(str, itemIndent, commentString(comment));
+            str += lineComment(str, itemIndent, commentString(comment));
         lines.push(str);
         linesAtValue = lines.length;
     }
@@ -17260,7 +17491,7 @@ function addCommentBefore({ indent, options: { commentString } }, lines, comment
     if (comment && chompKeep)
         comment = comment.replace(/^\n+/, '');
     if (comment) {
-        const ic = stringifyComment_indentComment(commentString(comment), indent);
+        const ic = indentComment(commentString(comment), indent);
         lines.push(ic.trimStart()); // Avoid double indent on first line
     }
 }
@@ -17276,12 +17507,12 @@ function addCommentBefore({ indent, options: { commentString } }, lines, comment
 
 
 function findPair(items, key) {
-    const k = identity_isScalar(key) ? key.value : key;
+    const k = isScalar(key) ? key.value : key;
     for (const it of items) {
-        if (identity_isPair(it)) {
+        if (isPair(it)) {
             if (it.key === key || it.key === k)
                 return it;
-            if (identity_isScalar(it.key) && it.key.value === k)
+            if (isScalar(it.key) && it.key.value === k)
                 return it;
         }
     }
@@ -17292,7 +17523,7 @@ class YAMLMap extends Collection {
         return 'tag:yaml.org,2002:map';
     }
     constructor(schema) {
-        super(identity_MAP, schema);
+        super(MAP, schema);
         this.items = [];
     }
     /**
@@ -17331,21 +17562,21 @@ class YAMLMap extends Collection {
      */
     add(pair, overwrite) {
         let _pair;
-        if (identity_isPair(pair))
+        if (isPair(pair))
             _pair = pair;
         else if (!pair || typeof pair !== 'object' || !('key' in pair)) {
             // In TypeScript, this never happens.
-            _pair = new Pair_Pair(pair, pair?.value);
+            _pair = new Pair(pair, pair?.value);
         }
         else
-            _pair = new Pair_Pair(pair.key, pair.value);
+            _pair = new Pair(pair.key, pair.value);
         const prev = findPair(this.items, _pair.key);
         const sortEntries = this.schema?.sortMapEntries;
         if (prev) {
             if (!overwrite)
                 throw new Error(`Key ${_pair.key} already set`);
             // For scalars, keep the old node & its comments and anchors
-            if (identity_isScalar(prev.value) && isScalarValue(_pair.value))
+            if (isScalar(prev.value) && isScalarValue(_pair.value))
                 prev.value.value = _pair.value;
             else
                 prev.value = _pair.value;
@@ -17371,13 +17602,13 @@ class YAMLMap extends Collection {
     get(key, keepScalar) {
         const it = findPair(this.items, key);
         const node = it?.value;
-        return (!keepScalar && identity_isScalar(node) ? node.value : node) ?? undefined;
+        return (!keepScalar && isScalar(node) ? node.value : node) ?? undefined;
     }
     has(key) {
         return !!findPair(this.items, key);
     }
     set(key, value) {
-        this.add(new Pair_Pair(key, value), true);
+        this.add(new Pair(key, value), true);
     }
     /**
      * @param ctx - Conversion context, originally set in Document#toJS()
@@ -17396,7 +17627,7 @@ class YAMLMap extends Collection {
         if (!ctx)
             return JSON.stringify(this);
         for (const item of this.items) {
-            if (!identity_isPair(item))
+            if (!isPair(item))
                 throw new Error(`Map items must all be pairs; found ${JSON.stringify(item)} instead`);
         }
         if (!ctx.allNullValues && this.hasAllNullValues(false))
@@ -17417,7 +17648,7 @@ class YAMLMap extends Collection {
 
 
 
-const map_map = {
+const map = {
     collection: 'map',
     default: true,
     nodeClass: YAMLMap,
@@ -17445,7 +17676,7 @@ class YAMLSeq extends Collection {
         return 'tag:yaml.org,2002:seq';
     }
     constructor(schema) {
-        super(identity_SEQ, schema);
+        super(SEQ, schema);
         this.items = [];
     }
     add(value) {
@@ -17471,7 +17702,7 @@ class YAMLSeq extends Collection {
         if (typeof idx !== 'number')
             return undefined;
         const it = this.items[idx];
-        return !keepScalar && identity_isScalar(it) ? it.value : it;
+        return !keepScalar && isScalar(it) ? it.value : it;
     }
     /**
      * Checks if the collection includes a value with the key `key`.
@@ -17495,7 +17726,7 @@ class YAMLSeq extends Collection {
         if (typeof idx !== 'number')
             throw new Error(`Expected a valid index, not ${key}.`);
         const prev = this.items[idx];
-        if (identity_isScalar(prev) && isScalarValue(value))
+        if (isScalar(prev) && isScalarValue(value))
             prev.value = value;
         else
             this.items[idx] = value;
@@ -17506,7 +17737,7 @@ class YAMLSeq extends Collection {
             ctx.onCreate(seq);
         let i = 0;
         for (const item of this.items)
-            seq.push(toJS_toJS(item, String(i++), ctx));
+            seq.push(toJS(item, String(i++), ctx));
         return seq;
     }
     toString(ctx, onComment, onChompKeep) {
@@ -17530,14 +17761,14 @@ class YAMLSeq extends Collection {
                     const key = obj instanceof Set ? it : String(i++);
                     it = replacer.call(obj, key, it);
                 }
-                seq.items.push(createNode_createNode(it, undefined, ctx));
+                seq.items.push(createNode(it, undefined, ctx));
             }
         }
         return seq;
     }
 }
 function asItemIndex(key) {
-    let idx = identity_isScalar(key) ? key.value : key;
+    let idx = isScalar(key) ? key.value : key;
     if (idx && typeof idx === 'string')
         idx = Number(idx);
     return typeof idx === 'number' && Number.isInteger(idx) && idx >= 0
@@ -17551,7 +17782,7 @@ function asItemIndex(key) {
 
 
 
-const seq_seq = {
+const seq = {
     collection: 'seq',
     default: true,
     nodeClass: YAMLSeq,
@@ -17569,14 +17800,14 @@ const seq_seq = {
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/schema/common/string.js
 
 
-const string_string = {
+const string = {
     identify: value => typeof value === 'string',
     default: true,
     tag: 'tag:yaml.org,2002:str',
     resolve: str => str,
     stringify(item, ctx, onComment, onChompKeep) {
         ctx = Object.assign({ actualString: true }, ctx);
-        return stringifyString_stringifyString(item, ctx, onComment, onChompKeep);
+        return stringifyString(item, ctx, onComment, onChompKeep);
     }
 };
 
@@ -17742,9 +17973,9 @@ const intHex = {
 
 
 const schema = [
-    map_map,
-    seq_seq,
-    string_string,
+    map,
+    seq,
+    string,
     nullTag,
     boolTag,
     intOct,
@@ -17817,7 +18048,7 @@ const jsonError = {
         return str;
     }
 };
-const schema_schema = [map_map, seq_seq].concat(jsonScalars, jsonError);
+const schema_schema = [map, seq].concat(jsonScalars, jsonError);
 
 
 
@@ -17875,7 +18106,7 @@ const binary = {
             }
             str = lines.join(type === Scalar.BLOCK_LITERAL ? '\n' : ' ');
         }
-        return stringifyString_stringifyString({ comment, type, value: str }, ctx, onComment, onChompKeep);
+        return stringifyString({ comment, type, value: str }, ctx, onComment, onChompKeep);
     }
 };
 
@@ -17891,12 +18122,12 @@ function resolvePairs(seq, onError) {
     if (isSeq(seq)) {
         for (let i = 0; i < seq.items.length; ++i) {
             let item = seq.items[i];
-            if (identity_isPair(item))
+            if (isPair(item))
                 continue;
             else if (isMap(item)) {
                 if (item.items.length > 1)
                     onError('Each pair must have its own sequence indicator');
-                const pair = item.items[0] || new Pair_Pair(new Scalar(null));
+                const pair = item.items[0] || new Pair(new Scalar(null));
                 if (item.commentBefore)
                     pair.key.commentBefore = pair.key.commentBefore
                         ? `${item.commentBefore}\n${pair.key.commentBefore}`
@@ -17909,7 +18140,7 @@ function resolvePairs(seq, onError) {
                 }
                 item = pair;
             }
-            seq.items[i] = identity_isPair(item) ? item : new Pair_Pair(item);
+            seq.items[i] = isPair(item) ? item : new Pair(item);
         }
     }
     else
@@ -17990,12 +18221,12 @@ class YAMLOMap extends YAMLSeq {
             ctx.onCreate(map);
         for (const pair of this.items) {
             let key, value;
-            if (identity_isPair(pair)) {
-                key = toJS_toJS(pair.key, '', ctx);
-                value = toJS_toJS(pair.value, key, ctx);
+            if (isPair(pair)) {
+                key = toJS(pair.key, '', ctx);
+                value = toJS(pair.value, key, ctx);
             }
             else {
-                key = toJS_toJS(pair, '', ctx);
+                key = toJS(pair, '', ctx);
             }
             if (map.has(key))
                 throw new Error('Ordered maps must not include duplicate keys');
@@ -18021,7 +18252,7 @@ const omap = {
         const pairs = resolvePairs(seq, onError);
         const seenKeys = [];
         for (const { key } of pairs.items) {
-            if (identity_isScalar(key)) {
+            if (isScalar(key)) {
                 if (seenKeys.includes(key.value)) {
                     onError(`Ordered maps must not include duplicate keys: ${key.value}`);
                 }
@@ -18198,16 +18429,16 @@ class YAMLSet extends YAMLMap {
     }
     add(key) {
         let pair;
-        if (identity_isPair(key))
+        if (isPair(key))
             pair = key;
         else if (key &&
             typeof key === 'object' &&
             'key' in key &&
             'value' in key &&
             key.value === null)
-            pair = new Pair_Pair(key.key, null);
+            pair = new Pair(key.key, null);
         else
-            pair = new Pair_Pair(key, null);
+            pair = new Pair(key, null);
         const prev = findPair(this.items, pair.key);
         if (!prev)
             this.items.push(pair);
@@ -18218,8 +18449,8 @@ class YAMLSet extends YAMLMap {
      */
     get(key, keepPair) {
         const pair = findPair(this.items, key);
-        return !keepPair && identity_isPair(pair)
-            ? identity_isScalar(pair.key)
+        return !keepPair && isPair(pair)
+            ? isScalar(pair.key)
                 ? pair.key.value
                 : pair.key
             : pair;
@@ -18232,7 +18463,7 @@ class YAMLSet extends YAMLMap {
             this.items.splice(this.items.indexOf(prev), 1);
         }
         else if (!prev && value) {
-            this.items.push(new Pair_Pair(key));
+            this.items.push(new Pair(key));
         }
     }
     toJSON(_, ctx) {
@@ -18400,9 +18631,9 @@ const timestamp = {
 
 
 const yaml_1_1_schema_schema = [
-    map_map,
-    seq_seq,
-    string_string,
+    map,
+    seq,
+    string,
     nullTag,
     trueTag,
     falseTag,
@@ -18414,7 +18645,7 @@ const yaml_1_1_schema_schema = [
     float_floatExp,
     yaml_1_1_float_float,
     binary,
-    merge_merge,
+    merge,
     omap,
     pairs,
     set,
@@ -18426,6 +18657,7 @@ const yaml_1_1_schema_schema = [
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/schema/tags.js
+/* unused harmony import specifier */ var tags_merge;
 
 
 
@@ -18445,7 +18677,7 @@ const yaml_1_1_schema_schema = [
 
 const schemas = new Map([
     ['core', schema],
-    ['failsafe', [map_map, seq_seq, string_string]],
+    ['failsafe', [map, seq, string]],
     ['json', schema_schema],
     ['yaml11', yaml_1_1_schema_schema],
     ['yaml-1.1', yaml_1_1_schema_schema]
@@ -18461,28 +18693,28 @@ const tagsByName = {
     intHex: intHex,
     intOct: intOct,
     intTime: intTime,
-    map: map_map,
-    merge: merge_merge,
+    map: map,
+    merge: merge,
     null: nullTag,
     omap: omap,
     pairs: pairs,
-    seq: seq_seq,
+    seq: seq,
     set: set,
     timestamp: timestamp
 };
-const tags_coreKnownTags = {
+const coreKnownTags = {
     'tag:yaml.org,2002:binary': binary,
-    'tag:yaml.org,2002:merge': merge_merge,
+    'tag:yaml.org,2002:merge': merge,
     'tag:yaml.org,2002:omap': omap,
     'tag:yaml.org,2002:pairs': pairs,
     'tag:yaml.org,2002:set': set,
     'tag:yaml.org,2002:timestamp': timestamp
 };
-function tags_getTags(customTags, schemaName, addMergeTag) {
+function getTags(customTags, schemaName, addMergeTag) {
     const schemaTags = schemas.get(schemaName);
     if (schemaTags && !customTags) {
-        return addMergeTag && !schemaTags.includes(merge)
-            ? schemaTags.concat(merge)
+        return addMergeTag && !schemaTags.includes(tags_merge)
+            ? schemaTags.concat(tags_merge)
             : schemaTags.slice();
     }
     let tags = schemaTags;
@@ -18505,7 +18737,7 @@ function tags_getTags(customTags, schemaName, addMergeTag) {
         tags = customTags(tags.slice());
     }
     if (addMergeTag)
-        tags = tags.concat(merge);
+        tags = tags.concat(tags_merge);
     return tags.reduce((tags, tag) => {
         const tagObj = typeof tag === 'string' ? tagsByName[tag] : tag;
         if (!tagObj) {
@@ -18524,6 +18756,14 @@ function tags_getTags(customTags, schemaName, addMergeTag) {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/schema/Schema.js
+/* unused harmony import specifier */ var Schema_MAP;
+/* unused harmony import specifier */ var Schema_SCALAR;
+/* unused harmony import specifier */ var Schema_SEQ;
+/* unused harmony import specifier */ var Schema_map;
+/* unused harmony import specifier */ var Schema_seq;
+/* unused harmony import specifier */ var Schema_string;
+/* unused harmony import specifier */ var Schema_getTags;
+/* unused harmony import specifier */ var Schema_coreKnownTags;
 
 
 
@@ -18531,20 +18771,20 @@ function tags_getTags(customTags, schemaName, addMergeTag) {
 
 
 const sortMapEntriesByKey = (a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
-class Schema_Schema {
+class Schema {
     constructor({ compat, customTags, merge, resolveKnownTags, schema, sortMapEntries, toStringDefaults }) {
         this.compat = Array.isArray(compat)
-            ? getTags(compat, 'compat')
+            ? Schema_getTags(compat, 'compat')
             : compat
-                ? getTags(null, compat)
+                ? Schema_getTags(null, compat)
                 : null;
         this.name = (typeof schema === 'string' && schema) || 'core';
-        this.knownTags = resolveKnownTags ? coreKnownTags : {};
-        this.tags = getTags(customTags, this.name, merge);
+        this.knownTags = resolveKnownTags ? Schema_coreKnownTags : {};
+        this.tags = Schema_getTags(customTags, this.name, merge);
         this.toStringOptions = toStringDefaults ?? null;
-        Object.defineProperty(this, MAP, { value: map });
-        Object.defineProperty(this, SCALAR, { value: string });
-        Object.defineProperty(this, SEQ, { value: seq });
+        Object.defineProperty(this, Schema_MAP, { value: Schema_map });
+        Object.defineProperty(this, Schema_SCALAR, { value: Schema_string });
+        Object.defineProperty(this, Schema_SEQ, { value: Schema_seq });
         // Used by createMap()
         this.sortMapEntries =
             typeof sortMapEntries === 'function'
@@ -18554,7 +18794,7 @@ class Schema_Schema {
                     : null;
     }
     clone() {
-        const copy = Object.create(Schema_Schema.prototype, Object.getOwnPropertyDescriptors(this));
+        const copy = Object.create(Schema.prototype, Object.getOwnPropertyDescriptors(this));
         copy.tags = this.tags.slice();
         return copy;
     }
@@ -18563,11 +18803,16 @@ class Schema_Schema {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/stringify/stringifyDocument.js
+/* unused harmony import specifier */ var stringifyDocument_isNode;
+/* unused harmony import specifier */ var stringifyDocument_createStringifyContext;
+/* unused harmony import specifier */ var stringifyDocument_stringify;
+/* unused harmony import specifier */ var stringifyDocument_indentComment;
+/* unused harmony import specifier */ var stringifyDocument_lineComment;
 
 
 
 
-function stringifyDocument_stringifyDocument(doc, options) {
+function stringifyDocument(doc, options) {
     const lines = [];
     let hasDirectives = options.directives === true;
     if (options.directives !== false && doc.directives) {
@@ -18581,32 +18826,32 @@ function stringifyDocument_stringifyDocument(doc, options) {
     }
     if (hasDirectives)
         lines.push('---');
-    const ctx = createStringifyContext(doc, options);
+    const ctx = stringifyDocument_createStringifyContext(doc, options);
     const { commentString } = ctx.options;
     if (doc.commentBefore) {
         if (lines.length !== 1)
             lines.unshift('');
         const cs = commentString(doc.commentBefore);
-        lines.unshift(indentComment(cs, ''));
+        lines.unshift(stringifyDocument_indentComment(cs, ''));
     }
     let chompKeep = false;
     let contentComment = null;
     if (doc.contents) {
-        if (isNode(doc.contents)) {
+        if (stringifyDocument_isNode(doc.contents)) {
             if (doc.contents.spaceBefore && hasDirectives)
                 lines.push('');
             if (doc.contents.commentBefore) {
                 const cs = commentString(doc.contents.commentBefore);
-                lines.push(indentComment(cs, ''));
+                lines.push(stringifyDocument_indentComment(cs, ''));
             }
             // top-level block scalars need to be indented if followed by a comment
             ctx.forceBlockIndent = !!doc.comment;
             contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? undefined : () => (chompKeep = true);
-        let body = stringify(doc.contents, ctx, () => (contentComment = null), onChompKeep);
+        let body = stringifyDocument_stringify(doc.contents, ctx, () => (contentComment = null), onChompKeep);
         if (contentComment)
-            body += lineComment(body, '', commentString(contentComment));
+            body += stringifyDocument_lineComment(body, '', commentString(contentComment));
         if ((body[0] === '|' || body[0] === '>') &&
             lines[lines.length - 1] === '---') {
             // Top-level block scalars with a preceding doc marker ought to use the
@@ -18617,14 +18862,14 @@ function stringifyDocument_stringifyDocument(doc, options) {
             lines.push(body);
     }
     else {
-        lines.push(stringify(doc.contents, ctx));
+        lines.push(stringifyDocument_stringify(doc.contents, ctx));
     }
     if (doc.directives?.docEnd) {
         if (doc.comment) {
             const cs = commentString(doc.comment);
             if (cs.includes('\n')) {
                 lines.push('...');
-                lines.push(indentComment(cs, ''));
+                lines.push(stringifyDocument_indentComment(cs, ''));
             }
             else {
                 lines.push(`... ${cs}`);
@@ -18641,7 +18886,7 @@ function stringifyDocument_stringifyDocument(doc, options) {
         if (dc) {
             if ((!chompKeep || contentComment) && lines[lines.length - 1] !== '')
                 lines.push('');
-            lines.push(indentComment(commentString(dc), ''));
+            lines.push(stringifyDocument_indentComment(commentString(dc), ''));
         }
     }
     return lines.join('\n') + '\n';
@@ -18650,6 +18895,24 @@ function stringifyDocument_stringifyDocument(doc, options) {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/doc/Document.js
+/* unused harmony import specifier */ var Document_Alias;
+/* unused harmony import specifier */ var Document_isEmptyPath;
+/* unused harmony import specifier */ var Document_collectionFromPath;
+/* unused harmony import specifier */ var Document_NODE_TYPE;
+/* unused harmony import specifier */ var Document_DOC;
+/* unused harmony import specifier */ var Document_isNode;
+/* unused harmony import specifier */ var Document_isCollection;
+/* unused harmony import specifier */ var Document_isScalar;
+/* unused harmony import specifier */ var Document_Pair;
+/* unused harmony import specifier */ var Document_toJS;
+/* unused harmony import specifier */ var Document_Schema;
+/* unused harmony import specifier */ var Document_stringifyDocument;
+/* unused harmony import specifier */ var Document_anchorNames;
+/* unused harmony import specifier */ var Document_findNewAnchor;
+/* unused harmony import specifier */ var Document_createNodeAnchors;
+/* unused harmony import specifier */ var Document_applyReviver;
+/* unused harmony import specifier */ var Document_createNode;
+/* unused harmony import specifier */ var Document_Directives;
 
 
 
@@ -18662,7 +18925,7 @@ function stringifyDocument_stringifyDocument(doc, options) {
 
 
 
-class Document_Document {
+class Document {
     constructor(value, replacer, options) {
         /** A comment before this Document */
         this.commentBefore = null;
@@ -18672,7 +18935,7 @@ class Document_Document {
         this.errors = [];
         /** Warnings encountered during parsing. */
         this.warnings = [];
-        Object.defineProperty(this, NODE_TYPE, { value: DOC });
+        Object.defineProperty(this, Document_NODE_TYPE, { value: Document_DOC });
         let _replacer = null;
         if (typeof replacer === 'function' || Array.isArray(replacer)) {
             _replacer = replacer;
@@ -18699,7 +18962,7 @@ class Document_Document {
                 version = this.directives.yaml.version;
         }
         else
-            this.directives = new Directives({ version });
+            this.directives = new Document_Directives({ version });
         this.setSchema(version, options);
         // @ts-expect-error We can't really know that this matches Contents.
         this.contents =
@@ -18711,8 +18974,8 @@ class Document_Document {
      * Custom Node values that inherit from `Object` still refer to their original instances.
      */
     clone() {
-        const copy = Object.create(Document_Document.prototype, {
-            [NODE_TYPE]: { value: DOC }
+        const copy = Object.create(Document.prototype, {
+            [Document_NODE_TYPE]: { value: Document_DOC }
         });
         copy.commentBefore = this.commentBefore;
         copy.comment = this.comment;
@@ -18723,7 +18986,7 @@ class Document_Document {
             copy.directives = this.directives.clone();
         copy.schema = this.schema.clone();
         // @ts-expect-error We can't really know that this matches Contents.
-        copy.contents = isNode(this.contents)
+        copy.contents = Document_isNode(this.contents)
             ? this.contents.clone(copy.schema)
             : this.contents;
         if (this.range)
@@ -18751,12 +19014,12 @@ class Document_Document {
      */
     createAlias(node, name) {
         if (!node.anchor) {
-            const prev = anchorNames(this);
+            const prev = Document_anchorNames(this);
             node.anchor =
                 // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-                !name || prev.has(name) ? findNewAnchor(name || 'a', prev) : name;
+                !name || prev.has(name) ? Document_findNewAnchor(name || 'a', prev) : name;
         }
-        return new Alias(node.anchor);
+        return new Document_Alias(node.anchor);
     }
     createNode(value, replacer, options) {
         let _replacer = undefined;
@@ -18776,7 +19039,7 @@ class Document_Document {
             replacer = undefined;
         }
         const { aliasDuplicateObjects, anchorPrefix, flow, keepUndefined, onTagObj, tag } = options ?? {};
-        const { onAnchor, setAnchors, sourceObjects } = createNodeAnchors(this, 
+        const { onAnchor, setAnchors, sourceObjects } = Document_createNodeAnchors(this, 
         // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
         anchorPrefix || 'a');
         const ctx = {
@@ -18788,8 +19051,8 @@ class Document_Document {
             schema: this.schema,
             sourceObjects
         };
-        const node = createNode(value, tag, ctx);
-        if (flow && isCollection(node))
+        const node = Document_createNode(value, tag, ctx);
+        if (flow && Document_isCollection(node))
             node.flow = true;
         setAnchors();
         return node;
@@ -18801,7 +19064,7 @@ class Document_Document {
     createPair(key, value, options = {}) {
         const k = this.createNode(key, null, options);
         const v = this.createNode(value, null, options);
-        return new Pair(k, v);
+        return new Document_Pair(k, v);
     }
     /**
      * Removes a value from the document.
@@ -18815,7 +19078,7 @@ class Document_Document {
      * @returns `true` if the item was found and removed.
      */
     deleteIn(path) {
-        if (isEmptyPath(path)) {
+        if (Document_isEmptyPath(path)) {
             if (this.contents == null)
                 return false;
             // @ts-expect-error Presumed impossible if Strict extends false
@@ -18832,7 +19095,7 @@ class Document_Document {
      * `true` (collections are always returned intact).
      */
     get(key, keepScalar) {
-        return isCollection(this.contents)
+        return Document_isCollection(this.contents)
             ? this.contents.get(key, keepScalar)
             : undefined;
     }
@@ -18842,11 +19105,11 @@ class Document_Document {
      * `true` (collections are always returned intact).
      */
     getIn(path, keepScalar) {
-        if (isEmptyPath(path))
-            return !keepScalar && isScalar(this.contents)
+        if (Document_isEmptyPath(path))
+            return !keepScalar && Document_isScalar(this.contents)
                 ? this.contents.value
                 : this.contents;
-        return isCollection(this.contents)
+        return Document_isCollection(this.contents)
             ? this.contents.getIn(path, keepScalar)
             : undefined;
     }
@@ -18854,15 +19117,15 @@ class Document_Document {
      * Checks if the document includes a value with the key `key`.
      */
     has(key) {
-        return isCollection(this.contents) ? this.contents.has(key) : false;
+        return Document_isCollection(this.contents) ? this.contents.has(key) : false;
     }
     /**
      * Checks if the document includes a value at `path`.
      */
     hasIn(path) {
-        if (isEmptyPath(path))
+        if (Document_isEmptyPath(path))
             return this.contents !== undefined;
-        return isCollection(this.contents) ? this.contents.hasIn(path) : false;
+        return Document_isCollection(this.contents) ? this.contents.hasIn(path) : false;
     }
     /**
      * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -18871,7 +19134,7 @@ class Document_Document {
     set(key, value) {
         if (this.contents == null) {
             // @ts-expect-error We can't really know that this matches Contents.
-            this.contents = collectionFromPath(this.schema, [key], value);
+            this.contents = Document_collectionFromPath(this.schema, [key], value);
         }
         else if (assertCollection(this.contents)) {
             this.contents.set(key, value);
@@ -18882,13 +19145,13 @@ class Document_Document {
      * boolean to add/remove the item from the set.
      */
     setIn(path, value) {
-        if (isEmptyPath(path)) {
+        if (Document_isEmptyPath(path)) {
             // @ts-expect-error We can't really know that this matches Contents.
             this.contents = value;
         }
         else if (this.contents == null) {
             // @ts-expect-error We can't really know that this matches Contents.
-            this.contents = collectionFromPath(this.schema, Array.from(path), value);
+            this.contents = Document_collectionFromPath(this.schema, Array.from(path), value);
         }
         else if (assertCollection(this.contents)) {
             this.contents.setIn(path, value);
@@ -18910,7 +19173,7 @@ class Document_Document {
                 if (this.directives)
                     this.directives.yaml.version = '1.1';
                 else
-                    this.directives = new Directives({ version: '1.1' });
+                    this.directives = new Document_Directives({ version: '1.1' });
                 opt = { resolveKnownTags: false, schema: 'yaml-1.1' };
                 break;
             case '1.2':
@@ -18918,7 +19181,7 @@ class Document_Document {
                 if (this.directives)
                     this.directives.yaml.version = version;
                 else
-                    this.directives = new Directives({ version });
+                    this.directives = new Document_Directives({ version });
                 opt = { resolveKnownTags: true, schema: 'core' };
                 break;
             case null:
@@ -18935,7 +19198,7 @@ class Document_Document {
         if (options.schema instanceof Object)
             this.schema = options.schema;
         else if (opt)
-            this.schema = new Schema(Object.assign(opt, options));
+            this.schema = new Document_Schema(Object.assign(opt, options));
         else
             throw new Error(`With a null YAML version, the { schema: Schema } option is required`);
     }
@@ -18949,12 +19212,12 @@ class Document_Document {
             mapKeyWarned: false,
             maxAliasCount: typeof maxAliasCount === 'number' ? maxAliasCount : 100
         };
-        const res = toJS(this.contents, jsonArg ?? '', ctx);
+        const res = Document_toJS(this.contents, jsonArg ?? '', ctx);
         if (typeof onAnchor === 'function')
             for (const { count, res } of ctx.anchors.values())
                 onAnchor(res, count);
         return typeof reviver === 'function'
-            ? applyReviver(reviver, { '': res }, '', res)
+            ? Document_applyReviver(reviver, { '': res }, '', res)
             : res;
     }
     /**
@@ -18975,11 +19238,11 @@ class Document_Document {
             const s = JSON.stringify(options.indent);
             throw new Error(`"indent" option must be a positive integer, not ${s}`);
         }
-        return stringifyDocument(this, options);
+        return Document_stringifyDocument(this, options);
     }
 }
 function assertCollection(contents) {
-    if (isCollection(contents))
+    if (Document_isCollection(contents))
         return true;
     throw new Error('Expected a YAML collection as document contents');
 }
@@ -18996,17 +19259,17 @@ class YAMLError extends Error {
         this.pos = pos;
     }
 }
-class errors_YAMLParseError extends YAMLError {
+class YAMLParseError extends YAMLError {
     constructor(pos, code, message) {
         super('YAMLParseError', pos, code, message);
     }
 }
-class errors_YAMLWarning extends YAMLError {
+class YAMLWarning extends YAMLError {
     constructor(pos, code, message) {
         super('YAMLWarning', pos, code, message);
     }
 }
-const errors_prettifyError = (src, lc) => (error) => {
+const prettifyError = (src, lc) => (error) => {
     if (error.pos[0] === -1)
         return;
     error.linePos = error.pos.map(pos => lc.linePos(pos));
@@ -19046,7 +19309,7 @@ const errors_prettifyError = (src, lc) => (error) => {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/compose/resolve-props.js
-function resolve_props_resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
+function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
     let spaceBefore = false;
     let atNewline = startOnNewline;
     let hasSpace = startOnNewline;
@@ -19255,7 +19518,7 @@ function mapIncludes(ctx, items, search) {
         return false;
     const isEqual = typeof uniqueKeys === 'function'
         ? uniqueKeys
-        : (a, b) => a === b || (identity_isScalar(a) && identity_isScalar(b) && a.value === b.value);
+        : (a, b) => a === b || (isScalar(a) && isScalar(b) && a.value === b.value);
     return items.some(pair => isEqual(pair.key, search));
 }
 
@@ -19280,7 +19543,7 @@ function resolveBlockMap({ composeNode, composeEmptyNode }, ctx, bm, onError, ta
     for (const collItem of bm.items) {
         const { start, key, sep, value } = collItem;
         // key properties
-        const keyProps = resolve_props_resolveProps(start, {
+        const keyProps = resolveProps(start, {
             indicator: 'explicit-key-ind',
             next: key ?? sep?.[0],
             offset,
@@ -19325,7 +19588,7 @@ function resolveBlockMap({ composeNode, composeEmptyNode }, ctx, bm, onError, ta
         if (mapIncludes(ctx, map.items, keyNode))
             onError(keyStart, 'DUPLICATE_KEY', 'Map keys must be unique');
         // value properties
-        const valueProps = resolve_props_resolveProps(sep ?? [], {
+        const valueProps = resolveProps(sep ?? [], {
             indicator: 'map-value-ind',
             next: value,
             offset: keyNode.range[2],
@@ -19349,7 +19612,7 @@ function resolveBlockMap({ composeNode, composeEmptyNode }, ctx, bm, onError, ta
             if (ctx.schema.compat)
                 flowIndentCheck(bm.indent, value, onError);
             offset = valueNode.range[2];
-            const pair = new Pair_Pair(keyNode, valueNode);
+            const pair = new Pair(keyNode, valueNode);
             if (ctx.options.keepSourceTokens)
                 pair.srcToken = collItem;
             map.items.push(pair);
@@ -19364,7 +19627,7 @@ function resolveBlockMap({ composeNode, composeEmptyNode }, ctx, bm, onError, ta
                 else
                     keyNode.comment = valueProps.comment;
             }
-            const pair = new Pair_Pair(keyNode);
+            const pair = new Pair(keyNode);
             if (ctx.options.keepSourceTokens)
                 pair.srcToken = collItem;
             map.items.push(pair);
@@ -19393,7 +19656,7 @@ function resolveBlockSeq({ composeNode, composeEmptyNode }, ctx, bs, onError, ta
     let offset = bs.offset;
     let commentEnd = null;
     for (const { start, value } of bs.items) {
-        const props = resolve_props_resolveProps(start, {
+        const props = resolveProps(start, {
             indicator: 'seq-item-ind',
             next: value,
             offset,
@@ -19430,7 +19693,7 @@ function resolveBlockSeq({ composeNode, composeEmptyNode }, ctx, bs, onError, ta
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/compose/resolve-end.js
-function resolve_end_resolveEnd(end, offset, reqSpace, onError) {
+function resolveEnd(end, offset, reqSpace, onError) {
     let comment = '';
     if (end) {
         let hasSpace = false;
@@ -19495,7 +19758,7 @@ function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onErr
     for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
         const { start, key, sep, value } = collItem;
-        const props = resolve_props_resolveProps(start, {
+        const props = resolveProps(start, {
             flow: fcName,
             indicator: 'explicit-key-ind',
             next: key ?? sep?.[0],
@@ -19546,7 +19809,7 @@ function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onErr
                 }
                 if (prevItemComment) {
                     let prev = coll.items[coll.items.length - 1];
-                    if (identity_isPair(prev))
+                    if (isPair(prev))
                         prev = prev.value ?? prev.key;
                     if (prev.comment)
                         prev.comment += '\n' + prevItemComment;
@@ -19579,7 +19842,7 @@ function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onErr
                 onError(keyNode.range, 'BLOCK_IN_FLOW', blockMsg);
             ctx.atKey = false;
             // value properties
-            const valueProps = resolve_props_resolveProps(sep ?? [], {
+            const valueProps = resolveProps(sep ?? [], {
                 flow: fcName,
                 indicator: 'map-value-ind',
                 next: value,
@@ -19625,7 +19888,7 @@ function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onErr
                 else
                     keyNode.comment = valueProps.comment;
             }
-            const pair = new Pair_Pair(keyNode, valueNode);
+            const pair = new Pair(keyNode, valueNode);
             if (ctx.options.keepSourceTokens)
                 pair.srcToken = collItem;
             if (isMap) {
@@ -19660,7 +19923,7 @@ function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onErr
             ee.unshift(ce);
     }
     if (ee.length > 0) {
-        const end = resolve_end_resolveEnd(ee, cePos, ctx.options.strict, onError);
+        const end = resolveEnd(ee, cePos, ctx.options.strict, onError);
         if (end.comment) {
             if (coll.comment)
                 coll.comment += '\n' + end.comment;
@@ -19755,7 +20018,7 @@ function composeCollection(CN, ctx, token, props, onError) {
     }
     const coll = resolveCollection(CN, ctx, token, onError, tagName, tag);
     const res = tag.resolve?.(coll, msg => onError(tagToken, 'TAG_RESOLVE_FAILED', msg), ctx.options) ?? coll;
-    const node = identity_isNode(res)
+    const node = isNode(res)
         ? res
         : new Scalar(res);
     node.range = coll.range;
@@ -19770,7 +20033,7 @@ function composeCollection(CN, ctx, token, props, onError) {
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/compose/resolve-block-scalar.js
 
 
-function resolve_block_scalar_resolveBlockScalar(ctx, scalar, onError) {
+function resolveBlockScalar(ctx, scalar, onError) {
     const start = scalar.offset;
     const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
     if (!header)
@@ -19971,7 +20234,7 @@ function splitLines(source) {
 
 
 
-function resolve_flow_scalar_resolveFlowScalar(scalar, strict, onError) {
+function resolveFlowScalar(scalar, strict, onError) {
     const { offset, type, source, end } = scalar;
     let _type;
     let value;
@@ -20000,7 +20263,7 @@ function resolve_flow_scalar_resolveFlowScalar(scalar, strict, onError) {
             };
     }
     const valueEnd = offset + source.length;
-    const re = resolve_end_resolveEnd(end, valueEnd, strict, onError);
+    const re = resolveEnd(end, valueEnd, strict, onError);
     return {
         value,
         type: _type,
@@ -20202,25 +20465,25 @@ function parseCharCode(source, offset, length, onError) {
 
 function composeScalar(ctx, token, tagToken, onError) {
     const { value, type, comment, range } = token.type === 'block-scalar'
-        ? resolve_block_scalar_resolveBlockScalar(ctx, token, onError)
-        : resolve_flow_scalar_resolveFlowScalar(token, ctx.options.strict, onError);
+        ? resolveBlockScalar(ctx, token, onError)
+        : resolveFlowScalar(token, ctx.options.strict, onError);
     const tagName = tagToken
         ? ctx.directives.tagName(tagToken.source, msg => onError(tagToken, 'TAG_RESOLVE_FAILED', msg))
         : null;
     let tag;
     if (ctx.options.stringKeys && ctx.atKey) {
-        tag = ctx.schema[identity_SCALAR];
+        tag = ctx.schema[SCALAR];
     }
     else if (tagName)
         tag = findScalarTagByName(ctx.schema, value, tagName, tagToken, onError);
     else if (token.type === 'scalar')
         tag = findScalarTagByTest(ctx, value, token, onError);
     else
-        tag = ctx.schema[identity_SCALAR];
+        tag = ctx.schema[SCALAR];
     let scalar;
     try {
         const res = tag.resolve(value, msg => onError(tagToken ?? token, 'TAG_RESOLVE_FAILED', msg), ctx.options);
-        scalar = identity_isScalar(res) ? res : new Scalar(res);
+        scalar = isScalar(res) ? res : new Scalar(res);
     }
     catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -20241,7 +20504,7 @@ function composeScalar(ctx, token, tagToken, onError) {
 }
 function findScalarTagByName(schema, value, tagName, tagToken, onError) {
     if (tagName === '!')
-        return schema[identity_SCALAR]; // non-specific tag
+        return schema[SCALAR]; // non-specific tag
     const matchWithTest = [];
     for (const tag of schema.tags) {
         if (!tag.collection && tag.tag === tagName) {
@@ -20262,14 +20525,14 @@ function findScalarTagByName(schema, value, tagName, tagToken, onError) {
         return kt;
     }
     onError(tagToken, 'TAG_RESOLVE_FAILED', `Unresolved tag: ${tagName}`, tagName !== 'tag:yaml.org,2002:str');
-    return schema[identity_SCALAR];
+    return schema[SCALAR];
 }
 function findScalarTagByTest({ atKey, directives, schema }, value, token, onError) {
     const tag = schema.tags.find(tag => (tag.default === true || (atKey && tag.default === 'key')) &&
-        tag.test?.test(value)) || schema[identity_SCALAR];
+        tag.test?.test(value)) || schema[SCALAR];
     if (schema.compat) {
         const compat = schema.compat.find(tag => tag.default && tag.test?.test(value)) ??
-            schema[identity_SCALAR];
+            schema[SCALAR];
         if (tag.tag !== compat.tag) {
             const ts = directives.tagString(tag.tag);
             const cs = directives.tagString(compat.tag);
@@ -20318,8 +20581,8 @@ function emptyScalarPosition(offset, before, pos) {
 
 
 
-const CN = { composeNode: compose_node_composeNode, composeEmptyNode: compose_node_composeEmptyNode };
-function compose_node_composeNode(ctx, token, props, onError) {
+const CN = { composeNode, composeEmptyNode };
+function composeNode(ctx, token, props, onError) {
     const atKey = ctx.atKey;
     const { spaceBefore, comment, anchor, tag } = props;
     let node;
@@ -20360,12 +20623,12 @@ function compose_node_composeNode(ctx, token, props, onError) {
             isSrcToken = false;
         }
     }
-    node ?? (node = compose_node_composeEmptyNode(ctx, token.offset, undefined, null, props, onError));
+    node ?? (node = composeEmptyNode(ctx, token.offset, undefined, null, props, onError));
     if (anchor && node.anchor === '')
         onError(anchor, 'BAD_ALIAS', 'Anchor cannot be an empty string');
     if (atKey &&
         ctx.options.stringKeys &&
-        (!identity_isScalar(node) ||
+        (!isScalar(node) ||
             typeof node.value !== 'string' ||
             (node.tag && node.tag !== 'tag:yaml.org,2002:str'))) {
         const msg = 'With stringKeys, all keys must be strings';
@@ -20384,7 +20647,7 @@ function compose_node_composeNode(ctx, token, props, onError) {
         node.srcToken = token;
     return node;
 }
-function compose_node_composeEmptyNode(ctx, offset, before, pos, { spaceBefore, comment, anchor, tag, end }, onError) {
+function composeEmptyNode(ctx, offset, before, pos, { spaceBefore, comment, anchor, tag, end }, onError) {
     const token = {
         type: 'scalar',
         offset: emptyScalarPosition(offset, before, pos),
@@ -20406,13 +20669,13 @@ function compose_node_composeEmptyNode(ctx, offset, before, pos, { spaceBefore, 
     return node;
 }
 function composeAlias({ options }, { offset, source, end }, onError) {
-    const alias = new Alias_Alias(source.substring(1));
+    const alias = new Alias(source.substring(1));
     if (alias.source === '')
         onError(offset, 'BAD_ALIAS', 'Alias cannot be an empty string');
     if (alias.source.endsWith(':'))
         onError(offset + source.length - 1, 'BAD_ALIAS', 'Alias ending in : is ambiguous', true);
     const valueEnd = offset + source.length;
-    const re = resolve_end_resolveEnd(end, valueEnd, options.strict, onError);
+    const re = resolveEnd(end, valueEnd, options.strict, onError);
     alias.range = [offset, valueEnd, re.offset];
     if (re.comment)
         alias.comment = re.comment;
@@ -20422,14 +20685,19 @@ function composeAlias({ options }, { offset, source, end }, onError) {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/compose/compose-doc.js
+/* unused harmony import specifier */ var compose_doc_Document;
+/* unused harmony import specifier */ var compose_doc_composeNode;
+/* unused harmony import specifier */ var compose_doc_composeEmptyNode;
+/* unused harmony import specifier */ var compose_doc_resolveEnd;
+/* unused harmony import specifier */ var compose_doc_resolveProps;
 
 
 
 
 
-function compose_doc_composeDoc(options, directives, { offset, start, value, end }, onError) {
+function composeDoc(options, directives, { offset, start, value, end }, onError) {
     const opts = Object.assign({ _directives: directives }, options);
-    const doc = new Document(undefined, opts);
+    const doc = new compose_doc_Document(undefined, opts);
     const ctx = {
         atKey: false,
         atRoot: true,
@@ -20437,7 +20705,7 @@ function compose_doc_composeDoc(options, directives, { offset, start, value, end
         options: doc.options,
         schema: doc.schema
     };
-    const props = resolveProps(start, {
+    const props = compose_doc_resolveProps(start, {
         indicator: 'doc-start',
         next: value ?? end?.[0],
         offset,
@@ -20454,10 +20722,10 @@ function compose_doc_composeDoc(options, directives, { offset, start, value, end
     }
     // @ts-expect-error If Contents is set, let's trust the user
     doc.contents = value
-        ? composeNode(ctx, value, props, onError)
-        : composeEmptyNode(ctx, props.end, start, null, props, onError);
+        ? compose_doc_composeNode(ctx, value, props, onError)
+        : compose_doc_composeEmptyNode(ctx, props.end, start, null, props, onError);
     const contentEnd = doc.contents.range[2];
-    const re = resolveEnd(end, contentEnd, false, onError);
+    const re = compose_doc_resolveEnd(end, contentEnd, false, onError);
     if (re.comment)
         doc.comment = re.comment;
     doc.range = [offset, contentEnd, re.offset];
@@ -20467,6 +20735,14 @@ function compose_doc_composeDoc(options, directives, { offset, start, value, end
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/compose/composer.js
+/* unused harmony import specifier */ var composer_Directives;
+/* unused harmony import specifier */ var composer_Document;
+/* unused harmony import specifier */ var composer_YAMLWarning;
+/* unused harmony import specifier */ var composer_YAMLParseError;
+/* unused harmony import specifier */ var composer_isCollection;
+/* unused harmony import specifier */ var composer_isPair;
+/* unused harmony import specifier */ var composer_composeDoc;
+/* unused harmony import specifier */ var composer_resolveEnd;
 
 
 
@@ -20521,7 +20797,7 @@ function parsePrelude(prelude) {
  * const docs = new Composer().compose(tokens)
  * ```
  */
-class composer_Composer {
+class Composer {
     constructor(options = {}) {
         this.doc = null;
         this.atDirectives = false;
@@ -20531,12 +20807,12 @@ class composer_Composer {
         this.onError = (source, code, message, warning) => {
             const pos = getErrorPos(source);
             if (warning)
-                this.warnings.push(new YAMLWarning(pos, code, message));
+                this.warnings.push(new composer_YAMLWarning(pos, code, message));
             else
-                this.errors.push(new YAMLParseError(pos, code, message));
+                this.errors.push(new composer_YAMLParseError(pos, code, message));
         };
         // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-        this.directives = new Directives({ version: options.version || '1.2' });
+        this.directives = new composer_Directives({ version: options.version || '1.2' });
         this.options = options;
     }
     decorate(doc, afterDoc) {
@@ -20550,9 +20826,9 @@ class composer_Composer {
             else if (afterEmptyLine || doc.directives.docStart || !dc) {
                 doc.commentBefore = comment;
             }
-            else if (isCollection(dc) && !dc.flow && dc.items.length > 0) {
+            else if (composer_isCollection(dc) && !dc.flow && dc.items.length > 0) {
                 let it = dc.items[0];
-                if (isPair(it))
+                if (composer_isPair(it))
                     it = it.key;
                 const cb = it.commentBefore;
                 it.commentBefore = cb ? `${comment}\n${cb}` : comment;
@@ -20613,7 +20889,7 @@ class composer_Composer {
                 this.atDirectives = true;
                 break;
             case 'document': {
-                const doc = composeDoc(this.options, this.directives, token, this.onError);
+                const doc = composer_composeDoc(this.options, this.directives, token, this.onError);
                 if (this.atDirectives && !doc.directives.docStart)
                     this.onError(token, 'MISSING_CHAR', 'Missing directives-end/doc-start indicator line');
                 this.decorate(doc, false);
@@ -20634,7 +20910,7 @@ class composer_Composer {
                 const msg = token.source
                     ? `${token.message}: ${JSON.stringify(token.source)}`
                     : token.message;
-                const error = new YAMLParseError(getErrorPos(token), 'UNEXPECTED_TOKEN', msg);
+                const error = new composer_YAMLParseError(getErrorPos(token), 'UNEXPECTED_TOKEN', msg);
                 if (this.atDirectives || !this.doc)
                     this.errors.push(error);
                 else
@@ -20644,11 +20920,11 @@ class composer_Composer {
             case 'doc-end': {
                 if (!this.doc) {
                     const msg = 'Unexpected doc-end without preceding document';
-                    this.errors.push(new YAMLParseError(getErrorPos(token), 'UNEXPECTED_TOKEN', msg));
+                    this.errors.push(new composer_YAMLParseError(getErrorPos(token), 'UNEXPECTED_TOKEN', msg));
                     break;
                 }
                 this.doc.directives.docEnd = true;
-                const end = resolveEnd(token.end, token.offset + token.source.length, this.doc.options.strict, this.onError);
+                const end = composer_resolveEnd(token.end, token.offset + token.source.length, this.doc.options.strict, this.onError);
                 this.decorate(this.doc, true);
                 if (end.comment) {
                     const dc = this.doc.comment;
@@ -20658,7 +20934,7 @@ class composer_Composer {
                 break;
             }
             default:
-                this.errors.push(new YAMLParseError(getErrorPos(token), 'UNEXPECTED_TOKEN', `Unsupported token ${token.type}`));
+                this.errors.push(new composer_YAMLParseError(getErrorPos(token), 'UNEXPECTED_TOKEN', `Unsupported token ${token.type}`));
         }
     }
     /**
@@ -20675,7 +20951,7 @@ class composer_Composer {
         }
         else if (forceDoc) {
             const opts = Object.assign({ _directives: this.directives }, this.options);
-            const doc = new Document(undefined, opts);
+            const doc = new composer_Document(undefined, opts);
             if (this.atDirectives)
                 this.onError(endOffset, 'MISSING_CHAR', 'Missing directives-end indicator line');
             doc.range = [0, endOffset, endOffset];
@@ -20688,6 +20964,10 @@ class composer_Composer {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/parse/cst-scalar.js
+/* unused harmony import specifier */ var cst_scalar_resolveBlockScalar;
+/* unused harmony import specifier */ var cst_scalar_resolveFlowScalar;
+/* unused harmony import specifier */ var cst_scalar_YAMLParseError;
+/* unused harmony import specifier */ var cst_scalar_stringifyString;
 
 
 
@@ -20700,15 +20980,15 @@ function resolveAsScalar(token, strict = true, onError) {
             if (onError)
                 onError(offset, code, message);
             else
-                throw new YAMLParseError([offset, offset + 1], code, message);
+                throw new cst_scalar_YAMLParseError([offset, offset + 1], code, message);
         };
         switch (token.type) {
             case 'scalar':
             case 'single-quoted-scalar':
             case 'double-quoted-scalar':
-                return resolveFlowScalar(token, strict, _onError);
+                return cst_scalar_resolveFlowScalar(token, strict, _onError);
             case 'block-scalar':
-                return resolveBlockScalar({ options: { strict } }, token, _onError);
+                return cst_scalar_resolveBlockScalar({ options: { strict } }, token, _onError);
         }
     }
     return null;
@@ -20729,7 +21009,7 @@ function resolveAsScalar(token, strict = true, onError) {
  */
 function createScalarToken(value, context) {
     const { implicitKey = false, indent, inFlow = false, offset = -1, type = 'PLAIN' } = context;
-    const source = stringifyString({ type, value }, {
+    const source = cst_scalar_stringifyString({ type, value }, {
         implicitKey,
         indent: indent > 0 ? ' '.repeat(indent) : '',
         inFlow,
@@ -20798,7 +21078,7 @@ function setScalarValue(token, value, context = {}) {
             default:
                 type = 'PLAIN';
         }
-    const source = stringifyString({ type, value }, {
+    const source = cst_scalar_stringifyString({ type, value }, {
         implicitKey: implicitKey || indent === null,
         indent: indent !== null && indent > 0 ? ' '.repeat(indent) : '',
         inFlow,
@@ -21008,11 +21288,11 @@ function _visit(path, item, visitor) {
 
 
 /** The byte order mark */
-const cst_BOM = '\u{FEFF}';
+const BOM = '\u{FEFF}';
 /** Start of doc-mode */
-const cst_DOCUMENT = '\x02'; // C0: Start of Text
+const DOCUMENT = '\x02'; // C0: Start of Text
 /** Unexpected end of flow-mode */
-const cst_FLOW_END = '\x18'; // C0: Cancel
+const FLOW_END = '\x18'; // C0: Cancel
 /** Next token is a scalar value */
 const cst_SCALAR = '\x1f'; // C0: Unit Separator
 /** @returns `true` if `token` is a flow or block collection */
@@ -21027,11 +21307,11 @@ const cst_isScalar = (token) => !!token &&
 /** Get a printable representation of a lexer token */
 function prettyToken(token) {
     switch (token) {
-        case cst_BOM:
+        case BOM:
             return '<BOM>';
-        case cst_DOCUMENT:
+        case DOCUMENT:
             return '<DOC>';
-        case cst_FLOW_END:
+        case FLOW_END:
             return '<FLOW_END>';
         case cst_SCALAR:
             return '<SCALAR>';
@@ -21040,13 +21320,13 @@ function prettyToken(token) {
     }
 }
 /** Identify the type of a lexer token. May return `null` for unknown tokens. */
-function cst_tokenType(source) {
+function tokenType(source) {
     switch (source) {
-        case cst_BOM:
+        case BOM:
             return 'byte-order-mark';
-        case cst_DOCUMENT:
+        case DOCUMENT:
             return 'doc-mode';
-        case cst_FLOW_END:
+        case FLOW_END:
             return 'flow-error-end';
         case cst_SCALAR:
             return 'scalar';
@@ -21103,6 +21383,10 @@ function cst_tokenType(source) {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/parse/lexer.js
+/* unused harmony import specifier */ var lexer_BOM;
+/* unused harmony import specifier */ var lexer_DOCUMENT;
+/* unused harmony import specifier */ var lexer_FLOW_END;
+/* unused harmony import specifier */ var lexer_SCALAR;
 
 
 /*
@@ -21204,7 +21488,7 @@ const isNotAnchorChar = (ch) => !ch || invalidAnchorChars.has(ch);
  * - `\x1f` (Unit Separator): Next token is a scalar value
  * - `\u{FEFF}` (Byte order mark): Emitted separately outside documents
  */
-class lexer_Lexer {
+class Lexer {
     constructor() {
         /**
          * Flag indicating whether the end of the current buffer marks the end of
@@ -21349,7 +21633,7 @@ class lexer_Lexer {
         let line = this.getLine();
         if (line === null)
             return this.setNext('stream');
-        if (line[0] === BOM) {
+        if (line[0] === lexer_BOM) {
             yield* this.pushCount(1);
             line = line.substring(1);
         }
@@ -21384,7 +21668,7 @@ class lexer_Lexer {
             yield* this.pushNewline();
             return 'stream';
         }
-        yield DOCUMENT;
+        yield lexer_DOCUMENT;
         return yield* this.parseLineStart();
     }
     *parseLineStart() {
@@ -21490,7 +21774,7 @@ class lexer_Lexer {
             if (!atFlowEndMarker) {
                 // this is an error
                 this.flowLevel = 0;
-                yield FLOW_END;
+                yield lexer_FLOW_END;
                 return yield* this.parseLineStart();
             }
         }
@@ -21668,7 +21952,7 @@ class lexer_Lexer {
                     break;
             } while (true);
         }
-        yield SCALAR;
+        yield lexer_SCALAR;
         yield* this.pushToIndex(nl + 1, true);
         return yield* this.parseLineStart();
     }
@@ -21712,7 +21996,7 @@ class lexer_Lexer {
         }
         if (!ch && !this.atEnd)
             return this.setNext('plain-scalar');
-        yield SCALAR;
+        yield lexer_SCALAR;
         yield* this.pushToIndex(end + 1, true);
         return inFlow ? 'flow' : 'doc';
     }
@@ -21826,6 +22110,8 @@ class lexer_Lexer {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/parse/parser.js
+/* unused harmony import specifier */ var parser_tokenType;
+/* unused harmony import specifier */ var parser_Lexer;
 
 
 
@@ -21953,7 +22239,7 @@ function fixFlowSeqItems(fc) {
  * }
  * ```
  */
-class parser_Parser {
+class Parser {
     /**
      * @param onNewLine - If defined, called separately with the start position of
      *   each new line (in `parse()`, including the start of input).
@@ -21976,7 +22262,7 @@ class parser_Parser {
         /** The type of the current token, set in parse() */
         this.type = '';
         // Must be defined after `next()`
-        this.lexer = new Lexer();
+        this.lexer = new parser_Lexer();
         this.onNewLine = onNewLine;
     }
     /**
@@ -22006,7 +22292,7 @@ class parser_Parser {
             this.offset += source.length;
             return;
         }
-        const type = tokenType(source);
+        const type = parser_tokenType(source);
         if (!type) {
             const message = `Not a YAML token: ${source}`;
             yield* this.pop({ type: 'error', offset: this.offset, message, source });
@@ -22803,6 +23089,14 @@ class parser_Parser {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/dist/public-api.js
+/* unused harmony import specifier */ var public_api_Composer;
+/* unused harmony import specifier */ var public_api_Document;
+/* unused harmony import specifier */ var public_api_prettifyError;
+/* unused harmony import specifier */ var public_api_YAMLParseError;
+/* unused harmony import specifier */ var public_api_warn;
+/* unused harmony import specifier */ var public_api_isDocument;
+/* unused harmony import specifier */ var LineCounter;
+/* unused harmony import specifier */ var public_api_Parser;
 
 
 
@@ -22827,13 +23121,13 @@ function parseOptions(options) {
  */
 function parseAllDocuments(source, options = {}) {
     const { lineCounter, prettyErrors } = parseOptions(options);
-    const parser = new Parser(lineCounter?.addNewLine);
-    const composer = new Composer(options);
+    const parser = new public_api_Parser(lineCounter?.addNewLine);
+    const composer = new public_api_Composer(options);
     const docs = Array.from(composer.compose(parser.parse(source)));
     if (prettyErrors && lineCounter)
         for (const doc of docs) {
-            doc.errors.forEach(prettifyError(source, lineCounter));
-            doc.warnings.forEach(prettifyError(source, lineCounter));
+            doc.errors.forEach(public_api_prettifyError(source, lineCounter));
+            doc.warnings.forEach(public_api_prettifyError(source, lineCounter));
         }
     if (docs.length > 0)
         return docs;
@@ -22842,25 +23136,25 @@ function parseAllDocuments(source, options = {}) {
 /** Parse an input string into a single YAML.Document */
 function parseDocument(source, options = {}) {
     const { lineCounter, prettyErrors } = parseOptions(options);
-    const parser = new Parser(lineCounter?.addNewLine);
-    const composer = new Composer(options);
+    const parser = new public_api_Parser(lineCounter?.addNewLine);
+    const composer = new public_api_Composer(options);
     // `doc` is always set by compose.end(true) at the very latest
     let doc = null;
     for (const _doc of composer.compose(parser.parse(source), true, source.length)) {
         if (!doc)
             doc = _doc;
         else if (doc.options.logLevel !== 'silent') {
-            doc.errors.push(new YAMLParseError(_doc.range.slice(0, 2), 'MULTIPLE_DOCS', 'Source contains multiple documents; please use YAML.parseAllDocuments()'));
+            doc.errors.push(new public_api_YAMLParseError(_doc.range.slice(0, 2), 'MULTIPLE_DOCS', 'Source contains multiple documents; please use YAML.parseAllDocuments()'));
             break;
         }
     }
     if (prettyErrors && lineCounter) {
-        doc.errors.forEach(prettifyError(source, lineCounter));
-        doc.warnings.forEach(prettifyError(source, lineCounter));
+        doc.errors.forEach(public_api_prettifyError(source, lineCounter));
+        doc.warnings.forEach(public_api_prettifyError(source, lineCounter));
     }
     return doc;
 }
-function public_api_parse(src, reviver, options) {
+function parse(src, reviver, options) {
     let _reviver = undefined;
     if (typeof reviver === 'function') {
         _reviver = reviver;
@@ -22871,7 +23165,7 @@ function public_api_parse(src, reviver, options) {
     const doc = parseDocument(src, options);
     if (!doc)
         return null;
-    doc.warnings.forEach(warning => warn(doc.options.logLevel, warning));
+    doc.warnings.forEach(warning => public_api_warn(doc.options.logLevel, warning));
     if (doc.errors.length > 0) {
         if (doc.options.logLevel !== 'silent')
             throw doc.errors[0];
@@ -22899,9 +23193,9 @@ function public_api_stringify(value, replacer, options) {
         if (!keepUndefined)
             return undefined;
     }
-    if (isDocument(value) && !_replacer)
+    if (public_api_isDocument(value) && !_replacer)
         return value.toString(options);
-    return new Document(value, _replacer, options).toString(options);
+    return new public_api_Document(value, _replacer, options).toString(options);
 }
 
 
@@ -22926,6 +23220,7 @@ function public_api_stringify(value, replacer, options) {
 
 
 ;// ../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/browser/index.js
+/* unused harmony import specifier */ var YAML;
 // `export * as default from ...` fails on Webpack v4
 // https://github.com/eemeli/yaml/issues/228
 
@@ -22933,6 +23228,31 @@ function public_api_stringify(value, replacer, options) {
 
 
 ;// ../shared-types/dist/index.js
+/* unused harmony import specifier */ var dist_ExecutablePluginBindingSchema;
+/* unused harmony import specifier */ var dist_resolveAspectRatio;
+/* unused harmony import specifier */ var dist_normalizeModelId;
+/* unused harmony import specifier */ var dist_MODEL_CARDS;
+/* unused harmony import specifier */ var dist_ModelCardSchema;
+/* unused harmony import specifier */ var dist_MOCK_MODEL_CARDS;
+/* unused harmony import specifier */ var dist_AssetKindSchema;
+/* unused harmony import specifier */ var dist_agentReadToken;
+/* unused harmony import specifier */ var dist_validateAgentReadProof;
+/* unused harmony import specifier */ var dist_TIMELINE_DSL_TRACK_CATEGORIES;
+/* unused harmony import specifier */ var dist_parseFromExpression;
+/* unused harmony import specifier */ var dist_TIMELINE_DSL_FIELD_ANNOTATIONS;
+/* unused harmony import specifier */ var dist_validateTimelineItemMask;
+/* unused harmony import specifier */ var dist_validateTimelineItemKeyframes;
+/* unused harmony import specifier */ var dist_timelineMaskKeyframeSemanticIssues;
+/* unused harmony import specifier */ var dist_TIMELINE_DSL_DEFINITION;
+/* unused harmony import specifier */ var LoroMap3;
+/* unused harmony import specifier */ var dist_NEEDS_LAYOUT_POSITION;
+/* unused harmony import specifier */ var dist_autoInsertNode;
+/* unused harmony import specifier */ var LoroMap2;
+/* unused harmony import specifier */ var LoroMap;
+/* unused harmony import specifier */ var z10;
+/* unused harmony import specifier */ var dist_LoroDoc;
+/* unused harmony import specifier */ var dist_stringify;
+/* unused harmony import specifier */ var dist_parse;
 
 
 
@@ -25277,14 +25597,14 @@ var ActionExecutorSchema = z.enum([
 var ActionOperationSpecSchema = z.object({
   id: z.string().min(1),
   executor: ActionExecutorSchema,
-  outputKind: chunk_QT2SHN5K_AssetKindSchema
+  outputKind: AssetKindSchema
 });
 var ActionSpecSchema = z.object({
   id: z.string().min(1),
   version: z.string().min(1),
   name: z.string().min(1),
   family: ActionFamilySchema,
-  inputKinds: z.array(chunk_QT2SHN5K_AssetKindSchema).min(1),
+  inputKinds: z.array(AssetKindSchema).min(1),
   operations: z.array(ActionOperationSpecSchema).min(1)
 });
 var ActionInvocationModeSchema = z.enum(["explicit", "implicit"]);
@@ -25385,7 +25705,7 @@ function resolveAssetActionOutputKind(actionId, params) {
     (candidate) => candidate.id === operationId
   );
   if (!operation) throw new Error(`Unsupported ${actionId} operation: ${operationId}`);
-  return AssetKindSchema.parse(operation.outputKind);
+  return dist_AssetKindSchema.parse(operation.outputKind);
 }
 function legacyEditOriginForSurface(surface) {
   return surface === "canvas" ? "canvas-node" : "asset-preview";
@@ -25499,7 +25819,7 @@ var NodeDataSchema = z.object({
   /** User-configured parameters for custom actions */
   customActionParams: z.record(z.unknown()).optional(),
   /** Immutable plugin export/version/schema used by this node. */
-  pluginBinding: chunk_2B4Z6TLC_ExecutablePluginBindingSchema.optional(),
+  pluginBinding: ExecutablePluginBindingSchema.optional(),
   // ─── Actor attribution (Phase 0 multi-actor billing) ────────
   // Stamped by the creation site (web UI / ACP tool / CLI). For
   // legacy nodes created before this rollout these are absent —
@@ -25629,7 +25949,7 @@ function buildPendingAssetNode(input) {
     prompt,
     actionType
   };
-  if (pluginBinding) data.pluginBinding = ExecutablePluginBindingSchema.parse(pluginBinding);
+  if (pluginBinding) data.pluginBinding = dist_ExecutablePluginBindingSchema.parse(pluginBinding);
   if (isCustom) {
     if (customActionId) data.customActionId = customActionId;
     if (customActionParams) data.customActionParams = customActionParams;
@@ -25642,7 +25962,7 @@ function buildPendingAssetNode(input) {
   if (isText) {
     data.content = "";
   } else {
-    if (!isCustom) data.aspectRatio = resolveAspectRatio(modelId, modelParams);
+    if (!isCustom) data.aspectRatio = dist_resolveAspectRatio(modelId, modelParams);
     data.referenceMode = referenceMode || "none";
   }
   if (referenceImageAssetIds && referenceImageAssetIds.length > 0 && !isAudio) {
@@ -26036,7 +26356,7 @@ var CustomActionDefinitionBaseSchema = z.object({
   /** User variables this action needs (e.g. API keys). Platform injects at runtime. */
   secrets: z.array(CustomActionSecretSchema).default([]),
   /** Exact hosted/local executable plugin version represented by this action. */
-  pluginBinding: chunk_2B4Z6TLC_ExecutablePluginBindingSchema.optional(),
+  pluginBinding: ExecutablePluginBindingSchema.optional(),
   /** Capability set approved when this exact plugin version was installed. */
   pluginPermissions: ExecutablePluginPermissionsSchema.optional(),
   /** Provider/model binding used by MaaS-compatible actions. */
@@ -26397,7 +26717,7 @@ function reconcileCanvasGraph(doc) {
 }
 var DEFAULT_CANVAS_ID = "main";
 function projectCanvasReadToken(canvas) {
-  return agentReadToken({
+  return dist_agentReadToken({
     namespace: "canvas",
     subject: {
       id: canvas.id,
@@ -26407,13 +26727,13 @@ function projectCanvasReadToken(canvas) {
   });
 }
 function projectTimelineRevisionId(timelineId, state) {
-  return agentReadToken({
+  return dist_agentReadToken({
     namespace: "timeline-revision",
     subject: { timelineId, state }
   });
 }
 function projectTimelineReadToken(timeline) {
-  return agentReadToken({
+  return dist_agentReadToken({
     namespace: "timeline",
     subject: {
       id: timeline.id,
@@ -27044,11 +27364,11 @@ var Canvas = class {
       const virtualNode = {
         id: nodeId,
         type: rfType,
-        position: NEEDS_LAYOUT_POSITION,
+        position: dist_NEEDS_LAYOUT_POSITION,
         parentId: parentId ?? void 0,
         data: nodeData
       };
-      const result = autoInsertNode(nodeId, [...existingNodes, virtualNode], this.listEdges());
+      const result = dist_autoInsertNode(nodeId, [...existingNodes, virtualNode], this.listEdges());
       finalPos = result.position;
       this.insertNode(nodeId, rfType, nodeData, parentId ?? null, finalPos);
       if (result.pushedNodes.size > 0) {
@@ -27088,11 +27408,11 @@ var Canvas = class {
     const virtualNode = {
       id: nodeId,
       type: nodeType,
-      position: NEEDS_LAYOUT_POSITION,
+      position: dist_NEEDS_LAYOUT_POSITION,
       parentId: parentId ?? void 0,
       data
     };
-    const result = autoInsertNode(
+    const result = dist_autoInsertNode(
       nodeId,
       [...existingNodes, virtualNode],
       [...this.listEdges(), { source: sourceNodeId, target: nodeId }]
@@ -27178,8 +27498,8 @@ var Canvas = class {
       config = { kind: "custom", customDef, customActionParams };
     } else {
       const requestedModelId = nodeData.modelId || nodeData.model || "";
-      const modelId = normalizeModelId(requestedModelId) ?? requestedModelId;
-      const modelCard = MODEL_CARDS.find((c) => c.id === modelId);
+      const modelId = dist_normalizeModelId(requestedModelId) ?? requestedModelId;
+      const modelCard = dist_MODEL_CARDS.find((c) => c.id === modelId);
       if (!modelCard) {
         return {
           assetNodeId: "",
@@ -27220,7 +27540,7 @@ var Canvas = class {
       actionType,
       label: nodeData.label,
       referenceMode: nodeData.referenceMode,
-      pluginBinding: ExecutablePluginBindingSchema.safeParse(nodeData.pluginBinding).success ? ExecutablePluginBindingSchema.parse(nodeData.pluginBinding) : void 0
+      pluginBinding: dist_ExecutablePluginBindingSchema.safeParse(nodeData.pluginBinding).success ? dist_ExecutablePluginBindingSchema.parse(nodeData.pluginBinding) : void 0
     });
     if (validationError) {
       return { assetNodeId: "", assetNodeType: "", position: { x: 0, y: 0 }, error: validationError };
@@ -27814,7 +28134,7 @@ var directorStageContractSchemas = {
 var directorStageJsonSchemas = Object.fromEntries(
   Object.entries(directorStageContractSchemas).map(([contract, definition]) => [
     contract,
-    zodToJsonSchema_zodToJsonSchema(definition.schema, {
+    zodToJsonSchema(definition.schema, {
       name: definition.name,
       target: "jsonSchema7"
     })
@@ -27925,13 +28245,13 @@ function setDirectorStageFields(fields, stage) {
   });
 }
 function projectDirectorStageRevisionId(stageId, state) {
-  return agentReadToken({
+  return dist_agentReadToken({
     namespace: "director-stage-revision",
     subject: { stageId, state }
   });
 }
 function projectDirectorStageReadToken(stage) {
-  return agentReadToken({
+  return dist_agentReadToken({
     namespace: "director-stage",
     subject: {
       id: stage.id,
@@ -28675,19 +28995,19 @@ var ACTION_CHECKPOINT_SEMANTIC_FIELDS = /* @__PURE__ */ new Set([
   "status"
 ]);
 function canvasNodeReadToken(node) {
-  return agentReadToken({
+  return dist_agentReadToken({
     namespace: "node",
     subject: normalizeCanvasNodeReadSubject(node)
   });
 }
 function canvasEdgeReadToken(edge) {
-  return agentReadToken({
+  return dist_agentReadToken({
     namespace: "edge",
     subject: normalizeCanvasEdgeReadSubject(edge)
   });
 }
 function canvasEdgesReadToken(edges) {
-  return agentReadToken({
+  return dist_agentReadToken({
     namespace: "edges",
     subject: {
       edges: [...edges].map(normalizeCanvasEdgeReadSubject).sort((left, right) => String(left.id).localeCompare(String(right.id)))
@@ -28695,7 +29015,7 @@ function canvasEdgesReadToken(edges) {
   });
 }
 function canvasBatchDeleteReadToken(options) {
-  return agentReadToken({
+  return dist_agentReadToken({
     namespace: "canvas-batch-delete",
     subject: {
       nodes: [...options.nodes].map(normalizeCanvasNodeReadSubject).sort((left, right) => String(left.id).localeCompare(String(right.id))),
@@ -28704,7 +29024,7 @@ function canvasBatchDeleteReadToken(options) {
   });
 }
 function validateCanvasReadProof(options) {
-  return validateAgentReadProof({
+  return dist_validateAgentReadProof({
     actorClientType: options.actorClientType,
     operation: `canvas ${options.operation}`,
     currentReadToken: canvasNodeReadToken(options.node),
@@ -28715,7 +29035,7 @@ function validateCanvasReadProof(options) {
   });
 }
 function validateCanvasBatchDeleteReadProof(options) {
-  return validateAgentReadProof({
+  return dist_validateAgentReadProof({
     actorClientType: options.actorClientType,
     operation: "canvas batch delete",
     currentReadToken: canvasBatchDeleteReadToken({
@@ -28729,7 +29049,7 @@ function validateCanvasBatchDeleteReadProof(options) {
   });
 }
 function validateCanvasEdgeReadProof(options) {
-  return validateAgentReadProof({
+  return dist_validateAgentReadProof({
     actorClientType: options.actorClientType,
     operation: `canvas edge ${options.operation}`,
     currentReadToken: canvasEdgeReadToken(options.edge),
@@ -28740,7 +29060,7 @@ function validateCanvasEdgeReadProof(options) {
   });
 }
 function validateCanvasEdgesReadProof(options) {
-  return validateAgentReadProof({
+  return dist_validateAgentReadProof({
     actorClientType: options.actorClientType,
     operation: `canvas edge ${options.operation}`,
     currentReadToken: canvasEdgesReadToken(options.edges),
@@ -29116,7 +29436,11 @@ var DOStateSchema = z.object({
   updated_at: z.number()
 });
 
-var ModelUpstreamIdSchema = z.enum([
+var DynamicProviderIdSchema = z.string().trim().regex(
+  /^[a-z0-9][a-z0-9._-]*$/,
+  "Provider ecosystem ids must be lowercase plugin-safe identifiers."
+);
+var BuiltinModelUpstreamIdSchema = z.enum([
   "local",
   "mock",
   "fal",
@@ -29136,7 +29460,8 @@ var ModelUpstreamIdSchema = z.enum([
   "elevenlabs",
   "suno"
 ]);
-var ModelUpstreamApiShapeSchema = z.enum([
+var ModelUpstreamIdSchema = DynamicProviderIdSchema;
+var BuiltinModelUpstreamApiShapeSchema = z.enum([
   "local-asr",
   "local-tts",
   "fal",
@@ -29158,10 +29483,12 @@ var ModelUpstreamApiShapeSchema = z.enum([
   "elevenlabs",
   "suno"
 ]);
-var ProviderOAuthIdSchema = z.enum([
+var ModelUpstreamApiShapeSchema = DynamicProviderIdSchema;
+var BuiltinProviderOAuthIdSchema = z.enum([
   "dreamina"
 ]);
-var ProviderAccountIdSchema = z.enum([
+var ProviderOAuthIdSchema = DynamicProviderIdSchema;
+var BuiltinProviderAccountIdSchema = z.enum([
   "local",
   "official",
   "fal",
@@ -29177,6 +29504,7 @@ var ProviderAccountIdSchema = z.enum([
   "mock",
   "custom"
 ]);
+var ProviderAccountIdSchema = (/* unused pure expression or super */ null && (DynamicProviderIdSchema));
 var ModelProviderIdSchema = (/* unused pure expression or super */ null && (ModelUpstreamIdSchema));
 var ModelProviderApiShapeSchema = (/* unused pure expression or super */ null && (ModelUpstreamApiShapeSchema));
 var ModelCardProviderBindingSchema = z.object({
@@ -29203,7 +29531,7 @@ function compatibleTextApiShape(provider) {
   return null;
 }
 function customTextModelCard(config, providers) {
-  if (!config.custom || !config.name || MODEL_CARDS.some((model) => model.id === config.modelId)) return null;
+  if (!config.custom || !config.name || dist_MODEL_CARDS.some((model) => model.id === config.modelId)) return null;
   const providerByAccountId = new Map(
     providers.filter((provider) => !!provider.id).map((provider) => [provider.id, provider])
   );
@@ -29224,7 +29552,7 @@ function customTextModelCard(config, providers) {
   });
   if (providerImplementations.length === 0) return null;
   const availableProviders = [...new Set(providerImplementations.map((implementation) => implementation.providerId))];
-  return ModelCardSchema.parse({
+  return dist_ModelCardSchema.parse({
     id: config.modelId,
     name: config.name,
     provider: "Custom",
@@ -29261,12 +29589,12 @@ function customTextModelCard(config, providers) {
 }
 function buildEffectiveModelCards(options = {}) {
   const configs = z10.array(UserModelCardConfigSchema).parse(options.configs ?? []);
-  const baseModels = options.baseModels ?? MODEL_CARDS;
+  const baseModels = options.baseModels ?? dist_MODEL_CARDS;
   const configByModelId = new Map(configs.map((config) => [config.modelId, config]));
   const builtInModels = baseModels.map((model) => {
     const config = configByModelId.get(model.id);
     if (!config || config.custom) return model;
-    return ModelCardSchema.parse({
+    return dist_ModelCardSchema.parse({
       ...model,
       ...config.description !== void 0 ? { description: config.description } : {},
       ...config.promptGuidance !== void 0 ? { promptGuidance: config.promptGuidance } : {}
@@ -29347,7 +29675,9 @@ function routesFromModelCard(model) {
       ...implementation.defaultParamOverrides ? { defaultParamOverrides: { ...implementation.defaultParamOverrides } } : {},
       ...((_d = implementation.excludedParameterIds) == null ? void 0 : _d.length) ? { excludedParameterIds: [...implementation.excludedParameterIds] } : {},
       ...implementation.projectorPluginId ? { projectorPluginId: implementation.projectorPluginId } : {},
-      ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {}
+      ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {},
+      ...implementation.executorPluginId ? { executorPluginId: implementation.executorPluginId } : {},
+      ...implementation.executorExportId ? { executorExportId: implementation.executorExportId } : {}
     };
   });
 }
@@ -29482,8 +29812,8 @@ var MODEL_PROVIDER_DEFINITIONS = [
     requiredCredentials: [API_KEY_CREDENTIAL, "callbackUrl"]
   }
 ];
-var MODEL_DECLARED_ROUTES = routesFromModelCards(chunk_2B4Z6TLC_MODEL_CARDS);
-var MOCK_DECLARED_ROUTES = routesFromModelCards(chunk_2B4Z6TLC_MOCK_MODEL_CARDS);
+var MODEL_DECLARED_ROUTES = routesFromModelCards(MODEL_CARDS);
+var MOCK_DECLARED_ROUTES = routesFromModelCards(MOCK_MODEL_CARDS);
 var MOCK_ROUTES = [
   ...FAL_IMAGE_ROUTES.map(([modelCode, upstreamModel]) => falMock(modelCode, "image", upstreamModel)),
   ...FAL_VIDEO_ROUTES.map(([modelCode, upstreamModel]) => falMock(modelCode, "video", upstreamModel)),
@@ -29524,7 +29854,7 @@ function providerIdForRoute(route) {
 }
 function listProviderModelSupport(options = {}) {
   const includeMock = options.includeMock ?? false;
-  const models = options.models ?? (includeMock ? [...MODEL_CARDS, ...MOCK_MODEL_CARDS] : MODEL_CARDS);
+  const models = options.models ?? (includeMock ? [...dist_MODEL_CARDS, ...dist_MOCK_MODEL_CARDS] : dist_MODEL_CARDS);
   const modelById = new Map(models.map((model) => [model.id, model]));
   const modelDeclaredRoutes = routesFromModelCards(models);
   const routes = modelDeclaredRoutes.length > 0 ? includeMock ? [...modelDeclaredRoutes, ...MOCK_ROUTES] : modelDeclaredRoutes : MODEL_UPSTREAM_ROUTES;
@@ -29578,7 +29908,7 @@ function unsupportedProviderModelFilterIds(provider, options = {}) {
   );
   if (!support) return [...provider.supportedModelIds];
   const supported = new Set(support.models.map((model) => model.id));
-  return provider.supportedModelIds.filter((id) => !supported.has(normalizeModelId(id) ?? id.trim()));
+  return provider.supportedModelIds.filter((id) => !supported.has(dist_normalizeModelId(id) ?? id.trim()));
 }
 function invalidProviderModelFilters(providers, options = {}) {
   return providers.flatMap((provider) => {
@@ -29606,7 +29936,7 @@ function matchesProviderAccount(route, provider) {
   if (route.accountId && provider.id !== route.accountId) return false;
   if (provider.upstreamId && provider.upstreamId !== route.upstreamId) return false;
   if (provider.region && route.region && provider.region !== route.region) return false;
-  if (((_a = provider.supportedModelIds) == null ? void 0 : _a.length) && !provider.supportedModelIds.map((modelId) => normalizeModelId(modelId) ?? modelId.trim()).includes(route.modelCode)) return false;
+  if (((_a = provider.supportedModelIds) == null ? void 0 : _a.length) && !provider.supportedModelIds.map((modelId) => dist_normalizeModelId(modelId) ?? modelId.trim()).includes(route.modelCode)) return false;
   return true;
 }
 function providerCandidates(configuredProviders, route) {
@@ -29653,7 +29983,7 @@ function modelPriority(config, modelCode) {
   var _a;
   if (!config || !("modelPriorities" in config)) return void 0;
   const priorities = config.modelPriorities ?? {};
-  const priority = priorities[modelCode] ?? ((_a = Object.entries(priorities).find(([candidate]) => (normalizeModelId(candidate) ?? candidate.trim()) === modelCode)) == null ? void 0 : _a[1]);
+  const priority = priorities[modelCode] ?? ((_a = Object.entries(priorities).find(([candidate]) => (dist_normalizeModelId(candidate) ?? candidate.trim()) === modelCode)) == null ? void 0 : _a[1]);
   return typeof priority === "number" && Number.isFinite(priority) ? priority : void 0;
 }
 function modelPriorityForRoute(query, route, modelCode) {
@@ -29724,7 +30054,7 @@ function isEnabled(route, query) {
 }
 function candidateRoutes(query) {
   const direct = directFalRoute(query);
-  const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
+  const modelCode = dist_normalizeModelId(query.modelCode) ?? query.modelCode.trim();
   const routes = query.models ? [
     ...routesFromModelCards(query.models),
     ...query.allowMock ? MOCK_ROUTES : []
@@ -29735,7 +30065,7 @@ function candidateRoutes(query) {
 }
 function listModelUpstreamRoutes(query) {
   const candidates = candidateRoutes(query);
-  const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
+  const modelCode = dist_normalizeModelId(query.modelCode) ?? query.modelCode.trim();
   const sorted = candidates.filter((route) => isEnabled(route, query)).sort((a, b) => {
     const aConfig = configForRoute(query, a);
     const bConfig = configForRoute(query, b);
@@ -29778,7 +30108,7 @@ function applyModelProviderImplementation(model, route) {
   const defaultParams = Object.fromEntries(
     Object.entries(model.defaultParams).filter(([parameterId]) => !excludedParameterIds.has(parameterId))
   );
-  return ModelCardSchema.parse({
+  return dist_ModelCardSchema.parse({
     ...model,
     parameters,
     defaultParams: { ...defaultParams, ...route.defaultParamOverrides ?? {} },
@@ -29796,7 +30126,7 @@ function shouldAllowMockCatalogRoutes(options) {
 }
 function listModelCatalogEntries(options = {}) {
   const allowMock = shouldAllowMockCatalogRoutes(options);
-  const models = options.models ?? (allowMock ? [...MODEL_CARDS, ...MOCK_MODEL_CARDS] : MODEL_CARDS);
+  const models = options.models ?? (allowMock ? [...dist_MODEL_CARDS, ...dist_MOCK_MODEL_CARDS] : dist_MODEL_CARDS);
   return models.map((model) => {
     const query = {
       modelCode: model.id,
@@ -29832,7 +30162,7 @@ function listModelCatalogEntries(options = {}) {
   });
 }
 function listUserEnabledCanvasModelIds(options = {}) {
-  const models = options.models ?? MODEL_CARDS;
+  const models = options.models ?? dist_MODEL_CARDS;
   const providers = (options.configuredProviders ?? []).filter((provider) => provider.enabled !== false);
   if (providers.length === 0) {
     return models.map((model) => model.id);
@@ -29936,7 +30266,7 @@ function computeActionBuildPlan(targetId, reader) {
     const actionDefinitionRef = isCustom ? actionType.startsWith("custom:") ? actionType : `custom:${customActionId}` : modelId ? `model:${modelId}` : null;
     const kind = action ? isCustom ? "custom" : "model" : null;
     const actionLabel = typeof actionData.label === "string" ? actionData.label.trim() : "";
-    const actionDefinitionName = isCustom ? actionLabel || customActionId || actionType.replace(/^custom:/, "") || "Custom action" : modelId ? ((_a = MODEL_CARDS.find((card) => card.id === modelId)) == null ? void 0 : _a.name) ?? modelId : "Unknown";
+    const actionDefinitionName = isCustom ? actionLabel || customActionId || actionType.replace(/^custom:/, "") || "Custom action" : modelId ? ((_a = dist_MODEL_CARDS.find((card) => card.id === modelId)) == null ? void 0 : _a.name) ?? modelId : "Unknown";
     const rawLabel = typeof draftData.label === "string" ? draftData.label : draft.id;
     const label = rawLabel.trim() || draft.id;
     const content = typeof actionData.content === "string" ? actionData.content : "";
@@ -30126,7 +30456,7 @@ function loroSyncUpdateId(update) {
 var LoroSyncClient = class {
   constructor(options) {
     var _a;
-    this.doc = new LoroDoc();
+    this.doc = new dist_LoroDoc();
     this.canvasScopes = /* @__PURE__ */ new Map();
     this.ws = null;
     this.unsubscribe = null;
@@ -30415,7 +30745,7 @@ function isSidebandMessage(msg) {
   return t === "presence" || t === "activity" || t === "room.message" || t === "awareness.broadcast";
 }
 
-var TRACK_CATEGORIES = (/* unused pure expression or super */ null && (TIMELINE_DSL_TRACK_CATEGORIES));
+var TRACK_CATEGORIES = (/* unused pure expression or super */ null && (dist_TIMELINE_DSL_TRACK_CATEGORIES));
 var CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
   Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
     category,
@@ -30454,7 +30784,7 @@ function resolveItemFrom(itemId, ctx, visiting, cache) {
   if (!t) return 0;
   visiting.add(itemId);
   try {
-    const expr = parseFromExpression(t.item.from);
+    const expr = dist_parseFromExpression(t.item.from);
     if (!expr) {
       cache.set(itemId, 0);
       return 0;
@@ -30504,23 +30834,23 @@ function itemToYamlObject(item) {
 }
 function timelineDslToYaml(dsl) {
   const projected = {
-    ...annotatedYamlFields(dsl, TIMELINE_DSL_FIELD_ANNOTATIONS.root),
-    ...extraYamlFields(dsl, TIMELINE_DSL_FIELD_ANNOTATIONS.root)
+    ...annotatedYamlFields(dsl, dist_TIMELINE_DSL_FIELD_ANNOTATIONS.root),
+    ...extraYamlFields(dsl, dist_TIMELINE_DSL_FIELD_ANNOTATIONS.root)
   };
   projected.tracks = (dsl.tracks ?? []).map((track) => {
     const projectedTrack = {
-      ...annotatedYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track),
-      ...extraYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track)
+      ...annotatedYamlFields(track, dist_TIMELINE_DSL_FIELD_ANNOTATIONS.track),
+      ...extraYamlFields(track, dist_TIMELINE_DSL_FIELD_ANNOTATIONS.track)
     };
     projectedTrack.items = (track.items ?? []).map((item) => itemToYamlObject(item));
     return projectedTrack;
   });
-  return stringify(projected, { lineWidth: 0 });
+  return dist_stringify(projected, { lineWidth: 0 });
 }
 function timelineDslFromYaml(yamlText) {
   let raw;
   try {
-    raw = parse(yamlText);
+    raw = dist_parse(yamlText);
   } catch (e) {
     return { ok: false, error: `YAML parse error: ${e.message}` };
   }
@@ -30610,7 +30940,7 @@ function timelineDslFromYaml(yamlText) {
     ).map((item) => {
       var _a;
       const resolved = cache.get(item.id) ?? 0;
-      const isExpr = typeof item.from === "string" && ((_a = parseFromExpression(item.from)) == null ? void 0 : _a.kind) === "reference";
+      const isExpr = typeof item.from === "string" && ((_a = dist_parseFromExpression(item.from)) == null ? void 0 : _a.kind) === "reference";
       const out2 = {
         ...item,
         from: resolved
@@ -30632,10 +30962,10 @@ function timelineDslFromYaml(yamlText) {
       return out2;
     });
     void trackTargetsByTrack[trackIdx];
-    const trackExtras = extraYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track);
+    const trackExtras = extraYamlFields(track, dist_TIMELINE_DSL_FIELD_ANNOTATIONS.track);
     const annotatedTrackFields = annotatedYamlFields(
       track,
-      TIMELINE_DSL_FIELD_ANNOTATIONS.track,
+      dist_TIMELINE_DSL_FIELD_ANNOTATIONS.track,
       { validate: true, exclude: /* @__PURE__ */ new Set(["id"]) }
     );
     return {
@@ -30645,10 +30975,10 @@ function timelineDslFromYaml(yamlText) {
       items
     };
   });
-  const rootExtras = extraYamlFields(root, TIMELINE_DSL_FIELD_ANNOTATIONS.root);
+  const rootExtras = extraYamlFields(root, dist_TIMELINE_DSL_FIELD_ANNOTATIONS.root);
   const annotatedRootFields = annotatedYamlFields(
     root,
-    TIMELINE_DSL_FIELD_ANNOTATIONS.root,
+    dist_TIMELINE_DSL_FIELD_ANNOTATIONS.root,
     { validate: true, exclude: /* @__PURE__ */ new Set(["primaryTrackId"]) }
   );
   const out = {
@@ -30684,11 +31014,11 @@ function validateSemanticTimelineItem(item, track) {
     const subtitleError = validateSubtitleTextTimelineItem(item);
     if (subtitleError) return subtitleError;
   }
-  const maskError = validateTimelineItemMask(item.mask);
+  const maskError = dist_validateTimelineItemMask(item.mask);
   if (maskError) return `Timeline item ${item.id} ${maskError}`;
-  const keyframeError = validateTimelineItemKeyframes(item.keyframes, item.durationInFrames);
+  const keyframeError = dist_validateTimelineItemKeyframes(item.keyframes, item.durationInFrames);
   if (keyframeError) return `Timeline item ${item.id} ${keyframeError}`;
-  const maskKeyframeIssue = timelineMaskKeyframeSemanticIssues({
+  const maskKeyframeIssue = dist_timelineMaskKeyframeSemanticIssues({
     ...item,
     type: item.type,
     durationInFrames: item.durationInFrames,
@@ -30953,14 +31283,14 @@ function operationCatalogSection(title, operations) {
 ${rows.join("\n")}`;
 }
 function renderTimelineDslMarkdown() {
-  const feature = TIMELINE_DSL_DEFINITION.features.clipMask;
+  const feature = dist_TIMELINE_DSL_DEFINITION.features.clipMask;
   const fields = feature.fieldDefinitions;
   const fieldRows = Object.entries(fields).map(([field, definition]) => `| \`${field}\` | \`${definition.unit}\` | ${inlineJson(definition.defaultValue)} | ${definition.animatedChannel ? `\`${definition.animatedChannel}\`` : "static"} | ${definition.invalidValueDescription} | ${definition.description} |`);
   const channelLines = Object.entries(fields).filter(([, definition]) => definition.animatedChannel).map(([field, definition]) => `- \`${definition.animatedChannel}\` animates \`mask.${field}\`.`);
   const operationLines = Object.entries(feature.operations).map(([operation, description]) => `- \`${operation}\`: ${description}.`);
   const runtimeLines = Object.entries(feature.runtimeBehavior).map(([behavior, value]) => `- \`${behavior}\`: ${typeof value === "boolean" ? String(value) : words(value)}.`);
   const semantics = feature.semantics;
-  const catalog = TIMELINE_DSL_DEFINITION.fieldCatalog;
+  const catalog = dist_TIMELINE_DSL_DEFINITION.fieldCatalog;
   const catalogSections = [
     catalogSection("Root", catalog.root.fields),
     catalogSection("Track", catalog.track.fields),
@@ -30970,7 +31300,7 @@ function renderTimelineDslMarkdown() {
       descriptor.fields
     ))
   ];
-  const operationCatalog = TIMELINE_DSL_DEFINITION.operationCatalog;
+  const operationCatalog = dist_TIMELINE_DSL_DEFINITION.operationCatalog;
   const operationCatalogSections = [
     operationCatalogSection(
       "Agent, entity, and projection operations",
@@ -30996,8 +31326,8 @@ agent operations, and routing metadata. Complex UI controls and renderer behavio
 explicit adapters, with compile-time/test coverage gates against descriptor
 drift.
 
-Validate without mutation through \`${TIMELINE_DSL_DEFINITION.validation.cliCommand}\`
-or \`${TIMELINE_DSL_DEFINITION.validation.mcpTool}\`. Standard JSON Schema handles
+Validate without mutation through \`${dist_TIMELINE_DSL_DEFINITION.validation.cliCommand}\`
+or \`${dist_TIMELINE_DSL_DEFINITION.validation.mcpTool}\`. Standard JSON Schema handles
 the structural contract and portable applicability rules; generated
 \`x-clash-semantic-rules\` plus the executable validator cover owner-duration
 frame bounds and per-channel frame uniqueness.
@@ -31073,11 +31403,11 @@ The parser-verified example is generated at
 }
 function renderTimelineMaskKeyframesExampleYaml() {
   return timelineDslToYaml(
-    TIMELINE_DSL_DEFINITION.examples.maskKeyframes
+    dist_TIMELINE_DSL_DEFINITION.examples.maskKeyframes
   );
 }
 function renderTimelineMaskSkillReference() {
-  const feature = TIMELINE_DSL_DEFINITION.features.clipMask;
+  const feature = dist_TIMELINE_DSL_DEFINITION.features.clipMask;
   const fields = feature.fieldDefinitions;
   const fieldNames = Object.keys(fields).map((field) => `\`${field}\``).join(", ");
   const channels = Object.values(fields).flatMap((field) => field.animatedChannel ? [`\`${field.animatedChannel}\``] : []).join(", ");
@@ -31091,16 +31421,16 @@ The complete editor default is \`${inlineJson(feature.defaultMask)}\`.
 
 Use \`clash_timeline_schema\` for the generated JSON Schema, field descriptions,
 runtime semantics, operations, and executable YAML example; validate edits with
-\`${TIMELINE_DSL_DEFINITION.validation.mcpTool}\`. Remove a mask by
+\`${dist_TIMELINE_DSL_DEFINITION.validation.mcpTool}\`. Remove a mask by
 removing both \`item.mask\` and every generated mask channel.
 <!-- END GENERATED TIMELINE MASK CONTRACT -->`;
 }
 function renderTimelineAgentWorkflowReference() {
-  const validation = TIMELINE_DSL_DEFINITION.validation;
+  const validation = dist_TIMELINE_DSL_DEFINITION.validation;
   return `<!-- BEGIN GENERATED TIMELINE DSL WORKFLOW -->
 - The complete Timeline root, track, common item, item-variant, mask, and keyframe contract is generated from implementation annotations at
-  schema version \`${TIMELINE_DSL_DEFINITION.schemaVersion}\` with fingerprint
-  \`${TIMELINE_DSL_DEFINITION.contractFingerprint}\`.
+  schema version \`${dist_TIMELINE_DSL_DEFINITION.schemaVersion}\` with fingerprint
+  \`${dist_TIMELINE_DSL_DEFINITION.contractFingerprint}\`.
 - Before authoring unfamiliar Timeline fields, call \`clash_timeline_schema\`
   for the versioned JSON Schema, feature semantics, and executable examples.
 - Before apply or \`clash_timeline_save\`, validate the complete draft without
@@ -31334,7 +31664,7 @@ var ProviderUsageAuditEventSchema = z.object({
 
 
 const TRACK_CATEGORY_ORDER = [
-  ...chunk_PVL2FXUQ_TIMELINE_DSL_TRACK_CATEGORIES
+  ...TIMELINE_DSL_TRACK_CATEGORIES
 ];
 const CATEGORY_RANK = new Map(
   TRACK_CATEGORY_ORDER.map((category, index) => [category, index])
@@ -31360,7 +31690,7 @@ function itemTrackCategory(item) {
       return "visual";
   }
 }
-function trackCategories_inferTrackCategory(track, primaryTrackId) {
+function inferTrackCategory(track, primaryTrackId) {
   if (track.category) return track.category;
   if (primaryTrackId && track.id === primaryTrackId) return "primary";
   const itemCategories = new Set(track.items.map(itemTrackCategory));
@@ -31371,24 +31701,24 @@ function trackCategories_inferTrackCategory(track, primaryTrackId) {
   }
   return roleCategory ?? null;
 }
-function trackCategories_canTrackAcceptItem(track, item, primaryTrackId) {
-  const category = trackCategories_inferTrackCategory(track, primaryTrackId);
+function canTrackAcceptItem(track, item, primaryTrackId) {
+  const category = inferTrackCategory(track, primaryTrackId);
   if (!category) return track.items.length === 0;
   return CATEGORY_ALLOWED_TYPES[category].has(item.type);
 }
-function trackCategories_canBePrimaryTrack(track) {
+function canBePrimaryTrack(track) {
   if (track.category && track.category !== "primary" && track.category !== "visual") return false;
   return track.items.every((item) => CATEGORY_ALLOWED_TYPES.primary.has(item.type));
 }
-function trackCategories_normalizeTrackCategory(track, primaryTrackId) {
-  const category = trackCategories_inferTrackCategory(track, primaryTrackId);
+function normalizeTrackCategory(track, primaryTrackId) {
+  const category = inferTrackCategory(track, primaryTrackId);
   return category && track.category !== category ? { ...track, category } : track;
 }
 function trackCategoryRank(track, primaryTrackId) {
-  const category = trackCategories_inferTrackCategory(track, primaryTrackId);
+  const category = inferTrackCategory(track, primaryTrackId);
   return category ? CATEGORY_RANK.get(category) ?? 2 : 2;
 }
-function trackCategories_sortTracksByCategory(tracks, primaryTrackId) {
+function sortTracksByCategory(tracks, primaryTrackId) {
   return tracks.map((track, index) => ({ track, index, rank: trackCategoryRank(track, primaryTrackId) })).sort((a, b) => a.rank - b.rank || a.index - b.index).map(({ track }) => track);
 }
 function isTrackCategory(value) {
@@ -31396,6 +31726,8 @@ function isTrackCategory(value) {
 }
 
 ;// ../remotion-core/src/timelineKeyframes.ts
+/* unused harmony import specifier */ var timelineKeyframes_TIMELINE_MASK_KEYFRAME_CHANNELS;
+/* unused harmony import specifier */ var timelineKeyframes_DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION;
 
 
 const VECTOR_KEYFRAME_CHANNELS = new Set(
@@ -31420,7 +31752,7 @@ function sampleVector(keyframes, frame, fallback) {
     ]
   );
 }
-function timelineKeyframes_sampleTimelineKeyframes(keyframes, itemLocalFrame, fallback) {
+function sampleTimelineKeyframes(keyframes, itemLocalFrame, fallback) {
   return {
     position: sampleVector(keyframes == null ? void 0 : keyframes.position, itemLocalFrame, fallback.position),
     scale: sampleVector(keyframes == null ? void 0 : keyframes.scale, itemLocalFrame, fallback.scale),
@@ -31451,7 +31783,7 @@ function sampleTimelineMaskKeyframes(keyframes, itemLocalFrame, fallback) {
 function channelKeyframes(keyframes, channel) {
   return (keyframes == null ? void 0 : keyframes[channel]) ?? [];
 }
-function timelineKeyframes_upsertTimelineKeyframe(keyframes, channel, keyframe) {
+function upsertTimelineKeyframe(keyframes, channel, keyframe) {
   const nextChannel = [
     ...channelKeyframes(keyframes, channel).filter((candidate) => candidate.frame !== keyframe.frame),
     keyframe
@@ -31474,7 +31806,7 @@ function removeTimelineKeyframe(keyframes, channel, frame) {
 }
 function removeTimelineMaskKeyframes(keyframes) {
   if (!keyframes) return void 0;
-  const maskChannels = new Set(TIMELINE_MASK_KEYFRAME_CHANNELS);
+  const maskChannels = new Set(timelineKeyframes_TIMELINE_MASK_KEYFRAME_CHANNELS);
   const remaining = Object.fromEntries(
     Object.entries(keyframes).filter(([channel]) => !maskChannels.has(channel))
   );
@@ -31491,7 +31823,7 @@ function findAdjacentTimelineKeyframes(keyframes, channel, frame) {
 function interpolationAtFrame(keyframes, frame) {
   var _a, _b;
   const sorted = [...keyframes].sort((left, right) => left.frame - right.frame);
-  return ((_a = [...sorted].reverse().find((keyframe) => keyframe.frame <= frame)) == null ? void 0 : _a.interpolation) ?? ((_b = sorted[0]) == null ? void 0 : _b.interpolation) ?? DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION;
+  return ((_a = [...sorted].reverse().find((keyframe) => keyframe.frame <= frame)) == null ? void 0 : _a.interpolation) ?? ((_b = sorted[0]) == null ? void 0 : _b.interpolation) ?? timelineKeyframes_DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION;
 }
 function sampleChannelValue(channel, keyframes, frame) {
   const first = keyframes[0];
@@ -31521,11 +31853,11 @@ function sliceChannel(channel, keyframes, startFrame, durationInFrames) {
   const end = {
     frame: durationInFrames - 1,
     value: sampleChannelValue(channel, keyframes, endFrame),
-    interpolation: DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION
+    interpolation: timelineKeyframes_DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION
   };
   return [start, ...middle, end];
 }
-function timelineKeyframes_sliceTimelineKeyframes(keyframes, startFrame, durationInFrames) {
+function sliceTimelineKeyframes(keyframes, startFrame, durationInFrames) {
   if (!keyframes || durationInFrames <= 0) return void 0;
   const next = {};
   for (const channel of Object.keys(keyframes)) {
@@ -31539,23 +31871,23 @@ function timelineKeyframes_sliceTimelineKeyframes(keyframes, startFrame, duratio
   }
   return Object.keys(next).length > 0 ? next : void 0;
 }
-function timelineKeyframes_rippleDeleteTimelineKeyframes(keyframes, startFrame, endFrame, durationInFrames) {
+function rippleDeleteTimelineKeyframes(keyframes, startFrame, endFrame, durationInFrames) {
   if (!keyframes || durationInFrames <= 0) return void 0;
   const clampedStart = Math.max(0, Math.min(durationInFrames, startFrame));
   const clampedEnd = Math.max(clampedStart, Math.min(durationInFrames, endFrame));
   if (clampedEnd <= clampedStart) return keyframes;
   if (clampedStart === 0) {
-    return timelineKeyframes_sliceTimelineKeyframes(
+    return sliceTimelineKeyframes(
       keyframes,
       clampedEnd,
       durationInFrames - clampedEnd
     );
   }
   if (clampedEnd === durationInFrames) {
-    return timelineKeyframes_sliceTimelineKeyframes(keyframes, 0, clampedStart);
+    return sliceTimelineKeyframes(keyframes, 0, clampedStart);
   }
-  const left = timelineKeyframes_sliceTimelineKeyframes(keyframes, 0, clampedStart);
-  const right = timelineKeyframes_sliceTimelineKeyframes(
+  const left = sliceTimelineKeyframes(keyframes, 0, clampedStart);
+  const right = sliceTimelineKeyframes(
     keyframes,
     clampedEnd,
     durationInFrames - clampedEnd
@@ -31614,7 +31946,7 @@ const TIMELINE_CAPTION_STYLE_DEFAULTS = {
   fontWeight: 700,
   lineHeight: 1.18
 };
-const timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS = {
+const TIMELINE_SHARED_DEFAULTS = {
   root: {
     compositionWidth: 1920,
     compositionHeight: 1080,
@@ -31682,6 +32014,19 @@ const TIMELINE_EDITOR_ROOT_DEFAULT_OVERRIDES = {
 };
 
 ;// ../remotion-core/src/state/EditorContext.tsx
+/* unused harmony import specifier */ var jsx;
+/* unused harmony import specifier */ var useReducer;
+/* unused harmony import specifier */ var React;
+/* unused harmony import specifier */ var useContext;
+/* unused harmony import specifier */ var isSubtitleTextItem;
+/* unused harmony import specifier */ var splitSubtitleTextItemIntoStickers;
+/* unused harmony import specifier */ var EditorContext_canBePrimaryTrack;
+/* unused harmony import specifier */ var EditorContext_inferTrackCategory;
+/* unused harmony import specifier */ var EditorContext_normalizeTrackCategory;
+/* unused harmony import specifier */ var EditorContext_sortTracksByCategory;
+/* unused harmony import specifier */ var EditorContext_canTrackAcceptItem;
+/* unused harmony import specifier */ var EditorContext_sliceTimelineKeyframes;
+/* unused harmony import specifier */ var EditorContext_rippleDeleteTimelineKeyframes;
 
 
 
@@ -31693,10 +32038,10 @@ const TIMELINE_EDITOR_ROOT_DEFAULT_OVERRIDES = {
 function choosePrimaryTrackId(tracks, preferredId) {
   var _a, _b, _c, _d;
   const preferred = preferredId ? tracks.find((track) => track.id === preferredId) : void 0;
-  if (preferred && canBePrimaryTrack(preferred)) return preferred.id;
-  return ((_a = tracks.find((track) => track.category === "primary" && canBePrimaryTrack(track))) == null ? void 0 : _a.id) ?? ((_b = tracks.find((track) => track.role === "primary-video" && canBePrimaryTrack(track))) == null ? void 0 : _b.id) ?? ((_c = tracks.find(
-    (track) => track.items.some((item) => item.type !== "audio") && canBePrimaryTrack(track)
-  )) == null ? void 0 : _c.id) ?? ((_d = tracks.find((track) => track.items.length === 0 && canBePrimaryTrack(track))) == null ? void 0 : _d.id) ?? null;
+  if (preferred && EditorContext_canBePrimaryTrack(preferred)) return preferred.id;
+  return ((_a = tracks.find((track) => track.category === "primary" && EditorContext_canBePrimaryTrack(track))) == null ? void 0 : _a.id) ?? ((_b = tracks.find((track) => track.role === "primary-video" && EditorContext_canBePrimaryTrack(track))) == null ? void 0 : _b.id) ?? ((_c = tracks.find(
+    (track) => track.items.some((item) => item.type !== "audio") && EditorContext_canBePrimaryTrack(track)
+  )) == null ? void 0 : _c.id) ?? ((_d = tracks.find((track) => track.items.length === 0 && EditorContext_canBePrimaryTrack(track))) == null ? void 0 : _d.id) ?? null;
 }
 function createPersistentPrimaryTrack(tracks) {
   let id = "primary";
@@ -31729,12 +32074,12 @@ function normalizeStorylineTracks(tracks, preferredId) {
       return semanticTrack.category === "primary" ? semanticTrack : { ...semanticTrack, category: "primary" };
     }
     const base = semanticTrack.category === "primary" ? { ...semanticTrack, category: void 0 } : semanticTrack;
-    const inferred = inferTrackCategory(base);
+    const inferred = EditorContext_inferTrackCategory(base);
     if (inferred === "primary") return { ...base, category: "visual" };
-    return normalizeTrackCategory(base);
+    return EditorContext_normalizeTrackCategory(base);
   });
   return {
-    tracks: sortTracksByCategory(normalizedTracks, primaryTrackId),
+    tracks: EditorContext_sortTracksByCategory(normalizedTracks, primaryTrackId),
     primaryTrackId
   };
 }
@@ -31753,7 +32098,7 @@ function applyItemUpdates(item, updates) {
   }
   if (item.keyframes && !Object.prototype.hasOwnProperty.call(updates, "keyframes") && typeof updates.durationInFrames === "number" && updates.durationInFrames !== item.durationInFrames) {
     const nextFrom = typeof updates.from === "number" ? updates.from : item.from;
-    const sliced = sliceTimelineKeyframes(
+    const sliced = EditorContext_sliceTimelineKeyframes(
       item.keyframes,
       nextFrom - item.from,
       updates.durationInFrames
@@ -31900,7 +32245,7 @@ function rippleDeleteCaptionItem(item, startFrame, endFrame) {
     from: nextFrom,
     durationInFrames: nextDuration,
     ...item.keyframes ? {
-      keyframes: rippleDeleteTimelineKeyframes(
+      keyframes: EditorContext_rippleDeleteTimelineKeyframes(
         item.keyframes,
         overlapStart - itemStart,
         overlapEnd - itemStart,
@@ -31933,7 +32278,7 @@ function rippleDeleteItem(item, startFrame, endFrame) {
     const left = withoutFromExpression({
       ...item,
       durationInFrames: leftDuration,
-      ...item.keyframes ? { keyframes: sliceTimelineKeyframes(item.keyframes, 0, leftDuration) } : {}
+      ...item.keyframes ? { keyframes: EditorContext_sliceTimelineKeyframes(item.keyframes, 0, leftDuration) } : {}
     });
     const right = withoutFromExpression(advanceMediaSource({
       ...item,
@@ -31941,7 +32286,7 @@ function rippleDeleteItem(item, startFrame, endFrame) {
       from: startFrame,
       durationInFrames: rightDuration,
       ...item.keyframes ? {
-        keyframes: sliceTimelineKeyframes(
+        keyframes: EditorContext_sliceTimelineKeyframes(
           item.keyframes,
           endFrame - itemStart,
           rightDuration
@@ -31955,7 +32300,7 @@ function rippleDeleteItem(item, startFrame, endFrame) {
     return [withoutFromExpression({
       ...item,
       durationInFrames: nextDuration2,
-      ...item.keyframes ? { keyframes: sliceTimelineKeyframes(item.keyframes, 0, nextDuration2) } : {}
+      ...item.keyframes ? { keyframes: EditorContext_sliceTimelineKeyframes(item.keyframes, 0, nextDuration2) } : {}
     })];
   }
   const nextDuration = itemEnd - endFrame;
@@ -31964,7 +32309,7 @@ function rippleDeleteItem(item, startFrame, endFrame) {
     from: startFrame,
     durationInFrames: nextDuration,
     ...item.keyframes ? {
-      keyframes: sliceTimelineKeyframes(
+      keyframes: EditorContext_sliceTimelineKeyframes(
         item.keyframes,
         endFrame - itemStart,
         nextDuration
@@ -32016,17 +32361,17 @@ function sliceSubtitleSticker(item, base, segmentStartFrame, segmentDurationInFr
 }
 const editorInitialState = {
   tracks: [],
-  primaryTrackId: timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.root.primaryTrackId,
+  primaryTrackId: TIMELINE_SHARED_DEFAULTS.root.primaryTrackId,
   selectedItemId: null,
   selectedTrackId: null,
   currentFrame: 0,
   playing: false,
   zoom: 1,
   assets: [],
-  assetTranscripts: { ...timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.root.assetTranscripts },
-  compositionWidth: timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.root.compositionWidth,
-  compositionHeight: timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.root.compositionHeight,
-  fps: timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.root.fps,
+  assetTranscripts: { ...TIMELINE_SHARED_DEFAULTS.root.assetTranscripts },
+  compositionWidth: TIMELINE_SHARED_DEFAULTS.root.compositionWidth,
+  compositionHeight: TIMELINE_SHARED_DEFAULTS.root.compositionHeight,
+  fps: TIMELINE_SHARED_DEFAULTS.root.fps,
   durationInFrames: TIMELINE_EDITOR_ROOT_DEFAULT_OVERRIDES.durationInFrames
 };
 function unhandledEditorAction(action) {
@@ -32062,7 +32407,7 @@ function editorReducer(state, action) {
       };
     }
     case "SET_PRIMARY_TRACK":
-      if (!state.tracks.some((track) => track.id === action.payload && canBePrimaryTrack(track))) return state;
+      if (!state.tracks.some((track) => track.id === action.payload && EditorContext_canBePrimaryTrack(track))) return state;
       return {
         ...state,
         ...normalizeStorylineTracks(state.tracks, action.payload)
@@ -32072,7 +32417,7 @@ function editorReducer(state, action) {
         (t) => t.id === action.payload.id ? { ...t, ...action.payload.updates } : t
       );
       const updated = nextTracks.find((track) => track.id === action.payload.id);
-      if (updated && updated.items.some((item) => !canTrackAcceptItem(updated, item, state.primaryTrackId))) {
+      if (updated && updated.items.some((item) => !EditorContext_canTrackAcceptItem(updated, item, state.primaryTrackId))) {
         return state;
       }
       return {
@@ -32087,12 +32432,12 @@ function editorReducer(state, action) {
       };
     case "ADD_ITEM": {
       const targetTrack = state.tracks.find((track) => track.id === action.payload.trackId);
-      if (!targetTrack || !canTrackAcceptItem(targetTrack, action.payload.item, state.primaryTrackId)) {
+      if (!targetTrack || !EditorContext_canTrackAcceptItem(targetTrack, action.payload.item, state.primaryTrackId)) {
         return state;
       }
       const nextTracks = state.tracks.map((track) => {
         if (track.id !== action.payload.trackId) return track;
-        return normalizeTrackCategory({
+        return EditorContext_normalizeTrackCategory({
           ...track,
           items: [...track.items, action.payload.item]
         }, state.primaryTrackId);
@@ -32114,14 +32459,14 @@ function editorReducer(state, action) {
           payload: { trackId: sourceTrackId, itemId, updates: { from } }
         });
       }
-      if (!canTrackAcceptItem(targetTrack, item, state.primaryTrackId)) return state;
+      if (!EditorContext_canTrackAcceptItem(targetTrack, item, state.primaryTrackId)) return state;
       const movedItem = withoutFromExpression({ ...item, from });
       const movedTracks = state.tracks.map((track) => {
         if (track.id === sourceTrackId) {
           return { ...track, items: track.items.filter((candidate) => candidate.id !== itemId) };
         }
         if (track.id === targetTrackId) {
-          return normalizeTrackCategory({ ...track, items: [...track.items, movedItem] }, state.primaryTrackId);
+          return EditorContext_normalizeTrackCategory({ ...track, items: [...track.items, movedItem] }, state.primaryTrackId);
         }
         return track;
       }).filter((track) => track.items.length > 0 || track.id === state.primaryTrackId);
@@ -32220,7 +32565,7 @@ function editorReducer(state, action) {
             const firstItem = {
               ...cleanBase(item),
               durationInFrames: firstDuration,
-              ...item.keyframes ? { keyframes: sliceTimelineKeyframes(item.keyframes, 0, firstDuration) } : {},
+              ...item.keyframes ? { keyframes: EditorContext_sliceTimelineKeyframes(item.keyframes, 0, firstDuration) } : {},
               // 保持原始的 sourceStartInFrames，不添加任何人工锁
               // 素材的天然边界会自动限制扩展范围
               ...item.type === "video" || item.type === "audio" ? {
@@ -32234,7 +32579,7 @@ function editorReducer(state, action) {
               from: splitFrame,
               durationInFrames: secondDuration,
               ...item.keyframes ? {
-                keyframes: sliceTimelineKeyframes(
+                keyframes: EditorContext_sliceTimelineKeyframes(
                   item.keyframes,
                   consumedFrames,
                   secondDuration
@@ -32711,6 +33056,7 @@ function getItemAssetDurationInFrames(item, assets, fps) {
 }
 
 ;// ../remotion-core/src/audioGain.ts
+/* unused harmony import specifier */ var audioGain_TIMELINE_SHARED_DEFAULTS;
 
 
 const AUDIO_GAIN_DB_MIN = -60;
@@ -32730,14 +33076,14 @@ const resolveAudioGainDb = (item) => {
   const canonical = finiteNumber(fields.audioGainDb);
   if (canonical !== void 0) return clampAudioGainDb(canonical);
   const legacy = finiteNumber(fields.volume);
-  return legacy === void 0 ? TIMELINE_SHARED_DEFAULTS.audio.audioGainDb : linearAudioGainToDb(legacy);
+  return legacy === void 0 ? audioGain_TIMELINE_SHARED_DEFAULTS.audio.audioGainDb : linearAudioGainToDb(legacy);
 };
 const resolveLinearAudioGain = (item) => {
   const fields = item;
   const canonical = finiteNumber(fields.audioGainDb);
   if (canonical !== void 0) return audioGainDbToLinear(canonical);
   const legacy = finiteNumber(fields.volume);
-  return legacy === void 0 ? audioGainDbToLinear(timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.audio.audioGainDb) : Math.max(0, legacy);
+  return legacy === void 0 ? audioGainDbToLinear(TIMELINE_SHARED_DEFAULTS.audio.audioGainDb) : Math.max(0, legacy);
 };
 const resolveFadeFrames = (canonical, legacy, defaultValue) => {
   const canonicalFrames = finiteNumber(canonical);
@@ -32748,12 +33094,12 @@ const resolveFadeFrames = (canonical, legacy, defaultValue) => {
 const resolveAudioFadeInFrames = (item) => resolveFadeFrames(
   item.audioFadeInFrames,
   item.audioFadeIn,
-  timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.audio.audioFadeInFrames
+  TIMELINE_SHARED_DEFAULTS.audio.audioFadeInFrames
 );
 const resolveAudioFadeOutFrames = (item) => resolveFadeFrames(
   item.audioFadeOutFrames,
   item.audioFadeOut,
-  timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.audio.audioFadeOutFrames
+  TIMELINE_SHARED_DEFAULTS.audio.audioFadeOutFrames
 );
 const DEFAULT_AUDIO_DUCKING_SETTINGS = {
   amountDb: -18,
@@ -32793,6 +33139,8 @@ const computeAudioDuckingMultiplier = (settings, compositionFrame, windows) => {
 };
 
 ;// ../remotion-core/src/timelineSemantics.ts
+/* unused harmony import specifier */ var validateCanonicalTimelineDsl;
+/* unused harmony import specifier */ var timelineSemantics_isSubtitleTextItem;
 
 
 
@@ -32902,7 +33250,7 @@ function structuralLegacyCode(dsl, canonical) {
 function legacyCodeForCanonicalIssue(dsl, canonical) {
   if (canonical.ruleId === "timeline.caption.structured") {
     const item = itemAtCanonicalPath(dsl, canonical.path);
-    return item && !isSubtitleTextItem(item) ? "track.role_item_mismatch" : "item.invalid_caption";
+    return item && !timelineSemantics_isSubtitleTextItem(item) ? "track.role_item_mismatch" : "item.invalid_caption";
   }
   return CANONICAL_RULE_TO_LEGACY_CODE[canonical.ruleId] ?? structuralLegacyCode(dsl, canonical);
 }
@@ -33081,6 +33429,8 @@ function applyTimelineCommand(dsl, command) {
 }
 
 ;// ../remotion-core/src/canvasKeyframeEdits.ts
+/* unused harmony import specifier */ var canvasKeyframeEdits_sampleTimelineKeyframes;
+/* unused harmony import specifier */ var canvasKeyframeEdits_upsertTimelineKeyframe;
 
 
 const getStaticProperties = (item) => {
@@ -33097,7 +33447,7 @@ const getStaticProperties = (item) => {
 const getItemLocalFrame = (item, compositionFrame) => Math.max(0, Math.min(item.durationInFrames - 1, compositionFrame - item.from));
 const resolveCanvasTransformProperties = (item, compositionFrame) => {
   const properties = getStaticProperties(item);
-  const sampled = sampleTimelineKeyframes(
+  const sampled = canvasKeyframeEdits_sampleTimelineKeyframes(
     item.keyframes,
     getItemLocalFrame(item, compositionFrame),
     {
@@ -33126,7 +33476,7 @@ const applyCanvasTransformEdit = (item, compositionFrame, mode, visiblePropertie
       const currentKey = (_d = (_c = item.keyframes) == null ? void 0 : _c.position) == null ? void 0 : _d.find(
         (keyframe) => keyframe.frame === itemLocalFrame
       );
-      keyframes = upsertTimelineKeyframe(item.keyframes, "position", {
+      keyframes = canvasKeyframeEdits_upsertTimelineKeyframe(item.keyframes, "position", {
         frame: itemLocalFrame,
         value: [visibleProperties.x, visibleProperties.y],
         interpolation: (currentKey == null ? void 0 : currentKey.interpolation) ?? "linear"
@@ -33140,7 +33490,7 @@ const applyCanvasTransformEdit = (item, compositionFrame, mode, visiblePropertie
       const currentKey = (_h = (_g = item.keyframes) == null ? void 0 : _g.scale) == null ? void 0 : _h.find(
         (keyframe) => keyframe.frame === itemLocalFrame
       );
-      keyframes = upsertTimelineKeyframe(item.keyframes, "scale", {
+      keyframes = canvasKeyframeEdits_upsertTimelineKeyframe(item.keyframes, "scale", {
         frame: itemLocalFrame,
         value: [
           properties.width === 0 ? 0 : visibleProperties.width / properties.width,
@@ -33156,7 +33506,7 @@ const applyCanvasTransformEdit = (item, compositionFrame, mode, visiblePropertie
     const currentKey = (_l = (_k = item.keyframes) == null ? void 0 : _k.rotation) == null ? void 0 : _l.find(
       (keyframe) => keyframe.frame === itemLocalFrame
     );
-    keyframes = upsertTimelineKeyframe(item.keyframes, "rotation", {
+    keyframes = canvasKeyframeEdits_upsertTimelineKeyframe(item.keyframes, "rotation", {
       frame: itemLocalFrame,
       value: visibleProperties.rotation ?? 0,
       interpolation: (currentKey == null ? void 0 : currentKey.interpolation) ?? "linear"
@@ -33174,11 +33524,11 @@ const applyCanvasTransformEdit = (item, compositionFrame, mode, visiblePropertie
 
 
 const TIMELINE_RUNTIME_FIELD_COVERAGE = {
-  root: Object.keys(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.root),
-  track: Object.keys(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.track),
-  itemBase: Object.keys(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase),
+  root: Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.root),
+  track: Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.track),
+  itemBase: Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase),
   itemTypes: Object.fromEntries(
-    Object.entries(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes).map(([type, fields]) => [
+    Object.entries(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes).map(([type, fields]) => [
       type,
       Object.keys(fields)
     ])
@@ -33880,7 +34230,7 @@ function appendStyleValue(current, next, property) {
   current[property] = [currentValue, nextValue].filter(Boolean).join(" ");
 }
 function computeItemEffectStyle(options) {
-  const effects = options.effects ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.itemBase.effects;
+  const effects = options.effects ?? TIMELINE_SHARED_DEFAULTS.itemBase.effects;
   if (effects.length === 0) return {};
   const progress = Math.min(
     1,
@@ -34007,12 +34357,12 @@ function isSemanticallyAbsent(field, value) {
 }
 const DECLARED_FIELDS = {
   video: /* @__PURE__ */ new Set([
-    ...Object.keys(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase),
-    ...Object.keys(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes.video)
+    ...Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase),
+    ...Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes.video)
   ]),
   audio: /* @__PURE__ */ new Set([
-    ...Object.keys(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase),
-    ...Object.keys(chunk_PVL2FXUQ_TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes.audio)
+    ...Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase),
+    ...Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes.audio)
   ])
 };
 const CLASSIFIED_FIELDS = {
@@ -34048,7 +34398,7 @@ function canMergeMediaPair(left, right, protectedItemIds) {
     if (mode === "timeline-contiguous" && right.from !== left.from + left.durationInFrames) {
       return false;
     }
-    if (mode === "source-contiguous" && Number(rightValue ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS[type].sourceStartInFrames) !== Number(leftValue ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS[type].sourceStartInFrames) + left.durationInFrames) {
+    if (mode === "source-contiguous" && Number(rightValue ?? TIMELINE_SHARED_DEFAULTS[type].sourceStartInFrames) !== Number(leftValue ?? TIMELINE_SHARED_DEFAULTS[type].sourceStartInFrames) + left.durationInFrames) {
       return false;
     }
     if (mode === "absent" && (!isSemanticallyAbsent(field, leftValue) || !isSemanticallyAbsent(field, rightValue))) {
@@ -34864,7 +35214,7 @@ function computeTimelineItemLocalFrame(input) {
 }
 function computeTimelineItemRenderedSize(input) {
   const { item, compositionWidth, compositionHeight } = input;
-  const properties = item.properties ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.itemBase.properties;
+  const properties = item.properties ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties;
   const naturalWidth = item.naturalWidth || compositionWidth;
   const naturalHeight = item.naturalHeight || compositionHeight;
   if (properties.width === 1 && properties.height === 1) {
@@ -34890,8 +35240,8 @@ function computeTimelineItemTransformStyle(input) {
     compositionHeight,
     trackZIndex
   } = input;
-  const properties = item.properties ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.itemBase.properties;
-  const sampled = timelineKeyframes_sampleTimelineKeyframes(item.keyframes, itemLocalFrame, {
+  const properties = item.properties ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties;
+  const sampled = sampleTimelineKeyframes(item.keyframes, itemLocalFrame, {
     position: [properties.x, properties.y],
     scale: [1, 1],
     rotation: properties.rotation ?? 0,
@@ -35096,12 +35446,12 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
           {
             style: {
               color: resolvedItem.color,
-              fontSize: resolvedItem.fontSize || timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.text.fontSize,
-              fontFamily: resolvedItem.fontFamily || timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.text.fontFamily,
-              fontWeight: resolvedItem.fontWeight || timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.text.fontWeight,
-              textAlign: resolvedItem.textAlign ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.text.textAlign,
-              letterSpacing: `${resolvedItem.letterSpacingPx ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.text.letterSpacingPx}px`,
-              lineHeight: resolvedItem.lineHeight ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.text.lineHeight,
+              fontSize: resolvedItem.fontSize || TIMELINE_SHARED_DEFAULTS.text.fontSize,
+              fontFamily: resolvedItem.fontFamily || TIMELINE_SHARED_DEFAULTS.text.fontFamily,
+              fontWeight: resolvedItem.fontWeight || TIMELINE_SHARED_DEFAULTS.text.fontWeight,
+              textAlign: resolvedItem.textAlign ?? TIMELINE_SHARED_DEFAULTS.text.textAlign,
+              letterSpacing: `${resolvedItem.letterSpacingPx ?? TIMELINE_SHARED_DEFAULTS.text.letterSpacingPx}px`,
+              lineHeight: resolvedItem.lineHeight ?? TIMELINE_SHARED_DEFAULTS.text.lineHeight,
               padding: "0 40px"
             },
             children: resolvedItem.text
@@ -35248,7 +35598,7 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
           "data-derived-asset-id": overlayItem.derivedAssetId,
           "data-derived-kind": (_g = overlayItem.derivation) == null ? void 0 : _g.kind,
           style: applyTransform({ opacity: isObscured ? 0 : 1 }),
-          children: /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Img, { src, style: { width: "100%", height: "100%", objectFit: overlayItem.mediaFit ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS["derived-overlay"].mediaFit } })
+          children: /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.Img, { src, style: { width: "100%", height: "100%", objectFit: overlayItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS["derived-overlay"].mediaFit } })
         }
       );
     }
@@ -35269,7 +35619,7 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
             esm.OffthreadVideo,
             {
               src,
-              style: { width: "100%", height: "100%", objectFit: overlayItem.mediaFit ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS["derived-overlay"].mediaFit },
+              style: { width: "100%", height: "100%", objectFit: overlayItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS["derived-overlay"].mediaFit },
               pauseWhenBuffering: true,
               acceptableTimeShiftInSeconds: 0.25,
               muted: true,
@@ -35281,14 +35631,14 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
     }
   }
   if (resolvedItem.type === "video") {
-    const sourceStart = resolvedItem.sourceStartInFrames ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames;
+    const sourceStart = resolvedItem.sourceStartInFrames ?? TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames;
     const isBeforeVisible = typeof visibleFrom === "number" ? frame < visibleFrom : false;
     const isLastFrameOfItem = typeof endFrame === "number" ? frame === endFrame : false;
     const shouldHideLastFrame = !isGlobalEndItem && isLastFrameOfItem;
     const hidden = isBeforeVisible || shouldHideLastFrame;
     const resolvedSrc = resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src);
-    const fadeInFrames = resolvedItem.videoFadeIn ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.video.videoFadeIn;
-    const fadeOutFrames = resolvedItem.videoFadeOut ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.video.videoFadeOut;
+    const fadeInFrames = resolvedItem.videoFadeIn ?? TIMELINE_SHARED_DEFAULTS.video.videoFadeIn;
+    const fadeOutFrames = resolvedItem.videoFadeOut ?? TIMELINE_SHARED_DEFAULTS.video.videoFadeOut;
     const fadeInColor = resolvedItem.videoFadeInColor;
     const fadeOutColor = resolvedItem.videoFadeOutColor;
     const vf = visibleFrom ?? 0;
@@ -35333,7 +35683,7 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
             esm.OffthreadVideo,
             {
               src: resolvedSrc,
-              style: { width: "100%", height: "100%", objectFit: resolvedItem.mediaFit ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.video.mediaFit },
+              style: { width: "100%", height: "100%", objectFit: resolvedItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS.video.mediaFit },
               startFrom: sourceStart,
               pauseWhenBuffering: true,
               acceptableTimeShiftInSeconds: 0.25,
@@ -35347,7 +35697,7 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
     );
   }
   if (resolvedItem.type === "audio") {
-    const sourceStart = resolvedItem.sourceStartInFrames ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.audio.sourceStartInFrames;
+    const sourceStart = resolvedItem.sourceStartInFrames ?? TIMELINE_SHARED_DEFAULTS.audio.sourceStartInFrames;
     const baseVolume = resolveLinearAudioGain(resolvedItem);
     const audioFadeIn = resolveAudioFadeInFrames(resolvedItem);
     const audioFadeOut = resolveAudioFadeOutFrames(resolvedItem);
@@ -35365,8 +35715,8 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
   }
   if (resolvedItem.type === "image") {
     const imageItem = resolvedItem;
-    const fadeInFrames = imageItem.imageFadeIn ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.image.imageFadeIn;
-    const fadeOutFrames = imageItem.imageFadeOut ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.image.imageFadeOut;
+    const fadeInFrames = imageItem.imageFadeIn ?? TIMELINE_SHARED_DEFAULTS.image.imageFadeIn;
+    const fadeOutFrames = imageItem.imageFadeOut ?? TIMELINE_SHARED_DEFAULTS.image.imageFadeOut;
     const fadeInColor = imageItem.imageFadeInColor;
     const fadeOutColor = imageItem.imageFadeOutColor;
     const vf = visibleFrom ?? 0;
@@ -35401,7 +35751,7 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
                 if (!(itemsDomMapRef == null ? void 0 : itemsDomMapRef.current) || !el) return;
                 itemsDomMapRef.current.set(resolvedItem.id, el);
               },
-              style: { width: "100%", height: "100%", objectFit: imageItem.mediaFit ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.image.mediaFit }
+              style: { width: "100%", height: "100%", objectFit: imageItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS.image.mediaFit }
             }
           ),
           !isObscured && overlayColor && overlayOpacity > 0 && /* @__PURE__ */ (0,jsx_runtime.jsx)(esm.AbsoluteFill, { style: { backgroundColor: overlayColor, opacity: overlayOpacity } })
@@ -35427,7 +35777,7 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
           esm.Img,
           {
             src: resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src),
-            style: { width: "100%", height: "100%", objectFit: resolvedItem.mediaFit ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.sticker.mediaFit }
+            style: { width: "100%", height: "100%", objectFit: resolvedItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS.sticker.mediaFit }
           }
         )
       }
@@ -35470,7 +35820,7 @@ const ItemComponent = ({ item, durationInFrames: _durationInFrames, visibleFrom,
 const TransitionContent = ({ item }) => {
   if (!isTimelineTransitionRenderItem(item)) return null;
   if (item.type === "video") {
-    const sourceStart = item.sourceStartInFrames ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames;
+    const sourceStart = item.sourceStartInFrames ?? TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames;
     const src = item.resolvedSrcUrl || resolveAssetUrl(item.src);
     return /* @__PURE__ */ (0,jsx_runtime.jsx)(
       esm.OffthreadVideo,
@@ -35499,9 +35849,9 @@ const TransitionContent = ({ item }) => {
       {
         style: {
           color: textItem.color,
-          fontSize: textItem.fontSize || timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.text.fontSize,
-          fontFamily: textItem.fontFamily || timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.text.fontFamily,
-          fontWeight: textItem.fontWeight || timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.text.fontWeight,
+          fontSize: textItem.fontSize || TIMELINE_SHARED_DEFAULTS.text.fontSize,
+          fontFamily: textItem.fontFamily || TIMELINE_SHARED_DEFAULTS.text.fontFamily,
+          fontWeight: textItem.fontWeight || TIMELINE_SHARED_DEFAULTS.text.fontWeight,
           textAlign: "center",
           padding: "0 40px"
         },
@@ -35588,7 +35938,7 @@ const VideoComposition = ({ tracks, allNodes, selectedItemId, selectionBoxRef, i
       const mergedItems = mergeContiguousMediaItems(resolvedItems, { protectedItemIds });
       const playbackItems = mergedItems.map((item, idx) => {
         const prev = idx > 0 ? mergedItems[idx - 1] : void 0;
-        const isPrevContiguous = !!prev && prev.type === item.type && !!prev.resolvedSrcUrl && !!item.resolvedSrcUrl && prev.resolvedSrcUrl === item.resolvedSrcUrl && prev.from + prev.durationInFrames === item.from && (prev.sourceStartInFrames ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames) + prev.durationInFrames === (item.sourceStartInFrames ?? timelineFieldConsumers_TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames);
+        const isPrevContiguous = !!prev && prev.type === item.type && !!prev.resolvedSrcUrl && !!item.resolvedSrcUrl && prev.resolvedSrcUrl === item.resolvedSrcUrl && prev.from + prev.durationInFrames === item.from && (prev.sourceStartInFrames ?? TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames) + prev.durationInFrames === (item.sourceStartInFrames ?? TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames);
         const seqFrom = isPrevContiguous ? Math.max(0, item.from - 1) : item.from;
         const visibleFromRel = item.from - seqFrom;
         const endFrameRel = item.from + item.durationInFrames - 1 - seqFrom;
@@ -36850,10 +37200,10 @@ const RemotionRoot = (props) => {
 (0,esm.registerRoot)(RemotionRoot);
 
 
-/***/ }),
+/***/ },
 
-/***/ 2113:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 7835
+(__unused_webpack_module, exports) {
 
 "use strict";
 var __webpack_unused_export__;
@@ -36869,7 +37219,8 @@ const getEnvVariables = () => {
     if (window.remotion_isStudio) {
         // For the Studio, we already set the environment variables in index-html.ts.
         // We just add NODE_ENV here.
-        if (false) {}
+        if (false) // removed by dead control flow
+{}
         return {
             NODE_ENV: "production",
         };
@@ -36930,6 +37281,9 @@ exports.d = injectCSS;
     color: #0584f2
   }
 
+  .__remotion-vertical-scrollbar {
+    scrollbar-gutter: stable;
+  }
   .__remotion-vertical-scrollbar::-webkit-scrollbar {
       width: 6px;
   }
@@ -36982,7 +37336,6 @@ exports.d = injectCSS;
 
   .__remotion-timeline-slider {
     appearance: none;
-    width: 100px;
     border-radius: 3px;
     height: 6px;
     background-color: rgba(255, 255, 255, 0.1);
@@ -36999,10 +37352,10 @@ exports.d = injectCSS;
 `);
 
 
-/***/ }),
+/***/ },
 
-/***/ 5032:
-/***/ ((__unused_webpack_module, __unused_webpack___webpack_exports__, __webpack_require__) => {
+/***/ 6426
+(__unused_webpack_module, __unused_webpack___webpack_exports__, __webpack_require__) {
 
 "use strict";
 var react__WEBPACK_IMPORTED_MODULE_0___namespace_cache;
@@ -37016,10 +37369,302 @@ if (typeof globalThis === 'undefined') {
 }
 
 
-/***/ }),
+/***/ },
 
-/***/ 9997:
-/***/ ((module, __webpack_exports__, __webpack_require__) => {
+/***/ 2231
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   $: () => (/* binding */ TIMELINE_PLAYHEAD_COLOR),
+/* harmony export */   $3: () => (/* binding */ SERVER_DISCONNECTED_SHADOW),
+/* harmony export */   $F: () => (/* binding */ BLACK_ALPHA_50),
+/* harmony export */   $t: () => (/* binding */ NOTIFICATION_BORDER),
+/* harmony export */   A0: () => (/* binding */ FOCUS_BOX_SHADOW),
+/* harmony export */   A4: () => (/* binding */ TIMELINE_DROP_BLUE_ALPHA_16),
+/* harmony export */   A_: () => (/* binding */ TIMELINE_DROP_BLUE_ALPHA_12),
+/* harmony export */   Aj: () => (/* binding */ WHITE_ALPHA_60),
+/* harmony export */   Aq: () => (/* binding */ WHITE_ALPHA_80),
+/* harmony export */   Av: () => (/* binding */ getBackgroundFromHoverState),
+/* harmony export */   Ax: () => (/* binding */ BLACK_ALPHA_40),
+/* harmony export */   C4: () => (/* binding */ WHITE_HEX),
+/* harmony export */   DJ: () => (/* binding */ TIMELINE_MARQUEE_BLUE_ALPHA_16),
+/* harmony export */   Df: () => (/* binding */ WHITE_ALPHA_70),
+/* harmony export */   Dx: () => (/* binding */ COLOR_PICKER_ALPHA_TRANSPARENT),
+/* harmony export */   EX: () => (/* binding */ TIMELINE_SELECTED_LABEL_BACKGROUND_COLOR),
+/* harmony export */   GX: () => (/* binding */ WHITE_ALPHA_40),
+/* harmony export */   Hc: () => (/* binding */ TIMELINE_BLUE),
+/* harmony export */   J$: () => (/* binding */ SELECTED_GUIDE),
+/* harmony export */   JG: () => (/* binding */ BORDER_TIMELINE_MARQUEE_BLUE),
+/* harmony export */   JT: () => (/* binding */ WHITE_ALPHA_50),
+/* harmony export */   Ju: () => (/* binding */ COLOR_PICKER_SATURATION_BLACK_GRADIENT),
+/* harmony export */   Jz: () => (/* binding */ COLOR_PICKER_SATURATION_VALUE_GRADIENT),
+/* harmony export */   Ku: () => (/* binding */ COLOR_PICKER_CHECKER_BACKGROUND_COLOR),
+/* harmony export */   LR: () => (/* binding */ TIMELINE_IMAGE_GRADIENT),
+/* harmony export */   Lr: () => (/* binding */ BORDER_CURRENT_COLOR),
+/* harmony export */   M7: () => (/* binding */ INPUT_BACKGROUND),
+/* harmony export */   Nn: () => (/* binding */ BORDER_TRANSPARENT_2PX),
+/* harmony export */   Ol: () => (/* binding */ CURRENT_COLOR),
+/* harmony export */   P8: () => (/* binding */ COLOR_PICKER_HANDLE_SHADOW),
+/* harmony export */   RF: () => (/* binding */ KEYBOARD_SHORTCUT_KEY_COLOR),
+/* harmony export */   Rd: () => (/* binding */ TIMELINE_BACKGROUND_COLOR),
+/* harmony export */   Rv: () => (/* binding */ WHITE_ALPHA_72),
+/* harmony export */   S5: () => (/* binding */ INFO_BLUE),
+/* harmony export */   SC: () => (/* binding */ WHITE_ALPHA_06),
+/* harmony export */   Sl: () => (/* binding */ BLACK_FULL_HEX),
+/* harmony export */   Sn: () => (/* binding */ WHITE_ALPHA_08),
+/* harmony export */   T0: () => (/* binding */ INFO_BLUE_BACKGROUND),
+/* harmony export */   TB: () => (/* binding */ WHITE_ALPHA_12),
+/* harmony export */   TE: () => (/* binding */ RULER_COLOR),
+/* harmony export */   TH: () => (/* binding */ BORDER_WHITE_ALPHA_20),
+/* harmony export */   TM: () => (/* binding */ WHITE_ALPHA_25),
+/* harmony export */   Tn: () => (/* binding */ LOOPED_INDICATOR_DROP_SHADOW),
+/* harmony export */   UE: () => (/* binding */ WHITE),
+/* harmony export */   UH: () => (/* binding */ RED),
+/* harmony export */   Uv: () => (/* binding */ BLACK),
+/* harmony export */   VU: () => (/* binding */ SERVER_DISCONNECTED_BACKGROUND),
+/* harmony export */   W3: () => (/* binding */ WHITE_ALPHA_35),
+/* harmony export */   WY: () => (/* binding */ BORDER_WHITE_ALPHA_12),
+/* harmony export */   XB: () => (/* binding */ SHADOW_BLACK_ALPHA_50_TOWARDS_BOTTOM),
+/* harmony export */   Xf: () => (/* binding */ SHADOW_BLACK_ALPHA_50_TOWARDS_TOP),
+/* harmony export */   Y$: () => (/* binding */ UNSELECTED_GUIDE),
+/* harmony export */   ZV: () => (/* binding */ BLACK_ALPHA_85),
+/* harmony export */   Ze: () => (/* binding */ BLUE_HOVERED),
+/* harmony export */   Zk: () => (/* binding */ WHITE_ALPHA_05),
+/* harmony export */   _9: () => (/* binding */ ERROR_CODE_FRAME_BACKGROUND),
+/* harmony export */   _s: () => (/* binding */ WHITE_ALPHA_15),
+/* harmony export */   _u: () => (/* binding */ WHITE_ALPHA_20),
+/* harmony export */   ab: () => (/* binding */ BORDER_TIMELINE_DROP_BLUE),
+/* harmony export */   bR: () => (/* binding */ BORDER_INFO_BLUE),
+/* harmony export */   br: () => (/* binding */ WHITE_ALPHA_30),
+/* harmony export */   bw: () => (/* binding */ COLOR_PICKER_HUE_GRADIENT),
+/* harmony export */   cC: () => (/* binding */ BLACK_ALPHA_60),
+/* harmony export */   cH: () => (/* binding */ BORDER_BLACK_ALPHA_50),
+/* harmony export */   cx: () => (/* binding */ SELECTED_OUTLINE_DROP_SHADOW),
+/* harmony export */   dA: () => (/* binding */ BORDER_WHITE),
+/* harmony export */   ei: () => (/* binding */ BORDER_WHITE_2PX),
+/* harmony export */   er: () => (/* binding */ BLUE_DISABLED),
+/* harmony export */   ev: () => (/* binding */ BLACK_HEX),
+/* harmony export */   f1: () => (/* binding */ SELECTED_BACKGROUND),
+/* harmony export */   ft: () => (/* binding */ BLUE),
+/* harmony export */   g9: () => (/* binding */ CURRENT_COLOR_LOWERCASE),
+/* harmony export */   h4: () => (/* binding */ BACKGROUND),
+/* harmony export */   hP: () => (/* binding */ WHITE_ALPHA_10),
+/* harmony export */   hf: () => (/* binding */ LIGHT_TEXT),
+/* harmony export */   hw: () => (/* binding */ FAIL_COLOR),
+/* harmony export */   i3: () => (/* binding */ LIGHT_COLOR),
+/* harmony export */   ig: () => (/* binding */ SELECTED_OUTLINE_UV_DROP_SHADOW),
+/* harmony export */   is: () => (/* binding */ ERROR_MESSAGE_MASK_IMAGE),
+/* harmony export */   jU: () => (/* binding */ LINE_COLOR),
+/* harmony export */   jc: () => (/* binding */ NOTIFICATION_BACKGROUND),
+/* harmony export */   lJ: () => (/* binding */ CHECKERBOARD_BACKGROUND_IMAGE),
+/* harmony export */   lR: () => (/* binding */ BACKGROUND_HEX),
+/* harmony export */   lV: () => (/* binding */ BACKGROUND__TRANSPARENT),
+/* harmony export */   ld: () => (/* binding */ LIGHT_GRAY),
+/* harmony export */   nS: () => (/* binding */ BORDER_STACK_FRAME_BLUE),
+/* harmony export */   nj: () => (/* binding */ TRANSPARENT),
+/* harmony export */   no: () => (/* binding */ NOTIFICATION_SHADOW),
+/* harmony export */   nz: () => (/* binding */ ERROR_CODE_FRAME_LINE_BACKGROUND),
+/* harmony export */   p8: () => (/* binding */ RENDER_STATUS_BACKGROUND),
+/* harmony export */   pj: () => (/* binding */ WARNING_COLOR),
+/* harmony export */   qD: () => (/* binding */ TIMELINE_TRACK_SEPARATOR),
+/* harmony export */   rG: () => (/* binding */ TIMELINE_SELECTED_BACKGROUND_COLOR),
+/* harmony export */   sq: () => (/* binding */ ERROR_LINK_COLOR),
+/* harmony export */   t9: () => (/* binding */ BORDER_BLACK),
+/* harmony export */   u9: () => (/* binding */ COLOR_PICKER_CHECKER_BACKGROUND_IMAGE),
+/* harmony export */   uu: () => (/* binding */ WHITE_FULL_HEX),
+/* harmony export */   vu: () => (/* binding */ COLOR_PICKER_POPUP_SHADOW),
+/* harmony export */   xB: () => (/* binding */ BLACK_ALPHA_30),
+/* harmony export */   xm: () => (/* binding */ SHADOW_BLACK),
+/* harmony export */   yG: () => (/* binding */ TIMELINE_AUDIO_GRADIENT),
+/* harmony export */   zG: () => (/* binding */ BORDER_BLACK_ALPHA_60),
+/* harmony export */   zQ: () => (/* binding */ TIMELINE_VIDEO_GRADIENT),
+/* harmony export */   zd: () => (/* binding */ WHITE_ALPHA_45)
+/* harmony export */ });
+/* unused harmony exports __toESM, __require */
+var __create = Object.create;
+var __getProtoOf = Object.getPrototypeOf;
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __toESM = (mod, isNodeMode, target) => {
+  target = mod != null ? __create(__getProtoOf(mod)) : {};
+  const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
+  for (let key of __getOwnPropNames(mod))
+    if (!__hasOwnProp.call(to, key))
+      __defProp(to, key, {
+        get: () => mod[key],
+        enumerable: true
+      });
+  return to;
+};
+var __require = /* @__PURE__ */ (/* unused pure expression or super */ null && (((x) =>  true ? __webpack_require__(61) : 0)(function(x) {
+  if (true)
+    return __webpack_require__(61).apply(this, arguments);
+  // removed by dead control flow
+
+})));
+
+// src/helpers/colors.ts
+var BLACK = "black";
+var WHITE = "white";
+var RED = "red";
+var TRANSPARENT = "transparent";
+var CURRENT_COLOR = "currentColor";
+var CURRENT_COLOR_LOWERCASE = "currentcolor";
+var WHITE_HEX = "#fff";
+var WHITE_FULL_HEX = "#ffffff";
+var BLACK_HEX = "#000";
+var BLACK_FULL_HEX = "#000000";
+var BACKGROUND = "rgb(31,36,40)";
+var BACKGROUND_HEX = "#1f2428";
+var BACKGROUND__TRANSPARENT = "rgba(31,36,40, 0)";
+var INPUT_BACKGROUND = "#2f363d";
+var LIGHT_COLOR = "#ddd";
+var SELECTED_BACKGROUND = "hsla(0, 0%, 100%, 0.15)";
+var LIGHT_TEXT = "#A6A7A9";
+var RULER_COLOR = "#808080";
+var WHITE_ALPHA_05 = "rgba(255, 255, 255, 0.05)";
+var WHITE_ALPHA_06 = "rgba(255, 255, 255, 0.06)";
+var WHITE_ALPHA_08 = "rgba(255, 255, 255, 0.08)";
+var WHITE_ALPHA_10 = "rgba(255, 255, 255, 0.1)";
+var WHITE_ALPHA_12 = "rgba(255, 255, 255, 0.12)";
+var WHITE_ALPHA_15 = "rgba(255, 255, 255, 0.15)";
+var WHITE_ALPHA_20 = "rgba(255, 255, 255, 0.2)";
+var WHITE_ALPHA_25 = "rgba(255, 255, 255, 0.25)";
+var WHITE_ALPHA_30 = "rgba(255, 255, 255, 0.3)";
+var WHITE_ALPHA_35 = "rgba(255, 255, 255, 0.35)";
+var WHITE_ALPHA_40 = "rgba(255, 255, 255, 0.4)";
+var WHITE_ALPHA_45 = "rgba(255, 255, 255, 0.45)";
+var WHITE_ALPHA_50 = "rgba(255, 255, 255, 0.5)";
+var WHITE_ALPHA_60 = "rgba(255, 255, 255, 0.6)";
+var WHITE_ALPHA_70 = "rgba(255, 255, 255, 0.7)";
+var WHITE_ALPHA_72 = "rgba(255, 255, 255, 0.72)";
+var WHITE_ALPHA_80 = "rgba(255, 255, 255, 0.8)";
+var BLACK_ALPHA_10 = "rgba(0, 0, 0, 0.1)";
+var BLACK_ALPHA_28 = "rgba(0, 0, 0, 0.28)";
+var BLACK_ALPHA_30 = "rgba(0, 0, 0, 0.3)";
+var BLACK_ALPHA_40 = "rgba(0, 0, 0, 0.4)";
+var BLACK_ALPHA_50 = "rgba(0, 0, 0, 0.5)";
+var BLACK_ALPHA_60 = "rgba(0, 0, 0, 0.6)";
+var BLACK_ALPHA_80 = "rgba(0, 0, 0, 0.8)";
+var BLACK_ALPHA_85 = "rgba(0, 0, 0, 0.85)";
+var BLACK_ALPHA_90 = "rgba(0, 0, 0, 0.9)";
+var BLACK_OPAQUE = "rgba(0, 0, 0, 1)";
+var SELECTED_HOVER_BACKGROUND = "hsla(0, 0%, 100%, 0.25)";
+var FAIL_COLOR = "#ff3232";
+var WARNING_COLOR = "#f1c40f";
+var BLUE = "#0b84f3";
+var BLUE_HOVERED = "#4da3f7";
+var BLUE_DISABLED = "#284f73";
+var UNSELECTED_GUIDE = "#7e1219";
+var SELECTED_GUIDE = "#d22d3a";
+var LINE_COLOR = "#363A3E";
+var TIMELINE_TRACK_SEPARATOR = "#13161B";
+var LIGHT_GRAY = "#ccc";
+var KEYBOARD_SHORTCUT_KEY_COLOR = "#eee";
+var NOTIFICATION_BACKGROUND = "#111111";
+var RENDER_STATUS_BACKGROUND = "#222";
+var ERROR_CODE_FRAME_BACKGROUND = "#070707";
+var ERROR_CODE_FRAME_LINE_BACKGROUND = "#121212";
+var ERROR_LINK_COLOR = "#58a6ff";
+var INFO_BLUE = "#60a5fa";
+var SERVER_DISCONNECTED_BACKGROUND = "#e74c3c";
+var STACK_FRAME_BORDER_BLUE = "rgb(66, 144, 245)";
+var TIMELINE_BACKGROUND_COLOR = "#0F1113";
+var TIMELINE_SELECTED_BACKGROUND_COLOR = "#3B3F42";
+var TIMELINE_SELECTED_LABEL_BACKGROUND_COLOR = "#B0B0B0";
+var TIMELINE_BLUE = "#0b84ff";
+var TIMELINE_PLAYHEAD_COLOR = "#f02c00";
+var TIMELINE_DROP_BLUE_ALPHA_12 = "rgba(0, 155, 255, 0.12)";
+var TIMELINE_DROP_BLUE_ALPHA_16 = "rgba(0, 155, 255, 0.16)";
+var TIMELINE_DROP_BLUE_ALPHA_75 = "rgba(0, 155, 255, 0.75)";
+var TIMELINE_MARQUEE_BLUE_ALPHA_16 = "rgba(70, 130, 255, 0.16)";
+var TIMELINE_MARQUEE_BLUE_ALPHA_75 = "rgba(70, 130, 255, 0.75)";
+var INFO_BLUE_BACKGROUND = "rgba(59, 130, 246, 0.15)";
+var BORDER_BLACK = `1px solid ${BLACK_HEX}`;
+var BORDER_WHITE = `1px solid ${WHITE_HEX}`;
+var BORDER_WHITE_2PX = `2px solid ${WHITE_HEX}`;
+var BORDER_CURRENT_COLOR = `1px solid ${CURRENT_COLOR}`;
+var BORDER_TRANSPARENT_2PX = `2px solid ${TRANSPARENT}`;
+var BORDER_BLACK_ALPHA_50 = `1px solid ${BLACK_ALPHA_50}`;
+var BORDER_BLACK_ALPHA_60 = `1px solid ${BLACK_ALPHA_60}`;
+var BORDER_WHITE_ALPHA_12 = `1px solid ${WHITE_ALPHA_12}`;
+var BORDER_WHITE_ALPHA_20 = `1px solid ${WHITE_ALPHA_20}`;
+var BORDER_INFO_BLUE = "1px solid rgba(59, 130, 246, 0.4)";
+var BORDER_STACK_FRAME_BLUE = `1px solid ${STACK_FRAME_BORDER_BLUE}`;
+var BORDER_TIMELINE_DROP_BLUE = `1px solid ${TIMELINE_DROP_BLUE_ALPHA_75}`;
+var BORDER_TIMELINE_MARQUEE_BLUE = `1px solid ${TIMELINE_MARQUEE_BLUE_ALPHA_75}`;
+var SHADOW_BLACK = `0 0 4px ${BLACK}`;
+var SHADOW_BLACK_ALPHA_50_TOWARDS_BOTTOM = `0 2px 8px ${BLACK_ALPHA_50}`;
+var SHADOW_BLACK_ALPHA_50_TOWARDS_TOP = `0 -2px 8px ${BLACK_ALPHA_50}`;
+var NOTIFICATION_SHADOW = `0 2px 3px ${BLACK_OPAQUE}`;
+var SERVER_DISCONNECTED_SHADOW = `0 2px 4px ${BLACK_ALPHA_40}`;
+var COLOR_PICKER_POPUP_SHADOW = `0 4px 16px ${BLACK_ALPHA_50}`;
+var COLOR_PICKER_HANDLE_SHADOW = `0 0 0 1px ${BLACK_ALPHA_60}`;
+var NOTIFICATION_BORDER = `0.25px solid ${WHITE_ALPHA_10}`;
+var FOCUS_BOX_SHADOW = `inset 1px 1px #555, inset -1px -1px #555, ` + `inset 1px -1px #555, inset -1px 1px #555`;
+var CHECKERBOARD_BACKGROUND_IMAGE = `
+     linear-gradient(
+        45deg,
+        ${BLACK_ALPHA_10} 25%,
+        ${TRANSPARENT} 25%
+      ),
+      linear-gradient(135deg, ${BLACK_ALPHA_10} 25%, ${TRANSPARENT} 25%),
+      linear-gradient(45deg, ${TRANSPARENT} 75%, ${BLACK_ALPHA_10} 75%),
+      linear-gradient(135deg, ${TRANSPARENT} 75%, ${BLACK_ALPHA_10} 75%)
+    `;
+var COLOR_PICKER_CHECKER_BACKGROUND_IMAGE = `linear-gradient(45deg, #888 25%, ${TRANSPARENT} 25%), ` + `linear-gradient(-45deg, #888 25%, ${TRANSPARENT} 25%), ` + `linear-gradient(45deg, ${TRANSPARENT} 75%, #888 75%), ` + `linear-gradient(-45deg, ${TRANSPARENT} 75%, #888 75%)`;
+var COLOR_PICKER_CHECKER_BACKGROUND_COLOR = "#444";
+var COLOR_PICKER_SATURATION_VALUE_GRADIENT = `linear-gradient(to right, ${WHITE_HEX}, ${TRANSPARENT})`;
+var COLOR_PICKER_SATURATION_BLACK_GRADIENT = `linear-gradient(to top, ${BLACK_HEX}, ${TRANSPARENT})`;
+var COLOR_PICKER_ALPHA_TRANSPARENT = "rgba(0, 0, 0, 0)";
+var COLOR_PICKER_HUE_GRADIENT = "linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)";
+var ERROR_MESSAGE_MASK_IMAGE = `linear-gradient(to bottom, ${WHITE} 60%, ${TRANSPARENT})`;
+var SELECTED_OUTLINE_DROP_SHADOW = `drop-shadow(0 0 1px ${WHITE_ALPHA_20})`;
+var SELECTED_OUTLINE_UV_DROP_SHADOW = `drop-shadow(0 1px 2px ${BLACK_ALPHA_28})`;
+var LOOPED_INDICATOR_DROP_SHADOW = `drop-shadow(0 0 2px ${BLACK_ALPHA_90}) ` + `drop-shadow(0 1px 2px ${BLACK_ALPHA_80})`;
+var TIMELINE_AUDIO_GRADIENT = "linear-gradient(rgb(16 171 58), rgb(43 165 63) 60%)";
+var TIMELINE_VIDEO_GRADIENT = "linear-gradient(to top, #8e44ad, #9b59b6)";
+var TIMELINE_IMAGE_GRADIENT = "linear-gradient(to top, #2980b9, #3498db)";
+var getBackgroundFromHoverState = ({
+  selected,
+  hovered
+}) => {
+  if (selected) {
+    if (hovered) {
+      return SELECTED_HOVER_BACKGROUND;
+    }
+    return SELECTED_BACKGROUND;
+  }
+  if (hovered) {
+    return WHITE_ALPHA_06;
+  }
+  return TRANSPARENT;
+};
+
+
+
+
+/***/ },
+
+/***/ 61
+(module) {
+
+function webpackEmptyContext(req) {
+	var e = new Error("Cannot find module '" + req + "'");
+	e.code = 'MODULE_NOT_FOUND';
+	throw e;
+}
+webpackEmptyContext.keys = () => ([]);
+webpackEmptyContext.resolve = webpackEmptyContext;
+webpackEmptyContext.id = 61;
+module.exports = webpackEmptyContext;
+
+/***/ },
+
+/***/ 9997
+(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
@@ -44728,10 +45373,10 @@ function __wbindgen_typeof(arg0) {
 
 
 
-/***/ }),
+/***/ },
 
-/***/ 530:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 530
+(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
 /**
@@ -60785,10 +61430,10 @@ exports.hydrateRoot = function (container, initialChildren, options) {
 exports.version = "19.2.5";
 
 
-/***/ }),
+/***/ },
 
-/***/ 7850:
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/***/ 7850
+(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
 /**
@@ -61003,10 +61648,10 @@ exports.useFormStatus = function () {
 exports.version = "19.2.5";
 
 
-/***/ }),
+/***/ },
 
-/***/ 725:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ 725
+(module, __unused_webpack_exports, __webpack_require__) {
 
 "use strict";
 
@@ -61019,7 +61664,8 @@ function checkDCE() {
   ) {
     return;
   }
-  if (false) {}
+  if (false) // removed by dead control flow
+{}
   try {
     // Verify that the code above has been dead code eliminated (DCE'd).
     __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE(checkDCE);
@@ -61035,13 +61681,14 @@ if (true) {
   // DevTools can report bad minification during injection.
   checkDCE();
   module.exports = __webpack_require__(530);
-} else {}
+} else // removed by dead control flow
+{}
 
 
-/***/ }),
+/***/ },
 
-/***/ 7708:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ 7708
+(module, __unused_webpack_exports, __webpack_require__) {
 
 "use strict";
 
@@ -61054,7 +61701,8 @@ function checkDCE() {
   ) {
     return;
   }
-  if (false) {}
+  if (false) // removed by dead control flow
+{}
   try {
     // Verify that the code above has been dead code eliminated (DCE'd).
     __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE(checkDCE);
@@ -61070,13 +61718,14 @@ if (true) {
   // DevTools can report bad minification during injection.
   checkDCE();
   module.exports = __webpack_require__(7850);
-} else {}
+} else // removed by dead control flow
+{}
 
 
-/***/ }),
+/***/ },
 
-/***/ 2055:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 2055
+(__unused_webpack_module, exports) {
 
 "use strict";
 /**
@@ -61115,10 +61764,10 @@ exports.jsx = jsxProd;
 exports.jsxs = jsxProd;
 
 
-/***/ }),
+/***/ },
 
-/***/ 808:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 808
+(__unused_webpack_module, exports) {
 
 "use strict";
 /**
@@ -61665,36 +62314,38 @@ exports.useTransition = function () {
 exports.version = "19.2.5";
 
 
-/***/ }),
+/***/ },
 
-/***/ 1979:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ 1979
+(module, __unused_webpack_exports, __webpack_require__) {
 
 "use strict";
 
 
 if (true) {
   module.exports = __webpack_require__(808);
-} else {}
+} else // removed by dead control flow
+{}
 
 
-/***/ }),
+/***/ },
 
-/***/ 1627:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ 1627
+(module, __unused_webpack_exports, __webpack_require__) {
 
 "use strict";
 
 
 if (true) {
   module.exports = __webpack_require__(2055);
-} else {}
+} else // removed by dead control flow
+{}
 
 
-/***/ }),
+/***/ },
 
-/***/ 7146:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 7146
+(__unused_webpack_module, exports) {
 
 "use strict";
 /**
@@ -62039,26 +62690,27 @@ exports.unstable_wrapCallback = function (callback) {
 };
 
 
-/***/ }),
+/***/ },
 
-/***/ 1099:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ 1099
+(module, __unused_webpack_exports, __webpack_require__) {
 
 "use strict";
 
 
 if (true) {
   module.exports = __webpack_require__(7146);
-} else {}
+} else // removed by dead control flow
+{}
 
 
-/***/ }),
+/***/ },
 
-/***/ 288:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ 288
+(module, __unused_webpack_exports, __webpack_require__) {
 
-var __filename = "/index.js";
-var __dirname = "/";
+var __webpack_filename__ = "/index.js";
+var __webpack_dirname__ = "/";
 /*! *****************************************************************************
 Copyright (c) Microsoft Corporation. All rights reserved.
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use
@@ -70340,7 +70992,7 @@ var sys = (() => {
     const platform = _os.platform();
     const useCaseSensitiveFileNames2 = isFileSystemCaseSensitive();
     const fsRealpath = !!_fs.realpathSync.native ? process.platform === "win32" ? fsRealPathHandlingLongPath : _fs.realpathSync.native : _fs.realpathSync;
-    const executingFilePath = __filename.endsWith("sys.js") ? _path.join(_path.dirname(__dirname), "__fake__.js") : __filename;
+    const executingFilePath = __webpack_filename__.endsWith("sys.js") ? _path.join(_path.dirname(__webpack_dirname__), "__fake__.js") : __webpack_filename__;
     const fsSupportsRecursiveFsWatch = process.platform === "win32" || isMacOs;
     const getCurrentDirectory = memoize(() => process.cwd());
     const { watchFile: watchFile2, watchDirectory } = createSystemWatchFunctions({
@@ -70545,7 +71197,7 @@ var sys = (() => {
       if (platform === "win32" || platform === "win64") {
         return false;
       }
-      return !fileExists(swapCase(__filename));
+      return !fileExists(swapCase(__webpack_filename__));
     }
     function swapCase(s) {
       return s.replace(/\w/g, (ch) => {
@@ -225298,13 +225950,10 @@ function withContext(context, typePrintMode, cb) {
     );
     return [Diagnostics.Extract_base_class_to_variable];
   }
-  let ExpressionType;
-  ((ExpressionType2) => {
-    ExpressionType2[ExpressionType2["Text"] = 0] = "Text";
-    ExpressionType2[ExpressionType2["Computed"] = 1] = "Computed";
-    ExpressionType2[ExpressionType2["ArrayAccess"] = 2] = "ArrayAccess";
-    ExpressionType2[ExpressionType2["Identifier"] = 3] = "Identifier";
-  })(ExpressionType || (ExpressionType = {}));
+  // removed by dead control flow
+
+  // removed by dead control flow
+
   function transformDestructuringPatterns(bindingPattern) {
     var _a;
     const enclosingVariableDeclaration = bindingPattern.parent;
@@ -260090,10 +260739,10 @@ if (typeof console !== "undefined") {
 0 && (0);
 })({ get exports() { return ts; }, set exports(v) { ts = v; if ( true && module.exports) { module.exports = v; } } })
 
-/***/ }),
+/***/ },
 
-/***/ 5574:
-/***/ ((module) => {
+/***/ 5574
+(module) {
 
 function webpackEmptyContext(req) {
 	var e = new Error("Cannot find module '" + req + "'");
@@ -260105,75 +260754,76 @@ webpackEmptyContext.resolve = webpackEmptyContext;
 webpackEmptyContext.id = 5574;
 module.exports = webpackEmptyContext;
 
-/***/ }),
+/***/ },
 
-/***/ 6471:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ 6471
+(module, __unused_webpack_exports, __webpack_require__) {
 
 "use strict";
 module.exports = __webpack_require__.p + "75f3b2d9b4a8b742.wasm";
 
-/***/ }),
+/***/ },
 
-/***/ 210:
-/***/ (() => {
-
-/* (ignored) */
-
-/***/ }),
-
-/***/ 1440:
-/***/ (() => {
+/***/ 210
+() {
 
 /* (ignored) */
 
-/***/ }),
+/***/ },
 
-/***/ 792:
-/***/ (() => {
-
-/* (ignored) */
-
-/***/ }),
-
-/***/ 5091:
-/***/ (() => {
+/***/ 1440
+() {
 
 /* (ignored) */
 
-/***/ }),
+/***/ },
 
-/***/ 6144:
-/***/ (() => {
-
-/* (ignored) */
-
-/***/ }),
-
-/***/ 9337:
-/***/ (() => {
+/***/ 792
+() {
 
 /* (ignored) */
 
-/***/ }),
+/***/ },
 
-/***/ 7545:
-/***/ (() => {
+/***/ 5091
+() {
 
 /* (ignored) */
 
-/***/ }),
+/***/ },
 
-/***/ 7442:
-/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+/***/ 6144
+() {
+
+/* (ignored) */
+
+/***/ },
+
+/***/ 9337
+() {
+
+/* (ignored) */
+
+/***/ },
+
+/***/ 7545
+() {
+
+/* (ignored) */
+
+/***/ },
+
+/***/ 1366
+(__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 /* unused harmony export setBundleModeAndUpdate */
-/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1979);
-/* harmony import */ var react_dom_client__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(725);
-/* harmony import */ var remotion__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(2078);
-/* harmony import */ var remotion_no_react__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(5329);
-/* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(1627);
+/* harmony import */ var _chunk_fgedsvhb_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(2231);
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(1979);
+/* harmony import */ var react_dom_client__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(725);
+/* harmony import */ var remotion__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(270);
+/* harmony import */ var remotion_no_react__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(9313);
+/* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(1627);
 
 
 // src/renderEntry.tsx
@@ -260191,7 +260841,7 @@ var setBundleMode = (state) => {
 var getBundleMode = () => {
   return currentBundleMode;
 };
-remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.CSSUtils.injectCSS(remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.CSSUtils.makeDefaultPreviewCSS(null, "#1f2428"));
+remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.CSSUtils.injectCSS(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.CSSUtils.makeDefaultPreviewCSS(null, _chunk_fgedsvhb_js__WEBPACK_IMPORTED_MODULE_0__/* .BACKGROUND_HEX */ .lR));
 var getCanSerializeDefaultProps = (object) => {
   try {
     const str = JSON.stringify(object);
@@ -260207,8 +260857,8 @@ var isInHeadlessBrowser = () => {
   return typeof window.remotion_puppeteerTimeout !== "undefined";
 };
 var DelayedSpinner = () => {
-  const [show, setShow] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+  const [show, setShow] = (0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(false);
+  (0,react__WEBPACK_IMPORTED_MODULE_1__.useEffect)(() => {
     const timeout = setTimeout(() => {
       setShow(true);
     }, 2000);
@@ -260219,28 +260869,28 @@ var DelayedSpinner = () => {
   if (!show) {
     return null;
   }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsx)(remotion__WEBPACK_IMPORTED_MODULE_2__.AbsoluteFill, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(remotion__WEBPACK_IMPORTED_MODULE_3__.AbsoluteFill, {
     style: {
       justifyContent: "center",
       alignItems: "center",
       fontSize: 13,
       opacity: 0.6,
-      color: "white",
+      color: _chunk_fgedsvhb_js__WEBPACK_IMPORTED_MODULE_0__/* .WHITE */ .UE,
       fontFamily: "Helvetica, Arial, sans-serif"
     },
     children: "Loading Studio"
   });
 };
 var GetVideoComposition = ({ state }) => {
-  const { compositions, currentCompositionMetadata, canvasContent } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.CompositionManager);
-  const { setCanvasContent } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.CompositionSetters);
-  const portalContainer = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
-  const { delayRender, continueRender } = (0,remotion__WEBPACK_IMPORTED_MODULE_2__.useDelayRender)();
-  const [handle] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => delayRender(`Waiting for Composition "${state.compositionName}"`));
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+  const { compositions, currentCompositionMetadata, canvasContent } = (0,react__WEBPACK_IMPORTED_MODULE_1__.useContext)(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.CompositionManager);
+  const { setCanvasContent } = (0,react__WEBPACK_IMPORTED_MODULE_1__.useContext)(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.CompositionSetters);
+  const portalContainer = (0,react__WEBPACK_IMPORTED_MODULE_1__.useRef)(null);
+  const { delayRender, continueRender } = (0,remotion__WEBPACK_IMPORTED_MODULE_3__.useDelayRender)();
+  const [handle] = (0,react__WEBPACK_IMPORTED_MODULE_1__.useState)(() => delayRender(`Waiting for Composition "${state.compositionName}"`));
+  (0,react__WEBPACK_IMPORTED_MODULE_1__.useEffect)(() => {
     return () => continueRender(handle);
   }, [handle, continueRender]);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+  (0,react__WEBPACK_IMPORTED_MODULE_1__.useEffect)(() => {
     if (compositions.length === 0) {
       return;
     }
@@ -260253,7 +260903,7 @@ var GetVideoComposition = ({ state }) => {
       compositionId: foundComposition.id
     });
   }, [compositions, state, currentCompositionMetadata, setCanvasContent]);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+  (0,react__WEBPACK_IMPORTED_MODULE_1__.useEffect)(() => {
     if (!canvasContent) {
       return;
     }
@@ -260261,28 +260911,28 @@ var GetVideoComposition = ({ state }) => {
     if (!current) {
       throw new Error("portal did not render");
     }
-    current.appendChild(remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.portalNode());
+    current.appendChild(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.portalNode());
     continueRender(handle);
     return () => {
-      current.removeChild(remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.portalNode());
+      current.removeChild(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.portalNode());
     };
   }, [canvasContent, handle, continueRender]);
   if (!currentCompositionMetadata) {
     return null;
   }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsx)("div", {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)("div", {
     ref: portalContainer,
     id: "remotion-canvas",
     style: {
       width: currentCompositionMetadata.width,
       height: currentCompositionMetadata.height,
       display: "flex",
-      backgroundColor: "transparent"
+      backgroundColor: _chunk_fgedsvhb_js__WEBPACK_IMPORTED_MODULE_0__/* .TRANSPARENT */ .nj
     }
   });
 };
 var DEFAULT_ROOT_COMPONENT_TIMEOUT = 1e4;
-var waitForRootHandle = (0,remotion__WEBPACK_IMPORTED_MODULE_2__.delayRender)("Loading root component - See https://remotion.dev/docs/troubleshooting/loading-root-component if you experience a timeout", {
+var waitForRootHandle = (0,remotion__WEBPACK_IMPORTED_MODULE_3__.delayRender)("Loading root component - See https://remotion.dev/docs/troubleshooting/loading-root-component if you experience a timeout", {
   timeoutInMilliseconds: typeof window === "undefined" ? DEFAULT_ROOT_COMPONENT_TIMEOUT : window.remotion_puppeteerTimeout ?? DEFAULT_ROOT_COMPONENT_TIMEOUT
 });
 var videoContainer = document.getElementById("video-container");
@@ -260291,15 +260941,15 @@ var getRootForElement = () => {
   if (root) {
     return root;
   }
-  root = react_dom_client__WEBPACK_IMPORTED_MODULE_1__.createRoot(videoContainer);
+  root = react_dom_client__WEBPACK_IMPORTED_MODULE_2__.createRoot(videoContainer);
   return root;
 };
 var renderToDOM = (content) => {
-  if (!react_dom_client__WEBPACK_IMPORTED_MODULE_1__.createRoot) {
-    if (remotion_no_react__WEBPACK_IMPORTED_MODULE_3__.NoReactInternals.ENABLE_V5_BREAKING_CHANGES) {
+  if (!react_dom_client__WEBPACK_IMPORTED_MODULE_2__.createRoot) {
+    if (remotion_no_react__WEBPACK_IMPORTED_MODULE_4__/* .NoReactInternals */ .JC.ENABLE_V5_BREAKING_CHANGES) {
       throw new Error("Remotion 5.0 does only support React 18+. However, ReactDOM.createRoot() is undefined.");
     }
-    react_dom_client__WEBPACK_IMPORTED_MODULE_1__.render(content, videoContainer);
+    react_dom_client__WEBPACK_IMPORTED_MODULE_2__.render(content, videoContainer);
     return;
   }
   getRootForElement().render(content);
@@ -260307,15 +260957,11 @@ var renderToDOM = (content) => {
 var renderContent = (Root) => {
   const bundleMode = getBundleMode();
   if (bundleMode.type === "composition") {
-    const markup = /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsxs)(remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.RemotionRoot, {
-      audioEnabled: window.remotion_audioEnabled,
-      videoEnabled: window.remotion_videoEnabled,
-      logLevel: window.remotion_logLevel,
-      numberOfAudioTags: 0,
-      audioLatencyHint: window.remotion_audioLatencyHint ?? "interactive",
+    const markup = /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.CompositionManagerProvider, {
+      initialCanvasContent: null,
       onlyRenderComposition: bundleMode.compositionName,
       currentCompositionMetadata: {
-        props: remotion_no_react__WEBPACK_IMPORTED_MODULE_3__.NoReactInternals.deserializeJSONWithSpecialTypes(bundleMode.serializedResolvedPropsWithSchema),
+        props: remotion_no_react__WEBPACK_IMPORTED_MODULE_4__/* .NoReactInternals */ .JC.deserializeJSONWithSpecialTypes(bundleMode.serializedResolvedPropsWithSchema),
         durationInFrames: bundleMode.compositionDurationInFrames,
         fps: bundleMode.compositionFps,
         height: bundleMode.compositionHeight,
@@ -260324,27 +260970,50 @@ var renderContent = (Root) => {
         defaultOutName: bundleMode.compositionDefaultOutName,
         defaultVideoImageFormat: bundleMode.compositionDefaultVideoImageFormat,
         defaultPixelFormat: bundleMode.compositionDefaultPixelFormat,
-        defaultProResProfile: bundleMode.compositionDefaultProResProfile
+        defaultProResProfile: bundleMode.compositionDefaultProResProfile,
+        defaultSampleRate: bundleMode.compositionDefaultSampleRate
       },
-      children: [
-        /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsx)(Root, {}),
-        /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsx)(GetVideoComposition, {
-          state: bundleMode
+      initialCompositions: [],
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.RemotionRootContexts, {
+        frameState: null,
+        audioEnabled: window.remotion_audioEnabled,
+        videoEnabled: window.remotion_videoEnabled,
+        logLevel: window.remotion_logLevel ?? "info",
+        numberOfAudioTags: 0,
+        audioLatencyHint: window.remotion_audioLatencyHint ?? "playback",
+        previewSampleRate: window.remotion_previewSampleRate,
+        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsxs)(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.RenderAssetManagerProvider, {
+          collectAssets: null,
+          children: [
+            /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(Root, {}),
+            /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(GetVideoComposition, {
+              state: bundleMode
+            })
+          ]
         })
-      ]
+      })
     });
     renderToDOM(markup);
   }
   if (bundleMode.type === "evaluation") {
-    const markup = /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsx)(remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.RemotionRoot, {
-      audioEnabled: window.remotion_audioEnabled,
-      videoEnabled: window.remotion_videoEnabled,
-      logLevel: window.remotion_logLevel,
-      numberOfAudioTags: 0,
+    const markup = /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.CompositionManagerProvider, {
+      initialCanvasContent: null,
       onlyRenderComposition: null,
       currentCompositionMetadata: null,
-      audioLatencyHint: window.remotion_audioLatencyHint ?? "interactive",
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsx)(Root, {})
+      initialCompositions: [],
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.RemotionRootContexts, {
+        frameState: null,
+        audioEnabled: window.remotion_audioEnabled,
+        videoEnabled: window.remotion_videoEnabled,
+        logLevel: window.remotion_logLevel ?? "info",
+        numberOfAudioTags: 0,
+        audioLatencyHint: window.remotion_audioLatencyHint ?? "playback",
+        previewSampleRate: window.remotion_previewSampleRate,
+        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.RenderAssetManagerProvider, {
+          collectAssets: null,
+          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(Root, {})
+        })
+      })
     });
     renderToDOM(markup);
   }
@@ -260352,19 +261021,19 @@ var renderContent = (Root) => {
     if (isInHeadlessBrowser()) {
       return;
     }
-    renderToDOM(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsx)("div", {
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsx)(DelayedSpinner, {})
+    renderToDOM(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)("div", {
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(DelayedSpinner, {})
     }));
-    __webpack_require__.e(/* import() */ 922).then(__webpack_require__.bind(__webpack_require__, 1922)).then(({ StudioInternals }) => {
+    Promise.all(/* import() */[__webpack_require__.e(92), __webpack_require__.e(239), __webpack_require__.e(753)]).then(__webpack_require__.bind(__webpack_require__, 239)).then(({ StudioInternals }) => {
       window.remotion_isStudio = true;
       window.remotion_isReadOnlyStudio = true;
-      remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.enableSequenceStackTraces();
-      renderToDOM(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsx)(StudioInternals.Studio, {
+      window.remotion_inputProps = "{}";
+      renderToDOM(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsx)(StudioInternals.Studio, {
         readOnly: true,
         rootComponent: Root
       }));
     }).catch((err) => {
-      renderToDOM(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_4__.jsxs)("div", {
+      renderToDOM(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_5__.jsxs)("div", {
         children: [
           "Failed to load Remotion Studio: ",
           err.message
@@ -260373,74 +261042,74 @@ var renderContent = (Root) => {
     });
   }
 };
-remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.waitForRoot((Root) => {
+remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.waitForRoot((Root) => {
   renderContent(Root);
-  (0,remotion__WEBPACK_IMPORTED_MODULE_2__.continueRender)(waitForRootHandle);
+  (0,remotion__WEBPACK_IMPORTED_MODULE_3__.continueRender)(waitForRootHandle);
 });
 var setBundleModeAndUpdate = (state) => {
   setBundleMode(state);
-  const delay = (0,remotion__WEBPACK_IMPORTED_MODULE_2__.delayRender)("Waiting for root component to load - See https://remotion.dev/docs/troubleshooting/loading-root-component if you experience a timeout");
-  remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.waitForRoot((Root) => {
+  const delay = (0,remotion__WEBPACK_IMPORTED_MODULE_3__.delayRender)("Waiting for root component to load - See https://remotion.dev/docs/troubleshooting/loading-root-component if you experience a timeout");
+  remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.waitForRoot((Root) => {
     renderContent(Root);
     requestAnimationFrame(() => {
-      (0,remotion__WEBPACK_IMPORTED_MODULE_2__.continueRender)(delay);
+      (0,remotion__WEBPACK_IMPORTED_MODULE_3__.continueRender)(delay);
     });
   });
 };
 if (typeof window !== "undefined") {
   const getUnevaluatedComps = () => {
-    if (!remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.getRoot()) {
+    if (!remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.getRoot()) {
       throw new Error("registerRoot() was never called. 1. Make sure you specified the correct entrypoint for your bundle. 2. If your registerRoot() call is deferred, use the delayRender/continueRender pattern to tell Remotion to wait.");
     }
-    if (!remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.compositionsRef.current) {
+    if (!remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.compositionsRef.current) {
       throw new Error("Unexpectedly did not have a CompositionManager");
     }
-    const compositions = remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.compositionsRef.current.getCompositions();
+    const compositions = remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.compositionsRef.current.getCompositions();
     const canSerializeDefaultProps = getCanSerializeDefaultProps(compositions);
     if (!canSerializeDefaultProps) {
-      remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.Log.warn({ logLevel: window.remotion_logLevel, tag: null }, "defaultProps are too big to serialize - trying to find the problematic composition...");
-      remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.Log.warn({ logLevel: window.remotion_logLevel, tag: null }, "Serialization:", compositions);
+      remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.Log.warn({ logLevel: window.remotion_logLevel ?? "info", tag: null }, "defaultProps are too big to serialize - trying to find the problematic composition...");
+      remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.Log.warn({ logLevel: window.remotion_logLevel ?? "info", tag: null }, "Serialization:", compositions);
       for (const comp of compositions) {
         if (!getCanSerializeDefaultProps(comp)) {
           throw new Error(`defaultProps too big - could not serialize - the defaultProps of composition with ID ${comp.id} - the object that was passed to defaultProps was too big. Learn how to mitigate this error by visiting https://remotion.dev/docs/troubleshooting/serialize-defaultprops`);
         }
       }
-      remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.Log.warn({ logLevel: window.remotion_logLevel, tag: null }, "Could not single out a problematic composition -  The composition list as a whole is too big to serialize.");
+      remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.Log.warn({ logLevel: window.remotion_logLevel ?? "info", tag: null }, "Could not single out a problematic composition -  The composition list as a whole is too big to serialize.");
       throw new Error("defaultProps too big - Could not serialize - an object that was passed to defaultProps was too big. Learn how to mitigate this error by visiting https://remotion.dev/docs/troubleshooting/serialize-defaultprops");
     }
     return compositions;
   };
   window.getStaticCompositions = () => {
     const compositions = getUnevaluatedComps();
-    const inputProps = typeof window === "undefined" || (0,remotion__WEBPACK_IMPORTED_MODULE_2__.getRemotionEnvironment)().isPlayer ? {} : (0,remotion__WEBPACK_IMPORTED_MODULE_2__.getInputProps)() ?? {};
+    const inputProps = typeof window === "undefined" || (0,remotion__WEBPACK_IMPORTED_MODULE_3__.getRemotionEnvironment)().isPlayer ? {} : (0,remotion__WEBPACK_IMPORTED_MODULE_3__.getInputProps)() ?? {};
     return Promise.all(compositions.map(async (c) => {
-      const handle = (0,remotion__WEBPACK_IMPORTED_MODULE_2__.delayRender)(`Running calculateMetadata() for composition ${c.id}. If you didn't want to evaluate this composition, use "selectComposition()" instead of "getCompositions()"`);
+      const handle = (0,remotion__WEBPACK_IMPORTED_MODULE_3__.delayRender)(`Running calculateMetadata() for composition ${c.id}. If you didn't want to evaluate this composition, use "selectComposition()" instead of "getCompositions()"`);
       const originalProps = {
         ...c.defaultProps ?? {},
         ...inputProps ?? {}
       };
-      const comp = remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.resolveVideoConfig({
+      const comp = remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.resolveVideoConfig({
         calculateMetadata: c.calculateMetadata,
         compositionDurationInFrames: c.durationInFrames ?? null,
         compositionFps: c.fps ?? null,
         compositionHeight: c.height ?? null,
         compositionWidth: c.width ?? null,
         signal: new AbortController().signal,
-        originalProps,
+        inputProps: originalProps,
         defaultProps: c.defaultProps ?? {},
         compositionId: c.id
       });
       const resolved = await Promise.resolve(comp);
-      (0,remotion__WEBPACK_IMPORTED_MODULE_2__.continueRender)(handle);
+      (0,remotion__WEBPACK_IMPORTED_MODULE_3__.continueRender)(handle);
       const { props, defaultProps, ...data } = resolved;
       return {
         ...data,
-        serializedResolvedPropsWithCustomSchema: remotion_no_react__WEBPACK_IMPORTED_MODULE_3__.NoReactInternals.serializeJSONWithSpecialTypes({
+        serializedResolvedPropsWithCustomSchema: remotion_no_react__WEBPACK_IMPORTED_MODULE_4__/* .NoReactInternals */ .JC.serializeJSONWithSpecialTypes({
           data: props,
           indent: undefined,
           staticBase: null
         }).serializedString,
-        serializedDefaultPropsWithCustomSchema: remotion_no_react__WEBPACK_IMPORTED_MODULE_3__.NoReactInternals.serializeJSONWithSpecialTypes({
+        serializedDefaultPropsWithCustomSchema: remotion_no_react__WEBPACK_IMPORTED_MODULE_4__/* .NoReactInternals */ .JC.serializeJSONWithSpecialTypes({
           data: defaultProps,
           indent: undefined,
           staticBase: null
@@ -260458,33 +261127,33 @@ if (typeof window !== "undefined") {
       throw new Error(`Could not find composition with ID ${compId}. Available compositions: ${compositions.map((c) => c.id).join(", ")}`);
     }
     const abortController = new AbortController;
-    const handle = (0,remotion__WEBPACK_IMPORTED_MODULE_2__.delayRender)(`Running the calculateMetadata() function for composition ${compId}`);
-    const inputProps = typeof window === "undefined" || (0,remotion__WEBPACK_IMPORTED_MODULE_2__.getRemotionEnvironment)().isPlayer ? {} : (0,remotion__WEBPACK_IMPORTED_MODULE_2__.getInputProps)() ?? {};
+    const handle = (0,remotion__WEBPACK_IMPORTED_MODULE_3__.delayRender)(`Running the calculateMetadata() function for composition ${compId}`);
+    const inputProps = typeof window === "undefined" || (0,remotion__WEBPACK_IMPORTED_MODULE_3__.getRemotionEnvironment)().isPlayer ? {} : (0,remotion__WEBPACK_IMPORTED_MODULE_3__.getInputProps)() ?? {};
     const originalProps = {
       ...selectedComp.defaultProps ?? {},
       ...inputProps ?? {}
     };
-    const prom = await Promise.resolve(remotion__WEBPACK_IMPORTED_MODULE_2__.Internals.resolveVideoConfig({
+    const prom = await Promise.resolve(remotion__WEBPACK_IMPORTED_MODULE_3__.Internals.resolveVideoConfig({
       calculateMetadata: selectedComp.calculateMetadata,
       compositionDurationInFrames: selectedComp.durationInFrames ?? null,
       compositionFps: selectedComp.fps ?? null,
       compositionHeight: selectedComp.height ?? null,
       compositionWidth: selectedComp.width ?? null,
-      originalProps,
+      inputProps: originalProps,
       signal: abortController.signal,
       defaultProps: selectedComp.defaultProps ?? {},
       compositionId: selectedComp.id
     }));
-    (0,remotion__WEBPACK_IMPORTED_MODULE_2__.continueRender)(handle);
+    (0,remotion__WEBPACK_IMPORTED_MODULE_3__.continueRender)(handle);
     const { props, defaultProps, ...data } = prom;
     return {
       ...data,
-      serializedResolvedPropsWithCustomSchema: remotion_no_react__WEBPACK_IMPORTED_MODULE_3__.NoReactInternals.serializeJSONWithSpecialTypes({
+      serializedResolvedPropsWithCustomSchema: remotion_no_react__WEBPACK_IMPORTED_MODULE_4__/* .NoReactInternals */ .JC.serializeJSONWithSpecialTypes({
         data: props,
         indent: undefined,
         staticBase: null
       }).serializedString,
-      serializedDefaultPropsWithCustomSchema: remotion_no_react__WEBPACK_IMPORTED_MODULE_3__.NoReactInternals.serializeJSONWithSpecialTypes({
+      serializedDefaultPropsWithCustomSchema: remotion_no_react__WEBPACK_IMPORTED_MODULE_4__/* .NoReactInternals */ .JC.serializeJSONWithSpecialTypes({
         data: defaultProps,
         indent: undefined,
         staticBase: null
@@ -260496,10 +261165,10 @@ if (typeof window !== "undefined") {
 
 
 
-/***/ }),
+/***/ },
 
-/***/ 2078:
-/***/ ((__webpack_module__, __webpack_exports__, __webpack_require__) => {
+/***/ 270
+(__webpack_module__, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 __webpack_require__.r(__webpack_exports__);
@@ -260508,6 +261177,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   AnimatedImage: () => (/* binding */ AnimatedImage),
 /* harmony export */   Artifact: () => (/* binding */ Artifact),
 /* harmony export */   Audio: () => (/* binding */ Audio),
+/* harmony export */   CanvasImage: () => (/* binding */ CanvasImage),
 /* harmony export */   Composition: () => (/* binding */ Composition),
 /* harmony export */   Config: () => (/* binding */ Config),
 /* harmony export */   Easing: () => (/* binding */ Easing),
@@ -260515,26 +261185,36 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   Folder: () => (/* binding */ Folder),
 /* harmony export */   FolderContext: () => (/* binding */ FolderContext),
 /* harmony export */   Freeze: () => (/* binding */ Freeze),
+/* harmony export */   HTML_IN_CANVAS_UNSUPPORTED_MESSAGE: () => (/* binding */ HTML_IN_CANVAS_UNSUPPORTED_MESSAGE),
 /* harmony export */   Html5Audio: () => (/* binding */ Html5Audio),
 /* harmony export */   Html5Video: () => (/* binding */ Html5Video),
+/* harmony export */   HtmlInCanvas: () => (/* binding */ HtmlInCanvas),
 /* harmony export */   IFrame: () => (/* binding */ IFrame),
 /* harmony export */   Img: () => (/* binding */ Img),
+/* harmony export */   Interactive: () => (/* binding */ Interactive),
 /* harmony export */   Internals: () => (/* binding */ Internals),
 /* harmony export */   Loop: () => (/* binding */ Loop),
+/* harmony export */   MediaPlaybackError: () => (/* binding */ MediaPlaybackError),
 /* harmony export */   OffthreadVideo: () => (/* binding */ OffthreadVideo),
 /* harmony export */   Sequence: () => (/* binding */ Sequence),
 /* harmony export */   Series: () => (/* binding */ Series),
+/* harmony export */   Solid: () => (/* binding */ Solid),
 /* harmony export */   Still: () => (/* binding */ Still),
 /* harmony export */   VERSION: () => (/* binding */ VERSION),
 /* harmony export */   Video: () => (/* binding */ Video),
+/* harmony export */   absoluteFillSchema: () => (/* binding */ absoluteFillSchema),
+/* harmony export */   assertValidInterpolateEasingOption: () => (/* binding */ assertValidInterpolateEasingOption),
+/* harmony export */   assertValidInterpolatePosterizeOption: () => (/* binding */ assertValidInterpolatePosterizeOption),
 /* harmony export */   cancelRender: () => (/* binding */ cancelRender),
 /* harmony export */   continueRender: () => (/* binding */ continueRender),
+/* harmony export */   createEffect: () => (/* binding */ createEffect),
 /* harmony export */   delayRender: () => (/* binding */ delayRender),
 /* harmony export */   getInputProps: () => (/* binding */ getInputProps),
 /* harmony export */   getRemotionEnvironment: () => (/* binding */ getRemotionEnvironment),
 /* harmony export */   getStaticFiles: () => (/* binding */ getStaticFiles),
 /* harmony export */   interpolate: () => (/* binding */ interpolate),
 /* harmony export */   interpolateColors: () => (/* binding */ interpolateColors),
+/* harmony export */   isHtmlInCanvasSupported: () => (/* binding */ isHtmlInCanvasSupported),
 /* harmony export */   measureSpring: () => (/* binding */ measureSpring),
 /* harmony export */   prefetch: () => (/* binding */ prefetch),
 /* harmony export */   random: () => (/* binding */ random),
@@ -260545,13 +261225,14 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   useCurrentFrame: () => (/* binding */ useCurrentFrame),
 /* harmony export */   useCurrentScale: () => (/* binding */ useCurrentScale),
 /* harmony export */   useDelayRender: () => (/* binding */ useDelayRender),
+/* harmony export */   usePixelDensity: () => (/* binding */ usePixelDensity),
 /* harmony export */   useRemotionEnvironment: () => (/* binding */ useRemotionEnvironment),
 /* harmony export */   useVideoConfig: () => (/* binding */ useVideoConfig),
 /* harmony export */   watchStaticFile: () => (/* binding */ watchStaticFile)
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1979);
-/* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(1627);
-/* harmony import */ var react_dom__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(7708);
+/* harmony import */ var react_dom__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(7708);
+/* harmony import */ var react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(1627);
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -260586,328 +261267,100 @@ var Clipper = () => {
   throw new Error("<Clipper> has been removed as of Remotion v4.0.228. The native clipping APIs were experimental and subject to removal at any time. We removed them because they were sparingly used and made rendering often slower rather than faster.");
 };
 
-// src/enable-sequence-stack-traces.ts
+// src/Composition.tsx
 
 
 
-// src/get-remotion-environment.ts
-function getNodeEnvString() {
-  return ["NOD", "E_EN", "V"].join("");
-}
-var getEnvString = () => {
-  return ["e", "nv"].join("");
-};
-var getRemotionEnvironment = () => {
-  const isPlayer = typeof window !== "undefined" && window.remotion_isPlayer;
-  const isRendering = typeof window !== "undefined" && typeof window.process !== "undefined" && typeof window.process.env !== "undefined" && (window.process[getEnvString()][getNodeEnvString()] === "test" || window.process[getEnvString()][getNodeEnvString()] === "production" && typeof window !== "undefined" && typeof window.remotion_puppeteerTimeout !== "undefined");
-  const isStudio = typeof window !== "undefined" && window.remotion_isStudio;
-  const isReadOnlyStudio = typeof window !== "undefined" && window.remotion_isReadOnlyStudio;
-  return {
-    isStudio,
-    isRendering,
-    isPlayer,
-    isReadOnlyStudio,
-    isClientSideRendering: false
-  };
-};
-
-// src/enable-sequence-stack-traces.ts
-var originalCreateElement = react__WEBPACK_IMPORTED_MODULE_0__.createElement;
-var originalJsx = react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx;
-var componentsToAddStacksTo = [];
-var enableProxy = (api) => {
-  return new Proxy(api, {
-    apply(target, thisArg, argArray) {
-      if (componentsToAddStacksTo.includes(argArray[0])) {
-        const [first, props, ...rest] = argArray;
-        const newProps = {
-          ...props ?? {},
-          stack: new Error().stack
-        };
-        return Reflect.apply(target, thisArg, [first, newProps, ...rest]);
-      }
-      return Reflect.apply(target, thisArg, argArray);
-    }
-  });
-};
-var enableSequenceStackTraces = () => {
-  if (!getRemotionEnvironment().isStudio) {
-    return;
-  }
-  react__WEBPACK_IMPORTED_MODULE_0__.createElement = enableProxy(originalCreateElement);
-  react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx = enableProxy(originalJsx);
-};
-var addSequenceStackTraces = (component) => {
-  componentsToAddStacksTo.push(component);
-  enableSequenceStackTraces();
-};
-
-// src/is-player.tsx
+// src/CanUseRemotionHooks.tsx
 
 
-var IsPlayerContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(false);
-var IsPlayerContextProvider = ({
-  children
-}) => {
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(IsPlayerContext.Provider, {
+var CanUseRemotionHooks = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(false);
+var CanUseRemotionHooksProvider = ({ children }) => {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CanUseRemotionHooks.Provider, {
     value: true,
     children
   });
 };
-var useIsPlayer = () => {
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(IsPlayerContext);
+
+// src/composition-render-error-context.ts
+
+var CompositionRenderErrorContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
+  setError: () => {},
+  clearError: () => {}
+});
+
+// src/CompositionErrorBoundary.tsx
+
+var getHot = () => {
+  try {
+    if (false) // removed by dead control flow
+{}
+    return __webpack_module__.hot ?? null;
+  } catch {
+    return null;
+  }
 };
 
-// src/truthy.ts
-function truthy(value) {
-  return Boolean(value);
+class CompositionErrorBoundary extends react__WEBPACK_IMPORTED_MODULE_0__.Component {
+  state = { hasError: false };
+  hmrStatusHandler = null;
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error) {
+    this.props.onError(error);
+    this.subscribeToHmrReset();
+  }
+  componentDidMount() {
+    if (!this.state.hasError) {
+      this.props.onClear();
+    }
+  }
+  componentDidUpdate(_prevProps, prevState) {
+    if (prevState.hasError && !this.state.hasError) {
+      this.props.onClear();
+    }
+  }
+  componentWillUnmount() {
+    this.unsubscribeFromHmrReset();
+  }
+  subscribeToHmrReset() {
+    if (this.hmrStatusHandler) {
+      return;
+    }
+    const hot = getHot();
+    if (!hot) {
+      return;
+    }
+    const handler = (status) => {
+      if (status !== "idle") {
+        return;
+      }
+      this.unsubscribeFromHmrReset();
+      this.setState({ hasError: false });
+    };
+    this.hmrStatusHandler = handler;
+    hot.addStatusHandler(handler);
+  }
+  unsubscribeFromHmrReset() {
+    const handler = this.hmrStatusHandler;
+    if (!handler) {
+      return;
+    }
+    this.hmrStatusHandler = null;
+    const hot = getHot();
+    if (!hot) {
+      return;
+    }
+    hot.removeStatusHandler(handler);
+  }
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
 }
-
-// src/version.ts
-var VERSION = "4.0.370";
-
-// src/multiple-versions-warning.ts
-var checkMultipleRemotionVersions = () => {
-  if (typeof globalThis === "undefined") {
-    return;
-  }
-  const set = () => {
-    globalThis.remotion_imported = VERSION;
-    if (typeof window !== "undefined") {
-      window.remotion_imported = VERSION;
-    }
-  };
-  const alreadyImported = globalThis.remotion_imported || typeof window !== "undefined" && window.remotion_imported;
-  if (alreadyImported) {
-    if (alreadyImported === VERSION) {
-      return;
-    }
-    if (typeof alreadyImported === "string" && alreadyImported.includes("webcodecs")) {
-      set();
-      return;
-    }
-    throw new TypeError(`\uD83D\uDEA8 Multiple versions of Remotion detected: ${[
-      VERSION,
-      typeof alreadyImported === "string" ? alreadyImported : "an older version"
-    ].filter(truthy).join(" and ")}. This will cause things to break in an unexpected way.
-Check that all your Remotion packages are on the same version. If your dependencies depend on Remotion, make them peer dependencies. You can also run \`npx remotion versions\` from your terminal to see which versions are mismatching.`);
-  }
-  set();
-};
-
-// src/Null.tsx
-var Null = () => {
-  throw new Error("<Null> has been removed as of Remotion v4.0.228. The native clipping APIs were experimental and subject to removal at any time. We removed them because they were sparingly used and made rendering often slower rather than faster.");
-};
-
-// src/Sequence.tsx
-
-
-// src/AbsoluteFill.tsx
-
-
-var hasTailwindClassName = ({
-  className,
-  classPrefix,
-  type
-}) => {
-  if (!className) {
-    return false;
-  }
-  if (type === "exact") {
-    const split = className.split(" ");
-    return classPrefix.some((token) => {
-      return split.some((part) => {
-        return part.trim() === token || part.trim().endsWith(`:${token}`) || part.trim().endsWith(`!${token}`);
-      });
-    });
-  }
-  return classPrefix.some((prefix) => {
-    return className.startsWith(prefix) || className.includes(` ${prefix}`) || className.includes(`!${prefix}`) || className.includes(`:${prefix}`);
-  });
-};
-var AbsoluteFillRefForwarding = (props, ref) => {
-  const { style, ...other } = props;
-  const actualStyle = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      position: "absolute",
-      top: hasTailwindClassName({
-        className: other.className,
-        classPrefix: ["top-", "inset-"],
-        type: "prefix"
-      }) ? undefined : 0,
-      left: hasTailwindClassName({
-        className: other.className,
-        classPrefix: ["left-", "inset-"],
-        type: "prefix"
-      }) ? undefined : 0,
-      right: hasTailwindClassName({
-        className: other.className,
-        classPrefix: ["right-", "inset-"],
-        type: "prefix"
-      }) ? undefined : 0,
-      bottom: hasTailwindClassName({
-        className: other.className,
-        classPrefix: ["bottom-", "inset-"],
-        type: "prefix"
-      }) ? undefined : 0,
-      width: hasTailwindClassName({
-        className: other.className,
-        classPrefix: ["w-"],
-        type: "prefix"
-      }) ? undefined : "100%",
-      height: hasTailwindClassName({
-        className: other.className,
-        classPrefix: ["h-"],
-        type: "prefix"
-      }) ? undefined : "100%",
-      display: hasTailwindClassName({
-        className: other.className,
-        classPrefix: [
-          "block",
-          "inline-block",
-          "inline",
-          "flex",
-          "inline-flex",
-          "flow-root",
-          "grid",
-          "inline-grid",
-          "contents",
-          "list-item",
-          "hidden"
-        ],
-        type: "exact"
-      }) ? undefined : "flex",
-      flexDirection: hasTailwindClassName({
-        className: other.className,
-        classPrefix: [
-          "flex-row",
-          "flex-col",
-          "flex-row-reverse",
-          "flex-col-reverse"
-        ],
-        type: "exact"
-      }) ? undefined : "column",
-      ...style
-    };
-  }, [other.className, style]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("div", {
-    ref,
-    style: actualStyle,
-    ...other
-  });
-};
-var AbsoluteFill = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(AbsoluteFillRefForwarding);
-
-// src/SequenceContext.tsx
-
-var SequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
-
-// src/SequenceManager.tsx
-
-
-var SequenceManager = react__WEBPACK_IMPORTED_MODULE_0__.createContext({
-  registerSequence: () => {
-    throw new Error("SequenceManagerContext not initialized");
-  },
-  unregisterSequence: () => {
-    throw new Error("SequenceManagerContext not initialized");
-  },
-  sequences: []
-});
-var SequenceVisibilityToggleContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext({
-  hidden: {},
-  setHidden: () => {
-    throw new Error("SequenceVisibilityToggle not initialized");
-  }
-});
-var SequenceManagerProvider = ({ children }) => {
-  const [sequences, setSequences] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
-  const [hidden, setHidden] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)({});
-  const registerSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((seq) => {
-    setSequences((seqs) => {
-      return [...seqs, seq];
-    });
-  }, []);
-  const unregisterSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((seq) => {
-    setSequences((seqs) => seqs.filter((s) => s.id !== seq));
-  }, []);
-  const sequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      registerSequence,
-      sequences,
-      unregisterSequence
-    };
-  }, [registerSequence, sequences, unregisterSequence]);
-  const hiddenContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      hidden,
-      setHidden
-    };
-  }, [hidden]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SequenceManager.Provider, {
-    value: sequenceContext,
-    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SequenceVisibilityToggleContext.Provider, {
-      value: hiddenContext,
-      children
-    })
-  });
-};
-
-// src/nonce.ts
-
-var NonceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
-  getNonce: () => 0,
-  fastRefreshes: 0,
-  manualRefreshes: 0
-});
-var SetNonceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
-  increaseManualRefreshes: () => {}
-});
-var useNonce = () => {
-  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(NonceContext);
-  const [nonce, setNonce] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => context.getNonce());
-  const lastContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(context);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    if (lastContext.current === context) {
-      return;
-    }
-    lastContext.current = context;
-    setNonce(context.getNonce);
-  }, [context]);
-  return nonce;
-};
-
-// src/timeline-position-state.ts
-var exports_timeline_position_state = {};
-__export(exports_timeline_position_state, {
-  useTimelineSetFrame: () => useTimelineSetFrame,
-  useTimelinePosition: () => useTimelinePosition,
-  usePlayingState: () => usePlayingState,
-  persistCurrentFrame: () => persistCurrentFrame,
-  getInitialFrameState: () => getInitialFrameState,
-  getFrameForComposition: () => getFrameForComposition,
-  TimelineContext: () => TimelineContext,
-  SetTimelineContext: () => SetTimelineContext
-});
-
-
-// src/use-remotion-environment.ts
-
-
-// src/remotion-environment-context.ts
-
-var RemotionEnvironmentContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext(null);
-
-// src/use-remotion-environment.ts
-var useRemotionEnvironment = () => {
-  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(RemotionEnvironmentContext);
-  const [env] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => getRemotionEnvironment());
-  return context ?? env;
-};
-
-// src/use-video.ts
-
 
 // src/CompositionManagerContext.tsx
 
@@ -260933,88 +261386,130 @@ var CompositionSetters = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
   setCanvasContent: () => {
     return;
   },
-  updateCompositionDefaultProps: () => {
-    return;
-  },
   onlyRenderComposition: null
 });
 
-// src/ResolveCompositionConfig.tsx
+// src/Folder.tsx
 
 
-// src/EditorProps.tsx
+// src/nonce.ts
 
-
-var EditorPropsContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
-  props: {},
-  updateProps: () => {
-    throw new Error("Not implemented");
-  },
-  resetUnsaved: () => {
-    throw new Error("Not implemented");
-  }
+var NonceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
+  getNonce: () => 0
 });
-var editorPropsProviderRef = react__WEBPACK_IMPORTED_MODULE_0__.createRef();
-var timeValueRef = react__WEBPACK_IMPORTED_MODULE_0__.createRef();
-var EditorPropsProvider = ({ children }) => {
-  const [props, setProps] = react__WEBPACK_IMPORTED_MODULE_0__.useState({});
-  const updateProps = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(({
-    defaultProps,
-    id,
-    newProps
-  }) => {
-    setProps((prev) => {
-      return {
-        ...prev,
-        [id]: typeof newProps === "function" ? newProps(prev[id] ?? defaultProps) : newProps
-      };
-    });
-  }, []);
-  const resetUnsaved = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((compositionId) => {
-    setProps((prev) => {
-      if (prev[compositionId]) {
-        const newProps = { ...prev };
-        delete newProps[compositionId];
-        return newProps;
-      }
-      return prev;
-    });
-  }, []);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(editorPropsProviderRef, () => {
+var fastRefreshNonce = 0;
+try {
+  if (true) {
+    if (__webpack_module__.hot) {
+      __webpack_module__.hot.addStatusHandler((status) => {
+        if (status === "idle") {
+          fastRefreshNonce++;
+        }
+      });
+    }
+  }
+} catch {}
+var useNonce = () => {
+  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(NonceContext);
+  const nonce = context.getNonce();
+  const nonceRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(nonce);
+  nonceRef.current = nonce;
+  const history = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)([[fastRefreshNonce, nonce]]);
+  const get = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
+    if (fastRefreshNonce !== history.current[history.current.length - 1][0]) {
+      history.current = [
+        ...history.current,
+        [fastRefreshNonce, nonceRef.current]
+      ];
+    }
+    return history.current;
+  }, [history]);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return { get };
+  }, [get]);
+};
+
+// src/truthy.ts
+function truthy(value) {
+  return Boolean(value);
+}
+
+// src/validation/validate-folder-name.ts
+var getRegex = () => /^([a-zA-Z0-9-\u4E00-\u9FFF])+$/g;
+var isFolderNameValid = (name) => name.match(getRegex());
+var validateFolderName = (name) => {
+  if (name === undefined || name === null) {
+    throw new TypeError("You must pass a name to a <Folder />.");
+  }
+  if (typeof name !== "string") {
+    throw new TypeError(`The "name" you pass into <Folder /> must be a string. Got: ${typeof name}`);
+  }
+  if (!isFolderNameValid(name)) {
+    throw new Error(`Folder name can only contain a-z, A-Z, 0-9 and -. You passed ${name}`);
+  }
+};
+var invalidFolderNameErrorMessage = `Folder name must match ${String(getRegex())}`;
+
+// src/Folder.tsx
+
+var FolderContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
+  folderName: null,
+  parentName: null
+});
+var Folder = (props) => {
+  const { name, children } = props;
+  const parent = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(FolderContext);
+  const { registerFolder, unregisterFolder } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionSetters);
+  const nonce = useNonce();
+  const stack = props._remotionInternalStack ?? null;
+  validateFolderName(name);
+  const parentNameArr = [parent.parentName, parent.folderName].filter(truthy);
+  const parentName = parentNameArr.length === 0 ? null : parentNameArr.join("/");
+  const value = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     return {
-      getProps: () => props,
-      setProps
+      folderName: name,
+      parentName
     };
-  }, [props]);
-  const ctx = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return { props, updateProps, resetUnsaved };
-  }, [props, resetUnsaved, updateProps]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(EditorPropsContext.Provider, {
-    value: ctx,
+  }, [name, parentName]);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    registerFolder(name, parentName, nonce.get(), stack);
+    return () => {
+      unregisterFolder(name, parentName);
+    };
+  }, [
+    name,
+    parent.folderName,
+    parentName,
+    registerFolder,
+    unregisterFolder,
+    nonce,
+    stack
+  ]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(FolderContext.Provider, {
+    value,
     children
   });
 };
 
-// src/input-props-override.ts
-var getKey = () => {
-  return `remotion_inputPropsOverride` + window.location.origin;
+// src/get-remotion-environment.ts
+function getNodeEnvString() {
+  return ["NOD", "E_EN", "V"].join("");
+}
+var getEnvString = () => {
+  return ["e", "nv"].join("");
 };
-var getInputPropsOverride = () => {
-  if (typeof localStorage === "undefined")
-    return null;
-  const override = localStorage.getItem(getKey());
-  if (!override)
-    return null;
-  return JSON.parse(override);
-};
-var setInputPropsOverride = (override) => {
-  if (typeof localStorage === "undefined")
-    return;
-  if (override === null) {
-    localStorage.removeItem(getKey());
-    return;
-  }
-  localStorage.setItem(getKey(), JSON.stringify(override));
+var getRemotionEnvironment = () => {
+  const isPlayer = typeof window !== "undefined" && window.remotion_isPlayer;
+  const isRendering = typeof window !== "undefined" && typeof window.process !== "undefined" && typeof window.process.env !== "undefined" && (window.process[getEnvString()][getNodeEnvString()] === "test" || window.process[getEnvString()][getNodeEnvString()] === "production" && typeof window !== "undefined" && typeof window.remotion_puppeteerTimeout !== "undefined");
+  const isStudio = typeof window !== "undefined" && window.remotion_isStudio;
+  const isReadOnlyStudio = typeof window !== "undefined" && window.remotion_isReadOnlyStudio;
+  return {
+    isStudio,
+    isRendering,
+    isPlayer,
+    isReadOnlyStudio,
+    isClientSideRendering: false
+  };
 };
 
 // src/input-props-serialization.ts
@@ -261080,6 +261575,249 @@ var serializeThenDeserializeInStudio = (props) => {
   return props;
 };
 
+// src/is-player.tsx
+
+
+var IsPlayerContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(false);
+var IsPlayerContextProvider = ({
+  children
+}) => {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(IsPlayerContext.Provider, {
+    value: true,
+    children
+  });
+};
+var useIsPlayer = () => {
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(IsPlayerContext);
+};
+
+// src/AbsoluteFillElement.tsx
+
+
+var hasTailwindClassName = ({
+  className,
+  classPrefix,
+  type
+}) => {
+  if (!className) {
+    return false;
+  }
+  if (type === "exact") {
+    const split = className.split(" ");
+    return classPrefix.some((token) => {
+      return split.some((part) => {
+        return part.trim() === token || part.trim().endsWith(`:${token}`) || part.trim().endsWith(`!${token}`);
+      });
+    });
+  }
+  return classPrefix.some((prefix) => {
+    return className.startsWith(prefix) || className.includes(` ${prefix}`) || className.includes(`!${prefix}`) || className.includes(`:${prefix}`);
+  });
+};
+var AbsoluteFillElementRefForwarding = (props, ref) => {
+  const { style, ...other } = props;
+  const actualStyle = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      position: "absolute",
+      top: hasTailwindClassName({
+        className: other.className,
+        classPrefix: ["top-", "inset-"],
+        type: "prefix"
+      }) ? undefined : 0,
+      left: hasTailwindClassName({
+        className: other.className,
+        classPrefix: ["left-", "inset-"],
+        type: "prefix"
+      }) ? undefined : 0,
+      right: hasTailwindClassName({
+        className: other.className,
+        classPrefix: ["right-", "inset-"],
+        type: "prefix"
+      }) ? undefined : 0,
+      bottom: hasTailwindClassName({
+        className: other.className,
+        classPrefix: ["bottom-", "inset-"],
+        type: "prefix"
+      }) ? undefined : 0,
+      width: hasTailwindClassName({
+        className: other.className,
+        classPrefix: ["w-"],
+        type: "prefix"
+      }) ? undefined : "100%",
+      height: hasTailwindClassName({
+        className: other.className,
+        classPrefix: ["h-"],
+        type: "prefix"
+      }) ? undefined : "100%",
+      display: hasTailwindClassName({
+        className: other.className,
+        classPrefix: [
+          "block",
+          "inline-block",
+          "inline",
+          "flex",
+          "inline-flex",
+          "flow-root",
+          "grid",
+          "inline-grid",
+          "contents",
+          "list-item",
+          "hidden"
+        ],
+        type: "exact"
+      }) ? undefined : "flex",
+      flexDirection: hasTailwindClassName({
+        className: other.className,
+        classPrefix: [
+          "flex-row",
+          "flex-col",
+          "flex-row-reverse",
+          "flex-col-reverse"
+        ],
+        type: "exact"
+      }) ? undefined : "column",
+      ...style
+    };
+  }, [other.className, style]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("div", {
+    ref,
+    style: actualStyle,
+    ...other
+  });
+};
+var AbsoluteFillElement = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(AbsoluteFillElementRefForwarding);
+
+// src/loading-indicator.tsx
+
+var rotate = {
+  transform: `rotate(90deg)`
+};
+var ICON_SIZE = 40;
+var label = {
+  color: "white",
+  fontSize: 14,
+  fontFamily: "sans-serif"
+};
+var container = {
+  justifyContent: "center",
+  alignItems: "center"
+};
+var Loading = () => {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)(AbsoluteFillElement, {
+    style: container,
+    id: "remotion-comp-loading",
+    children: [
+      /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("style", {
+        type: "text/css",
+        children: `
+				@keyframes anim {
+					from {
+						opacity: 0
+					}
+					to {
+						opacity: 1
+					}
+				}
+				#remotion-comp-loading {
+					animation: anim 2s;
+					animation-fill-mode: forwards;
+				}
+			`
+      }),
+      /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("svg", {
+        width: ICON_SIZE,
+        height: ICON_SIZE,
+        viewBox: "-100 -100 400 400",
+        style: rotate,
+        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("path", {
+          fill: "#555",
+          stroke: "#555",
+          strokeWidth: "100",
+          strokeLinejoin: "round",
+          d: "M 2 172 a 196 100 0 0 0 195 5 A 196 240 0 0 0 100 2.259 A 196 240 0 0 0 2 172 z"
+        })
+      }),
+      /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)("p", {
+        style: label,
+        children: [
+          "Resolving ",
+          "<Suspense>",
+          "..."
+        ]
+      })
+    ]
+  });
+};
+
+// src/portal-node.ts
+var _portalNode = null;
+var portalNodeCurrentScale = 1;
+var portalNodeCurrentScaleListeners = [];
+var getPortalNodeCurrentScale = () => portalNodeCurrentScale;
+var subscribeToPortalNodeCurrentScale = (listener) => {
+  portalNodeCurrentScaleListeners.push(listener);
+  return () => {
+    portalNodeCurrentScaleListeners = portalNodeCurrentScaleListeners.filter((currentListener) => currentListener !== listener);
+  };
+};
+var setPortalNodeCurrentScale = (scale) => {
+  if (portalNodeCurrentScale === scale) {
+    return;
+  }
+  portalNodeCurrentScale = scale;
+  for (const listener of portalNodeCurrentScaleListeners) {
+    listener();
+  }
+};
+var portalNode = () => {
+  if (!_portalNode) {
+    if (typeof document === "undefined") {
+      throw new Error("Tried to call an API that only works in the browser from outside the browser");
+    }
+    _portalNode = document.createElement("div");
+    _portalNode.style.position = "absolute";
+    _portalNode.style.top = "0px";
+    _portalNode.style.left = "0px";
+    _portalNode.style.right = "0px";
+    _portalNode.style.bottom = "0px";
+    _portalNode.style.width = "100%";
+    _portalNode.style.height = "100%";
+    _portalNode.style.display = "flex";
+    _portalNode.style.flexDirection = "column";
+    const containerNode = document.createElement("div");
+    containerNode.style.position = "fixed";
+    containerNode.style.top = -999999 + "px";
+    containerNode.appendChild(_portalNode);
+    document.body.appendChild(containerNode);
+  }
+  return _portalNode;
+};
+
+// src/ResolveCompositionConfig.tsx
+
+
+// src/input-props-override.ts
+var getKey = () => {
+  return `remotion_inputPropsOverride` + window.location.origin;
+};
+var getInputPropsOverride = () => {
+  if (typeof localStorage === "undefined")
+    return null;
+  const override = localStorage.getItem(getKey());
+  if (!override)
+    return null;
+  return JSON.parse(override);
+};
+var setInputPropsOverride = (override) => {
+  if (typeof localStorage === "undefined")
+    return;
+  if (override === null) {
+    localStorage.removeItem(getKey());
+    return;
+  }
+  localStorage.setItem(getKey(), JSON.stringify(override));
+};
+
 // src/config/input-props.ts
 var didWarnSSRImport = false;
 var warnOnceSSRImport = () => {
@@ -261103,6 +261841,9 @@ var getInputProps = () => {
   if (override) {
     return override;
   }
+  if (typeof window === "undefined" || typeof window.remotion_inputProps === "undefined") {
+    throw new Error("Cannot call `getInputProps()` - window.remotion_inputProps is not set. This API is only available if you are in the Studio, or while you are rendering server-side.");
+  }
   const param = window.remotion_inputProps;
   if (!param) {
     return {};
@@ -261111,33 +261852,52 @@ var getInputProps = () => {
   return parsed;
 };
 
-// src/codec.ts
-var validCodecs = [
-  "h264",
-  "h265",
-  "vp8",
-  "vp9",
-  "mp3",
-  "aac",
-  "wav",
-  "prores",
-  "h264-mkv",
-  "h264-ts",
-  "gif"
-];
+// src/EditorProps.tsx
 
-// src/validation/validate-default-codec.ts
-function validateCodec(defaultCodec, location, name) {
-  if (typeof defaultCodec === "undefined") {
-    return;
+
+var EditorPropsContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
+  props: {},
+  updateProps: () => {
+    throw new Error("Not implemented");
   }
-  if (typeof defaultCodec !== "string") {
-    throw new TypeError(`The "${name}" prop ${location} must be a string, but you passed a value of type ${typeof defaultCodec}.`);
-  }
-  if (!validCodecs.includes(defaultCodec)) {
-    throw new Error(`The "${name}" prop ${location} must be one of ${validCodecs.join(", ")}, but you passed ${defaultCodec}.`);
-  }
-}
+});
+var timeValueRef = react__WEBPACK_IMPORTED_MODULE_0__.createRef();
+var EditorPropsProvider = ({ children }) => {
+  const [props, setProps] = react__WEBPACK_IMPORTED_MODULE_0__.useState({});
+  const updateProps = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(({
+    defaultProps,
+    id,
+    newProps
+  }) => {
+    setProps((prev) => {
+      return {
+        ...prev,
+        [id]: typeof newProps === "function" ? newProps(prev[id] ?? defaultProps) : newProps
+      };
+    });
+  }, []);
+  const ctx = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return { props, updateProps };
+  }, [props, updateProps]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(EditorPropsContext.Provider, {
+    value: ctx,
+    children
+  });
+};
+
+// src/use-remotion-environment.ts
+
+
+// src/remotion-environment-context.ts
+
+var RemotionEnvironmentContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext(null);
+
+// src/use-remotion-environment.ts
+var useRemotionEnvironment = () => {
+  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(RemotionEnvironmentContext);
+  const [env] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => getRemotionEnvironment());
+  return context ?? env;
+};
 
 // src/validation/validate-dimensions.ts
 function validateDimension(amount, nameOfProp, location) {
@@ -261197,407 +261957,11 @@ function validateFps(fps, location, isGif) {
   }
 }
 
-// src/resolve-video-config.ts
-var validateCalculated = ({
-  calculated,
-  compositionId,
-  compositionFps,
-  compositionHeight,
-  compositionWidth,
-  compositionDurationInFrames
-}) => {
-  const calculateMetadataErrorLocation = `calculated by calculateMetadata() for the composition "${compositionId}"`;
-  const defaultErrorLocation = `of the "<Composition />" component with the id "${compositionId}"`;
-  const width = calculated?.width ?? compositionWidth ?? undefined;
-  validateDimension(width, "width", calculated?.width ? calculateMetadataErrorLocation : defaultErrorLocation);
-  const height = calculated?.height ?? compositionHeight ?? undefined;
-  validateDimension(height, "height", calculated?.height ? calculateMetadataErrorLocation : defaultErrorLocation);
-  const fps = calculated?.fps ?? compositionFps ?? null;
-  validateFps(fps, calculated?.fps ? calculateMetadataErrorLocation : defaultErrorLocation, false);
-  const durationInFrames = calculated?.durationInFrames ?? compositionDurationInFrames ?? null;
-  validateDurationInFrames(durationInFrames, {
-    allowFloats: false,
-    component: `of the "<Composition />" component with the id "${compositionId}"`
-  });
-  const defaultCodec = calculated?.defaultCodec;
-  validateCodec(defaultCodec, calculateMetadataErrorLocation, "defaultCodec");
-  const defaultOutName = calculated?.defaultOutName;
-  const defaultVideoImageFormat = calculated?.defaultVideoImageFormat;
-  const defaultPixelFormat = calculated?.defaultPixelFormat;
-  const defaultProResProfile = calculated?.defaultProResProfile;
-  return {
-    width,
-    height,
-    fps,
-    durationInFrames,
-    defaultCodec,
-    defaultOutName,
-    defaultVideoImageFormat,
-    defaultPixelFormat,
-    defaultProResProfile
-  };
-};
-var resolveVideoConfig = ({
-  calculateMetadata,
-  signal,
-  defaultProps,
-  originalProps,
-  compositionId,
-  compositionDurationInFrames,
-  compositionFps,
-  compositionHeight,
-  compositionWidth
-}) => {
-  const calculatedProm = calculateMetadata ? calculateMetadata({
-    defaultProps,
-    props: originalProps,
-    abortSignal: signal,
-    compositionId,
-    isRendering: getRemotionEnvironment().isRendering
-  }) : null;
-  if (calculatedProm !== null && typeof calculatedProm === "object" && "then" in calculatedProm) {
-    return calculatedProm.then((c) => {
-      const {
-        height,
-        width,
-        durationInFrames,
-        fps,
-        defaultCodec,
-        defaultOutName,
-        defaultVideoImageFormat,
-        defaultPixelFormat,
-        defaultProResProfile
-      } = validateCalculated({
-        calculated: c,
-        compositionDurationInFrames,
-        compositionFps,
-        compositionHeight,
-        compositionWidth,
-        compositionId
-      });
-      return {
-        width,
-        height,
-        fps,
-        durationInFrames,
-        id: compositionId,
-        defaultProps: serializeThenDeserializeInStudio(defaultProps),
-        props: serializeThenDeserializeInStudio(c.props ?? originalProps),
-        defaultCodec: defaultCodec ?? null,
-        defaultOutName: defaultOutName ?? null,
-        defaultVideoImageFormat: defaultVideoImageFormat ?? null,
-        defaultPixelFormat: defaultPixelFormat ?? null,
-        defaultProResProfile: defaultProResProfile ?? null
-      };
-    });
-  }
-  const data = validateCalculated({
-    calculated: calculatedProm,
-    compositionDurationInFrames,
-    compositionFps,
-    compositionHeight,
-    compositionWidth,
-    compositionId
-  });
-  if (calculatedProm === null) {
-    return {
-      ...data,
-      id: compositionId,
-      defaultProps: serializeThenDeserializeInStudio(defaultProps ?? {}),
-      props: serializeThenDeserializeInStudio(originalProps),
-      defaultCodec: null,
-      defaultOutName: null,
-      defaultVideoImageFormat: null,
-      defaultPixelFormat: null,
-      defaultProResProfile: null
-    };
-  }
-  return {
-    ...data,
-    id: compositionId,
-    defaultProps: serializeThenDeserializeInStudio(defaultProps ?? {}),
-    props: serializeThenDeserializeInStudio(calculatedProm.props ?? originalProps),
-    defaultCodec: calculatedProm.defaultCodec ?? null,
-    defaultOutName: calculatedProm.defaultOutName ?? null,
-    defaultVideoImageFormat: calculatedProm.defaultVideoImageFormat ?? null,
-    defaultPixelFormat: calculatedProm.defaultPixelFormat ?? null,
-    defaultProResProfile: calculatedProm.defaultProResProfile ?? null
-  };
-};
-var resolveVideoConfigOrCatch = (params) => {
-  try {
-    const promiseOrReturnValue = resolveVideoConfig(params);
-    return {
-      type: "success",
-      result: promiseOrReturnValue
-    };
-  } catch (err) {
-    return {
-      type: "error",
-      error: err
-    };
-  }
-};
-
 // src/ResolveCompositionConfig.tsx
-
 var ResolveCompositionContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
 var resolveCompositionsRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.createRef)();
 var needsResolution = (composition) => {
   return Boolean(composition.calculateMetadata);
-};
-var PROPS_UPDATED_EXTERNALLY = "remotion.propsUpdatedExternally";
-var ResolveCompositionConfig = ({ children }) => {
-  const [currentRenderModalComposition, setCurrentRenderModalComposition] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
-  const { compositions, canvasContent, currentCompositionMetadata } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionManager);
-  const { fastRefreshes, manualRefreshes } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(NonceContext);
-  if (manualRefreshes) {}
-  const selectedComposition = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return compositions.find((c) => canvasContent && canvasContent.type === "composition" && canvasContent.compositionId === c.id);
-  }, [canvasContent, compositions]);
-  const renderModalComposition = compositions.find((c) => c.id === currentRenderModalComposition);
-  const { props: allEditorProps } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(EditorPropsContext);
-  const env = useRemotionEnvironment();
-  const inputProps = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return typeof window === "undefined" || env.isPlayer ? {} : getInputProps() ?? {};
-  }, [env.isPlayer]);
-  const [resolvedConfigs, setResolvedConfigs] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)({});
-  const selectedEditorProps = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return selectedComposition ? allEditorProps[selectedComposition.id] ?? {} : {};
-  }, [allEditorProps, selectedComposition]);
-  const renderModalProps = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return renderModalComposition ? allEditorProps[renderModalComposition.id] ?? {} : {};
-  }, [allEditorProps, renderModalComposition]);
-  const hasResolution = Boolean(currentCompositionMetadata);
-  const doResolution = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(({
-    calculateMetadata,
-    combinedProps,
-    compositionDurationInFrames,
-    compositionFps,
-    compositionHeight,
-    compositionId,
-    compositionWidth,
-    defaultProps
-  }) => {
-    const controller = new AbortController;
-    if (hasResolution) {
-      return controller;
-    }
-    const { signal } = controller;
-    const result = resolveVideoConfigOrCatch({
-      compositionId,
-      calculateMetadata,
-      originalProps: combinedProps,
-      signal,
-      defaultProps,
-      compositionDurationInFrames,
-      compositionFps,
-      compositionHeight,
-      compositionWidth
-    });
-    if (result.type === "error") {
-      setResolvedConfigs((r) => ({
-        ...r,
-        [compositionId]: {
-          type: "error",
-          error: result.error
-        }
-      }));
-      return controller;
-    }
-    const promOrNot = result.result;
-    if (typeof promOrNot === "object" && "then" in promOrNot) {
-      setResolvedConfigs((r) => {
-        const prev = r[compositionId];
-        if (prev?.type === "success" || prev?.type === "success-and-refreshing") {
-          return {
-            ...r,
-            [compositionId]: {
-              type: "success-and-refreshing",
-              result: prev.result
-            }
-          };
-        }
-        return {
-          ...r,
-          [compositionId]: {
-            type: "loading"
-          }
-        };
-      });
-      promOrNot.then((c) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        setResolvedConfigs((r) => ({
-          ...r,
-          [compositionId]: {
-            type: "success",
-            result: c
-          }
-        }));
-      }).catch((err) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        setResolvedConfigs((r) => ({
-          ...r,
-          [compositionId]: {
-            type: "error",
-            error: err
-          }
-        }));
-      });
-    } else {
-      setResolvedConfigs((r) => ({
-        ...r,
-        [compositionId]: {
-          type: "success",
-          result: promOrNot
-        }
-      }));
-    }
-    return controller;
-  }, [hasResolution]);
-  const currentComposition = canvasContent?.type === "composition" ? canvasContent.compositionId : null;
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(resolveCompositionsRef, () => {
-    return {
-      setCurrentRenderModalComposition: (id) => {
-        setCurrentRenderModalComposition(id);
-      },
-      reloadCurrentlySelectedComposition: () => {
-        if (!currentComposition) {
-          return;
-        }
-        const composition = compositions.find((c) => c.id === currentComposition);
-        if (!composition) {
-          throw new Error(`Could not find composition with id ${currentComposition}`);
-        }
-        const editorProps = allEditorProps[currentComposition] ?? {};
-        const defaultProps = {
-          ...composition.defaultProps ?? {},
-          ...editorProps ?? {}
-        };
-        const props = {
-          ...defaultProps,
-          ...inputProps ?? {}
-        };
-        doResolution({
-          defaultProps,
-          calculateMetadata: composition.calculateMetadata,
-          combinedProps: props,
-          compositionDurationInFrames: composition.durationInFrames ?? null,
-          compositionFps: composition.fps ?? null,
-          compositionHeight: composition.height ?? null,
-          compositionWidth: composition.width ?? null,
-          compositionId: composition.id
-        });
-      }
-    };
-  }, [
-    allEditorProps,
-    compositions,
-    currentComposition,
-    doResolution,
-    inputProps
-  ]);
-  const isTheSame = selectedComposition?.id === renderModalComposition?.id;
-  const currentDefaultProps = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      ...selectedComposition?.defaultProps ?? {},
-      ...selectedEditorProps ?? {}
-    };
-  }, [selectedComposition?.defaultProps, selectedEditorProps]);
-  const originalProps = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      ...currentDefaultProps,
-      ...inputProps ?? {}
-    };
-  }, [currentDefaultProps, inputProps]);
-  const canResolve = selectedComposition && needsResolution(selectedComposition);
-  const shouldIgnoreUpdate = typeof window !== "undefined" && window.remotion_ignoreFastRefreshUpdate && fastRefreshes <= window.remotion_ignoreFastRefreshUpdate;
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    if (shouldIgnoreUpdate) {
-      return;
-    }
-    if (canResolve) {
-      const controller = doResolution({
-        calculateMetadata: selectedComposition.calculateMetadata,
-        combinedProps: originalProps,
-        compositionDurationInFrames: selectedComposition.durationInFrames ?? null,
-        compositionFps: selectedComposition.fps ?? null,
-        compositionHeight: selectedComposition.height ?? null,
-        compositionWidth: selectedComposition.width ?? null,
-        defaultProps: currentDefaultProps,
-        compositionId: selectedComposition.id
-      });
-      return () => {
-        controller.abort();
-      };
-    }
-  }, [
-    canResolve,
-    currentDefaultProps,
-    doResolution,
-    originalProps,
-    selectedComposition?.calculateMetadata,
-    selectedComposition?.durationInFrames,
-    selectedComposition?.fps,
-    selectedComposition?.height,
-    selectedComposition?.id,
-    selectedComposition?.width,
-    shouldIgnoreUpdate
-  ]);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    if (renderModalComposition && !isTheSame) {
-      const combinedProps = {
-        ...renderModalComposition.defaultProps ?? {},
-        ...renderModalProps ?? {},
-        ...inputProps ?? {}
-      };
-      const controller = doResolution({
-        calculateMetadata: renderModalComposition.calculateMetadata,
-        compositionDurationInFrames: renderModalComposition.durationInFrames ?? null,
-        compositionFps: renderModalComposition.fps ?? null,
-        compositionHeight: renderModalComposition.height ?? null,
-        compositionId: renderModalComposition.id,
-        compositionWidth: renderModalComposition.width ?? null,
-        defaultProps: currentDefaultProps,
-        combinedProps
-      });
-      return () => {
-        controller.abort();
-      };
-    }
-  }, [
-    currentDefaultProps,
-    doResolution,
-    inputProps,
-    isTheSame,
-    renderModalComposition,
-    renderModalProps
-  ]);
-  const resolvedConfigsIncludingStaticOnes = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    const staticComps = compositions.filter((c) => {
-      return c.calculateMetadata === null;
-    });
-    return {
-      ...resolvedConfigs,
-      ...staticComps.reduce((acc, curr) => {
-        return {
-          ...acc,
-          [curr.id]: {
-            type: "success",
-            result: { ...curr, defaultProps: curr.defaultProps ?? {} }
-          }
-        };
-      }, {})
-    };
-  }, [compositions, resolvedConfigs]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(ResolveCompositionContext.Provider, {
-    value: resolvedConfigsIncludingStaticOnes,
-    children
-  });
 };
 var useResolvedVideoConfig = (preferredCompositionId) => {
   const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(ResolveCompositionContext);
@@ -261617,6 +261981,7 @@ var useResolvedVideoConfig = (preferredCompositionId) => {
     if (currentCompositionMetadata) {
       return {
         type: "success",
+        metadataSource: null,
         result: {
           ...currentCompositionMetadata,
           id: composition.id,
@@ -261634,6 +261999,7 @@ var useResolvedVideoConfig = (preferredCompositionId) => {
       validateDimension(composition.height, "height", `in <Composition id="${composition.id}">`);
       return {
         type: "success",
+        metadataSource: null,
         result: {
           width: composition.width,
           height: composition.height,
@@ -261644,15 +262010,19 @@ var useResolvedVideoConfig = (preferredCompositionId) => {
           props: {
             ...composition.defaultProps ?? {},
             ...selectedEditorProps ?? {},
-            ...typeof window === "undefined" || env.isPlayer ? {} : getInputProps() ?? {}
+            ...typeof window === "undefined" || env.isPlayer || !window.remotion_inputProps ? {} : getInputProps() ?? {}
           },
           defaultCodec: null,
           defaultOutName: null,
           defaultVideoImageFormat: null,
           defaultPixelFormat: null,
-          defaultProResProfile: null
+          defaultProResProfile: null,
+          defaultSampleRate: null
         }
       };
+    }
+    if (!context) {
+      return null;
     }
     if (!context[composition.id]) {
       return null;
@@ -261667,492 +262037,15 @@ var useResolvedVideoConfig = (preferredCompositionId) => {
   ]);
 };
 
-// src/use-video.ts
-var useVideo = () => {
-  const { canvasContent, compositions, currentCompositionMetadata } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionManager);
-  const selected = compositions.find((c) => {
-    return canvasContent?.type === "composition" && c.id === canvasContent.compositionId;
-  });
-  const resolved = useResolvedVideoConfig(selected?.id ?? null);
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    if (!resolved) {
-      return null;
-    }
-    if (resolved.type === "error") {
-      return null;
-    }
-    if (resolved.type === "loading") {
-      return null;
-    }
-    if (!selected) {
-      return null;
-    }
-    return {
-      ...resolved.result,
-      defaultProps: selected.defaultProps ?? {},
-      id: selected.id,
-      ...currentCompositionMetadata ?? {},
-      component: selected.component
-    };
-  }, [currentCompositionMetadata, resolved, selected]);
-};
-
-// src/timeline-position-state.ts
-var TimelineContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
-  frame: {},
-  playing: false,
-  playbackRate: 1,
-  rootId: "",
-  imperativePlaying: {
-    current: false
-  },
-  setPlaybackRate: () => {
-    throw new Error("default");
-  },
-  audioAndVideoTags: { current: [] }
-});
-var SetTimelineContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
-  setFrame: () => {
-    throw new Error("default");
-  },
-  setPlaying: () => {
-    throw new Error("default");
-  }
-});
-var makeKey = () => {
-  return `remotion.time-all`;
-};
-var persistCurrentFrame = (time) => {
-  localStorage.setItem(makeKey(), JSON.stringify(time));
-};
-var getInitialFrameState = () => {
-  const item = localStorage.getItem(makeKey()) ?? "{}";
-  const obj = JSON.parse(item);
-  return obj;
-};
-var getFrameForComposition = (composition) => {
-  const item = localStorage.getItem(makeKey()) ?? "{}";
-  const obj = JSON.parse(item);
-  if (obj[composition] !== undefined) {
-    return Number(obj[composition]);
-  }
-  if (typeof window === "undefined") {
-    return 0;
-  }
-  return window.remotion_initialFrame ?? 0;
-};
-var useTimelinePosition = () => {
-  const videoConfig = useVideo();
-  const state = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(TimelineContext);
-  const env = useRemotionEnvironment();
-  if (!videoConfig) {
-    return typeof window === "undefined" ? 0 : window.remotion_initialFrame ?? 0;
-  }
-  const unclamped = state.frame[videoConfig.id] ?? (env.isPlayer ? 0 : getFrameForComposition(videoConfig.id));
-  return Math.min(videoConfig.durationInFrames - 1, unclamped);
-};
-var useTimelineSetFrame = () => {
-  const { setFrame } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SetTimelineContext);
-  return setFrame;
-};
-var usePlayingState = () => {
-  const { playing, imperativePlaying } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(TimelineContext);
-  const { setPlaying } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SetTimelineContext);
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => [playing, setPlaying, imperativePlaying], [imperativePlaying, playing, setPlaying]);
-};
-
-// src/use-video-config.ts
-
-
-// src/CanUseRemotionHooks.tsx
-
-
-var CanUseRemotionHooks = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(false);
-var CanUseRemotionHooksProvider = ({ children }) => {
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(CanUseRemotionHooks.Provider, {
-    value: true,
-    children
-  });
-};
-
-// src/use-unsafe-video-config.ts
-
-var useUnsafeVideoConfig = () => {
-  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
-  const ctxWidth = context?.width ?? null;
-  const ctxHeight = context?.height ?? null;
-  const ctxDuration = context?.durationInFrames ?? null;
-  const video = useVideo();
-  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    if (!video) {
-      return null;
-    }
-    const {
-      id,
-      durationInFrames,
-      fps,
-      height,
-      width,
-      defaultProps,
-      props,
-      defaultCodec,
-      defaultOutName,
-      defaultVideoImageFormat,
-      defaultPixelFormat,
-      defaultProResProfile
-    } = video;
-    return {
-      id,
-      width: ctxWidth ?? width,
-      height: ctxHeight ?? height,
-      fps,
-      durationInFrames: ctxDuration ?? durationInFrames,
-      defaultProps,
-      props,
-      defaultCodec,
-      defaultOutName,
-      defaultVideoImageFormat,
-      defaultPixelFormat,
-      defaultProResProfile
-    };
-  }, [ctxDuration, ctxHeight, ctxWidth, video]);
-};
-
-// src/use-video-config.ts
-var useVideoConfig = () => {
-  const videoConfig = useUnsafeVideoConfig();
-  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CanUseRemotionHooks);
-  const isPlayer = useIsPlayer();
-  if (!videoConfig) {
-    if (typeof window !== "undefined" && window.remotion_isPlayer || isPlayer) {
-      throw new Error([
-        "No video config found. Likely reasons:",
-        "- You are probably calling useVideoConfig() from outside the component passed to <Player />. See https://www.remotion.dev/docs/player/examples for how to set up the Player correctly.",
-        "- You have multiple versions of Remotion installed which causes the React context to get lost."
-      ].join("-"));
-    }
-    throw new Error("No video config found. You are probably calling useVideoConfig() from a component which has not been registered as a <Composition />. See https://www.remotion.dev/docs/the-fundamentals#defining-compositions for more information.");
-  }
-  if (!context) {
-    throw new Error("Called useVideoConfig() outside a Remotion composition.");
-  }
-  return videoConfig;
-};
-
-// src/freeze.tsx
-
-
-// src/use-current-frame.ts
-
-var useCurrentFrame = () => {
-  const canUseRemotionHooks = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CanUseRemotionHooks);
-  const env = useRemotionEnvironment();
-  if (!canUseRemotionHooks) {
-    if (env.isPlayer) {
-      throw new Error(`useCurrentFrame can only be called inside a component that was passed to <Player>. See: https://www.remotion.dev/docs/player/examples`);
-    }
-    throw new Error(`useCurrentFrame() can only be called inside a component that was registered as a composition. See https://www.remotion.dev/docs/the-fundamentals#defining-compositions`);
-  }
-  const frame = useTimelinePosition();
-  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
-  const contextOffset = context ? context.cumulatedFrom + context.relativeFrom : 0;
-  return frame - contextOffset;
-};
-
-// src/freeze.tsx
-
-var Freeze = ({
-  frame: frameToFreeze,
-  children,
-  active = true
-}) => {
-  const frame = useCurrentFrame();
-  const videoConfig = useVideoConfig();
-  if (typeof frameToFreeze === "undefined") {
-    throw new Error(`The <Freeze /> component requires a 'frame' prop, but none was passed.`);
-  }
-  if (typeof frameToFreeze !== "number") {
-    throw new Error(`The 'frame' prop of <Freeze /> must be a number, but is of type ${typeof frameToFreeze}`);
-  }
-  if (Number.isNaN(frameToFreeze)) {
-    throw new Error(`The 'frame' prop of <Freeze /> must be a real number, but it is NaN.`);
-  }
-  if (!Number.isFinite(frameToFreeze)) {
-    throw new Error(`The 'frame' prop of <Freeze /> must be a finite number, but it is ${frameToFreeze}.`);
-  }
-  const isActive = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    if (typeof active === "boolean") {
-      return active;
-    }
-    if (typeof active === "function") {
-      return active(frame);
-    }
-  }, [active, frame]);
-  const timelineContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(TimelineContext);
-  const sequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
-  const relativeFrom = sequenceContext?.relativeFrom ?? 0;
-  const timelineValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    if (!isActive) {
-      return timelineContext;
-    }
-    return {
-      ...timelineContext,
-      playing: false,
-      imperativePlaying: {
-        current: false
-      },
-      frame: {
-        [videoConfig.id]: frameToFreeze + relativeFrom
-      }
-    };
-  }, [isActive, timelineContext, videoConfig.id, frameToFreeze, relativeFrom]);
-  const newSequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    if (!sequenceContext) {
-      return null;
-    }
-    if (!isActive) {
-      return sequenceContext;
-    }
-    return {
-      ...sequenceContext,
-      relativeFrom: 0,
-      cumulatedFrom: 0
-    };
-  }, [sequenceContext, isActive]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(TimelineContext.Provider, {
-    value: timelineValue,
-    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SequenceContext.Provider, {
-      value: newSequenceContext,
-      children
-    })
-  });
-};
-
-// src/Sequence.tsx
-
-var RegularSequenceRefForwardingFunction = ({
-  from = 0,
-  durationInFrames = Infinity,
-  children,
-  name,
-  height,
-  width,
-  showInTimeline = true,
-  _remotionInternalLoopDisplay: loopDisplay,
-  _remotionInternalStack: stack,
-  _remotionInternalPremountDisplay: premountDisplay,
-  _remotionInternalPostmountDisplay: postmountDisplay,
-  ...other
-}, ref) => {
-  const { layout = "absolute-fill" } = other;
-  const [id] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => String(Math.random()));
-  const parentSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
-  const { rootId } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(TimelineContext);
-  const cumulatedFrom = parentSequence ? parentSequence.cumulatedFrom + parentSequence.relativeFrom : 0;
-  const nonce = useNonce();
-  if (layout !== "absolute-fill" && layout !== "none") {
-    throw new TypeError(`The layout prop of <Sequence /> expects either "absolute-fill" or "none", but you passed: ${layout}`);
-  }
-  if (layout === "none" && typeof other.style !== "undefined") {
-    throw new TypeError('If layout="none", you may not pass a style.');
-  }
-  if (typeof durationInFrames !== "number") {
-    throw new TypeError(`You passed to durationInFrames an argument of type ${typeof durationInFrames}, but it must be a number.`);
-  }
-  if (durationInFrames <= 0) {
-    throw new TypeError(`durationInFrames must be positive, but got ${durationInFrames}`);
-  }
-  if (typeof from !== "number") {
-    throw new TypeError(`You passed to the "from" props of your <Sequence> an argument of type ${typeof from}, but it must be a number.`);
-  }
-  if (!Number.isFinite(from)) {
-    throw new TypeError(`The "from" prop of a sequence must be finite, but got ${from}.`);
-  }
-  const absoluteFrame = useTimelinePosition();
-  const videoConfig = useVideoConfig();
-  const parentSequenceDuration = parentSequence ? Math.min(parentSequence.durationInFrames - from, durationInFrames) : durationInFrames;
-  const actualDurationInFrames = Math.max(0, Math.min(videoConfig.durationInFrames - from, parentSequenceDuration));
-  const { registerSequence, unregisterSequence } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceManager);
-  const { hidden } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceVisibilityToggleContext);
-  const premounting = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return parentSequence?.premounting || Boolean(other._remotionInternalIsPremounting);
-  }, [other._remotionInternalIsPremounting, parentSequence?.premounting]);
-  const postmounting = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return parentSequence?.postmounting || Boolean(other._remotionInternalIsPostmounting);
-  }, [other._remotionInternalIsPostmounting, parentSequence?.postmounting]);
-  const contextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      cumulatedFrom,
-      relativeFrom: from,
-      durationInFrames: actualDurationInFrames,
-      parentFrom: parentSequence?.relativeFrom ?? 0,
-      id,
-      height: height ?? parentSequence?.height ?? null,
-      width: width ?? parentSequence?.width ?? null,
-      premounting,
-      postmounting,
-      premountDisplay: premountDisplay ?? null,
-      postmountDisplay: postmountDisplay ?? null
-    };
-  }, [
-    cumulatedFrom,
-    from,
-    actualDurationInFrames,
-    parentSequence,
-    id,
-    height,
-    width,
-    premounting,
-    postmounting,
-    premountDisplay,
-    postmountDisplay
-  ]);
-  const timelineClipName = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return name ?? "";
-  }, [name]);
-  const env = useRemotionEnvironment();
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    if (!env.isStudio) {
-      return;
-    }
-    registerSequence({
-      from,
-      duration: actualDurationInFrames,
-      id,
-      displayName: timelineClipName,
-      parent: parentSequence?.id ?? null,
-      type: "sequence",
-      rootId,
-      showInTimeline,
-      nonce,
-      loopDisplay,
-      stack: stack ?? null,
-      premountDisplay: premountDisplay ?? null,
-      postmountDisplay: postmountDisplay ?? null
-    });
-    return () => {
-      unregisterSequence(id);
-    };
-  }, [
-    durationInFrames,
-    id,
-    name,
-    registerSequence,
-    timelineClipName,
-    unregisterSequence,
-    parentSequence?.id,
-    actualDurationInFrames,
-    rootId,
-    from,
-    showInTimeline,
-    nonce,
-    loopDisplay,
-    stack,
-    premountDisplay,
-    postmountDisplay,
-    env.isStudio
-  ]);
-  const endThreshold = Math.ceil(cumulatedFrom + from + durationInFrames - 1);
-  const content = absoluteFrame < cumulatedFrom + from ? null : absoluteFrame > endThreshold ? null : children;
-  const styleIfThere = other.layout === "none" ? undefined : other.style;
-  const defaultStyle = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      flexDirection: undefined,
-      ...width ? { width } : {},
-      ...height ? { height } : {},
-      ...styleIfThere ?? {}
-    };
-  }, [height, styleIfThere, width]);
-  if (ref !== null && layout === "none") {
-    throw new TypeError('It is not supported to pass both a `ref` and `layout="none"` to <Sequence />.');
-  }
-  const isSequenceHidden = hidden[id] ?? false;
-  if (isSequenceHidden) {
-    return null;
-  }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SequenceContext.Provider, {
-    value: contextValue,
-    children: content === null ? null : other.layout === "none" ? content : /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(AbsoluteFill, {
-      ref,
-      style: defaultStyle,
-      className: other.className,
-      children: content
-    })
-  });
-};
-var RegularSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(RegularSequenceRefForwardingFunction);
-var PremountedPostmountedSequenceRefForwardingFunction = (props, ref) => {
-  const frame = useCurrentFrame();
-  if (props.layout === "none") {
-    throw new Error('`<Sequence>` with `premountFor` and `postmountFor` props does not support layout="none"');
-  }
-  const {
-    style: passedStyle,
-    from = 0,
-    durationInFrames = Infinity,
-    premountFor = 0,
-    postmountFor = 0,
-    styleWhilePremounted,
-    styleWhilePostmounted,
-    ...otherProps
-  } = props;
-  const endThreshold = Math.ceil(from + durationInFrames - 1);
-  const premountingActive = frame < from && frame >= from - premountFor;
-  const postmountingActive = frame > endThreshold && frame <= endThreshold + postmountFor;
-  const freezeFrame = premountingActive ? from : postmountingActive ? from + durationInFrames - 1 : 0;
-  const isFreezingActive = premountingActive || postmountingActive;
-  const style = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      ...passedStyle,
-      opacity: premountingActive || postmountingActive ? 0 : 1,
-      pointerEvents: premountingActive || postmountingActive ? "none" : passedStyle?.pointerEvents ?? undefined,
-      ...premountingActive ? styleWhilePremounted : {},
-      ...postmountingActive ? styleWhilePostmounted : {}
-    };
-  }, [
-    passedStyle,
-    premountingActive,
-    postmountingActive,
-    styleWhilePremounted,
-    styleWhilePostmounted
-  ]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Freeze, {
-    frame: freezeFrame,
-    active: isFreezingActive,
-    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Sequence, {
-      ref,
-      from,
-      durationInFrames,
-      style,
-      _remotionInternalPremountDisplay: premountFor,
-      _remotionInternalPostmountDisplay: postmountFor,
-      _remotionInternalIsPremounting: premountingActive,
-      _remotionInternalIsPostmounting: postmountingActive,
-      ...otherProps
-    })
-  });
-};
-var PremountedPostmountedSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(PremountedPostmountedSequenceRefForwardingFunction);
-var SequenceRefForwardingFunction = (props, ref) => {
-  const env = useRemotionEnvironment();
-  if (props.layout !== "none" && !env.isRendering) {
-    if (props.premountFor || props.postmountFor) {
-      return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(PremountedPostmountedSequence, {
-        ...props,
-        ref
-      });
-    }
-  }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(RegularSequence, {
-    ...props,
-    ref
-  });
-};
-var Sequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(SequenceRefForwardingFunction);
-// src/animated-image/AnimatedImage.tsx
+// src/use-delay-render.tsx
 
 
 // src/cancel-render.ts
+var getErrorStackWithMessage = (error) => {
+  const stack = error.stack ?? "";
+  return stack.startsWith("Error:") ? stack : `${error.message}
+${stack}`;
+};
 var isErrorLike = (err) => {
   if (err instanceof Error) {
     return true;
@@ -262177,7 +262070,7 @@ var isErrorLike = (err) => {
   }
   return true;
 };
-function cancelRender(err) {
+function cancelRenderInternal(scope, err) {
   let error;
   if (isErrorLike(err)) {
     error = err;
@@ -262189,12 +262082,14 @@ function cancelRender(err) {
   } else {
     error = Error("Rendering was cancelled");
   }
-  window.remotion_cancelledError = error.stack;
+  if (scope) {
+    scope.remotion_cancelledError = getErrorStackWithMessage(error);
+  }
   throw error;
 }
-
-// src/use-delay-render.ts
-
+function cancelRender(err) {
+  return cancelRenderInternal(typeof window !== "undefined" ? window : undefined, err);
+}
 
 // src/log.ts
 var logLevels = ["trace", "verbose", "info", "warn", "error"];
@@ -262250,113 +262145,4424 @@ var Log = {
 };
 
 // src/delay-render.ts
-var handles = [];
 if (typeof window !== "undefined") {
   window.remotion_renderReady = false;
   if (!window.remotion_delayRenderTimeouts) {
     window.remotion_delayRenderTimeouts = {};
   }
+  window.remotion_delayRenderHandles = [];
 }
 var DELAY_RENDER_CALLSTACK_TOKEN = "The delayRender was called:";
 var DELAY_RENDER_RETRIES_LEFT = "Retries left: ";
 var DELAY_RENDER_RETRY_TOKEN = "- Rendering the frame will be retried.";
 var DELAY_RENDER_CLEAR_TOKEN = "handle was cleared after";
 var defaultTimeout = 30000;
-var delayRenderInternal = (environment, label, options) => {
-  if (typeof label !== "string" && typeof label !== "undefined") {
-    throw new Error("The label parameter of delayRender() must be a string or undefined, got: " + JSON.stringify(label));
+var delayRenderInternal = ({
+  scope,
+  environment,
+  label: label2,
+  options
+}) => {
+  if (typeof label2 !== "string" && label2 !== null) {
+    throw new Error("The label parameter of delayRender() must be a string or undefined, got: " + JSON.stringify(label2));
   }
   const handle = Math.random();
-  handles.push(handle);
+  scope.remotion_delayRenderHandles.push(handle);
   const called = Error().stack?.replace(/^Error/g, "") ?? "";
   if (environment.isRendering) {
-    const timeoutToUse = (options?.timeoutInMilliseconds ?? (typeof window === "undefined" ? defaultTimeout : window.remotion_puppeteerTimeout ?? defaultTimeout)) - 2000;
-    if (typeof window !== "undefined") {
-      const retriesLeft = (options?.retries ?? 0) - (window.remotion_attempt - 1);
-      window.remotion_delayRenderTimeouts[handle] = {
-        label: label ?? null,
-        startTime: Date.now(),
-        timeout: setTimeout(() => {
-          const message = [
-            `A delayRender()`,
-            label ? `"${label}"` : null,
-            `was called but not cleared after ${timeoutToUse}ms. See https://remotion.dev/docs/timeout for help.`,
-            retriesLeft > 0 ? DELAY_RENDER_RETRIES_LEFT + retriesLeft : null,
-            retriesLeft > 0 ? DELAY_RENDER_RETRY_TOKEN : null,
-            DELAY_RENDER_CALLSTACK_TOKEN,
-            called
-          ].filter(truthy).join(" ");
-          cancelRender(Error(message));
-        }, timeoutToUse)
-      };
-    }
+    const timeoutToUse = (options?.timeoutInMilliseconds ?? scope.remotion_puppeteerTimeout ?? defaultTimeout) - 2000;
+    const retriesLeft = (options?.retries ?? 0) - (scope.remotion_attempt - 1);
+    scope.remotion_delayRenderTimeouts[handle] = {
+      label: label2 ?? null,
+      startTime: Date.now(),
+      timeout: setTimeout(() => {
+        const message = [
+          `A delayRender()`,
+          label2 ? `"${label2}"` : null,
+          `was called but not cleared after ${timeoutToUse}ms. See https://remotion.dev/docs/timeout for help.`,
+          retriesLeft > 0 ? DELAY_RENDER_RETRIES_LEFT + retriesLeft : null,
+          retriesLeft > 0 ? DELAY_RENDER_RETRY_TOKEN : null,
+          DELAY_RENDER_CALLSTACK_TOKEN,
+          called
+        ].filter(truthy).join(" ");
+        if (environment.isClientSideRendering) {
+          scope.remotion_cancelledError = getErrorStackWithMessage(Error(message));
+        } else {
+          cancelRenderInternal(scope, Error(message));
+        }
+      }, timeoutToUse)
+    };
   }
-  if (typeof window !== "undefined") {
-    window.remotion_renderReady = false;
-  }
+  scope.remotion_renderReady = false;
   return handle;
 };
-var delayRender = (label, options) => {
-  return delayRenderInternal(getRemotionEnvironment(), label, options);
+var delayRender = (label2, options) => {
+  if (typeof window === "undefined") {
+    return Math.random();
+  }
+  return delayRenderInternal({
+    scope: window,
+    environment: getRemotionEnvironment(),
+    label: label2 ?? null,
+    options: options ?? {}
+  });
 };
-var continueRenderInternal = (handle, environment) => {
+var continueRenderInternal = ({
+  scope,
+  handle,
+  environment,
+  logLevel
+}) => {
   if (typeof handle === "undefined") {
     throw new TypeError("The continueRender() method must be called with a parameter that is the return value of delayRender(). No value was passed.");
   }
   if (typeof handle !== "number") {
     throw new TypeError("The parameter passed into continueRender() must be the return value of delayRender() which is a number. Got: " + JSON.stringify(handle));
   }
-  handles = handles.filter((h) => {
-    if (h === handle) {
-      if (environment.isRendering) {
-        if (!window.remotion_delayRenderTimeouts[handle]) {
-          return false;
-        }
-        const { label, startTime, timeout } = window.remotion_delayRenderTimeouts[handle];
-        clearTimeout(timeout);
-        const message = [
-          label ? `"${label}"` : "A handle",
-          DELAY_RENDER_CLEAR_TOKEN,
-          `${Date.now() - startTime}ms`
-        ].filter(truthy).join(" ");
-        Log.verbose({ logLevel: window.remotion_logLevel, tag: "delayRender()" }, message);
-        delete window.remotion_delayRenderTimeouts[handle];
-      }
-      return false;
-    }
-    return true;
-  });
-  if (handles.length === 0 && typeof window !== "undefined") {
-    window.remotion_renderReady = true;
+  const handleExists = scope.remotion_delayRenderHandles.includes(handle);
+  const timeoutEntry = scope.remotion_delayRenderTimeouts[handle];
+  if (handleExists && environment.isRendering && timeoutEntry) {
+    const { label: label2, startTime, timeout } = timeoutEntry;
+    clearTimeout(timeout);
+    const message = [
+      label2 ? `"${label2}"` : "A handle",
+      DELAY_RENDER_CLEAR_TOKEN,
+      `${Date.now() - startTime}ms`
+    ].filter(truthy).join(" ");
+    Log.verbose({ logLevel, tag: "delayRender()" }, message);
+    delete scope.remotion_delayRenderTimeouts[handle];
+  }
+  scope.remotion_delayRenderHandles = scope.remotion_delayRenderHandles.filter((h) => h !== handle);
+  if (scope.remotion_delayRenderHandles.length === 0) {
+    scope.remotion_renderReady = true;
   }
 };
 var continueRender = (handle) => {
-  continueRenderInternal(handle, getRemotionEnvironment());
+  if (typeof window === "undefined") {
+    return;
+  }
+  continueRenderInternal({
+    scope: window,
+    handle,
+    environment: getRemotionEnvironment(),
+    logLevel: window.remotion_logLevel ?? "info"
+  });
 };
 
-// src/use-delay-render.ts
+// src/log-level-context.tsx
+
+
+var LogLevelContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
+  logLevel: "info",
+  mountTime: 0
+});
+var useLogLevel = () => {
+  const { logLevel } = react__WEBPACK_IMPORTED_MODULE_0__.useContext(LogLevelContext);
+  if (logLevel === null) {
+    throw new Error("useLogLevel must be used within a LogLevelProvider");
+  }
+  return logLevel;
+};
+var useMountTime = () => {
+  const { mountTime } = react__WEBPACK_IMPORTED_MODULE_0__.useContext(LogLevelContext);
+  if (mountTime === null) {
+    throw new Error("useMountTime must be used within a LogLevelProvider");
+  }
+  return mountTime;
+};
+
+// src/use-delay-render.tsx
+var DelayRenderContextType = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
 var useDelayRender = () => {
   const environment = useRemotionEnvironment();
-  const delayRender2 = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((label, options) => {
-    return delayRenderInternal(environment, label, options);
-  }, [environment]);
+  const scope = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(DelayRenderContextType) ?? (typeof window !== "undefined" ? window : undefined);
+  const logLevel = useLogLevel();
+  const delayRender2 = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((label2, options) => {
+    if (!scope) {
+      return Math.random();
+    }
+    return delayRenderInternal({
+      scope,
+      environment,
+      label: label2 ?? null,
+      options: options ?? {}
+    });
+  }, [environment, scope]);
   const continueRender2 = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((handle) => {
-    continueRenderInternal(handle, environment);
-  }, [environment]);
-  return { delayRender: delayRender2, continueRender: continueRender2 };
+    if (!scope) {
+      return;
+    }
+    continueRenderInternal({
+      scope,
+      handle,
+      environment,
+      logLevel
+    });
+  }, [environment, logLevel, scope]);
+  const cancelRender2 = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((err) => {
+    return cancelRenderInternal(scope ?? (typeof window !== "undefined" ? window : undefined), err);
+  }, [scope]);
+  return { delayRender: delayRender2, continueRender: continueRender2, cancelRender: cancelRender2 };
+};
+
+// src/use-lazy-component.ts
+
+var useLazyComponent = ({
+  compProps,
+  componentName,
+  noSuspense
+}) => {
+  const componentRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  if ("component" in compProps) {
+    componentRef.current = compProps.component;
+  }
+  const lazy = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if ("component" in compProps) {
+      if (typeof document === "undefined" || noSuspense) {
+        return compProps.component;
+      }
+      if (typeof compProps.component === "undefined") {
+        throw new Error(`A value of \`undefined\` was passed to the \`component\` prop. Check the value you are passing to the <${componentName}/> component.`);
+      }
+      const Wrapper = (props) => {
+        const Comp = componentRef.current;
+        return react__WEBPACK_IMPORTED_MODULE_0__.createElement(Comp, props);
+      };
+      return Wrapper;
+    }
+    if ("lazyComponent" in compProps && typeof compProps.lazyComponent !== "undefined") {
+      if (typeof compProps.lazyComponent === "undefined") {
+        throw new Error(`A value of \`undefined\` was passed to the \`lazyComponent\` prop. Check the value you are passing to the <${componentName}/> component.`);
+      }
+      return react__WEBPACK_IMPORTED_MODULE_0__.lazy(compProps.lazyComponent);
+    }
+    throw new Error("You must pass either 'component' or 'lazyComponent'");
+  }, [compProps.lazyComponent]);
+  return lazy;
+};
+
+// src/use-video.ts
+
+var useVideo = () => {
+  const { canvasContent, compositions, currentCompositionMetadata } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionManager);
+  const selected = compositions.find((c) => {
+    return canvasContent?.type === "composition" && c.id === canvasContent.compositionId;
+  });
+  const resolved = useResolvedVideoConfig(selected?.id ?? null);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (!resolved) {
+      return null;
+    }
+    if (resolved.type === "error") {
+      return null;
+    }
+    if (resolved.type === "loading") {
+      return null;
+    }
+    if (!selected) {
+      return null;
+    }
+    return {
+      ...resolved.result,
+      defaultProps: selected.defaultProps ?? {},
+      id: selected.id,
+      ...currentCompositionMetadata ?? {},
+      component: selected.component
+    };
+  }, [currentCompositionMetadata, resolved, selected]);
+};
+
+// src/validation/validate-composition-id.ts
+var getRegex2 = () => /^([a-zA-Z0-9-\u4E00-\u9FFF])+$/g;
+var isCompositionIdValid = (id) => id.match(getRegex2());
+var validateCompositionId = (id) => {
+  if (!isCompositionIdValid(id)) {
+    throw new Error(`Composition id can only contain a-z, A-Z, 0-9, CJK characters and -. You passed ${id}`);
+  }
+};
+var invalidCompositionErrorMessage = `Composition ID must match ${String(getRegex2())}`;
+
+// src/validation/validate-default-props.ts
+var validateDefaultAndInputProps = (defaultProps, name, compositionId) => {
+  if (!defaultProps) {
+    return;
+  }
+  if (typeof defaultProps !== "object") {
+    throw new Error(`"${name}" must be an object, but you passed a value of type ${typeof defaultProps}`);
+  }
+  if (Array.isArray(defaultProps)) {
+    throw new Error(`"${name}" must be an object, an array was passed ${compositionId ? `for composition "${compositionId}"` : ""}`);
+  }
+};
+
+// src/Composition.tsx
+
+var Fallback = () => {
+  const { continueRender: continueRender2, delayRender: delayRender2 } = useDelayRender();
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    const fallback = delayRender2("Waiting for Root component to unsuspend");
+    return () => continueRender2(fallback);
+  }, [continueRender2, delayRender2]);
+  return null;
+};
+var InnerComposition = ({
+  width,
+  height,
+  fps,
+  durationInFrames,
+  id,
+  defaultProps,
+  schema,
+  ...compProps
+}) => {
+  const compManager = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionSetters);
+  const { registerComposition, unregisterComposition } = compManager;
+  const video = useVideo();
+  const lazy = useLazyComponent({
+    compProps,
+    componentName: "Composition",
+    noSuspense: false
+  });
+  const nonce = useNonce();
+  const isPlayer = useIsPlayer();
+  const environment = useRemotionEnvironment();
+  const canUseComposition = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CanUseRemotionHooks);
+  if (typeof window !== "undefined") {
+    window.remotion_seenCompositionIds = Array.from(new Set([...window.remotion_seenCompositionIds ?? [], id]));
+  }
+  if (canUseComposition) {
+    if (isPlayer) {
+      throw new Error("<Composition> was mounted inside the `component` that was passed to the <Player>. See https://remotion.dev/docs/wrong-composition-mount for help.");
+    }
+    throw new Error("<Composition> mounted inside another composition. See https://remotion.dev/docs/wrong-composition-mount for help.");
+  }
+  const { folderName, parentName } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(FolderContext);
+  const stack = compProps._remotionInternalStack ?? null;
+  const componentFromProps = "component" in compProps ? compProps.component : null;
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (!id) {
+      throw new Error("No id for composition passed.");
+    }
+    validateCompositionId(id);
+    validateDefaultAndInputProps(defaultProps, "defaultProps", id);
+    registerComposition({
+      durationInFrames: durationInFrames ?? undefined,
+      fps: fps ?? undefined,
+      height: height ?? undefined,
+      width: width ?? undefined,
+      id,
+      folderName,
+      component: lazy,
+      defaultProps: serializeThenDeserializeInStudio(defaultProps ?? {}),
+      nonce: nonce.get(),
+      parentFolderName: parentName,
+      componentFromProps,
+      schema: schema ?? null,
+      calculateMetadata: compProps.calculateMetadata ?? null,
+      stack
+    });
+    return () => {
+      unregisterComposition(id);
+    };
+  }, [
+    durationInFrames,
+    fps,
+    height,
+    lazy,
+    id,
+    folderName,
+    defaultProps,
+    width,
+    nonce,
+    parentName,
+    componentFromProps,
+    schema,
+    compProps.calculateMetadata,
+    stack,
+    registerComposition,
+    unregisterComposition
+  ]);
+  const resolved = useResolvedVideoConfig(id);
+  const { setError, clearError } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionRenderErrorContext);
+  const onError = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((error2) => {
+    setError(error2);
+  }, [setError]);
+  const onClear = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
+    clearError();
+  }, [clearError]);
+  if (environment.isStudio && video && video.component === lazy && video.id === id) {
+    const Comp = lazy;
+    if (resolved === null || resolved.type !== "success" && resolved.type !== "success-and-refreshing") {
+      return null;
+    }
+    return (0,react_dom__WEBPACK_IMPORTED_MODULE_1__.createPortal)(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CanUseRemotionHooksProvider, {
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CompositionErrorBoundary, {
+        onError,
+        onClear,
+        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(react__WEBPACK_IMPORTED_MODULE_0__.Suspense, {
+          fallback: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Loading, {}),
+          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Comp, {
+            ...resolved.result.props ?? {}
+          })
+        })
+      })
+    }), portalNode());
+  }
+  if (environment.isRendering && video && video.component === lazy && video.id === id) {
+    const Comp = lazy;
+    if (resolved === null || resolved.type !== "success" && resolved.type !== "success-and-refreshing") {
+      return null;
+    }
+    return (0,react_dom__WEBPACK_IMPORTED_MODULE_1__.createPortal)(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CanUseRemotionHooksProvider, {
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(react__WEBPACK_IMPORTED_MODULE_0__.Suspense, {
+        fallback: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Fallback, {}),
+        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Comp, {
+          ...resolved.result.props ?? {}
+        })
+      })
+    }), portalNode());
+  }
+  return null;
+};
+var Composition = (props) => {
+  const { onlyRenderComposition } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionSetters);
+  if (onlyRenderComposition && onlyRenderComposition !== props.id) {
+    return null;
+  }
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(InnerComposition, {
+    ...props
+  });
+};
+
+// src/enable-sequence-stack-traces.ts
+
+var componentsToAddStacksTo = [];
+var sequenceComponent = null;
+var stacksByControls = new WeakMap;
+var REMOTION_INTERNAL_STACK_PROP = "_remotionInternalStack";
+var getComponentsToAddStacksTo = () => componentsToAddStacksTo;
+var addSequenceStackTraces = (component) => {
+  componentsToAddStacksTo.push(component);
+};
+var setSequenceComponent = (component) => {
+  sequenceComponent = component;
+};
+var getSequenceComponent = () => sequenceComponent;
+var setStackForControls = (controls, stack) => {
+  if (stack === undefined) {
+    stacksByControls.delete(controls);
+    return;
+  }
+  stacksByControls.set(controls, stack);
+};
+var getStackForControls = (controls) => {
+  return stacksByControls.get(controls) ?? null;
+};
+var getSingleChildComponent = (children) => {
+  const mountedChildren = react__WEBPACK_IMPORTED_MODULE_0__.Children.toArray(children);
+  if (mountedChildren.length !== 1) {
+    return null;
+  }
+  const child = mountedChildren[0];
+  if (!react__WEBPACK_IMPORTED_MODULE_0__.isValidElement(child)) {
+    return null;
+  }
+  if (typeof child.type !== "function" && typeof child.type !== "object") {
+    return null;
+  }
+  return child.type;
+};
+
+// src/version.ts
+var VERSION = "4.0.507";
+
+// src/multiple-versions-warning.ts
+var checkMultipleRemotionVersions = () => {
+  if (typeof globalThis === "undefined") {
+    return;
+  }
+  const set = () => {
+    globalThis.remotion_imported = VERSION;
+    if (typeof window !== "undefined") {
+      window.remotion_imported = VERSION;
+    }
+  };
+  const alreadyImported = globalThis.remotion_imported || typeof window !== "undefined" && window.remotion_imported;
+  if (alreadyImported) {
+    if (alreadyImported === VERSION) {
+      return;
+    }
+    if (typeof alreadyImported === "string" && alreadyImported.includes("webcodecs")) {
+      set();
+      return;
+    }
+    throw new TypeError(`\uD83D\uDEA8 Multiple versions of Remotion detected: ${[
+      VERSION,
+      typeof alreadyImported === "string" ? alreadyImported : "an older version"
+    ].filter(truthy).join(" and ")}. This will cause things to break in an unexpected way.
+Check that all your Remotion packages are on the same version. If your dependencies depend on Remotion, make them peer dependencies. You can also run \`npx remotion versions\` from your terminal to see which versions are mismatching.`);
+  }
+  set();
+};
+
+// src/Null.tsx
+var Null = () => {
+  throw new Error("<Null> has been removed as of Remotion v4.0.228. The native clipping APIs were experimental and subject to removal at any time. We removed them because they were sparingly used and made rendering often slower rather than faster.");
+};
+
+// src/Sequence.tsx
+
+
+// src/freeze.tsx
+
+
+// src/SequenceContext.tsx
+
+var SequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
+
+// src/timeline-position-state.ts
+var exports_timeline_position_state = {};
+__export(exports_timeline_position_state, {
+  useTimelineSetFrame: () => useTimelineSetFrame,
+  useTimelinePosition: () => useTimelinePosition,
+  useTimelineContext: () => useTimelineContext,
+  usePlayingState: () => usePlayingState,
+  usePlaybackRate: () => usePlaybackRate,
+  useAbsoluteTimelinePosition: () => useAbsoluteTimelinePosition,
+  persistCurrentFrame: () => persistCurrentFrame,
+  getInitialFrameState: () => getInitialFrameState,
+  getFrameForComposition: () => getFrameForComposition,
+  clampFrameToCompositionRange: () => clampFrameToCompositionRange
+});
+
+
+// src/TimelineContext.tsx
+
+
+var SetTimelineContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
+  setFrame: () => {
+    throw new Error("default");
+  },
+  setPlaying: () => {
+    throw new Error("default");
+  }
+});
+var TimelineContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
+var TimelineImperativeContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
+var PlaybackRateContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
+var AbsoluteTimeContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
+var TimelineContextProvider = ({ children, frameState }) => {
+  const [playing, setPlaying] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+  const imperativePlaying = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(false);
+  const [playbackRate, setPlaybackRate] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(1);
+  const audioAndVideoTags = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)([]);
+  const [_frame, setFrame] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => getInitialFrameState());
+  const frame = frameState ?? _frame;
+  const frameRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(frame);
+  frameRef.current = frame;
+  const { delayRender: delayRender2, continueRender: continueRender2 } = useDelayRender();
+  if (typeof window !== "undefined") {
+    (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
+      window.remotion_setFrame = (f, composition, attempt) => {
+        window.remotion_attempt = attempt;
+        const id = delayRender2(`Setting the current frame to ${f}`);
+        let asyncUpdate = true;
+        setFrame((s) => {
+          const currentFrame = s[composition] ?? window.remotion_initialFrame;
+          if (currentFrame === f) {
+            asyncUpdate = false;
+            return s;
+          }
+          return {
+            ...s,
+            [composition]: f
+          };
+        });
+        if (asyncUpdate) {
+          requestAnimationFrame(() => continueRender2(id));
+        } else {
+          continueRender2(id);
+        }
+      };
+      window.remotion_isPlayer = false;
+    }, [continueRender2, delayRender2]);
+  }
+  const timelineContextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      frame,
+      playing,
+      imperativePlaying,
+      audioAndVideoTags
+    };
+  }, [frame, playing]);
+  const timelineImperativeContextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      frameRef,
+      imperativePlaying,
+      audioAndVideoTags
+    };
+  }, []);
+  const playbackRateContextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      playbackRate,
+      setPlaybackRate
+    };
+  }, [playbackRate]);
+  const setTimelineContextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      setFrame,
+      setPlaying
+    };
+  }, []);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(AbsoluteTimeContext.Provider, {
+    value: timelineContextValue,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(PlaybackRateContext.Provider, {
+      value: playbackRateContextValue,
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(TimelineImperativeContext.Provider, {
+        value: timelineImperativeContextValue,
+        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(TimelineContext.Provider, {
+          value: timelineContextValue,
+          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SetTimelineContext.Provider, {
+            value: setTimelineContextValue,
+            children
+          })
+        })
+      })
+    })
+  });
+};
+
+// src/timeline-position-state.ts
+var makeKey = () => {
+  return `remotion.time-all`;
+};
+var persistCurrentFrame = (time) => {
+  localStorage.setItem(makeKey(), JSON.stringify(time));
+};
+var getInitialFrameState = () => {
+  const item = localStorage.getItem(makeKey()) ?? "{}";
+  const obj = JSON.parse(item);
+  return obj;
+};
+var getFrameForComposition = (composition) => {
+  const item = localStorage.getItem(makeKey()) ?? "{}";
+  const obj = JSON.parse(item);
+  if (obj[composition] !== undefined) {
+    return Number(obj[composition]);
+  }
+  if (typeof window === "undefined") {
+    return 0;
+  }
+  return window.remotion_initialFrame ?? 0;
+};
+var clampFrameToCompositionRange = (frame, durationInFrames) => {
+  return Math.max(0, Math.min(Math.max(0, durationInFrames - 1), frame));
+};
+var useTimelinePositionFromContext = (state) => {
+  const videoConfig = useVideo();
+  const env = useRemotionEnvironment();
+  if (!videoConfig) {
+    return typeof window === "undefined" ? 0 : window.remotion_initialFrame ?? 0;
+  }
+  const unclamped = state.frame[videoConfig.id] ?? (env.isPlayer ? 0 : getFrameForComposition(videoConfig.id));
+  return clampFrameToCompositionRange(unclamped, videoConfig.durationInFrames);
+};
+var useTimelineContext = () => {
+  const state = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(TimelineContext);
+  if (state === null) {
+    throw new Error("TimelineContext is not available. This hook must be used inside a <Player> or the Remotion Studio.");
+  }
+  return state;
+};
+var usePlaybackRate = () => {
+  const state = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(PlaybackRateContext);
+  if (state === null) {
+    throw new Error("PlaybackRateContext is not available. This hook must be used inside a <Player> or the Remotion Studio.");
+  }
+  return state;
+};
+var useTimelinePosition = () => {
+  const state = useTimelineContext();
+  return useTimelinePositionFromContext(state);
+};
+var useAbsoluteTimelinePosition = () => {
+  const state = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(AbsoluteTimeContext);
+  if (state === null) {
+    throw new Error("AbsoluteTimeContext is not available. This hook must be used inside a <Player> or the Remotion Studio.");
+  }
+  return useTimelinePositionFromContext(state);
+};
+var useTimelineSetFrame = () => {
+  const { setFrame } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SetTimelineContext);
+  return setFrame;
+};
+var usePlayingState = () => {
+  const { playing, imperativePlaying } = useTimelineContext();
+  const { setPlaying } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SetTimelineContext);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => [playing, setPlaying, imperativePlaying], [imperativePlaying, playing, setPlaying]);
+};
+
+// src/use-current-frame.ts
+
+var useCurrentFrame = () => {
+  const canUseRemotionHooks = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CanUseRemotionHooks);
+  const env = useRemotionEnvironment();
+  if (!canUseRemotionHooks) {
+    if (env.isPlayer) {
+      throw new Error(`useCurrentFrame can only be called inside a component that was passed to <Player>. See: https://www.remotion.dev/docs/player/examples`);
+    }
+    throw new Error(`useCurrentFrame() can only be called inside a component that was registered as a composition. See https://www.remotion.dev/docs/the-fundamentals#defining-compositions`);
+  }
+  const frame = useTimelinePosition();
+  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
+  const contextOffset = context ? context.cumulatedFrom + context.relativeFrom : 0;
+  return frame - contextOffset;
+};
+
+// src/use-video-config.ts
+
+
+// src/use-unsafe-video-config.ts
+
+var useUnsafeVideoConfig = () => {
+  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
+  const ctxWidth = context?.width ?? null;
+  const ctxHeight = context?.height ?? null;
+  const ctxDuration = context?.durationInFrames ?? null;
+  const video = useVideo();
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (!video) {
+      return null;
+    }
+    const {
+      id,
+      durationInFrames,
+      fps,
+      height,
+      width,
+      defaultProps,
+      props,
+      defaultCodec,
+      defaultOutName,
+      defaultVideoImageFormat,
+      defaultPixelFormat,
+      defaultProResProfile,
+      defaultSampleRate
+    } = video;
+    return {
+      id,
+      width: ctxWidth ?? width,
+      height: ctxHeight ?? height,
+      fps,
+      durationInFrames: ctxDuration ?? durationInFrames,
+      defaultProps,
+      props,
+      defaultCodec,
+      defaultOutName,
+      defaultVideoImageFormat,
+      defaultPixelFormat,
+      defaultProResProfile,
+      defaultSampleRate
+    };
+  }, [ctxDuration, ctxHeight, ctxWidth, video]);
+};
+
+// src/use-video-config.ts
+var useVideoConfig = () => {
+  const videoConfig = useUnsafeVideoConfig();
+  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CanUseRemotionHooks);
+  const isPlayer = useIsPlayer();
+  if (!videoConfig) {
+    if (typeof window !== "undefined" && window.remotion_isPlayer || isPlayer) {
+      throw new Error([
+        "No video config found. Likely reasons:",
+        "- You are probably calling useVideoConfig() from outside the component passed to <Player />. See https://www.remotion.dev/docs/player/examples for how to set up the Player correctly.",
+        "- You have multiple versions of Remotion installed which causes the React context to get lost."
+      ].join("-"));
+    }
+    throw new Error("No video config found. You are probably calling useVideoConfig() from a component which has not been registered as a <Composition />. See https://www.remotion.dev/docs/the-fundamentals#defining-compositions for more information.");
+  }
+  if (!context) {
+    throw new Error("Called useVideoConfig() outside a Remotion composition.");
+  }
+  return videoConfig;
+};
+
+// src/freeze.tsx
+
+var Freeze = ({
+  frame: frameToFreeze,
+  children,
+  active = true
+}) => {
+  const frame = useCurrentFrame();
+  const videoConfig = useVideoConfig();
+  if (typeof frameToFreeze === "undefined") {
+    throw new Error(`The <Freeze /> component requires a 'frame' prop, but none was passed.`);
+  }
+  if (typeof frameToFreeze !== "number") {
+    throw new Error(`The 'frame' prop of <Freeze /> must be a number, but is of type ${typeof frameToFreeze}`);
+  }
+  if (Number.isNaN(frameToFreeze)) {
+    throw new Error(`The 'frame' prop of <Freeze /> must be a real number, but it is NaN.`);
+  }
+  if (!Number.isFinite(frameToFreeze)) {
+    throw new Error(`The 'frame' prop of <Freeze /> must be a finite number, but it is ${frameToFreeze}.`);
+  }
+  const isActive = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (typeof active === "boolean") {
+      return active;
+    }
+    if (typeof active === "function") {
+      return active(frame);
+    }
+  }, [active, frame]);
+  const timelineContext = useTimelineContext();
+  const sequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
+  const relativeFrom = sequenceContext?.relativeFrom ?? 0;
+  const timelineValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (!isActive) {
+      return timelineContext;
+    }
+    return {
+      ...timelineContext,
+      playing: false,
+      imperativePlaying: {
+        current: false
+      },
+      frame: {
+        [videoConfig.id]: frameToFreeze + relativeFrom
+      }
+    };
+  }, [isActive, timelineContext, videoConfig.id, frameToFreeze, relativeFrom]);
+  const newSequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (!sequenceContext) {
+      return null;
+    }
+    if (!isActive) {
+      return sequenceContext;
+    }
+    return {
+      ...sequenceContext,
+      cumulatedFrom: 0
+    };
+  }, [sequenceContext, isActive]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(TimelineContext.Provider, {
+    value: timelineValue,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceContext.Provider, {
+      value: newSequenceContext,
+      children
+    })
+  });
+};
+
+// src/interactivity-schema.ts
+var captionsSchema = {
+  captions: {
+    type: "remotion-captions",
+    default: undefined,
+    description: "Captions",
+    keyframable: false
+  }
+};
+var transformSchema = {
+  "style.transformOrigin": {
+    type: "transform-origin",
+    step: 1,
+    default: "50% 50%",
+    description: "Transform origin"
+  },
+  "style.translate": {
+    type: "translate",
+    step: 1,
+    default: "0px 0px",
+    description: "Offset"
+  },
+  "style.scale": {
+    type: "scale",
+    max: 100,
+    step: 0.01,
+    default: 1,
+    description: "Scale",
+    defaultKeyframeOutput: "perceptual-scale"
+  },
+  "style.rotate": {
+    type: "rotation-css",
+    step: 1,
+    default: "0deg",
+    description: "Rotation"
+  },
+  "style.opacity": {
+    type: "number",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 1,
+    description: "Opacity",
+    hiddenFromList: false
+  }
+};
+var sequenceVisualStyleSchema = transformSchema;
+var textSchema = {
+  "style.color": {
+    type: "color",
+    default: undefined,
+    description: "Color"
+  },
+  "style.fontFamily": {
+    type: "font-family",
+    default: undefined,
+    description: "Font family",
+    keyframable: false
+  },
+  "style.fontSize": {
+    type: "number",
+    default: undefined,
+    min: 0,
+    step: 1,
+    description: "Font size",
+    hiddenFromList: false
+  },
+  "style.lineHeight": {
+    type: "number",
+    default: undefined,
+    min: 0,
+    step: 0.05,
+    description: "Line height",
+    hiddenFromList: false
+  },
+  "style.fontWeight": {
+    type: "enum",
+    default: "400",
+    description: "Font weight",
+    variants: {
+      "100": {},
+      "200": {},
+      "300": {},
+      "400": {},
+      "500": {},
+      "600": {},
+      "700": {},
+      "800": {},
+      "900": {},
+      normal: {},
+      bold: {}
+    }
+  },
+  "style.fontStyle": {
+    type: "enum",
+    default: "normal",
+    description: "Font style",
+    variants: {
+      normal: {},
+      italic: {},
+      oblique: {}
+    }
+  },
+  "style.textAlign": {
+    type: "enum",
+    default: "left",
+    description: "Text align",
+    variants: {
+      left: {},
+      center: {},
+      right: {},
+      justify: {},
+      start: {},
+      end: {}
+    }
+  },
+  "style.letterSpacing": {
+    type: "number",
+    default: undefined,
+    step: 0.1,
+    description: "Letter spacing",
+    hiddenFromList: false
+  }
+};
+var borderSchema = {
+  "style.borderWidth": {
+    type: "number",
+    default: undefined,
+    min: 0,
+    step: 1,
+    description: "Border width",
+    hiddenFromList: false
+  },
+  "style.borderStyle": {
+    type: "enum",
+    default: "none",
+    description: "Border style",
+    variants: {
+      none: {},
+      hidden: {},
+      solid: {},
+      dashed: {},
+      dotted: {},
+      double: {},
+      groove: {},
+      ridge: {},
+      inset: {},
+      outset: {}
+    }
+  },
+  "style.borderColor": {
+    type: "color",
+    default: undefined,
+    description: "Border color"
+  }
+};
+var borderRadiusSchema = {
+  "style.borderRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Border radius",
+    hiddenFromList: false,
+    keyframable: true
+  },
+  "style.borderTopLeftRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Top left radius",
+    hiddenFromList: false
+  },
+  "style.borderTopRightRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Top right radius",
+    hiddenFromList: false
+  },
+  "style.borderBottomRightRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Bottom right radius",
+    hiddenFromList: false
+  },
+  "style.borderBottomLeftRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Bottom left radius",
+    hiddenFromList: false
+  }
+};
+var backgroundSchema = {
+  "style.backgroundColor": {
+    type: "color",
+    default: "transparent",
+    description: "Color"
+  }
+};
+var svgColorSchema = {
+  color: {
+    type: "color",
+    default: undefined,
+    description: "Current color"
+  }
+};
+var svgStrokeSchema = {
+  ...svgColorSchema,
+  stroke: {
+    type: "color",
+    default: "none",
+    description: "Stroke"
+  },
+  strokeWidth: {
+    type: "number",
+    default: 1,
+    description: "Stroke width",
+    min: 0,
+    step: 1,
+    hiddenFromList: false
+  }
+};
+var svgPaintSchema = {
+  fill: {
+    type: "color",
+    default: undefined,
+    description: "Fill"
+  },
+  ...svgStrokeSchema
+};
+var textContentSchema = {
+  children: {
+    type: "text-content",
+    default: "",
+    description: "Text",
+    keyframable: false
+  }
+};
+var premountSchema = {
+  premountFor: {
+    type: "number",
+    default: 0,
+    description: "Premount For",
+    min: 0,
+    step: 1,
+    hiddenFromList: false,
+    keyframable: false
+  },
+  postmountFor: {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    hiddenFromList: true,
+    keyframable: false
+  }
+};
+var sequencePremountSchema = {
+  ...premountSchema
+};
+var cropSchema = {
+  cropLeft: {
+    type: "number",
+    default: 0,
+    description: "Crop left",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hiddenFromList: false,
+    keyframable: true
+  },
+  cropRight: {
+    type: "number",
+    default: 0,
+    description: "Crop right",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hiddenFromList: false,
+    keyframable: true
+  },
+  cropTop: {
+    type: "number",
+    default: 0,
+    description: "Crop top",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hiddenFromList: false,
+    keyframable: true
+  },
+  cropBottom: {
+    type: "number",
+    default: 0,
+    description: "Crop bottom",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hiddenFromList: false,
+    keyframable: true
+  }
+};
+var sequenceCropSchema = cropSchema;
+var sequenceStyleSchema = {
+  ...sequenceCropSchema,
+  ...transformSchema,
+  ...backgroundSchema,
+  ...borderSchema,
+  ...borderRadiusSchema,
+  ...sequencePremountSchema
+};
+var hiddenField = {
+  type: "boolean",
+  default: false,
+  description: "Hidden"
+};
+var showInTimelineField = {
+  type: "hidden"
+};
+var sequenceNameField = {
+  type: "hidden"
+};
+var extendSchemaWithSequenceName = (schema) => {
+  return {
+    name: sequenceNameField,
+    ...schema
+  };
+};
+var durationInFramesField = {
+  type: "number",
+  default: undefined,
+  min: 1,
+  step: 1,
+  hiddenFromList: true
+};
+var fromField = {
+  type: "number",
+  default: 0,
+  step: 1,
+  hiddenFromList: true
+};
+var trimBeforeField = {
+  type: "number",
+  default: 0,
+  min: 0,
+  step: 1,
+  hiddenFromList: true
+};
+var freezeField = {
+  type: "number",
+  default: null,
+  step: 1,
+  hiddenFromList: true
+};
+var baseSchema = {
+  durationInFrames: durationInFramesField,
+  from: fromField,
+  trimBefore: trimBeforeField,
+  freeze: freezeField,
+  hidden: hiddenField,
+  name: sequenceNameField,
+  showInTimeline: showInTimelineField
+};
+var sequenceSchema = {
+  ...baseSchema,
+  layout: {
+    type: "enum",
+    default: "absolute-fill",
+    description: "Layout",
+    variants: {
+      "absolute-fill": sequenceStyleSchema,
+      none: {}
+    }
+  }
+};
+var baseSchemaWithoutFrom = {
+  durationInFrames: durationInFramesField,
+  trimBefore: trimBeforeField,
+  freeze: freezeField,
+  hidden: hiddenField,
+  name: sequenceNameField,
+  showInTimeline: showInTimelineField
+};
+var sequenceSchemaWithoutFrom = {
+  ...baseSchemaWithoutFrom,
+  layout: sequenceSchema.layout
+};
+var sequenceSchemaDefaultLayoutNone = {
+  ...sequenceSchema,
+  layout: {
+    ...sequenceSchema.layout,
+    default: "none"
+  }
+};
+
+// src/sequence-crop.ts
+var clampCrop = (value) => {
+  return Math.min(1, Math.max(0, value ?? 0));
+};
+var resolveAxis = (start, end) => {
+  const resolvedStart = clampCrop(start);
+  const resolvedEnd = clampCrop(end);
+  if (resolvedStart + resolvedEnd > 1) {
+    return [0.5, 0.5];
+  }
+  return [resolvedStart, resolvedEnd];
+};
+var resolveSequenceCrop = ({
+  cropLeft,
+  cropRight,
+  cropTop,
+  cropBottom
+}) => {
+  const [left, right] = resolveAxis(cropLeft, cropRight);
+  const [top, bottom] = resolveAxis(cropTop, cropBottom);
+  return { left, right, top, bottom };
+};
+var getSequenceCropClipPath = ({
+  left,
+  right,
+  top,
+  bottom,
+  style
+}) => {
+  if (left === 0 && right === 0 && top === 0 && bottom === 0) {
+    return null;
+  }
+  const serializeRadius = (radius) => typeof radius === "number" ? `${radius}px` : radius;
+  const shorthand = serializeRadius(style?.borderRadius);
+  const longhands = [
+    style?.borderTopLeftRadius,
+    style?.borderTopRightRadius,
+    style?.borderBottomRightRadius,
+    style?.borderBottomLeftRadius
+  ];
+  const serializedBorderRadius = shorthand || (longhands.some((radius) => radius !== undefined) ? longhands.map((radius) => serializeRadius(radius) ?? "0px").join(" ") : undefined);
+  const rounded = serializedBorderRadius ? ` round ${serializedBorderRadius}` : "";
+  return `inset(${top * 100}% ${right * 100}% ${bottom * 100}% ${left * 100}%${rounded})`;
+};
+var validateSequenceCrop = (crop, componentName = "<Sequence />") => {
+  for (const [name, value] of Object.entries(crop)) {
+    if (value === undefined) {
+      continue;
+    }
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new TypeError(`The "${name}" prop of ${componentName} must be a finite number, but got ${String(value)}.`);
+    }
+    if (value < 0 || value > 1) {
+      throw new RangeError(`The "${name}" prop of ${componentName} must be between 0 and 1, but got ${value}.`);
+    }
+  }
+};
+
+// src/SequenceManager.tsx
+
+
+var SequenceManager = react__WEBPACK_IMPORTED_MODULE_0__.createContext({
+  registerSequence: () => {
+    throw new Error("SequenceManagerContext not initialized");
+  },
+  unregisterSequence: () => {
+    throw new Error("SequenceManagerContext not initialized");
+  },
+  sequences: []
+});
+var SequenceManagerRefContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext({
+  current: []
+});
+var makeSequencePropsSubscriptionKey = (key) => {
+  return `${key.absolutePath}\x00${key.nodePath.join(".")}\x00${key.sequenceKeys.join(".")}\x00${key.effectKeys.map((keys) => keys.join(".")).join(".")}`;
+};
+var VisualModePropStatusesContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext({
+  propStatuses: {}
+});
+var VisualModePropStatusesRefContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext({
+  current: {}
+});
+var VisualModeDragOverridesContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext({
+  getDragOverrides: () => {
+    throw new Error("VisualModeDragOverridesContext not initialized");
+  },
+  getEffectDragOverrides: () => {
+    throw new Error("VisualModeDragOverridesContext not initialized");
+  }
+});
+var VisualModeSettersContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext({
+  setDragOverrides: () => {
+    throw new Error("VisualModeSettersContext not initialized");
+  },
+  clearDragOverrides: () => {
+    throw new Error("VisualModeSettersContext not initialized");
+  },
+  setEffectDragOverrides: () => {
+    throw new Error("VisualModeSettersContext not initialized");
+  },
+  clearEffectDragOverrides: () => {
+    throw new Error("VisualModeSettersContext not initialized");
+  },
+  setPropStatuses: () => {
+    throw new Error("VisualModeSettersContext not initialized");
+  }
+});
+var effectDragOverridesKey = (nodePath, effectIndex) => `${makeSequencePropsSubscriptionKey(nodePath)}.effects.${effectIndex}`;
+var SequenceManagerProvider = ({ children }) => {
+  const [sequences, setSequences] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
+  const sequencesRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(sequences);
+  sequencesRef.current = sequences;
+  const [dragOverrides, setControlOverrides] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)({});
+  const controlOverridesRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(dragOverrides);
+  controlOverridesRef.current = dragOverrides;
+  const [effectDragOverridesState, setEffectDragOverridesState] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)({});
+  const [propStatuses, setPropStatusesMapState] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)({});
+  const propStatusesRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(propStatuses);
+  propStatusesRef.current = propStatuses;
+  const setDragOverrides = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((nodePath, key, value) => {
+    setControlOverrides((prev) => ({
+      ...prev,
+      [makeSequencePropsSubscriptionKey(nodePath)]: {
+        ...prev[makeSequencePropsSubscriptionKey(nodePath)],
+        [key]: value
+      }
+    }));
+  }, []);
+  const clearDragOverrides = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((nodePath) => {
+    setControlOverrides((prev) => {
+      const key = makeSequencePropsSubscriptionKey(nodePath);
+      if (!prev[key]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }, []);
+  const setEffectDragOverrides = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((nodePath, effectIndex, key, value) => {
+    setEffectDragOverridesState((prev) => {
+      const mapKey = effectDragOverridesKey(nodePath, effectIndex);
+      return {
+        ...prev,
+        [mapKey]: {
+          ...prev[mapKey],
+          [key]: value
+        }
+      };
+    });
+  }, []);
+  const clearEffectDragOverrides = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((nodePath, effectIndex) => {
+    setEffectDragOverridesState((prev) => {
+      const mapKey = effectDragOverridesKey(nodePath, effectIndex);
+      if (!prev[mapKey]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[mapKey];
+      return next;
+    });
+  }, []);
+  const setPropStatuses = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((nodePath, values) => {
+    setPropStatusesMapState((prev) => {
+      const key = makeSequencePropsSubscriptionKey(nodePath);
+      const prevKey = prev[key];
+      const newKey = values(prevKey);
+      if (prevKey === newKey) {
+        return prev;
+      }
+      return { ...prev, [key]: newKey };
+    });
+  }, []);
+  const registerSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((seq) => {
+    setSequences((seqs) => {
+      return [...seqs, seq];
+    });
+  }, []);
+  const unregisterSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((seq) => {
+    setSequences((seqs) => seqs.filter((s) => s.id !== seq));
+  }, []);
+  const sequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      registerSequence,
+      sequences,
+      unregisterSequence
+    };
+  }, [registerSequence, sequences, unregisterSequence]);
+  const getDragOverrides = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((nodePath) => {
+    return dragOverrides[makeSequencePropsSubscriptionKey(nodePath)] ?? {};
+  }, [dragOverrides]);
+  const getEffectDragOverrides = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((nodePath, effectIndex) => {
+    return effectDragOverridesState[effectDragOverridesKey(nodePath, effectIndex)] ?? {};
+  }, [effectDragOverridesState]);
+  const propStatusesContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      propStatuses
+    };
+  }, [propStatuses]);
+  const dragOverridesContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      getDragOverrides,
+      getEffectDragOverrides
+    };
+  }, [getDragOverrides, getEffectDragOverrides]);
+  const settersContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      setDragOverrides,
+      clearDragOverrides,
+      setEffectDragOverrides,
+      clearEffectDragOverrides,
+      setPropStatuses
+    };
+  }, [
+    setDragOverrides,
+    clearDragOverrides,
+    setEffectDragOverrides,
+    clearEffectDragOverrides,
+    setPropStatuses
+  ]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceManagerRefContext.Provider, {
+    value: sequencesRef,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceManager.Provider, {
+      value: sequenceContext,
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(VisualModePropStatusesRefContext.Provider, {
+        value: propStatusesRef,
+        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(VisualModePropStatusesContext.Provider, {
+          value: propStatusesContext,
+          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(VisualModeDragOverridesContext.Provider, {
+            value: dragOverridesContext,
+            children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(VisualModeSettersContext.Provider, {
+              value: settersContext,
+              children
+            })
+          })
+        })
+      })
+    })
+  });
+};
+
+// src/series/is-inside-series.tsx
+
+
+var IsInsideSeriesContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(false);
+var IsInsideSeriesContainer = ({ children }) => {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(IsInsideSeriesContext.Provider, {
+    value: true,
+    children
+  });
+};
+var IsNotInsideSeriesProvider = ({ children }) => {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(IsInsideSeriesContext.Provider, {
+    value: false,
+    children
+  });
+};
+var useRequireToBeInsideSeries = () => {
+  const isInsideSeries = react__WEBPACK_IMPORTED_MODULE_0__.useContext(IsInsideSeriesContext);
+  if (!isInsideSeries) {
+    throw new Error("This component must be inside a <Series /> component.");
+  }
+};
+
+// src/use-premounting.ts
+
+
+// src/PremountContext.tsx
+
+var PremountContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
+  premountFramesRemaining: 0
+});
+
+// src/v5-flag.ts
+var ENABLE_V5_BREAKING_CHANGES = false;
+var resolveV5Default = (value) => {
+  return value ?? ENABLE_V5_BREAKING_CHANGES;
+};
+
+// src/use-premounting.ts
+var usePremounting = ({
+  from,
+  durationInFrames,
+  premountFor,
+  postmountFor,
+  style,
+  styleWhilePremounted,
+  styleWhilePostmounted,
+  hideWhilePremounted
+}) => {
+  const parentPremountContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(PremountContext);
+  const frame = useCurrentFrame() - parentPremountContext.premountFramesRemaining;
+  const environment = useRemotionEnvironment();
+  const { fps } = useVideoConfig();
+  const effectivePremountFor = ENABLE_V5_BREAKING_CHANGES ? premountFor ?? fps : premountFor ?? 0;
+  const effectivePostmountFor = postmountFor ?? 0;
+  const endThreshold = Math.ceil(from + durationInFrames - 1);
+  const premountingActive = !environment.isRendering && frame < from && frame >= from - effectivePremountFor;
+  const postmountingActive = !environment.isRendering && frame > endThreshold && frame <= endThreshold + effectivePostmountFor;
+  const isPremountingOrPostmounting = premountingActive || postmountingActive;
+  const freezeFrame = premountingActive ? from : postmountingActive ? from + durationInFrames - 1 : 0;
+  const premountingStyle = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (!isPremountingOrPostmounting) {
+      return style;
+    }
+    return {
+      ...style,
+      ...hideWhilePremounted === "opacity" ? { opacity: 0 } : { display: "none" },
+      pointerEvents: "none",
+      ...premountingActive ? styleWhilePremounted : {},
+      ...postmountingActive ? styleWhilePostmounted : {}
+    };
+  }, [
+    isPremountingOrPostmounting,
+    hideWhilePremounted,
+    postmountingActive,
+    premountingActive,
+    style,
+    styleWhilePostmounted,
+    styleWhilePremounted
+  ]);
+  return {
+    effectivePremountFor,
+    effectivePostmountFor,
+    premountingActive,
+    postmountingActive,
+    isPremountingOrPostmounting,
+    freezeFrame,
+    premountingStyle
+  };
+};
+
+// src/with-interactivity-schema.ts
+
+
+// src/delete-nested-key.ts
+var deleteNestedKey = (obj, keysToRemove) => {
+  for (const key of keysToRemove) {
+    const parts = key.split(".");
+    const parents = [obj];
+    let current = obj;
+    for (let i = 0;i < parts.length - 1; i++) {
+      const part = parts[i];
+      const next = current[part];
+      if (next === undefined || next === null) {
+        current = null;
+        break;
+      }
+      current = next;
+      parents.push(current);
+    }
+    if (current === null) {
+      continue;
+    }
+    delete current[parts[parts.length - 1]];
+    for (let i = parents.length - 1;i > 0; i--) {
+      const parent = parents[i];
+      if (Object.keys(parent).length === 0) {
+        const parentKey = parts[i - 1];
+        delete parents[i - 1][parentKey];
+      } else {
+        break;
+      }
+    }
+  }
+  return obj;
+};
+
+// src/effects/use-memoized-effects.ts
+
+
+// src/bezier.ts
+var NEWTON_ITERATIONS = 4;
+var NEWTON_MIN_SLOPE = 0.001;
+var SUBDIVISION_PRECISION = 0.0000001;
+var SUBDIVISION_MAX_ITERATIONS = 10;
+var kSplineTableSize = 11;
+var kSampleStepSize = 1 / (kSplineTableSize - 1);
+var float32ArraySupported = typeof Float32Array === "function";
+function a(aA1, aA2) {
+  return 1 - 3 * aA2 + 3 * aA1;
+}
+function b(aA1, aA2) {
+  return 3 * aA2 - 6 * aA1;
+}
+function c(aA1) {
+  return 3 * aA1;
+}
+function calcBezier(aT, aA1, aA2) {
+  return ((a(aA1, aA2) * aT + b(aA1, aA2)) * aT + c(aA1)) * aT;
+}
+function getSlope(aT, aA1, aA2) {
+  return 3 * a(aA1, aA2) * aT * aT + 2 * b(aA1, aA2) * aT + c(aA1);
+}
+function binarySubdivide({
+  aX,
+  _aA,
+  _aB,
+  mX1,
+  mX2
+}) {
+  let currentX;
+  let currentT;
+  let i = 0;
+  let aA = _aA;
+  let aB = _aB;
+  do {
+    currentT = aA + (aB - aA) / 2;
+    currentX = calcBezier(currentT, mX1, mX2) - aX;
+    if (currentX > 0) {
+      aB = currentT;
+    } else {
+      aA = currentT;
+    }
+  } while (Math.abs(currentX) > SUBDIVISION_PRECISION && ++i < SUBDIVISION_MAX_ITERATIONS);
+  return currentT;
+}
+function newtonRaphsonIterate(aX, _aGuessT, mX1, mX2) {
+  let aGuessT = _aGuessT;
+  for (let i = 0;i < NEWTON_ITERATIONS; ++i) {
+    const currentSlope = getSlope(aGuessT, mX1, mX2);
+    if (currentSlope === 0) {
+      return aGuessT;
+    }
+    const currentX = calcBezier(aGuessT, mX1, mX2) - aX;
+    aGuessT -= currentX / currentSlope;
+  }
+  return aGuessT;
+}
+function bezier(mX1, mY1, mX2, mY2) {
+  if (!(mX1 >= 0 && mX1 <= 1 && mX2 >= 0 && mX2 <= 1)) {
+    throw new Error("bezier x values must be in [0, 1] range");
+  }
+  const sampleValues = float32ArraySupported ? new Float32Array(kSplineTableSize) : new Array(kSplineTableSize);
+  if (mX1 !== mY1 || mX2 !== mY2) {
+    for (let i = 0;i < kSplineTableSize; ++i) {
+      sampleValues[i] = calcBezier(i * kSampleStepSize, mX1, mX2);
+    }
+  }
+  function getTForX(aX) {
+    let intervalStart = 0;
+    let currentSample = 1;
+    const lastSample = kSplineTableSize - 1;
+    for (;currentSample !== lastSample && sampleValues[currentSample] <= aX; ++currentSample) {
+      intervalStart += kSampleStepSize;
+    }
+    --currentSample;
+    const dist = (aX - sampleValues[currentSample]) / (sampleValues[currentSample + 1] - sampleValues[currentSample]);
+    const guessForT = intervalStart + dist * kSampleStepSize;
+    const initialSlope = getSlope(guessForT, mX1, mX2);
+    if (initialSlope >= NEWTON_MIN_SLOPE) {
+      return newtonRaphsonIterate(aX, guessForT, mX1, mX2);
+    }
+    if (initialSlope === 0) {
+      return guessForT;
+    }
+    return binarySubdivide({
+      aX,
+      _aA: intervalStart,
+      _aB: intervalStart + kSampleStepSize,
+      mX1,
+      mX2
+    });
+  }
+  return function(x) {
+    const clampedX = Math.min(1, Math.max(0, x));
+    if (mX1 === mY1 && mX2 === mY2) {
+      return clampedX;
+    }
+    if (clampedX === 0) {
+      return 0;
+    }
+    if (clampedX === 1) {
+      return 1;
+    }
+    return calcBezier(getTForX(clampedX), mY1, mY2);
+  };
+}
+
+// src/normalize-number.ts
+var normalizeNumber = (value) => {
+  return Math.round(value * 1e6) / 1e6;
+};
+
+// src/interpolate.ts
+var angleUnits = new Set(["deg", "rad", "grad", "turn"]);
+var lengthUnits = new Set([
+  "%",
+  "cap",
+  "ch",
+  "cm",
+  "cqb",
+  "cqh",
+  "cqi",
+  "cqmax",
+  "cqmin",
+  "cqw",
+  "dvh",
+  "dvw",
+  "em",
+  "ex",
+  "ic",
+  "in",
+  "lh",
+  "lvh",
+  "lvw",
+  "mm",
+  "pc",
+  "pt",
+  "px",
+  "q",
+  "rem",
+  "rlh",
+  "svh",
+  "svw",
+  "vb",
+  "vh",
+  "vi",
+  "vmax",
+  "vmin",
+  "vw"
+]);
+var cssNumberRegex = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-zA-Z%]+)?$/;
+var transformOriginKeywords = new Set([
+  "left",
+  "center",
+  "right",
+  "top",
+  "bottom"
+]);
+var transformOriginKeywordOptions = (keyword) => {
+  if (keyword === "left") {
+    return [{ axis: "x", value: { value: 0, unit: "%" } }];
+  }
+  if (keyword === "right") {
+    return [{ axis: "x", value: { value: 100, unit: "%" } }];
+  }
+  if (keyword === "top") {
+    return [{ axis: "y", value: { value: 0, unit: "%" } }];
+  }
+  if (keyword === "bottom") {
+    return [{ axis: "y", value: { value: 100, unit: "%" } }];
+  }
+  return [
+    { axis: "x", value: { value: 50, unit: "%" } },
+    { axis: "y", value: { value: 50, unit: "%" } }
+  ];
+};
+var transformOriginCenter = { value: 50, unit: "%" };
+var stringifyNumber = (value) => {
+  return String(normalizeNumber(value));
+};
+var parseStringInterpolationComponent = (component, value) => {
+  const match = cssNumberRegex.exec(component);
+  if (match === null) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not a supported scale, translate, or rotate value`);
+  }
+  const unit = match[2] ?? null;
+  const numberValue = Number(match[1]);
+  if (!Number.isFinite(numberValue)) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not finite`);
+  }
+  if (unit === null) {
+    return { kind: "scale", value: numberValue, unit: null };
+  }
+  if (angleUnits.has(unit)) {
+    return { kind: "rotate", value: numberValue, unit };
+  }
+  if (lengthUnits.has(unit)) {
+    return { kind: "translate", value: numberValue, unit };
+  }
+  throw new TypeError(`Cannot interpolate "${value}" because "${unit}" is not a supported translate or rotate unit`);
+};
+var parseTransformOriginLengthPercentage = ({
+  component,
+  value,
+  allowPercentage
+}) => {
+  const match = cssNumberRegex.exec(component);
+  if (match === null) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not a supported transform-origin ${allowPercentage ? "length-percentage" : "z length"}`);
+  }
+  const unit = match[2] ?? null;
+  const numberValue = Number(match[1]);
+  if (!Number.isFinite(numberValue)) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not finite`);
+  }
+  if (unit === null || !lengthUnits.has(unit) || !allowPercentage && unit === "%") {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not a supported transform-origin ${allowPercentage ? "length-percentage" : "z length"}`);
+  }
+  return { value: numberValue, unit };
+};
+var parseTransformOriginToken = (component, value) => {
+  const lower = component.toLowerCase();
+  if (transformOriginKeywords.has(lower)) {
+    return { type: "keyword", keyword: lower };
+  }
+  return {
+    type: "length-percentage",
+    parsed: parseTransformOriginLengthPercentage({
+      component,
+      value,
+      allowPercentage: true
+    })
+  };
+};
+var parseTwoTransformOriginKeywords = (first, second, value) => {
+  const candidates = [];
+  for (const firstOption of transformOriginKeywordOptions(first)) {
+    for (const secondOption of transformOriginKeywordOptions(second)) {
+      if (firstOption.axis === secondOption.axis) {
+        continue;
+      }
+      candidates.push(firstOption.axis === "x" ? [firstOption.value, secondOption.value] : [secondOption.value, firstOption.value]);
+    }
+  }
+  if (candidates.length === 0) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${first} ${second}" is not a valid transform-origin keyword pair`);
+  }
+  return candidates[0];
+};
+var parseTransformOriginXY = (parts, value) => {
+  if (parts.length === 1) {
+    const token = parseTransformOriginToken(parts[0], value);
+    if (token.type === "length-percentage") {
+      return [token.parsed, transformOriginCenter];
+    }
+    if (token.keyword === "top" || token.keyword === "bottom") {
+      return [
+        transformOriginCenter,
+        transformOriginKeywordOptions(token.keyword)[0].value
+      ];
+    }
+    return [
+      transformOriginKeywordOptions(token.keyword)[0].value,
+      transformOriginCenter
+    ];
+  }
+  const first = parseTransformOriginToken(parts[0], value);
+  const second = parseTransformOriginToken(parts[1], value);
+  if (first.type === "length-percentage" && second.type === "length-percentage") {
+    return [first.parsed, second.parsed];
+  }
+  if (first.type === "keyword" && second.type === "keyword") {
+    return parseTwoTransformOriginKeywords(first.keyword, second.keyword, value);
+  }
+  const keyword = first.type === "keyword" ? first : second.type === "keyword" ? second : null;
+  const length = first.type === "length-percentage" ? first.parsed : second.type === "length-percentage" ? second.parsed : null;
+  if (keyword === null || length === null) {
+    throw new Error("Expected a keyword and a length-percentage value");
+  }
+  const keywordIsFirst = first.type === "keyword";
+  if (keyword.keyword === "left" || keyword.keyword === "right") {
+    if (!keywordIsFirst) {
+      throw new TypeError(`Cannot interpolate "${value}" because horizontal transform-origin keywords must come before a length-percentage value`);
+    }
+    return [transformOriginKeywordOptions(keyword.keyword)[0].value, length];
+  }
+  if (keyword.keyword === "top" || keyword.keyword === "bottom") {
+    return [length, transformOriginKeywordOptions(keyword.keyword)[0].value];
+  }
+  return keywordIsFirst ? [transformOriginCenter, length] : [length, transformOriginCenter];
+};
+var parseTransformOriginValue = (output, parts) => {
+  const [x, y] = parseTransformOriginXY(parts.slice(0, 2), output);
+  const z = parts[2] === undefined ? { value: 0, unit: null } : parseTransformOriginLengthPercentage({
+    component: parts[2],
+    value: output,
+    allowPercentage: false
+  });
+  return {
+    kind: "translate",
+    values: [x.value, y.value, z.value],
+    units: [x.unit, y.unit, z.unit],
+    dimensions: parts[2] === undefined ? 2 : 3
+  };
+};
+var parseStringInterpolationValue = (output) => {
+  if (typeof output === "number") {
+    if (!Number.isFinite(output)) {
+      throw new Error(`outputRange must contain only finite numbers, but got [${output}]`);
+    }
+    return {
+      kind: "scale",
+      values: [output, output, 1],
+      units: [null, null, null],
+      dimensions: 1
+    };
+  }
+  const parts = output.trim().split(/\s+/);
+  if (parts.length < 1 || parts.length > 3 || parts[0] === "") {
+    throw new TypeError(`String outputRange values must contain 1 to 3 components, but got "${output}"`);
+  }
+  if (parts.some((part) => transformOriginKeywords.has(part.toLowerCase()))) {
+    return parseTransformOriginValue(output, parts);
+  }
+  const parsed = parts.map((part) => parseStringInterpolationComponent(part, output));
+  const [{ kind }] = parsed;
+  for (const part of parsed) {
+    if (part.kind !== kind) {
+      throw new TypeError(`Cannot interpolate "${output}" because it mixes ${kind} and ${part.kind} values`);
+    }
+  }
+  if (kind === "scale") {
+    const x = parsed[0].value;
+    const y = parsed[1]?.value ?? x;
+    const z = parsed[2]?.value ?? 1;
+    return {
+      kind,
+      values: [x, y, z],
+      units: [null, null, null],
+      dimensions: parsed.length
+    };
+  }
+  return {
+    kind,
+    values: [parsed[0].value, parsed[1]?.value ?? 0, parsed[2]?.value ?? 0],
+    units: [parsed[0].unit, parsed[1]?.unit ?? null, parsed[2]?.unit ?? null],
+    dimensions: parsed.length
+  };
+};
+var serializeStringInterpolationValue = ({
+  kind,
+  values,
+  units,
+  dimensions
+}) => {
+  if (kind === "scale") {
+    return values.slice(0, dimensions).map((value) => stringifyNumber(value)).join(" ");
+  }
+  return values.slice(0, dimensions).map((value, index) => `${stringifyNumber(value)}${units[index]}`).join(" ");
+};
+var toSignedArea = (scale) => {
+  if (scale === 0) {
+    return 0;
+  }
+  return Math.sign(scale) * scale * scale;
+};
+var fromSignedArea = (area) => {
+  if (area === 0) {
+    return 0;
+  }
+  return Math.sign(area) * Math.sqrt(Math.abs(area));
+};
+function interpolateFunction(input, inputRange, outputRange, options) {
+  const { extrapolateLeft, extrapolateRight, easing, output } = options;
+  let result = input;
+  const [inputMin, inputMax] = inputRange;
+  const [outputMin, outputMax] = outputRange;
+  if (result < inputMin) {
+    if (extrapolateLeft === "identity") {
+      return result;
+    }
+    if (extrapolateLeft === "clamp") {
+      result = inputMin;
+    } else if (extrapolateLeft === "wrap") {
+      const range = inputMax - inputMin;
+      result = ((result - inputMin) % range + range) % range + inputMin;
+    } else if (extrapolateLeft === "extend") {}
+  }
+  if (result > inputMax) {
+    if (extrapolateRight === "identity") {
+      return result;
+    }
+    if (extrapolateRight === "clamp") {
+      result = inputMax;
+    } else if (extrapolateRight === "wrap") {
+      const range = inputMax - inputMin;
+      result = ((result - inputMin) % range + range) % range + inputMin;
+    } else if (extrapolateRight === "extend") {}
+  }
+  if (outputMin === outputMax) {
+    return outputMin;
+  }
+  result = (result - inputMin) / (inputMax - inputMin);
+  result = easing(result);
+  if (output === "perceptual-scale") {
+    const signedAreaMin = toSignedArea(outputMin);
+    const signedAreaMax = toSignedArea(outputMax);
+    result = fromSignedArea(result * (signedAreaMax - signedAreaMin) + signedAreaMin);
+  } else {
+    result = result * (outputMax - outputMin) + outputMin;
+  }
+  return result;
+}
+function findRange(input, inputRange) {
+  let i;
+  for (i = 1;i < inputRange.length - 1; ++i) {
+    if (inputRange[i] >= input) {
+      break;
+    }
+  }
+  return i - 1;
+}
+var defaultEasing = (num) => num;
+var resolveOutputOption = (output) => {
+  return output ?? "linear";
+};
+var shouldExtendRightForEasing = (easing) => {
+  return easing.remotionShouldExtendRight === true;
+};
+var resolveEasingForSegment = ({
+  easing,
+  segmentIndex
+}) => {
+  if (easing === undefined) {
+    return defaultEasing;
+  }
+  if (typeof easing === "function") {
+    return easing;
+  }
+  return easing[segmentIndex];
+};
+var interpolateSegment = ({
+  input,
+  inputRange,
+  outputRange,
+  easing,
+  extrapolateLeft,
+  extrapolateRight,
+  output
+}) => {
+  return interpolateFunction(input, inputRange, outputRange, {
+    easing,
+    extrapolateLeft,
+    extrapolateRight: input > inputRange[1] && extrapolateRight === "clamp" && shouldExtendRightForEasing(easing) ? "extend" : extrapolateRight,
+    output
+  });
+};
+var interpolateNumber = ({
+  input,
+  inputRange,
+  outputRange,
+  options
+}) => {
+  const output = resolveOutputOption(options?.output);
+  if (inputRange.length === 1) {
+    return outputRange[0];
+  }
+  const easingOption = options?.easing;
+  let extrapolateLeft = "extend";
+  if (options?.extrapolateLeft !== undefined) {
+    extrapolateLeft = options.extrapolateLeft;
+  }
+  let extrapolateRight = "extend";
+  if (options?.extrapolateRight !== undefined) {
+    extrapolateRight = options.extrapolateRight;
+  }
+  const posterizedInput = options?.posterize === undefined ? input : Math.floor(input / options.posterize) * options.posterize;
+  const range = findRange(posterizedInput, inputRange);
+  const easing = resolveEasingForSegment({
+    easing: easingOption,
+    segmentIndex: range
+  });
+  let result = interpolateSegment({
+    input: posterizedInput,
+    inputRange: [inputRange[range], inputRange[range + 1]],
+    outputRange: [outputRange[range], outputRange[range + 1]],
+    easing,
+    extrapolateLeft,
+    extrapolateRight,
+    output
+  });
+  for (let segmentIndex = 0;segmentIndex < range; segmentIndex++) {
+    const previousEasing = resolveEasingForSegment({
+      easing: easingOption,
+      segmentIndex
+    });
+    if (!shouldExtendRightForEasing(previousEasing)) {
+      continue;
+    }
+    const previousSegmentEnd = inputRange[segmentIndex + 1];
+    if (posterizedInput <= previousSegmentEnd) {
+      continue;
+    }
+    const continuedSegmentValue = interpolateSegment({
+      input: posterizedInput,
+      inputRange: [inputRange[segmentIndex], previousSegmentEnd],
+      outputRange: [outputRange[segmentIndex], outputRange[segmentIndex + 1]],
+      easing: previousEasing,
+      extrapolateLeft,
+      extrapolateRight: "extend",
+      output
+    });
+    result += continuedSegmentValue - outputRange[segmentIndex + 1];
+  }
+  return result;
+};
+var interpolateString = ({
+  input,
+  inputRange,
+  outputRange,
+  options
+}) => {
+  const parsedOutputRange = outputRange.map(parseStringInterpolationValue);
+  const kind = parsedOutputRange[0]?.kind;
+  if (kind === undefined) {
+    throw new Error("outputRange must have at least 1 element");
+  }
+  for (const parsed of parsedOutputRange) {
+    if (parsed.kind !== kind) {
+      throw new TypeError(`Cannot interpolate ${kind} values with ${parsed.kind} values`);
+    }
+  }
+  const dimensions = Math.max(...parsedOutputRange.map((parsed) => parsed.dimensions));
+  const units = [
+    null,
+    null,
+    null
+  ];
+  if (kind !== "scale") {
+    for (let axis = 0;axis < dimensions; axis++) {
+      for (const parsed of parsedOutputRange) {
+        const unit = parsed.units[axis];
+        if (unit === null) {
+          continue;
+        }
+        if (units[axis] === null) {
+          units[axis] = unit;
+          continue;
+        }
+        if (units[axis] !== unit) {
+          throw new TypeError(`Cannot interpolate ${kind} values with different units on axis ${axis + 1}: ${units[axis]} and ${unit}`);
+        }
+      }
+      if (units[axis] === null) {
+        throw new TypeError(`Cannot interpolate ${kind} values because axis ${axis + 1} has no unit`);
+      }
+    }
+  }
+  const values = [0, 0, 0];
+  for (let axis = 0;axis < dimensions; axis++) {
+    values[axis] = interpolateNumber({
+      input,
+      inputRange,
+      outputRange: parsedOutputRange.map((parsed) => parsed.values[axis]),
+      options
+    });
+  }
+  return serializeStringInterpolationValue({
+    kind,
+    values,
+    units,
+    dimensions
+  });
+};
+var validateTupleOutputRange = (outputRange) => {
+  const dimensions = outputRange[0]?.length;
+  if (dimensions === undefined) {
+    throw new Error("outputRange must have at least 1 element");
+  }
+  if (dimensions === 0) {
+    throw new TypeError("outputRange tuples must contain at least 1 number");
+  }
+  for (const output of outputRange) {
+    if (output.length !== dimensions) {
+      throw new TypeError(`outputRange tuples must all have the same length, but got ${dimensions} and ${output.length}`);
+    }
+    for (const value of output) {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new TypeError(`outputRange tuples must contain only finite numbers, but got [${output.join(",")}]`);
+      }
+    }
+  }
+  return dimensions;
+};
+var interpolateTuple = ({
+  input,
+  inputRange,
+  outputRange,
+  options
+}) => {
+  const dimensions = validateTupleOutputRange(outputRange);
+  return new Array(dimensions).fill(true).map((_, axis) => interpolateNumber({
+    input,
+    inputRange,
+    outputRange: outputRange.map((output) => output[axis]),
+    options
+  }));
+};
+function checkValidInputRange(arr) {
+  for (let i = 1;i < arr.length; ++i) {
+    if (!(arr[i] > arr[i - 1])) {
+      throw new Error(`inputRange must be strictly monotonically increasing but got [${arr.join(",")}]`);
+    }
+  }
+}
+function checkInfiniteRange(name, arr) {
+  if (arr.length < 1) {
+    throw new Error(name + " must have at least 1 element");
+  }
+  for (const element of arr) {
+    if (typeof element !== "number") {
+      throw new Error(`${name} must contain only numbers`);
+    }
+    if (!Number.isFinite(element)) {
+      throw new Error(`${name} must contain only finite numbers, but got [${arr.join(",")}]`);
+    }
+  }
+}
+function assertValidInterpolateEasingOption(easing, inputRangeLength) {
+  if (easing === undefined) {
+    return;
+  }
+  if (typeof easing === "function") {
+    return;
+  }
+  const expectedLength = inputRangeLength - 1;
+  if (easing.length !== expectedLength) {
+    throw new Error(`When easing is an array, it must have one entry per segment between keyframes (length inputRange.length - 1 = ${expectedLength}), but got length ${easing.length}`);
+  }
+  for (let i = 0;i < easing.length; i++) {
+    if (typeof easing[i] !== "function") {
+      throw new Error(`easing[${i}] must be a function`);
+    }
+  }
+}
+function assertValidInterpolatePosterizeOption(posterize) {
+  if (posterize === undefined) {
+    return;
+  }
+  if (typeof posterize !== "number" || !Number.isFinite(posterize) || posterize <= 0) {
+    throw new Error(`posterize must be a positive finite number, but got ${posterize}`);
+  }
+}
+function assertValidInterpolateOutputOption(output) {
+  if (output === undefined || output === "linear" || output === "perceptual-scale") {
+    return;
+  }
+  throw new Error(`output must be "linear" or "perceptual-scale", but got ${String(output)}`);
+}
+function interpolate(input, inputRange, outputRange, options) {
+  if (typeof input === "undefined") {
+    throw new Error("input can not be undefined");
+  }
+  if (typeof inputRange === "undefined") {
+    throw new Error("inputRange can not be undefined");
+  }
+  if (typeof outputRange === "undefined") {
+    throw new Error("outputRange can not be undefined");
+  }
+  if (inputRange.length !== outputRange.length) {
+    throw new Error("inputRange (" + inputRange.length + ") and outputRange (" + outputRange.length + ") must have the same length");
+  }
+  checkInfiniteRange("inputRange", inputRange);
+  checkValidInputRange(inputRange);
+  assertValidInterpolateEasingOption(options?.easing, inputRange.length);
+  assertValidInterpolatePosterizeOption(options?.posterize);
+  assertValidInterpolateOutputOption(options?.output);
+  if (typeof input !== "number") {
+    throw new TypeError("Cannot interpolate an input which is not a number");
+  }
+  if (!Array.isArray(outputRange)) {
+    throw new Error("outputRange must contain only numbers");
+  }
+  const hasStringOutput = outputRange.some((output) => typeof output === "string");
+  if (hasStringOutput) {
+    if (!outputRange.every((output) => typeof output === "string" || typeof output === "number")) {
+      throw new TypeError("outputRange must contain only numbers, or supported scale, translate, and rotate strings");
+    }
+    return interpolateString({ input, inputRange, outputRange, options });
+  }
+  if (outputRange.every((output) => Array.isArray(output))) {
+    return interpolateTuple({ input, inputRange, outputRange, options });
+  }
+  if (!outputRange.every((output) => typeof output === "number")) {
+    throw new TypeError("outputRange must contain only numbers, numeric tuples, or supported scale, translate, and rotate strings");
+  }
+  checkInfiniteRange("outputRange", outputRange);
+  return interpolateNumber({ input, inputRange, outputRange, options });
+}
+
+// src/validate-frame.ts
+var validateFrame = ({
+  allowFloats,
+  durationInFrames,
+  frame
+}) => {
+  if (typeof frame === "undefined") {
+    throw new TypeError(`Argument missing for parameter "frame"`);
+  }
+  if (typeof frame !== "number") {
+    throw new TypeError(`Argument passed for "frame" is not a number: ${frame}`);
+  }
+  if (!Number.isFinite(frame)) {
+    throw new RangeError(`Frame ${frame} is not finite`);
+  }
+  if (frame % 1 !== 0 && !allowFloats) {
+    throw new RangeError(`Argument for frame must be an integer, but got ${frame}`);
+  }
+  if (frame < 0 && frame < -durationInFrames) {
+    throw new RangeError(`Cannot use frame ${frame}: Duration of composition is ${durationInFrames}, therefore the lowest frame that can be rendered is ${-durationInFrames}`);
+  }
+  if (frame > durationInFrames - 1) {
+    throw new RangeError(`Cannot use frame ${frame}: Duration of composition is ${durationInFrames}, therefore the highest frame that can be rendered is ${durationInFrames - 1}`);
+  }
+};
+
+// src/validation/validation-spring-duration.ts
+var validateSpringDuration = (dur) => {
+  if (typeof dur === "undefined") {
+    return;
+  }
+  if (typeof dur !== "number") {
+    throw new TypeError(`A "duration" of a spring must be a "number" but is "${typeof dur}"`);
+  }
+  if (Number.isNaN(dur)) {
+    throw new TypeError('A "duration" of a spring is NaN, which it must not be');
+  }
+  if (!Number.isFinite(dur)) {
+    throw new TypeError('A "duration" of a spring must be finite, but is ' + dur);
+  }
+  if (dur <= 0) {
+    throw new TypeError('A "duration" of a spring must be positive, but is ' + dur);
+  }
+};
+
+// src/spring/spring-utils.ts
+var defaultSpringConfig = {
+  damping: 10,
+  mass: 1,
+  stiffness: 100,
+  overshootClamping: false
+};
+var advanceCache = {};
+function advance({
+  animation,
+  now,
+  config
+}) {
+  const { toValue, lastTimestamp, current, velocity } = animation;
+  const deltaTime = Math.min(now - lastTimestamp, 64);
+  if (config.damping <= 0) {
+    throw new Error("Spring damping must be greater than 0, otherwise the spring() animation will never end, causing an infinite loop.");
+  }
+  const c2 = config.damping;
+  const m = config.mass;
+  const k = config.stiffness;
+  const cacheKey = [
+    toValue,
+    lastTimestamp,
+    current,
+    velocity,
+    c2,
+    m,
+    k,
+    now
+  ].join("-");
+  if (advanceCache[cacheKey]) {
+    return advanceCache[cacheKey];
+  }
+  const v0 = -velocity;
+  const x0 = toValue - current;
+  const zeta = c2 / (2 * Math.sqrt(k * m));
+  const omega0 = Math.sqrt(k / m);
+  const omega1 = omega0 * Math.sqrt(1 - zeta ** 2);
+  const t = deltaTime / 1000;
+  const sin1 = Math.sin(omega1 * t);
+  const cos1 = Math.cos(omega1 * t);
+  const underDampedEnvelope = Math.exp(-zeta * omega0 * t);
+  const underDampedFrag1 = underDampedEnvelope * (sin1 * ((v0 + zeta * omega0 * x0) / omega1) + x0 * cos1);
+  const underDampedPosition = toValue - underDampedFrag1;
+  const underDampedVelocity = zeta * omega0 * underDampedFrag1 - underDampedEnvelope * (cos1 * (v0 + zeta * omega0 * x0) - omega1 * x0 * sin1);
+  const criticallyDampedEnvelope = Math.exp(-omega0 * t);
+  const criticallyDampedPosition = toValue - criticallyDampedEnvelope * (x0 + (v0 + omega0 * x0) * t);
+  const criticallyDampedVelocity = criticallyDampedEnvelope * (v0 * (t * omega0 - 1) + t * x0 * omega0 * omega0);
+  const animationNode = {
+    toValue,
+    prevPosition: current,
+    lastTimestamp: now,
+    current: zeta < 1 ? underDampedPosition : criticallyDampedPosition,
+    velocity: zeta < 1 ? underDampedVelocity : criticallyDampedVelocity
+  };
+  advanceCache[cacheKey] = animationNode;
+  return animationNode;
+}
+var calculationCache = {};
+function springCalculation({
+  frame,
+  fps,
+  config = {}
+}) {
+  const from = 0;
+  const to = 1;
+  const cacheKey = [
+    frame,
+    fps,
+    config.damping,
+    config.mass,
+    config.overshootClamping,
+    config.stiffness
+  ].join("-");
+  if (calculationCache[cacheKey]) {
+    return calculationCache[cacheKey];
+  }
+  let animation = {
+    lastTimestamp: 0,
+    current: from,
+    toValue: to,
+    velocity: 0,
+    prevPosition: 0
+  };
+  const frameClamped = Math.max(0, frame);
+  const unevenRest = frameClamped % 1;
+  for (let f = 0;f <= Math.floor(frameClamped); f++) {
+    if (f === Math.floor(frameClamped)) {
+      f += unevenRest;
+    }
+    const time = f / fps * 1000;
+    animation = advance({
+      animation,
+      now: time,
+      config: {
+        ...defaultSpringConfig,
+        ...config
+      }
+    });
+  }
+  calculationCache[cacheKey] = animation;
+  return animation;
+}
+
+// src/spring/measure-spring.ts
+var cache = new Map;
+function measureSpring({
+  fps,
+  config = {},
+  threshold = 0.005
+}) {
+  if (typeof threshold !== "number") {
+    throw new TypeError(`threshold must be a number, got ${threshold} of type ${typeof threshold}`);
+  }
+  if (threshold === 0) {
+    return Infinity;
+  }
+  if (threshold === 1) {
+    return 0;
+  }
+  if (isNaN(threshold)) {
+    throw new TypeError("Threshold is NaN");
+  }
+  if (!Number.isFinite(threshold)) {
+    throw new TypeError("Threshold is not finite");
+  }
+  if (threshold < 0) {
+    throw new TypeError("Threshold is below 0");
+  }
+  const cacheKey = [
+    fps,
+    config.damping,
+    config.mass,
+    config.overshootClamping,
+    config.stiffness,
+    threshold
+  ].join("-");
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+  validateFps(fps, "to the measureSpring() function", false);
+  let frame = 0;
+  let finishedFrame = 0;
+  const calc = () => {
+    return springCalculation({
+      fps,
+      frame,
+      config
+    });
+  };
+  let animation = calc();
+  const calcDifference = () => {
+    return Math.abs(animation.current - animation.toValue);
+  };
+  let difference = calcDifference();
+  while (difference >= threshold) {
+    frame++;
+    animation = calc();
+    difference = calcDifference();
+  }
+  finishedFrame = frame;
+  for (let i = 0;i < 20; i++) {
+    frame++;
+    animation = calc();
+    difference = calcDifference();
+    if (difference >= threshold) {
+      i = 0;
+      finishedFrame = frame + 1;
+    }
+  }
+  cache.set(cacheKey, finishedFrame);
+  return finishedFrame;
+}
+
+// src/spring/index.ts
+function spring({
+  frame: passedFrame,
+  fps,
+  config = {},
+  from = 0,
+  to = 1,
+  durationInFrames: passedDurationInFrames,
+  durationRestThreshold,
+  delay = 0,
+  reverse = false
+}) {
+  validateSpringDuration(passedDurationInFrames);
+  validateFrame({
+    frame: passedFrame,
+    durationInFrames: Infinity,
+    allowFloats: true
+  });
+  validateFps(fps, "to spring()", false);
+  const needsToCalculateNaturalDuration = reverse || typeof passedDurationInFrames !== "undefined";
+  const naturalDuration = needsToCalculateNaturalDuration ? measureSpring({
+    fps,
+    config,
+    threshold: durationRestThreshold
+  }) : undefined;
+  const naturalDurationGetter = needsToCalculateNaturalDuration ? {
+    get: () => naturalDuration
+  } : {
+    get: () => {
+      throw new Error("did not calculate natural duration, this is an error with Remotion. Please report");
+    }
+  };
+  const reverseProcessed = reverse ? (passedDurationInFrames ?? naturalDurationGetter.get()) - passedFrame : passedFrame;
+  const delayProcessed = reverseProcessed + (reverse ? delay : -delay);
+  const durationProcessed = passedDurationInFrames === undefined ? delayProcessed : delayProcessed / (passedDurationInFrames / naturalDurationGetter.get());
+  if (passedDurationInFrames && delayProcessed > passedDurationInFrames) {
+    return to;
+  }
+  const spr = springCalculation({
+    fps,
+    frame: durationProcessed,
+    config
+  });
+  const inner = config.overshootClamping ? to >= from ? Math.min(spr.current, to) : Math.max(spr.current, to) : spr.current;
+  const interpolated = from === 0 && to === 1 ? inner : interpolate(inner, [0, 1], [from, to]);
+  return interpolated;
+}
+
+// src/easing.ts
+var clampUnit = (t) => Math.min(1, Math.max(0, t));
+var springEasingDurationInFrames = 30;
+
+class Easing {
+  static step0(n) {
+    return n > 0 ? 1 : 0;
+  }
+  static step1(n) {
+    return n >= 1 ? 1 : 0;
+  }
+  static linear(t) {
+    return t;
+  }
+  static ease(t) {
+    return Easing.bezier(0.42, 0, 1, 1)(t);
+  }
+  static quad(t) {
+    return t * t;
+  }
+  static cubic(t) {
+    return t * t * t;
+  }
+  static poly(n) {
+    return (t) => t ** n;
+  }
+  static sin(t) {
+    return 1 - Math.cos(t * Math.PI / 2);
+  }
+  static circle(t) {
+    const u = clampUnit(t);
+    return 1 - Math.sqrt(1 - u * u);
+  }
+  static exp(t) {
+    return 2 ** (10 * (t - 1));
+  }
+  static elastic(bounciness = 1) {
+    const p = bounciness * Math.PI;
+    return (t) => 1 - Math.cos(t * Math.PI / 2) ** 3 * Math.cos(t * p);
+  }
+  static back(s = 1.70158) {
+    return (t) => t * t * ((s + 1) * t - s);
+  }
+  static spring({
+    allowTail = false,
+    durationRestThreshold,
+    ...config
+  } = {}) {
+    const easing = (t) => {
+      if (t <= 0) {
+        return 0;
+      }
+      if (!allowTail && t >= 1) {
+        return 1;
+      }
+      if (allowTail) {
+        return spring({
+          fps: springEasingDurationInFrames,
+          frame: t * measureSpring({
+            fps: springEasingDurationInFrames,
+            config,
+            threshold: durationRestThreshold
+          }),
+          config
+        });
+      }
+      return spring({
+        fps: springEasingDurationInFrames,
+        frame: t * springEasingDurationInFrames,
+        config,
+        durationInFrames: springEasingDurationInFrames,
+        durationRestThreshold
+      });
+    };
+    return Object.assign(easing, {
+      remotionShouldExtendRight: allowTail
+    });
+  }
+  static bounce(t) {
+    const u = clampUnit(t);
+    if (u < 1 / 2.75) {
+      return 7.5625 * u * u;
+    }
+    if (u < 2 / 2.75) {
+      const t2_ = u - 1.5 / 2.75;
+      return 7.5625 * t2_ * t2_ + 0.75;
+    }
+    if (u < 2.5 / 2.75) {
+      const t2_ = u - 2.25 / 2.75;
+      return 7.5625 * t2_ * t2_ + 0.9375;
+    }
+    const t2 = u - 2.625 / 2.75;
+    return 7.5625 * t2 * t2 + 0.984375;
+  }
+  static bezier(x1, y1, x2, y2) {
+    return bezier(x1, y1, x2, y2);
+  }
+  static in(easing) {
+    return easing;
+  }
+  static out(easing) {
+    return (t) => 1 - easing(1 - t);
+  }
+  static inOut(easing) {
+    return (t) => {
+      if (t < 0.5) {
+        return easing(t * 2) / 2;
+      }
+      return 1 - easing((1 - t) * 2) / 2;
+    };
+  }
+}
+
+// src/interpolate-colors.ts
+var NUMBER = "[-+]?\\d*\\.?\\d+";
+var PERCENTAGE = NUMBER + "%";
+function call(...args) {
+  return "\\(\\s*(" + args.join(")\\s*,\\s*(") + ")\\s*\\)";
+}
+var MODERN_VALUE = "(?:none|[-+]?\\d*\\.?\\d+(?:%|deg|rad|grad|turn)?)";
+function modernColorCall(name) {
+  return new RegExp(name + "\\(\\s*(" + MODERN_VALUE + ")\\s+(" + MODERN_VALUE + ")\\s+(" + MODERN_VALUE + ")(?:\\s*\\/\\s*(" + MODERN_VALUE + "))?\\s*\\)");
+}
+function getMatchers() {
+  const cachedMatchers = {
+    rgb: undefined,
+    rgba: undefined,
+    hsl: undefined,
+    hsla: undefined,
+    hex3: undefined,
+    hex4: undefined,
+    hex5: undefined,
+    hex6: undefined,
+    hex8: undefined,
+    oklch: undefined,
+    oklab: undefined,
+    lab: undefined,
+    lch: undefined,
+    hwb: undefined
+  };
+  if (cachedMatchers.rgb === undefined) {
+    cachedMatchers.rgb = new RegExp("rgb" + call(NUMBER, NUMBER, NUMBER));
+    cachedMatchers.rgba = new RegExp("rgba" + call(NUMBER, NUMBER, NUMBER, NUMBER));
+    cachedMatchers.hsl = new RegExp("hsl" + call(NUMBER, PERCENTAGE, PERCENTAGE));
+    cachedMatchers.hsla = new RegExp("hsla" + call(NUMBER, PERCENTAGE, PERCENTAGE, NUMBER));
+    cachedMatchers.hex3 = /^#([0-9a-fA-F]{1})([0-9a-fA-F]{1})([0-9a-fA-F]{1})$/;
+    cachedMatchers.hex4 = /^#([0-9a-fA-F]{1})([0-9a-fA-F]{1})([0-9a-fA-F]{1})([0-9a-fA-F]{1})$/;
+    cachedMatchers.hex6 = /^#([0-9a-fA-F]{6})$/;
+    cachedMatchers.hex8 = /^#([0-9a-fA-F]{8})$/;
+    cachedMatchers.oklch = modernColorCall("oklch");
+    cachedMatchers.oklab = modernColorCall("oklab");
+    cachedMatchers.lab = modernColorCall("lab");
+    cachedMatchers.lch = modernColorCall("lch");
+    cachedMatchers.hwb = modernColorCall("hwb");
+  }
+  return cachedMatchers;
+}
+function hue2rgb(p, q, t) {
+  if (t < 0) {
+    t += 1;
+  }
+  if (t > 1) {
+    t -= 1;
+  }
+  if (t < 1 / 6) {
+    return p + (q - p) * 6 * t;
+  }
+  if (t < 1 / 2) {
+    return q;
+  }
+  if (t < 2 / 3) {
+    return p + (q - p) * (2 / 3 - t) * 6;
+  }
+  return p;
+}
+function hslToRgb(h, s, l) {
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const r = hue2rgb(p, q, h + 1 / 3);
+  const g = hue2rgb(p, q, h);
+  const b2 = hue2rgb(p, q, h - 1 / 3);
+  return Math.round(r * 255) << 24 | Math.round(g * 255) << 16 | Math.round(b2 * 255) << 8;
+}
+function parse255(str) {
+  const int = Number.parseInt(str, 10);
+  if (int < 0) {
+    return 0;
+  }
+  if (int > 255) {
+    return 255;
+  }
+  return int;
+}
+function parse360(str) {
+  const int = Number.parseFloat(str);
+  return (int % 360 + 360) % 360 / 360;
+}
+function parse1(str) {
+  const num = Number.parseFloat(str);
+  if (num < 0) {
+    return 0;
+  }
+  if (num > 1) {
+    return 255;
+  }
+  return Math.round(num * 255);
+}
+function parsePercentage(str) {
+  const int = Number.parseFloat(str);
+  if (int < 0) {
+    return 0;
+  }
+  if (int > 100) {
+    return 1;
+  }
+  return int / 100;
+}
+function parseModernComponent(str, percentScale) {
+  if (str === "none")
+    return 0;
+  if (str.endsWith("%")) {
+    return Number.parseFloat(str) / 100 * percentScale;
+  }
+  return Number.parseFloat(str);
+}
+function parseHueAngle(str) {
+  if (str === "none")
+    return 0;
+  if (str.endsWith("rad")) {
+    return Number.parseFloat(str) * 180 / Math.PI;
+  }
+  if (str.endsWith("grad"))
+    return Number.parseFloat(str) * 0.9;
+  if (str.endsWith("turn"))
+    return Number.parseFloat(str) * 360;
+  return Number.parseFloat(str);
+}
+function parseModernAlpha(str) {
+  if (str === undefined || str === "none")
+    return 1;
+  if (str.endsWith("%")) {
+    return Math.max(0, Math.min(1, Number.parseFloat(str) / 100));
+  }
+  return Math.max(0, Math.min(1, Number.parseFloat(str)));
+}
+function linearToSrgb(c2) {
+  if (c2 <= 0.0031308)
+    return 12.92 * c2;
+  return 1.055 * c2 ** (1 / 2.4) - 0.055;
+}
+function clamp01(v) {
+  return Math.max(0, Math.min(1, v));
+}
+function rgbFloatToInt(r, g, b2, alpha) {
+  const ri = Math.round(clamp01(r) * 255);
+  const gi = Math.round(clamp01(g) * 255);
+  const bi = Math.round(clamp01(b2) * 255);
+  const ai = Math.round(clamp01(alpha) * 255);
+  return (ri << 24 | gi << 16 | bi << 8 | ai) >>> 0;
+}
+function oklabToSrgb(L, a2, b2) {
+  const l_ = L + 0.3963377774 * a2 + 0.2158037573 * b2;
+  const m_ = L - 0.1055613458 * a2 - 0.0638541728 * b2;
+  const s_ = L - 0.0894841775 * a2 - 1.291485548 * b2;
+  const l = l_ * l_ * l_;
+  const m = m_ * m_ * m_;
+  const s = s_ * s_ * s_;
+  const rLin = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+  const gLin = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+  const bLin = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+  return [linearToSrgb(rLin), linearToSrgb(gLin), linearToSrgb(bLin)];
+}
+function labToSrgb(L, a2, b2) {
+  const epsilon = 216 / 24389;
+  const kappa = 24389 / 27;
+  const Xn = 0.95047;
+  const Yn = 1;
+  const Zn = 1.08883;
+  const fy = (L + 16) / 116;
+  const fx = a2 / 500 + fy;
+  const fz = fy - b2 / 200;
+  const fx3 = fx * fx * fx;
+  const fz3 = fz * fz * fz;
+  const xr = fx3 > epsilon ? fx3 : (116 * fx - 16) / kappa;
+  const yr = L > kappa * epsilon ? ((L + 16) / 116) ** 3 : L / kappa;
+  const zr = fz3 > epsilon ? fz3 : (116 * fz - 16) / kappa;
+  const X = xr * Xn;
+  const Y = yr * Yn;
+  const Z = zr * Zn;
+  const rLin = 3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z;
+  const gLin = -0.969266 * X + 1.8760108 * Y + 0.041556 * Z;
+  const bLin = 0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z;
+  return [linearToSrgb(rLin), linearToSrgb(gLin), linearToSrgb(bLin)];
+}
+function hwbToSrgb(h, w, bk) {
+  if (w + bk >= 1) {
+    const gray = w / (w + bk);
+    return [gray, gray, gray];
+  }
+  const q = 1;
+  const p = 0;
+  const r = hue2rgb(p, q, h + 1 / 3);
+  const g = hue2rgb(p, q, h);
+  const bl = hue2rgb(p, q, h - 1 / 3);
+  const factor = 1 - w - bk;
+  return [r * factor + w, g * factor + w, bl * factor + w];
+}
+var colorNames = {
+  transparent: 0,
+  aliceblue: 4042850303,
+  antiquewhite: 4209760255,
+  aqua: 16777215,
+  aquamarine: 2147472639,
+  azure: 4043309055,
+  beige: 4126530815,
+  bisque: 4293182719,
+  black: 255,
+  blanchedalmond: 4293643775,
+  blue: 65535,
+  blueviolet: 2318131967,
+  brown: 2771004159,
+  burlywood: 3736635391,
+  burntsienna: 3934150143,
+  cadetblue: 1604231423,
+  chartreuse: 2147418367,
+  chocolate: 3530104575,
+  coral: 4286533887,
+  cornflowerblue: 1687547391,
+  cornsilk: 4294499583,
+  crimson: 3692313855,
+  cyan: 16777215,
+  darkblue: 35839,
+  darkcyan: 9145343,
+  darkgoldenrod: 3095792639,
+  darkgray: 2846468607,
+  darkgreen: 6553855,
+  darkgrey: 2846468607,
+  darkkhaki: 3182914559,
+  darkmagenta: 2332068863,
+  darkolivegreen: 1433087999,
+  darkorange: 4287365375,
+  darkorchid: 2570243327,
+  darkred: 2332033279,
+  darksalmon: 3918953215,
+  darkseagreen: 2411499519,
+  darkslateblue: 1211993087,
+  darkslategray: 793726975,
+  darkslategrey: 793726975,
+  darkturquoise: 13554175,
+  darkviolet: 2483082239,
+  deeppink: 4279538687,
+  deepskyblue: 12582911,
+  dimgray: 1768516095,
+  dimgrey: 1768516095,
+  dodgerblue: 512819199,
+  firebrick: 2988581631,
+  floralwhite: 4294635775,
+  forestgreen: 579543807,
+  fuchsia: 4278255615,
+  gainsboro: 3705462015,
+  ghostwhite: 4177068031,
+  gold: 4292280575,
+  goldenrod: 3668254975,
+  gray: 2155905279,
+  green: 8388863,
+  greenyellow: 2919182335,
+  grey: 2155905279,
+  honeydew: 4043305215,
+  hotpink: 4285117695,
+  indianred: 3445382399,
+  indigo: 1258324735,
+  ivory: 4294963455,
+  khaki: 4041641215,
+  lavender: 3873897215,
+  lavenderblush: 4293981695,
+  lawngreen: 2096890111,
+  lemonchiffon: 4294626815,
+  lightblue: 2916673279,
+  lightcoral: 4034953471,
+  lightcyan: 3774873599,
+  lightgoldenrodyellow: 4210742015,
+  lightgray: 3553874943,
+  lightgreen: 2431553791,
+  lightgrey: 3553874943,
+  lightpink: 4290167295,
+  lightsalmon: 4288707327,
+  lightseagreen: 548580095,
+  lightskyblue: 2278488831,
+  lightslategray: 2005441023,
+  lightslategrey: 2005441023,
+  lightsteelblue: 2965692159,
+  lightyellow: 4294959359,
+  lime: 16711935,
+  limegreen: 852308735,
+  linen: 4210091775,
+  magenta: 4278255615,
+  maroon: 2147483903,
+  mediumaquamarine: 1724754687,
+  mediumblue: 52735,
+  mediumorchid: 3126187007,
+  mediumpurple: 2473647103,
+  mediumseagreen: 1018393087,
+  mediumslateblue: 2070474495,
+  mediumspringgreen: 16423679,
+  mediumturquoise: 1221709055,
+  mediumvioletred: 3340076543,
+  midnightblue: 421097727,
+  mintcream: 4127193855,
+  mistyrose: 4293190143,
+  moccasin: 4293178879,
+  navajowhite: 4292783615,
+  navy: 33023,
+  oldlace: 4260751103,
+  olive: 2155872511,
+  olivedrab: 1804477439,
+  orange: 4289003775,
+  orangered: 4282712319,
+  orchid: 3664828159,
+  palegoldenrod: 4008225535,
+  palegreen: 2566625535,
+  paleturquoise: 2951671551,
+  palevioletred: 3681588223,
+  papayawhip: 4293907967,
+  peachpuff: 4292524543,
+  peru: 3448061951,
+  pink: 4290825215,
+  plum: 3718307327,
+  powderblue: 2967529215,
+  purple: 2147516671,
+  rebeccapurple: 1714657791,
+  red: 4278190335,
+  rosybrown: 3163525119,
+  royalblue: 1097458175,
+  saddlebrown: 2336560127,
+  salmon: 4202722047,
+  sandybrown: 4104413439,
+  seagreen: 780883967,
+  seashell: 4294307583,
+  sienna: 2689740287,
+  silver: 3233857791,
+  skyblue: 2278484991,
+  slateblue: 1784335871,
+  slategray: 1887473919,
+  slategrey: 1887473919,
+  snow: 4294638335,
+  springgreen: 16744447,
+  steelblue: 1182971135,
+  tan: 3535047935,
+  teal: 8421631,
+  thistle: 3636451583,
+  tomato: 4284696575,
+  turquoise: 1088475391,
+  violet: 4001558271,
+  wheat: 4125012991,
+  white: 4294967295,
+  whitesmoke: 4126537215,
+  yellow: 4294902015,
+  yellowgreen: 2597139199
+};
+function normalizeColor(color) {
+  const matchers = getMatchers();
+  let match;
+  if (matchers.hex6) {
+    if (match = matchers.hex6.exec(color)) {
+      return Number.parseInt(match[1] + "ff", 16) >>> 0;
+    }
+  }
+  if (colorNames[color] !== undefined) {
+    return colorNames[color];
+  }
+  if (matchers.rgb) {
+    if (match = matchers.rgb.exec(color)) {
+      return (parse255(match[1]) << 24 | parse255(match[2]) << 16 | parse255(match[3]) << 8 | 255) >>> 0;
+    }
+  }
+  if (matchers.rgba) {
+    if (match = matchers.rgba.exec(color)) {
+      return (parse255(match[1]) << 24 | parse255(match[2]) << 16 | parse255(match[3]) << 8 | parse1(match[4])) >>> 0;
+    }
+  }
+  if (matchers.hex3) {
+    if (match = matchers.hex3.exec(color)) {
+      return Number.parseInt(match[1] + match[1] + match[2] + match[2] + match[3] + match[3] + "ff", 16) >>> 0;
+    }
+  }
+  if (matchers.hex8) {
+    if (match = matchers.hex8.exec(color)) {
+      return Number.parseInt(match[1], 16) >>> 0;
+    }
+  }
+  if (matchers.hex4) {
+    if (match = matchers.hex4.exec(color)) {
+      return Number.parseInt(match[1] + match[1] + match[2] + match[2] + match[3] + match[3] + match[4] + match[4], 16) >>> 0;
+    }
+  }
+  if (matchers.hsl) {
+    if (match = matchers.hsl.exec(color)) {
+      return (hslToRgb(parse360(match[1]), parsePercentage(match[2]), parsePercentage(match[3])) | 255) >>> 0;
+    }
+  }
+  if (matchers.hsla) {
+    if (match = matchers.hsla.exec(color)) {
+      return (hslToRgb(parse360(match[1]), parsePercentage(match[2]), parsePercentage(match[3])) | parse1(match[4])) >>> 0;
+    }
+  }
+  if (matchers.oklch) {
+    if (match = matchers.oklch.exec(color)) {
+      const L = parseModernComponent(match[1], 1);
+      const C = parseModernComponent(match[2], 0.4);
+      const H = parseHueAngle(match[3]);
+      const alpha = parseModernAlpha(match[4]);
+      const hRad = H * Math.PI / 180;
+      const [r, g, b2] = oklabToSrgb(L, C * Math.cos(hRad), C * Math.sin(hRad));
+      return rgbFloatToInt(r, g, b2, alpha);
+    }
+  }
+  if (matchers.oklab) {
+    if (match = matchers.oklab.exec(color)) {
+      const L = parseModernComponent(match[1], 1);
+      const a2 = parseModernComponent(match[2], 0.4);
+      const b2 = parseModernComponent(match[3], 0.4);
+      const alpha = parseModernAlpha(match[4]);
+      const [r, g, bl] = oklabToSrgb(L, a2, b2);
+      return rgbFloatToInt(r, g, bl, alpha);
+    }
+  }
+  if (matchers.lab) {
+    if (match = matchers.lab.exec(color)) {
+      const L = parseModernComponent(match[1], 100);
+      const a2 = parseModernComponent(match[2], 125);
+      const b2 = parseModernComponent(match[3], 125);
+      const alpha = parseModernAlpha(match[4]);
+      const [r, g, bl] = labToSrgb(L, a2, b2);
+      return rgbFloatToInt(r, g, bl, alpha);
+    }
+  }
+  if (matchers.lch) {
+    if (match = matchers.lch.exec(color)) {
+      const L = parseModernComponent(match[1], 100);
+      const C = parseModernComponent(match[2], 150);
+      const H = parseHueAngle(match[3]);
+      const alpha = parseModernAlpha(match[4]);
+      const hRad = H * Math.PI / 180;
+      const [r, g, bl] = labToSrgb(L, C * Math.cos(hRad), C * Math.sin(hRad));
+      return rgbFloatToInt(r, g, bl, alpha);
+    }
+  }
+  if (matchers.hwb) {
+    if (match = matchers.hwb.exec(color)) {
+      const H = parseHueAngle(match[1]);
+      const W = parseModernComponent(match[2], 1);
+      const B = parseModernComponent(match[3], 1);
+      const alpha = parseModernAlpha(match[4]);
+      const [r, g, bl] = hwbToSrgb(H / 360, W, B);
+      return rgbFloatToInt(r, g, bl, alpha);
+    }
+  }
+  throw new Error(`invalid color string ${color} provided`);
+}
+var opacity = (c2) => {
+  return (c2 >> 24 & 255) / 255;
+};
+var red = (c2) => {
+  return c2 >> 16 & 255;
+};
+var green = (c2) => {
+  return c2 >> 8 & 255;
+};
+var blue = (c2) => {
+  return c2 & 255;
+};
+var rgbaColor = (r, g, b2, alpha) => {
+  return `rgba(${r}, ${g}, ${b2}, ${alpha})`;
+};
+function processColor(color) {
+  const normalizedColor = normalizeColor(color);
+  return (normalizedColor << 24 | normalizedColor >>> 8) >>> 0;
+}
+var interpolateColorsRGB = (value, inputRange, colors, options) => {
+  const [r, g, b2, a2] = [red, green, blue, opacity].map((f) => {
+    const unrounded = interpolate(value, inputRange, colors.map((c2) => f(c2)), {
+      easing: options?.easing,
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      posterize: options?.posterize
+    });
+    if (f === opacity) {
+      return Number(unrounded.toFixed(3));
+    }
+    return Math.round(unrounded);
+  });
+  return rgbaColor(r, g, b2, a2);
+};
+var interpolateColors = (input, inputRange, outputRange, options) => {
+  if (typeof input === "undefined") {
+    throw new TypeError("input can not be undefined");
+  }
+  if (typeof inputRange === "undefined") {
+    throw new TypeError("inputRange can not be undefined");
+  }
+  if (typeof outputRange === "undefined") {
+    throw new TypeError("outputRange can not be undefined");
+  }
+  if (inputRange.length !== outputRange.length) {
+    throw new TypeError("inputRange (" + inputRange.length + " values provided) and outputRange (" + outputRange.length + " values provided) must have the same length");
+  }
+  const processedOutputRange = outputRange.map((c2) => processColor(c2));
+  return interpolateColorsRGB(input, inputRange, processedOutputRange, options);
+};
+
+// src/interpolate-keyframed-status.ts
+var easingToFn = ({
+  easing,
+  forceSpringAllowTail
+}) => {
+  switch (easing.type) {
+    case "linear":
+      return Easing.linear;
+    case "step1":
+      return Easing.step1;
+    case "spring":
+      return Easing.spring({
+        allowTail: forceSpringAllowTail ?? easing.allowTail ?? undefined,
+        damping: easing.damping,
+        durationRestThreshold: easing.durationRestThreshold ?? undefined,
+        mass: easing.mass,
+        overshootClamping: easing.overshootClamping,
+        stiffness: easing.stiffness
+      });
+    case "bezier":
+      return bezier(easing.x1, easing.y1, easing.x2, easing.y2);
+    default:
+      throw new TypeError(`Unsupported easing: ${JSON.stringify(easing)}`);
+  }
+};
+var interpolateKeyframedStatus = ({
+  frame,
+  forceSpringAllowTail,
+  status
+}) => {
+  const { keyframes, easing, clamping, interpolationFunction } = status;
+  if (keyframes.length === 0) {
+    return null;
+  }
+  const sortedKeyframes = [...keyframes].sort((a2, b2) => a2.frame - b2.frame);
+  const inputRange = sortedKeyframes.map((k) => k.frame);
+  const outputs = sortedKeyframes.map((k) => k.value);
+  if (interpolationFunction === "interpolateColors") {
+    if (!outputs.every((v) => typeof v === "string")) {
+      return null;
+    }
+    if (keyframes.length === 1) {
+      return outputs[0];
+    }
+    try {
+      return interpolateColors(frame, inputRange, outputs, {
+        easing: easing.map((e) => easingToFn({ easing: e, forceSpringAllowTail })),
+        posterize: status.posterize
+      });
+    } catch {
+      return null;
+    }
+  }
+  if (interpolationFunction !== "interpolate") {
+    return null;
+  }
+  try {
+    return interpolate(frame, inputRange, outputs, {
+      easing: easing.map((e) => easingToFn({ easing: e, forceSpringAllowTail })),
+      extrapolateLeft: clamping.left,
+      extrapolateRight: clamping.right,
+      output: status.output,
+      posterize: status.posterize
+    });
+  } catch {
+    return null;
+  }
+};
+
+// src/get-effective-visual-mode-value.ts
+var resolveDragOverrideValue = ({
+  dragOverrideValue,
+  frame
+}) => {
+  if (dragOverrideValue === undefined) {
+    return { type: "none" };
+  }
+  if (dragOverrideValue.type === "static") {
+    return { type: "resolved", value: dragOverrideValue.value };
+  }
+  if (frame === null) {
+    return { type: "none" };
+  }
+  const interpolated = interpolateKeyframedStatus({
+    forceSpringAllowTail: null,
+    frame,
+    status: dragOverrideValue.status
+  });
+  if (interpolated === null) {
+    return { type: "none" };
+  }
+  return { type: "resolved", value: interpolated };
+};
+var getEffectiveVisualModeValue = ({
+  propStatus,
+  dragOverrideValue,
+  defaultValue,
+  frame = null,
+  shouldResortToDefaultValueIfUndefined = false
+}) => {
+  const dragOverride = resolveDragOverrideValue({
+    dragOverrideValue,
+    frame
+  });
+  if (dragOverride.type === "resolved" && dragOverride.value !== undefined) {
+    return dragOverride.value;
+  }
+  if (propStatus.status === "keyframed") {
+    if (frame !== null) {
+      return interpolateKeyframedStatus({
+        forceSpringAllowTail: null,
+        frame,
+        status: propStatus
+      });
+    }
+    return shouldResortToDefaultValueIfUndefined ? defaultValue : undefined;
+  }
+  if (propStatus.codeValue === undefined && shouldResortToDefaultValueIfUndefined) {
+    return defaultValue;
+  }
+  return propStatus.codeValue;
+};
+
+// src/sequence-node-path.tsx
+
+var OverrideIdsToNodePathsGettersContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
+  overrideIdToNodePathMappings: {}
+});
+var OverrideIdsToNodePathsSettersContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
+  setOverrideIdToNodePath: () => {
+    throw new Error("OverrideIdsToNodePathsSettersContext not initialized");
+  }
+});
+
+// src/effects/use-memoized-effects.ts
+var mergeOverrides = ({
+  descriptor,
+  propStatusOverrides,
+  dragOverrides,
+  frame
+}) => {
+  if (!propStatusOverrides && !dragOverrides) {
+    return { params: descriptor.params, effectKey: descriptor.effectKey };
+  }
+  const merged = {
+    ...descriptor.params
+  };
+  if (propStatusOverrides) {
+    for (const [key, value] of Object.entries(propStatusOverrides)) {
+      if (value !== undefined) {
+        merged[key] = value;
+      }
+    }
+  }
+  if (dragOverrides) {
+    for (const [key, value] of Object.entries(dragOverrides)) {
+      const resolved = resolveDragOverrideValue({
+        dragOverrideValue: value,
+        frame
+      });
+      if (resolved.type === "resolved") {
+        merged[key] = resolved.value;
+      }
+    }
+  }
+  return {
+    params: merged,
+    effectKey: descriptor.definition.calculateKey(merged)
+  };
+};
+var resolvePropStatusOverrides = (propStatus, frame) => {
+  if (!propStatus) {
+    return null;
+  }
+  const out = {};
+  let hasAny = false;
+  for (const [key, status] of Object.entries(propStatus)) {
+    if (status.status === "static") {
+      out[key] = status.codeValue;
+      hasAny = true;
+      continue;
+    }
+    if (status.status === "keyframed") {
+      const value = interpolateKeyframedStatus({
+        forceSpringAllowTail: null,
+        frame,
+        status
+      });
+      if (value !== null) {
+        out[key] = value;
+        hasAny = true;
+      }
+    }
+  }
+  return hasAny ? out : null;
+};
+var useMemoizedEffectDefinitions = (effects) => {
+  const previousRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const definitions = effects.map((descriptor) => descriptor.definition);
+  const previous = previousRef.current;
+  const isSame = previous !== null && previous.length === definitions.length && previous.every((def, i) => def === definitions[i]);
+  if (isSame) {
+    return previous;
+  }
+  previousRef.current = definitions;
+  return definitions;
+};
+var getEffectPropStatusesCtx = ({
+  propStatuses,
+  nodePath,
+  effectIndex
+}) => {
+  const status = propStatuses[makeSequencePropsSubscriptionKey(nodePath)];
+  if (!status) {
+    return { type: "cannot-update-sequence", reason: "not-found" };
+  }
+  if (!status.canUpdate) {
+    return { type: "cannot-update-sequence", reason: status.reason };
+  }
+  const effect = status.effects.find((e) => e.effectIndex === effectIndex);
+  if (!effect) {
+    return { type: "cannot-update-effect", reason: "not-found" };
+  }
+  if (!effect.canUpdate) {
+    return { type: "cannot-update-effect", reason: effect.reason };
+  }
+  return { type: "can-update-effect", props: effect.props };
+};
+var getPropStatusesCtx = (propStatuses, nodePath) => {
+  const status = propStatuses[makeSequencePropsSubscriptionKey(nodePath)];
+  if (!status) {
+    return;
+  }
+  if (!status.canUpdate) {
+    return;
+  }
+  return status.props;
+};
+var useMemoizedEffects = ({
+  effects,
+  overrideId
+}) => {
+  const previousRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const { propStatuses } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(VisualModePropStatusesContext);
+  const { getEffectDragOverrides } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(VisualModeDragOverridesContext);
+  const frame = useCurrentFrame();
+  const { overrideIdToNodePathMappings } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(OverrideIdsToNodePathsGettersContext);
+  const previous = previousRef.current;
+  const nodePath = overrideId ? overrideIdToNodePathMappings[overrideId] ?? null : null;
+  const resolved = effects.map((descriptor, index) => {
+    if (nodePath === null) {
+      return {
+        descriptor,
+        params: descriptor.params,
+        effectKey: descriptor.effectKey
+      };
+    }
+    const effectStatus = getEffectPropStatusesCtx({
+      propStatuses,
+      nodePath,
+      effectIndex: index
+    });
+    const propStatusOverrides = effectStatus.type === "can-update-effect" ? resolvePropStatusOverrides(effectStatus.props, frame) : null;
+    const dragOverridesMap = getEffectDragOverrides(nodePath, index);
+    const dragOverrides = Object.keys(dragOverridesMap).length === 0 ? null : dragOverridesMap;
+    const { params, effectKey } = mergeOverrides({
+      descriptor,
+      propStatusOverrides,
+      dragOverrides,
+      frame
+    });
+    return { descriptor, params, effectKey };
+  });
+  const isSame = previous !== null && previous.length === resolved.length && previous.every((p, i) => p.definition === resolved[i].descriptor.definition && p.effectKey === resolved[i].effectKey);
+  if (isSame) {
+    return previous;
+  }
+  const next = resolved.map(({ descriptor, params, effectKey }) => ({
+    definition: descriptor.definition,
+    effectKey,
+    params,
+    memoized: true
+  }));
+  previousRef.current = next;
+  return next;
+};
+
+// src/flatten-schema.ts
+var flattenActiveSchema = (schema, resolve) => {
+  const out = {};
+  for (const key of Object.keys(schema)) {
+    const field = schema[key];
+    if (field.type === "hidden") {
+      continue;
+    } else if (field.type === "enum") {
+      out[key] = field;
+      const current = resolve(key) ?? field.default;
+      const variant = field.variants[current];
+      if (variant) {
+        Object.assign(out, flattenActiveSchema(variant, resolve));
+      }
+    } else {
+      out[key] = field;
+    }
+  }
+  return out;
+};
+var getFlatSchemaWithAllKeys = (schema) => {
+  const out = {};
+  const addKey = (key, field) => {
+    if (key in out) {
+      return;
+    }
+    out[key] = field;
+  };
+  for (const key of Object.keys(schema)) {
+    const field = schema[key];
+    addKey(key, field);
+    if (field.type === "enum") {
+      for (const variant of Object.values(field.variants)) {
+        const flatVariant = getFlatSchemaWithAllKeys(variant);
+        for (const variantKey of Object.keys(flatVariant)) {
+          addKey(variantKey, flatVariant[variantKey]);
+        }
+      }
+    }
+  }
+  return out;
+};
+
+// src/runtime-value-store.ts
+var createRuntimeValueStore = (initialSnapshot) => {
+  let snapshot = initialSnapshot;
+  const listeners = new Set;
+  const store = {
+    getSnapshot: () => snapshot,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    }
+  };
+  return {
+    store,
+    setSnapshot: (newSnapshot) => {
+      if (snapshot === newSnapshot) {
+        return;
+      }
+      snapshot = newSnapshot;
+      for (const listener of listeners) {
+        listener();
+      }
+    }
+  };
+};
+
+// src/find-props-to-delete.ts
+var findPropsToDelete = ({
+  schema,
+  key,
+  value
+}) => {
+  const fieldSchema = schema[key];
+  if (!fieldSchema) {
+    throw new Error("Key " + JSON.stringify(key) + " not found in schema");
+  }
+  if (typeof value !== "string") {
+    throw new Error("Value must be a string, but is " + JSON.stringify(value));
+  }
+  if (fieldSchema.type !== "enum") {
+    throw new Error("Key " + JSON.stringify(key) + " is not an enum");
+  }
+  const currentVariant = fieldSchema.variants[value];
+  if (!currentVariant) {
+    throw new Error("Value for " + JSON.stringify(key) + " must be one of " + Object.keys(fieldSchema.variants).map((v) => JSON.stringify(v)).join(", ") + ", got " + JSON.stringify(value));
+  }
+  const otherVariants = Object.keys(fieldSchema.variants).filter((v) => v !== value);
+  const otherKeys = new Set;
+  for (const variant of otherVariants) {
+    const otherVariant = fieldSchema.variants[variant];
+    const keys = Object.keys(otherVariant);
+    for (const k of keys) {
+      otherKeys.add(k);
+    }
+  }
+  return [...otherKeys];
+};
+
+// src/use-schema.ts
+var DEFAULT_LINEAR_EASING = {
+  type: "linear"
+};
+var getEasingIndexToDuplicate = ({
+  insertedKeyframeIndex,
+  easingLength,
+  keyframeCount
+}) => {
+  const isSplittingExistingSegment = insertedKeyframeIndex > 0 && insertedKeyframeIndex < keyframeCount - 1;
+  if (!isSplittingExistingSegment || easingLength === 0) {
+    return null;
+  }
+  return Math.min(insertedKeyframeIndex - 1, easingLength - 1);
+};
+var makeStaticDragOverride = (value) => {
+  return { type: "static", value };
+};
+var makeKeyframedDragOverride = ({
+  status,
+  frame,
+  value
+}) => {
+  const existingIndex = status.keyframes.findIndex((keyframe) => keyframe.frame === frame);
+  const keyframes = existingIndex === -1 ? [...status.keyframes, { frame, value }].sort((first, second) => first.frame - second.frame) : status.keyframes.map((keyframe, index) => index === existingIndex ? { frame, value } : keyframe);
+  const easing = [...status.easing];
+  if (existingIndex === -1) {
+    const insertedKeyframeIndex = keyframes.findIndex((keyframe) => keyframe.frame === frame);
+    const easingIndexToDuplicate = getEasingIndexToDuplicate({
+      insertedKeyframeIndex,
+      easingLength: easing.length,
+      keyframeCount: keyframes.length
+    });
+    const easingToDuplicate = easingIndexToDuplicate === null ? DEFAULT_LINEAR_EASING : easing[easingIndexToDuplicate];
+    easing.splice(insertedKeyframeIndex, 0, easingToDuplicate);
+  }
+  while (easing.length < keyframes.length - 1) {
+    easing.push(DEFAULT_LINEAR_EASING);
+  }
+  if (easing.length > keyframes.length - 1) {
+    easing.length = keyframes.length - 1;
+  }
+  return {
+    type: "keyframed",
+    status: {
+      ...status,
+      keyframes,
+      easing
+    }
+  };
+};
+var getStaticDragOverrideValue = (dragOverrideValue) => {
+  if (dragOverrideValue?.type !== "static") {
+    return;
+  }
+  return dragOverrideValue.value;
+};
+var isKeyframedStatus = (status) => {
+  return status !== null && status.status === "keyframed";
+};
+var findFieldInSchema = (schema, key) => {
+  if (key in schema) {
+    return schema[key];
+  }
+  for (const field of Object.values(schema)) {
+    if (field.type !== "enum") {
+      continue;
+    }
+    for (const variant of Object.values(field.variants)) {
+      const found = findFieldInSchema(variant, key);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return;
+};
+var computeEffectiveSchemaValuesDotNotation = ({
+  schema,
+  currentValue,
+  overrideValues,
+  propStatus,
+  frame
+}) => {
+  const merged = {};
+  const propsToDelete = new Set;
+  for (const key of Object.keys(currentValue)) {
+    const status = propStatus?.[key] ?? null;
+    const field = findFieldInSchema(schema, key);
+    if (field?.type === "hidden") {
+      continue;
+    }
+    let value;
+    if (status === null) {
+      value = currentValue[key];
+    } else if (isKeyframedStatus(status)) {
+      if (field?.type === "array" || field?.keyframable === false) {
+        value = currentValue[key];
+      } else {
+        const dragOverride = resolveDragOverrideValue({
+          dragOverrideValue: overrideValues[key],
+          frame
+        });
+        if (dragOverride.type === "resolved") {
+          value = dragOverride.value;
+        } else if (frame !== null) {
+          const interpolated = interpolateKeyframedStatus({
+            forceSpringAllowTail: null,
+            frame,
+            status
+          });
+          value = interpolated ?? currentValue[key];
+        } else {
+          value = currentValue[key];
+        }
+      }
+    } else if (status.status === "computed") {
+      value = currentValue[key];
+    } else {
+      value = getEffectiveVisualModeValue({
+        propStatus: status,
+        dragOverrideValue: overrideValues[key],
+        defaultValue: field?.default,
+        frame,
+        shouldResortToDefaultValueIfUndefined: false
+      });
+    }
+    if (field?.type === "asset" && typeof value === "string" && value.startsWith(FILE_TOKEN)) {
+      value = `${window.remotion_staticBase}/${value.slice(FILE_TOKEN.length)}`;
+    }
+    if (value === undefined) {
+      propsToDelete.add(key);
+    }
+    merged[key] = value;
+  }
+  for (const key of Object.keys(overrideValues)) {
+    if (schema[key]?.type === "enum") {
+      const propsToDeleteForKey = findPropsToDelete({
+        schema,
+        key,
+        value: merged[key]
+      });
+      for (const propToDelete of propsToDeleteForKey) {
+        propsToDelete.add(propToDelete);
+      }
+    }
+  }
+  return { merged, propsToDelete };
+};
+
+// src/with-interactivity-schema.ts
+var getNestedValue = (obj, key) => {
+  const parts = key.split(".");
+  let current = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined || typeof current !== "object")
+      return;
+    current = current[part];
+  }
+  return current;
+};
+var getRuntimeValueForSchemaKey = ({
+  flatSchema,
+  key,
+  props
+}) => {
+  const value = getNestedValue(props, key);
+  if (flatSchema[key]?.type === "text-content" && typeof value !== "string") {
+    return;
+  }
+  return value;
+};
+var readValuesFromProps = (props, keys, flatSchema) => {
+  const out = {};
+  for (const key of keys) {
+    out[key] = flatSchema ? getRuntimeValueForSchemaKey({ flatSchema, key, props }) : getNestedValue(props, key);
+  }
+  return out;
+};
+var selectActiveKeys = (schema, values) => {
+  return Object.keys(flattenActiveSchema(schema, (key) => values[key]));
+};
+var mergeValues = ({
+  flatSchema,
+  props,
+  valuesDotNotation,
+  schemaKeys,
+  propsToDelete
+}) => {
+  const merged = { ...props };
+  for (const key of schemaKeys) {
+    const value = valuesDotNotation[key];
+    if (flatSchema[key]?.type === "text-content" && value === undefined) {
+      continue;
+    }
+    const parts = key.split(".");
+    if (parts.length === 1) {
+      merged[key] = value;
+      continue;
+    }
+    let current = merged;
+    for (let i = 0;i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (typeof current[part] === "object" && current[part] !== null) {
+        current[part] = { ...current[part] };
+      } else {
+        current[part] = {};
+      }
+      current = current[part];
+    }
+    current[parts[parts.length - 1]] = value;
+  }
+  const propsToDeleteWithoutTextContent = new Set([...propsToDelete].filter((key) => !(flatSchema[key]?.type === "text-content" && valuesDotNotation[key] === undefined)));
+  deleteNestedKey(merged, propsToDeleteWithoutTextContent);
+  return merged;
+};
+var stackToOverrideMap = {};
+var withInteractivitySchema = ({
+  Component,
+  componentName,
+  componentIdentity,
+  schema,
+  supportsEffects
+}) => {
+  const schemaWithSequenceName = extendSchemaWithSequenceName(schema);
+  const flatSchema = getFlatSchemaWithAllKeys(schemaWithSequenceName);
+  const flatKeys = Object.keys(flatSchema);
+  const Wrapped = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)((props, ref) => {
+    const {
+      _remotionInternalStack: internalStack,
+      ...propsWithoutInternalStack
+    } = props;
+    const cleanProps = propsWithoutInternalStack;
+    const env = useRemotionEnvironment();
+    const canUseRemotionHooks = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CanUseRemotionHooks);
+    if (!env.isStudio || env.isRendering || !canUseRemotionHooks) {
+      return react__WEBPACK_IMPORTED_MODULE_0__.createElement(Component, {
+        ...cleanProps,
+        controls: null,
+        ref
+      });
+    }
+    const { propStatuses } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(VisualModePropStatusesContext);
+    const { getDragOverrides } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(VisualModeDragOverridesContext);
+    const nodePathMapping = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(OverrideIdsToNodePathsGettersContext);
+    const frame = useCurrentFrame();
+    if (cleanProps.controls) {
+      const passedControls = cleanProps.controls;
+      if (getStackForControls(passedControls) === null) {
+        setStackForControls(passedControls, internalStack);
+      }
+      return react__WEBPACK_IMPORTED_MODULE_0__.createElement(Component, {
+        ...cleanProps,
+        ref
+      });
+    }
+    const [overrideId] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => {
+      if (!internalStack) {
+        return String(Math.random());
+      }
+      const existingOverrideId = stackToOverrideMap[internalStack];
+      if (existingOverrideId) {
+        return existingOverrideId;
+      }
+      const newOverrideId = String(Math.random());
+      stackToOverrideMap[internalStack] = newOverrideId;
+      return newOverrideId;
+    });
+    const nodePath = env.isReadOnlyStudio ? null : nodePathMapping.overrideIdToNodePathMappings[overrideId] ?? null;
+    const runtimeValues = flatKeys.map((key) => getRuntimeValueForSchemaKey({
+      flatSchema,
+      key,
+      props: cleanProps
+    }));
+    const currentRuntimeValueDotNotation = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => readValuesFromProps(cleanProps, flatKeys, flatSchema), runtimeValues);
+    const [runtimeValueStore] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => createRuntimeValueStore(currentRuntimeValueDotNotation));
+    (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
+      runtimeValueStore.setSnapshot(currentRuntimeValueDotNotation);
+    }, [currentRuntimeValueDotNotation, runtimeValueStore]);
+    const controls = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+      return {
+        schema: schemaWithSequenceName,
+        currentRuntimeValueDotNotation,
+        runtimeValues: runtimeValueStore.store,
+        overrideId,
+        supportsEffects,
+        componentIdentity,
+        componentName
+      };
+    }, [currentRuntimeValueDotNotation, overrideId, runtimeValueStore.store]);
+    setStackForControls(controls, internalStack);
+    const { merged: valuesDotNotation, propsToDelete } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+      return computeEffectiveSchemaValuesDotNotation({
+        schema: schemaWithSequenceName,
+        currentValue: currentRuntimeValueDotNotation,
+        overrideValues: nodePath === null ? {} : getDragOverrides(nodePath),
+        propStatus: nodePath === null ? undefined : getPropStatusesCtx(propStatuses, nodePath),
+        frame
+      });
+    }, [
+      currentRuntimeValueDotNotation,
+      getDragOverrides,
+      nodePath,
+      propStatuses,
+      frame
+    ]);
+    const activeKeys = selectActiveKeys(schemaWithSequenceName, valuesDotNotation);
+    const mergedProps = mergeValues({
+      flatSchema,
+      props: cleanProps,
+      valuesDotNotation,
+      schemaKeys: activeKeys,
+      propsToDelete
+    });
+    return react__WEBPACK_IMPORTED_MODULE_0__.createElement(Component, {
+      ...mergedProps,
+      controls,
+      ref
+    });
+  });
+  Wrapped.displayName = `withInteractivitySchema(${Component.displayName || Component.name || "Component"})`;
+  return Wrapped;
+};
+
+// src/Sequence.tsx
+
+var EMPTY_EFFECTS = [];
+var RegularSequenceRefForwardingFunction = ({
+  from = 0,
+  trimBefore = 0,
+  freeze,
+  durationInFrames = Infinity,
+  children,
+  name,
+  height,
+  width,
+  showInTimeline = true,
+  hidden = false,
+  controls,
+  _remotionInternalEffects,
+  _remotionInternalLoopDisplay: loopDisplay,
+  _remotionInternalStack: stack,
+  _remotionInternalDocumentationLink: documentationLink,
+  _remotionInternalSingleChildComponent: singleChildComponent,
+  _remotionInternalPremountDisplay: premountDisplay,
+  _remotionInternalPostmountDisplay: postmountDisplay,
+  _remotionInternalIsMedia: isMedia,
+  outlineRef: passedRefForOutline,
+  cropLeft,
+  cropRight,
+  cropTop,
+  cropBottom,
+  ...other
+}, ref) => {
+  const { layout = "absolute-fill" } = other;
+  const [id] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => String(Math.random()));
+  const parentSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
+  const cumulatedFrom = parentSequence ? parentSequence.cumulatedFrom + parentSequence.relativeFrom : 0;
+  const nonce = useNonce();
+  if (layout !== "absolute-fill" && layout !== "none") {
+    throw new TypeError(`The layout prop of <Sequence /> expects either "absolute-fill" or "none", but you passed: ${layout}`);
+  }
+  const cropProps = { cropLeft, cropRight, cropTop, cropBottom };
+  const hasCropProp = Object.values(cropProps).some((value) => value !== undefined);
+  if (layout === "none" && hasCropProp) {
+    throw new TypeError('The cropLeft, cropRight, cropTop and cropBottom props of <Sequence /> are only supported with layout="absolute-fill".');
+  }
+  validateSequenceCrop(cropProps);
+  const {
+    left: resolvedCropLeft,
+    right: resolvedCropRight,
+    top: resolvedCropTop,
+    bottom: resolvedCropBottom
+  } = resolveSequenceCrop(cropProps);
+  if (layout === "none" && typeof other.style !== "undefined") {
+    throw new TypeError('If layout="none", you may not pass a style. Passed: ' + JSON.stringify(other.style));
+  }
+  if (typeof durationInFrames !== "number") {
+    throw new TypeError(`You passed to durationInFrames an argument of type ${typeof durationInFrames}, but it must be a number.`);
+  }
+  if (durationInFrames <= 0) {
+    throw new TypeError(`durationInFrames must be positive, but got ${durationInFrames}`);
+  }
+  if (typeof from !== "number") {
+    throw new TypeError(`You passed to the "from" props of your <Sequence> an argument of type ${typeof from}, but it must be a number.`);
+  }
+  if (!Number.isFinite(from)) {
+    throw new TypeError(`The "from" prop of a sequence must be finite, but got ${from}.`);
+  }
+  if (typeof trimBefore !== "number") {
+    throw new TypeError(`You passed to the "trimBefore" prop of your <Sequence> an argument of type ${typeof trimBefore}, but it must be a number.`);
+  }
+  if (trimBefore < 0) {
+    throw new TypeError(`The "trimBefore" prop of <Sequence /> must be greater than or equal to 0, but got ${trimBefore}.`);
+  }
+  if (Number.isNaN(trimBefore)) {
+    throw new TypeError('The "trimBefore" prop of <Sequence /> must be a real number, but it is NaN.');
+  }
+  if (!Number.isFinite(trimBefore)) {
+    throw new TypeError(`The "trimBefore" prop of <Sequence /> must be finite, but it is ${trimBefore}.`);
+  }
+  if (typeof freeze !== "undefined" && freeze !== null) {
+    if (typeof freeze !== "number") {
+      throw new TypeError(`The "freeze" prop of <Sequence /> must be a number, but is of type ${typeof freeze}.`);
+    }
+    if (Number.isNaN(freeze)) {
+      throw new TypeError(`The "freeze" prop of <Sequence /> must be a real number, but it is NaN.`);
+    }
+    if (!Number.isFinite(freeze)) {
+      throw new TypeError(`The "freeze" prop of <Sequence /> must be finite, but it is ${freeze}.`);
+    }
+  }
+  const absoluteFrame = useTimelinePosition();
+  const videoConfig = useVideoConfig();
+  const effectiveRelativeFrom = from - trimBefore;
+  const absoluteFrom = (parentSequence?.absoluteFrom ?? 0) + effectiveRelativeFrom;
+  const parentSequenceDuration = parentSequence ? Math.min(parentSequence.durationInFrames - effectiveRelativeFrom, durationInFrames) : durationInFrames;
+  const actualDurationInFrames = Math.max(0, Math.min(videoConfig.durationInFrames - from, parentSequenceDuration));
+  const { registerSequence, unregisterSequence } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceManager);
+  const wrapperRefForOutline = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const refForOutline = other.layout === "none" ? passedRefForOutline ?? null : passedRefForOutline ?? wrapperRefForOutline;
+  const premounting = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return parentSequence?.premounting || Boolean(other._remotionInternalIsPremounting);
+  }, [other._remotionInternalIsPremounting, parentSequence?.premounting]);
+  const postmounting = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return parentSequence?.postmounting || Boolean(other._remotionInternalIsPostmounting);
+  }, [other._remotionInternalIsPostmounting, parentSequence?.postmounting]);
+  const currentSequenceStart = cumulatedFrom + effectiveRelativeFrom;
+  const parentSequenceStart = parentSequence ? parentSequence.cumulatedFrom + parentSequence.relativeFrom : 0;
+  const parentFirstFrame = parentSequence ? parentSequenceStart - parentSequence.cumulatedNegativeFrom : 0;
+  const firstFrame = Math.max(0, parentFirstFrame, currentSequenceStart);
+  const cumulatedNegativeFrom = currentSequenceStart - firstFrame;
+  const contextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      absoluteFrom,
+      cumulatedFrom,
+      relativeFrom: effectiveRelativeFrom,
+      cumulatedNegativeFrom,
+      durationInFrames: actualDurationInFrames,
+      parentFrom: parentSequence?.relativeFrom ?? 0,
+      id,
+      height: height ?? parentSequence?.height ?? null,
+      width: width ?? parentSequence?.width ?? null,
+      premounting,
+      postmounting,
+      premountDisplay: premountDisplay ?? null,
+      postmountDisplay: postmountDisplay ?? null
+    };
+  }, [
+    cumulatedFrom,
+    absoluteFrom,
+    effectiveRelativeFrom,
+    actualDurationInFrames,
+    parentSequence,
+    id,
+    height,
+    width,
+    premounting,
+    postmounting,
+    premountDisplay,
+    postmountDisplay,
+    cumulatedNegativeFrom
+  ]);
+  const timelineClipName = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return name ?? "";
+  }, [name]);
+  const resolvedDocumentationLink = documentationLink ?? "https://www.remotion.dev/docs/sequence";
+  const env = useRemotionEnvironment();
+  const isInsideSeries = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(IsInsideSeriesContext);
+  const stackRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  stackRef.current = controls ? getStackForControls(controls) ?? stack ?? null : stack ?? null;
+  const registeredFrozenFrame = typeof freeze === "number" ? freeze : null;
+  const registeredTrimBefore = trimBefore === 0 ? null : trimBefore;
+  const parentCumulatedNegativeFrom = parentSequence?.cumulatedNegativeFrom ?? 0;
+  const startMediaFrom = isMedia && isMedia.type !== "image" ? isMedia.data.startMediaFrom + parentCumulatedNegativeFrom - cumulatedNegativeFrom : null;
+  const mediaFrameAtSequenceZero = isMedia && isMedia.type !== "image" ? isMedia.data.startMediaFrom + parentCumulatedNegativeFrom : null;
+  const frozenMediaFrame = isMedia && isMedia.type !== "image" && mediaFrameAtSequenceZero !== null ? registeredFrozenFrame === null ? null : mediaFrameAtSequenceZero + (loopDisplay ? registeredFrozenFrame % loopDisplay.durationInFrames : registeredFrozenFrame) * isMedia.data.playbackRate : null;
+  const controlsSchema = controls?.schema;
+  const controlsRuntimeValues = controls?.runtimeValues;
+  const controlsOverrideId = controls?.overrideId;
+  const controlsSupportsEffects = controls?.supportsEffects;
+  const controlsComponentIdentity = controls?.componentIdentity;
+  const controlsComponentName = controls?.componentName;
+  const registrationControls = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (controlsSchema === undefined || controlsRuntimeValues === undefined || controlsOverrideId === undefined || controlsSupportsEffects === undefined || controlsComponentIdentity === undefined || controlsComponentName === undefined) {
+      return null;
+    }
+    return {
+      schema: controlsSchema,
+      runtimeValues: controlsRuntimeValues,
+      overrideId: controlsOverrideId,
+      supportsEffects: controlsSupportsEffects,
+      componentIdentity: controlsComponentIdentity,
+      componentName: controlsComponentName
+    };
+  }, [
+    controlsComponentIdentity,
+    controlsComponentName,
+    controlsOverrideId,
+    controlsRuntimeValues,
+    controlsSchema,
+    controlsSupportsEffects
+  ]);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (!env.isStudio) {
+      return;
+    }
+    if (isMedia) {
+      if (isMedia.type === "image") {
+        registerSequence({
+          type: "image",
+          controls: registrationControls,
+          effects: _remotionInternalEffects ?? EMPTY_EFFECTS,
+          displayName: timelineClipName,
+          documentationLink: resolvedDocumentationLink,
+          duration: actualDurationInFrames,
+          from,
+          trimBefore: registeredTrimBefore,
+          id,
+          loopDisplay,
+          nonce: nonce.get(),
+          parent: parentSequence?.id ?? null,
+          postmountDisplay: postmountDisplay ?? null,
+          premountDisplay: premountDisplay ?? null,
+          showInTimeline,
+          src: isMedia.src,
+          getStack: () => stackRef.current,
+          refForOutline: refForOutline ?? null,
+          isInsideSeries,
+          frozenFrame: registeredFrozenFrame,
+          singleChildComponent: singleChildComponent ?? null
+        });
+      } else {
+        registerSequence({
+          type: isMedia.type,
+          controls: registrationControls,
+          effects: _remotionInternalEffects ?? EMPTY_EFFECTS,
+          displayName: timelineClipName,
+          documentationLink: resolvedDocumentationLink,
+          doesVolumeChange: isMedia.data.doesVolumeChange,
+          duration: actualDurationInFrames,
+          from,
+          trimBefore: registeredTrimBefore,
+          id,
+          loopDisplay,
+          nonce: nonce.get(),
+          parent: parentSequence?.id ?? null,
+          playbackRate: isMedia.data.playbackRate,
+          postmountDisplay: postmountDisplay ?? null,
+          premountDisplay: premountDisplay ?? null,
+          showInTimeline,
+          src: isMedia.data.src,
+          getStack: () => stackRef.current,
+          startMediaFrom: startMediaFrom ?? isMedia.data.startMediaFrom,
+          mediaFrameAtSequenceZero,
+          volume: isMedia.data.volumes,
+          refForOutline: refForOutline ?? null,
+          isInsideSeries,
+          frozenFrame: registeredFrozenFrame,
+          frozenMediaFrame,
+          singleChildComponent: singleChildComponent ?? null
+        });
+      }
+      return () => {
+        unregisterSequence(id);
+      };
+    }
+    registerSequence({
+      from,
+      trimBefore: registeredTrimBefore,
+      duration: actualDurationInFrames,
+      id,
+      displayName: timelineClipName,
+      documentationLink: resolvedDocumentationLink,
+      parent: parentSequence?.id ?? null,
+      type: "sequence",
+      showInTimeline,
+      nonce: nonce.get(),
+      loopDisplay,
+      getStack: () => stackRef.current,
+      premountDisplay: premountDisplay ?? null,
+      postmountDisplay: postmountDisplay ?? null,
+      controls: registrationControls,
+      effects: _remotionInternalEffects ?? EMPTY_EFFECTS,
+      refForOutline: refForOutline ?? null,
+      isInsideSeries,
+      frozenFrame: registeredFrozenFrame,
+      singleChildComponent: singleChildComponent ?? null
+    });
+    return () => {
+      unregisterSequence(id);
+    };
+  }, [
+    durationInFrames,
+    id,
+    name,
+    registerSequence,
+    timelineClipName,
+    unregisterSequence,
+    parentSequence?.id,
+    actualDurationInFrames,
+    from,
+    trimBefore,
+    registeredTrimBefore,
+    showInTimeline,
+    nonce,
+    loopDisplay,
+    premountDisplay,
+    postmountDisplay,
+    env.isStudio,
+    registrationControls,
+    _remotionInternalEffects,
+    isMedia,
+    resolvedDocumentationLink,
+    refForOutline,
+    isInsideSeries,
+    registeredFrozenFrame,
+    startMediaFrom,
+    mediaFrameAtSequenceZero,
+    frozenMediaFrame,
+    singleChildComponent
+  ]);
+  const endThreshold = Math.ceil(cumulatedFrom + from + durationInFrames - 1);
+  const content = absoluteFrame < cumulatedFrom + from ? null : absoluteFrame > endThreshold ? null : children;
+  const frozenContent = content === null || typeof freeze === "undefined" || freeze === null ? content : /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Freeze, {
+    frame: freeze,
+    children: content
+  });
+  const styleIfThere = other.layout === "none" ? undefined : other.style;
+  const cropClipPath = getSequenceCropClipPath({
+    left: resolvedCropLeft,
+    right: resolvedCropRight,
+    top: resolvedCropTop,
+    bottom: resolvedCropBottom,
+    style: styleIfThere
+  });
+  const sequenceRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((node) => {
+    wrapperRefForOutline.current = node;
+    if (typeof ref === "function") {
+      ref(node);
+    } else if (ref) {
+      ref.current = node;
+    }
+  }, [ref]);
+  const defaultStyle = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      flexDirection: undefined,
+      ...width ? { width } : {},
+      ...height ? { height } : {},
+      ...styleIfThere ?? {},
+      ...cropClipPath ? {
+        clipPath: cropClipPath
+      } : {}
+    };
+  }, [cropClipPath, height, styleIfThere, width]);
+  if (ref !== null && layout === "none") {
+    throw new TypeError('It is not supported to pass both a `ref` and `layout="none"` to <Sequence />.');
+  }
+  if (hidden) {
+    return null;
+  }
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceContext.Provider, {
+    value: contextValue,
+    children: frozenContent === null ? null : other.layout === "none" ? frozenContent : /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(AbsoluteFillElement, {
+      ref: sequenceRef,
+      style: defaultStyle,
+      className: other.className,
+      children: frozenContent
+    })
+  });
+};
+var RegularSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(RegularSequenceRefForwardingFunction);
+var PremountedPostmountedSequenceRefForwardingFunction = (props, ref) => {
+  if (props.layout === "none") {
+    throw new Error('`<Sequence>` with `premountFor` and `postmountFor` props does not support layout="none"');
+  }
+  const {
+    style: passedStyle,
+    from = 0,
+    durationInFrames = Infinity,
+    premountFor = 0,
+    postmountFor = 0,
+    styleWhilePremounted,
+    styleWhilePostmounted,
+    ...otherProps
+  } = props;
+  const {
+    freezeFrame,
+    isPremountingOrPostmounting,
+    postmountingActive,
+    premountingActive,
+    premountingStyle
+  } = usePremounting({
+    from,
+    durationInFrames,
+    premountFor,
+    postmountFor,
+    style: passedStyle ?? null,
+    styleWhilePremounted: styleWhilePremounted ?? null,
+    styleWhilePostmounted: styleWhilePostmounted ?? null,
+    hideWhilePremounted: "opacity"
+  });
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Freeze, {
+    frame: freezeFrame,
+    active: isPremountingOrPostmounting,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceInner, {
+      ref,
+      from,
+      durationInFrames,
+      style: premountingStyle ?? undefined,
+      _remotionInternalPremountDisplay: premountFor,
+      _remotionInternalPostmountDisplay: postmountFor,
+      _remotionInternalIsPremounting: premountingActive,
+      _remotionInternalIsPostmounting: postmountingActive,
+      ...otherProps
+    })
+  });
+};
+var PremountedPostmountedSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(PremountedPostmountedSequenceRefForwardingFunction);
+var SequenceRefForwardingFunction = (props, ref) => {
+  const env = useRemotionEnvironment();
+  const { fps } = useVideoConfig();
+  if (props.layout !== "none" && !env.isRendering) {
+    const effectivePremountFor = ENABLE_V5_BREAKING_CHANGES ? props.premountFor ?? fps : props.premountFor;
+    if (effectivePremountFor || props.postmountFor) {
+      return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(PremountedPostmountedSequence, {
+        ref,
+        ...props,
+        premountFor: effectivePremountFor
+      });
+    }
+  }
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(RegularSequence, {
+    ...props,
+    ref
+  });
+};
+var SequenceInner = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(SequenceRefForwardingFunction);
+var SequenceWithoutSchema = SequenceInner;
+var Sequence = withInteractivitySchema({
+  Component: SequenceInner,
+  componentName: "<Sequence>",
+  componentIdentity: "dev.remotion.remotion.Sequence",
+  schema: sequenceSchema,
+  supportsEffects: false
+});
+var SequenceWithoutFrom = withInteractivitySchema({
+  Component: SequenceInner,
+  componentName: "<Sequence>",
+  componentIdentity: null,
+  schema: sequenceSchemaWithoutFrom,
+  supportsEffects: false
+});
+
+// src/AbsoluteFill.tsx
+
+
+var absoluteFillSchema = {
+  ...baseSchema,
+  ...transformSchema,
+  ...backgroundSchema,
+  ...borderSchema,
+  ...borderRadiusSchema,
+  ...textSchema,
+  ...textContentSchema
+};
+var setRef = (ref, value) => {
+  if (typeof ref === "function") {
+    ref(value);
+  } else if (ref) {
+    ref.current = value;
+  }
+};
+var AbsoluteFillInner = ({
+  ref,
+  from,
+  trimBefore,
+  freeze,
+  durationInFrames,
+  hidden,
+  name,
+  showInTimeline,
+  stack,
+  controls,
+  children,
+  ...divProps
+}) => {
+  const videoConfig = useUnsafeVideoConfig();
+  const refForOutline = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const callbackRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((element) => {
+    refForOutline.current = element;
+    setRef(ref, element);
+  }, [ref]);
+  if (videoConfig === null) {
+    return hidden ? null : /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(AbsoluteFillElement, {
+      ref: callbackRef,
+      ...divProps,
+      children
+    });
+  }
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
+    layout: "none",
+    from: from ?? 0,
+    trimBefore,
+    freeze,
+    durationInFrames: durationInFrames ?? Infinity,
+    hidden,
+    name: name ?? "<AbsoluteFill>",
+    showInTimeline: showInTimeline ?? true,
+    controls,
+    _remotionInternalStack: stack,
+    _remotionInternalDocumentationLink: "https://www.remotion.dev/docs/absolute-fill",
+    outlineRef: refForOutline,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(AbsoluteFillElement, {
+      ref: callbackRef,
+      ...divProps,
+      children
+    })
+  });
+};
+var AbsoluteFill = withInteractivitySchema({
+  Component: AbsoluteFillInner,
+  componentName: "<AbsoluteFill>",
+  componentIdentity: "dev.remotion.remotion.AbsoluteFill",
+  schema: absoluteFillSchema,
+  supportsEffects: false
+});
+addSequenceStackTraces(AbsoluteFill);
+// src/animated-image/AnimatedImage.tsx
+
+
+// src/use-crop-style.ts
+
+var useCropStyle = ({
+  cropLeft,
+  cropRight,
+  cropTop,
+  cropBottom,
+  style,
+  componentName
+}) => {
+  validateSequenceCrop({ cropLeft, cropRight, cropTop, cropBottom }, componentName);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    const cropClipPath = getSequenceCropClipPath({
+      ...resolveSequenceCrop({ cropLeft, cropRight, cropTop, cropBottom }),
+      style
+    });
+    if (cropClipPath === null) {
+      return style;
+    }
+    return { ...style, clipPath: cropClipPath };
+  }, [cropBottom, cropLeft, cropRight, cropTop, style]);
 };
 
 // src/animated-image/canvas.tsx
 
 
-var calcArgs = (fit, frameSize, canvasSize) => {
+// src/calculate-image-fit.ts
+var calculateImageFit = (fit, imageSize, canvasSize) => {
   switch (fit) {
     case "fill": {
       return [
         0,
         0,
-        frameSize.width,
-        frameSize.height,
+        imageSize.width,
+        imageSize.height,
         0,
         0,
         canvasSize.width,
@@ -262364,41 +266570,320 @@ var calcArgs = (fit, frameSize, canvasSize) => {
       ];
     }
     case "contain": {
-      const ratio = Math.min(canvasSize.width / frameSize.width, canvasSize.height / frameSize.height);
-      const centerX = (canvasSize.width - frameSize.width * ratio) / 2;
-      const centerY = (canvasSize.height - frameSize.height * ratio) / 2;
+      const ratio = Math.min(canvasSize.width / imageSize.width, canvasSize.height / imageSize.height);
+      const centerX = (canvasSize.width - imageSize.width * ratio) / 2;
+      const centerY = (canvasSize.height - imageSize.height * ratio) / 2;
       return [
         0,
         0,
-        frameSize.width,
-        frameSize.height,
+        imageSize.width,
+        imageSize.height,
         centerX,
         centerY,
-        frameSize.width * ratio,
-        frameSize.height * ratio
+        imageSize.width * ratio,
+        imageSize.height * ratio
       ];
     }
     case "cover": {
-      const ratio = Math.max(canvasSize.width / frameSize.width, canvasSize.height / frameSize.height);
-      const centerX = (canvasSize.width - frameSize.width * ratio) / 2;
-      const centerY = (canvasSize.height - frameSize.height * ratio) / 2;
+      const ratio = Math.max(canvasSize.width / imageSize.width, canvasSize.height / imageSize.height);
+      const centerX = (canvasSize.width - imageSize.width * ratio) / 2;
+      const centerY = (canvasSize.height - imageSize.height * ratio) / 2;
       return [
         0,
         0,
-        frameSize.width,
-        frameSize.height,
+        imageSize.width,
+        imageSize.height,
         centerX,
         centerY,
-        frameSize.width * ratio,
-        frameSize.height * ratio
+        imageSize.width * ratio,
+        imageSize.height * ratio
       ];
     }
     default:
       throw new Error("Unknown fit: " + fit);
   }
 };
-var CanvasRefForwardingFunction = ({ width, height, fit, className, style }, ref) => {
+
+// src/effects/webgl2-context-error.ts
+var WEBGL_CONTEXT_DOCS_URL = "https://remotion.dev/docs/troubleshooting/webgl2-context";
+var webGlContextErrorMessage = (versionLabel, effectName) => `Failed to acquire ${versionLabel} context for ${effectName}. ` + 'Pass --gl=angle when using the CLI, set chromiumOptions: { gl: "angle" } when using SSR APIs, ' + 'or set "OpenGL render backend" to "angle" in the Advanced section when rendering in the Studio. ' + `See ${WEBGL_CONTEXT_DOCS_URL}`;
+var createWebGLContextError = (effectName) => new Error(webGlContextErrorMessage("WebGL", effectName));
+var createWebGL2ContextError = (effectName) => new Error(webGlContextErrorMessage("WebGL2", effectName));
+
+// src/effects/canvas-pool.ts
+class CanvasPool {
+  width;
+  height;
+  pairs = new Map;
+  lostContexts = new Set;
+  constructor(width, height) {
+    this.width = width;
+    this.height = height;
+  }
+  getPair(backend) {
+    const existing = this.pairs.get(backend);
+    if (existing) {
+      return existing;
+    }
+    const pair = [
+      this.allocateCanvas(backend),
+      this.allocateCanvas(backend)
+    ];
+    this.pairs.set(backend, pair);
+    return pair;
+  }
+  assertContextNotLost(canvas) {
+    if (this.lostContexts.has(canvas)) {
+      throw new Error("WebGL context was lost during canvas effect rendering. " + "This typically happens in headless or memory-constrained environments (e.g. Remotion Lambda). " + "Try reducing concurrency or increasing the Lambda function memory.");
+    }
+  }
+  allocateCanvas(backend) {
+    const canvas = document.createElement("canvas");
+    canvas.width = this.width;
+    canvas.height = this.height;
+    switch (backend) {
+      case "2d": {
+        const ctx = canvas.getContext("2d", {
+          colorSpace: "srgb"
+        });
+        if (!ctx) {
+          throw new Error("Failed to acquire 2D context for canvas effect");
+        }
+        return canvas;
+      }
+      case "webgl2": {
+        const ctx = canvas.getContext("webgl2", {
+          premultipliedAlpha: true,
+          alpha: true,
+          preserveDrawingBuffer: true
+        });
+        if (!ctx) {
+          throw createWebGL2ContextError("canvas effect");
+        }
+        canvas.addEventListener("webglcontextlost", (e) => {
+          e.preventDefault();
+          this.lostContexts.add(canvas);
+        });
+        canvas.addEventListener("webglcontextrestored", () => {
+          this.lostContexts.delete(canvas);
+        });
+        ctx.pixelStorei(ctx.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        return canvas;
+      }
+      case "webgpu": {
+        if (typeof navigator === "undefined" || !("gpu" in navigator)) {
+          throw new Error("WebGPU is not available in this environment for canvas effect");
+        }
+        return canvas;
+      }
+      default: {
+        const exhaustive = backend;
+        throw new Error(`Unknown effect backend: ${exhaustive}`);
+      }
+    }
+  }
+}
+
+// src/effects/effect-internals.ts
+var groupByBackend = (effects) => {
+  const runs = [];
+  let current = [];
+  let currentBackend = null;
+  for (const eff of effects) {
+    const { backend } = eff.definition;
+    if (currentBackend === null || backend === currentBackend) {
+      current.push(eff);
+      currentBackend = backend;
+    } else {
+      runs.push({ backend: currentBackend, effects: current });
+      current = [eff];
+      currentBackend = backend;
+    }
+  }
+  if (currentBackend !== null && current.length > 0) {
+    runs.push({ backend: currentBackend, effects: current });
+  }
+  return runs;
+};
+
+// src/effects/gpu-device.ts
+var devicePromise = null;
+var getGpuDevice = () => {
+  if (devicePromise) {
+    return devicePromise;
+  }
+  devicePromise = (async () => {
+    if (typeof navigator === "undefined" || !("gpu" in navigator)) {
+      throw new Error("WebGPU is not available in this environment");
+    }
+    const { gpu } = navigator;
+    const adapter = await gpu.requestAdapter();
+    if (!adapter) {
+      throw new Error("No WebGPU adapter available");
+    }
+    return adapter.requestDevice();
+  })();
+  return devicePromise;
+};
+
+// src/effects/run-effect-chain.ts
+var createEffectChainState = (width, height) => ({
+  pool: new CanvasPool(width, height),
+  setupCache: new WeakMap,
+  cleanupRegistry: [],
+  currentRunId: 0
+});
+var cleanupEffectChainState = (state) => {
+  state.currentRunId++;
+  for (const entry of state.cleanupRegistry) {
+    entry.definition.cleanup(entry.state);
+  }
+};
+var ensureSetup = (state, def, target) => {
+  const widened = def;
+  let cacheForDefinition = state.setupCache.get(widened);
+  if (!cacheForDefinition) {
+    cacheForDefinition = new WeakMap;
+    state.setupCache.set(widened, cacheForDefinition);
+  }
+  if (cacheForDefinition.has(target)) {
+    return cacheForDefinition.get(target);
+  }
+  const setupState = def.setup(target);
+  cacheForDefinition.set(target, setupState);
+  state.cleanupRegistry.push({ definition: widened, state: setupState });
+  return setupState;
+};
+var runEffectChain = async ({
+  state,
+  source,
+  effects,
+  output,
+  width,
+  height
+}) => {
+  const runId = ++state.currentRunId;
+  const isCancelled = () => state.currentRunId !== runId;
+  const enabledEffects = effects.filter((e) => !e.params.disabled);
+  const runs = groupByBackend(enabledEffects);
+  let currentImage = source;
+  let lastTarget = null;
+  if (runs.length === 0) {
+    if (source === output) {
+      return true;
+    }
+    const ctx = output.getContext("2d");
+    if (!ctx) {
+      throw new Error("Failed to acquire 2D context for output canvas");
+    }
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(currentImage, 0, 0, width, height);
+    return true;
+  }
+  let needsGpuDevice = false;
+  for (const run of runs) {
+    if (run.backend === "webgpu") {
+      needsGpuDevice = true;
+      break;
+    }
+  }
+  const gpuDevice = needsGpuDevice ? await getGpuDevice() : null;
+  if (isCancelled()) {
+    return false;
+  }
+  let flipWebGLSourceY = true;
+  for (let runIndex = 0;runIndex < runs.length; runIndex++) {
+    const run = runs[runIndex];
+    const [a2, b2] = state.pool.getPair(run.backend);
+    let dst = a2;
+    for (const eff of run.effects) {
+      const def = eff.definition;
+      const setupState = ensureSetup(state, def, dst);
+      def.apply({
+        source: currentImage,
+        target: dst,
+        state: setupState,
+        params: eff.params,
+        width,
+        height,
+        gpuDevice,
+        flipSourceY: run.backend === "webgl2" ? flipWebGLSourceY : false
+      });
+      if (run.backend === "webgl2") {
+        flipWebGLSourceY = true;
+        state.pool.assertContextNotLost(dst);
+      }
+      currentImage = dst;
+      dst = dst === a2 ? b2 : a2;
+    }
+    lastTarget = currentImage ?? lastTarget;
+    const nextRun = runs[runIndex + 1];
+    if (nextRun && nextRun.backend !== run.backend && lastTarget) {
+      if (run.backend === "2d" && nextRun.backend === "webgl2") {
+        currentImage = lastTarget;
+        flipWebGLSourceY = true;
+      } else {
+        const bitmap = await createImageBitmap(lastTarget);
+        if (isCancelled()) {
+          bitmap.close();
+          return false;
+        }
+        currentImage = bitmap;
+        if (nextRun.backend === "webgl2") {
+          flipWebGLSourceY = false;
+        }
+      }
+    }
+  }
+  if (!lastTarget) {
+    return true;
+  }
+  const outCtx = output.getContext("2d");
+  if (!outCtx) {
+    throw new Error("Failed to acquire 2D context for output canvas");
+  }
+  outCtx.clearRect(0, 0, width, height);
+  outCtx.drawImage(lastTarget, 0, 0, width, height);
+  return true;
+};
+
+// src/effects/use-effect-chain-state.ts
+
+var useEffectChainState = () => {
+  const chainStateRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const sizeRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    return () => {
+      if (chainStateRef.current) {
+        cleanupEffectChainState(chainStateRef.current);
+      }
+    };
+  }, []);
+  return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => ({
+    get: (width, height) => {
+      if (!sizeRef.current || sizeRef.current.width !== width || sizeRef.current.height !== height) {
+        if (chainStateRef.current) {
+          cleanupEffectChainState(chainStateRef.current);
+        }
+        chainStateRef.current = createEffectChainState(width, height);
+        sizeRef.current = { width, height };
+      }
+      return chainStateRef.current;
+    }
+  }), []);
+};
+
+// src/animated-image/canvas.tsx
+
+var CanvasRefForwardingFunction = ({ width, height, fit, className, style, effects, ...props }, ref) => {
   const canvasRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const chainState = useEffectChainState();
+  const sourceCanvas = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (typeof document === "undefined") {
+      return null;
+    }
+    return document.createElement("canvas");
+  }, []);
   const draw = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((imageData) => {
     const canvas = canvasRef.current;
     const canvasWidth = width ?? imageData.displayWidth;
@@ -262406,20 +266891,33 @@ var CanvasRefForwardingFunction = ({ width, height, fit, className, style }, ref
     if (!canvas) {
       throw new Error("Canvas ref is not set");
     }
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) {
-      throw new Error("Could not get 2d context");
+    if (!sourceCanvas) {
+      throw new Error("Source canvas is not available");
     }
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    ctx.drawImage(imageData, ...calcArgs(fit, {
+    sourceCanvas.width = canvasWidth;
+    sourceCanvas.height = canvasHeight;
+    const sourceCtx = sourceCanvas.getContext("2d");
+    if (!sourceCtx) {
+      throw new Error("Could not get 2d context for source canvas");
+    }
+    sourceCtx.drawImage(imageData, ...calculateImageFit(fit, {
       height: imageData.displayHeight,
       width: imageData.displayWidth
     }, {
       width: canvasWidth,
       height: canvasHeight
     }));
-  }, [fit, height, width]);
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    return runEffectChain({
+      state: chainState.get(canvasWidth, canvasHeight),
+      source: sourceCanvas,
+      effects,
+      output: canvas,
+      width: canvasWidth,
+      height: canvasHeight
+    });
+  }, [chainState, effects, fit, height, sourceCanvas, width]);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(ref, () => {
     return {
       draw,
@@ -262438,13 +266936,42 @@ var CanvasRefForwardingFunction = ({ width, height, fit, className, style }, ref
       }
     };
   }, [draw]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("canvas", {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("canvas", {
     ref: canvasRef,
     className,
-    style
+    style,
+    ...props
   });
 };
 var Canvas = react__WEBPACK_IMPORTED_MODULE_0__.forwardRef(CanvasRefForwardingFunction);
+
+// src/animated-image/create-image-decoder.ts
+var createImageDecoder = async ({
+  resolvedSrc,
+  signal,
+  requestInit,
+  contentType
+}) => {
+  if (typeof ImageDecoder === "undefined") {
+    throw new Error("Your browser does not support the WebCodecs ImageDecoder API.");
+  }
+  const response = await fetch(resolvedSrc, { ...requestInit, signal });
+  const { body } = response;
+  if (!body) {
+    throw new Error("Got no body");
+  }
+  const decoder = new ImageDecoder({
+    data: body,
+    type: contentType ?? response.headers.get("Content-Type") ?? "image/gif"
+  });
+  await Promise.all([decoder.completed, decoder.tracks.ready]);
+  const { selectedTrack } = decoder.tracks;
+  if (!selectedTrack) {
+    decoder.close();
+    throw new Error("No selected track");
+  }
+  return { decoder, selectedTrack };
+};
 
 // src/animated-image/decode-image.ts
 var CACHE_SIZE = 5;
@@ -262458,30 +266985,20 @@ var getActualTime = ({
 var decodeImage = async ({
   resolvedSrc,
   signal,
+  requestInit,
   currentTime,
   initialLoopBehavior
 }) => {
-  if (typeof ImageDecoder === "undefined") {
-    throw new Error("Your browser does not support the WebCodecs ImageDecoder API.");
-  }
-  const res = await fetch(resolvedSrc, { signal });
-  const { body } = res;
-  if (!body) {
-    throw new Error("Got no body");
-  }
-  const decoder = new ImageDecoder({
-    data: body,
-    type: res.headers.get("Content-Type") || "image/gif"
+  const { decoder, selectedTrack } = await createImageDecoder({
+    resolvedSrc,
+    signal,
+    requestInit,
+    contentType: null
   });
-  await decoder.completed;
-  const { selectedTrack } = decoder.tracks;
-  if (!selectedTrack) {
-    throw new Error("No selected track");
-  }
-  const cache = [];
+  const cache2 = [];
   let durationFound = null;
   const getFrameByIndex = async (frameIndex) => {
-    const foundInCache = cache.find((c) => c.frameIndex === frameIndex);
+    const foundInCache = cache2.find((c2) => c2.frameIndex === frameIndex);
     if (foundInCache && foundInCache.frame) {
       return foundInCache;
     }
@@ -262492,7 +267009,7 @@ var decodeImage = async ({
     if (foundInCache) {
       foundInCache.frame = frame.image;
     } else {
-      cache.push({
+      cache2.push({
         frame: frame.image,
         frameIndex,
         timeInSeconds: frame.image.timestamp / 1e6
@@ -262505,10 +267022,10 @@ var decodeImage = async ({
     };
   };
   const clearCache = (closeToTimeInSec) => {
-    const itemsInCache = cache.filter((c) => c.frame);
-    const sortByClosestToCurrentTime = itemsInCache.sort((a, b) => {
-      const aDiff = Math.abs(a.timeInSeconds - closeToTimeInSec);
-      const bDiff = Math.abs(b.timeInSeconds - closeToTimeInSec);
+    const itemsInCache = cache2.filter((c2) => c2.frame);
+    const sortByClosestToCurrentTime = itemsInCache.sort((a2, b2) => {
+      const aDiff = Math.abs(a2.timeInSeconds - closeToTimeInSec);
+      const bDiff = Math.abs(b2.timeInSeconds - closeToTimeInSec);
       return aDiff - bDiff;
     });
     for (let i = 0;i < sortByClosestToCurrentTime.length; i++) {
@@ -262528,8 +267045,8 @@ var decodeImage = async ({
       loopBehavior,
       timeInSec
     });
-    const framesBefore = cache.filter((c) => c.timeInSeconds <= actualTimeInSec);
-    const biggestIndex = framesBefore.map((c) => c.frameIndex).reduce((a, b) => Math.max(a, b), 0);
+    const framesBefore = cache2.filter((c2) => c2.timeInSeconds <= actualTimeInSec);
+    const biggestIndex = framesBefore.map((c2) => c2.frameIndex).reduce((a2, b2) => Math.max(a2, b2), 0);
     let i = biggestIndex;
     while (true) {
       const f = await getFrameByIndex(i);
@@ -262571,11 +267088,11 @@ var decodeImage = async ({
       timeInSec
     });
     await ensureFrameBeforeAndAfter({ timeInSec: actualTimeInSec, loopBehavior });
-    const itemsInCache = cache.filter((c) => c.frame);
-    const closest = itemsInCache.reduce((a, b) => {
-      const aDiff = Math.abs(a.timeInSeconds - actualTimeInSec);
-      const bDiff = Math.abs(b.timeInSeconds - actualTimeInSec);
-      return aDiff < bDiff ? a : b;
+    const itemsInCache = cache2.filter((c2) => c2.frame);
+    const closest = itemsInCache.reduce((a2, b2) => {
+      const aDiff = Math.abs(a2.timeInSeconds - actualTimeInSec);
+      const bDiff = Math.abs(b2.timeInSeconds - actualTimeInSec);
+      return aDiff < bDiff ? a2 : b2;
     });
     if (!closest.frame) {
       throw new Error("No frame found");
@@ -262583,9 +267100,39 @@ var decodeImage = async ({
     return closest;
   };
   return {
+    close: () => {
+      for (const item of cache2) {
+        item.frame?.close();
+        item.frame = null;
+      }
+      decoder.close();
+    },
     getFrame,
     frameCount: selectedTrack.frameCount
   };
+};
+
+// src/animated-image/get-current-time.ts
+var getCurrentTime = ({
+  frame,
+  playbackRate,
+  fps
+}) => {
+  return frame * playbackRate / fps;
+};
+
+// src/animated-image/request-init.ts
+var serializeRequestInit = (requestInit) => {
+  if (!requestInit) {
+    return null;
+  }
+  const requestInitWithoutSignal = { ...requestInit };
+  delete requestInitWithoutSignal.signal;
+  const { headers, ...rest } = requestInitWithoutSignal;
+  return JSON.stringify({
+    ...rest,
+    headers: headers ? Array.from(new Headers(headers).entries()) : null
+  });
 };
 
 // src/animated-image/resolve-image-source.tsx
@@ -262598,7 +267145,42 @@ var resolveAnimatedImageSource = (src) => {
 
 // src/animated-image/AnimatedImage.tsx
 
-var AnimatedImage = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
+var animatedImageSchema = {
+  src: {
+    type: "asset",
+    default: undefined,
+    description: "Source",
+    keyframable: false
+  },
+  ...baseSchema,
+  ...cropSchema,
+  ...premountSchema,
+  playbackRate: {
+    type: "number",
+    min: 0,
+    max: 10,
+    step: 0.1,
+    default: 1,
+    description: "Playback rate",
+    hiddenFromList: false,
+    keyframable: false
+  },
+  ...transformSchema,
+  ...backgroundSchema,
+  ...borderSchema,
+  ...borderRadiusSchema
+};
+var getCanvasPropsFromSequenceProps = (props) => {
+  const canvasProps = {};
+  const mutableCanvasProps = canvasProps;
+  for (const key in props) {
+    if (Object.prototype.hasOwnProperty.call(props, key) && (key.startsWith("data-") || key.startsWith("aria-"))) {
+      mutableCanvasProps[key] = props[key];
+    }
+  }
+  return canvasProps;
+};
+var AnimatedImageContent = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
   src,
   width,
   height,
@@ -262606,81 +267188,116 @@ var AnimatedImage = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
   loopBehavior = "loop",
   playbackRate = 1,
   fit = "fill",
+  requestInit,
+  effects,
+  controls,
   ...props
 }, canvasRef) => {
-  const mountState = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)({ isMounted: true });
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    const { current } = mountState;
-    current.isMounted = true;
-    return () => {
-      current.isMounted = false;
-    };
-  }, []);
   const resolvedSrc = resolveAnimatedImageSource(src);
   const [imageDecoder, setImageDecoder] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
   const { delayRender: delayRender2, continueRender: continueRender2 } = useDelayRender();
   const [decodeHandle] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => delayRender2(`Rendering <AnimatedImage/> with src="${resolvedSrc}"`));
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const currentTime = frame / playbackRate / fps;
+  const currentTime = getCurrentTime({ frame, playbackRate, fps });
   const currentTimeRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(currentTime);
   currentTimeRef.current = currentTime;
+  const requestInitKey = serializeRequestInit(requestInit);
+  const requestInitRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(requestInit);
+  requestInitRef.current = requestInit;
   const ref = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const memoizedEffects = useMemoizedEffects({
+    effects,
+    overrideId: controls?.overrideId ?? null
+  });
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(canvasRef, () => {
-    const c = ref.current?.getCanvas();
-    if (!c) {
+    const c2 = ref.current?.getCanvas();
+    if (!c2) {
       throw new Error("Canvas ref is not set");
     }
-    return c;
+    return c2;
   }, []);
   const [initialLoopBehavior] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => loopBehavior);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     const controller = new AbortController;
+    let cancelled = false;
+    let continued = false;
+    const continueRenderOnce = () => {
+      if (continued) {
+        return;
+      }
+      continued = true;
+      continueRender2(decodeHandle);
+    };
     decodeImage({
       resolvedSrc,
       signal: controller.signal,
+      requestInit: requestInitRef.current,
       currentTime: currentTimeRef.current,
       initialLoopBehavior
     }).then((d) => {
+      if (cancelled) {
+        d.close();
+        return;
+      }
       setImageDecoder(d);
-      continueRender2(decodeHandle);
+      continueRenderOnce();
     }).catch((err) => {
+      if (cancelled) {
+        return;
+      }
       if (err.name === "AbortError") {
-        continueRender2(decodeHandle);
+        continueRenderOnce();
         return;
       }
       if (onError) {
         onError?.(err);
-        continueRender2(decodeHandle);
+        continueRenderOnce();
       } else {
         cancelRender(err);
       }
     });
     return () => {
+      cancelled = true;
       controller.abort();
+      continueRenderOnce();
     };
   }, [
     resolvedSrc,
     decodeHandle,
     onError,
+    requestInitKey,
     initialLoopBehavior,
     continueRender2
   ]);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    return () => {
+      imageDecoder?.close();
+    };
+  }, [imageDecoder]);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
     if (!imageDecoder) {
       return;
     }
     const delay = delayRender2(`Rendering frame at ${currentTime} of <AnimatedImage src="${src}"/>`);
-    imageDecoder.getFrame(currentTime, loopBehavior).then((videoFrame) => {
-      if (mountState.current.isMounted) {
-        if (videoFrame === null) {
-          ref.current?.clear();
-        } else {
-          ref.current?.draw(videoFrame.frame);
-        }
+    let cancelled = false;
+    imageDecoder.getFrame(currentTime, loopBehavior).then(async (videoFrame) => {
+      if (cancelled) {
+        return;
       }
-      continueRender2(delay);
+      if (videoFrame === null) {
+        ref.current?.clear();
+        continueRender2(delay);
+        return;
+      }
+      const completed = await ref.current?.draw(videoFrame.frame);
+      if (completed && !cancelled) {
+        continueRender2(delay);
+      }
     }).catch((err) => {
+      if (cancelled) {
+        return;
+      }
       if (onError) {
         onError(err);
         continueRender2(delay);
@@ -262688,6 +267305,10 @@ var AnimatedImage = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
         cancelRender(err);
       }
     });
+    return () => {
+      cancelled = true;
+      continueRender2(delay);
+    };
   }, [
     currentTime,
     imageDecoder,
@@ -262695,16 +267316,161 @@ var AnimatedImage = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
     onError,
     src,
     continueRender2,
-    delayRender2
+    delayRender2,
+    memoizedEffects,
+    fit,
+    width,
+    height
   ]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Canvas, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Canvas, {
     ref,
     width,
     height,
     fit,
+    effects: memoizedEffects,
     ...props
   });
 });
+AnimatedImageContent.displayName = "AnimatedImageContent";
+var AnimatedImageInner = ({
+  src,
+  width,
+  height,
+  onError,
+  fit,
+  playbackRate,
+  loopBehavior,
+  id,
+  className,
+  style,
+  durationInFrames,
+  from,
+  premountFor,
+  postmountFor,
+  styleWhilePremounted,
+  styleWhilePostmounted,
+  cropLeft,
+  cropRight,
+  cropTop,
+  cropBottom,
+  requestInit,
+  effects = [],
+  controls,
+  ref,
+  ...sequenceProps
+}) => {
+  const actualRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const memoizedEffectDefinitions = useMemoizedEffectDefinitions(effects);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(ref, () => {
+    return actualRef.current;
+  }, []);
+  const {
+    effectivePostmountFor,
+    effectivePremountFor,
+    freezeFrame,
+    isPremountingOrPostmounting,
+    postmountingActive,
+    premountingActive,
+    premountingStyle
+  } = usePremounting({
+    from: from ?? 0,
+    durationInFrames: durationInFrames ?? Infinity,
+    premountFor: premountFor ?? null,
+    postmountFor: postmountFor ?? null,
+    style: style ?? null,
+    styleWhilePremounted: styleWhilePremounted ?? null,
+    styleWhilePostmounted: styleWhilePostmounted ?? null,
+    hideWhilePremounted: "display-none"
+  });
+  const croppedStyle = useCropStyle({
+    cropLeft,
+    cropRight,
+    cropTop,
+    cropBottom,
+    style: premountingStyle,
+    componentName: "<AnimatedImage />"
+  });
+  const canvasProps = getCanvasPropsFromSequenceProps(sequenceProps);
+  const animatedImageProps = {
+    src,
+    width,
+    height,
+    onError,
+    fit,
+    playbackRate,
+    loopBehavior,
+    id,
+    className,
+    style: croppedStyle ?? undefined,
+    requestInit,
+    ...canvasProps
+  };
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Freeze, {
+    frame: freezeFrame,
+    active: isPremountingOrPostmounting,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
+      layout: "none",
+      from: from ?? 0,
+      durationInFrames: durationInFrames ?? Infinity,
+      name: "<AnimatedImage>",
+      _remotionInternalDocumentationLink: "https://www.remotion.dev/docs/animatedimage",
+      controls,
+      _remotionInternalEffects: memoizedEffectDefinitions,
+      _remotionInternalPremountDisplay: effectivePremountFor || null,
+      _remotionInternalPostmountDisplay: effectivePostmountFor || null,
+      _remotionInternalIsPremounting: premountingActive,
+      _remotionInternalIsPostmounting: postmountingActive,
+      ...sequenceProps,
+      outlineRef: actualRef,
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(AnimatedImageContent, {
+        ...animatedImageProps,
+        ref: actualRef,
+        effects,
+        controls
+      })
+    })
+  });
+};
+var AnimatedImage = withInteractivitySchema({
+  Component: AnimatedImageInner,
+  componentName: "<AnimatedImage>",
+  componentIdentity: "dev.remotion.remotion.AnimatedImage",
+  schema: animatedImageSchema,
+  supportsEffects: true
+});
+AnimatedImage.displayName = "AnimatedImage";
+addSequenceStackTraces(AnimatedImage);
+// src/effects/create-effect.ts
+var disabledEffectField = {
+  type: "boolean",
+  default: false,
+  description: "Disabled"
+};
+var createEffect = (definition) => {
+  const { calculateKey: userCalculateKey, validateParams } = definition;
+  const widened = {
+    ...definition,
+    documentationLink: definition.documentationLink ?? null,
+    calculateKey: (params) => {
+      const disabled = params.disabled ?? false;
+      return `${userCalculateKey(params)}-disabled-${disabled}`;
+    },
+    schema: {
+      disabled: disabledEffectField,
+      ...definition.schema
+    }
+  };
+  const factory = (params = {}) => {
+    validateParams(params);
+    return {
+      definition: widened,
+      params,
+      effectKey: widened.calculateKey(params),
+      memoized: false
+    };
+  };
+  return factory;
+};
 // src/Artifact.tsx
 
 
@@ -262753,27 +267519,40 @@ var RenderAssetManager = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
   },
   renderAssets: []
 });
-var RenderAssetManagerProvider = ({ children }) => {
+var RenderAssetManagerProvider = ({ children, collectAssets }) => {
   const [renderAssets, setRenderAssets] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
+  const renderAssetsRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)([]);
   const registerRenderAsset = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((renderAsset) => {
     validateRenderAsset(renderAsset);
-    setRenderAssets((assets) => {
-      return [...assets, renderAsset];
-    });
+    renderAssetsRef.current = [...renderAssetsRef.current, renderAsset];
+    setRenderAssets(renderAssetsRef.current);
   }, []);
+  if (collectAssets) {
+    (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(collectAssets, () => {
+      return {
+        collectAssets: () => {
+          const assets = renderAssetsRef.current;
+          renderAssetsRef.current = [];
+          setRenderAssets([]);
+          return assets;
+        }
+      };
+    }, []);
+  }
   const unregisterRenderAsset = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((id) => {
-    setRenderAssets((assts) => {
-      return assts.filter((a) => a.id !== id);
-    });
+    renderAssetsRef.current = renderAssetsRef.current.filter((a2) => a2.id !== id);
+    setRenderAssets(renderAssetsRef.current);
   }, []);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
     if (typeof window !== "undefined") {
       window.remotion_collectAssets = () => {
+        const assets = renderAssetsRef.current;
+        renderAssetsRef.current = [];
         setRenderAssets([]);
-        return renderAssets;
+        return assets;
       };
     }
-  }, [renderAssets]);
+  }, []);
   const contextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     return {
       registerRenderAsset,
@@ -262781,7 +267560,7 @@ var RenderAssetManagerProvider = ({ children }) => {
       renderAssets
     };
   }, [renderAssets, registerRenderAsset, unregisterRenderAsset]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(RenderAssetManager.Provider, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(RenderAssetManager.Provider, {
     value: contextValue,
     children
   });
@@ -262796,7 +267575,7 @@ var Artifact = ({ filename, content, downloadBehavior }) => {
   const [id] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => {
     return String(Math.random());
   });
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
     if (!env.isRendering) {
       return;
     }
@@ -262846,7 +267625,7 @@ var Artifact = ({ filename, content, downloadBehavior }) => {
   return null;
 };
 Artifact.Thumbnail = ArtifactThumbnail;
-// src/audio/Audio.tsx
+// src/audio/html5-audio.tsx
 
 
 // src/absolute-src.ts
@@ -262875,7 +267654,7 @@ var calculateMediaDuration = ({
     duration -= trimBefore;
   }
   const actualDuration = duration / playbackRate;
-  return Math.floor(actualDuration);
+  return Number(actualDuration.toFixed(10));
 };
 
 // src/loop/index.tsx
@@ -262885,7 +267664,14 @@ var LoopContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
 var useLoop = () => {
   return react__WEBPACK_IMPORTED_MODULE_0__.useContext(LoopContext);
 };
-var Loop = ({ durationInFrames, times = Infinity, children, name, ...props }) => {
+var Loop = ({
+  durationInFrames,
+  times = Infinity,
+  children,
+  name,
+  showInTimeline,
+  ...props
+}) => {
   const currentFrame = useCurrentFrame();
   const { durationInFrames: compDuration } = useVideoConfig();
   validateDurationInFrames(durationInFrames, {
@@ -262910,26 +267696,28 @@ var Loop = ({ durationInFrames, times = Infinity, children, name, ...props }) =>
   const from = Math.min(start, maxFrame);
   const loopDisplay = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     return {
-      numberOfTimes: actualTimes,
+      numberOfTimes: Math.min(compDuration / durationInFrames, times),
       startOffset: -from,
       durationInFrames
     };
-  }, [actualTimes, durationInFrames, from]);
+  }, [compDuration, durationInFrames, from, times]);
   const loopContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     return {
       iteration: Math.floor(currentFrame / durationInFrames),
       durationInFrames
     };
   }, [currentFrame, durationInFrames]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(LoopContext.Provider, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(LoopContext.Provider, {
     value: loopContext,
-    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Sequence, {
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
       durationInFrames,
       from,
       name: name ?? "<Loop>",
+      _remotionInternalDocumentationLink: "https://www.remotion.dev/docs/loop",
       _remotionInternalLoopDisplay: loopDisplay,
       layout: props.layout,
       style,
+      showInTimeline,
       children
     })
   });
@@ -262971,7 +267759,7 @@ var PrefetchProvider = ({ children }) => {
       updaters = updaters.filter((u) => u !== updaterFunction);
     };
   }, []);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(PreloadContext.Provider, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(PreloadContext.Provider, {
     value: _preloads,
     children
   });
@@ -263071,13 +267859,15 @@ var prefetch = (src, options) => {
     resolve = res;
     reject = rej;
   });
+  waitUntilDone.catch(() => {
+    return;
+  });
   const controller = new AbortController;
-  let canBeAborted = true;
+  let reader = null;
   fetch(srcWithoutHash, {
     signal: controller.signal,
     credentials: options?.credentials ?? undefined
   }).then((res) => {
-    canBeAborted = false;
     if (canceled) {
       return null;
     }
@@ -263093,15 +267883,16 @@ var prefetch = (src, options) => {
     if (!res.body) {
       throw new Error(`HTTP response of ${srcWithoutHash} has no body`);
     }
-    const reader = res.body.getReader();
+    const responseReader = res.body.getReader();
+    reader = responseReader;
     return getBlobFromReader({
-      reader,
+      reader: responseReader,
       contentType: options?.contentType ?? headerContentType ?? null,
       contentLength: res.headers.get("Content-Length") ? parseInt(res.headers.get("Content-Length"), 10) : null,
       onProgress: options?.onProgress
     });
   }).then((buf) => {
-    if (!buf) {
+    if (!buf || canceled) {
       return;
     }
     const actualBlob = options?.contentType ? new Blob([buf], { type: options.contentType }) : buf;
@@ -263149,12 +267940,18 @@ var prefetch = (src, options) => {
           return copy;
         });
       } else {
-        canceled = true;
-        if (canBeAborted) {
-          try {
-            controller.abort(new Error("free() called"));
-          } catch {}
+        if (canceled) {
+          return;
         }
+        canceled = true;
+        const cancellationError = new Error("free() called");
+        reject(cancellationError);
+        try {
+          controller.abort(cancellationError);
+        } catch {}
+        reader?.cancel(cancellationError).catch(() => {
+          return;
+        });
       }
     },
     waitUntilDone: () => {
@@ -263176,6 +267973,9 @@ var validateMediaProps = (props, component) => {
   }
   if (typeof props.playbackRate === "number" && (isNaN(props.playbackRate) || !Number.isFinite(props.playbackRate) || props.playbackRate <= 0)) {
     throw new TypeError(`You have passed a playbackRate of ${props.playbackRate} to your <${component} /> component. Playback rate must be a real number above 0.`);
+  }
+  if (typeof props.preservePitch !== "boolean" && typeof props.preservePitch !== "undefined") {
+    throw new TypeError(`'preservePitch' must be a boolean or undefined but got '${typeof props.preservePitch}' instead`);
   }
 };
 
@@ -263298,7 +268098,7 @@ var DurationsContextProvider = ({ children }) => {
       setDurations
     };
   }, [durations]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(DurationsContext.Provider, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(DurationsContext.Provider, {
     value,
     children
   });
@@ -263307,13 +268107,18 @@ var DurationsContextProvider = ({ children }) => {
 // src/audio/AudioForPreview.tsx
 
 
+
 // src/get-cross-origin-value.ts
 var getCrossOriginValue = ({
   crossOrigin,
-  requestsVideoFrame
+  requestsVideoFrame,
+  isClientSideRendering
 }) => {
   if (crossOrigin !== undefined && crossOrigin !== null) {
     return crossOrigin;
+  }
+  if (isClientSideRendering) {
+    return "anonymous";
   }
   if (requestsVideoFrame) {
     return "anonymous";
@@ -263321,31 +268126,9 @@ var getCrossOriginValue = ({
   return;
 };
 
-// src/log-level-context.tsx
-
-
-var LogLevelContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
-  logLevel: "info",
-  mountTime: 0
-});
-var useLogLevel = () => {
-  const { logLevel } = react__WEBPACK_IMPORTED_MODULE_0__.useContext(LogLevelContext);
-  if (logLevel === null) {
-    throw new Error("useLogLevel must be used within a LogLevelProvider");
-  }
-  return logLevel;
-};
-var useMountTime = () => {
-  const { mountTime } = react__WEBPACK_IMPORTED_MODULE_0__.useContext(LogLevelContext);
-  if (mountTime === null) {
-    throw new Error("useMountTime must be used within a LogLevelProvider");
-  }
-  return mountTime;
-};
-
 // src/random.ts
-function mulberry32(a) {
-  let t = a + 1831565813;
+function mulberry32(a2) {
+  let t = a2 + 1831565813;
   t = Math.imul(t ^ t >>> 15, t | 1);
   t ^= t + Math.imul(t ^ t >>> 7, t | 61);
   return ((t ^ t >>> 14) >>> 0) / 4294967296;
@@ -263435,12 +268218,12 @@ var playAndHandleNotAllowedError = ({
         onAutoPlayError();
         return;
       }
-      console.log(`The video will be muted and we'll retry playing it.`);
       if (mediaType === "video" && isPlayer) {
-        console.log("Use onAutoPlayError() to handle this error yourself.");
+        Log.info({ logLevel, tag: "<" + mediaType + ">" }, `The video will be muted and we'll retry playing it.`);
+        Log.info({ logLevel, tag: "<" + mediaType + ">" }, "Use onAutoPlayError() to handle this error yourself.");
+        current.muted = true;
+        current.play();
       }
-      current.muted = true;
-      current.play();
     }
   });
 };
@@ -263451,10 +268234,18 @@ var makeSharedElementSourceNode = ({
   ref
 }) => {
   let connected = null;
+  let disposed = false;
+  let currentAudioContext = audioContext;
   return {
+    setAudioContext: (newAudioContext) => {
+      currentAudioContext = newAudioContext;
+    },
     attemptToConnect: () => {
-      if (!connected && ref.current) {
-        const mediaElementSourceNode = audioContext.createMediaElementSource(ref.current);
+      if (disposed) {
+        throw new Error("SharedElementSourceNode has been disposed");
+      }
+      if (!connected && ref.current && currentAudioContext) {
+        const mediaElementSourceNode = currentAudioContext.createMediaElementSource(ref.current);
         connected = mediaElementSourceNode;
       }
     },
@@ -263463,6 +268254,13 @@ var makeSharedElementSourceNode = ({
         throw new Error("Audio element not connected");
       }
       return connected;
+    },
+    cleanup: () => {
+      if (connected) {
+        connected.disconnect();
+        connected = null;
+      }
+      disposed = true;
     }
   };
 };
@@ -263479,17 +268277,130 @@ var warnOnce = (logLevel) => {
     Log.warn({ logLevel, tag: null }, "AudioContext is not supported in this browser");
   }
 };
-var useSingletonAudioContext = (logLevel, latencyHint) => {
-  const audioContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+var useSingletonAudioContext = ({
+  logLevel,
+  latencyHint,
+  audioEnabled,
+  sampleRate
+}) => {
+  const env = useRemotionEnvironment();
+  const initialSampleRate = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(sampleRate);
+  if (sampleRate !== initialSampleRate.current) {
+    throw new Error(`Changing the AudioContext sample rate dynamically is not supported. The sample rate was initialized with ${initialSampleRate.current} Hz, but ${sampleRate} Hz was passed later.`);
+  }
+  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (env.isRendering) {
+      return null;
+    }
+    if (!audioEnabled) {
+      return null;
+    }
     if (typeof AudioContext === "undefined") {
       warnOnce(logLevel);
       return null;
     }
-    return new AudioContext({
-      latencyHint
+    const audioContext = new AudioContext({
+      latencyHint,
+      sampleRate
     });
-  }, [logLevel, latencyHint]);
-  return audioContext;
+    const gainNode = audioContext.createGain();
+    gainNode.connect(audioContext.destination);
+    Log.trace({ logLevel, tag: "audio" }, "Creating new audio context");
+    audioContext.suspend();
+    let transitionTarget = null;
+    const getState = () => {
+      const nativeState = audioContext.state;
+      if (transitionTarget === "running" && nativeState !== "running") {
+        return "suspended-to-running";
+      }
+      if (transitionTarget === "suspended" && nativeState !== "suspended") {
+        return "running-to-suspended";
+      }
+      return nativeState;
+    };
+    const resume = () => {
+      transitionTarget = "running";
+      const promise = audioContext.resume();
+      promise.finally(() => {
+        if (transitionTarget === "running") {
+          transitionTarget = null;
+        }
+      });
+      return promise;
+    };
+    const suspend = () => {
+      transitionTarget = "suspended";
+      const promise = audioContext.suspend();
+      promise.finally(() => {
+        if (transitionTarget === "suspended") {
+          transitionTarget = null;
+        }
+      });
+      return promise;
+    };
+    return {
+      audioContext,
+      gainNode,
+      getState,
+      resume,
+      suspend
+    };
+  }, [logLevel, latencyHint, env.isRendering, audioEnabled, sampleRate]);
+  return context;
+};
+
+// src/audio/wait-until-actually-resumed.ts
+var RESUME_WAIT_TIMEOUT = 1000;
+var waitUntilActuallyResumed = (audioContext, logLevel, signal) => {
+  return new Promise((resolve) => {
+    const startCurrentTime = audioContext.currentTime;
+    const start = audioContext.getOutputTimestamp();
+    const startOutputPerformanceTime = start.performanceTime;
+    const startWallClock = performance.now();
+    let animationFrame = null;
+    let timeout = null;
+    let settled = false;
+    let onAbort = () => {
+      return;
+    };
+    const finish = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (animationFrame !== null) {
+        cancelAnimationFrame(animationFrame);
+      }
+      if (timeout !== null) {
+        clearTimeout(timeout);
+      }
+      signal.removeEventListener("abort", onAbort);
+      resolve(result);
+    };
+    onAbort = () => finish("cancelled");
+    const check = () => {
+      animationFrame = null;
+      const { currentTime } = audioContext;
+      const outputTimestamp = audioContext.getOutputTimestamp();
+      const elapsedWallClock = performance.now() - startWallClock;
+      if (startOutputPerformanceTime !== undefined && outputTimestamp.performanceTime !== undefined && outputTimestamp.performanceTime > startOutputPerformanceTime && outputTimestamp.contextTime !== undefined && outputTimestamp.contextTime > startCurrentTime) {
+        Log.verbose({ logLevel, tag: "audio" }, `waitUntilActuallyResumed: getOutputTimestamp.performanceTime advanced from ${startOutputPerformanceTime.toFixed(6)} to ${outputTimestamp.performanceTime.toFixed(6)} after ${elapsedWallClock.toFixed(1)}ms. currentTime=${currentTime.toFixed(6)} (advanced by ${(currentTime - startCurrentTime).toFixed(6)}), getOutputTimestamp.performanceTime=${outputTimestamp.performanceTime?.toFixed(1) ?? "undefined"}`);
+        finish("resumed");
+        return;
+      }
+      animationFrame = requestAnimationFrame(check);
+    };
+    if (signal.aborted) {
+      finish("cancelled");
+      return;
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+    timeout = setTimeout(() => {
+      Log.warn({ logLevel, tag: "audio" }, "WARNING: You enabled autoPlay on an unmuted <Player /> and the browser did not allow the video to be started. Remotion muted the <Player /> so it can play. To properly handle this, either set the `muted` prop or remove the `autoPlay` prop");
+      finish("failed");
+    }, RESUME_WAIT_TIMEOUT);
+    animationFrame = requestAnimationFrame(check);
+  });
 };
 
 // src/audio/shared-audio-tags.tsx
@@ -263521,37 +268432,237 @@ var didPropChange = (key, newProp, prevProp) => {
   return true;
 };
 var SharedAudioContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
-var SharedAudioContextProvider = ({ children, numberOfAudioTags, component, audioLatencyHint }) => {
+var SharedAudioTagsContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
+var shouldSaveForLater = (state) => {
+  if (state === "suspended" || state === "running-to-suspended" || state === "interrupted") {
+    return true;
+  }
+  if (state === "running" || state === "suspended-to-running") {
+    return false;
+  }
+  throw new Error(`Unexpected audio context state: ${state}`);
+};
+var SharedAudioContextProvider = ({ children, audioLatencyHint, audioEnabled, previewSampleRate }) => {
+  const logLevel = useLogLevel();
+  const sampleRate = previewSampleRate ?? 48000;
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.remotion_sampleRate = sampleRate;
+  }, [sampleRate]);
+  const ctxAndGain = useSingletonAudioContext({
+    logLevel,
+    latencyHint: audioLatencyHint,
+    audioEnabled,
+    sampleRate
+  });
+  const audioContextIsPlayingEventually = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(false);
+  const isResuming = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const nextResumeAttemptId = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(0);
+  const audioSyncAnchor = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => ({ value: 0 }), []);
+  const audioSyncAnchorListeners = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)([]);
+  const audioSyncAnchorEmitter = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      dispatch: (event) => {
+        audioSyncAnchorListeners.current.forEach((l) => l(event));
+      },
+      subscribe: (listener) => {
+        audioSyncAnchorListeners.current.push(listener);
+        return {
+          remove: () => {
+            audioSyncAnchorListeners.current = audioSyncAnchorListeners.current.filter((l) => l !== listener);
+          }
+        };
+      }
+    };
+  }, []);
+  const prevEndTimes = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)({ scheduledEndTime: null, mediaEndTime: null });
+  const nodesToResume = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(new Map);
+  const unscheduleAudioNode = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((node) => {
+    nodesToResume.current.delete(node);
+  }, []);
+  const scheduleAudioNode = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return ({
+      node,
+      mediaTimestamp,
+      sourceOffset,
+      scheduledTime,
+      duration,
+      offset,
+      originalUnloopedMediaTimestamp
+    }) => {
+      if (!ctxAndGain) {
+        throw new Error("Audio context not found");
+      }
+      const currentState = ctxAndGain.getState();
+      if (currentState === "closed") {
+        return {
+          type: "not-started",
+          reason: "audio context is closed"
+        };
+      }
+      const saveForLater = shouldSaveForLater(currentState);
+      if (duration > 0) {
+        if (saveForLater) {
+          nodesToResume.current.set(node, {
+            scheduledTime,
+            offset,
+            duration
+          });
+        } else {
+          node.start(scheduledTime, offset, duration);
+        }
+      }
+      const scheduledEndTime = scheduledTime + duration / node.playbackRate.value;
+      const mediaTime = mediaTimestamp + offset - sourceOffset;
+      const mediaEndTime = mediaTime + duration;
+      const latency = ctxAndGain.audioContext.baseLatency + ctxAndGain.audioContext.outputLatency;
+      const timeDiff = scheduledTime - ctxAndGain.audioContext.currentTime;
+      const prev = prevEndTimes.current;
+      const scheduledMismatch = prev.scheduledEndTime !== null && Math.abs(scheduledTime - prev.scheduledEndTime) > 0.001;
+      const mediaMismatch = prev.mediaEndTime !== null && Math.abs(mediaTime - prev.mediaEndTime) > 0.001;
+      Log.verbose({ logLevel, tag: "audio-scheduling" }, "scheduled %c%s%c %s %c%s%c %s %c%s%c %s %s %s %s %s", scheduledMismatch ? "color: red; font-weight: bold" : "", scheduledTime.toFixed(4), "", scheduledEndTime.toFixed(4), mediaMismatch ? "color: red; font-weight: bold" : "", mediaTime.toFixed(4), "", mediaEndTime.toFixed(4), duration < 0 ? "color: red; font-weight: bold" : timeDiff < 0 ? "color: red; font-weight: bold" : "color: blue; font-weight: bold", duration < 0 ? "missed " + Math.abs(offset).toFixed(2) + "s" : Math.abs(timeDiff).toFixed(2) + (timeDiff < 0 ? " delay" : " ahead"), "", "current=" + ctxAndGain.audioContext.currentTime.toFixed(4), "offset=" + offset.toFixed(4), "latency=" + latency.toFixed(4), "state=" + ctxAndGain.audioContext.state, originalUnloopedMediaTimestamp !== mediaTime ? "original_ts=" + originalUnloopedMediaTimestamp.toFixed(4) : "", "action=" + (saveForLater ? "schedule" : "start"), "");
+      prev.scheduledEndTime = scheduledEndTime;
+      prev.mediaEndTime = mediaEndTime;
+      return duration > 0 ? {
+        type: "started",
+        scheduledTime
+      } : {
+        type: "not-started",
+        reason: "missed " + Math.abs(offset).toFixed(2) + "s"
+      };
+    };
+  }, [ctxAndGain, logLevel]);
+  const resume = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
+    if (!ctxAndGain) {
+      return Promise.resolve();
+    }
+    if (audioContextIsPlayingEventually.current) {
+      return Promise.resolve();
+    }
+    audioContextIsPlayingEventually.current = true;
+    ctxAndGain.gainNode.gain.cancelScheduledValues(ctxAndGain.audioContext.currentTime);
+    ctxAndGain.gainNode.gain.setValueAtTime(0, ctxAndGain.audioContext.currentTime);
+    ctxAndGain.gainNode.gain.linearRampToValueAtTime(1, ctxAndGain.audioContext.currentTime + 0.03);
+    nodesToResume.current.forEach((r, node) => {
+      node.start(r.scheduledTime, r.offset, r.duration);
+    });
+    nodesToResume.current.clear();
+    const resumePromise = ctxAndGain.resume();
+    const abortController = new AbortController;
+    const resumeAttemptId = nextResumeAttemptId.current++;
+    const waitPromise = new Promise((resolve) => {
+      waitUntilActuallyResumed(ctxAndGain.audioContext, logLevel, abortController.signal).then(resolve);
+      resumePromise.catch((err) => {
+        Log.warn({ logLevel, tag: "audio" }, "AudioContext resume rejected, muting playback and continuing without audio", err);
+        abortController.abort();
+        resolve("failed");
+      });
+    }).finally(() => {
+      if (isResuming.current?.id === resumeAttemptId) {
+        isResuming.current = null;
+      }
+    });
+    isResuming.current = {
+      abortController,
+      id: resumeAttemptId,
+      promise: waitPromise
+    };
+    return resumePromise.catch(() => {});
+  }, [ctxAndGain, logLevel]);
+  const getIsResumingAudioContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
+    return isResuming.current?.promise ?? null;
+  }, []);
+  const suspend = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
+    isResuming.current?.abortController.abort();
+    if (!ctxAndGain) {
+      return Promise.resolve();
+    }
+    if (!audioContextIsPlayingEventually.current) {
+      return Promise.resolve();
+    }
+    audioContextIsPlayingEventually.current = false;
+    return ctxAndGain.suspend();
+  }, [ctxAndGain]);
+  const audioContextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      audioContext: ctxAndGain?.audioContext ?? null,
+      getAudioContextState: () => ctxAndGain?.getState() ?? null,
+      gainNode: ctxAndGain?.gainNode ?? null,
+      audioSyncAnchor,
+      audioSyncAnchorEmitter,
+      scheduleAudioNode,
+      resume,
+      suspend,
+      getIsResumingAudioContext,
+      unscheduleAudioNode
+    };
+  }, [
+    ctxAndGain,
+    audioSyncAnchor,
+    audioSyncAnchorEmitter,
+    scheduleAudioNode,
+    resume,
+    suspend,
+    getIsResumingAudioContext,
+    unscheduleAudioNode
+  ]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SharedAudioContext.Provider, {
+    value: audioContextValue,
+    children
+  });
+};
+var SharedAudioTagsContextProvider = ({ children, numberOfAudioTags }) => {
   const audios = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)([]);
   const [initialNumberOfAudioTags] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(numberOfAudioTags);
   if (numberOfAudioTags !== initialNumberOfAudioTags) {
     throw new Error("The number of shared audio tags has changed dynamically. Once you have set this property, you cannot change it afterwards.");
   }
   const logLevel = useLogLevel();
-  const audioContext = useSingletonAudioContext(logLevel, audioLatencyHint);
-  const refs = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+  const mountTime = useMountTime();
+  const env = useRemotionEnvironment();
+  const audioCtx = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SharedAudioContext);
+  const audioContext = audioCtx?.audioContext ?? null;
+  const resume = audioCtx?.resume;
+  const [refs] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => {
     return new Array(numberOfAudioTags).fill(true).map(() => {
       const ref = (0,react__WEBPACK_IMPORTED_MODULE_0__.createRef)();
       return {
         id: Math.random(),
         ref,
-        mediaElementSourceNode: audioContext ? makeSharedElementSourceNode({
+        mediaElementSourceNode: makeSharedElementSourceNode({
           audioContext,
           ref
-        }) : null
+        })
       };
     });
-  }, [audioContext, numberOfAudioTags]);
+  });
+  for (const { mediaElementSourceNode } of refs) {
+    mediaElementSourceNode?.setAudioContext(audioContext);
+  }
+  const effectToUse = react__WEBPACK_IMPORTED_MODULE_0__.useInsertionEffect ?? react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect;
+  effectToUse(() => {
+    return () => {
+      requestAnimationFrame(() => {
+        refs.forEach(({ mediaElementSourceNode }) => {
+          mediaElementSourceNode?.cleanup();
+        });
+      });
+    };
+  }, [refs]);
   const takenAudios = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(new Array(numberOfAudioTags).fill(false));
   const rerenderAudios = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
     refs.forEach(({ ref, id }) => {
-      const data = audios.current?.find((a) => a.id === id);
+      const data = audios.current?.find((a2) => a2.id === id);
       const { current } = ref;
       if (!current) {
         return;
       }
       if (data === undefined) {
-        current.src = EMPTY_AUDIO;
+        if (current.src !== EMPTY_AUDIO) {
+          current.src = EMPTY_AUDIO;
+        }
         return;
       }
       if (!data) {
@@ -263565,12 +268676,12 @@ var SharedAudioContextProvider = ({ children, numberOfAudioTags, component, audi
     });
   }, [refs]);
   const registerAudio = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((options) => {
-    const { aud, audioId, premounting } = options;
-    const found = audios.current?.find((a) => a.audioId === audioId);
+    const { aud, audioId, premounting, postmounting } = options;
+    const found = audios.current?.find((a2) => a2.audioId === audioId);
     if (found) {
       return found;
     }
-    const firstFreeAudio = takenAudios.current.findIndex((a) => a === false);
+    const firstFreeAudio = takenAudios.current.findIndex((a2) => a2 === false);
     if (firstFreeAudio === -1) {
       throw new Error(`Tried to simultaneously mount ${numberOfAudioTags + 1} <Html5Audio /> tags at the same time. With the current settings, the maximum amount of <Html5Audio /> tags is limited to ${numberOfAudioTags} at the same time. Remotion pre-mounts silent audio tags to help avoid browser autoplay restrictions. See https://remotion.dev/docs/player/autoplay#using-the-numberofsharedaudiotags-prop for more information on how to increase this limit.`);
     }
@@ -263584,7 +268695,10 @@ var SharedAudioContextProvider = ({ children, numberOfAudioTags, component, audi
       el: ref,
       audioId,
       mediaElementSourceNode,
-      premounting
+      premounting,
+      audioMounted: Boolean(ref.current),
+      postmounting,
+      cleanupOnMediaTagUnmount: () => {}
     };
     audios.current?.push(newElem);
     rerenderAudios();
@@ -263594,45 +268708,50 @@ var SharedAudioContextProvider = ({ children, numberOfAudioTags, component, audi
     const cloned = [...takenAudios.current];
     const index = refs.findIndex((r) => r.id === id);
     if (index === -1) {
-      throw new TypeError("Error occured in ");
+      throw new TypeError(`Unknown audio ref ${id}; refs: ${refs.map((r) => r.id).join(", ")}`);
     }
     cloned[index] = false;
     takenAudios.current = cloned;
-    audios.current = audios.current?.filter((a) => a.id !== id);
+    audios.current = audios.current?.filter((a2) => a2.id !== id);
     rerenderAudios();
   }, [refs, rerenderAudios]);
   const updateAudio = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(({
     aud,
     audioId,
     id,
-    premounting
+    premounting,
+    postmounting
   }) => {
     let changed = false;
     audios.current = audios.current?.map((prevA) => {
+      const audioMounted = Boolean(prevA.el.current);
+      if (prevA.audioMounted !== audioMounted) {
+        changed = true;
+      }
       if (prevA.id === id) {
-        const isTheSame = compareProps(aud, prevA.props) && prevA.premounting === premounting;
+        const isTheSame = compareProps(aud, prevA.props) && prevA.premounting === premounting && prevA.postmounting === postmounting;
         if (isTheSame) {
-          return prevA;
+          return prevA.audioMounted === audioMounted ? prevA : { ...prevA, audioMounted };
         }
         changed = true;
         return {
           ...prevA,
           props: aud,
           premounting,
-          audioId
+          postmounting,
+          audioId,
+          audioMounted
         };
       }
-      return prevA;
+      return prevA.audioMounted === audioMounted ? prevA : { ...prevA, audioMounted };
     });
     if (changed) {
       rerenderAudios();
     }
   }, [rerenderAudios]);
-  const mountTime = useMountTime();
-  const env = useRemotionEnvironment();
   const playAllAudios = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
     refs.forEach((ref) => {
-      const audio = audios.current.find((a) => a.el === ref.ref);
+      const audio = audios.current.find((a2) => a2.el === ref.ref);
       if (audio?.premounting) {
         return;
       }
@@ -263646,45 +268765,36 @@ var SharedAudioContextProvider = ({ children, numberOfAudioTags, component, audi
         isPlayer: env.isPlayer
       });
     });
-    audioContext?.resume();
-  }, [audioContext, logLevel, mountTime, refs, env.isPlayer]);
-  const value = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    resume?.();
+  }, [logLevel, mountTime, refs, env.isPlayer, resume]);
+  const audioTagsValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     return {
       registerAudio,
       unregisterAudio,
       updateAudio,
       playAllAudios,
-      numberOfAudioTags,
-      audioContext
+      numberOfAudioTags
     };
   }, [
     numberOfAudioTags,
     playAllAudios,
     registerAudio,
     unregisterAudio,
-    updateAudio,
-    audioContext
+    updateAudio
   ]);
-  const resetAudio = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
-    takenAudios.current = new Array(numberOfAudioTags).fill(false);
-    audios.current = [];
-    rerenderAudios();
-  }, [numberOfAudioTags, rerenderAudios]);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    return () => {
-      resetAudio();
-    };
-  }, [component, resetAudio]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsxs)(SharedAudioContext.Provider, {
-    value,
+  const sharedAudioTagElements = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return refs.map(({ id, ref }) => {
+      return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("audio", {
+        ref,
+        preload: "metadata",
+        src: EMPTY_AUDIO
+      }, id);
+    });
+  }, [refs]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)(SharedAudioTagsContext.Provider, {
+    value: audioTagsValue,
     children: [
-      refs.map(({ id, ref }) => {
-        return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("audio", {
-          ref,
-          preload: "metadata",
-          src: EMPTY_AUDIO
-        }, id);
-      }),
+      sharedAudioTagElements,
       children
     ]
   });
@@ -263692,41 +268802,55 @@ var SharedAudioContextProvider = ({ children, numberOfAudioTags, component, audi
 var useSharedAudio = ({
   aud,
   audioId,
-  premounting
+  premounting,
+  postmounting
 }) => {
-  const ctx = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SharedAudioContext);
+  const audioCtx = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SharedAudioContext);
+  const tagsCtx = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SharedAudioTagsContext);
   const [elem] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => {
-    if (ctx && ctx.numberOfAudioTags > 0) {
-      return ctx.registerAudio({ aud, audioId, premounting });
+    if (tagsCtx && tagsCtx.numberOfAudioTags > 0) {
+      return tagsCtx.registerAudio({ aud, audioId, premounting, postmounting });
     }
     const el = react__WEBPACK_IMPORTED_MODULE_0__.createRef();
-    const mediaElementSourceNode = ctx?.audioContext ? makeSharedElementSourceNode({
-      audioContext: ctx.audioContext,
+    const mediaElementSourceNode = makeSharedElementSourceNode({
+      audioContext: audioCtx?.audioContext ?? null,
       ref: el
-    }) : null;
+    });
     return {
       el,
       id: Math.random(),
       props: aud,
       audioId,
       mediaElementSourceNode,
-      premounting
+      premounting,
+      audioMounted: Boolean(el.current),
+      postmounting,
+      cleanupOnMediaTagUnmount: () => {
+        mediaElementSourceNode?.cleanup();
+      }
     };
   });
+  elem.mediaElementSourceNode?.setAudioContext(audioCtx?.audioContext ?? null);
   const effectToUse = react__WEBPACK_IMPORTED_MODULE_0__.useInsertionEffect ?? react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect;
   if (typeof document !== "undefined") {
     effectToUse(() => {
-      if (ctx && ctx.numberOfAudioTags > 0) {
-        ctx.updateAudio({ id: elem.id, aud, audioId, premounting });
+      if (tagsCtx && tagsCtx.numberOfAudioTags > 0) {
+        tagsCtx.updateAudio({
+          id: elem.id,
+          aud,
+          audioId,
+          premounting,
+          postmounting
+        });
       }
-    }, [aud, ctx, elem.id, audioId, premounting]);
+    }, [aud, tagsCtx, elem.id, audioId, premounting, postmounting]);
     effectToUse(() => {
       return () => {
-        if (ctx && ctx.numberOfAudioTags > 0) {
-          ctx.unregisterAudio(elem.id);
+        if (tagsCtx && tagsCtx.numberOfAudioTags > 0) {
+          tagsCtx.unregisterAudio(elem.id);
         }
       };
-    }, [ctx, elem.id]);
+    }, [tagsCtx, elem.id]);
   }
   return elem;
 };
@@ -263873,7 +268997,7 @@ var useVolume = ({
   if (!sharedAudioContext) {
     throw new Error("useAmplification must be used within a SharedAudioContext");
   }
-  const { audioContext } = sharedAudioContext;
+  const { audioContext, gainNode: masterGainNode } = sharedAudioContext;
   if (typeof window !== "undefined") {
     (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
       if (!audioContext) {
@@ -263892,12 +269016,15 @@ var useVolume = ({
       if (!source) {
         return;
       }
+      if (!masterGainNode) {
+        return;
+      }
       const gainNode = new GainNode(audioContext, {
         gain: currentVolumeRef.current
       });
       source.attemptToConnect();
       source.get().connect(gainNode);
-      gainNode.connect(audioContext.destination);
+      gainNode.connect(masterGainNode);
       audioStuffRef.current = {
         gainNode
       };
@@ -263907,7 +269034,14 @@ var useVolume = ({
         gainNode.disconnect();
         source.get().disconnect();
       };
-    }, [logLevel, mediaRef, audioContext, source, shouldUseWebAudioApi]);
+    }, [
+      logLevel,
+      mediaRef,
+      audioContext,
+      source,
+      shouldUseWebAudioApi,
+      masterGainNode
+    ]);
   }
   if (audioStuffRef.current) {
     const valueToSet = volume;
@@ -263931,8 +269065,7 @@ var useVolume = ({
 
 var useMediaStartsAt = () => {
   const parentSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
-  const startsAt = Math.min(0, parentSequence?.relativeFrom ?? 0);
-  return startsAt;
+  return parentSequence?.cumulatedNegativeFrom ?? 0;
 };
 var useFrameForVolumeProp = (behavior) => {
   const loop = Loop.useLoop();
@@ -263951,6 +269084,31 @@ var getAssetDisplayName = (filename) => {
   }
   const splitted = filename.split("/").map((s) => s.split("\\")).flat(1);
   return splitted[splitted.length - 1];
+};
+
+// src/get-timeline-duration.ts
+var getTimelineDuration = ({
+  compositionDurationInFrames,
+  playbackRate,
+  trimBefore,
+  trimAfter,
+  parentSequenceDurationInFrames,
+  loop
+}) => {
+  if (loop) {
+    return compositionDurationInFrames;
+  }
+  const mediaDuration = calculateMediaDuration({
+    mediaDurationInFrames: compositionDurationInFrames * playbackRate + (trimBefore ?? 0),
+    playbackRate,
+    trimBefore,
+    trimAfter
+  });
+  if (parentSequenceDurationInFrames !== null) {
+    const cappedDuration = Math.min(parentSequenceDurationInFrames, mediaDuration);
+    return Number(cappedDuration.toFixed(10));
+  }
+  return mediaDuration;
 };
 
 // src/volume-prop.ts
@@ -263995,34 +269153,36 @@ var useBasicMediaInTimeline = ({
   displayName,
   trimBefore,
   trimAfter,
-  playbackRate
+  playbackRate,
+  sequenceDurationInFrames,
+  mediaStartsAt,
+  loop
 }) => {
   if (!src) {
     throw new Error("No src passed");
   }
-  const startsAt = useMediaStartsAt();
   const parentSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
-  const videoConfig = useVideoConfig();
   const [initialVolume] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => volume);
-  const mediaDuration = calculateMediaDuration({
-    mediaDurationInFrames: videoConfig.durationInFrames,
+  const duration = getTimelineDuration({
+    compositionDurationInFrames: sequenceDurationInFrames,
     playbackRate,
     trimBefore,
-    trimAfter
+    trimAfter,
+    parentSequenceDurationInFrames: parentSequence?.durationInFrames ?? null,
+    loop
   });
-  const duration = parentSequence ? Math.min(parentSequence.durationInFrames, mediaDuration) : mediaDuration;
   const volumes = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     if (typeof volume === "number") {
       return volume;
     }
-    return new Array(Math.floor(Math.max(0, duration + startsAt))).fill(true).map((_, i) => {
+    return new Array(Math.floor(Math.max(0, duration + mediaStartsAt))).fill(true).map((_, i) => {
       return evaluateVolume({
-        frame: i + startsAt,
+        frame: i + mediaStartsAt,
         volume,
         mediaVolume
       });
     }).join(",");
-  }, [duration, startsAt, volume, mediaVolume]);
+  }, [duration, mediaStartsAt, volume, mediaVolume]);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     if (typeof volume === "number" && volume !== initialVolume) {
       warnOnce2(`Remotion: The ${mediaType} with src ${src} has changed it's volume. Prefer the callback syntax for setting volume to get better timeline display: https://www.remotion.dev/docs/audio/volume`);
@@ -264030,17 +269190,29 @@ var useBasicMediaInTimeline = ({
   }, [initialVolume, mediaType, src, volume]);
   const doesVolumeChange = typeof volume === "function";
   const nonce = useNonce();
-  const { rootId } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(TimelineContext);
-  const env = useRemotionEnvironment();
-  return {
+  const startMediaFrom = 0 - mediaStartsAt + (trimBefore ?? 0);
+  const memoizedResult = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      volumes,
+      duration,
+      doesVolumeChange,
+      nonce,
+      finalDisplayName: displayName ?? getAssetDisplayName(src),
+      startMediaFrom,
+      src,
+      playbackRate
+    };
+  }, [
     volumes,
     duration,
     doesVolumeChange,
     nonce,
-    rootId,
-    isStudio: env.isStudio,
-    finalDisplayName: displayName ?? getAssetDisplayName(src)
-  };
+    displayName,
+    src,
+    startMediaFrom,
+    playbackRate
+  ]);
+  return memoizedResult;
 };
 var useMediaInTimeline = ({
   volume,
@@ -264050,24 +269222,20 @@ var useMediaInTimeline = ({
   playbackRate,
   displayName,
   id,
-  stack,
+  getStack,
   showInTimeline,
   premountDisplay,
   postmountDisplay,
-  loopDisplay
+  loopDisplay,
+  documentationLink,
+  refForOutline
 }) => {
   const parentSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
   const startsAt = useMediaStartsAt();
   const { registerSequence, unregisterSequence } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceManager);
-  const {
-    volumes,
-    duration,
-    doesVolumeChange,
-    nonce,
-    rootId,
-    isStudio,
-    finalDisplayName
-  } = useBasicMediaInTimeline({
+  const { durationInFrames } = useVideoConfig();
+  const mediaStartsAt = useMediaStartsAt();
+  const { volumes, duration, doesVolumeChange, nonce, finalDisplayName } = useBasicMediaInTimeline({
     volume,
     mediaVolume,
     mediaType,
@@ -264075,8 +269243,12 @@ var useMediaInTimeline = ({
     displayName,
     trimAfter: undefined,
     trimBefore: undefined,
-    playbackRate
+    playbackRate,
+    sequenceDurationInFrames: durationInFrames,
+    mediaStartsAt,
+    loop: false
   });
+  const { isStudio } = useRemotionEnvironment();
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     if (!src) {
       throw new Error("No src passed");
@@ -264093,19 +269265,27 @@ var useMediaInTimeline = ({
       id,
       duration,
       from: 0,
+      trimBefore: null,
       parent: parentSequence?.id ?? null,
       displayName: finalDisplayName,
-      rootId,
+      documentationLink,
       volume: volumes,
       showInTimeline: true,
-      nonce,
+      nonce: nonce.get(),
       startMediaFrom: 0 - startsAt,
+      mediaFrameAtSequenceZero: null,
       doesVolumeChange,
       loopDisplay,
       playbackRate,
-      stack,
+      getStack,
       premountDisplay,
-      postmountDisplay
+      postmountDisplay,
+      controls: null,
+      effects: [],
+      refForOutline,
+      isInsideSeries: false,
+      frozenFrame: null,
+      frozenMediaFrame: null
     });
     return () => {
       unregisterSequence(id);
@@ -264123,14 +269303,15 @@ var useMediaInTimeline = ({
     mediaType,
     startsAt,
     playbackRate,
-    stack,
+    getStack,
     showInTimeline,
     premountDisplay,
     postmountDisplay,
-    isStudio,
     loopDisplay,
-    rootId,
-    finalDisplayName
+    documentationLink,
+    finalDisplayName,
+    isStudio,
+    refForOutline
   ]);
 };
 
@@ -264148,42 +269329,63 @@ var useMediaInTimeline = ({
 
 var useBufferManager = (logLevel, mountTime) => {
   const [blocks, setBlocks] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
-  const [onBufferingCallbacks, setOnBufferingCallbacks] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
-  const [onResumeCallbacks, setOnResumeCallbacks] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
+  const onBufferingCallbacks = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)([]);
+  const onResumeCallbacks = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)([]);
+  const env = useRemotionEnvironment();
+  const rendering = env.isRendering;
   const buffering = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(false);
   const addBlock = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((block) => {
-    setBlocks((b) => [...b, block]);
+    if (rendering) {
+      return {
+        unblock: () => {
+          return;
+        }
+      };
+    }
+    let unblocked = false;
+    setBlocks((b2) => [...b2, block]);
     return {
       unblock: () => {
-        setBlocks((b) => {
-          const newArr = b.filter((bx) => bx !== block);
-          if (newArr.length === b.length) {
-            return b;
+        if (unblocked) {
+          return;
+        }
+        unblocked = true;
+        setBlocks((b2) => {
+          const newArr = b2.filter((bx) => bx !== block);
+          if (newArr.length === b2.length) {
+            return b2;
           }
           return newArr;
         });
       }
     };
-  }, []);
+  }, [rendering]);
   const listenForBuffering = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((callback) => {
-    setOnBufferingCallbacks((c) => [...c, callback]);
+    onBufferingCallbacks.current = [
+      ...onBufferingCallbacks.current,
+      callback
+    ];
     return {
       remove: () => {
-        setOnBufferingCallbacks((c) => c.filter((cb) => cb !== callback));
+        onBufferingCallbacks.current = onBufferingCallbacks.current.filter((cb) => cb !== callback);
       }
     };
   }, []);
   const listenForResume = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((callback) => {
-    setOnResumeCallbacks((c) => [...c, callback]);
+    onResumeCallbacks.current = [...onResumeCallbacks.current, callback];
     return {
       remove: () => {
-        setOnResumeCallbacks((c) => c.filter((cb) => cb !== callback));
+        onResumeCallbacks.current = onResumeCallbacks.current.filter((cb) => cb !== callback);
       }
     };
   }, []);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    if (blocks.length > 0) {
-      onBufferingCallbacks.forEach((c) => c());
+    if (rendering) {
+      return;
+    }
+    if (blocks.length > 0 && !buffering.current) {
+      buffering.current = true;
+      [...onBufferingCallbacks.current].forEach((c2) => c2());
       playbackLogging({
         logLevel,
         message: "Player is entering buffer state",
@@ -264194,8 +269396,12 @@ var useBufferManager = (logLevel, mountTime) => {
   }, [blocks]);
   if (typeof window !== "undefined") {
     (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
-      if (blocks.length === 0) {
-        onResumeCallbacks.forEach((c) => c());
+      if (rendering) {
+        return;
+      }
+      if (blocks.length === 0 && buffering.current) {
+        buffering.current = false;
+        [...onResumeCallbacks.current].forEach((c2) => c2());
         playbackLogging({
           logLevel,
           message: "Player is exiting buffer state",
@@ -264213,7 +269419,7 @@ var BufferingContextReact = react__WEBPACK_IMPORTED_MODULE_0__.createContext(nul
 var BufferingProvider = ({ children }) => {
   const { logLevel, mountTime } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(LogLevelContext);
   const bufferManager = useBufferManager(logLevel ?? "info", mountTime);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(BufferingContextReact.Provider, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(BufferingContextReact.Provider, {
     value: bufferManager,
     children
   });
@@ -264227,15 +269433,11 @@ var useIsPlayerBuffering = (bufferManager) => {
     const onResume = () => {
       setIsBuffering(false);
     };
-    bufferManager.listenForBuffering(onBuffer);
-    bufferManager.listenForResume(onResume);
+    const buffer = bufferManager.listenForBuffering(onBuffer);
+    const resume = bufferManager.listenForResume(onResume);
     return () => {
-      bufferManager.listenForBuffering(() => {
-        return;
-      });
-      bufferManager.listenForResume(() => {
-        return;
-      });
+      buffer.remove();
+      resume.remove();
     };
   }, [bufferManager]);
   return isBuffering;
@@ -264244,18 +269446,30 @@ var useIsPlayerBuffering = (bufferManager) => {
 // src/use-buffer-state.ts
 var useBufferState = () => {
   const buffer = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(BufferingContextReact);
+  const logLevel = useLogLevel();
   const addBlock = buffer ? buffer.addBlock : null;
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => ({
     delayPlayback: () => {
       if (!addBlock) {
         throw new Error("Tried to enable the buffering state, but a Remotion context was not found. This API can only be called in a component that was passed to the Remotion Player or a <Composition>. Or you might have experienced a version mismatch - run `npx remotion versions` and ensure all packages have the same version. This error is thrown by the buffer state https://remotion.dev/docs/player/buffer-state");
       }
+      Log.trace({ logLevel, tag: "[buffer-state]" }, "Adding buffer handle", new Error().stack);
       const { unblock } = addBlock({
         id: String(Math.random())
       });
-      return { unblock };
+      let unblocked = false;
+      return {
+        unblock: () => {
+          if (unblocked) {
+            return;
+          }
+          unblocked = true;
+          Log.trace({ logLevel, tag: "[buffer-state]" }, "Removing buffer handle");
+          unblock();
+        }
+      };
     }
-  }), [addBlock]);
+  }), [addBlock, logLevel]);
 };
 
 // src/buffer-until-first-frame.ts
@@ -264350,6 +269564,74 @@ var useBufferUntilFirstFrame = ({
       bufferUntilFirstFrame
     };
   }, [bufferUntilFirstFrame]);
+};
+
+// src/get-media-sync-action.ts
+var getMediaSyncAction = (input) => {
+  const {
+    duration,
+    currentTime,
+    paused,
+    ended,
+    desiredUnclampedTime,
+    mediaTagTime,
+    mediaTagLastUpdate,
+    rvcTime,
+    rvcLastUpdate,
+    isVariableFpsVideo,
+    acceptableTimeShift,
+    lastSeekDueToShift,
+    playing,
+    playbackRate,
+    mediaTagBufferingOrStalled,
+    playerBuffering,
+    absoluteFrame,
+    onlyWarnForMediaSeekingError,
+    isPremounting,
+    isPostmounting,
+    pauseWhenBuffering
+  } = input;
+  const shouldBeTime = !Number.isNaN(duration) && Number.isFinite(duration) ? Math.min(duration, desiredUnclampedTime) : desiredUnclampedTime;
+  const timeShiftMediaTag = Math.abs(shouldBeTime - mediaTagTime);
+  const timeShiftRvcTag = rvcTime ? Math.abs(shouldBeTime - rvcTime) : null;
+  const mostRecentTimeshift = rvcLastUpdate && rvcTime > mediaTagLastUpdate ? timeShiftRvcTag : timeShiftMediaTag;
+  const timeShift = timeShiftRvcTag && !isVariableFpsVideo ? mostRecentTimeshift : timeShiftMediaTag;
+  if (timeShift > acceptableTimeShift && lastSeekDueToShift !== shouldBeTime) {
+    return {
+      type: "seek-due-to-shift",
+      shouldBeTime,
+      why: `because time shift is too big. shouldBeTime = ${shouldBeTime}, isTime = ${mediaTagTime}, requestVideoCallbackTime = ${rvcTime}, timeShift = ${timeShift}${isVariableFpsVideo ? ", isVariableFpsVideo = true" : ""}, isPremounting = ${isPremounting}, isPostmounting = ${isPostmounting}, pauseWhenBuffering = ${pauseWhenBuffering}`,
+      bufferUntilFirstFrame: playing && playbackRate > 0,
+      playReason: playing && paused ? "player is playing but media tag is paused, and just seeked" : null,
+      warnAboutNonSeekable: !onlyWarnForMediaSeekingError
+    };
+  }
+  const seekThreshold = playing ? 0.15 : 0.01;
+  const makesSenseToSeek = Math.abs(currentTime - shouldBeTime) > seekThreshold;
+  const isSomethingElseBuffering = playerBuffering && !mediaTagBufferingOrStalled;
+  if (!playing || isSomethingElseBuffering) {
+    return {
+      type: "seek-if-not-playing",
+      shouldBeTime,
+      why: makesSenseToSeek ? `not playing or something else is buffering. time offset is over seek threshold (${seekThreshold})` : null
+    };
+  }
+  if (!playing || playerBuffering) {
+    return { type: "none" };
+  }
+  const pausedCondition = paused && !ended;
+  const firstFrameCondition = absoluteFrame === 0;
+  if (pausedCondition || firstFrameCondition) {
+    const reason = pausedCondition ? "media tag is paused" : "absolute frame is 0";
+    return {
+      type: "play-and-seek",
+      shouldBeTime,
+      why: makesSenseToSeek ? `is over timeshift threshold (threshold = ${seekThreshold}) and ${reason}` : null,
+      playReason: `player is playing and ${reason}`,
+      bufferUntilFirstFrame: !isVariableFpsVideo && playbackRate > 0
+    };
+  }
+  return { type: "none" };
 };
 
 // src/media-tag-current-time-timestamp.ts
@@ -264592,107 +269874,6 @@ var useRequestVideoCallbackTime = ({
   return currentTime;
 };
 
-// src/interpolate.ts
-function interpolateFunction(input, inputRange, outputRange, options) {
-  const { extrapolateLeft, extrapolateRight, easing } = options;
-  let result = input;
-  const [inputMin, inputMax] = inputRange;
-  const [outputMin, outputMax] = outputRange;
-  if (result < inputMin) {
-    if (extrapolateLeft === "identity") {
-      return result;
-    }
-    if (extrapolateLeft === "clamp") {
-      result = inputMin;
-    } else if (extrapolateLeft === "wrap") {
-      const range = inputMax - inputMin;
-      result = ((result - inputMin) % range + range) % range + inputMin;
-    } else if (extrapolateLeft === "extend") {}
-  }
-  if (result > inputMax) {
-    if (extrapolateRight === "identity") {
-      return result;
-    }
-    if (extrapolateRight === "clamp") {
-      result = inputMax;
-    } else if (extrapolateRight === "wrap") {
-      const range = inputMax - inputMin;
-      result = ((result - inputMin) % range + range) % range + inputMin;
-    } else if (extrapolateRight === "extend") {}
-  }
-  if (outputMin === outputMax) {
-    return outputMin;
-  }
-  result = (result - inputMin) / (inputMax - inputMin);
-  result = easing(result);
-  result = result * (outputMax - outputMin) + outputMin;
-  return result;
-}
-function findRange(input, inputRange) {
-  let i;
-  for (i = 1;i < inputRange.length - 1; ++i) {
-    if (inputRange[i] >= input) {
-      break;
-    }
-  }
-  return i - 1;
-}
-function checkValidInputRange(arr) {
-  for (let i = 1;i < arr.length; ++i) {
-    if (!(arr[i] > arr[i - 1])) {
-      throw new Error(`inputRange must be strictly monotonically increasing but got [${arr.join(",")}]`);
-    }
-  }
-}
-function checkInfiniteRange(name, arr) {
-  if (arr.length < 2) {
-    throw new Error(name + " must have at least 2 elements");
-  }
-  for (const element of arr) {
-    if (typeof element !== "number") {
-      throw new Error(`${name} must contain only numbers`);
-    }
-    if (!Number.isFinite(element)) {
-      throw new Error(`${name} must contain only finite numbers, but got [${arr.join(",")}]`);
-    }
-  }
-}
-function interpolate(input, inputRange, outputRange, options) {
-  if (typeof input === "undefined") {
-    throw new Error("input can not be undefined");
-  }
-  if (typeof inputRange === "undefined") {
-    throw new Error("inputRange can not be undefined");
-  }
-  if (typeof outputRange === "undefined") {
-    throw new Error("outputRange can not be undefined");
-  }
-  if (inputRange.length !== outputRange.length) {
-    throw new Error("inputRange (" + inputRange.length + ") and outputRange (" + outputRange.length + ") must have the same length");
-  }
-  checkInfiniteRange("inputRange", inputRange);
-  checkInfiniteRange("outputRange", outputRange);
-  checkValidInputRange(inputRange);
-  const easing = options?.easing ?? ((num) => num);
-  let extrapolateLeft = "extend";
-  if (options?.extrapolateLeft !== undefined) {
-    extrapolateLeft = options.extrapolateLeft;
-  }
-  let extrapolateRight = "extend";
-  if (options?.extrapolateRight !== undefined) {
-    extrapolateRight = options.extrapolateRight;
-  }
-  if (typeof input !== "number") {
-    throw new TypeError("Cannot interpolate an input which is not a number");
-  }
-  const range = findRange(input, inputRange);
-  return interpolateFunction(input, [inputRange[range], inputRange[range + 1]], [outputRange[range], outputRange[range + 1]], {
-    easing,
-    extrapolateLeft,
-    extrapolateRight
-  });
-}
-
 // src/video/get-current-time.ts
 var getExpectedMediaFrameUncorrected = ({
   frame,
@@ -264758,6 +269939,7 @@ var useMediaPlayback = ({
   src,
   mediaType,
   playbackRate: localPlaybackRate,
+  preservePitch = true,
   onlyWarnForMediaSeekingError,
   acceptableTimeshift,
   pauseWhenBuffering,
@@ -264765,7 +269947,7 @@ var useMediaPlayback = ({
   isPostmounting,
   onAutoPlayError
 }) => {
-  const { playbackRate: globalPlaybackRate } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(TimelineContext);
+  const { playbackRate: globalPlaybackRate } = usePlaybackRate();
   const frame = useCurrentFrame();
   const absoluteFrame = useTimelinePosition();
   const [playing] = usePlayingState();
@@ -264875,7 +270057,10 @@ var useMediaPlayback = ({
     if (mediaRef.current && mediaRef.current.playbackRate !== playbackRateToSet) {
       mediaRef.current.playbackRate = playbackRateToSet;
     }
-  }, [mediaRef, playbackRate]);
+    if (mediaRef.current && mediaRef.current.preservesPitch !== preservePitch) {
+      mediaRef.current.preservesPitch = preservePitch;
+    }
+  }, [mediaRef, playbackRate, preservePitch]);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     const tagName = mediaType === "audio" ? "<Html5Audio>" : "<Html5Video>";
     if (!mediaRef.current) {
@@ -264884,89 +270069,93 @@ var useMediaPlayback = ({
     if (!src) {
       throw new Error(`No 'src' attribute was passed to the ${tagName} element.`);
     }
-    const { duration } = mediaRef.current;
-    const shouldBeTime = !Number.isNaN(duration) && Number.isFinite(duration) ? Math.min(duration, desiredUnclampedTime) : desiredUnclampedTime;
-    const mediaTagTime = mediaTagCurrentTime.current.time;
-    const rvcTime = rvcCurrentTime.current?.time ?? null;
-    const isVariableFpsVideo = isVariableFpsVideoMap.current[src];
-    const timeShiftMediaTag = Math.abs(shouldBeTime - mediaTagTime);
-    const timeShiftRvcTag = rvcTime ? Math.abs(shouldBeTime - rvcTime) : null;
-    const mostRecentTimeshift = rvcCurrentTime.current?.lastUpdate && rvcCurrentTime.current.time > mediaTagCurrentTime.current.lastUpdate ? timeShiftRvcTag : timeShiftMediaTag;
-    const timeShift = timeShiftRvcTag && !isVariableFpsVideo ? mostRecentTimeshift : timeShiftMediaTag;
-    if (timeShift > acceptableTimeShiftButLessThanDuration && lastSeekDueToShift.current !== shouldBeTime) {
+    const { current } = mediaRef;
+    const action = getMediaSyncAction({
+      duration: current.duration,
+      currentTime: current.currentTime,
+      paused: current.paused,
+      ended: current.ended,
+      desiredUnclampedTime,
+      mediaTagTime: mediaTagCurrentTime.current.time,
+      mediaTagLastUpdate: mediaTagCurrentTime.current.lastUpdate,
+      rvcTime: rvcCurrentTime.current?.time ?? null,
+      rvcLastUpdate: rvcCurrentTime.current?.lastUpdate ?? null,
+      isVariableFpsVideo: Boolean(isVariableFpsVideoMap.current[src]),
+      acceptableTimeShift: acceptableTimeShiftButLessThanDuration,
+      lastSeekDueToShift: lastSeekDueToShift.current,
+      playing,
+      playbackRate,
+      mediaTagBufferingOrStalled: isMediaTagBuffering || isBuffering(),
+      playerBuffering: buffering.buffering.current,
+      absoluteFrame,
+      onlyWarnForMediaSeekingError,
+      isPremounting,
+      isPostmounting,
+      pauseWhenBuffering
+    });
+    if (action.type === "none") {
+      return;
+    }
+    if (action.type === "seek-due-to-shift") {
       lastSeek.current = seek({
-        mediaRef: mediaRef.current,
-        time: shouldBeTime,
+        mediaRef: current,
+        time: action.shouldBeTime,
         logLevel,
-        why: `because time shift is too big. shouldBeTime = ${shouldBeTime}, isTime = ${mediaTagTime}, requestVideoCallbackTime = ${rvcTime}, timeShift = ${timeShift}${isVariableFpsVideo ? ", isVariableFpsVideo = true" : ""}, isPremounting = ${isPremounting}, isPostmounting = ${isPostmounting}, pauseWhenBuffering = ${pauseWhenBuffering}`,
+        why: action.why,
         mountTime
       });
       lastSeekDueToShift.current = lastSeek.current;
-      if (playing) {
-        if (playbackRate > 0) {
-          bufferUntilFirstFrame(shouldBeTime);
-        }
-        if (mediaRef.current.paused) {
-          playAndHandleNotAllowedError({
-            mediaRef,
-            mediaType,
-            onAutoPlayError,
-            logLevel,
-            mountTime,
-            reason: "player is playing but media tag is paused, and just seeked",
-            isPlayer: env.isPlayer
-          });
-        }
+      if (action.bufferUntilFirstFrame) {
+        bufferUntilFirstFrame(action.shouldBeTime);
       }
-      if (!onlyWarnForMediaSeekingError) {
-        warnAboutNonSeekableMedia(mediaRef.current, onlyWarnForMediaSeekingError ? "console-warning" : "console-error");
+      if (action.playReason !== null) {
+        playAndHandleNotAllowedError({
+          mediaRef,
+          mediaType,
+          onAutoPlayError,
+          logLevel,
+          mountTime,
+          reason: action.playReason,
+          isPlayer: env.isPlayer
+        });
+      }
+      if (action.warnAboutNonSeekable) {
+        warnAboutNonSeekableMedia(current, "console-error");
       }
       return;
     }
-    const seekThreshold = playing ? 0.15 : 0.01;
-    const makesSenseToSeek = Math.abs(mediaRef.current.currentTime - shouldBeTime) > seekThreshold;
-    const isMediaTagBufferingOrStalled = isMediaTagBuffering || isBuffering();
-    const isSomethingElseBuffering = buffering.buffering.current && !isMediaTagBufferingOrStalled;
-    if (!playing || isSomethingElseBuffering) {
-      if (makesSenseToSeek) {
+    if (action.type === "seek-if-not-playing") {
+      if (action.why !== null) {
         lastSeek.current = seek({
-          mediaRef: mediaRef.current,
-          time: shouldBeTime,
+          mediaRef: current,
+          time: action.shouldBeTime,
           logLevel,
-          why: `not playing or something else is buffering. time offset is over seek threshold (${seekThreshold})`,
+          why: action.why,
           mountTime
         });
       }
       return;
     }
-    if (!playing || buffering.buffering.current) {
-      return;
-    }
-    const pausedCondition = mediaRef.current.paused && !mediaRef.current.ended;
-    const firstFrameCondition = absoluteFrame === 0;
-    if (pausedCondition || firstFrameCondition) {
-      const reason = pausedCondition ? "media tag is paused" : "absolute frame is 0";
-      if (makesSenseToSeek) {
-        lastSeek.current = seek({
-          mediaRef: mediaRef.current,
-          time: shouldBeTime,
-          logLevel,
-          why: `is over timeshift threshold (threshold = ${seekThreshold}) and ${reason}`,
-          mountTime
-        });
-      }
-      playAndHandleNotAllowedError({
-        mediaRef,
-        mediaType,
-        onAutoPlayError,
+    if (action.why !== null) {
+      lastSeek.current = seek({
+        mediaRef: current,
+        time: action.shouldBeTime,
         logLevel,
-        mountTime,
-        reason: `player is playing and ${reason}`,
-        isPlayer: env.isPlayer
+        why: action.why,
+        mountTime
       });
-      if (!isVariableFpsVideo && playbackRate > 0) {
-        bufferUntilFirstFrame(shouldBeTime);
-      }
+    }
+    playAndHandleNotAllowedError({
+      mediaRef,
+      mediaType,
+      onAutoPlayError,
+      logLevel,
+      mountTime,
+      reason: action.playReason,
+      isPlayer: env.isPlayer
+    });
+    if (action.bufferUntilFirstFrame) {
+      bufferUntilFirstFrame(action.shouldBeTime);
     }
   }, [
     absoluteFrame,
@@ -265004,7 +270193,7 @@ var useMediaTag = ({
   isPremounting,
   isPostmounting
 }) => {
-  const { audioAndVideoTags, imperativePlaying } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(TimelineContext);
+  const { audioAndVideoTags, imperativePlaying } = useTimelineContext();
   const logLevel = useLogLevel();
   const mountTime = useMountTime();
   const env = useRemotionEnvironment();
@@ -265031,7 +270220,7 @@ var useMediaTag = ({
     };
     audioAndVideoTags.current.push(tag);
     return () => {
-      audioAndVideoTags.current = audioAndVideoTags.current.filter((a) => a.id !== id);
+      audioAndVideoTags.current = audioAndVideoTags.current.filter((a2) => a2.id !== id);
     };
   }, [
     audioAndVideoTags,
@@ -265051,11 +270240,11 @@ var useMediaTag = ({
 // src/volume-position-state.ts
 
 var MediaVolumeContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
-  mediaMuted: false,
+  playerMuted: false,
   mediaVolume: 1
 });
 var SetMediaVolumeContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
-  setMediaMuted: () => {
+  setPlayerMuted: () => {
     throw new Error("default");
   },
   setMediaVolume: () => {
@@ -265069,12 +270258,12 @@ var useMediaVolumeState = () => {
     return [mediaVolume, setMediaVolume];
   }, [mediaVolume, setMediaVolume]);
 };
-var useMediaMutedState = () => {
-  const { mediaMuted } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(MediaVolumeContext);
-  const { setMediaMuted } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SetMediaVolumeContext);
+var usePlayerMutedState = () => {
+  const { playerMuted } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(MediaVolumeContext);
+  const { setPlayerMuted } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SetMediaVolumeContext);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return [mediaMuted, setMediaMuted];
-  }, [mediaMuted, setMediaMuted]);
+    return [playerMuted, setPlayerMuted];
+  }, [playerMuted, setPlayerMuted]);
 };
 
 // src/volume-safeguard.ts
@@ -265096,6 +270285,7 @@ var AudioForDevelopmentForwardRefFunction = (props, ref) => {
     volume,
     muted,
     playbackRate,
+    preservePitch,
     shouldPreMountAudioTags,
     src,
     onDuration,
@@ -265108,7 +270298,6 @@ var AudioForDevelopmentForwardRefFunction = (props, ref) => {
     pauseWhenBuffering,
     showInTimeline,
     loopVolumeCurveBehavior,
-    stack,
     crossOrigin,
     delayRenderRetries,
     delayRenderTimeoutInMilliseconds,
@@ -265124,16 +270313,14 @@ var AudioForDevelopmentForwardRefFunction = (props, ref) => {
     throw new Error("typecheck error");
   }
   const [mediaVolume] = useMediaVolumeState();
-  const [mediaMuted] = useMediaMutedState();
+  const [playerMuted] = usePlayerMutedState();
   const volumePropFrame = useFrameForVolumeProp(loopVolumeCurveBehavior ?? "repeat");
-  const { hidden } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceVisibilityToggleContext);
   if (!src) {
     throw new TypeError("No 'src' was passed to <Html5Audio>.");
   }
   const preloadedSrc = usePreload(src);
   const sequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
   const [timelineId] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => String(Math.random()));
-  const isSequenceHidden = hidden[timelineId] ?? false;
   const userPreferredVolume = evaluateVolume({
     frame: volumePropFrame,
     volume,
@@ -265142,11 +270329,12 @@ var AudioForDevelopmentForwardRefFunction = (props, ref) => {
   warnAboutTooHighVolume(userPreferredVolume);
   const crossOriginValue = getCrossOriginValue({
     crossOrigin,
-    requestsVideoFrame: false
+    requestsVideoFrame: false,
+    isClientSideRendering: false
   });
   const propsToPass = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     return {
-      muted: muted || mediaMuted || isSequenceHidden || userPreferredVolume <= 0,
+      muted: muted || playerMuted || userPreferredVolume <= 0,
       src: preloadedSrc,
       loop: _remotionInternalNativeLoopPassed,
       crossOrigin: crossOriginValue,
@@ -265154,8 +270342,7 @@ var AudioForDevelopmentForwardRefFunction = (props, ref) => {
     };
   }, [
     _remotionInternalNativeLoopPassed,
-    isSequenceHidden,
-    mediaMuted,
+    playerMuted,
     muted,
     nativeProps,
     preloadedSrc,
@@ -265170,15 +270357,19 @@ var AudioForDevelopmentForwardRefFunction = (props, ref) => {
     props.muted,
     props.loop
   ]);
-  const context = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SharedAudioContext);
-  if (!context) {
-    throw new Error("SharedAudioContext not found");
-  }
-  const { el: audioRef, mediaElementSourceNode } = useSharedAudio({
+  const {
+    el: audioRef,
+    mediaElementSourceNode,
+    cleanupOnMediaTagUnmount
+  } = useSharedAudio({
     aud: propsToPass,
     audioId: id,
-    premounting: Boolean(sequenceContext?.premounting)
+    premounting: Boolean(sequenceContext?.premounting),
+    postmounting: Boolean(sequenceContext?.postmounting)
   });
+  const getStack = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
+    return _remotionInternalStack ?? null;
+  }, [_remotionInternalStack]);
   useMediaInTimeline({
     volume,
     mediaVolume,
@@ -265187,17 +270378,20 @@ var AudioForDevelopmentForwardRefFunction = (props, ref) => {
     playbackRate: playbackRate ?? 1,
     displayName: name ?? null,
     id: timelineId,
-    stack: _remotionInternalStack,
+    getStack,
     showInTimeline,
     premountDisplay: sequenceContext?.premountDisplay ?? null,
     postmountDisplay: sequenceContext?.postmountDisplay ?? null,
-    loopDisplay: undefined
+    loopDisplay: undefined,
+    documentationLink: "https://www.remotion.dev/docs/html5-audio",
+    refForOutline: null
   });
   useMediaPlayback({
     mediaRef: audioRef,
     src,
     mediaType: "audio",
     playbackRate: playbackRate ?? 1,
+    preservePitch,
     onlyWarnForMediaSeekingError: false,
     acceptableTimeshift: acceptableTimeShiftInSeconds ?? null,
     isPremounting: Boolean(sequenceContext?.premounting),
@@ -265220,6 +270414,14 @@ var AudioForDevelopmentForwardRefFunction = (props, ref) => {
     volume: userPreferredVolume,
     shouldUseWebAudioApi: useWebAudioApi ?? false
   });
+  const effectToUse = react__WEBPACK_IMPORTED_MODULE_0__.useInsertionEffect ?? react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect;
+  effectToUse(() => {
+    return () => {
+      requestAnimationFrame(() => {
+        cleanupOnMediaTagUnmount();
+      });
+    };
+  }, [cleanupOnMediaTagUnmount]);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(ref, () => {
     return audioRef.current;
   }, [audioRef]);
@@ -265245,7 +270447,7 @@ var AudioForDevelopmentForwardRefFunction = (props, ref) => {
   if (initialShouldPreMountAudioElements) {
     return null;
   }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("audio", {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("audio", {
     ref: audioRef,
     preload: "metadata",
     crossOrigin: crossOriginValue,
@@ -265275,6 +270477,7 @@ var AudioForRenderingRefForwardingFunction = (props, ref) => {
     loopVolumeCurveBehavior,
     pauseWhenBuffering,
     audioStreamIndex,
+    preservePitch: _preservePitch,
     ...nativeProps
   } = props;
   const absoluteFrame = useTimelinePosition();
@@ -265320,7 +270523,7 @@ var AudioForRenderingRefForwardingFunction = (props, ref) => {
       mediaFrame: frame,
       playbackRate: props.playbackRate ?? 1,
       toneFrequency: toneFrequency ?? 1,
-      audioStartFrame: Math.max(0, -(sequenceContext?.relativeFrom ?? 0)),
+      audioStartFrame: Math.max(0, -(sequenceContext?.cumulatedNegativeFrom ?? 0)),
       audioStreamIndex: audioStreamIndex ?? 0
     });
     return () => unregisterRenderAsset(id);
@@ -265337,7 +270540,7 @@ var AudioForRenderingRefForwardingFunction = (props, ref) => {
     playbackRate,
     props.playbackRate,
     toneFrequency,
-    sequenceContext?.relativeFrom,
+    sequenceContext?.cumulatedNegativeFrom,
     audioStreamIndex
   ]);
   const { src } = props;
@@ -265382,7 +270585,7 @@ var AudioForRenderingRefForwardingFunction = (props, ref) => {
   if (!needsToRenderAudioTag) {
     return null;
   }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("audio", {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("audio", {
     ref: audioRef,
     ...nativeProps,
     onError: onNativeError
@@ -265390,25 +270593,34 @@ var AudioForRenderingRefForwardingFunction = (props, ref) => {
 };
 var AudioForRendering = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(AudioForRenderingRefForwardingFunction);
 
-// src/audio/Audio.tsx
+// src/audio/html5-audio.tsx
 
 var AudioRefForwardingFunction = (props, ref) => {
-  const audioContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SharedAudioContext);
+  const audioTagsContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SharedAudioTagsContext);
+  const propsWithFreeze = props;
   const {
     startFrom,
     endAt,
     trimBefore,
     trimAfter,
     name,
-    stack,
+    _remotionInternalStack,
     pauseWhenBuffering,
     showInTimeline,
     onError: onRemotionError,
+    freeze,
     ...otherProps
-  } = props;
-  const { loop, ...propsOtherThanLoop } = props;
+  } = propsWithFreeze;
+  const { loop, freeze: _freeze, ...propsOtherThanLoop } = propsWithFreeze;
   const { fps } = useVideoConfig();
   const environment = useRemotionEnvironment();
+  const shouldPauseWhenBuffering = resolveV5Default(pauseWhenBuffering);
+  if (environment.isClientSideRendering) {
+    throw new Error("<Html5Audio> is not supported in @remotion/web-renderer. Use <Audio> from @remotion/media instead. See https://remotion.dev/docs/client-side-rendering/limitations");
+  }
+  if (typeof freeze !== "undefined") {
+    throw new TypeError('The "freeze" prop is not supported on <Html5Audio />. Use <Sequence freeze={...}> to freeze media playback.');
+  }
   const { durations, setDurations } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(DurationsContext);
   if (typeof props.src !== "string") {
     throw new TypeError(`The \`<Html5Audio>\` tag requires a string for \`src\`, but got ${JSON.stringify(props.src)} instead.`);
@@ -265441,14 +270653,14 @@ var AudioRefForwardingFunction = (props, ref) => {
   });
   if (loop && durationFetched !== undefined) {
     if (!Number.isFinite(durationFetched)) {
-      return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Html5Audio, {
+      return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Html5Audio, {
         ...propsOtherThanLoop,
         ref,
         _remotionInternalNativeLoopPassed: true
       });
     }
     const duration = durationFetched * fps;
-    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Loop, {
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Loop, {
       layout: "none",
       durationInFrames: calculateMediaDuration({
         trimAfter: trimAfterValue,
@@ -265456,7 +270668,7 @@ var AudioRefForwardingFunction = (props, ref) => {
         playbackRate: props.playbackRate ?? 1,
         trimBefore: trimBeforeValue
       }),
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Html5Audio, {
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Html5Audio, {
         ...propsOtherThanLoop,
         ref,
         _remotionInternalNativeLoopPassed: true
@@ -265464,23 +270676,27 @@ var AudioRefForwardingFunction = (props, ref) => {
     });
   }
   if (typeof trimBeforeValue !== "undefined" || typeof trimAfterValue !== "undefined") {
-    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Sequence, {
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
       layout: "none",
       from: 0 - (trimBeforeValue ?? 0),
       showInTimeline: false,
       durationInFrames: trimAfterValue,
       name,
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Html5Audio, {
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Html5Audio, {
         _remotionInternalNeedsDurationCalculation: Boolean(loop),
-        pauseWhenBuffering: pauseWhenBuffering ?? false,
+        pauseWhenBuffering: shouldPauseWhenBuffering,
         ...otherProps,
         ref
       })
     });
   }
-  validateMediaProps({ playbackRate: props.playbackRate, volume: props.volume }, "Html5Audio");
+  validateMediaProps({
+    playbackRate: props.playbackRate,
+    preservePitch: props.preservePitch,
+    volume: props.volume
+  }, "Html5Audio");
   if (environment.isRendering) {
-    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(AudioForRendering, {
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(AudioForRendering, {
       onDuration,
       ...props,
       ref,
@@ -265488,15 +270704,15 @@ var AudioRefForwardingFunction = (props, ref) => {
       _remotionInternalNeedsDurationCalculation: Boolean(loop)
     });
   }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(AudioForPreview, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(AudioForPreview, {
     _remotionInternalNativeLoopPassed: props._remotionInternalNativeLoopPassed ?? false,
-    _remotionInternalStack: stack ?? null,
-    shouldPreMountAudioTags: audioContext !== null && audioContext.numberOfAudioTags > 0,
+    _remotionInternalStack: _remotionInternalStack ?? null,
+    shouldPreMountAudioTags: audioTagsContext !== null && audioTagsContext.numberOfAudioTags > 0,
     ...props,
     ref,
     onNativeError: onError,
     onDuration,
-    pauseWhenBuffering: pauseWhenBuffering ?? false,
+    pauseWhenBuffering: shouldPauseWhenBuffering,
     _remotionInternalNeedsDurationCalculation: Boolean(loop),
     showInTimeline: showInTimeline ?? true
   });
@@ -265504,508 +270720,1128 @@ var AudioRefForwardingFunction = (props, ref) => {
 var Html5Audio = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(AudioRefForwardingFunction);
 addSequenceStackTraces(Html5Audio);
 var Audio = Html5Audio;
-// src/Composition.tsx
+// src/effects/Solid.tsx
 
 
-
-// src/Folder.tsx
-
-
-// src/validation/validate-folder-name.ts
-var getRegex = () => /^([a-zA-Z0-9-\u4E00-\u9FFF])+$/g;
-var isFolderNameValid = (name) => name.match(getRegex());
-var validateFolderName = (name) => {
-  if (name === undefined || name === null) {
-    throw new TypeError("You must pass a name to a <Folder />.");
+var resolveSolidPixelDensity = (pixelDensity) => {
+  if (pixelDensity === undefined) {
+    return 1;
   }
-  if (typeof name !== "string") {
-    throw new TypeError(`The "name" you pass into <Folder /> must be a string. Got: ${typeof name}`);
+  if (typeof pixelDensity !== "number" || !Number.isFinite(pixelDensity) || pixelDensity <= 0) {
+    throw new Error(`<Solid>: \`pixelDensity\` must be a positive finite number. Received: ${String(pixelDensity)}.`);
   }
-  if (!isFolderNameValid(name)) {
-    throw new Error(`Folder name can only contain a-z, A-Z, 0-9 and -. You passed ${name}`);
-  }
+  return pixelDensity;
 };
-var invalidFolderNameErrorMessage = (/* unused pure expression or super */ null && (`Folder name must match ${String(getRegex())}`));
-
-// src/Folder.tsx
-
-var FolderContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)({
-  folderName: null,
-  parentName: null
-});
-var Folder = ({ name, children }) => {
-  const parent = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(FolderContext);
-  const { registerFolder, unregisterFolder } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionSetters);
-  validateFolderName(name);
-  const parentNameArr = [parent.parentName, parent.folderName].filter(truthy);
-  const parentName = parentNameArr.length === 0 ? null : parentNameArr.join("/");
-  const value = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      folderName: name,
-      parentName
-    };
-  }, [name, parentName]);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    registerFolder(name, parentName);
-    return () => {
-      unregisterFolder(name, parentName);
-    };
-  }, [name, parent.folderName, parentName, registerFolder, unregisterFolder]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(FolderContext.Provider, {
-    value,
-    children
-  });
+var solidSchema = {
+  ...baseSchema,
+  color: {
+    type: "color",
+    default: "transparent",
+    description: "Color"
+  },
+  width: {
+    type: "number",
+    min: 1,
+    step: 1,
+    default: 1920,
+    description: "Width",
+    hiddenFromList: false
+  },
+  height: {
+    type: "number",
+    min: 1,
+    step: 1,
+    default: 1080,
+    description: "Height",
+    hiddenFromList: false
+  },
+  pixelDensity: {
+    type: "number",
+    min: 1,
+    max: 3,
+    step: 0.1,
+    default: 1,
+    description: "Pixel density",
+    hiddenFromList: false
+  },
+  ...transformSchema,
+  ...backgroundSchema,
+  ...borderSchema,
+  ...borderRadiusSchema,
+  ...cropSchema
 };
-
-// src/loading-indicator.tsx
-
-var rotate = {
-  transform: `rotate(90deg)`
-};
-var ICON_SIZE = 40;
-var label = {
-  color: "white",
-  fontSize: 14,
-  fontFamily: "sans-serif"
-};
-var container = {
-  justifyContent: "center",
-  alignItems: "center"
-};
-var Loading = () => {
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsxs)(AbsoluteFill, {
-    style: container,
-    id: "remotion-comp-loading",
-    children: [
-      /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("style", {
-        type: "text/css",
-        children: `
-				@keyframes anim {
-					from {
-						opacity: 0
-					}
-					to {
-						opacity: 1
-					}
-				}
-				#remotion-comp-loading {
-					animation: anim 2s;
-					animation-fill-mode: forwards;
-				}
-			`
-      }),
-      /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("svg", {
-        width: ICON_SIZE,
-        height: ICON_SIZE,
-        viewBox: "-100 -100 400 400",
-        style: rotate,
-        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("path", {
-          fill: "#555",
-          stroke: "#555",
-          strokeWidth: "100",
-          strokeLinejoin: "round",
-          d: "M 2 172 a 196 100 0 0 0 195 5 A 196 240 0 0 0 100 2.259 A 196 240 0 0 0 2 172 z"
-        })
-      }),
-      /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsxs)("p", {
-        style: label,
-        children: [
-          "Resolving ",
-          "<Suspense>",
-          "..."
-        ]
-      })
-    ]
-  });
-};
-
-// src/portal-node.ts
-var _portalNode = null;
-var portalNode = () => {
-  if (!_portalNode) {
-    if (typeof document === "undefined") {
-      throw new Error("Tried to call an API that only works in the browser from outside the browser");
-    }
-    _portalNode = document.createElement("div");
-    _portalNode.style.position = "absolute";
-    _portalNode.style.top = "0px";
-    _portalNode.style.left = "0px";
-    _portalNode.style.right = "0px";
-    _portalNode.style.bottom = "0px";
-    _portalNode.style.width = "100%";
-    _portalNode.style.height = "100%";
-    _portalNode.style.display = "flex";
-    _portalNode.style.flexDirection = "column";
-    const containerNode = document.createElement("div");
-    containerNode.style.position = "fixed";
-    containerNode.style.top = -999999 + "px";
-    containerNode.appendChild(_portalNode);
-    document.body.appendChild(containerNode);
-  }
-  return _portalNode;
-};
-
-// src/use-lazy-component.ts
-
-var useLazyComponent = ({
-  compProps,
-  componentName,
-  noSuspense
-}) => {
-  const lazy = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    if ("component" in compProps) {
-      if (typeof document === "undefined" || noSuspense) {
-        return compProps.component;
-      }
-      if (typeof compProps.component === "undefined") {
-        throw new Error(`A value of \`undefined\` was passed to the \`component\` prop. Check the value you are passing to the <${componentName}/> component.`);
-      }
-      return compProps.component;
-    }
-    if ("lazyComponent" in compProps && typeof compProps.lazyComponent !== "undefined") {
-      if (typeof compProps.lazyComponent === "undefined") {
-        throw new Error(`A value of \`undefined\` was passed to the \`lazyComponent\` prop. Check the value you are passing to the <${componentName}/> component.`);
-      }
-      return react__WEBPACK_IMPORTED_MODULE_0__.lazy(compProps.lazyComponent);
-    }
-    throw new Error("You must pass either 'component' or 'lazyComponent'");
-  }, [compProps.component, compProps.lazyComponent]);
-  return lazy;
-};
-
-// src/validation/validate-composition-id.ts
-var getRegex2 = () => /^([a-zA-Z0-9-\u4E00-\u9FFF])+$/g;
-var isCompositionIdValid = (id) => id.match(getRegex2());
-var validateCompositionId = (id) => {
-  if (!isCompositionIdValid(id)) {
-    throw new Error(`Composition id can only contain a-z, A-Z, 0-9, CJK characters and -. You passed ${id}`);
-  }
-};
-var invalidCompositionErrorMessage = `Composition ID must match ${String(getRegex2())}`;
-
-// src/validation/validate-default-props.ts
-var validateDefaultAndInputProps = (defaultProps, name, compositionId) => {
-  if (!defaultProps) {
-    return;
-  }
-  if (typeof defaultProps !== "object") {
-    throw new Error(`"${name}" must be an object, but you passed a value of type ${typeof defaultProps}`);
-  }
-  if (Array.isArray(defaultProps)) {
-    throw new Error(`"${name}" must be an object, an array was passed ${compositionId ? `for composition "${compositionId}"` : ""}`);
-  }
-};
-
-// src/Composition.tsx
-
-var Fallback = () => {
-  const { continueRender: continueRender2, delayRender: delayRender2 } = useDelayRender();
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    const fallback = delayRender2("Waiting for Root component to unsuspend");
-    return () => continueRender2(fallback);
-  }, [continueRender2, delayRender2]);
-  return null;
-};
-var InnerComposition = ({
+var SolidInner = ({
+  color,
   width,
   height,
-  fps,
-  durationInFrames,
-  id,
-  defaultProps,
-  schema,
-  ...compProps
+  effects = [],
+  className,
+  style,
+  pixelDensity,
+  overrideId,
+  reference
 }) => {
-  const compManager = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionSetters);
-  const { registerComposition, unregisterComposition } = compManager;
-  const video = useVideo();
-  const lazy = useLazyComponent({
-    compProps,
-    componentName: "Composition",
-    noSuspense: false
+  const { delayRender: delayRender2, continueRender: continueRender2, cancelRender: cancelRender2 } = useDelayRender();
+  const resolvedPixelDensity = resolveSolidPixelDensity(pixelDensity);
+  const canvasWidth = Math.ceil(width * resolvedPixelDensity);
+  const canvasHeight = Math.ceil(height * resolvedPixelDensity);
+  const [outputCanvas, setOutputCanvas] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+  const memoizedEffects = useMemoizedEffects({
+    effects,
+    overrideId: overrideId ?? null
   });
-  const nonce = useNonce();
-  const isPlayer = useIsPlayer();
-  const environment = useRemotionEnvironment();
-  const canUseComposition = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CanUseRemotionHooks);
-  if (typeof window !== "undefined") {
-    window.remotion_seenCompositionIds = Array.from(new Set([...window.remotion_seenCompositionIds ?? [], id]));
-  }
-  if (canUseComposition) {
-    if (isPlayer) {
-      throw new Error("<Composition> was mounted inside the `component` that was passed to the <Player>. See https://remotion.dev/docs/wrong-composition-mount for help.");
+  const sourceCanvas = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (typeof document === "undefined") {
+      return null;
     }
-    throw new Error("<Composition> mounted inside another composition. See https://remotion.dev/docs/wrong-composition-mount for help.");
-  }
-  const { folderName, parentName } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(FolderContext);
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    return canvas;
+  }, []);
+  const chainState = useEffectChainState();
+  const canvasRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((canvas) => {
+    setOutputCanvas(canvas);
+    if (typeof reference === "function") {
+      reference(canvas);
+    } else if (reference) {
+      reference.current = canvas;
+    }
+  }, [reference]);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    if (!id) {
-      throw new Error("No id for composition passed.");
+    if (!outputCanvas || !sourceCanvas) {
+      return;
     }
-    validateCompositionId(id);
-    validateDefaultAndInputProps(defaultProps, "defaultProps", id);
-    registerComposition({
-      durationInFrames: durationInFrames ?? undefined,
-      fps: fps ?? undefined,
-      height: height ?? undefined,
-      width: width ?? undefined,
-      id,
-      folderName,
-      component: lazy,
-      defaultProps: serializeThenDeserializeInStudio(defaultProps ?? {}),
-      nonce,
-      parentFolderName: parentName,
-      schema: schema ?? null,
-      calculateMetadata: compProps.calculateMetadata ?? null
+    const handle = delayRender2("Solid effect chain");
+    if (!chainState) {
+      continueRender2(handle);
+      return () => {
+        continueRender2(handle);
+      };
+    }
+    const ctx = sourceCanvas.getContext("2d", { colorSpace: "srgb" });
+    if (!ctx) {
+      cancelRender2(new Error("Failed to acquire 2D context for <Solid> source"));
+      return;
+    }
+    ctx.clearRect(0, 0, 1, 1);
+    if (color !== undefined) {
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 1, 1);
+    }
+    runEffectChain({
+      state: chainState.get(canvasWidth, canvasHeight),
+      source: sourceCanvas,
+      effects: memoizedEffects,
+      output: outputCanvas,
+      width: canvasWidth,
+      height: canvasHeight
+    }).then((completed) => {
+      if (completed) {
+        continueRender2(handle);
+      }
+    }).catch((err) => {
+      cancelRender2(err);
     });
     return () => {
-      unregisterComposition(id);
+      continueRender2(handle);
     };
   }, [
-    durationInFrames,
-    fps,
-    height,
-    lazy,
-    id,
-    folderName,
-    defaultProps,
-    width,
-    nonce,
-    parentName,
-    schema,
-    compProps.calculateMetadata,
-    registerComposition,
-    unregisterComposition
+    color,
+    outputCanvas,
+    sourceCanvas,
+    chainState,
+    canvasWidth,
+    canvasHeight,
+    delayRender2,
+    continueRender2,
+    cancelRender2,
+    memoizedEffects
   ]);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    window.dispatchEvent(new CustomEvent(PROPS_UPDATED_EXTERNALLY, {
-      detail: {
-        resetUnsaved: id
-      }
-    }));
-  }, [defaultProps, id]);
-  const resolved = useResolvedVideoConfig(id);
-  if (environment.isStudio && video && video.component === lazy) {
-    const Comp = lazy;
-    if (resolved === null || resolved.type !== "success" && resolved.type !== "success-and-refreshing") {
-      return null;
-    }
-    return (0,react_dom__WEBPACK_IMPORTED_MODULE_2__.createPortal)(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(CanUseRemotionHooksProvider, {
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(react__WEBPACK_IMPORTED_MODULE_0__.Suspense, {
-        fallback: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Loading, {}),
-        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Comp, {
-          ...resolved.result.props ?? {}
-        })
-      })
-    }), portalNode());
-  }
-  if (environment.isRendering && video && video.component === lazy) {
-    const Comp = lazy;
-    if (resolved === null || resolved.type !== "success" && resolved.type !== "success-and-refreshing") {
-      return null;
-    }
-    return (0,react_dom__WEBPACK_IMPORTED_MODULE_2__.createPortal)(/* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(CanUseRemotionHooksProvider, {
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(react__WEBPACK_IMPORTED_MODULE_0__.Suspense, {
-        fallback: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Fallback, {}),
-        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Comp, {
-          ...resolved.result.props ?? {}
-        })
-      })
-    }), portalNode());
-  }
-  return null;
-};
-var Composition = (props2) => {
-  const { onlyRenderComposition } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CompositionSetters);
-  if (onlyRenderComposition && onlyRenderComposition !== props2.id) {
-    return null;
-  }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(InnerComposition, {
-    ...props2
+  const canvasStyle = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      width,
+      height,
+      ...style ?? {}
+    };
+  }, [height, style, width]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("canvas", {
+    ref: canvasRef,
+    width: canvasWidth,
+    height: canvasHeight,
+    className,
+    style: canvasStyle
   });
 };
-// src/bezier.ts
-var NEWTON_ITERATIONS = 4;
-var NEWTON_MIN_SLOPE = 0.001;
-var SUBDIVISION_PRECISION = 0.0000001;
-var SUBDIVISION_MAX_ITERATIONS = 10;
-var kSplineTableSize = 11;
-var kSampleStepSize = 1 / (kSplineTableSize - 1);
-var float32ArraySupported = typeof Float32Array === "function";
-function a(aA1, aA2) {
-  return 1 - 3 * aA2 + 3 * aA1;
-}
-function b(aA1, aA2) {
-  return 3 * aA2 - 6 * aA1;
-}
-function c(aA1) {
-  return 3 * aA1;
-}
-function calcBezier(aT, aA1, aA2) {
-  return ((a(aA1, aA2) * aT + b(aA1, aA2)) * aT + c(aA1)) * aT;
-}
-function getSlope(aT, aA1, aA2) {
-  return 3 * a(aA1, aA2) * aT * aT + 2 * b(aA1, aA2) * aT + c(aA1);
-}
-function binarySubdivide({
-  aX,
-  _aA,
-  _aB,
-  mX1,
-  mX2
-}) {
-  let currentX;
-  let currentT;
-  let i = 0;
-  let aA = _aA;
-  let aB = _aB;
-  do {
-    currentT = aA + (aB - aA) / 2;
-    currentX = calcBezier(currentT, mX1, mX2) - aX;
-    if (currentX > 0) {
-      aB = currentT;
-    } else {
-      aA = currentT;
-    }
-  } while (Math.abs(currentX) > SUBDIVISION_PRECISION && ++i < SUBDIVISION_MAX_ITERATIONS);
-  return currentT;
-}
-function newtonRaphsonIterate(aX, _aGuessT, mX1, mX2) {
-  let aGuessT = _aGuessT;
-  for (let i = 0;i < NEWTON_ITERATIONS; ++i) {
-    const currentSlope = getSlope(aGuessT, mX1, mX2);
-    if (currentSlope === 0) {
-      return aGuessT;
-    }
-    const currentX = calcBezier(aGuessT, mX1, mX2) - aX;
-    aGuessT -= currentX / currentSlope;
+var SolidOuter = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
+  effects = [],
+  controls,
+  color,
+  height,
+  width,
+  className,
+  durationInFrames,
+  style,
+  name,
+  from,
+  trimBefore,
+  freeze,
+  hidden,
+  showInTimeline,
+  pixelDensity,
+  cropLeft,
+  cropRight,
+  cropTop,
+  cropBottom,
+  ...props2
+}, ref) => {
+  const memoizedEffectDefinitions = useMemoizedEffectDefinitions(effects);
+  const actualRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(ref, () => {
+    return actualRef.current;
+  }, []);
+  const croppedStyle = useCropStyle({
+    cropLeft,
+    cropRight,
+    cropTop,
+    cropBottom,
+    style: style ?? null,
+    componentName: "<Solid />"
+  });
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
+    layout: "none",
+    from,
+    trimBefore,
+    freeze,
+    hidden,
+    showInTimeline,
+    controls,
+    _remotionInternalEffects: memoizedEffectDefinitions,
+    durationInFrames,
+    name: name ?? "<Solid>",
+    outlineRef: actualRef,
+    _remotionInternalDocumentationLink: "https://www.remotion.dev/docs/solid",
+    ...props2,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SolidInner, {
+      reference: actualRef,
+      overrideId: controls?.overrideId ?? null,
+      color,
+      height,
+      width,
+      className,
+      style: croppedStyle ?? undefined,
+      effects,
+      pixelDensity
+    })
+  });
+});
+var Solid = withInteractivitySchema({
+  Component: SolidOuter,
+  componentName: "<Solid>",
+  componentIdentity: "dev.remotion.remotion.Solid",
+  schema: solidSchema,
+  supportsEffects: true
+});
+Solid.displayName = "Solid";
+addSequenceStackTraces(Solid);
+// src/HtmlInCanvas.tsx
+
+
+var cachedSupport = null;
+var isHtmlInCanvasSupported = () => {
+  if (cachedSupport !== null) {
+    return cachedSupport;
   }
-  return aGuessT;
+  if (typeof document === "undefined") {
+    return false;
+  }
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  cachedSupport = typeof ctx?.drawElementImage === "function" && typeof canvas.requestPaint === "function" && typeof canvas.captureElementImage === "function" && "transferControlToOffscreen" in HTMLCanvasElement.prototype;
+  return cachedSupport;
+};
+var HTML_IN_CANVAS_UNSUPPORTED_MESSAGE = "HTML in Canvas is not supported. Two common causes: Chrome is older than version 148 (update Chrome), or the HTML-in-Canvas flag is disabled at chrome://flags/#canvas-draw-element (enable it and restart Chrome).";
+var MINIMUM_CHROME_VERSION_FOR_NESTED_HTML_IN_CANVAS = 152;
+var getChromeMajorVersion = () => {
+  if (typeof navigator === "undefined") {
+    return null;
+  }
+  const match = navigator.userAgent.match(/\b(?:HeadlessChrome|Chrome)\/(\d+)/);
+  if (!match) {
+    return null;
+  }
+  return Number(match[1]);
+};
+function assertHtmlInCanvasDimensions(width, height) {
+  if (typeof width !== "number" || typeof height !== "number") {
+    throw new Error(`HtmlInCanvas: \`width\` and \`height\` must be numbers. Received width=${String(width)}, height=${String(height)}.`);
+  }
+  if (!Number.isInteger(width) || width <= 0) {
+    throw new Error(`HtmlInCanvas: \`width\` must be a positive integer. Received: ${String(width)}.`);
+  }
+  if (!Number.isInteger(height) || height <= 0) {
+    throw new Error(`HtmlInCanvas: \`height\` must be a positive integer. Received: ${String(height)}.`);
+  }
 }
-function bezier(mX1, mY1, mX2, mY2) {
-  if (!(mX1 >= 0 && mX1 <= 1 && mX2 >= 0 && mX2 <= 1)) {
-    throw new Error("bezier x values must be in [0, 1] range");
+function resolveHtmlInCanvasPixelDensity(pixelDensity) {
+  if (pixelDensity === undefined) {
+    return 1;
   }
-  const sampleValues = float32ArraySupported ? new Float32Array(kSplineTableSize) : new Array(kSplineTableSize);
-  if (mX1 !== mY1 || mX2 !== mY2) {
-    for (let i = 0;i < kSplineTableSize; ++i) {
-      sampleValues[i] = calcBezier(i * kSampleStepSize, mX1, mX2);
-    }
+  if (typeof pixelDensity !== "number" || !Number.isFinite(pixelDensity) || pixelDensity <= 0) {
+    throw new Error(`HtmlInCanvas: \`pixelDensity\` must be a positive finite number. Received: ${String(pixelDensity)}.`);
   }
-  function getTForX(aX) {
-    let intervalStart = 0;
-    let currentSample = 1;
-    const lastSample = kSplineTableSize - 1;
-    for (;currentSample !== lastSample && sampleValues[currentSample] <= aX; ++currentSample) {
-      intervalStart += kSampleStepSize;
+  return pixelDensity;
+}
+var isMissingPaintRecordError = (error2) => {
+  return error2 instanceof DOMException && error2.name === "InvalidStateError";
+};
+var missingPaintRecordMessage = "HtmlInCanvas: Expected the element to be inside the viewport during rendering, but Chrome had no cached paint record for it.";
+var resizePaintTarget = ({
+  target,
+  width,
+  height
+}) => {
+  if (target.width !== width) {
+    target.width = width;
+  }
+  if (target.height !== height) {
+    target.height = height;
+  }
+};
+var defaultOnPaint = ({
+  canvas,
+  element,
+  elementImage
+}) => {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Failed to acquire 2D context for <HtmlInCanvas> canvas");
+  }
+  ctx.reset();
+  const transform = ctx.drawElementImage(elementImage, 0, 0);
+  element.style.transform = transform.toString();
+};
+var HtmlInCanvasAncestorContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(null);
+var HtmlInCanvasContent = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
+  width,
+  height,
+  effects,
+  children,
+  onPaint,
+  onInit,
+  pixelDensity,
+  controls,
+  style
+}, ref) => {
+  const ancestor = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(HtmlInCanvasAncestorContext);
+  assertHtmlInCanvasDimensions(width, height);
+  const chromeMajorVersion = getChromeMajorVersion();
+  if (ancestor && chromeMajorVersion !== null && chromeMajorVersion < MINIMUM_CHROME_VERSION_FOR_NESTED_HTML_IN_CANVAS) {
+    throw new Error(`Nested <HtmlInCanvas> components require Chrome ${MINIMUM_CHROME_VERSION_FOR_NESTED_HTML_IN_CANVAS} or newer, but the current browser is Chrome ${chromeMajorVersion}. Upgrade Chrome or avoid nesting components that use <HtmlInCanvas>, such as shapes with effects.`);
+  }
+  const resolvedPixelDensity = resolveHtmlInCanvasPixelDensity(pixelDensity);
+  const canvasWidth = Math.ceil(width * resolvedPixelDensity);
+  const canvasHeight = Math.ceil(height * resolvedPixelDensity);
+  const { delayRender: delayRender2, continueRender: continueRender2, cancelRender: cancelRender2 } = useDelayRender();
+  const { isClientSideRendering, isRendering } = useRemotionEnvironment();
+  const canRetryMissingPaintRecord = !isRendering || isClientSideRendering;
+  const usesDirectLayoutCanvas = onPaint === undefined && onInit === undefined;
+  if (!isHtmlInCanvasSupported()) {
+    cancelRender2(new Error(HTML_IN_CANVAS_UNSUPPORTED_MESSAGE));
+  }
+  const canvas2dRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const paintTargetRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const divRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const canvasSizeKey = `${width}x${height}@${resolvedPixelDensity}-${usesDirectLayoutCanvas ? "direct" : "offscreen"}`;
+  const setLayoutCanvasRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((node) => {
+    canvas2dRef.current = node;
+    if (typeof ref === "function") {
+      ref(node);
+    } else if (ref) {
+      ref.current = node;
     }
-    --currentSample;
-    const dist = (aX - sampleValues[currentSample]) / (sampleValues[currentSample + 1] - sampleValues[currentSample]);
-    const guessForT = intervalStart + dist * kSampleStepSize;
-    const initialSlope = getSlope(guessForT, mX1, mX2);
-    if (initialSlope >= NEWTON_MIN_SLOPE) {
-      return newtonRaphsonIterate(aX, guessForT, mX1, mX2);
+  }, [ref]);
+  const chainState = useEffectChainState();
+  const memoizedEffects = useMemoizedEffects({
+    effects,
+    overrideId: controls?.overrideId ?? null
+  });
+  const effectsRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(memoizedEffects);
+  effectsRef.current = memoizedEffects;
+  const onPaintRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(onPaint);
+  onPaintRef.current = onPaint;
+  const onInitRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(onInit);
+  onInitRef.current = onInit;
+  const initializedRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(false);
+  const onInitCleanupRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const unmountedRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(false);
+  const ancestorRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(ancestor);
+  ancestorRef.current = ancestor;
+  const onPaintCb = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(async () => {
+    const element = divRef.current;
+    if (!element) {
+      throw new Error("Canvas or scene element not found");
     }
-    if (initialSlope === 0) {
-      return guessForT;
+    const paintTarget = paintTargetRef.current;
+    if (!paintTarget) {
+      throw new Error("HtmlInCanvas: paint target is not ready because the canvas is remounting");
     }
-    return binarySubdivide({
-      aX,
-      _aA: intervalStart,
-      _aB: intervalStart + kSampleStepSize,
-      mX1,
-      mX2
+    resizePaintTarget({
+      target: paintTarget,
+      width: canvasWidth,
+      height: canvasHeight
     });
+    try {
+      const placeholderCanvas = canvas2dRef.current;
+      if (!placeholderCanvas) {
+        throw new Error("Canvas not found");
+      }
+      const handle = delayRender2("onPaint");
+      if (!initializedRef.current) {
+        const currentOnInit = onInitRef.current;
+        if (!currentOnInit) {
+          initializedRef.current = true;
+        } else {
+          let initImage;
+          try {
+            initImage = placeholderCanvas.captureElementImage(element);
+          } catch (error2) {
+            if (isMissingPaintRecordError(error2) && canRetryMissingPaintRecord) {
+              continueRender2(handle);
+              return;
+            }
+            if (isMissingPaintRecordError(error2)) {
+              throw new Error(missingPaintRecordMessage);
+            }
+            throw error2;
+          }
+          initializedRef.current = true;
+          try {
+            if (paintTarget instanceof HTMLCanvasElement) {
+              throw new Error("HtmlInCanvas: onInit requires an OffscreenCanvas paint target");
+            }
+            const cleanup = await currentOnInit({
+              canvas: paintTarget,
+              element,
+              elementImage: initImage,
+              pixelDensity: resolvedPixelDensity
+            });
+            if (typeof cleanup !== "function") {
+              throw new Error("HtmlInCanvas: when `onInit` is provided, it must return a cleanup function, or a Promise that resolves to one.");
+            }
+            if (unmountedRef.current) {
+              cleanup();
+            } else {
+              onInitCleanupRef.current = cleanup;
+            }
+          } finally {
+            initImage.close();
+          }
+        }
+      }
+      let elImage;
+      try {
+        elImage = placeholderCanvas.captureElementImage(element);
+      } catch (error2) {
+        if (isMissingPaintRecordError(error2) && canRetryMissingPaintRecord) {
+          continueRender2(handle);
+          return;
+        }
+        if (isMissingPaintRecordError(error2)) {
+          throw new Error(missingPaintRecordMessage);
+        }
+        throw error2;
+      }
+      try {
+        const currentOnPaint = onPaintRef.current;
+        if (currentOnPaint) {
+          if (paintTarget instanceof HTMLCanvasElement) {
+            throw new Error("HtmlInCanvas: onPaint requires an OffscreenCanvas paint target");
+          }
+          const paintResult = currentOnPaint({
+            canvas: paintTarget,
+            element,
+            elementImage: elImage,
+            pixelDensity: resolvedPixelDensity
+          });
+          if (paintResult) {
+            await paintResult;
+          }
+        } else {
+          defaultOnPaint({
+            canvas: paintTarget,
+            element,
+            elementImage: elImage,
+            pixelDensity: resolvedPixelDensity
+          });
+        }
+        await runEffectChain({
+          state: chainState.get(canvasWidth, canvasHeight),
+          source: paintTarget,
+          effects: effectsRef.current,
+          output: paintTarget,
+          width: canvasWidth,
+          height: canvasHeight
+        });
+      } finally {
+        elImage.close();
+      }
+      ancestorRef.current?.requestParentPaint();
+      continueRender2(handle);
+    } catch (error2) {
+      cancelRender2(error2);
+    }
+  }, [
+    canvasHeight,
+    canvasWidth,
+    chainState,
+    continueRender2,
+    cancelRender2,
+    delayRender2,
+    resolvedPixelDensity,
+    canRetryMissingPaintRecord
+  ]);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
+    const placeholder = canvas2dRef.current;
+    if (!placeholder) {
+      throw new Error("Canvas not found");
+    }
+    placeholder.layoutSubtree = true;
+    const paintTarget = usesDirectLayoutCanvas ? placeholder : placeholder.transferControlToOffscreen();
+    paintTargetRef.current = paintTarget;
+    resizePaintTarget({
+      target: paintTarget,
+      width: canvasWidth,
+      height: canvasHeight
+    });
+    initializedRef.current = false;
+    unmountedRef.current = false;
+    placeholder.addEventListener("paint", onPaintCb);
+    return () => {
+      placeholder.removeEventListener("paint", onPaintCb);
+      paintTargetRef.current = null;
+      initializedRef.current = false;
+      unmountedRef.current = true;
+      onInitCleanupRef.current?.();
+      onInitCleanupRef.current = null;
+    };
+  }, [
+    onPaintCb,
+    cancelRender2,
+    canvasWidth,
+    canvasHeight,
+    usesDirectLayoutCanvas
+  ]);
+  const onPaintChangedRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(false);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
+    if (!onPaintChangedRef.current) {
+      onPaintChangedRef.current = true;
+      return;
+    }
+    const canvas = canvas2dRef.current;
+    if (!canvas) {
+      return;
+    }
+    canvas.requestPaint?.();
+  }, [onPaint, memoizedEffects]);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
+    const canvas = canvas2dRef.current;
+    if (!canvas) {
+      return;
+    }
+    const handle = delayRender2("waiting for first paint after canvas resize");
+    canvas.addEventListener("paint", () => {
+      continueRender2(handle);
+    }, { once: true });
+    return () => {
+      continueRender2(handle);
+    };
+  }, [width, height, continueRender2, delayRender2, canvasSizeKey]);
+  const innerStyle = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      width,
+      height
+    };
+  }, [width, height]);
+  const canvasStyle = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      width,
+      height,
+      ...style ?? {}
+    };
+  }, [height, style, width]);
+  const ancestorValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      requestParentPaint: () => {
+        canvas2dRef.current?.requestPaint?.();
+      }
+    };
+  }, []);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(HtmlInCanvasAncestorContext.Provider, {
+    value: ancestorValue,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("canvas", {
+      ref: setLayoutCanvasRef,
+      width: canvasWidth,
+      height: canvasHeight,
+      style: canvasStyle,
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("div", {
+        ref: divRef,
+        style: innerStyle,
+        children
+      })
+    }, canvasSizeKey)
+  });
+});
+HtmlInCanvasContent.displayName = "HtmlInCanvasContent";
+var HtmlInCanvasInner = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
+  width,
+  height,
+  effects = [],
+  children,
+  onPaint,
+  onInit,
+  pixelDensity,
+  controls,
+  style,
+  cropLeft,
+  cropRight,
+  cropTop,
+  cropBottom,
+  durationInFrames,
+  name,
+  ...sequenceProps
+}, ref) => {
+  const memoizedEffectDefinitions = useMemoizedEffectDefinitions(effects);
+  const actualRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const setCanvasRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((node) => {
+    actualRef.current = node;
+    if (typeof ref === "function") {
+      ref(node);
+    } else if (ref) {
+      ref.current = node;
+    }
+  }, [ref]);
+  const croppedStyle = useCropStyle({
+    cropLeft,
+    cropRight,
+    cropTop,
+    cropBottom,
+    style: style ?? null,
+    componentName: "<HtmlInCanvas />"
+  });
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
+    durationInFrames,
+    name: name ?? "<HtmlInCanvas>",
+    _remotionInternalDocumentationLink: "https://www.remotion.dev/docs/remotion/html-in-canvas",
+    controls,
+    _remotionInternalEffects: memoizedEffectDefinitions,
+    outlineRef: actualRef,
+    layout: "none",
+    ...sequenceProps,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(HtmlInCanvasContent, {
+      ref: setCanvasRef,
+      width,
+      height,
+      effects,
+      onPaint,
+      onInit,
+      pixelDensity,
+      controls,
+      style: croppedStyle ?? undefined,
+      children
+    })
+  });
+});
+HtmlInCanvasInner.displayName = "HtmlInCanvas";
+var htmlInCanvasSchema = {
+  ...baseSchema,
+  pixelDensity: {
+    type: "number",
+    min: 1,
+    max: 3,
+    step: 0.1,
+    default: 1,
+    description: "Pixel density",
+    hiddenFromList: false
+  },
+  ...transformSchema,
+  ...backgroundSchema,
+  ...borderSchema,
+  ...borderRadiusSchema,
+  ...cropSchema
+};
+var HtmlInCanvasWrapped = withInteractivitySchema({
+  Component: HtmlInCanvasInner,
+  componentName: "<HtmlInCanvas>",
+  componentIdentity: "dev.remotion.remotion.HtmlInCanvas",
+  schema: htmlInCanvasSchema,
+  supportsEffects: true
+});
+var HtmlInCanvas = Object.assign(HtmlInCanvasWrapped, {
+  isSupported: isHtmlInCanvasSupported
+});
+HtmlInCanvas.displayName = "HtmlInCanvas";
+addSequenceStackTraces(HtmlInCanvas);
+// src/canvas-image/CanvasImage.tsx
+
+
+// src/truncate-src-for-label.ts
+function truncateSrcForLabel(src) {
+  if (typeof src !== "string") {
+    return String(src);
   }
-  return function(x) {
-    if (mX1 === mY1 && mX2 === mY2) {
-      return x;
-    }
-    if (x === 0) {
-      return 0;
-    }
-    if (x === 1) {
-      return 1;
-    }
-    return calcBezier(getTForX(x), mY1, mY2);
-  };
+  if (src.length > 100 && (src.startsWith("data:") || src.startsWith("blob:"))) {
+    return src.slice(0, 60) + "...[" + src.length + " chars total]";
+  }
+  return src;
 }
 
-// src/easing.ts
-class Easing {
-  static step0(n) {
-    return n > 0 ? 1 : 0;
-  }
-  static step1(n) {
-    return n >= 1 ? 1 : 0;
-  }
-  static linear(t) {
-    return t;
-  }
-  static ease(t) {
-    return Easing.bezier(0.42, 0, 1, 1)(t);
-  }
-  static quad(t) {
-    return t * t;
-  }
-  static cubic(t) {
-    return t * t * t;
-  }
-  static poly(n) {
-    return (t) => t ** n;
-  }
-  static sin(t) {
-    return 1 - Math.cos(t * Math.PI / 2);
-  }
-  static circle(t) {
-    return 1 - Math.sqrt(1 - t * t);
-  }
-  static exp(t) {
-    return 2 ** (10 * (t - 1));
-  }
-  static elastic(bounciness = 1) {
-    const p = bounciness * Math.PI;
-    return (t) => 1 - Math.cos(t * Math.PI / 2) ** 3 * Math.cos(t * p);
-  }
-  static back(s = 1.70158) {
-    return (t) => t * t * ((s + 1) * t - s);
-  }
-  static bounce(t) {
-    if (t < 1 / 2.75) {
-      return 7.5625 * t * t;
+// src/canvas-image/CanvasImage.tsx
+
+var canvasImageSchema = {
+  ...baseSchema,
+  ...cropSchema,
+  ...premountSchema,
+  fit: {
+    type: "enum",
+    default: "fill",
+    description: "Fit",
+    variants: {
+      fill: {},
+      contain: {},
+      cover: {}
     }
-    if (t < 2 / 2.75) {
-      const t2_ = t - 1.5 / 2.75;
-      return 7.5625 * t2_ * t2_ + 0.75;
+  },
+  ...transformSchema,
+  ...backgroundSchema,
+  ...borderSchema,
+  ...borderRadiusSchema
+};
+var makeAbortError = () => {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException("Image loading was aborted", "AbortError");
+  }
+  const error2 = new Error("Image loading was aborted");
+  error2.name = "AbortError";
+  return error2;
+};
+var loadImage = ({
+  src,
+  signal
+}) => {
+  return new Promise((resolve, reject) => {
+    const image = new Image;
+    let settled = false;
+    function cleanup() {
+      image.onload = null;
+      image.onerror = null;
     }
-    if (t < 2.5 / 2.75) {
-      const t2_ = t - 2.25 / 2.75;
-      return 7.5625 * t2_ * t2_ + 0.9375;
-    }
-    const t2 = t - 2.625 / 2.75;
-    return 7.5625 * t2 * t2 + 0.984375;
-  }
-  static bezier(x1, y1, x2, y2) {
-    return bezier(x1, y1, x2, y2);
-  }
-  static in(easing) {
-    return easing;
-  }
-  static out(easing) {
-    return (t) => 1 - easing(1 - t);
-  }
-  static inOut(easing) {
-    return (t) => {
-      if (t < 0.5) {
-        return easing(t * 2) / 2;
+    function settle(callback) {
+      if (settled) {
+        return;
       }
-      return 1 - easing((1 - t) * 2) / 2;
+      settled = true;
+      cleanup();
+      callback();
+    }
+    function onAbort() {
+      settle(() => reject(makeAbortError()));
+    }
+    image.onload = () => {
+      Promise.resolve(image.decode?.()).catch(() => {
+        return;
+      }).then(() => {
+        const imageWidth = image.naturalWidth || image.width;
+        const imageHeight = image.naturalHeight || image.height;
+        if (imageWidth <= 0 || imageHeight <= 0) {
+          settle(() => reject(new Error(`Could not determine dimensions for <CanvasImage> with src="${truncateSrcForLabel(src)}"`)));
+          return;
+        }
+        settle(() => resolve({ element: image, width: imageWidth, height: imageHeight }));
+      });
+    };
+    image.onerror = () => {
+      settle(() => reject(new Error(`Could not load <CanvasImage> with src="${truncateSrcForLabel(src)}"`)));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    image.crossOrigin = "anonymous";
+    image.src = src;
+  });
+};
+function exponentialBackoff(errorCount) {
+  return 1000 * 2 ** (errorCount - 1);
+}
+var waitForNextFrame = ({
+  onFrame
+}) => {
+  if (typeof requestAnimationFrame === "undefined") {
+    onFrame();
+    return () => {
+      return;
     };
   }
-}
-// src/v5-flag.ts
-var ENABLE_V5_BREAKING_CHANGES = false;
-
+  const frame = requestAnimationFrame(onFrame);
+  return () => cancelAnimationFrame(frame);
+};
+var CanvasImageContent = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
+  src,
+  width,
+  height,
+  fit = "fill",
+  effects,
+  controls,
+  onError,
+  className,
+  style,
+  id,
+  pauseWhenLoading,
+  maxRetries = 2,
+  delayRenderRetries,
+  delayRenderTimeoutInMilliseconds,
+  refForOutline,
+  ...canvasProps
+}, ref) => {
+  const { delayRender: delayRender2, continueRender: continueRender2, cancelRender: cancelRender2 } = useDelayRender();
+  const { delayPlayback } = useBufferState();
+  const [outputCanvas, setOutputCanvas] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+  const [loadedImage, setLoadedImage] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+  const actualSrc = usePreload(src);
+  const chainState = useEffectChainState();
+  const memoizedEffects = useMemoizedEffects({
+    effects,
+    overrideId: controls?.overrideId ?? null
+  });
+  const sequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
+  const pendingLoadDelayRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const [isLoadPending, setIsLoadPending] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
+  const isPremounting = Boolean(sequenceContext?.premounting);
+  const isPostmounting = Boolean(sequenceContext?.postmounting);
+  const continuePendingLoadDelay = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(({ markAsReady }) => {
+    const pending = pendingLoadDelayRef.current;
+    if (!pending || pending.continued) {
+      return;
+    }
+    pending.continued = true;
+    if (markAsReady) {
+      setIsLoadPending(false);
+    }
+    continueRender2(pending.handle);
+    pendingLoadDelayRef.current = null;
+  }, [continueRender2]);
+  const sourceCanvas = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    if (typeof document === "undefined") {
+      return null;
+    }
+    return document.createElement("canvas");
+  }, []);
+  const canvasRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((canvas) => {
+    setOutputCanvas(canvas);
+    if (refForOutline) {
+      refForOutline.current = canvas;
+    }
+    if (typeof ref === "function") {
+      ref(canvas);
+    } else if (ref) {
+      ref.current = canvas;
+    }
+  }, [ref, refForOutline]);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
+    if (!pauseWhenLoading || !isLoadPending || isPremounting || isPostmounting) {
+      return;
+    }
+    return delayPlayback().unblock;
+  }, [
+    delayPlayback,
+    isLoadPending,
+    isPostmounting,
+    isPremounting,
+    pauseWhenLoading
+  ]);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
+    const handle = delayRender2(`Rendering <CanvasImage> with src="${truncateSrcForLabel(actualSrc)}"`, {
+      retries: delayRenderRetries ?? undefined,
+      timeoutInMilliseconds: delayRenderTimeoutInMilliseconds ?? undefined
+    });
+    const controller = new AbortController;
+    let cancelled = false;
+    let errorCount = 0;
+    let timeoutId = null;
+    setLoadedImage(null);
+    setIsLoadPending(true);
+    pendingLoadDelayRef.current = {
+      handle,
+      continued: false
+    };
+    const attemptLoad = () => {
+      loadImage({ src: actualSrc, signal: controller.signal }).then((image) => {
+        if (cancelled) {
+          return;
+        }
+        setLoadedImage(image);
+      }).catch((err) => {
+        if (err.name === "AbortError") {
+          continuePendingLoadDelay({ markAsReady: false });
+          return;
+        }
+        errorCount++;
+        if (errorCount <= maxRetries) {
+          const backoff = exponentialBackoff(errorCount);
+          console.warn(`Could not load <CanvasImage> with src="${truncateSrcForLabel(actualSrc)}", retrying in ${backoff}ms`);
+          timeoutId = setTimeout(() => {
+            if (!cancelled) {
+              attemptLoad();
+            }
+          }, backoff);
+        } else if (onError) {
+          onError(err);
+          continuePendingLoadDelay({ markAsReady: true });
+        } else {
+          cancelRender2(err);
+        }
+      });
+    };
+    attemptLoad();
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      controller.abort();
+      continuePendingLoadDelay({ markAsReady: false });
+    };
+  }, [
+    actualSrc,
+    cancelRender2,
+    continuePendingLoadDelay,
+    delayRender2,
+    delayRenderRetries,
+    delayRenderTimeoutInMilliseconds,
+    maxRetries,
+    onError
+  ]);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
+    if (!loadedImage || !outputCanvas || !sourceCanvas) {
+      return;
+    }
+    const handle = delayRender2(`Applying effects to <CanvasImage> with src="${truncateSrcForLabel(actualSrc)}"`);
+    let cancelled = false;
+    let continued = false;
+    let cancelWaitForNextFrame = () => {
+      return;
+    };
+    const continueRenderOnce = () => {
+      if (continued) {
+        return;
+      }
+      continued = true;
+      continueRender2(handle);
+    };
+    const canvasWidth = width ?? loadedImage.width;
+    const canvasHeight = height ?? loadedImage.height;
+    const sourceContext = sourceCanvas.getContext("2d", {
+      colorSpace: "srgb"
+    });
+    if (!sourceContext) {
+      cancelRender2(new Error("Could not get 2D context for <CanvasImage> source canvas"));
+      continueRenderOnce();
+      return () => {
+        continueRenderOnce();
+      };
+    }
+    sourceCanvas.width = canvasWidth;
+    sourceCanvas.height = canvasHeight;
+    outputCanvas.width = canvasWidth;
+    outputCanvas.height = canvasHeight;
+    sourceContext.clearRect(0, 0, canvasWidth, canvasHeight);
+    sourceContext.drawImage(loadedImage.element, ...calculateImageFit(fit, { width: loadedImage.width, height: loadedImage.height }, { width: canvasWidth, height: canvasHeight }));
+    runEffectChain({
+      state: chainState.get(canvasWidth, canvasHeight),
+      source: sourceCanvas,
+      effects: memoizedEffects,
+      output: outputCanvas,
+      width: canvasWidth,
+      height: canvasHeight
+    }).then((completed) => {
+      if (completed && !cancelled) {
+        cancelWaitForNextFrame = waitForNextFrame({
+          onFrame: () => {
+            if (cancelled) {
+              return;
+            }
+            continueRenderOnce();
+            continuePendingLoadDelay({ markAsReady: true });
+          }
+        });
+      }
+    }).catch((err) => {
+      if (cancelled) {
+        return;
+      }
+      if (onError) {
+        onError(err);
+        continueRenderOnce();
+        continuePendingLoadDelay({ markAsReady: true });
+      } else {
+        cancelRender2(err);
+      }
+    });
+    return () => {
+      cancelled = true;
+      cancelWaitForNextFrame();
+      continueRenderOnce();
+    };
+  }, [
+    actualSrc,
+    cancelRender2,
+    chainState,
+    continueRender2,
+    continuePendingLoadDelay,
+    delayRender2,
+    fit,
+    height,
+    loadedImage,
+    memoizedEffects,
+    onError,
+    outputCanvas,
+    sourceCanvas,
+    width
+  ]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("canvas", {
+    ...canvasProps,
+    ref: canvasRef,
+    width,
+    height,
+    className,
+    style,
+    id
+  });
+});
+CanvasImageContent.displayName = "CanvasImageContent";
+var CanvasImageInner = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({
+  src,
+  width,
+  height,
+  fit,
+  effects = [],
+  className,
+  style,
+  id,
+  onError,
+  pauseWhenLoading,
+  maxRetries,
+  delayRenderRetries,
+  delayRenderTimeoutInMilliseconds,
+  durationInFrames,
+  from,
+  trimBefore,
+  freeze,
+  premountFor,
+  postmountFor,
+  styleWhilePremounted,
+  styleWhilePostmounted,
+  hidden,
+  name,
+  showInTimeline,
+  cropLeft,
+  cropRight,
+  cropTop,
+  cropBottom,
+  controls,
+  _remotionInternalDocumentationLink,
+  _remotionInternalCropComponentName,
+  outlineRef,
+  ...canvasProps
+}, ref) => {
+  if (!src) {
+    throw new Error('No "src" prop was passed to <CanvasImage>.');
+  }
+  const memoizedEffectDefinitions = useMemoizedEffectDefinitions(effects);
+  const actualRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(ref, () => {
+    return actualRef.current;
+  }, []);
+  const {
+    effectivePostmountFor,
+    effectivePremountFor,
+    freezeFrame,
+    isPremountingOrPostmounting,
+    postmountingActive,
+    premountingActive,
+    premountingStyle
+  } = usePremounting({
+    from: from ?? 0,
+    durationInFrames: durationInFrames ?? Infinity,
+    premountFor: premountFor ?? null,
+    postmountFor: postmountFor ?? null,
+    style: style ?? null,
+    styleWhilePremounted: styleWhilePremounted ?? null,
+    styleWhilePostmounted: styleWhilePostmounted ?? null,
+    hideWhilePremounted: "display-none"
+  });
+  const croppedStyle = useCropStyle({
+    cropLeft,
+    cropRight,
+    cropTop,
+    cropBottom,
+    style: premountingStyle,
+    componentName: _remotionInternalCropComponentName ?? "<CanvasImage />"
+  });
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Freeze, {
+    frame: freezeFrame,
+    active: isPremountingOrPostmounting,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
+      layout: "none",
+      from: from ?? 0,
+      trimBefore,
+      durationInFrames: durationInFrames ?? Infinity,
+      freeze,
+      hidden,
+      showInTimeline: showInTimeline ?? true,
+      name: name ?? "<CanvasImage>",
+      _remotionInternalDocumentationLink: _remotionInternalDocumentationLink ?? "https://www.remotion.dev/docs/canvasimage",
+      controls,
+      _remotionInternalEffects: memoizedEffectDefinitions,
+      _remotionInternalIsMedia: { type: "image", src },
+      _remotionInternalPremountDisplay: effectivePremountFor || null,
+      _remotionInternalPostmountDisplay: effectivePostmountFor || null,
+      _remotionInternalIsPremounting: premountingActive,
+      _remotionInternalIsPostmounting: postmountingActive,
+      outlineRef: outlineRef ?? actualRef,
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CanvasImageContent, {
+        ref: actualRef,
+        src,
+        width,
+        height,
+        fit,
+        effects,
+        controls,
+        className,
+        style: croppedStyle ?? undefined,
+        id,
+        onError,
+        pauseWhenLoading,
+        maxRetries,
+        delayRenderRetries,
+        delayRenderTimeoutInMilliseconds,
+        refForOutline: outlineRef ?? null,
+        ...canvasProps
+      })
+    })
+  });
+});
+var CanvasImage = withInteractivitySchema({
+  Component: CanvasImageInner,
+  componentName: "<CanvasImage>",
+  componentIdentity: "dev.remotion.remotion.CanvasImage",
+  schema: canvasImageSchema,
+  supportsEffects: true
+});
+CanvasImage.displayName = "CanvasImage";
+addSequenceStackTraces(CanvasImage);
 // src/get-static-files.ts
 var warnedServer = false;
 var warnedPlayer = false;
@@ -266064,7 +271900,8 @@ var IFrameRefForwarding = ({
       console.error("Error loading iframe:", e, "Handle the event using the onError() prop to make this message disappear.");
     }
   }, [handle, onError, continueRender2]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("iframe", {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("iframe", {
+    referrerPolicy: "strict-origin-when-cross-origin",
     ...props2,
     ref,
     onError: didGetError,
@@ -266075,10 +271912,10 @@ var IFrame = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(IFrameRefForwardi
 // src/Img.tsx
 
 
-function exponentialBackoff(errorCount) {
+function exponentialBackoff2(errorCount) {
   return 1000 * 2 ** (errorCount - 1);
 }
-var ImgRefForwarding = ({
+var ImgContent = ({
   onError,
   maxRetries = 2,
   src,
@@ -266087,22 +271924,29 @@ var ImgRefForwarding = ({
   delayRenderTimeoutInMilliseconds,
   onImageFrame,
   crossOrigin,
+  decoding,
+  ref,
+  refForOutline,
   ...props2
-}, ref) => {
+}) => {
   const imageRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
   const errors = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)({});
   const { delayPlayback } = useBufferState();
   const sequenceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
-  if (!src) {
-    throw new Error('No "src" prop was passed to <Img>.');
-  }
+  const [isLoading, setIsLoading] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
   const _propsValid = true;
   if (!_propsValid) {
     throw new Error("typecheck error");
   }
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(ref, () => {
-    return imageRef.current;
-  }, []);
+  const imageCallbackRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((img) => {
+    imageRef.current = img;
+    refForOutline.current = img;
+    if (typeof ref === "function") {
+      ref(img);
+    } else if (ref) {
+      ref.current = img;
+    }
+  }, [ref, refForOutline]);
   const actualSrc = usePreload(src);
   const retryIn = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((timeout) => {
     if (!imageRef.current) {
@@ -266121,6 +271965,9 @@ var ImgRefForwarding = ({
       imageRef.current.setAttribute("src", newSrc);
     }, timeout);
   }, []);
+  const { delayRender: delayRender2, continueRender: continueRender2, cancelRender: cancelRender2 } = useDelayRender();
+  const isPremounting = Boolean(sequenceContext?.premounting);
+  const isPostmounting = Boolean(sequenceContext?.postmounting);
   const didGetError = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((e) => {
     if (!errors.current) {
       return;
@@ -266131,17 +271978,28 @@ var ImgRefForwarding = ({
       return;
     }
     if ((errors.current[imageRef.current?.src] ?? 0) <= maxRetries) {
-      const backoff = exponentialBackoff(errors.current[imageRef.current?.src] ?? 0);
-      console.warn(`Could not load image with source ${imageRef.current?.src}, retrying again in ${backoff}ms`);
+      const backoff = exponentialBackoff2(errors.current[imageRef.current?.src] ?? 0);
+      console.warn(`Could not load image with source ${truncateSrcForLabel(imageRef.current?.src)}, retrying again in ${backoff}ms`);
       retryIn(backoff);
       return;
     }
-    cancelRender("Error loading image with src: " + imageRef.current?.src);
-  }, [maxRetries, onError, retryIn]);
-  const { delayRender: delayRender2, continueRender: continueRender2 } = useDelayRender();
+    try {
+      cancelRender2("Error loading image with src: " + truncateSrcForLabel(imageRef.current?.src));
+    } catch {}
+  }, [cancelRender2, maxRetries, onError, retryIn]);
   if (typeof window !== "undefined") {
-    const isPremounting = Boolean(sequenceContext?.premounting);
-    const isPostmounting = Boolean(sequenceContext?.postmounting);
+    (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
+      if (!pauseWhenLoading || !isLoading || isPremounting || isPostmounting) {
+        return;
+      }
+      return delayPlayback().unblock;
+    }, [
+      delayPlayback,
+      isLoading,
+      isPostmounting,
+      isPremounting,
+      pauseWhenLoading
+    ]);
     (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
       if (window.process?.env?.NODE_ENV === "test") {
         if (imageRef.current) {
@@ -266153,13 +272011,11 @@ var ImgRefForwarding = ({
       if (!current) {
         return;
       }
-      const newHandle = delayRender2("Loading <Img> with src=" + actualSrc, {
+      setIsLoading(true);
+      const newHandle = delayRender2("Loading <Img> with src=" + truncateSrcForLabel(actualSrc), {
         retries: delayRenderRetries ?? undefined,
         timeoutInMilliseconds: delayRenderTimeoutInMilliseconds ?? undefined
       });
-      const unblock = pauseWhenLoading && !isPremounting && !isPostmounting ? delayPlayback().unblock : () => {
-        return;
-      };
       let unmounted = false;
       const onComplete = () => {
         if (unmounted) {
@@ -266168,12 +272024,12 @@ var ImgRefForwarding = ({
         }
         if ((errors.current[imageRef.current?.src] ?? 0) > 0) {
           delete errors.current[imageRef.current?.src];
-          console.info(`Retry successful - ${imageRef.current?.src} is now loaded`);
+          console.info(`Retry successful - ${truncateSrcForLabel(imageRef.current?.src)} is now loaded`);
         }
         if (current) {
           onImageFrame?.(current);
         }
-        unblock();
+        setIsLoading(false);
         continueRender2(newHandle);
       };
       if (!imageRef.current) {
@@ -266183,7 +272039,7 @@ var ImgRefForwarding = ({
       current.src = actualSrc;
       current.decode().then(onComplete).catch((err) => {
         console.warn(err);
-        if (current.complete) {
+        if (current.complete && current.naturalWidth > 0 && current.naturalHeight > 0) {
           onComplete();
         } else {
           current.addEventListener("load", onComplete);
@@ -266192,53 +272048,535 @@ var ImgRefForwarding = ({
       return () => {
         unmounted = true;
         current.removeEventListener("load", onComplete);
-        unblock();
         continueRender2(newHandle);
       };
     }, [
       actualSrc,
-      delayPlayback,
       delayRenderRetries,
       delayRenderTimeoutInMilliseconds,
-      pauseWhenLoading,
-      isPremounting,
-      isPostmounting,
       onImageFrame,
       continueRender2,
       delayRender2
     ]);
   }
+  const { isClientSideRendering, isRendering } = useRemotionEnvironment();
   const crossOriginValue = getCrossOriginValue({
     crossOrigin,
-    requestsVideoFrame: false
+    requestsVideoFrame: false,
+    isClientSideRendering
   });
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("img", {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("img", {
     ...props2,
-    ref: imageRef,
+    ref: imageCallbackRef,
     crossOrigin: crossOriginValue,
     onError: didGetError,
-    decoding: "sync"
+    decoding: isRendering ? "sync" : decoding
   });
 };
-var Img = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(ImgRefForwarding);
+var NativeImgInner = ({
+  hidden,
+  name,
+  showInTimeline,
+  src,
+  from,
+  trimBefore,
+  durationInFrames,
+  freeze,
+  premountFor,
+  postmountFor,
+  style,
+  styleWhilePremounted,
+  styleWhilePostmounted,
+  cropLeft,
+  cropRight,
+  cropTop,
+  cropBottom,
+  controls,
+  outlineRef: refForOutline,
+  ...props2
+}) => {
+  if (!src) {
+    throw new Error('No "src" prop was passed to <Img>.');
+  }
+  const {
+    effectivePostmountFor,
+    effectivePremountFor,
+    freezeFrame,
+    isPremountingOrPostmounting,
+    postmountingActive,
+    premountingActive,
+    premountingStyle
+  } = usePremounting({
+    from: from ?? 0,
+    durationInFrames: durationInFrames ?? Infinity,
+    premountFor: premountFor ?? null,
+    postmountFor: postmountFor ?? null,
+    style: style ?? null,
+    styleWhilePremounted: styleWhilePremounted ?? null,
+    styleWhilePostmounted: styleWhilePostmounted ?? null,
+    hideWhilePremounted: "display-none"
+  });
+  const croppedStyle = useCropStyle({
+    cropLeft,
+    cropRight,
+    cropTop,
+    cropBottom,
+    style: premountingStyle,
+    componentName: "<Img />"
+  });
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Freeze, {
+    frame: freezeFrame,
+    active: isPremountingOrPostmounting,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
+      layout: "none",
+      from: from ?? 0,
+      trimBefore,
+      durationInFrames: durationInFrames ?? Infinity,
+      freeze,
+      _remotionInternalDocumentationLink: "https://www.remotion.dev/docs/img",
+      _remotionInternalIsMedia: { type: "image", src },
+      _remotionInternalPremountDisplay: effectivePremountFor || null,
+      _remotionInternalPostmountDisplay: effectivePostmountFor || null,
+      _remotionInternalIsPremounting: premountingActive,
+      _remotionInternalIsPostmounting: postmountingActive,
+      name: name ?? "<Img>",
+      controls,
+      showInTimeline: showInTimeline ?? true,
+      hidden,
+      outlineRef: refForOutline,
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(ImgContent, {
+        src,
+        refForOutline,
+        style: croppedStyle ?? undefined,
+        ...props2
+      })
+    })
+  });
+};
+var CanvasImageWithPrivateProps = CanvasImage;
+var imgSchema = {
+  src: {
+    type: "asset",
+    default: undefined,
+    description: "Source",
+    keyframable: false
+  },
+  ...baseSchema,
+  ...cropSchema,
+  ...premountSchema,
+  ...transformSchema,
+  ...backgroundSchema,
+  ...borderSchema,
+  ...borderRadiusSchema
+};
+var imgCanvasFallbackIncompatibleProps = new Set([
+  "alt",
+  "crossOrigin",
+  "decoding",
+  "fetchPriority",
+  "loading",
+  "onError",
+  "onImageFrame",
+  "onLoad",
+  "sizes",
+  "srcSet",
+  "useMap"
+]);
+var getIncompatiblePropNames = (props2) => Object.keys(props2).filter((key) => props2[key] !== undefined && imgCanvasFallbackIncompatibleProps.has(key));
+var formatPropList = (props2) => {
+  return props2.map((prop) => `"${prop}"`).join(", ");
+};
+var validateCanvasImageFallbackProps = ({
+  props: props2,
+  ref,
+  width,
+  height
+}) => {
+  if (typeof width === "string" || typeof height === "string") {
+    throw new Error('The "width" and "height" props must be numbers on <Img> when effects are passed, because <Img> renders a <CanvasImage>. Use numeric props or CSS dimensions in "style".');
+  }
+  const conflictingProps = getIncompatiblePropNames(props2);
+  if (ref !== null && ref !== undefined) {
+    conflictingProps.unshift("ref");
+  }
+  if (conflictingProps.length === 0) {
+    return;
+  }
+  throw new Error(`The ${formatPropList(conflictingProps)} prop${conflictingProps.length === 1 ? "" : "s"} cannot be used on <Img> when effects are passed, because <Img> renders a <canvas> instead of a native <img>. Remove ${conflictingProps.length === 1 ? "this prop" : "these props"}.`);
+};
+var getFitFromObjectFit = (style) => {
+  const objectFit = style?.objectFit;
+  if (objectFit === "fill" || objectFit === "contain" || objectFit === "cover") {
+    return objectFit;
+  }
+  return;
+};
+var ImgInner = ({
+  effects = [],
+  ref,
+  hidden,
+  name,
+  showInTimeline,
+  src,
+  from,
+  trimBefore,
+  durationInFrames,
+  freeze,
+  premountFor,
+  postmountFor,
+  styleWhilePremounted,
+  styleWhilePostmounted,
+  controls,
+  width,
+  height,
+  className,
+  style,
+  cropLeft,
+  cropRight,
+  cropTop,
+  cropBottom,
+  id,
+  pauseWhenLoading,
+  maxRetries,
+  delayRenderRetries,
+  delayRenderTimeoutInMilliseconds,
+  ...props2
+}) => {
+  const refForOutline = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+  const shouldPauseWhenLoading = resolveV5Default(pauseWhenLoading);
+  if (effects.length === 0) {
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(NativeImgInner, {
+      ...props2,
+      ref,
+      hidden,
+      name,
+      showInTimeline,
+      src,
+      from,
+      trimBefore,
+      durationInFrames,
+      freeze,
+      premountFor,
+      postmountFor,
+      styleWhilePremounted,
+      styleWhilePostmounted,
+      controls,
+      width,
+      height,
+      className,
+      style,
+      cropLeft,
+      cropRight,
+      cropTop,
+      cropBottom,
+      id,
+      pauseWhenLoading: shouldPauseWhenLoading,
+      maxRetries,
+      delayRenderRetries,
+      delayRenderTimeoutInMilliseconds,
+      outlineRef: refForOutline
+    });
+  }
+  if (!src) {
+    throw new Error('No "src" prop was passed to <Img>.');
+  }
+  validateCanvasImageFallbackProps({
+    props: props2,
+    ref,
+    width,
+    height
+  });
+  const canvasWidth = typeof width === "number" ? width : undefined;
+  const canvasHeight = typeof height === "number" ? height : undefined;
+  const canvasProps = props2;
+  const canvasFit = getFitFromObjectFit(style) ?? "fill";
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CanvasImageWithPrivateProps, {
+    src,
+    width: canvasWidth,
+    height: canvasHeight,
+    fit: canvasFit,
+    effects,
+    className,
+    style,
+    cropLeft,
+    cropRight,
+    cropTop,
+    cropBottom,
+    id,
+    pauseWhenLoading: shouldPauseWhenLoading,
+    maxRetries,
+    delayRenderRetries,
+    delayRenderTimeoutInMilliseconds,
+    from,
+    trimBefore,
+    durationInFrames,
+    freeze,
+    premountFor,
+    postmountFor,
+    styleWhilePremounted,
+    styleWhilePostmounted,
+    hidden,
+    name: name ?? "<Img>",
+    showInTimeline,
+    _remotionInternalDocumentationLink: "https://www.remotion.dev/docs/img",
+    _remotionInternalCropComponentName: "<Img />",
+    controls,
+    outlineRef: refForOutline,
+    ...canvasProps
+  });
+};
+var Img = withInteractivitySchema({
+  Component: ImgInner,
+  componentName: "<Img>",
+  componentIdentity: "dev.remotion.remotion.Img",
+  schema: imgSchema,
+  supportsEffects: true
+});
+addSequenceStackTraces(Img);
+// src/Interactive.tsx
+
+
+var sourcePathToIdentityPrefix = (packageName) => {
+  if (packageName === "remotion") {
+    return "dev.remotion.remotion";
+  }
+  if (packageName.startsWith("@remotion/")) {
+    const normalizedPackageName = packageName.slice("@remotion/".length).replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+    return `dev.remotion.${normalizedPackageName}`;
+  }
+  throw new Error(`Unsupported Remotion package name: ${packageName}`);
+};
+var makeRemotionComponentIdentity = ({
+  packageName,
+  componentName
+}) => {
+  return `${sourcePathToIdentityPrefix(packageName)}.${componentName}`;
+};
+var interactiveElementSchema = {
+  ...baseSchema,
+  ...transformSchema,
+  ...cropSchema
+};
+var interactiveBackgroundElementSchema = {
+  ...interactiveElementSchema,
+  ...backgroundSchema
+};
+var interactiveBorderElementSchema = {
+  ...interactiveBackgroundElementSchema,
+  ...borderSchema,
+  ...borderRadiusSchema
+};
+var interactiveTextElementSchema = {
+  ...interactiveBorderElementSchema,
+  ...textSchema,
+  ...textContentSchema
+};
+var interactiveSvgTextElementSchema = {
+  ...interactiveElementSchema,
+  ...svgPaintSchema,
+  ...textSchema,
+  ...textContentSchema
+};
+var interactiveSvgElementSchema = {
+  ...interactiveElementSchema,
+  ...svgPaintSchema
+};
+var interactiveSvgStrokeElementSchema = {
+  ...interactiveElementSchema,
+  ...svgStrokeSchema
+};
+var interactiveSvgRootElementSchema = {
+  ...interactiveBorderElementSchema,
+  ...svgPaintSchema
+};
+var setRef2 = (ref, value) => {
+  if (typeof ref === "function") {
+    ref(value);
+  } else if (ref) {
+    ref.current = value;
+  }
+};
+var withSchema = (options) => {
+  const Wrapped = withInteractivitySchema(options);
+  addSequenceStackTraces(Wrapped);
+  return Wrapped;
+};
+var makeInteractiveElement = (tag, displayName, schema) => {
+  const Inner = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)((propsWithControls, ref) => {
+    const {
+      durationInFrames,
+      from,
+      trimBefore,
+      freeze,
+      hidden,
+      name,
+      showInTimeline,
+      controls,
+      cropLeft,
+      cropRight,
+      cropTop,
+      cropBottom,
+      style,
+      ...props2
+    } = propsWithControls;
+    const croppedStyle = useCropStyle({
+      cropLeft,
+      cropRight,
+      cropTop,
+      cropBottom,
+      style: style ?? null,
+      componentName: displayName
+    });
+    const refForOutline = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+    const callbackRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((element) => {
+      refForOutline.current = element;
+      setRef2(ref, element);
+    }, [ref]);
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
+      layout: "none",
+      from: from ?? 0,
+      trimBefore,
+      durationInFrames: durationInFrames ?? Infinity,
+      freeze,
+      hidden,
+      name: name ?? displayName,
+      showInTimeline: showInTimeline ?? true,
+      controls,
+      _remotionInternalDocumentationLink: "https://www.remotion.dev/docs/interactive",
+      outlineRef: refForOutline,
+      children: react__WEBPACK_IMPORTED_MODULE_0__.createElement(tag, {
+        ...props2,
+        style: croppedStyle ?? undefined,
+        ref: callbackRef
+      })
+    });
+  });
+  Inner.displayName = displayName;
+  const Wrapped = withSchema({
+    Component: Inner,
+    componentName: displayName,
+    componentIdentity: makeRemotionComponentIdentity({
+      packageName: "remotion",
+      componentName: displayName.slice(1, -1)
+    }),
+    schema,
+    supportsEffects: false
+  });
+  Wrapped.displayName = displayName;
+  return Wrapped;
+};
+var makeInteractiveTextElement = (tag, displayName) => {
+  return makeInteractiveElement(tag, displayName, interactiveTextElementSchema);
+};
+var makeInteractiveSvgElement = (tag, displayName) => {
+  return makeInteractiveElement(tag, displayName, interactiveSvgElementSchema);
+};
+var makeInteractiveSvgStrokeElement = (tag, displayName) => {
+  return makeInteractiveElement(tag, displayName, interactiveSvgStrokeElementSchema);
+};
+var Interactive = {
+  baseSchema,
+  captionsSchema,
+  transformSchema,
+  textSchema,
+  backgroundSchema,
+  borderSchema,
+  borderRadiusSchema,
+  cropSchema,
+  svgPaintSchema,
+  svgStrokeSchema,
+  premountSchema,
+  sequenceSchema,
+  withSchema,
+  _internalMakeRemotionComponentIdentity: makeRemotionComponentIdentity,
+  A: makeInteractiveTextElement("a", "<Interactive.A>"),
+  Article: makeInteractiveTextElement("article", "<Interactive.Article>"),
+  Aside: makeInteractiveTextElement("aside", "<Interactive.Aside>"),
+  Button: makeInteractiveTextElement("button", "<Interactive.Button>"),
+  Circle: makeInteractiveSvgElement("circle", "<Interactive.Circle>"),
+  Code: makeInteractiveTextElement("code", "<Interactive.Code>"),
+  Div: makeInteractiveTextElement("div", "<Interactive.Div>"),
+  Ellipse: makeInteractiveSvgElement("ellipse", "<Interactive.Ellipse>"),
+  Em: makeInteractiveTextElement("em", "<Interactive.Em>"),
+  Footer: makeInteractiveTextElement("footer", "<Interactive.Footer>"),
+  G: makeInteractiveSvgElement("g", "<Interactive.G>"),
+  H1: makeInteractiveTextElement("h1", "<Interactive.H1>"),
+  H2: makeInteractiveTextElement("h2", "<Interactive.H2>"),
+  H3: makeInteractiveTextElement("h3", "<Interactive.H3>"),
+  H4: makeInteractiveTextElement("h4", "<Interactive.H4>"),
+  H5: makeInteractiveTextElement("h5", "<Interactive.H5>"),
+  H6: makeInteractiveTextElement("h6", "<Interactive.H6>"),
+  Header: makeInteractiveTextElement("header", "<Interactive.Header>"),
+  Label: makeInteractiveTextElement("label", "<Interactive.Label>"),
+  Li: makeInteractiveTextElement("li", "<Interactive.Li>"),
+  Line: makeInteractiveSvgStrokeElement("line", "<Interactive.Line>"),
+  Main: makeInteractiveTextElement("main", "<Interactive.Main>"),
+  Nav: makeInteractiveTextElement("nav", "<Interactive.Nav>"),
+  Ol: makeInteractiveTextElement("ol", "<Interactive.Ol>"),
+  P: makeInteractiveTextElement("p", "<Interactive.P>"),
+  Path: makeInteractiveSvgElement("path", "<Interactive.Path>"),
+  Pre: makeInteractiveTextElement("pre", "<Interactive.Pre>"),
+  Rect: makeInteractiveSvgElement("rect", "<Interactive.Rect>"),
+  Section: makeInteractiveTextElement("section", "<Interactive.Section>"),
+  Small: makeInteractiveTextElement("small", "<Interactive.Small>"),
+  Span: makeInteractiveTextElement("span", "<Interactive.Span>"),
+  Strong: makeInteractiveTextElement("strong", "<Interactive.Strong>"),
+  Svg: makeInteractiveElement("svg", "<Interactive.Svg>", interactiveSvgRootElementSchema),
+  Text: makeInteractiveElement("text", "<Interactive.Text>", interactiveSvgTextElementSchema),
+  Ul: makeInteractiveTextElement("ul", "<Interactive.Ul>")
+};
 // src/internals.ts
 
 
+// src/animated-image/get-duration-in-seconds.ts
+var getAnimatedImageDurationInSeconds = async ({
+  resolvedSrc,
+  signal,
+  requestInit,
+  contentType
+}) => {
+  const { decoder, selectedTrack } = await createImageDecoder({
+    resolvedSrc,
+    signal,
+    requestInit,
+    contentType
+  });
+  try {
+    const { image } = await decoder.decode({
+      frameIndex: selectedTrack.frameCount - 1,
+      completeFramesOnly: true
+    });
+    try {
+      if (image.duration === null) {
+        throw new Error("Could not determine animated image duration");
+      }
+      return (image.timestamp + image.duration) / 1e6;
+    } finally {
+      image.close();
+    }
+  } finally {
+    decoder.close();
+  }
+};
+
 // src/CompositionManager.tsx
 
-
 var compositionsRef = react__WEBPACK_IMPORTED_MODULE_0__.createRef();
+
+// src/CompositionManagerProvider.tsx
+
+
 var CompositionManagerProvider = ({
   children,
-  numberOfAudioTags,
   onlyRenderComposition,
   currentCompositionMetadata,
-  audioLatencyHint
+  initialCompositions,
+  initialCanvasContent
 }) => {
-  const [compositions, setCompositions] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
-  const currentcompositionsRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(compositions);
   const [folders, setFolders] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)([]);
-  const [canvasContent, setCanvasContent] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(null);
+  const [canvasContent, setCanvasContent] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(initialCanvasContent);
+  const [compositions, setCompositions] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(initialCompositions);
+  const currentcompositionsRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(compositions);
   const updateCompositions = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((updateComps) => {
     setCompositions((comps) => {
       const updated = updateComps(comps);
@@ -266251,8 +272589,7 @@ var CompositionManagerProvider = ({
       if (comps.find((c2) => c2.id === comp.id)) {
         throw new Error(`Multiple composition with id ${comp.id} are registered.`);
       }
-      const value = [...comps, comp].slice().sort((a2, b2) => a2.nonce - b2.nonce);
-      return value;
+      return [...comps, comp];
     });
   }, [updateCompositions]);
   const unregisterComposition = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((id) => {
@@ -266260,13 +272597,15 @@ var CompositionManagerProvider = ({
       return comps.filter((c2) => c2.id !== id);
     });
   }, []);
-  const registerFolder = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((name, parent) => {
+  const registerFolder = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((name, parent, nonce, stack) => {
     setFolders((prevFolders) => {
       return [
         ...prevFolders,
         {
           name,
-          parent
+          parent,
+          nonce,
+          stack
         }
       ];
     });
@@ -266281,37 +272620,13 @@ var CompositionManagerProvider = ({
       getCompositions: () => currentcompositionsRef.current
     };
   }, []);
-  const composition = compositions.find((c2) => canvasContent?.type === "composition" ? c2.id === canvasContent.compositionId : null);
-  const updateCompositionDefaultProps = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((id, newDefaultProps) => {
-    setCompositions((comps) => {
-      const updated = comps.map((c2) => {
-        if (c2.id === id) {
-          return {
-            ...c2,
-            defaultProps: newDefaultProps
-          };
-        }
-        return c2;
-      });
-      return updated;
-    });
-  }, []);
-  const contextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      compositions,
-      folders,
-      currentCompositionMetadata,
-      canvasContent
-    };
-  }, [compositions, folders, currentCompositionMetadata, canvasContent]);
-  const setters = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+  const compositionManagerSetters = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     return {
       registerComposition,
       unregisterComposition,
       registerFolder,
       unregisterFolder,
       setCanvasContent,
-      updateCompositionDefaultProps,
       onlyRenderComposition
     };
   }, [
@@ -266319,25 +272634,21 @@ var CompositionManagerProvider = ({
     registerFolder,
     unregisterComposition,
     unregisterFolder,
-    updateCompositionDefaultProps,
     onlyRenderComposition
   ]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(CompositionManager.Provider, {
-    value: contextValue,
-    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(CompositionSetters.Provider, {
-      value: setters,
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SequenceManagerProvider, {
-        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(RenderAssetManagerProvider, {
-          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(ResolveCompositionConfig, {
-            children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SharedAudioContextProvider, {
-              numberOfAudioTags,
-              component: composition?.component ?? null,
-              audioLatencyHint,
-              children
-            })
-          })
-        })
-      })
+  const compositionManagerContextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
+    return {
+      compositions,
+      folders,
+      currentCompositionMetadata,
+      canvasContent
+    };
+  }, [compositions, folders, currentCompositionMetadata, canvasContent]);
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CompositionManager.Provider, {
+    value: compositionManagerContextValue,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CompositionSetters.Provider, {
+      value: compositionManagerSetters,
+      children
     })
   });
 };
@@ -266352,16 +272663,25 @@ __export(exports_default_css, {
 var injected = {};
 var injectCSS = (css) => {
   if (typeof document === "undefined") {
-    return;
+    return () => {};
   }
   if (injected[css]) {
-    return;
+    return () => {};
   }
   const head = document.head || document.getElementsByTagName("head")[0];
   const style = document.createElement("style");
   style.appendChild(document.createTextNode(css));
   head.prepend(style);
-  injected[css] = true;
+  injected[css] = style;
+  return () => {
+    const styleElement = injected[css];
+    if (styleElement) {
+      if (styleElement.parentNode) {
+        styleElement.parentNode.removeChild(styleElement);
+      }
+      delete injected[css];
+    }
+  };
 };
 var OBJECTFIT_CONTAIN_CLASS_NAME = "__remotion_objectfitcontain";
 var makeDefaultPreviewCSS = (scope, backgroundColor) => {
@@ -266398,6 +272718,10 @@ var REMOTION_STUDIO_CONTAINER_ELEMENT = "__remotion-studio-container";
 var getPreviewDomElement = () => {
   return document.getElementById(REMOTION_STUDIO_CONTAINER_ELEMENT);
 };
+
+// src/max-video-cache-size.ts
+
+var MaxMediaCacheSizeContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext(null);
 
 // src/register-root.ts
 var Root = null;
@@ -266463,7 +272787,7 @@ var MediaEnabledProvider = ({
   audioEnabled
 }) => {
   const value = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => ({ videoEnabled, audioEnabled }), [videoEnabled, audioEnabled]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(MediaEnabledContext.Provider, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(MediaEnabledContext.Provider, {
     value,
     children
   });
@@ -266471,119 +272795,45 @@ var MediaEnabledProvider = ({
 
 // src/RemotionRoot.tsx
 
-var RemotionRoot = ({
+var RemotionRootContexts = ({
   children,
   numberOfAudioTags,
   logLevel,
-  onlyRenderComposition,
-  currentCompositionMetadata,
   audioLatencyHint,
+  previewSampleRate,
   videoEnabled,
-  audioEnabled
+  audioEnabled,
+  frameState
 }) => {
-  const [remotionRootId] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => String(random(null)));
-  const [frame, setFrame] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => getInitialFrameState());
-  const [playing, setPlaying] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(false);
-  const imperativePlaying = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(false);
-  const [fastRefreshes, setFastRefreshes] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(0);
-  const [manualRefreshes, setManualRefreshes] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(0);
-  const [playbackRate, setPlaybackRate] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(1);
-  const audioAndVideoTags = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)([]);
-  const { delayRender: delayRender2, continueRender: continueRender2 } = useDelayRender();
-  if (typeof window !== "undefined") {
-    (0,react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect)(() => {
-      window.remotion_setFrame = (f, composition, attempt) => {
-        window.remotion_attempt = attempt;
-        const id = delayRender2(`Setting the current frame to ${f}`);
-        let asyncUpdate = true;
-        setFrame((s) => {
-          const currentFrame = s[composition] ?? window.remotion_initialFrame;
-          if (currentFrame === f) {
-            asyncUpdate = false;
-            return s;
-          }
-          return {
-            ...s,
-            [composition]: f
-          };
-        });
-        if (asyncUpdate) {
-          requestAnimationFrame(() => continueRender2(id));
-        } else {
-          continueRender2(id);
-        }
-      };
-      window.remotion_isPlayer = false;
-    }, [continueRender2, delayRender2]);
-  }
-  const timelineContextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      frame,
-      playing,
-      imperativePlaying,
-      rootId: remotionRootId,
-      playbackRate,
-      setPlaybackRate,
-      audioAndVideoTags
-    };
-  }, [frame, playbackRate, playing, remotionRootId]);
-  const setTimelineContextValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      setFrame,
-      setPlaying
-    };
-  }, []);
   const nonceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     let counter = 0;
     return {
-      getNonce: () => counter++,
-      fastRefreshes,
-      manualRefreshes
+      getNonce: () => counter++
     };
-  }, [fastRefreshes, manualRefreshes]);
-  const setNonceContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    return {
-      increaseManualRefreshes: () => {
-        setManualRefreshes((i) => i + 1);
-      }
-    };
-  }, []);
-  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
-    if (true) {
-      if (__webpack_module__.hot) {
-        __webpack_module__.hot.addStatusHandler((status) => {
-          if (status === "idle") {
-            setFastRefreshes((i) => i + 1);
-          }
-        });
-      }
-    }
   }, []);
   const logging = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     return { logLevel, mountTime: Date.now() };
   }, [logLevel]);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(LogLevelContext.Provider, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(LogLevelContext.Provider, {
     value: logging,
-    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(NonceContext.Provider, {
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(NonceContext.Provider, {
       value: nonceContext,
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SetNonceContext.Provider, {
-        value: setNonceContext,
-        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(TimelineContext.Provider, {
-          value: timelineContextValue,
-          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SetTimelineContext.Provider, {
-            value: setTimelineContextValue,
-            children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(MediaEnabledProvider, {
-              videoEnabled,
-              audioEnabled,
-              children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(EditorPropsProvider, {
-                children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(PrefetchProvider, {
-                  children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(CompositionManagerProvider, {
-                    numberOfAudioTags,
-                    onlyRenderComposition,
-                    currentCompositionMetadata,
-                    audioLatencyHint,
-                    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(DurationsContextProvider, {
-                      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(BufferingProvider, {
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(TimelineContextProvider, {
+        frameState,
+        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(MediaEnabledProvider, {
+          videoEnabled,
+          audioEnabled,
+          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(EditorPropsProvider, {
+            children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(PrefetchProvider, {
+              children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceManagerProvider, {
+                children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(DurationsContextProvider, {
+                  children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(BufferingProvider, {
+                    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SharedAudioContextProvider, {
+                      audioLatencyHint,
+                      audioEnabled,
+                      previewSampleRate,
+                      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SharedAudioTagsContextProvider, {
+                        numberOfAudioTags,
                         children
                       })
                     })
@@ -266598,6 +272848,242 @@ var RemotionRoot = ({
   });
 };
 
+// src/render-resource-manager.ts
+
+var makeRenderResourceManager = () => {
+  const resources = new Map;
+  let disposed = false;
+  return {
+    getOrCreateResource: ({
+      key,
+      create
+    }) => {
+      if (disposed) {
+        throw new Error("Render resource manager has already been disposed");
+      }
+      const existing = resources.get(key);
+      if (existing) {
+        return existing.resource;
+      }
+      const created = create();
+      resources.set(key, created);
+      return created.resource;
+    },
+    dispose: () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      const resourcesToDispose = Array.from(resources.values());
+      resources.clear();
+      let firstError = null;
+      for (const resource of resourcesToDispose) {
+        try {
+          resource.dispose();
+        } catch (error2) {
+          firstError ??= error2;
+        }
+      }
+      if (firstError !== null) {
+        throw firstError;
+      }
+    }
+  };
+};
+var RenderResourceManagerContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext(null);
+
+// src/codec.ts
+var validCodecs = [
+  "h264",
+  "h265",
+  "vp8",
+  "vp9",
+  "av1",
+  "mp3",
+  "aac",
+  "wav",
+  "prores",
+  "h264-mkv",
+  "h264-ts",
+  "gif"
+];
+
+// src/validation/validate-default-codec.ts
+function validateCodec(defaultCodec, location, name) {
+  if (typeof defaultCodec === "undefined") {
+    return;
+  }
+  if (typeof defaultCodec !== "string") {
+    throw new TypeError(`The "${name}" prop ${location} must be a string, but you passed a value of type ${typeof defaultCodec}.`);
+  }
+  if (!validCodecs.includes(defaultCodec)) {
+    throw new Error(`The "${name}" prop ${location} must be one of ${validCodecs.join(", ")}, but you passed ${defaultCodec}.`);
+  }
+}
+
+// src/resolve-video-config.ts
+var validateCalculated = ({
+  calculated,
+  compositionId,
+  compositionFps,
+  compositionHeight,
+  compositionWidth,
+  compositionDurationInFrames
+}) => {
+  const calculateMetadataErrorLocation = `calculated by calculateMetadata() for the composition "${compositionId}"`;
+  const defaultErrorLocation = `of the "<Composition />" component with the id "${compositionId}"`;
+  const width = calculated?.width ?? compositionWidth ?? undefined;
+  validateDimension(width, "width", calculated?.width ? calculateMetadataErrorLocation : defaultErrorLocation);
+  const height = calculated?.height ?? compositionHeight ?? undefined;
+  validateDimension(height, "height", calculated?.height ? calculateMetadataErrorLocation : defaultErrorLocation);
+  const fps = calculated?.fps ?? compositionFps ?? null;
+  validateFps(fps, calculated?.fps ? calculateMetadataErrorLocation : defaultErrorLocation, false);
+  const durationInFrames = calculated?.durationInFrames ?? compositionDurationInFrames ?? null;
+  validateDurationInFrames(durationInFrames, {
+    allowFloats: false,
+    component: `of the "<Composition />" component with the id "${compositionId}"`
+  });
+  const defaultCodec = calculated?.defaultCodec;
+  validateCodec(defaultCodec, calculateMetadataErrorLocation, "defaultCodec");
+  const defaultOutName = calculated?.defaultOutName;
+  const defaultVideoImageFormat = calculated?.defaultVideoImageFormat;
+  const defaultPixelFormat = calculated?.defaultPixelFormat;
+  const defaultProResProfile = calculated?.defaultProResProfile;
+  const defaultSampleRate = calculated?.defaultSampleRate;
+  return {
+    width,
+    height,
+    fps,
+    durationInFrames,
+    defaultCodec,
+    defaultOutName,
+    defaultVideoImageFormat,
+    defaultPixelFormat,
+    defaultProResProfile,
+    defaultSampleRate
+  };
+};
+var makeVideoConfigWithMetadata = ({
+  calculated,
+  compositionDurationInFrames,
+  compositionFps,
+  compositionHeight,
+  compositionId,
+  compositionWidth,
+  defaultProps,
+  originalProps
+}) => {
+  const data = validateCalculated({
+    calculated,
+    compositionDurationInFrames,
+    compositionFps,
+    compositionHeight,
+    compositionWidth,
+    compositionId
+  });
+  return {
+    metadataSource: {
+      durationInFrames: calculated?.durationInFrames === undefined ? "composition" : "calculate-metadata",
+      fps: calculated?.fps === undefined ? "composition" : "calculate-metadata",
+      height: calculated?.height === undefined ? "composition" : "calculate-metadata",
+      width: calculated?.width === undefined ? "composition" : "calculate-metadata"
+    },
+    videoConfig: {
+      ...data,
+      id: compositionId,
+      defaultProps: serializeThenDeserializeInStudio(defaultProps ?? {}),
+      props: serializeThenDeserializeInStudio(calculated?.props ?? originalProps),
+      defaultCodec: data.defaultCodec ?? null,
+      defaultOutName: data.defaultOutName ?? null,
+      defaultVideoImageFormat: data.defaultVideoImageFormat ?? null,
+      defaultPixelFormat: data.defaultPixelFormat ?? null,
+      defaultProResProfile: data.defaultProResProfile ?? null,
+      defaultSampleRate: data.defaultSampleRate ?? null
+    }
+  };
+};
+var resolveVideoConfigWithMetadata = ({
+  calculateMetadata,
+  signal,
+  defaultProps,
+  inputProps: originalProps,
+  compositionId,
+  compositionDurationInFrames,
+  compositionFps,
+  compositionHeight,
+  compositionWidth
+}) => {
+  const calculatedProm = calculateMetadata ? calculateMetadata({
+    defaultProps,
+    props: originalProps,
+    abortSignal: signal,
+    compositionId,
+    isRendering: getRemotionEnvironment().isRendering
+  }) : null;
+  if (calculatedProm !== null && typeof calculatedProm === "object" && "then" in calculatedProm) {
+    return calculatedProm.then((c2) => {
+      return makeVideoConfigWithMetadata({
+        calculated: c2,
+        compositionDurationInFrames,
+        compositionFps,
+        compositionHeight,
+        compositionWidth,
+        compositionId,
+        defaultProps,
+        originalProps
+      });
+    });
+  }
+  return makeVideoConfigWithMetadata({
+    calculated: calculatedProm,
+    compositionDurationInFrames,
+    compositionFps,
+    compositionHeight,
+    compositionWidth,
+    compositionId,
+    defaultProps,
+    originalProps
+  });
+};
+var resolveVideoConfig = (params) => {
+  const resolved = resolveVideoConfigWithMetadata(params);
+  if (typeof resolved === "object" && "then" in resolved) {
+    return resolved.then(({ videoConfig }) => videoConfig);
+  }
+  return resolved.videoConfig;
+};
+var resolveVideoConfigWithMetadataOrCatch = (params) => {
+  try {
+    return {
+      type: "success",
+      result: resolveVideoConfigWithMetadata(params)
+    };
+  } catch (err) {
+    return {
+      type: "error",
+      error: err
+    };
+  }
+};
+var resolveVideoConfigOrCatch = (params) => {
+  try {
+    const promiseOrReturnValue = resolveVideoConfig(params);
+    return {
+      type: "success",
+      result: promiseOrReturnValue
+    };
+  } catch (err) {
+    return {
+      type: "error",
+      error: err
+    };
+  }
+};
+
+// src/sequence-stack-traces.ts
+
+var SequenceStackTracesUpdateContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext(() => {});
+
 // src/setup-env-variables.ts
 var getEnvVariables = () => {
   if (getRemotionEnvironment().isRendering) {
@@ -266607,7 +273093,8 @@ var getEnvVariables = () => {
     }
     return { ...JSON.parse(param), NODE_ENV: "production" };
   }
-  if (false) {}
+  if (false) // removed by dead control flow
+{}
   return {
     NODE_ENV: "production"
   };
@@ -266656,6 +273143,12 @@ var useCurrentScale = (options) => {
   const zoomContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(PreviewSizeContext);
   const config = useUnsafeVideoConfig();
   const env = useRemotionEnvironment();
+  const [portalScale, setPortalScale] = react__WEBPACK_IMPORTED_MODULE_0__.useState(getPortalNodeCurrentScale);
+  react__WEBPACK_IMPORTED_MODULE_0__.useEffect(() => {
+    const update = () => setPortalScale(getPortalNodeCurrentScale());
+    update();
+    return subscribeToPortalNodeCurrentScale(update);
+  }, []);
   if (hasContext === null || config === null || zoomContext === null) {
     if (options?.dontThrowIfOutsideOfRemotion) {
       return 1;
@@ -266674,12 +273167,34 @@ var useCurrentScale = (options) => {
   if (hasContext.type === "scale") {
     return hasContext.scale;
   }
-  return calculateScale({
-    canvasSize: hasContext.canvasSize,
-    compositionHeight: config.height,
-    compositionWidth: config.width,
-    previewSize: zoomContext.size.size
-  });
+  return portalScale;
+};
+
+// src/use-pixel-density.ts
+
+var PixelDensityContext = react__WEBPACK_IMPORTED_MODULE_0__.createContext(null);
+var getBrowserPixelDensity = () => {
+  if (typeof window === "undefined") {
+    return 1;
+  }
+  return window.devicePixelRatio || 1;
+};
+var usePixelDensity = (options) => {
+  const pixelDensity = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(PixelDensityContext);
+  const canUseRemotionHooks = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(CanUseRemotionHooks);
+  if (pixelDensity !== null) {
+    return pixelDensity;
+  }
+  if (canUseRemotionHooks || options?.dontThrowIfOutsideOfRemotion) {
+    return getBrowserPixelDensity();
+  }
+  throw new Error([
+    "usePixelDensity() was called outside of a Remotion context.",
+    "This hook can only be called in a component that is being rendered by Remotion.",
+    "If you want this hook to return the browser pixel density outside of Remotion, pass {dontThrowIfOutsideOfRemotion: true} as an option.",
+    "If you think you called this hook in a Remotion component, make sure all versions of Remotion are aligned."
+  ].join(`
+`));
 };
 
 // src/video/OffthreadVideo.tsx
@@ -266717,6 +273232,7 @@ var OffthreadVideoForRendering = ({
   onVideoFrame,
   crossOrigin,
   audioStreamIndex,
+  preservePitch: _preservePitch,
   ...props2
 }) => {
   const absoluteFrame = useTimelinePosition();
@@ -266766,7 +273282,7 @@ var OffthreadVideoForRendering = ({
       mediaFrame: frame,
       playbackRate,
       toneFrequency,
-      audioStartFrame: Math.max(0, -(sequenceContext?.relativeFrom ?? 0)),
+      audioStartFrame: Math.max(0, -(sequenceContext?.cumulatedNegativeFrom ?? 0)),
       audioStreamIndex
     });
     return () => unregisterRenderAsset(id);
@@ -266781,7 +273297,7 @@ var OffthreadVideoForRendering = ({
     absoluteFrame,
     playbackRate,
     toneFrequency,
-    sequenceContext?.relativeFrom,
+    sequenceContext?.cumulatedNegativeFrom,
     audioStreamIndex
   ]);
   const currentTime = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
@@ -266891,7 +273407,7 @@ var OffthreadVideoForRendering = ({
     return null;
   }
   continueRender2(imageSrc.handle);
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Img, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Img, {
     src: imageSrc.src,
     delayRenderRetries,
     delayRenderTimeoutInMilliseconds,
@@ -266920,19 +273436,35 @@ var useEmitVideoFrame = ({
       return;
     }
     let handle = 0;
-    const callback = () => {
+    const callback = (_now, metadata) => {
       if (!ref.current) {
         return;
       }
-      onVideoFrame(ref.current);
+      onVideoFrame(ref.current, _now, metadata);
       handle = ref.current.requestVideoFrameCallback(callback);
     };
-    callback();
+    onVideoFrame(current);
+    if (!current.requestVideoFrameCallback) {
+      return;
+    }
+    handle = current.requestVideoFrameCallback(callback);
     return () => {
-      current.cancelVideoFrameCallback(handle);
+      if (handle) {
+        current.cancelVideoFrameCallback(handle);
+      }
     };
   }, [onVideoFrame, ref]);
 };
+
+// src/video/MediaPlaybackError.ts
+class MediaPlaybackError extends Error {
+  src;
+  constructor({ message, src }) {
+    super(message);
+    this.name = "MediaPlaybackError";
+    this.src = src;
+  }
+}
 
 // src/video/VideoForPreview.tsx
 
@@ -266951,10 +273483,19 @@ var VideoForDevelopmentRefForwardingFunction = (props2, ref) => {
       ref: videoRef
     });
   }, [context.audioContext]);
+  const effectToUse = react__WEBPACK_IMPORTED_MODULE_0__.useInsertionEffect ?? react__WEBPACK_IMPORTED_MODULE_0__.useLayoutEffect;
+  effectToUse(() => {
+    return () => {
+      requestAnimationFrame(() => {
+        sharedSource?.cleanup();
+      });
+    };
+  }, [sharedSource]);
   const {
     volume,
     muted,
     playbackRate,
+    preservePitch,
     onlyWarnForMediaSeekingError,
     src,
     onDuration,
@@ -266986,22 +273527,23 @@ var VideoForDevelopmentRefForwardingFunction = (props2, ref) => {
   const volumePropFrame = useFrameForVolumeProp(loopVolumeCurveBehavior ?? "repeat");
   const { fps, durationInFrames } = useVideoConfig();
   const parentSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceContext);
-  const { hidden } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(SequenceVisibilityToggleContext);
   const logLevel = useLogLevel();
   const mountTime = useMountTime();
   const [timelineId] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(() => String(Math.random()));
-  const isSequenceHidden = hidden[timelineId] ?? false;
   if (typeof acceptableTimeShift !== "undefined") {
     throw new Error("acceptableTimeShift has been removed. Use acceptableTimeShiftInSeconds instead.");
   }
   const [mediaVolume] = useMediaVolumeState();
-  const [mediaMuted] = useMediaMutedState();
+  const [playerMuted] = usePlayerMutedState();
   const userPreferredVolume = evaluateVolume({
     frame: volumePropFrame,
     volume,
     mediaVolume
   });
   warnAboutTooHighVolume(userPreferredVolume);
+  const getStack = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
+    return _remotionInternalStack ?? null;
+  }, [_remotionInternalStack]);
   useMediaInTimeline({
     volume,
     mediaVolume,
@@ -267010,17 +273552,20 @@ var VideoForDevelopmentRefForwardingFunction = (props2, ref) => {
     playbackRate: props2.playbackRate ?? 1,
     displayName: name ?? null,
     id: timelineId,
-    stack: _remotionInternalStack,
+    getStack,
     showInTimeline,
     premountDisplay: parentSequence?.premountDisplay ?? null,
     postmountDisplay: parentSequence?.postmountDisplay ?? null,
-    loopDisplay: undefined
+    loopDisplay: undefined,
+    documentationLink: onlyWarnForMediaSeekingError ? "https://www.remotion.dev/docs/offthreadvideo" : "https://www.remotion.dev/docs/html5-video",
+    refForOutline: videoRef
   });
   useMediaPlayback({
     mediaRef: videoRef,
     src,
     mediaType: "video",
     playbackRate: props2.playbackRate ?? 1,
+    preservePitch,
     onlyWarnForMediaSeekingError,
     acceptableTimeshift: acceptableTimeShiftInSeconds ?? null,
     isPremounting: Boolean(parentSequence?.premounting),
@@ -267070,18 +273615,30 @@ var VideoForDevelopmentRefForwardingFunction = (props2, ref) => {
       if (current.error) {
         console.error("Error occurred in video", current?.error);
         if (onError) {
-          const err = new Error(`Code ${current.error.code}: ${current.error.message}`);
+          const err = new MediaPlaybackError({
+            message: `Code ${current.error.code}: ${current.error.message}`,
+            src
+          });
           onError(err);
           return;
         }
-        throw new Error(`The browser threw an error while playing the video ${src}: Code ${current.error.code} - ${current?.error?.message}. See https://remotion.dev/docs/media-playback-error for help. Pass an onError() prop to handle the error.`);
+        throw new MediaPlaybackError({
+          message: `The browser threw an error while playing the video ${src}: Code ${current.error.code} - ${current?.error?.message}. See https://remotion.dev/docs/media-playback-error for help. Pass an onError() prop to handle the error.`,
+          src
+        });
       } else {
         if (onError) {
-          const err = new Error(`The browser threw an error while playing the video ${src}`);
+          const err = new MediaPlaybackError({
+            message: `The browser threw an error while playing the video ${src}`,
+            src
+          });
           onError(err);
           return;
         }
-        throw new Error("The browser threw an error while playing the video");
+        throw new MediaPlaybackError({
+          message: "The browser threw an error while playing the video",
+          src
+        });
       }
     };
     current.addEventListener("error", errorHandler, { once: true });
@@ -267122,24 +273679,25 @@ var VideoForDevelopmentRefForwardingFunction = (props2, ref) => {
   }, []);
   const actualStyle = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
     return {
-      ...style,
-      opacity: isSequenceHidden ? 0 : style?.opacity ?? 1
+      ...style
     };
-  }, [isSequenceHidden, style]);
+  }, [style]);
   const crossOriginValue = getCrossOriginValue({
     crossOrigin,
-    requestsVideoFrame: Boolean(onVideoFrame)
+    requestsVideoFrame: Boolean(onVideoFrame),
+    isClientSideRendering: false
   });
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("video", {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("video", {
+    ...nativeProps,
     ref: videoRef,
-    muted: muted || mediaMuted || isSequenceHidden || userPreferredVolume <= 0,
+    muted: muted || playerMuted || userPreferredVolume <= 0,
     playsInline: true,
     src: actualSrc,
     loop: _remotionInternalNativeLoopPassed,
     style: actualStyle,
     disableRemotePlayback: true,
     crossOrigin: crossOriginValue,
-    ...nativeProps
+    controls: false
   });
 };
 var VideoForPreview = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(VideoForDevelopmentRefForwardingFunction);
@@ -267154,11 +273712,15 @@ var InnerOffthreadVideo = (props2) => {
     trimAfter,
     name,
     pauseWhenBuffering,
-    stack,
+    _remotionInternalStack,
     showInTimeline,
     ...otherProps
   } = props2;
   const environment = useRemotionEnvironment();
+  const shouldPauseWhenBuffering = resolveV5Default(pauseWhenBuffering);
+  if (environment.isClientSideRendering) {
+    throw new Error("<OffthreadVideo> is not supported in @remotion/web-renderer. Use <Video> from @remotion/media instead. See https://remotion.dev/docs/client-side-rendering/limitations");
+  }
   const onDuration = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
     return;
   }, []);
@@ -267173,20 +273735,20 @@ var InnerOffthreadVideo = (props2) => {
     trimAfter
   });
   if (typeof trimBeforeValue !== "undefined" || typeof trimAfterValue !== "undefined") {
-    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Sequence, {
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
       layout: "none",
       from: 0 - (trimBeforeValue ?? 0),
       showInTimeline: false,
       durationInFrames: trimAfterValue,
       name,
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(InnerOffthreadVideo, {
-        pauseWhenBuffering: pauseWhenBuffering ?? false,
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(InnerOffthreadVideo, {
+        pauseWhenBuffering: shouldPauseWhenBuffering,
         ...otherProps,
         trimAfter: undefined,
         name: undefined,
         showInTimeline,
         trimBefore: undefined,
-        stack: undefined,
+        _remotionInternalStack: undefined,
         startFrom: undefined,
         endAt: undefined
       })
@@ -267194,14 +273756,14 @@ var InnerOffthreadVideo = (props2) => {
   }
   validateMediaProps(props2, "Video");
   if (environment.isRendering) {
-    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(OffthreadVideoForRendering, {
-      pauseWhenBuffering: pauseWhenBuffering ?? false,
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(OffthreadVideoForRendering, {
+      pauseWhenBuffering: shouldPauseWhenBuffering,
       ...otherProps,
       trimAfter: undefined,
       name: undefined,
       showInTimeline,
       trimBefore: undefined,
-      stack: undefined,
+      _remotionInternalStack: undefined,
       startFrom: undefined,
       endAt: undefined
     });
@@ -267216,11 +273778,11 @@ var InnerOffthreadVideo = (props2) => {
     delayRenderTimeoutInMilliseconds,
     ...propsForPreview
   } = otherProps;
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(VideoForPreview, {
-    _remotionInternalStack: stack ?? null,
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(VideoForPreview, {
+    _remotionInternalStack: _remotionInternalStack ?? null,
     onDuration,
     onlyWarnForMediaSeekingError: true,
-    pauseWhenBuffering: pauseWhenBuffering ?? false,
+    pauseWhenBuffering: shouldPauseWhenBuffering,
     showInTimeline: showInTimeline ?? true,
     onAutoPlayError: onAutoPlayError ?? undefined,
     onVideoFrame: onVideoFrame ?? null,
@@ -267234,11 +273796,9 @@ var OffthreadVideo = ({
   acceptableTimeShiftInSeconds,
   allowAmplificationDuringRender,
   audioStreamIndex,
-  className,
   crossOrigin,
   delayRenderRetries,
   delayRenderTimeoutInMilliseconds,
-  id,
   loopVolumeCurveBehavior,
   muted,
   name,
@@ -267247,6 +273807,7 @@ var OffthreadVideo = ({
   onVideoFrame,
   pauseWhenBuffering,
   playbackRate,
+  preservePitch,
   showInTimeline,
   style,
   toneFrequency,
@@ -267258,34 +273819,34 @@ var OffthreadVideo = ({
   volume,
   _remotionInternalNativeLoopPassed,
   endAt,
-  stack,
+  _remotionInternalStack,
   startFrom,
-  imageFormat
+  imageFormat,
+  ...props2
 }) => {
   if (imageFormat) {
     throw new TypeError(`The \`<OffthreadVideo>\` tag does no longer accept \`imageFormat\`. Use the \`transparent\` prop if you want to render a transparent video.`);
   }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(InnerOffthreadVideo, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(InnerOffthreadVideo, {
     acceptableTimeShiftInSeconds,
     allowAmplificationDuringRender: allowAmplificationDuringRender ?? true,
     audioStreamIndex: audioStreamIndex ?? 0,
-    className,
     crossOrigin,
     delayRenderRetries,
     delayRenderTimeoutInMilliseconds,
-    id,
     loopVolumeCurveBehavior: loopVolumeCurveBehavior ?? "repeat",
     muted: muted ?? false,
     name,
     onAutoPlayError: onAutoPlayError ?? null,
     onError,
     onVideoFrame,
-    pauseWhenBuffering: pauseWhenBuffering ?? true,
+    pauseWhenBuffering: resolveV5Default(pauseWhenBuffering),
     playbackRate: playbackRate ?? 1,
+    preservePitch,
     toneFrequency: toneFrequency ?? 1,
     showInTimeline: showInTimeline ?? true,
     src,
-    stack,
+    _remotionInternalStack,
     startFrom,
     _remotionInternalNativeLoopPassed: _remotionInternalNativeLoopPassed ?? false,
     endAt,
@@ -267295,7 +273856,8 @@ var OffthreadVideo = ({
     trimAfter,
     trimBefore,
     useWebAudioApi: useWebAudioApi ?? false,
-    volume
+    volume,
+    ...props2
   });
 };
 addSequenceStackTraces(OffthreadVideo);
@@ -267343,6 +273905,7 @@ var watchStaticFile = (fileName, callback) => {
 function useRemotionContexts() {
   const compositionManagerCtx = react__WEBPACK_IMPORTED_MODULE_0__.useContext(CompositionManager);
   const timelineContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(TimelineContext);
+  const timelineImperativeContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(TimelineImperativeContext);
   const setTimelineContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(SetTimelineContext);
   const sequenceContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(SequenceContext);
   const nonceContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(NonceContext);
@@ -267351,11 +273914,14 @@ function useRemotionContexts() {
   const resolveCompositionContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(ResolveCompositionContext);
   const renderAssetManagerContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(RenderAssetManager);
   const sequenceManagerContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(SequenceManager);
+  const sequenceManagerRefContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(SequenceManagerRefContext);
+  const visualModePropStatusesRefContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(VisualModePropStatusesRefContext);
   const bufferManagerContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(BufferingContextReact);
   const logLevelContext = react__WEBPACK_IMPORTED_MODULE_0__.useContext(LogLevelContext);
   return (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => ({
     compositionManagerCtx,
     timelineContext,
+    timelineImperativeContext,
     setTimelineContext,
     sequenceContext,
     nonceContext,
@@ -267364,6 +273930,8 @@ function useRemotionContexts() {
     resolveCompositionContext,
     renderAssetManagerContext,
     sequenceManagerContext,
+    sequenceManagerRefContext,
+    visualModePropStatusesRefContext,
     bufferManagerContext,
     logLevelContext
   }), [
@@ -267372,42 +273940,54 @@ function useRemotionContexts() {
     sequenceContext,
     setTimelineContext,
     timelineContext,
+    timelineImperativeContext,
     canUseRemotionHooksContext,
     preloadContext,
     resolveCompositionContext,
     renderAssetManagerContext,
     sequenceManagerContext,
+    sequenceManagerRefContext,
+    visualModePropStatusesRefContext,
     bufferManagerContext,
     logLevelContext
   ]);
 }
 var RemotionContextProvider = (props2) => {
   const { children, contexts } = props2;
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(LogLevelContext.Provider, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(LogLevelContext.Provider, {
     value: contexts.logLevelContext,
-    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(CanUseRemotionHooks.Provider, {
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CanUseRemotionHooks.Provider, {
       value: contexts.canUseRemotionHooksContext,
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(NonceContext.Provider, {
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(NonceContext.Provider, {
         value: contexts.nonceContext,
-        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(PreloadContext.Provider, {
+        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(PreloadContext.Provider, {
           value: contexts.preloadContext,
-          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(CompositionManager.Provider, {
+          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(CompositionManager.Provider, {
             value: contexts.compositionManagerCtx,
-            children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SequenceManager.Provider, {
-              value: contexts.sequenceManagerContext,
-              children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(RenderAssetManager.Provider, {
-                value: contexts.renderAssetManagerContext,
-                children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(ResolveCompositionContext.Provider, {
-                  value: contexts.resolveCompositionContext,
-                  children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(TimelineContext.Provider, {
-                    value: contexts.timelineContext,
-                    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SetTimelineContext.Provider, {
-                      value: contexts.setTimelineContext,
-                      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(SequenceContext.Provider, {
-                        value: contexts.sequenceContext,
-                        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(BufferingContextReact.Provider, {
-                          value: contexts.bufferManagerContext,
-                          children
+            children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceManagerRefContext.Provider, {
+              value: contexts.sequenceManagerRefContext,
+              children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceManager.Provider, {
+                value: contexts.sequenceManagerContext,
+                children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(VisualModePropStatusesRefContext.Provider, {
+                  value: contexts.visualModePropStatusesRefContext,
+                  children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(RenderAssetManager.Provider, {
+                    value: contexts.renderAssetManagerContext,
+                    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(ResolveCompositionContext.Provider, {
+                      value: contexts.resolveCompositionContext,
+                      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(TimelineImperativeContext.Provider, {
+                        value: contexts.timelineImperativeContext,
+                        children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(TimelineContext.Provider, {
+                          value: contexts.timelineContext,
+                          children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SetTimelineContext.Provider, {
+                            value: contexts.setTimelineContext,
+                            children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceContext.Provider, {
+                              value: contexts.sequenceContext,
+                              children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(BufferingContextReact.Provider, {
+                                value: contexts.bufferManagerContext,
+                                children
+                              })
+                            })
+                          })
                         })
                       })
                     })
@@ -267425,11 +274005,17 @@ var RemotionContextProvider = (props2) => {
 // src/internals.ts
 var compositionSelectorRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.createRef)();
 var Internals = {
+  MaxMediaCacheSizeContext,
+  makeRenderResourceManager,
+  RenderResourceManagerContext,
   useUnsafeVideoConfig,
   useFrameForVolumeProp,
   useTimelinePosition,
+  useAbsoluteTimelinePosition,
   evaluateVolume,
   getAbsoluteSrc,
+  getAnimatedImageDurationInSeconds,
+  getAssetDisplayName,
   Timeline: exports_timeline_position_state,
   validateMediaTrimProps,
   validateMediaProps,
@@ -267437,17 +274023,37 @@ var Internals = {
   VideoForPreview,
   CompositionManager,
   CompositionSetters,
+  VisualModePropStatusesContext,
+  VisualModePropStatusesRefContext,
+  VisualModeDragOverridesContext,
+  VisualModeSettersContext,
   SequenceManager,
-  SequenceVisibilityToggleContext,
-  RemotionRoot,
+  SequenceManagerRefContext,
+  SequenceStackTracesUpdateContext,
+  baseSchema,
+  sequenceSchema,
+  SequenceWithoutSchema,
+  sequenceStyleSchema,
+  sequenceVisualStyleSchema,
+  sequencePremountSchema,
+  sequenceCropSchema,
+  textSchema,
+  transformSchema,
+  premountSchema,
+  flattenActiveSchema,
+  getFlatSchemaWithAllKeys,
+  RemotionRootContexts,
+  CompositionManagerProvider,
   useVideo,
   getRoot,
   useMediaVolumeState,
-  useMediaMutedState,
+  usePlayerMutedState,
   useMediaInTimeline,
   useLazyComponent,
   truthy,
   SequenceContext,
+  PremountContext,
+  usePremounting,
   useRemotionContexts,
   RemotionContextProvider,
   CSSUtils: exports_default_css,
@@ -267457,13 +274063,19 @@ var Internals = {
   getRemotionEnvironment,
   SharedAudioContext,
   SharedAudioContextProvider,
+  SharedAudioTagsContext,
+  SharedAudioTagsContextProvider,
   invalidCompositionErrorMessage,
+  invalidFolderNameErrorMessage,
   calculateMediaDuration,
   isCompositionIdValid,
+  isFolderNameValid,
   getPreviewDomElement,
   compositionsRef,
   portalNode,
+  setPortalNodeCurrentScale,
   waitForRoot,
+  SetTimelineContext,
   CanUseRemotionHooksProvider,
   CanUseRemotionHooks,
   PrefetchProvider,
@@ -267474,14 +274086,17 @@ var Internals = {
   EditorPropsContext,
   usePreload,
   NonceContext,
-  SetNonceContext,
   resolveVideoConfig,
+  resolveVideoConfigOrCatch,
+  resolveVideoConfigWithMetadataOrCatch,
+  ResolveCompositionContext,
   useResolvedVideoConfig,
   resolveCompositionsRef,
-  ResolveCompositionConfig,
   REMOTION_STUDIO_CONTAINER_ELEMENT,
   RenderAssetManager,
   persistCurrentFrame,
+  usePlaybackRate,
+  useTimelineContext,
   useTimelineSetFrame,
   isIosSafari,
   WATCH_REMOTION_STATIC_FILES,
@@ -267489,12 +274104,15 @@ var Internals = {
   useMediaStartsAt,
   BufferingProvider,
   BufferingContextReact,
-  enableSequenceStackTraces,
+  getComponentsToAddStacksTo,
+  getSequenceComponent,
+  getSingleChildComponent,
+  getStackForControls,
+  REMOTION_INTERNAL_STACK_PROP,
   CurrentScaleContext,
+  PixelDensityContext,
   PreviewSizeContext,
   calculateScale,
-  editorPropsProviderRef,
-  PROPS_UPDATED_EXTERNALLY,
   validateRenderAsset,
   Log,
   LogLevelContext,
@@ -267512,370 +274130,43 @@ var Internals = {
   setInputPropsOverride,
   useVideoEnabled,
   useAudioEnabled,
-  useIsPlayerBuffering
-};
-// src/interpolate-colors.ts
-var NUMBER = "[-+]?\\d*\\.?\\d+";
-var PERCENTAGE = NUMBER + "%";
-function call(...args) {
-  return "\\(\\s*(" + args.join(")\\s*,\\s*(") + ")\\s*\\)";
-}
-function getMatchers() {
-  const cachedMatchers = {
-    rgb: undefined,
-    rgba: undefined,
-    hsl: undefined,
-    hsla: undefined,
-    hex3: undefined,
-    hex4: undefined,
-    hex5: undefined,
-    hex6: undefined,
-    hex8: undefined
-  };
-  if (cachedMatchers.rgb === undefined) {
-    cachedMatchers.rgb = new RegExp("rgb" + call(NUMBER, NUMBER, NUMBER));
-    cachedMatchers.rgba = new RegExp("rgba" + call(NUMBER, NUMBER, NUMBER, NUMBER));
-    cachedMatchers.hsl = new RegExp("hsl" + call(NUMBER, PERCENTAGE, PERCENTAGE));
-    cachedMatchers.hsla = new RegExp("hsla" + call(NUMBER, PERCENTAGE, PERCENTAGE, NUMBER));
-    cachedMatchers.hex3 = /^#([0-9a-fA-F]{1})([0-9a-fA-F]{1})([0-9a-fA-F]{1})$/;
-    cachedMatchers.hex4 = /^#([0-9a-fA-F]{1})([0-9a-fA-F]{1})([0-9a-fA-F]{1})([0-9a-fA-F]{1})$/;
-    cachedMatchers.hex6 = /^#([0-9a-fA-F]{6})$/;
-    cachedMatchers.hex8 = /^#([0-9a-fA-F]{8})$/;
-  }
-  return cachedMatchers;
-}
-function hue2rgb(p, q, t) {
-  if (t < 0) {
-    t += 1;
-  }
-  if (t > 1) {
-    t -= 1;
-  }
-  if (t < 1 / 6) {
-    return p + (q - p) * 6 * t;
-  }
-  if (t < 1 / 2) {
-    return q;
-  }
-  if (t < 2 / 3) {
-    return p + (q - p) * (2 / 3 - t) * 6;
-  }
-  return p;
-}
-function hslToRgb(h, s, l) {
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  const r = hue2rgb(p, q, h + 1 / 3);
-  const g = hue2rgb(p, q, h);
-  const b2 = hue2rgb(p, q, h - 1 / 3);
-  return Math.round(r * 255) << 24 | Math.round(g * 255) << 16 | Math.round(b2 * 255) << 8;
-}
-function parse255(str) {
-  const int = Number.parseInt(str, 10);
-  if (int < 0) {
-    return 0;
-  }
-  if (int > 255) {
-    return 255;
-  }
-  return int;
-}
-function parse360(str) {
-  const int = Number.parseFloat(str);
-  return (int % 360 + 360) % 360 / 360;
-}
-function parse1(str) {
-  const num = Number.parseFloat(str);
-  if (num < 0) {
-    return 0;
-  }
-  if (num > 1) {
-    return 255;
-  }
-  return Math.round(num * 255);
-}
-function parsePercentage(str) {
-  const int = Number.parseFloat(str);
-  if (int < 0) {
-    return 0;
-  }
-  if (int > 100) {
-    return 1;
-  }
-  return int / 100;
-}
-var colorNames = {
-  transparent: 0,
-  aliceblue: 4042850303,
-  antiquewhite: 4209760255,
-  aqua: 16777215,
-  aquamarine: 2147472639,
-  azure: 4043309055,
-  beige: 4126530815,
-  bisque: 4293182719,
-  black: 255,
-  blanchedalmond: 4293643775,
-  blue: 65535,
-  blueviolet: 2318131967,
-  brown: 2771004159,
-  burlywood: 3736635391,
-  burntsienna: 3934150143,
-  cadetblue: 1604231423,
-  chartreuse: 2147418367,
-  chocolate: 3530104575,
-  coral: 4286533887,
-  cornflowerblue: 1687547391,
-  cornsilk: 4294499583,
-  crimson: 3692313855,
-  cyan: 16777215,
-  darkblue: 35839,
-  darkcyan: 9145343,
-  darkgoldenrod: 3095792639,
-  darkgray: 2846468607,
-  darkgreen: 6553855,
-  darkgrey: 2846468607,
-  darkkhaki: 3182914559,
-  darkmagenta: 2332068863,
-  darkolivegreen: 1433087999,
-  darkorange: 4287365375,
-  darkorchid: 2570243327,
-  darkred: 2332033279,
-  darksalmon: 3918953215,
-  darkseagreen: 2411499519,
-  darkslateblue: 1211993087,
-  darkslategray: 793726975,
-  darkslategrey: 793726975,
-  darkturquoise: 13554175,
-  darkviolet: 2483082239,
-  deeppink: 4279538687,
-  deepskyblue: 12582911,
-  dimgray: 1768516095,
-  dimgrey: 1768516095,
-  dodgerblue: 512819199,
-  firebrick: 2988581631,
-  floralwhite: 4294635775,
-  forestgreen: 579543807,
-  fuchsia: 4278255615,
-  gainsboro: 3705462015,
-  ghostwhite: 4177068031,
-  gold: 4292280575,
-  goldenrod: 3668254975,
-  gray: 2155905279,
-  green: 8388863,
-  greenyellow: 2919182335,
-  grey: 2155905279,
-  honeydew: 4043305215,
-  hotpink: 4285117695,
-  indianred: 3445382399,
-  indigo: 1258324735,
-  ivory: 4294963455,
-  khaki: 4041641215,
-  lavender: 3873897215,
-  lavenderblush: 4293981695,
-  lawngreen: 2096890111,
-  lemonchiffon: 4294626815,
-  lightblue: 2916673279,
-  lightcoral: 4034953471,
-  lightcyan: 3774873599,
-  lightgoldenrodyellow: 4210742015,
-  lightgray: 3553874943,
-  lightgreen: 2431553791,
-  lightgrey: 3553874943,
-  lightpink: 4290167295,
-  lightsalmon: 4288707327,
-  lightseagreen: 548580095,
-  lightskyblue: 2278488831,
-  lightslategray: 2005441023,
-  lightslategrey: 2005441023,
-  lightsteelblue: 2965692159,
-  lightyellow: 4294959359,
-  lime: 16711935,
-  limegreen: 852308735,
-  linen: 4210091775,
-  magenta: 4278255615,
-  maroon: 2147483903,
-  mediumaquamarine: 1724754687,
-  mediumblue: 52735,
-  mediumorchid: 3126187007,
-  mediumpurple: 2473647103,
-  mediumseagreen: 1018393087,
-  mediumslateblue: 2070474495,
-  mediumspringgreen: 16423679,
-  mediumturquoise: 1221709055,
-  mediumvioletred: 3340076543,
-  midnightblue: 421097727,
-  mintcream: 4127193855,
-  mistyrose: 4293190143,
-  moccasin: 4293178879,
-  navajowhite: 4292783615,
-  navy: 33023,
-  oldlace: 4260751103,
-  olive: 2155872511,
-  olivedrab: 1804477439,
-  orange: 4289003775,
-  orangered: 4282712319,
-  orchid: 3664828159,
-  palegoldenrod: 4008225535,
-  palegreen: 2566625535,
-  paleturquoise: 2951671551,
-  palevioletred: 3681588223,
-  papayawhip: 4293907967,
-  peachpuff: 4292524543,
-  peru: 3448061951,
-  pink: 4290825215,
-  plum: 3718307327,
-  powderblue: 2967529215,
-  purple: 2147516671,
-  rebeccapurple: 1714657791,
-  red: 4278190335,
-  rosybrown: 3163525119,
-  royalblue: 1097458175,
-  saddlebrown: 2336560127,
-  salmon: 4202722047,
-  sandybrown: 4104413439,
-  seagreen: 780883967,
-  seashell: 4294307583,
-  sienna: 2689740287,
-  silver: 3233857791,
-  skyblue: 2278484991,
-  slateblue: 1784335871,
-  slategray: 1887473919,
-  slategrey: 1887473919,
-  snow: 4294638335,
-  springgreen: 16744447,
-  steelblue: 1182971135,
-  tan: 3535047935,
-  teal: 8421631,
-  thistle: 3636451583,
-  tomato: 4284696575,
-  turquoise: 1088475391,
-  violet: 4001558271,
-  wheat: 4125012991,
-  white: 4294967295,
-  whitesmoke: 4126537215,
-  yellow: 4294902015,
-  yellowgreen: 2597139199
-};
-function normalizeColor(color) {
-  const matchers = getMatchers();
-  let match;
-  if (matchers.hex6) {
-    if (match = matchers.hex6.exec(color)) {
-      return Number.parseInt(match[1] + "ff", 16) >>> 0;
-    }
-  }
-  if (colorNames[color] !== undefined) {
-    return colorNames[color];
-  }
-  if (matchers.rgb) {
-    if (match = matchers.rgb.exec(color)) {
-      return (parse255(match[1]) << 24 | parse255(match[2]) << 16 | parse255(match[3]) << 8 | 255) >>> 0;
-    }
-  }
-  if (matchers.rgba) {
-    if (match = matchers.rgba.exec(color)) {
-      return (parse255(match[1]) << 24 | parse255(match[2]) << 16 | parse255(match[3]) << 8 | parse1(match[4])) >>> 0;
-    }
-  }
-  if (matchers.hex3) {
-    if (match = matchers.hex3.exec(color)) {
-      return Number.parseInt(match[1] + match[1] + match[2] + match[2] + match[3] + match[3] + "ff", 16) >>> 0;
-    }
-  }
-  if (matchers.hex8) {
-    if (match = matchers.hex8.exec(color)) {
-      return Number.parseInt(match[1], 16) >>> 0;
-    }
-  }
-  if (matchers.hex4) {
-    if (match = matchers.hex4.exec(color)) {
-      return Number.parseInt(match[1] + match[1] + match[2] + match[2] + match[3] + match[3] + match[4] + match[4], 16) >>> 0;
-    }
-  }
-  if (matchers.hsl) {
-    if (match = matchers.hsl.exec(color)) {
-      return (hslToRgb(parse360(match[1]), parsePercentage(match[2]), parsePercentage(match[3])) | 255) >>> 0;
-    }
-  }
-  if (matchers.hsla) {
-    if (match = matchers.hsla.exec(color)) {
-      return (hslToRgb(parse360(match[1]), parsePercentage(match[2]), parsePercentage(match[3])) | parse1(match[4])) >>> 0;
-    }
-  }
-  throw new Error(`invalid color string ${color} provided`);
-}
-var opacity = (c2) => {
-  return (c2 >> 24 & 255) / 255;
-};
-var red = (c2) => {
-  return c2 >> 16 & 255;
-};
-var green = (c2) => {
-  return c2 >> 8 & 255;
-};
-var blue = (c2) => {
-  return c2 & 255;
-};
-var rgbaColor = (r, g, b2, alpha) => {
-  return `rgba(${r}, ${g}, ${b2}, ${alpha})`;
-};
-function processColor(color) {
-  const normalizedColor = normalizeColor(color);
-  return (normalizedColor << 24 | normalizedColor >>> 8) >>> 0;
-}
-var interpolateColorsRGB = (value, inputRange, colors) => {
-  const [r, g, b2, a2] = [red, green, blue, opacity].map((f) => {
-    const unrounded = interpolate(value, inputRange, colors.map((c2) => f(c2)), {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp"
-    });
-    if (f === opacity) {
-      return Number(unrounded.toFixed(3));
-    }
-    return Math.round(unrounded);
-  });
-  return rgbaColor(r, g, b2, a2);
-};
-var interpolateColors = (input, inputRange, outputRange) => {
-  if (typeof input === "undefined") {
-    throw new TypeError("input can not be undefined");
-  }
-  if (typeof inputRange === "undefined") {
-    throw new TypeError("inputRange can not be undefined");
-  }
-  if (typeof outputRange === "undefined") {
-    throw new TypeError("outputRange can not be undefined");
-  }
-  if (inputRange.length !== outputRange.length) {
-    throw new TypeError("inputRange (" + inputRange.length + " values provided) and outputRange (" + outputRange.length + " values provided) must have the same length");
-  }
-  const processedOutputRange = outputRange.map((c2) => processColor(c2));
-  return interpolateColorsRGB(input, inputRange, processedOutputRange);
-};
-// src/validate-frame.ts
-var validateFrame = ({
-  allowFloats,
-  durationInFrames,
-  frame
-}) => {
-  if (typeof frame === "undefined") {
-    throw new TypeError(`Argument missing for parameter "frame"`);
-  }
-  if (typeof frame !== "number") {
-    throw new TypeError(`Argument passed for "frame" is not a number: ${frame}`);
-  }
-  if (!Number.isFinite(frame)) {
-    throw new RangeError(`Frame ${frame} is not finite`);
-  }
-  if (frame % 1 !== 0 && !allowFloats) {
-    throw new RangeError(`Argument for frame must be an integer, but got ${frame}`);
-  }
-  if (frame < 0 && frame < -durationInFrames) {
-    throw new RangeError(`Cannot use frame ${frame}: Duration of composition is ${durationInFrames}, therefore the lowest frame that can be rendered is ${-durationInFrames}`);
-  }
-  if (frame > durationInFrames - 1) {
-    throw new RangeError(`Cannot use frame ${frame}: Duration of composition is ${durationInFrames}, therefore the highest frame that can be rendered is ${durationInFrames - 1}`);
-  }
+  useIsPlayerBuffering,
+  TimelinePosition: exports_timeline_position_state,
+  DelayRenderContextType,
+  TimelineContext,
+  TimelineImperativeContext,
+  PlaybackRateContext,
+  AbsoluteTimeContext,
+  RenderAssetManagerProvider,
+  getEffectiveVisualModeValue,
+  CompositionRenderErrorContext,
+  useEffectChainState,
+  createEffectChainState,
+  cleanupEffectChainState,
+  runEffectChain,
+  useMemoizedEffects,
+  useMemoizedEffectDefinitions,
+  createEffect,
+  createWebGLContextError,
+  createWebGL2ContextError,
+  computeEffectiveSchemaValuesDotNotation,
+  interpolateKeyframedStatus,
+  makeStaticDragOverride,
+  makeKeyframedDragOverride,
+  resolveDragOverrideValue,
+  getStaticDragOverrideValue,
+  OverrideIdsToNodePathsGettersContext,
+  OverrideIdsToNodePathsSettersContext,
+  findPropsToDelete,
+  makeSequencePropsSubscriptionKey,
+  getPropStatusesCtx,
+  getEffectPropStatusesCtx,
+  hiddenField,
+  durationInFramesField,
+  freezeField,
+  fromField,
+  resolveSequenceCrop,
+  useCropStyle
 };
 // src/series/index.tsx
 
@@ -267893,348 +274184,146 @@ var flattenChildren = (children) => {
   }, []);
 };
 
-// src/series/is-inside-series.tsx
-
-
-var IsInsideSeriesContext = (0,react__WEBPACK_IMPORTED_MODULE_0__.createContext)(false);
-var IsInsideSeriesContainer = ({ children }) => {
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(IsInsideSeriesContext.Provider, {
-    value: true,
-    children
-  });
-};
-var IsNotInsideSeriesProvider = ({ children }) => {
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(IsInsideSeriesContext.Provider, {
-    value: false,
-    children
-  });
-};
-var useRequireToBeInsideSeries = () => {
-  const isInsideSeries = react__WEBPACK_IMPORTED_MODULE_0__.useContext(IsInsideSeriesContext);
-  if (!isInsideSeries) {
-    throw new Error("This component must be inside a <Series /> component.");
-  }
-};
-
 // src/series/index.tsx
 
-var SeriesSequenceRefForwardingFunction = ({ children }, _ref) => {
-  useRequireToBeInsideSeries();
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(IsNotInsideSeriesProvider, {
-    children
-  });
+var seriesSequenceSchema = {
+  durationInFrames: Interactive.baseSchema.durationInFrames,
+  name: Interactive.sequenceSchema.name,
+  hidden: Interactive.sequenceSchema.hidden,
+  showInTimeline: Interactive.sequenceSchema.showInTimeline,
+  freeze: Interactive.baseSchema.freeze,
+  trimBefore: Interactive.sequenceSchema.trimBefore,
+  layout: Interactive.sequenceSchema.layout
 };
-var SeriesSequence = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(SeriesSequenceRefForwardingFunction);
-var Series = (props2) => {
+var SeriesSequenceInner = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(({ offset = 0, className = "", _remotionInternalRender = null, ...props2 }, ref) => {
+  useRequireToBeInsideSeries();
+  if (_remotionInternalRender) {
+    return _remotionInternalRender({ ...props2, offset, className: className || undefined }, ref);
+  }
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(IsNotInsideSeriesProvider, {
+    children: props2.children
+  });
+});
+var SeriesSequence = Interactive.withSchema({
+  Component: SeriesSequenceInner,
+  componentName: "<Series.Sequence>",
+  componentIdentity: "dev.remotion.remotion.Series.Sequence",
+  schema: seriesSequenceSchema,
+  supportsEffects: false
+});
+var SequenceWithoutSchemaWithRef = SequenceWithoutSchema;
+var validateSeriesSequenceProps = ({
+  durationInFrames,
+  offset: offsetProp,
+  index,
+  childrenLength
+}) => {
+  const debugInfo = `index = ${index}, duration = ${durationInFrames}`;
+  if (index !== childrenLength - 1 || durationInFrames !== Infinity) {
+    validateDurationInFrames(durationInFrames, {
+      component: `of a <Series.Sequence /> component`,
+      allowFloats: true
+    });
+  }
+  const offset = offsetProp ?? 0;
+  if (Number.isNaN(offset)) {
+    throw new TypeError(`The "offset" property of a <Series.Sequence /> must not be NaN, but got NaN (${debugInfo}).`);
+  }
+  if (!Number.isFinite(offset)) {
+    throw new TypeError(`The "offset" property of a <Series.Sequence /> must be finite, but got ${offset} (${debugInfo}).`);
+  }
+  if (offset % 1 !== 0) {
+    throw new TypeError(`The "offset" property of a <Series.Sequence /> must be finite, but got ${offset} (${debugInfo}).`);
+  }
+  return offset;
+};
+var SeriesInner = (props2) => {
   const childrenValue = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => {
-    let startFrame = 0;
     const flattenedChildren = flattenChildren(props2.children);
-    return react__WEBPACK_IMPORTED_MODULE_0__.Children.map(flattenedChildren, (child, i) => {
+    const renderChildren = (i, startFrame) => {
+      if (i === flattenedChildren.length) {
+        return null;
+      }
+      const child = flattenedChildren[i];
       const castedChild = child;
       if (typeof castedChild === "string") {
         if (castedChild.trim() === "") {
-          return null;
+          return renderChildren(i + 1, startFrame);
         }
         throw new TypeError(`The <Series /> component only accepts a list of <Series.Sequence /> components as its children, but you passed a string "${castedChild}"`);
       }
       if (castedChild.type !== SeriesSequence) {
         throw new TypeError(`The <Series /> component only accepts a list of <Series.Sequence /> components as its children, but got ${castedChild} instead`);
       }
-      const debugInfo = `index = ${i}, duration = ${castedChild.props.durationInFrames}`;
-      if (!castedChild?.props.children) {
-        throw new TypeError(`A <Series.Sequence /> component (${debugInfo}) was detected to not have any children. Delete it to fix this error.`);
-      }
-      const durationInFramesProp = castedChild.props.durationInFrames;
-      const {
-        durationInFrames,
-        children: _children,
-        from,
-        name,
-        ...passedProps
-      } = castedChild.props;
-      if (i !== flattenedChildren.length - 1 || durationInFramesProp !== Infinity) {
-        validateDurationInFrames(durationInFramesProp, {
-          component: `of a <Series.Sequence /> component`,
-          allowFloats: true
-        });
-      }
-      const offset = castedChild.props.offset ?? 0;
-      if (Number.isNaN(offset)) {
-        throw new TypeError(`The "offset" property of a <Series.Sequence /> must not be NaN, but got NaN (${debugInfo}).`);
-      }
-      if (!Number.isFinite(offset)) {
-        throw new TypeError(`The "offset" property of a <Series.Sequence /> must be finite, but got ${offset} (${debugInfo}).`);
-      }
-      if (offset % 1 !== 0) {
-        throw new TypeError(`The "offset" property of a <Series.Sequence /> must be finite, but got ${offset} (${debugInfo}).`);
-      }
-      const currentStartFrame = startFrame + offset;
-      startFrame += durationInFramesProp + offset;
-      return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Sequence, {
-        name: name || "<Series.Sequence>",
-        from: currentStartFrame,
-        durationInFrames: durationInFramesProp,
-        ...passedProps,
-        ref: castedChild.ref,
-        children: child
+      const castedElement = castedChild;
+      validateSeriesSequenceProps({
+        durationInFrames: castedElement.props.durationInFrames,
+        offset: castedElement.props.offset,
+        index: i,
+        childrenLength: flattenedChildren.length
       });
-    });
+      return react__WEBPACK_IMPORTED_MODULE_0__.cloneElement(castedElement, {
+        _remotionInternalRender: (resolvedProps, ref) => {
+          const durationInFramesProp = resolvedProps.durationInFrames;
+          const {
+            durationInFrames: _durationInFrames,
+            children: sequenceChildren,
+            offset: offsetProp,
+            controls,
+            from: _from,
+            name,
+            ...passedProps
+          } = resolvedProps;
+          const offset = validateSeriesSequenceProps({
+            durationInFrames: durationInFramesProp,
+            offset: offsetProp,
+            index: i,
+            childrenLength: flattenedChildren.length
+          });
+          const currentStartFrame = startFrame + offset;
+          const nextStartFrame = startFrame + durationInFramesProp + offset;
+          return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsxs)(react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.Fragment, {
+            children: [
+              /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(SequenceWithoutSchemaWithRef, {
+                ref,
+                name: name || "<Series.Sequence>",
+                _remotionInternalDocumentationLink: name ? undefined : "https://www.remotion.dev/docs/series",
+                controls: controls ?? undefined,
+                from: currentStartFrame,
+                durationInFrames: durationInFramesProp,
+                ...passedProps,
+                children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(IsNotInsideSeriesProvider, {
+                  children: sequenceChildren
+                })
+              }),
+              renderChildren(i + 1, nextStartFrame)
+            ]
+          });
+        }
+      });
+    };
+    return renderChildren(0, 0);
   }, [props2.children]);
-  if (ENABLE_V5_BREAKING_CHANGES) {
-    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(IsInsideSeriesContainer, {
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Sequence, {
-        ...props2,
-        children: childrenValue
-      })
-    });
-  }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(IsInsideSeriesContainer, {
-    children: childrenValue
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
+    layout: "none",
+    name: "<Series>",
+    _remotionInternalDocumentationLink: "https://www.remotion.dev/docs/series",
+    ...props2,
+    children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(IsInsideSeriesContainer, {
+      children: childrenValue
+    })
   });
 };
-Series.Sequence = SeriesSequence;
-addSequenceStackTraces(SeriesSequence);
-// src/validation/validation-spring-duration.ts
-var validateSpringDuration = (dur) => {
-  if (typeof dur === "undefined") {
-    return;
-  }
-  if (typeof dur !== "number") {
-    throw new TypeError(`A "duration" of a spring must be a "number" but is "${typeof dur}"`);
-  }
-  if (Number.isNaN(dur)) {
-    throw new TypeError('A "duration" of a spring is NaN, which it must not be');
-  }
-  if (!Number.isFinite(dur)) {
-    throw new TypeError('A "duration" of a spring must be finite, but is ' + dur);
-  }
-  if (dur <= 0) {
-    throw new TypeError('A "duration" of a spring must be positive, but is ' + dur);
-  }
-};
-
-// src/spring/spring-utils.ts
-var defaultSpringConfig = {
-  damping: 10,
-  mass: 1,
-  stiffness: 100,
-  overshootClamping: false
-};
-var advanceCache = {};
-function advance({
-  animation,
-  now,
-  config
-}) {
-  const { toValue, lastTimestamp, current, velocity } = animation;
-  const deltaTime = Math.min(now - lastTimestamp, 64);
-  if (config.damping <= 0) {
-    throw new Error("Spring damping must be greater than 0, otherwise the spring() animation will never end, causing an infinite loop.");
-  }
-  const c2 = config.damping;
-  const m = config.mass;
-  const k = config.stiffness;
-  const cacheKey = [
-    toValue,
-    lastTimestamp,
-    current,
-    velocity,
-    c2,
-    m,
-    k,
-    now
-  ].join("-");
-  if (advanceCache[cacheKey]) {
-    return advanceCache[cacheKey];
-  }
-  const v0 = -velocity;
-  const x0 = toValue - current;
-  const zeta = c2 / (2 * Math.sqrt(k * m));
-  const omega0 = Math.sqrt(k / m);
-  const omega1 = omega0 * Math.sqrt(1 - zeta ** 2);
-  const t = deltaTime / 1000;
-  const sin1 = Math.sin(omega1 * t);
-  const cos1 = Math.cos(omega1 * t);
-  const underDampedEnvelope = Math.exp(-zeta * omega0 * t);
-  const underDampedFrag1 = underDampedEnvelope * (sin1 * ((v0 + zeta * omega0 * x0) / omega1) + x0 * cos1);
-  const underDampedPosition = toValue - underDampedFrag1;
-  const underDampedVelocity = zeta * omega0 * underDampedFrag1 - underDampedEnvelope * (cos1 * (v0 + zeta * omega0 * x0) - omega1 * x0 * sin1);
-  const criticallyDampedEnvelope = Math.exp(-omega0 * t);
-  const criticallyDampedPosition = toValue - criticallyDampedEnvelope * (x0 + (v0 + omega0 * x0) * t);
-  const criticallyDampedVelocity = criticallyDampedEnvelope * (v0 * (t * omega0 - 1) + t * x0 * omega0 * omega0);
-  const animationNode = {
-    toValue,
-    prevPosition: current,
-    lastTimestamp: now,
-    current: zeta < 1 ? underDampedPosition : criticallyDampedPosition,
-    velocity: zeta < 1 ? underDampedVelocity : criticallyDampedVelocity
-  };
-  advanceCache[cacheKey] = animationNode;
-  return animationNode;
-}
-var calculationCache = {};
-function springCalculation({
-  frame,
-  fps,
-  config = {}
-}) {
-  const from = 0;
-  const to = 1;
-  const cacheKey = [
-    frame,
-    fps,
-    config.damping,
-    config.mass,
-    config.overshootClamping,
-    config.stiffness
-  ].join("-");
-  if (calculationCache[cacheKey]) {
-    return calculationCache[cacheKey];
-  }
-  let animation = {
-    lastTimestamp: 0,
-    current: from,
-    toValue: to,
-    velocity: 0,
-    prevPosition: 0
-  };
-  const frameClamped = Math.max(0, frame);
-  const unevenRest = frameClamped % 1;
-  for (let f = 0;f <= Math.floor(frameClamped); f++) {
-    if (f === Math.floor(frameClamped)) {
-      f += unevenRest;
-    }
-    const time = f / fps * 1000;
-    animation = advance({
-      animation,
-      now: time,
-      config: {
-        ...defaultSpringConfig,
-        ...config
-      }
-    });
-  }
-  calculationCache[cacheKey] = animation;
-  return animation;
-}
-
-// src/spring/measure-spring.ts
-var cache = new Map;
-function measureSpring({
-  fps,
-  config = {},
-  threshold = 0.005
-}) {
-  if (typeof threshold !== "number") {
-    throw new TypeError(`threshold must be a number, got ${threshold} of type ${typeof threshold}`);
-  }
-  if (threshold === 0) {
-    return Infinity;
-  }
-  if (threshold === 1) {
-    return 0;
-  }
-  if (isNaN(threshold)) {
-    throw new TypeError("Threshold is NaN");
-  }
-  if (!Number.isFinite(threshold)) {
-    throw new TypeError("Threshold is not finite");
-  }
-  if (threshold < 0) {
-    throw new TypeError("Threshold is below 0");
-  }
-  const cacheKey = [
-    fps,
-    config.damping,
-    config.mass,
-    config.overshootClamping,
-    config.stiffness,
-    threshold
-  ].join("-");
-  if (cache.has(cacheKey)) {
-    return cache.get(cacheKey);
-  }
-  validateFps(fps, "to the measureSpring() function", false);
-  let frame = 0;
-  let finishedFrame = 0;
-  const calc = () => {
-    return springCalculation({
-      fps,
-      frame,
-      config
-    });
-  };
-  let animation = calc();
-  const calcDifference = () => {
-    return Math.abs(animation.current - animation.toValue);
-  };
-  let difference = calcDifference();
-  while (difference >= threshold) {
-    frame++;
-    animation = calc();
-    difference = calcDifference();
-  }
-  finishedFrame = frame;
-  for (let i = 0;i < 20; i++) {
-    frame++;
-    animation = calc();
-    difference = calcDifference();
-    if (difference >= threshold) {
-      i = 0;
-      finishedFrame = frame + 1;
-    }
-  }
-  cache.set(cacheKey, finishedFrame);
-  return finishedFrame;
-}
-
-// src/spring/index.ts
-function spring({
-  frame: passedFrame,
-  fps,
-  config = {},
-  from = 0,
-  to = 1,
-  durationInFrames: passedDurationInFrames,
-  durationRestThreshold,
-  delay = 0,
-  reverse = false
-}) {
-  validateSpringDuration(passedDurationInFrames);
-  validateFrame({
-    frame: passedFrame,
-    durationInFrames: Infinity,
-    allowFloats: true
-  });
-  validateFps(fps, "to spring()", false);
-  const needsToCalculateNaturalDuration = reverse || typeof passedDurationInFrames !== "undefined";
-  const naturalDuration = needsToCalculateNaturalDuration ? measureSpring({
-    fps,
-    config,
-    threshold: durationRestThreshold
-  }) : undefined;
-  const naturalDurationGetter = needsToCalculateNaturalDuration ? {
-    get: () => naturalDuration
-  } : {
-    get: () => {
-      throw new Error("did not calculate natural duration, this is an error with Remotion. Please report");
-    }
-  };
-  const reverseProcessed = reverse ? (passedDurationInFrames ?? naturalDurationGetter.get()) - passedFrame : passedFrame;
-  const delayProcessed = reverseProcessed + (reverse ? delay : -delay);
-  const durationProcessed = passedDurationInFrames === undefined ? delayProcessed : delayProcessed / (passedDurationInFrames / naturalDurationGetter.get());
-  if (passedDurationInFrames && delayProcessed > passedDurationInFrames) {
-    return to;
-  }
-  const spr = springCalculation({
-    fps,
-    frame: durationProcessed,
-    config
-  });
-  const inner = config.overshootClamping ? to >= from ? Math.min(spr.current, to) : Math.max(spr.current, to) : spr.current;
-  const interpolated = from === 0 && to === 1 ? inner : interpolate(inner, [0, 1], [from, to]);
-  return interpolated;
-}
+var Series = Object.assign(withInteractivitySchema({
+  Component: SeriesInner,
+  componentName: "<Series>",
+  componentIdentity: "dev.remotion.remotion.Series",
+  schema: sequenceSchemaDefaultLayoutNone,
+  supportsEffects: false
+}), {
+  Sequence: SeriesSequence
+});
+addSequenceStackTraces(Series);
 // src/static-file.ts
 var problematicCharacters = {
   "%3A": ":",
@@ -268317,6 +274406,12 @@ var staticFile = (path) => {
   if (includesHex.containsHex) {
     warnOnce3(`WARNING: You seem to pass an already encoded path (path contains ${includesHex.hexCode}). Since Remotion 4.0, the encoding is done by staticFile() itself. You may want to remove a encodeURIComponent() wrapping.`);
   }
+  if (typeof window !== "undefined") {
+    const matchingStaticFile = window.remotion_staticFiles?.find((file) => file.name === trimLeadingSlash(path));
+    if (matchingStaticFile) {
+      return matchingStaticFile.src;
+    }
+  }
   const preprocessed = encodeBySplitting(path);
   const preparsed = inner(preprocessed);
   if (!preparsed.startsWith("/")) {
@@ -268334,7 +274429,8 @@ var Still = (props2) => {
   };
   return react__WEBPACK_IMPORTED_MODULE_0__.createElement(Composition, newProps);
 };
-// src/video/Video.tsx
+addSequenceStackTraces(Still);
+// src/video/html5-video.tsx
 
 
 // src/video/VideoForRendering.tsx
@@ -268479,6 +274575,8 @@ var VideoForRenderingForwardFunction = ({
   delayRenderTimeoutInMilliseconds,
   loopVolumeCurveBehavior,
   audioStreamIndex,
+  onVideoFrame,
+  preservePitch: _preservePitch,
   ...props2
 }, ref) => {
   const absoluteFrame = useTimelinePosition();
@@ -268530,7 +274628,7 @@ var VideoForRenderingForwardFunction = ({
       mediaFrame: frame,
       playbackRate: playbackRate ?? 1,
       toneFrequency: toneFrequency ?? 1,
-      audioStartFrame: Math.max(0, -(sequenceContext?.relativeFrom ?? 0)),
+      audioStartFrame: Math.max(0, -(sequenceContext?.cumulatedNegativeFrom ?? 0)),
       audioStreamIndex: audioStreamIndex ?? 0
     });
     return () => unregisterRenderAsset(id);
@@ -268545,12 +274643,13 @@ var VideoForRenderingForwardFunction = ({
     absoluteFrame,
     playbackRate,
     toneFrequency,
-    sequenceContext?.relativeFrom,
+    sequenceContext?.cumulatedNegativeFrom,
     audioStreamIndex
   ]);
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useImperativeHandle)(ref, () => {
     return videoRef.current;
   }, []);
+  useEmitVideoFrame({ ref: videoRef, onVideoFrame });
   (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
     if (!window.remotion_videoEnabled) {
       return;
@@ -268606,9 +274705,15 @@ var VideoForRenderingForwardFunction = ({
         if (onError) {
           return;
         }
-        throw new Error(`The browser threw an error while playing the video ${props2.src}: Code ${current.error.code} - ${current?.error?.message}. See https://remotion.dev/docs/media-playback-error for help. Pass an onError() prop to handle the error.`);
+        throw new MediaPlaybackError({
+          message: `The browser threw an error while playing the video ${props2.src}: Code ${current.error.code} - ${current?.error?.message}. See https://remotion.dev/docs/media-playback-error for help. Pass an onError() prop to handle the error.`,
+          src: props2.src
+        });
       } else {
-        throw new Error("The browser threw an error");
+        throw new MediaPlaybackError({
+          message: "The browser threw an error",
+          src: props2.src
+        });
       }
     };
     current.addEventListener("error", errorHandler, { once: true });
@@ -268669,7 +274774,7 @@ var VideoForRenderingForwardFunction = ({
       delayRender2
     ]);
   }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)("video", {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)("video", {
     ref: videoRef,
     disableRemotePlayback: true,
     ...props2
@@ -268677,7 +274782,7 @@ var VideoForRenderingForwardFunction = ({
 };
 var VideoForRendering = (0,react__WEBPACK_IMPORTED_MODULE_0__.forwardRef)(VideoForRenderingForwardFunction);
 
-// src/video/Video.tsx
+// src/video/html5-video.tsx
 
 var VideoForwardingFunction = (props2, ref) => {
   const {
@@ -268687,15 +274792,20 @@ var VideoForwardingFunction = (props2, ref) => {
     trimAfter,
     name,
     pauseWhenBuffering,
-    stack,
+    _remotionInternalStack,
     _remotionInternalNativeLoopPassed,
     showInTimeline,
     onAutoPlayError,
+    onVideoFrame,
     ...otherProps
   } = props2;
   const { loop, ...propsOtherThanLoop } = props2;
   const { fps } = useVideoConfig();
   const environment = useRemotionEnvironment();
+  const shouldPauseWhenBuffering = resolveV5Default(pauseWhenBuffering);
+  if (environment.isClientSideRendering) {
+    throw new Error("<Html5Video> is not supported in @remotion/web-renderer. Use <Video> from @remotion/media instead. See https://remotion.dev/docs/client-side-rendering/limitations");
+  }
   const { durations, setDurations } = (0,react__WEBPACK_IMPORTED_MODULE_0__.useContext)(DurationsContext);
   if (typeof ref === "string") {
     throw new Error("string refs are not supported");
@@ -268707,7 +274817,6 @@ var VideoForwardingFunction = (props2, ref) => {
   const onDuration = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((src, durationInSeconds) => {
     setDurations({ type: "got-duration", durationInSeconds, src });
   }, [setDurations]);
-  const onVideoFrame = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {}, []);
   const durationFetched = durations[getAbsoluteSrc(preloadedSrc)] ?? durations[getAbsoluteSrc(props2.src)];
   validateMediaTrimProps({ startFrom, endAt, trimBefore, trimAfter });
   const { trimBeforeValue, trimAfterValue } = resolveTrimProps({
@@ -268718,14 +274827,15 @@ var VideoForwardingFunction = (props2, ref) => {
   });
   if (loop && durationFetched !== undefined) {
     if (!Number.isFinite(durationFetched)) {
-      return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Html5Video, {
+      return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Html5Video, {
         ...propsOtherThanLoop,
         ref,
+        _remotionInternalStack,
         _remotionInternalNativeLoopPassed: true
       });
     }
     const mediaDuration = durationFetched * fps;
-    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Loop, {
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Loop, {
       durationInFrames: calculateMediaDuration({
         trimAfter: trimAfterValue,
         mediaDurationInFrames: mediaDuration,
@@ -268734,44 +274844,52 @@ var VideoForwardingFunction = (props2, ref) => {
       }),
       layout: "none",
       name,
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Html5Video, {
+      showInTimeline: false,
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Html5Video, {
         ...propsOtherThanLoop,
         ref,
+        _remotionInternalStack,
         _remotionInternalNativeLoopPassed: true
       })
     });
   }
   if (typeof trimBeforeValue !== "undefined" || typeof trimAfterValue !== "undefined") {
-    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Sequence, {
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Sequence, {
       layout: "none",
       from: 0 - (trimBeforeValue ?? 0),
       showInTimeline: false,
-      durationInFrames: trimAfterValue,
+      durationInFrames: trimAfterValue === undefined ? undefined : trimAfterValue / (props2.playbackRate ?? 1),
       name,
-      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(Html5Video, {
-        pauseWhenBuffering: pauseWhenBuffering ?? false,
+      children: /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(Html5Video, {
+        pauseWhenBuffering: shouldPauseWhenBuffering,
+        onVideoFrame,
         ...otherProps,
-        ref
+        ref,
+        _remotionInternalStack
       })
     });
   }
-  validateMediaProps({ playbackRate: props2.playbackRate, volume: props2.volume }, "Html5Video");
+  validateMediaProps({
+    playbackRate: props2.playbackRate,
+    preservePitch: props2.preservePitch,
+    volume: props2.volume
+  }, "Html5Video");
   if (environment.isRendering) {
-    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(VideoForRendering, {
+    return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(VideoForRendering, {
       onDuration,
       onVideoFrame: onVideoFrame ?? null,
       ...otherProps,
       ref
     });
   }
-  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_1__.jsx)(VideoForPreview, {
+  return /* @__PURE__ */ (0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_2__.jsx)(VideoForPreview, {
     onlyWarnForMediaSeekingError: false,
     ...otherProps,
     ref,
-    onVideoFrame: null,
-    pauseWhenBuffering: pauseWhenBuffering ?? false,
+    onVideoFrame: onVideoFrame ?? null,
+    pauseWhenBuffering: shouldPauseWhenBuffering,
     onDuration,
-    _remotionInternalStack: stack ?? null,
+    _remotionInternalStack: _remotionInternalStack ?? null,
     _remotionInternalNativeLoopPassed: _remotionInternalNativeLoopPassed ?? false,
     showInTimeline: showInTimeline ?? true,
     onAutoPlayError: onAutoPlayError ?? undefined
@@ -268807,25 +274925,291 @@ var Config = new Proxy(proxyObj, {
     };
   }
 });
+Sequence.displayName = "Sequence";
 addSequenceStackTraces(Sequence);
+setSequenceComponent(Sequence);
+addSequenceStackTraces(Composition);
+addSequenceStackTraces(Folder);
 
 
 
-/***/ }),
+/***/ },
 
-/***/ 5329:
-/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
+/***/ 9313
+(__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-__webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   NoReactInternals: () => (/* binding */ NoReactInternals),
-/* harmony export */   interpolate: () => (/* binding */ interpolate),
-/* harmony export */   random: () => (/* binding */ random)
+/* harmony export */   JC: () => (/* binding */ NoReactInternals)
 /* harmony export */ });
+/* unused harmony exports random, interpolate, assertValidInterpolatePosterizeOption, assertValidInterpolateEasingOption */
+// src/normalize-number.ts
+var normalizeNumber = (value) => {
+  return Math.round(value * 1e6) / 1e6;
+};
+
 // src/interpolate.ts
+var angleUnits = new Set(["deg", "rad", "grad", "turn"]);
+var lengthUnits = new Set([
+  "%",
+  "cap",
+  "ch",
+  "cm",
+  "cqb",
+  "cqh",
+  "cqi",
+  "cqmax",
+  "cqmin",
+  "cqw",
+  "dvh",
+  "dvw",
+  "em",
+  "ex",
+  "ic",
+  "in",
+  "lh",
+  "lvh",
+  "lvw",
+  "mm",
+  "pc",
+  "pt",
+  "px",
+  "q",
+  "rem",
+  "rlh",
+  "svh",
+  "svw",
+  "vb",
+  "vh",
+  "vi",
+  "vmax",
+  "vmin",
+  "vw"
+]);
+var cssNumberRegex = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-zA-Z%]+)?$/;
+var transformOriginKeywords = new Set([
+  "left",
+  "center",
+  "right",
+  "top",
+  "bottom"
+]);
+var transformOriginKeywordOptions = (keyword) => {
+  if (keyword === "left") {
+    return [{ axis: "x", value: { value: 0, unit: "%" } }];
+  }
+  if (keyword === "right") {
+    return [{ axis: "x", value: { value: 100, unit: "%" } }];
+  }
+  if (keyword === "top") {
+    return [{ axis: "y", value: { value: 0, unit: "%" } }];
+  }
+  if (keyword === "bottom") {
+    return [{ axis: "y", value: { value: 100, unit: "%" } }];
+  }
+  return [
+    { axis: "x", value: { value: 50, unit: "%" } },
+    { axis: "y", value: { value: 50, unit: "%" } }
+  ];
+};
+var transformOriginCenter = { value: 50, unit: "%" };
+var stringifyNumber = (value) => {
+  return String(normalizeNumber(value));
+};
+var parseStringInterpolationComponent = (component, value) => {
+  const match = cssNumberRegex.exec(component);
+  if (match === null) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not a supported scale, translate, or rotate value`);
+  }
+  const unit = match[2] ?? null;
+  const numberValue = Number(match[1]);
+  if (!Number.isFinite(numberValue)) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not finite`);
+  }
+  if (unit === null) {
+    return { kind: "scale", value: numberValue, unit: null };
+  }
+  if (angleUnits.has(unit)) {
+    return { kind: "rotate", value: numberValue, unit };
+  }
+  if (lengthUnits.has(unit)) {
+    return { kind: "translate", value: numberValue, unit };
+  }
+  throw new TypeError(`Cannot interpolate "${value}" because "${unit}" is not a supported translate or rotate unit`);
+};
+var parseTransformOriginLengthPercentage = ({
+  component,
+  value,
+  allowPercentage
+}) => {
+  const match = cssNumberRegex.exec(component);
+  if (match === null) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not a supported transform-origin ${allowPercentage ? "length-percentage" : "z length"}`);
+  }
+  const unit = match[2] ?? null;
+  const numberValue = Number(match[1]);
+  if (!Number.isFinite(numberValue)) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not finite`);
+  }
+  if (unit === null || !lengthUnits.has(unit) || !allowPercentage && unit === "%") {
+    throw new TypeError(`Cannot interpolate "${value}" because "${component}" is not a supported transform-origin ${allowPercentage ? "length-percentage" : "z length"}`);
+  }
+  return { value: numberValue, unit };
+};
+var parseTransformOriginToken = (component, value) => {
+  const lower = component.toLowerCase();
+  if (transformOriginKeywords.has(lower)) {
+    return { type: "keyword", keyword: lower };
+  }
+  return {
+    type: "length-percentage",
+    parsed: parseTransformOriginLengthPercentage({
+      component,
+      value,
+      allowPercentage: true
+    })
+  };
+};
+var parseTwoTransformOriginKeywords = (first, second, value) => {
+  const candidates = [];
+  for (const firstOption of transformOriginKeywordOptions(first)) {
+    for (const secondOption of transformOriginKeywordOptions(second)) {
+      if (firstOption.axis === secondOption.axis) {
+        continue;
+      }
+      candidates.push(firstOption.axis === "x" ? [firstOption.value, secondOption.value] : [secondOption.value, firstOption.value]);
+    }
+  }
+  if (candidates.length === 0) {
+    throw new TypeError(`Cannot interpolate "${value}" because "${first} ${second}" is not a valid transform-origin keyword pair`);
+  }
+  return candidates[0];
+};
+var parseTransformOriginXY = (parts, value) => {
+  if (parts.length === 1) {
+    const token = parseTransformOriginToken(parts[0], value);
+    if (token.type === "length-percentage") {
+      return [token.parsed, transformOriginCenter];
+    }
+    if (token.keyword === "top" || token.keyword === "bottom") {
+      return [
+        transformOriginCenter,
+        transformOriginKeywordOptions(token.keyword)[0].value
+      ];
+    }
+    return [
+      transformOriginKeywordOptions(token.keyword)[0].value,
+      transformOriginCenter
+    ];
+  }
+  const first = parseTransformOriginToken(parts[0], value);
+  const second = parseTransformOriginToken(parts[1], value);
+  if (first.type === "length-percentage" && second.type === "length-percentage") {
+    return [first.parsed, second.parsed];
+  }
+  if (first.type === "keyword" && second.type === "keyword") {
+    return parseTwoTransformOriginKeywords(first.keyword, second.keyword, value);
+  }
+  const keyword = first.type === "keyword" ? first : second.type === "keyword" ? second : null;
+  const length = first.type === "length-percentage" ? first.parsed : second.type === "length-percentage" ? second.parsed : null;
+  if (keyword === null || length === null) {
+    throw new Error("Expected a keyword and a length-percentage value");
+  }
+  const keywordIsFirst = first.type === "keyword";
+  if (keyword.keyword === "left" || keyword.keyword === "right") {
+    if (!keywordIsFirst) {
+      throw new TypeError(`Cannot interpolate "${value}" because horizontal transform-origin keywords must come before a length-percentage value`);
+    }
+    return [transformOriginKeywordOptions(keyword.keyword)[0].value, length];
+  }
+  if (keyword.keyword === "top" || keyword.keyword === "bottom") {
+    return [length, transformOriginKeywordOptions(keyword.keyword)[0].value];
+  }
+  return keywordIsFirst ? [transformOriginCenter, length] : [length, transformOriginCenter];
+};
+var parseTransformOriginValue = (output, parts) => {
+  const [x, y] = parseTransformOriginXY(parts.slice(0, 2), output);
+  const z = parts[2] === undefined ? { value: 0, unit: null } : parseTransformOriginLengthPercentage({
+    component: parts[2],
+    value: output,
+    allowPercentage: false
+  });
+  return {
+    kind: "translate",
+    values: [x.value, y.value, z.value],
+    units: [x.unit, y.unit, z.unit],
+    dimensions: parts[2] === undefined ? 2 : 3
+  };
+};
+var parseStringInterpolationValue = (output) => {
+  if (typeof output === "number") {
+    if (!Number.isFinite(output)) {
+      throw new Error(`outputRange must contain only finite numbers, but got [${output}]`);
+    }
+    return {
+      kind: "scale",
+      values: [output, output, 1],
+      units: [null, null, null],
+      dimensions: 1
+    };
+  }
+  const parts = output.trim().split(/\s+/);
+  if (parts.length < 1 || parts.length > 3 || parts[0] === "") {
+    throw new TypeError(`String outputRange values must contain 1 to 3 components, but got "${output}"`);
+  }
+  if (parts.some((part) => transformOriginKeywords.has(part.toLowerCase()))) {
+    return parseTransformOriginValue(output, parts);
+  }
+  const parsed = parts.map((part) => parseStringInterpolationComponent(part, output));
+  const [{ kind }] = parsed;
+  for (const part of parsed) {
+    if (part.kind !== kind) {
+      throw new TypeError(`Cannot interpolate "${output}" because it mixes ${kind} and ${part.kind} values`);
+    }
+  }
+  if (kind === "scale") {
+    const x = parsed[0].value;
+    const y = parsed[1]?.value ?? x;
+    const z = parsed[2]?.value ?? 1;
+    return {
+      kind,
+      values: [x, y, z],
+      units: [null, null, null],
+      dimensions: parsed.length
+    };
+  }
+  return {
+    kind,
+    values: [parsed[0].value, parsed[1]?.value ?? 0, parsed[2]?.value ?? 0],
+    units: [parsed[0].unit, parsed[1]?.unit ?? null, parsed[2]?.unit ?? null],
+    dimensions: parsed.length
+  };
+};
+var serializeStringInterpolationValue = ({
+  kind,
+  values,
+  units,
+  dimensions
+}) => {
+  if (kind === "scale") {
+    return values.slice(0, dimensions).map((value) => stringifyNumber(value)).join(" ");
+  }
+  return values.slice(0, dimensions).map((value, index) => `${stringifyNumber(value)}${units[index]}`).join(" ");
+};
+var toSignedArea = (scale) => {
+  if (scale === 0) {
+    return 0;
+  }
+  return Math.sign(scale) * scale * scale;
+};
+var fromSignedArea = (area) => {
+  if (area === 0) {
+    return 0;
+  }
+  return Math.sign(area) * Math.sqrt(Math.abs(area));
+};
 function interpolateFunction(input, inputRange, outputRange, options) {
-  const { extrapolateLeft, extrapolateRight, easing } = options;
+  const { extrapolateLeft, extrapolateRight, easing, output } = options;
   let result = input;
   const [inputMin, inputMax] = inputRange;
   const [outputMin, outputMax] = outputRange;
@@ -268856,7 +275240,13 @@ function interpolateFunction(input, inputRange, outputRange, options) {
   }
   result = (result - inputMin) / (inputMax - inputMin);
   result = easing(result);
-  result = result * (outputMax - outputMin) + outputMin;
+  if (output === "perceptual-scale") {
+    const signedAreaMin = toSignedArea(outputMin);
+    const signedAreaMax = toSignedArea(outputMax);
+    result = fromSignedArea(result * (signedAreaMax - signedAreaMin) + signedAreaMin);
+  } else {
+    result = result * (outputMax - outputMin) + outputMin;
+  }
   return result;
 }
 function findRange(input, inputRange) {
@@ -268868,6 +275258,192 @@ function findRange(input, inputRange) {
   }
   return i - 1;
 }
+var defaultEasing = (num) => num;
+var resolveOutputOption = (output) => {
+  return output ?? "linear";
+};
+var shouldExtendRightForEasing = (easing) => {
+  return easing.remotionShouldExtendRight === true;
+};
+var resolveEasingForSegment = ({
+  easing,
+  segmentIndex
+}) => {
+  if (easing === undefined) {
+    return defaultEasing;
+  }
+  if (typeof easing === "function") {
+    return easing;
+  }
+  return easing[segmentIndex];
+};
+var interpolateSegment = ({
+  input,
+  inputRange,
+  outputRange,
+  easing,
+  extrapolateLeft,
+  extrapolateRight,
+  output
+}) => {
+  return interpolateFunction(input, inputRange, outputRange, {
+    easing,
+    extrapolateLeft,
+    extrapolateRight: input > inputRange[1] && extrapolateRight === "clamp" && shouldExtendRightForEasing(easing) ? "extend" : extrapolateRight,
+    output
+  });
+};
+var interpolateNumber = ({
+  input,
+  inputRange,
+  outputRange,
+  options
+}) => {
+  const output = resolveOutputOption(options?.output);
+  if (inputRange.length === 1) {
+    return outputRange[0];
+  }
+  const easingOption = options?.easing;
+  let extrapolateLeft = "extend";
+  if (options?.extrapolateLeft !== undefined) {
+    extrapolateLeft = options.extrapolateLeft;
+  }
+  let extrapolateRight = "extend";
+  if (options?.extrapolateRight !== undefined) {
+    extrapolateRight = options.extrapolateRight;
+  }
+  const posterizedInput = options?.posterize === undefined ? input : Math.floor(input / options.posterize) * options.posterize;
+  const range = findRange(posterizedInput, inputRange);
+  const easing = resolveEasingForSegment({
+    easing: easingOption,
+    segmentIndex: range
+  });
+  let result = interpolateSegment({
+    input: posterizedInput,
+    inputRange: [inputRange[range], inputRange[range + 1]],
+    outputRange: [outputRange[range], outputRange[range + 1]],
+    easing,
+    extrapolateLeft,
+    extrapolateRight,
+    output
+  });
+  for (let segmentIndex = 0;segmentIndex < range; segmentIndex++) {
+    const previousEasing = resolveEasingForSegment({
+      easing: easingOption,
+      segmentIndex
+    });
+    if (!shouldExtendRightForEasing(previousEasing)) {
+      continue;
+    }
+    const previousSegmentEnd = inputRange[segmentIndex + 1];
+    if (posterizedInput <= previousSegmentEnd) {
+      continue;
+    }
+    const continuedSegmentValue = interpolateSegment({
+      input: posterizedInput,
+      inputRange: [inputRange[segmentIndex], previousSegmentEnd],
+      outputRange: [outputRange[segmentIndex], outputRange[segmentIndex + 1]],
+      easing: previousEasing,
+      extrapolateLeft,
+      extrapolateRight: "extend",
+      output
+    });
+    result += continuedSegmentValue - outputRange[segmentIndex + 1];
+  }
+  return result;
+};
+var interpolateString = ({
+  input,
+  inputRange,
+  outputRange,
+  options
+}) => {
+  const parsedOutputRange = outputRange.map(parseStringInterpolationValue);
+  const kind = parsedOutputRange[0]?.kind;
+  if (kind === undefined) {
+    throw new Error("outputRange must have at least 1 element");
+  }
+  for (const parsed of parsedOutputRange) {
+    if (parsed.kind !== kind) {
+      throw new TypeError(`Cannot interpolate ${kind} values with ${parsed.kind} values`);
+    }
+  }
+  const dimensions = Math.max(...parsedOutputRange.map((parsed) => parsed.dimensions));
+  const units = [
+    null,
+    null,
+    null
+  ];
+  if (kind !== "scale") {
+    for (let axis = 0;axis < dimensions; axis++) {
+      for (const parsed of parsedOutputRange) {
+        const unit = parsed.units[axis];
+        if (unit === null) {
+          continue;
+        }
+        if (units[axis] === null) {
+          units[axis] = unit;
+          continue;
+        }
+        if (units[axis] !== unit) {
+          throw new TypeError(`Cannot interpolate ${kind} values with different units on axis ${axis + 1}: ${units[axis]} and ${unit}`);
+        }
+      }
+      if (units[axis] === null) {
+        throw new TypeError(`Cannot interpolate ${kind} values because axis ${axis + 1} has no unit`);
+      }
+    }
+  }
+  const values = [0, 0, 0];
+  for (let axis = 0;axis < dimensions; axis++) {
+    values[axis] = interpolateNumber({
+      input,
+      inputRange,
+      outputRange: parsedOutputRange.map((parsed) => parsed.values[axis]),
+      options
+    });
+  }
+  return serializeStringInterpolationValue({
+    kind,
+    values,
+    units,
+    dimensions
+  });
+};
+var validateTupleOutputRange = (outputRange) => {
+  const dimensions = outputRange[0]?.length;
+  if (dimensions === undefined) {
+    throw new Error("outputRange must have at least 1 element");
+  }
+  if (dimensions === 0) {
+    throw new TypeError("outputRange tuples must contain at least 1 number");
+  }
+  for (const output of outputRange) {
+    if (output.length !== dimensions) {
+      throw new TypeError(`outputRange tuples must all have the same length, but got ${dimensions} and ${output.length}`);
+    }
+    for (const value of output) {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new TypeError(`outputRange tuples must contain only finite numbers, but got [${output.join(",")}]`);
+      }
+    }
+  }
+  return dimensions;
+};
+var interpolateTuple = ({
+  input,
+  inputRange,
+  outputRange,
+  options
+}) => {
+  const dimensions = validateTupleOutputRange(outputRange);
+  return new Array(dimensions).fill(true).map((_, axis) => interpolateNumber({
+    input,
+    inputRange,
+    outputRange: outputRange.map((output) => output[axis]),
+    options
+  }));
+};
 function checkValidInputRange(arr) {
   for (let i = 1;i < arr.length; ++i) {
     if (!(arr[i] > arr[i - 1])) {
@@ -268876,8 +275452,8 @@ function checkValidInputRange(arr) {
   }
 }
 function checkInfiniteRange(name, arr) {
-  if (arr.length < 2) {
-    throw new Error(name + " must have at least 2 elements");
+  if (arr.length < 1) {
+    throw new Error(name + " must have at least 1 element");
   }
   for (const element of arr) {
     if (typeof element !== "number") {
@@ -268887,6 +275463,37 @@ function checkInfiniteRange(name, arr) {
       throw new Error(`${name} must contain only finite numbers, but got [${arr.join(",")}]`);
     }
   }
+}
+function assertValidInterpolateEasingOption(easing, inputRangeLength) {
+  if (easing === undefined) {
+    return;
+  }
+  if (typeof easing === "function") {
+    return;
+  }
+  const expectedLength = inputRangeLength - 1;
+  if (easing.length !== expectedLength) {
+    throw new Error(`When easing is an array, it must have one entry per segment between keyframes (length inputRange.length - 1 = ${expectedLength}), but got length ${easing.length}`);
+  }
+  for (let i = 0;i < easing.length; i++) {
+    if (typeof easing[i] !== "function") {
+      throw new Error(`easing[${i}] must be a function`);
+    }
+  }
+}
+function assertValidInterpolatePosterizeOption(posterize) {
+  if (posterize === undefined) {
+    return;
+  }
+  if (typeof posterize !== "number" || !Number.isFinite(posterize) || posterize <= 0) {
+    throw new Error(`posterize must be a positive finite number, but got ${posterize}`);
+  }
+}
+function assertValidInterpolateOutputOption(output) {
+  if (output === undefined || output === "linear" || output === "perceptual-scale") {
+    return;
+  }
+  throw new Error(`output must be "linear" or "perceptual-scale", but got ${String(output)}`);
 }
 function interpolate(input, inputRange, outputRange, options) {
   if (typeof input === "undefined") {
@@ -268902,26 +275509,31 @@ function interpolate(input, inputRange, outputRange, options) {
     throw new Error("inputRange (" + inputRange.length + ") and outputRange (" + outputRange.length + ") must have the same length");
   }
   checkInfiniteRange("inputRange", inputRange);
-  checkInfiniteRange("outputRange", outputRange);
   checkValidInputRange(inputRange);
-  const easing = options?.easing ?? ((num) => num);
-  let extrapolateLeft = "extend";
-  if (options?.extrapolateLeft !== undefined) {
-    extrapolateLeft = options.extrapolateLeft;
-  }
-  let extrapolateRight = "extend";
-  if (options?.extrapolateRight !== undefined) {
-    extrapolateRight = options.extrapolateRight;
-  }
+  assertValidInterpolateEasingOption(options?.easing, inputRange.length);
+  assertValidInterpolatePosterizeOption(options?.posterize);
+  assertValidInterpolateOutputOption(options?.output);
   if (typeof input !== "number") {
     throw new TypeError("Cannot interpolate an input which is not a number");
   }
-  const range = findRange(input, inputRange);
-  return interpolateFunction(input, [inputRange[range], inputRange[range + 1]], [outputRange[range], outputRange[range + 1]], {
-    easing,
-    extrapolateLeft,
-    extrapolateRight
-  });
+  if (!Array.isArray(outputRange)) {
+    throw new Error("outputRange must contain only numbers");
+  }
+  const hasStringOutput = outputRange.some((output) => typeof output === "string");
+  if (hasStringOutput) {
+    if (!outputRange.every((output) => typeof output === "string" || typeof output === "number")) {
+      throw new TypeError("outputRange must contain only numbers, or supported scale, translate, and rotate strings");
+    }
+    return interpolateString({ input, inputRange, outputRange, options });
+  }
+  if (outputRange.every((output) => Array.isArray(output))) {
+    return interpolateTuple({ input, inputRange, outputRange, options });
+  }
+  if (!outputRange.every((output) => typeof output === "number")) {
+    throw new TypeError("outputRange must contain only numbers, numeric tuples, or supported scale, translate, and rotate strings");
+  }
+  checkInfiniteRange("outputRange", outputRange);
+  return interpolateNumber({ input, inputRange, outputRange, options });
 }
 // src/random.ts
 function mulberry32(a) {
@@ -268967,11 +275579,44 @@ if (typeof window !== "undefined") {
   if (!window.remotion_delayRenderTimeouts) {
     window.remotion_delayRenderTimeouts = {};
   }
+  window.remotion_delayRenderHandles = [];
 }
 var DELAY_RENDER_CALLSTACK_TOKEN = "The delayRender was called:";
 var DELAY_RENDER_RETRIES_LEFT = "Retries left: ";
 var DELAY_RENDER_RETRY_TOKEN = "- Rendering the frame will be retried.";
 var DELAY_RENDER_CLEAR_TOKEN = "handle was cleared after";
+
+// src/find-props-to-delete.ts
+var findPropsToDelete = ({
+  schema,
+  key,
+  value
+}) => {
+  const fieldSchema = schema[key];
+  if (!fieldSchema) {
+    throw new Error("Key " + JSON.stringify(key) + " not found in schema");
+  }
+  if (typeof value !== "string") {
+    throw new Error("Value must be a string, but is " + JSON.stringify(value));
+  }
+  if (fieldSchema.type !== "enum") {
+    throw new Error("Key " + JSON.stringify(key) + " is not an enum");
+  }
+  const currentVariant = fieldSchema.variants[value];
+  if (!currentVariant) {
+    throw new Error("Value for " + JSON.stringify(key) + " must be one of " + Object.keys(fieldSchema.variants).map((v) => JSON.stringify(v)).join(", ") + ", got " + JSON.stringify(value));
+  }
+  const otherVariants = Object.keys(fieldSchema.variants).filter((v) => v !== value);
+  const otherKeys = new Set;
+  for (const variant of otherVariants) {
+    const otherVariant = fieldSchema.variants[variant];
+    const keys = Object.keys(otherVariant);
+    for (const k of keys) {
+      otherKeys.add(k);
+    }
+  }
+  return [...otherKeys];
+};
 
 // src/input-props-serialization.ts
 var DATE_TOKEN = "remotion-date:";
@@ -269023,11 +275668,317 @@ var deserializeJSONWithSpecialTypes = (data) => {
   });
 };
 
+// src/interactivity-schema.ts
+var transformSchema = {
+  "style.transformOrigin": {
+    type: "transform-origin",
+    step: 1,
+    default: "50% 50%",
+    description: "Transform origin"
+  },
+  "style.translate": {
+    type: "translate",
+    step: 1,
+    default: "0px 0px",
+    description: "Offset"
+  },
+  "style.scale": {
+    type: "scale",
+    max: 100,
+    step: 0.01,
+    default: 1,
+    description: "Scale",
+    defaultKeyframeOutput: "perceptual-scale"
+  },
+  "style.rotate": {
+    type: "rotation-css",
+    step: 1,
+    default: "0deg",
+    description: "Rotation"
+  },
+  "style.opacity": {
+    type: "number",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    default: 1,
+    description: "Opacity",
+    hiddenFromList: false
+  }
+};
+var borderSchema = {
+  "style.borderWidth": {
+    type: "number",
+    default: undefined,
+    min: 0,
+    step: 1,
+    description: "Border width",
+    hiddenFromList: false
+  },
+  "style.borderStyle": {
+    type: "enum",
+    default: "none",
+    description: "Border style",
+    variants: {
+      none: {},
+      hidden: {},
+      solid: {},
+      dashed: {},
+      dotted: {},
+      double: {},
+      groove: {},
+      ridge: {},
+      inset: {},
+      outset: {}
+    }
+  },
+  "style.borderColor": {
+    type: "color",
+    default: undefined,
+    description: "Border color"
+  }
+};
+var borderRadiusSchema = {
+  "style.borderRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Border radius",
+    hiddenFromList: false,
+    keyframable: true
+  },
+  "style.borderTopLeftRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Top left radius",
+    hiddenFromList: false
+  },
+  "style.borderTopRightRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Top right radius",
+    hiddenFromList: false
+  },
+  "style.borderBottomRightRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Bottom right radius",
+    hiddenFromList: false
+  },
+  "style.borderBottomLeftRadius": {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    description: "Bottom left radius",
+    hiddenFromList: false
+  }
+};
+var backgroundSchema = {
+  "style.backgroundColor": {
+    type: "color",
+    default: "transparent",
+    description: "Color"
+  }
+};
+var svgColorSchema = {
+  color: {
+    type: "color",
+    default: undefined,
+    description: "Current color"
+  }
+};
+var svgStrokeSchema = {
+  ...svgColorSchema,
+  stroke: {
+    type: "color",
+    default: "none",
+    description: "Stroke"
+  },
+  strokeWidth: {
+    type: "number",
+    default: 1,
+    description: "Stroke width",
+    min: 0,
+    step: 1,
+    hiddenFromList: false
+  }
+};
+var svgPaintSchema = {
+  fill: {
+    type: "color",
+    default: undefined,
+    description: "Fill"
+  },
+  ...svgStrokeSchema
+};
+var premountSchema = {
+  premountFor: {
+    type: "number",
+    default: 0,
+    description: "Premount For",
+    min: 0,
+    step: 1,
+    hiddenFromList: false,
+    keyframable: false
+  },
+  postmountFor: {
+    type: "number",
+    default: 0,
+    min: 0,
+    step: 1,
+    hiddenFromList: true,
+    keyframable: false
+  }
+};
+var sequencePremountSchema = {
+  ...premountSchema
+};
+var cropSchema = {
+  cropLeft: {
+    type: "number",
+    default: 0,
+    description: "Crop left",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hiddenFromList: false,
+    keyframable: true
+  },
+  cropRight: {
+    type: "number",
+    default: 0,
+    description: "Crop right",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hiddenFromList: false,
+    keyframable: true
+  },
+  cropTop: {
+    type: "number",
+    default: 0,
+    description: "Crop top",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hiddenFromList: false,
+    keyframable: true
+  },
+  cropBottom: {
+    type: "number",
+    default: 0,
+    description: "Crop bottom",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hiddenFromList: false,
+    keyframable: true
+  }
+};
+var sequenceCropSchema = cropSchema;
+var sequenceStyleSchema = {
+  ...sequenceCropSchema,
+  ...transformSchema,
+  ...backgroundSchema,
+  ...borderSchema,
+  ...borderRadiusSchema,
+  ...sequencePremountSchema
+};
+var hiddenField = {
+  type: "boolean",
+  default: false,
+  description: "Hidden"
+};
+var showInTimelineField = {
+  type: "hidden"
+};
+var sequenceNameField = {
+  type: "hidden"
+};
+var durationInFramesField = {
+  type: "number",
+  default: undefined,
+  min: 1,
+  step: 1,
+  hiddenFromList: true
+};
+var fromField = {
+  type: "number",
+  default: 0,
+  step: 1,
+  hiddenFromList: true
+};
+var trimBeforeField = {
+  type: "number",
+  default: 0,
+  min: 0,
+  step: 1,
+  hiddenFromList: true
+};
+var freezeField = {
+  type: "number",
+  default: null,
+  step: 1,
+  hiddenFromList: true
+};
+var baseSchema = {
+  durationInFrames: durationInFramesField,
+  from: fromField,
+  trimBefore: trimBeforeField,
+  freeze: freezeField,
+  hidden: hiddenField,
+  name: sequenceNameField,
+  showInTimeline: showInTimelineField
+};
+var sequenceSchema = {
+  ...baseSchema,
+  layout: {
+    type: "enum",
+    default: "absolute-fill",
+    description: "Layout",
+    variants: {
+      "absolute-fill": sequenceStyleSchema,
+      none: {}
+    }
+  }
+};
+var baseSchemaWithoutFrom = {
+  durationInFrames: durationInFramesField,
+  trimBefore: trimBeforeField,
+  freeze: freezeField,
+  hidden: hiddenField,
+  name: sequenceNameField,
+  showInTimeline: showInTimelineField
+};
+var sequenceSchemaWithoutFrom = {
+  ...baseSchemaWithoutFrom,
+  layout: sequenceSchema.layout
+};
+var sequenceSchemaDefaultLayoutNone = {
+  ...sequenceSchema,
+  layout: {
+    ...sequenceSchema.layout,
+    default: "none"
+  }
+};
+
 // src/interpolate-colors.ts
 var NUMBER = "[-+]?\\d*\\.?\\d+";
 var PERCENTAGE = NUMBER + "%";
 function call(...args) {
   return "\\(\\s*(" + args.join(")\\s*,\\s*(") + ")\\s*\\)";
+}
+var MODERN_VALUE = "(?:none|[-+]?\\d*\\.?\\d+(?:%|deg|rad|grad|turn)?)";
+function modernColorCall(name) {
+  return new RegExp(name + "\\(\\s*(" + MODERN_VALUE + ")\\s+(" + MODERN_VALUE + ")\\s+(" + MODERN_VALUE + ")(?:\\s*\\/\\s*(" + MODERN_VALUE + "))?\\s*\\)");
 }
 function getMatchers() {
   const cachedMatchers = {
@@ -269039,7 +275990,12 @@ function getMatchers() {
     hex4: undefined,
     hex5: undefined,
     hex6: undefined,
-    hex8: undefined
+    hex8: undefined,
+    oklch: undefined,
+    oklab: undefined,
+    lab: undefined,
+    lch: undefined,
+    hwb: undefined
   };
   if (cachedMatchers.rgb === undefined) {
     cachedMatchers.rgb = new RegExp("rgb" + call(NUMBER, NUMBER, NUMBER));
@@ -269050,6 +276006,11 @@ function getMatchers() {
     cachedMatchers.hex4 = /^#([0-9a-fA-F]{1})([0-9a-fA-F]{1})([0-9a-fA-F]{1})([0-9a-fA-F]{1})$/;
     cachedMatchers.hex6 = /^#([0-9a-fA-F]{6})$/;
     cachedMatchers.hex8 = /^#([0-9a-fA-F]{8})$/;
+    cachedMatchers.oklch = modernColorCall("oklch");
+    cachedMatchers.oklab = modernColorCall("oklab");
+    cachedMatchers.lab = modernColorCall("lab");
+    cachedMatchers.lch = modernColorCall("lch");
+    cachedMatchers.hwb = modernColorCall("hwb");
   }
   return cachedMatchers;
 }
@@ -269112,6 +276073,96 @@ function parsePercentage(str) {
     return 1;
   }
   return int / 100;
+}
+function parseModernComponent(str, percentScale) {
+  if (str === "none")
+    return 0;
+  if (str.endsWith("%")) {
+    return Number.parseFloat(str) / 100 * percentScale;
+  }
+  return Number.parseFloat(str);
+}
+function parseHueAngle(str) {
+  if (str === "none")
+    return 0;
+  if (str.endsWith("rad")) {
+    return Number.parseFloat(str) * 180 / Math.PI;
+  }
+  if (str.endsWith("grad"))
+    return Number.parseFloat(str) * 0.9;
+  if (str.endsWith("turn"))
+    return Number.parseFloat(str) * 360;
+  return Number.parseFloat(str);
+}
+function parseModernAlpha(str) {
+  if (str === undefined || str === "none")
+    return 1;
+  if (str.endsWith("%")) {
+    return Math.max(0, Math.min(1, Number.parseFloat(str) / 100));
+  }
+  return Math.max(0, Math.min(1, Number.parseFloat(str)));
+}
+function linearToSrgb(c) {
+  if (c <= 0.0031308)
+    return 12.92 * c;
+  return 1.055 * c ** (1 / 2.4) - 0.055;
+}
+function clamp01(v) {
+  return Math.max(0, Math.min(1, v));
+}
+function rgbFloatToInt(r, g, b, alpha) {
+  const ri = Math.round(clamp01(r) * 255);
+  const gi = Math.round(clamp01(g) * 255);
+  const bi = Math.round(clamp01(b) * 255);
+  const ai = Math.round(clamp01(alpha) * 255);
+  return (ri << 24 | gi << 16 | bi << 8 | ai) >>> 0;
+}
+function oklabToSrgb(L, a, b) {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
+  const l = l_ * l_ * l_;
+  const m = m_ * m_ * m_;
+  const s = s_ * s_ * s_;
+  const rLin = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+  const gLin = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+  const bLin = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+  return [linearToSrgb(rLin), linearToSrgb(gLin), linearToSrgb(bLin)];
+}
+function labToSrgb(L, a, b) {
+  const epsilon = 216 / 24389;
+  const kappa = 24389 / 27;
+  const Xn = 0.95047;
+  const Yn = 1;
+  const Zn = 1.08883;
+  const fy = (L + 16) / 116;
+  const fx = a / 500 + fy;
+  const fz = fy - b / 200;
+  const fx3 = fx * fx * fx;
+  const fz3 = fz * fz * fz;
+  const xr = fx3 > epsilon ? fx3 : (116 * fx - 16) / kappa;
+  const yr = L > kappa * epsilon ? ((L + 16) / 116) ** 3 : L / kappa;
+  const zr = fz3 > epsilon ? fz3 : (116 * fz - 16) / kappa;
+  const X = xr * Xn;
+  const Y = yr * Yn;
+  const Z = zr * Zn;
+  const rLin = 3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z;
+  const gLin = -0.969266 * X + 1.8760108 * Y + 0.041556 * Z;
+  const bLin = 0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z;
+  return [linearToSrgb(rLin), linearToSrgb(gLin), linearToSrgb(bLin)];
+}
+function hwbToSrgb(h, w, bk) {
+  if (w + bk >= 1) {
+    const gray = w / (w + bk);
+    return [gray, gray, gray];
+  }
+  const q = 1;
+  const p = 0;
+  const r = hue2rgb(p, q, h + 1 / 3);
+  const g = hue2rgb(p, q, h);
+  const bl = hue2rgb(p, q, h - 1 / 3);
+  const factor = 1 - w - bk;
+  return [r * factor + w, g * factor + w, bl * factor + w];
 }
 var colorNames = {
   transparent: 0,
@@ -269311,6 +276362,58 @@ function normalizeColor(color) {
       return (hslToRgb(parse360(match[1]), parsePercentage(match[2]), parsePercentage(match[3])) | parse1(match[4])) >>> 0;
     }
   }
+  if (matchers.oklch) {
+    if (match = matchers.oklch.exec(color)) {
+      const L = parseModernComponent(match[1], 1);
+      const C = parseModernComponent(match[2], 0.4);
+      const H = parseHueAngle(match[3]);
+      const alpha = parseModernAlpha(match[4]);
+      const hRad = H * Math.PI / 180;
+      const [r, g, b] = oklabToSrgb(L, C * Math.cos(hRad), C * Math.sin(hRad));
+      return rgbFloatToInt(r, g, b, alpha);
+    }
+  }
+  if (matchers.oklab) {
+    if (match = matchers.oklab.exec(color)) {
+      const L = parseModernComponent(match[1], 1);
+      const a = parseModernComponent(match[2], 0.4);
+      const b = parseModernComponent(match[3], 0.4);
+      const alpha = parseModernAlpha(match[4]);
+      const [r, g, bl] = oklabToSrgb(L, a, b);
+      return rgbFloatToInt(r, g, bl, alpha);
+    }
+  }
+  if (matchers.lab) {
+    if (match = matchers.lab.exec(color)) {
+      const L = parseModernComponent(match[1], 100);
+      const a = parseModernComponent(match[2], 125);
+      const b = parseModernComponent(match[3], 125);
+      const alpha = parseModernAlpha(match[4]);
+      const [r, g, bl] = labToSrgb(L, a, b);
+      return rgbFloatToInt(r, g, bl, alpha);
+    }
+  }
+  if (matchers.lch) {
+    if (match = matchers.lch.exec(color)) {
+      const L = parseModernComponent(match[1], 100);
+      const C = parseModernComponent(match[2], 150);
+      const H = parseHueAngle(match[3]);
+      const alpha = parseModernAlpha(match[4]);
+      const hRad = H * Math.PI / 180;
+      const [r, g, bl] = labToSrgb(L, C * Math.cos(hRad), C * Math.sin(hRad));
+      return rgbFloatToInt(r, g, bl, alpha);
+    }
+  }
+  if (matchers.hwb) {
+    if (match = matchers.hwb.exec(color)) {
+      const H = parseHueAngle(match[1]);
+      const W = parseModernComponent(match[2], 1);
+      const B = parseModernComponent(match[3], 1);
+      const alpha = parseModernAlpha(match[4]);
+      const [r, g, bl] = hwbToSrgb(H / 360, W, B);
+      return rgbFloatToInt(r, g, bl, alpha);
+    }
+  }
   throw new Error(`invalid color string ${color} provided`);
 }
 function processColor(color) {
@@ -269327,6 +276430,47 @@ var proResProfileOptions = [
   "light",
   "proxy"
 ];
+
+// src/scale-value.ts
+var defaultScaleValue = [1, 1, 1];
+var parseScaleString = (value) => {
+  const parts = value.trim().split(/\s+/);
+  if (parts.length < 1 || parts.length > 3 || parts[0] === "") {
+    return null;
+  }
+  const parsed = parts.map((part) => Number(part));
+  if (!parsed.every((part) => Number.isFinite(part))) {
+    return null;
+  }
+  const x = parsed[0];
+  const y = parsed[1] ?? x;
+  const z = parsed[2] ?? 1;
+  return [x, y, z];
+};
+var parseValidScaleValue = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? [value, value, 1] : null;
+  }
+  if (typeof value === "string") {
+    return parseScaleString(value);
+  }
+  return null;
+};
+var parseScaleValue = (value) => {
+  return parseValidScaleValue(value) ?? defaultScaleValue;
+};
+var serializeScaleValue = ([x, y, z]) => {
+  const normalizedX = normalizeNumber(x);
+  const normalizedY = normalizeNumber(y);
+  const normalizedZ = normalizeNumber(z);
+  if (normalizedX === normalizedY && normalizedZ === 1) {
+    return normalizedX;
+  }
+  if (normalizedZ === 1) {
+    return `${normalizedX} ${normalizedY}`;
+  }
+  return `${normalizedX} ${normalizedY} ${normalizedZ}`;
+};
 
 // src/v5-flag.ts
 var ENABLE_V5_BREAKING_CHANGES = false;
@@ -269363,6 +276507,7 @@ var validCodecs = [
   "h265",
   "vp8",
   "vp9",
+  "av1",
   "mp3",
   "aac",
   "wav",
@@ -269506,18 +276651,23 @@ var NoReactInternals = {
   getOffthreadVideoSource,
   getExpectedMediaFrameUncorrected,
   ENABLE_V5_BREAKING_CHANGES,
-  MIN_NODE_VERSION: ENABLE_V5_BREAKING_CHANGES ? 18 : 16,
+  MIN_NODE_VERSION: ENABLE_V5_BREAKING_CHANGES ? 22 : 16,
   MIN_BUN_VERSION: ENABLE_V5_BREAKING_CHANGES ? "1.1.3" : "1.0.3",
+  MIN_ESLINT_VERSION: ENABLE_V5_BREAKING_CHANGES ? "8.57.0" : "7.15.0",
   colorNames,
   DATE_TOKEN,
   FILE_TOKEN,
   validateCodec,
-  proResProfileOptions
+  proResProfileOptions,
+  findPropsToDelete,
+  sequenceSchema,
+  parseScaleValue,
+  serializeScaleValue
 };
 
 
 
-/***/ })
+/***/ }
 
 /******/ 	});
 /************************************************************************/
@@ -269585,7 +276735,7 @@ var NoReactInternals = {
 /******/ 			__webpack_require__.r(ns);
 /******/ 			var def = {};
 /******/ 			leafPrototypes = leafPrototypes || [null, getProto({}), getProto([]), getProto(getProto)];
-/******/ 			for(var current = mode & 2 && value; typeof current == 'object' && !~leafPrototypes.indexOf(current); current = getProto(current)) {
+/******/ 			for(var current = mode & 2 && value; (typeof current == 'object' || typeof current == 'function') && !~leafPrototypes.indexOf(current); current = getProto(current)) {
 /******/ 				Object.getOwnPropertyNames(current).forEach((key) => (def[key] = () => (value[key])));
 /******/ 			}
 /******/ 			def['default'] = () => (value);
@@ -269680,7 +276830,6 @@ var NoReactInternals = {
 /******/ 				script = document.createElement('script');
 /******/ 		
 /******/ 				script.charset = 'utf-8';
-/******/ 				script.timeout = 120;
 /******/ 				if (__webpack_require__.nc) {
 /******/ 					script.setAttribute("nonce", __webpack_require__.nc);
 /******/ 				}
@@ -269736,13 +276885,13 @@ var NoReactInternals = {
 /******/ 		// When supporting browsers where an automatic publicPath is not supported you must specify an output.publicPath manually via configuration
 /******/ 		// or pass an empty string ("") and set the __webpack_public_path__ variable from your code to use your own logic.
 /******/ 		if (!scriptUrl) throw new Error("Automatic publicPath is not supported in this browser");
-/******/ 		scriptUrl = scriptUrl.replace(/#.*$/, "").replace(/\?.*$/, "").replace(/\/[^\/]+$/, "/");
+/******/ 		scriptUrl = scriptUrl.replace(/^blob:/, "").replace(/#.*$/, "").replace(/\?.*$/, "").replace(/\/[^\/]+$/, "/");
 /******/ 		__webpack_require__.p = scriptUrl;
 /******/ 	})();
 /******/ 	
 /******/ 	/* webpack/runtime/jsonp chunk loading */
 /******/ 	(() => {
-/******/ 		__webpack_require__.b = document.baseURI || self.location.href;
+/******/ 		__webpack_require__.b = (typeof document !== 'undefined' && document.baseURI) || self.location.href;
 /******/ 		
 /******/ 		// object to store loaded and loading chunks
 /******/ 		// undefined = chunk not loaded, null = chunk preloaded/prefetched
@@ -269835,10 +276984,10 @@ var NoReactInternals = {
 /******/ 	// startup
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module is referenced by other modules so it can't be inlined
-/******/ 	__webpack_require__(2113);
-/******/ 	__webpack_require__(6090);
-/******/ 	__webpack_require__(5032);
-/******/ 	var __webpack_exports__ = __webpack_require__(7442);
+/******/ 	__webpack_require__(7835);
+/******/ 	__webpack_require__(9138);
+/******/ 	__webpack_require__(6426);
+/******/ 	var __webpack_exports__ = __webpack_require__(1366);
 /******/ 	
 /******/ })()
 ;

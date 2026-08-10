@@ -11,17 +11,23 @@ describe("PIPELINE_MENU_OPTIONS", () => {
         );
     });
 
-    it("builds audio generation action-badge payloads", () => {
+    it("builds audio generation action-badge payloads defaulting to speech, not music", () => {
         const option = PIPELINE_MENU_OPTIONS.find((item) => item.id === "audio-gen");
 
         expect(option?.nodeType).toBe("action-badge");
-        expect(option?.getNodeData(undefined, ENABLED_CATALOG)).toMatchObject({
+        const data = option?.getNodeData(undefined, ENABLED_CATALOG);
+        expect(data).toMatchObject({
             label: "Audio Prompt",
             actionType: "audio-gen",
-            modelId: "gemini-3.1-flash-tts",
-            model: "gemini-3.1-flash-tts",
             content: "# Prompt\nEnter your prompt here...",
         });
+        // The intent, not a model id: a bare "Audio Prompt" is speech. Selecting
+        // by catalog order instead of the product's default picker silently made
+        // this music generation when a music card was added above the TTS cards.
+        const selected = MODEL_CARDS.find((card) => card.id === data?.modelId);
+        expect(selected, `unknown model ${String(data?.modelId)}`).toBeDefined();
+        expect(selected!.task).toBe("text-to-speech");
+        expect(data?.model).toBe(data?.modelId);
     });
 
     it("does not offer TTS downstream from an image source", () => {
@@ -41,17 +47,23 @@ describe("PIPELINE_MENU_OPTIONS", () => {
         expect(capability(selected!).ref.audio.accepts).toBe(true);
     });
 
-    it("builds text generation action-badge payloads", () => {
+    it("builds text generation action-badge payloads from a real catalog card", () => {
         const option = PIPELINE_MENU_OPTIONS.find((item) => item.id === "text-gen");
 
         expect(option?.nodeType).toBe("action-badge");
-        expect(option?.getNodeData(undefined, ENABLED_CATALOG)).toMatchObject({
+        const data = option?.getNodeData(undefined, ENABLED_CATALOG);
+        expect(data).toMatchObject({
             label: "Text Prompt",
             actionType: "text-gen",
-            modelId: "gpt-5.4",
-            model: "gpt-5.4",
             content: "# Prompt\nEnter your prompt here...",
         });
+        // Pinning an id here broke on every catalog release without catching a
+        // single real defect. What matters is that the menu resolves a text card
+        // that actually exists and reports it consistently.
+        const selected = MODEL_CARDS.find((card) => card.id === data?.modelId);
+        expect(selected, `unknown model ${String(data?.modelId)}`).toBeDefined();
+        expect(selected!.kind).toBe("text");
+        expect(data?.model).toBe(data?.modelId);
     });
 
     it("keeps downstream options compatible for text source nodes", () => {

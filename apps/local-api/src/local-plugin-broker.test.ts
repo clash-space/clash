@@ -117,6 +117,146 @@ describe("local executable plugin capability broker", () => {
     }, context("invocation-2"))).rejects.toThrow(/does not belong to invocation/);
   });
 
+  it("sends Hilo Hub OAuth tokens in both required authentication headers", async () => {
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe("Bearer hub-oauth-token");
+      expect(headers.get("token")).toBe("hub-oauth-token");
+      return new Response(JSON.stringify({ taskId: "hub-task-1" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [{
+        id: "hilo-hub-primary",
+        providerId: "hilo-hub",
+        upstreamId: "hilo-hub",
+        enabled: true,
+        credentials: { apiKey: "hub-oauth-token" },
+      }],
+      fetch: fetch as typeof globalThis.fetch,
+    });
+    const hiloContext = context();
+    hiloContext.manifest.permissions.secrets = ["provider:hilo-hub"];
+    hiloContext.manifest.permissions.network.domains = ["hub.minimax.io"];
+
+    const credential = await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "hilo-credential-1",
+      invocationId: "invocation-1",
+      operation: { kind: "credential.handle", secretId: "provider:hilo-hub" },
+    }, hiloContext) as { handle: string };
+
+    await expect(broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "hilo-network-1",
+      invocationId: "invocation-1",
+      operation: {
+        kind: "network.fetch",
+        url: "https://hub.minimax.io/api/v2/image/nano_banana/generate",
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: { prompt: "A lighthouse" },
+        credentialHandle: credential.handle,
+      },
+    }, hiloContext)).resolves.toMatchObject({
+      status: 201,
+      body: { taskId: "hub-task-1" },
+    });
+  });
+
+  it("keeps a credential handle usable for longer than the executor's polling ceiling", async () => {
+    // Video generations poll for up to 25 minutes. A shorter handle lifetime
+    // discarded already-billed upstream tasks mid-poll. The handle is not a
+    // security boundary on its own: a plugin holding provider:* may mint a new
+    // one at any time, so the real limits are the sandbox, the domain
+    // allowlist, and the invocation/plugin binding.
+    let clock = 0;
+    const fetch = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ ok: true }));
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [{
+        id: "hilo-hub-primary",
+        providerId: "hilo-hub",
+        upstreamId: "hilo-hub",
+        enabled: true,
+        credentials: { apiKey: "hub-token" },
+      }],
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      now: () => clock,
+    });
+    const ctx = context();
+    ctx.manifest.permissions.secrets = ["provider:hilo-hub"];
+    ctx.manifest.permissions.network.domains = ["hub.minimax.io"];
+
+    const credential = await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "cred-long",
+      invocationId: "invocation-1",
+      operation: { kind: "credential.handle", secretId: "provider:hilo-hub" },
+    }, ctx) as { handle: string };
+
+    // Past the executor's full 25-minute polling ceiling plus per-request
+    // network time, which is exactly where the 15-minute default used to
+    // discard already-billed seedance tasks at ~919s.
+    clock += 26 * 60_000;
+
+    await expect(broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "fetch-long",
+      invocationId: "invocation-1",
+      operation: {
+        kind: "network.fetch",
+        url: "https://hub.minimax.io/api/v1/video/seedance/tasks/t-1",
+        method: "GET",
+        headers: {},
+        credentialHandle: credential.handle,
+      },
+    }, ctx)).resolves.toMatchObject({ status: 200 });
+  });
+
+  it("lets the host configure the credential handle lifetime", async () => {
+    let clock = 0;
+    const fetch = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ ok: true }));
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [{
+        id: "hilo-hub-primary",
+        providerId: "hilo-hub",
+        upstreamId: "hilo-hub",
+        enabled: true,
+        credentials: { apiKey: "hub-token" },
+      }],
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      now: () => clock,
+      credentialHandleTtlMs: 60_000,
+    });
+    const ctx = context();
+    ctx.manifest.permissions.secrets = ["provider:hilo-hub"];
+    ctx.manifest.permissions.network.domains = ["hub.minimax.io"];
+
+    const credential = await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "cred-cfg",
+      invocationId: "invocation-1",
+      operation: { kind: "credential.handle", secretId: "provider:hilo-hub" },
+    }, ctx) as { handle: string };
+
+    clock += 61_000;
+
+    await expect(broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "fetch-cfg",
+      invocationId: "invocation-1",
+      operation: {
+        kind: "network.fetch",
+        url: "https://hub.minimax.io/api/v1/video/seedance/tasks/t-1",
+        method: "GET",
+        headers: {},
+        credentialHandle: credential.handle,
+      },
+    }, ctx)).rejects.toThrow(/unknown or expired/);
+  });
+
   it("reads only project-scoped assets through the broker", async () => {
     const broker = createLocalExecutablePluginBroker({
       loadProviderAccounts: async () => [],

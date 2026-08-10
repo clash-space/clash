@@ -8,10 +8,23 @@ import {
   isLocalHostDiscoveryRecord,
   type LocalHostDiscoveryRecord,
 } from "./index.js";
+import {
+  defaultDaemonNodeCandidates,
+  resolveDaemonNodeRuntime,
+  type DaemonNodeRuntime,
+} from "./local-daemon-runtime.js";
 import type { ClashRuntimeProfile } from "./local-paths.js";
+
+/**
+ * The Node range the daemon supports. Kept beside the launcher so a host can
+ * never be started on a runtime the stores were not verified against.
+ */
+export const DAEMON_SUPPORTED_NODE_RANGE = ">=24.18.0 <25";
 
 export interface LocalDaemonLaunchResult {
   pid: number;
+  /** Which Node actually runs this host, and why it was chosen. */
+  runtime?: DaemonNodeRuntime;
   stop?: () => Promise<void>;
 }
 
@@ -63,15 +76,34 @@ export function launchDetachedLocalDaemon(
   options: DetachedLocalDaemonOptions,
 ): LocalDaemonLaunchResult {
   const spawnProcess = options.spawnProcess ?? spawn;
-  const child = spawnProcess(options.nodePath ?? process.execPath, [options.entryPath], {
+  const env = options.env ?? process.env;
+  // Decoupled from the launcher on purpose: the GUI shell's Electron runtime and
+  // whichever nvm version a shell happened to have active are both accidents of
+  // who started the host, not properties of the host.
+  const runtime = options.nodePath
+    ? {
+        nodePath: options.nodePath,
+        source: "explicit" as const,
+        inheritedFromLauncher: false,
+      }
+    : resolveDaemonNodeRuntime({
+        execPath: process.execPath,
+        env: env as Record<string, string | undefined>,
+        supportedRange: DAEMON_SUPPORTED_NODE_RANGE,
+        candidates: defaultDaemonNodeCandidates(env as Record<string, string | undefined>),
+      });
+  const child = spawnProcess(runtime.nodePath, [options.entryPath], {
     detached: true,
     env: {
-      ...(options.env ?? process.env),
+      ...env,
       ...(options.daemonEnv ?? {}),
       CLASH_LOCAL_DATA_DIR: options.dataDir,
       CLASH_HOST_RUN_DIR: options.runDir,
       CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
       CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+      // The daemon is a Node process, never the GUI shell running as node.
+      ELECTRON_RUN_AS_NODE: undefined,
+      CLASH_DAEMON_NODE_PATH: runtime.nodePath,
       PORT: "0",
     },
     stdio: "ignore",
@@ -81,6 +113,7 @@ export function launchDetachedLocalDaemon(
   child.unref();
   return {
     pid,
+    runtime,
     stop: async () => {
       if (!processExists(pid)) return;
       try {

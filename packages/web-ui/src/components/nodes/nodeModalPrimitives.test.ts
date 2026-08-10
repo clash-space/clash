@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { sourceContains, sourceMatches } from "../../test-support/source-match";
 
 const nodeSourceRoot = process.cwd().endsWith("packages/web-ui")
   ? join(process.cwd(), "src/components/nodes")
@@ -121,12 +122,10 @@ describe("node modal primitives", () => {
     expect(textNodeSource).not.toContain("AgentSelectionAnnotationOverlay");
   });
 
-  it("pins rendered video nodes to the source timeline revision when available", () => {
-    const timelineSource = readNodeSource("VideoEditorNode.tsx");
-
-    expect(timelineSource).toContain("listProjectTimelines");
-    expect(timelineSource).toContain("sourceTimelineNodeId: id");
-    expect(timelineSource).toContain("timelineRevision:");
-    expect(timelineSource).toContain("revisionId: timeline.revisionId");
-  });
+  // Revision pinning moved out of the component into `lib/pendingRenderVideo.ts`, where
+  // `pendingRenderVideo.test.ts` covers it by running the logic rather than reading the
+  // file: "pins rendered videos to the Project Timeline's current revision" and "pins
+  // draft canvas renders to a semantic timeline hash without inventing a revision id".
+  // A source assertion aimed at the old location added nothing and pointed at a file
+  // that no longer holds the mechanism.
 });

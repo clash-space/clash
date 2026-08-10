@@ -55,6 +55,7 @@ export function createHostCliRunner(options: {
       env: {
         ...env,
         ...(host ? { CLASH_API_URL: host.endpoint } : {}),
+        CLASH_CLI_TRACE_ORIGIN: "mcp-transport",
       },
       maxBuffer: 16 * 1024 * 1024,
     });

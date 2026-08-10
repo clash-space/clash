@@ -85,13 +85,32 @@ export async function generateFalVideo(
   throw new Error(`Unsupported fal video model: ${params.videoModel ?? params.modelEndpoint ?? "missing model"}`);
 }
 
+/**
+ * Keep a requested resolution inside what this endpoint offers.
+ *
+ * No translation happens here. Resolution names are already exact -- `720p` is
+ * 1280x720, `768P` is what MiniMax calls its own rung -- so cards carry the values
+ * their provider accepts and this only guards against a value the endpoint has no
+ * rung for. Mapping these onto a shared tier ladder would assert equalities that are
+ * false: a 1K pixel budget is 1048576 while 720p is 921600.
+ */
+function falResolution(
+  value: unknown,
+  supported: readonly string[],
+  fallback: string,
+): string {
+  const raw = typeof value === "string" ? value : undefined;
+  if (!raw) return fallback;
+  return supported.find((option) => option.toLowerCase() === raw.toLowerCase()) ?? fallback;
+}
+
 async function generateFlux3Video(params: FalVideoParams): Promise<FalVideoResult> {
   const duration = params.duration ?? "auto";
   const common: Record<string, unknown> = {
     prompt: params.prompt,
     duration,
     aspect_ratio: params.aspectRatio || "auto",
-    resolution: (params.modelParams?.resolution as string | undefined) ?? "720p",
+    resolution: falResolution(params.modelParams?.resolution, ["720p", "1080p"], "720p"),
     generate_audio: (params.modelParams?.generate_audio as boolean | undefined) ?? true,
     safety_tolerance: (params.modelParams?.safety_tolerance as number | undefined) ?? 2,
   };
@@ -152,7 +171,7 @@ async function generateMiniMaxH3Video(params: FalVideoParams): Promise<FalVideoR
   const duration = typeof params.duration === "string"
     ? Number.parseInt(params.duration, 10)
     : (params.duration ?? 5);
-  const resolution = (params.modelParams?.resolution as string | undefined) ?? "768P";
+  const resolution = falResolution(params.modelParams?.resolution, ["768P", "2K"], "768P");
   const input: Record<string, unknown> = {
     prompt: params.prompt,
     duration,
@@ -315,7 +334,7 @@ async function generateSeedance2Video(params: FalVideoParams): Promise<FalVideoR
   const input: Record<string, unknown> = {
     prompt: params.prompt,
     duration: durationParam,
-    resolution: (params.modelParams?.resolution as string) ?? '720p',
+    resolution: falResolution(params.modelParams?.resolution, ['480p', '720p'], '720p'),
     generate_audio: (params.modelParams?.generate_audio as boolean) ?? true,
   };
   const seed = params.modelParams?.seed;
@@ -470,7 +489,7 @@ async function generateSeedance2RefVideo(params: FalVideoParams): Promise<FalVid
   const input: Record<string, unknown> = {
     prompt: params.prompt,
     duration: durationParam,
-    resolution: (params.modelParams?.resolution as string) ?? '720p',
+    resolution: falResolution(params.modelParams?.resolution, ['480p', '720p'], '720p'),
     aspect_ratio: params.aspectRatio || 'auto',
     generate_audio: (params.modelParams?.generate_audio as boolean) ?? true,
   };

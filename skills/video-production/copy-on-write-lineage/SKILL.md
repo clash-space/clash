@@ -13,10 +13,9 @@ Rules:
 - Trim, caption burn, denoise, crop, or remix creates a derived asset.
 - Derived assets record parent ids, operation, parameters, source hashes, and
   rights inheritance.
-- To show a derived asset on the timeline, use an explicit projection such as
-  `clash production project-derived-overlay`; it writes a `derived-overlay`
-  item plus CAS apply metadata, and does not mutate canvas/timeline state by
-  itself.
+- To show a derived asset on the timeline, project it explicitly into an
+  editable timeline view and apply through CAS; projections never mutate
+  canvas/timeline state by themselves.
 - Force replace must be explicit and auditable.
 - Text nodes with downstream references follow the same rule as image/video.
 

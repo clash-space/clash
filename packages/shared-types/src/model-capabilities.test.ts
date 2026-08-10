@@ -428,8 +428,10 @@ describe("reference media constraints", () => {
       { modality: "video", contentType: "video/mp4", durationMs: 8_000 },
       { modality: "video", contentType: "video/quicktime", durationMs: 8_000 },
     ])).toMatch(/total duration/i);
+    // Spell the mime the way the Card accepts it: this case exercises the byte ceiling,
+    // and using a rejected format would report a format error and never reach it.
     expect(validateReferenceMedia(h3, [
-      { modality: "audio", contentType: "audio/mpeg", bytes: 50 * 1024 * 1024, embedded: true },
+      { modality: "audio", contentType: "audio/mp3", bytes: 50 * 1024 * 1024, embedded: true },
     ])).toMatch(/15 MB/i);
     expect(validateReferenceMedia(h3, [
       { modality: "image" },

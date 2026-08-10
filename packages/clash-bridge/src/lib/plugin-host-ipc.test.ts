@@ -111,6 +111,45 @@ describe("Bridge plugin host IPC", () => {
         },
       },
     }];
+    const providers = [{
+      pluginId: "first-party-media",
+      version: "1.2.3",
+      schemaHash: binding.schemaHash,
+      runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
+      permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
+      document: {
+        apiVersion: "clash.provider/v1" as const,
+        kind: "provider" as const,
+        spec: {
+          id: "hilo-hub",
+          name: "MiniMax Hilo Hub",
+          upstreamId: "hilo-hub",
+          apiShape: "hilo-hub",
+          executorExportId: "hilo-hub-execute",
+          auth: [],
+        },
+      },
+    }];
+    const modelBindings = [{
+      pluginId: "first-party-media",
+      version: "1.2.3",
+      schemaHash: binding.schemaHash,
+      runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
+      permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
+      document: {
+        apiVersion: "clash.binding/v1" as const,
+        kind: "model-provider-binding" as const,
+        spec: {
+          id: "hilo-hub-minimax-h3",
+          modelId: "minimax-h3",
+          providerId: "hilo-hub",
+          upstreamId: "hilo-hub",
+          upstreamModel: "MiniMax-H3",
+          apiShape: "hilo-hub",
+          executorExportId: "hilo-hub-execute",
+        },
+      },
+    }];
     const invoke = vi.fn(async (_pluginId: string, invocation: any) => ({
       protocol: "clash.plugin.result/v1" as const,
       invocationId: invocation.invocationId,
@@ -125,6 +164,8 @@ describe("Bridge plugin host IPC", () => {
       socketPath,
       host: {
         listCards: () => cards,
+        listProviders: () => providers,
+        listModelBindings: () => modelBindings,
         resolveBinding: () => binding,
         invoke,
       },
@@ -133,6 +174,8 @@ describe("Bridge plugin host IPC", () => {
 
     try {
       await expect(client.listCards()).resolves.toMatchObject(cards);
+      await expect((client as any).listProviders()).resolves.toMatchObject(providers);
+      await expect((client as any).listModelBindings()).resolves.toMatchObject(modelBindings);
       await expect(client.resolveBinding(
         "first-party-media",
         "fal-h3",

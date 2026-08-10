@@ -29,6 +29,7 @@ export {
   TIMELINE_DERIVED_MEDIA_TYPES,
   TIMELINE_DERIVATION_KINDS,
   TIMELINE_MEDIA_FITS,
+  TIMELINE_ITEM_TRANSFORM_SEMANTICS,
   TIMELINE_TEXT_ALIGNMENTS,
   TIMELINE_TRANSITION_TYPES,
   timelineDslAnnotatedObjectShape,
@@ -284,14 +285,27 @@ export {
 
 export {
   ExecutablePluginCardExportSchema,
+  ExecutablePluginProviderExportSchema,
+  ExecutablePluginModelBindingExportSchema,
   ExecutablePluginActivationReceiptSchema,
   ExecutableActionCardSchema,
   ExecutableActionPresentationSchema,
   ExecutablePluginCardDocumentSchema,
   ExecutablePluginCardRegistrationSchema,
+  ExecutablePluginProviderAuthSchema,
+  ExecutablePluginProviderDefinitionSchema,
+  ExecutablePluginProviderDocumentSchema,
+  ExecutablePluginProviderRegistrationSchema,
+  ExecutablePluginModelBindingSpecSchema,
+  ExecutablePluginModelBindingDocumentSchema,
+  ExecutablePluginModelBindingRegistrationSchema,
   ExecutablePluginContractTestDocumentSchema,
   ExecutablePluginBindingSchema,
   ExecutablePluginAssetHandleSchema,
+  ExecutablePluginAssetReadResultSchema,
+  assetReachForRuntime,
+  pluginRuntimeProfile,
+  uploadTargetForRuntime,
   ExecutablePluginBrokerOperationSchema,
   ExecutablePluginBrokerRequestSchema,
   ExecutablePluginBrokerResponseSchema,
@@ -305,6 +319,9 @@ export {
   ExecutablePluginManifestSchema,
   ExecutablePluginPermissionsSchema,
   ExecutablePluginRuntimeSchema,
+  ExecutablePluginModelBindingInputSchema,
+  resolveModelBindingFromProvider,
+  resolvePluginLanguage,
   PluginRelativePathSchema,
   diffExecutablePluginPermissions,
   composeExecutablePluginModelCards,
@@ -312,14 +329,24 @@ export {
   isSafePluginRelativePath,
   validateExecutablePluginPackage,
   type ExecutablePluginCardExport,
+  type ExecutablePluginProviderExport,
+  type ExecutablePluginModelBindingExport,
   type ExecutablePluginActivationReceipt,
   type ExecutableActionCard,
   type ExecutableActionPresentation,
   type ExecutablePluginCardDocument,
   type ExecutablePluginCardRegistration,
+  type ExecutablePluginProviderAuth,
+  type ExecutablePluginProviderDefinition,
+  type ExecutablePluginProviderDocument,
+  type ExecutablePluginProviderRegistration,
+  type ExecutablePluginModelBindingSpec,
+  type ExecutablePluginModelBindingDocument,
+  type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginContractTestDocument,
   type ExecutablePluginBinding,
   type ExecutablePluginAssetHandle,
+  type ExecutablePluginAssetReadResult,
   type ExecutablePluginBrokerOperation,
   type ExecutablePluginBrokerRequest,
   type ExecutablePluginBrokerResponse,
@@ -484,6 +511,42 @@ export {
   ModelConstraintRuleSchema,
   type ModelConstraintRule,
 } from './models';
+
+export {
+  GPT_IMAGE_ASPECT_RATIOS,
+  GPT_IMAGE_EDGE_MULTIPLE,
+  GPT_IMAGE_MAX_EDGE,
+  GPT_IMAGE_MAX_PIXELS,
+  GPT_IMAGE_MAX_RATIO,
+  GPT_IMAGE_MIN_PIXELS,
+  GPT_IMAGE_RESOLUTION_TIERS,
+  GPT_IMAGE_SIZES,
+  computeGptImageSize,
+  formatGptImageSize,
+  gptImageSizeForRatio,
+  isSupportedGptImageRatio,
+  parseAspectRatio,
+  resolveGptImageSize,
+  type GptImageResolutionTier,
+  type GptImageSize,
+} from './gpt-image-size';
+
+export {
+  credentialSourceKind,
+  hasUnattendedCredentialSource,
+  resolveCredentialSources,
+  unattendedCredentialSources,
+  CredentialSourceKindSchema,
+  type CredentialSource,
+  type CredentialSourceControl,
+  type CredentialSourceKind,
+} from './credential-sources';
+
+export {
+  CANONICAL_RESOLUTION_TIERS,
+  resolutionTierPixels,
+  type CanonicalResolutionTier,
+} from './resolution-tiers';
 
 export {
   applyModelParameterChange,
@@ -701,6 +764,39 @@ export {
   type TalkingHeadMetadata,
   type VideoVisualMomentMetadata,
 } from './production-metadata';
+
+// Declared asset metadata kinds: the open registry behind the published
+// asset-metadata-fill-action contract.
+export {
+  MediaTranscriptMetadataSchema,  getDeclaredAssetMetadataKind,
+  listDeclaredAssetMetadataKinds,
+  parseAssetMetadataFillAction,
+  parseDeclaredAssetMetadata,
+  registerAssetMetadataKind,
+  summarizeTranscript,
+  transcriptContentHashInput,
+  type DeclaredAssetMetadataKind,
+  type MediaDescriptionMetadata,
+  type MediaTranscriptMetadata,
+  type ParsedAssetMetadataFillAction,
+} from './asset-metadata-registry';
+
+// Local speech catalog selectors: one source for GUI and CLI alike.
+export {
+  asrModelValue,
+  isLocalAsrModelEntry,
+  isLocalSpeechModelEntry,
+  isLocalTtsModelEntry,
+  listLocalSpeechModelCards,
+  localSpeechCapability,
+  localSpeechModelCard,
+  localSpeechModelValue,
+  resolveLocalSpeechModelId,
+  ttsModelValue,
+  type LocalSpeechCapability,
+  type LocalSpeechCatalogEntry,
+  type LocalSpeechModelCard,
+} from './local-speech-catalog';
 
 // Canvas operations class
 export { Canvas } from './canvas-ops';

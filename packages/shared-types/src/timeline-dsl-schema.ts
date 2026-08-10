@@ -24,6 +24,7 @@ import {
   TIMELINE_DSL_TRACK_CATEGORIES,
   TIMELINE_DSL_TRACK_ROLES,
   TIMELINE_MEDIA_FITS,
+  TIMELINE_ITEM_TRANSFORM_SEMANTICS,
   TIMELINE_CLIP_ANIMATION_TYPES,
   TIMELINE_TEXT_ALIGNMENTS,
   TIMELINE_CAPTION_POSITIONS,
@@ -49,11 +50,13 @@ export {
 const itemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => {
   const baseShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-    { overrides: {
-        type: z.literal(type).describe(
-          TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description,
-        ),
-      } },
+    {
+      overrides: {
+        type: z
+          .literal(type)
+          .describe(TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description),
+      },
+    },
   );
   const variantShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type],
@@ -71,8 +74,11 @@ const TimelineDslItemVariantSchema = z.discriminatedUnion(
 
 const itemFieldOwners = new Map<string, Set<TimelineDslItemType>>();
 for (const type of TIMELINE_DSL_ITEM_TYPES) {
-  for (const fieldName of Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type])) {
-    const owners = itemFieldOwners.get(fieldName) ?? new Set<TimelineDslItemType>();
+  for (const fieldName of Object.keys(
+    TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type],
+  )) {
+    const owners =
+      itemFieldOwners.get(fieldName) ?? new Set<TimelineDslItemType>();
     owners.add(type);
     itemFieldOwners.set(fieldName, owners);
   }
@@ -81,20 +87,22 @@ for (const type of TIMELINE_DSL_ITEM_TYPES) {
 const maskKeyframeChannels = new Set<string>(TIMELINE_MASK_KEYFRAME_CHANNELS);
 const itemBaseFieldApplicabilityRules = Object.entries(
   TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-).flatMap(([fieldName, annotation]) => (
+).flatMap(([fieldName, annotation]) =>
   annotation.appliesToItemTypes && annotation.applicabilityRuleId
-    ? [{
-        id: annotation.applicabilityRuleId,
-        kind: "allowed-item-types-when-present" as const,
-        objectPath: "tracks[].items[]" as const,
-        field: fieldName,
-        allowedItemTypes: annotation.appliesToItemTypes,
-        ...(annotation.applicabilityMessage
-          ? { message: annotation.applicabilityMessage }
-          : {}),
-      }]
-    : []
-));
+    ? [
+        {
+          id: annotation.applicabilityRuleId,
+          kind: "allowed-item-types-when-present" as const,
+          objectPath: "tracks[].items[]" as const,
+          field: fieldName,
+          allowedItemTypes: annotation.appliesToItemTypes,
+          ...(annotation.applicabilityMessage
+            ? { message: annotation.applicabilityMessage }
+            : {}),
+        },
+      ]
+    : [],
+);
 
 const clipMaskRequiresMaskRule = {
   id: "timeline.clip-mask.requires-mask",
@@ -143,8 +151,12 @@ export const TIMELINE_DSL_SEMANTIC_RULES = {
   ],
 } as const;
 
-function hasMaskKeyframes(keyframes: TimelineItemKeyframes | undefined): boolean {
-  return Object.keys(keyframes ?? {}).some((channel) => maskKeyframeChannels.has(channel));
+function hasMaskKeyframes(
+  keyframes: TimelineItemKeyframes | undefined,
+): boolean {
+  return Object.keys(keyframes ?? {}).some((channel) =>
+    maskKeyframeChannels.has(channel),
+  );
 }
 
 export type TimelineMaskKeyframeSemanticIssue = {
@@ -163,15 +175,16 @@ export function timelineMaskKeyframeSemanticIssues(item: {
   const issues: TimelineMaskKeyframeSemanticIssue[] = [];
   for (const rule of itemBaseFieldApplicabilityRules) {
     if (
-      Object.prototype.hasOwnProperty.call(item, rule.field)
-      && item[rule.field] !== undefined
-      && !(rule.allowedItemTypes as readonly string[]).includes(item.type)
+      Object.prototype.hasOwnProperty.call(item, rule.field) &&
+      item[rule.field] !== undefined &&
+      !(rule.allowedItemTypes as readonly string[]).includes(item.type)
     ) {
       issues.push({
         ruleId: rule.id,
         path: [rule.field],
-        message: rule.message
-          ?? `${rule.field} is only valid on ${rule.allowedItemTypes.join(", ")} items`,
+        message:
+          rule.message ??
+          `${rule.field} is only valid on ${rule.allowedItemTypes.join(", ")} items`,
       });
     }
   }
@@ -182,70 +195,86 @@ export function timelineMaskKeyframeSemanticIssues(item: {
       message: "mask keyframes require a mask",
     });
   }
-  for (const frameIssue of timelineKeyframeFrameIssues(item.keyframes, item.durationInFrames)) {
+  for (const frameIssue of timelineKeyframeFrameIssues(
+    item.keyframes,
+    item.durationInFrames,
+  )) {
     issues.push({
-      ruleId: frameIssue.reason === "duplicate"
-        ? timelineKeyframeUniqueFrameRule.id
-        : timelineKeyframeRangeRule.id,
+      ruleId:
+        frameIssue.reason === "duplicate"
+          ? timelineKeyframeUniqueFrameRule.id
+          : timelineKeyframeRangeRule.id,
       path: ["keyframes", frameIssue.channel, frameIssue.index, "frame"],
-      message: frameIssue.reason === "duplicate"
-        ? `duplicate keyframe at item-local frame ${frameIssue.frame}`
-        : `item-local frame must be between 0 and ${item.durationInFrames - 1}`,
+      message:
+        frameIssue.reason === "duplicate"
+          ? `duplicate keyframe at item-local frame ${frameIssue.frame}`
+          : `item-local frame must be between 0 and ${item.durationInFrames - 1}`,
     });
   }
   return issues;
 }
 
-export const TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine((item, ctx) => {
-  const typedItem = item as Record<string, unknown> & {
-    type: TimelineDslItemType;
-    durationInFrames: number;
-    mask?: unknown;
-    keyframes?: TimelineItemKeyframes;
-  };
-  for (const [fieldName, owners] of itemFieldOwners) {
-    if (
-      Object.prototype.hasOwnProperty.call(typedItem, fieldName)
-      && !owners.has(typedItem.type)
-    ) {
+export const TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine(
+  (item, ctx) => {
+    const typedItem = item as Record<string, unknown> & {
+      type: TimelineDslItemType;
+      durationInFrames: number;
+      mask?: unknown;
+      keyframes?: TimelineItemKeyframes;
+    };
+    for (const [fieldName, owners] of itemFieldOwners) {
+      if (
+        Object.prototype.hasOwnProperty.call(typedItem, fieldName) &&
+        !owners.has(typedItem.type)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [fieldName],
+          message: `${fieldName} is not valid on ${typedItem.type} items`,
+          params: { ruleId: timelineItemFieldApplicabilityRule.id },
+        });
+      }
+    }
+    for (const issue of timelineMaskKeyframeSemanticIssues(typedItem)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: [fieldName],
-        message: `${fieldName} is not valid on ${typedItem.type} items`,
-        params: { ruleId: timelineItemFieldApplicabilityRule.id },
+        path: issue.path,
+        message: issue.message,
+        params: { ruleId: issue.ruleId },
       });
     }
-  }
-  for (const issue of timelineMaskKeyframeSemanticIssues(typedItem)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: issue.path,
-      message: issue.message,
-      params: { ruleId: issue.ruleId },
-    });
-  }
-}).describe("TimelineDslItem");
+  },
+).describe("TimelineDslItem");
 
-export const TimelineDslTrackSchema = z.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
-  { overrides: { items: z.array(TimelineDslItemSchema) } },
-)).passthrough().describe("TimelineDslTrack");
+export const TimelineDslTrackSchema = z
+  .object(
+    timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.track, {
+      overrides: { items: z.array(TimelineDslItemSchema) },
+    }),
+  )
+  .passthrough()
+  .describe("TimelineDslTrack");
 
-const TimelineDslSchemaBase = z.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.root,
-  { overrides: { tracks: z.array(TimelineDslTrackSchema) } },
-)).passthrough();
+const TimelineDslSchemaBase = z
+  .object(
+    timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.root, {
+      overrides: { tracks: z.array(TimelineDslTrackSchema) },
+    }),
+  )
+  .passthrough();
 
-export const TimelineDslSchema = TimelineDslSchemaBase.superRefine((timeline, context) => {
-  for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: semanticIssue.path,
-      message: semanticIssue.message,
-      params: { ruleId: semanticIssue.ruleId },
-    });
-  }
-}).describe("TimelineDsl");
+export const TimelineDslSchema = TimelineDslSchemaBase.superRefine(
+  (timeline, context) => {
+    for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: semanticIssue.path,
+        message: semanticIssue.message,
+        params: { ruleId: semanticIssue.ruleId },
+      });
+    }
+  },
+).describe("TimelineDsl");
 
 export type TimelineDslValidationIssue = {
   ruleId: string;
@@ -259,16 +288,19 @@ export type TimelineDslValidationResult =
   | { ok: false; issues: TimelineDslValidationIssue[] };
 
 /** Execute the published base plus mask/keyframe contract before legacy YAML semantics. */
-export function validateTimelineDsl(state: unknown): TimelineDslValidationResult {
+export function validateTimelineDsl(
+  state: unknown,
+): TimelineDslValidationResult {
   const parsed = TimelineDslSchema.safeParse(state);
   if (parsed.success) return { ok: true, value: parsed.data };
   return {
     ok: false,
     issues: parsed.error.issues.map((issue) => ({
-      ruleId: issue.code === z.ZodIssueCode.custom
-          && typeof issue.params?.ruleId === "string"
-        ? issue.params.ruleId
-        : "timeline.dsl.structure",
+      ruleId:
+        issue.code === z.ZodIssueCode.custom &&
+        typeof issue.params?.ruleId === "string"
+          ? issue.params.ruleId
+          : "timeline.dsl.structure",
       code: issue.code,
       path: [...issue.path],
       message: issue.message,
@@ -284,10 +316,13 @@ const timelineItemMaskJsonSchema = zodToJsonSchema(TimelineItemMaskSchema, {
   name: "TimelineItemMask",
   target: "jsonSchema7",
 });
-const timelineItemKeyframesJsonSchema = zodToJsonSchema(TimelineItemKeyframesSchema, {
-  name: "TimelineItemKeyframes",
-  target: "jsonSchema7",
-});
+const timelineItemKeyframesJsonSchema = zodToJsonSchema(
+  TimelineItemKeyframesSchema,
+  {
+    name: "TimelineItemKeyframes",
+    target: "jsonSchema7",
+  },
+);
 
 type JsonSchemaObject = Record<string, unknown>;
 
@@ -392,20 +427,24 @@ export const TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE = {
   compositionHeight: 1080,
   fps: 30,
   durationInFrames: 60,
-  tracks: [{
-    id: "visual-overlays",
-    name: "Visual overlays",
-    category: "visual",
-    items: [{
-      id: "masked-image",
-      type: "image",
-      from: 0,
-      durationInFrames: 60,
-      sourceNodeId: "source-image-node",
-      mask: timelineMaskExample,
-      keyframes: timelineMaskKeyframesExample,
-    }],
-  }],
+  tracks: [
+    {
+      id: "visual-overlays",
+      name: "Visual overlays",
+      category: "visual",
+      items: [
+        {
+          id: "masked-image",
+          type: "image",
+          from: 0,
+          durationInFrames: 60,
+          sourceNodeId: "source-image-node",
+          mask: timelineMaskExample,
+          keyframes: timelineMaskKeyframesExample,
+        },
+      ],
+    },
+  ],
 } as const;
 
 const timelineMaskDslFeature = {
@@ -416,18 +455,21 @@ const timelineMaskDslFeature = {
   animatedChannels: TIMELINE_MASK_CAPABILITY_ANNOTATION.animatedChannels,
   defaultMask: TIMELINE_MASK_CAPABILITY_ANNOTATION.defaultMask,
   fieldDefinitions: Object.fromEntries(
-    Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(([field, annotation]) => [
-      field,
-      {
-            description: annotation.description,
-            invalidValueDescription: annotation.invalidValueDescription,
-        unit: annotation.unit,
-        defaultValue: annotation.defaultValue,
-        animatedChannel: "animation" in annotation
-          ? annotation.animation?.channel ?? null
-          : null,
-      },
-    ]),
+    Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(
+      ([field, annotation]) => [
+        field,
+        {
+          description: annotation.description,
+          invalidValueDescription: annotation.invalidValueDescription,
+          unit: annotation.unit,
+          defaultValue: annotation.defaultValue,
+          animatedChannel:
+            "animation" in annotation
+              ? (annotation.animation?.channel ?? null)
+              : null,
+        },
+      ],
+    ),
   ),
   operations: TIMELINE_MASK_CAPABILITY_ANNOTATION.operations,
   runtimeBehavior: TIMELINE_MASK_CAPABILITY_ANNOTATION.runtimeBehavior,
@@ -441,10 +483,11 @@ function canonicalTimelineDslContractJson(value: unknown): string {
   if (value && typeof value === "object") {
     return `{${Object.entries(value as Record<string, unknown>)
       .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
-      .map(([key, entry]) => (
-        `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`
-      ))
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(
+        ([key, entry]) =>
+          `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`,
+      )
       .join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
@@ -461,9 +504,10 @@ function timelineDslContractFingerprint(value: unknown): string {
 }
 
 const timelineDslSerializableDefinition = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   format: "clash.timeline.yaml",
-  description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
+  description:
+    "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
   operationCatalog: TIMELINE_OPERATION_CATALOG,
   taxonomy: {
@@ -494,11 +538,15 @@ const timelineDslSerializableDefinition = {
   jsonSchema: {
     ...timelineDslJsonSchema,
     "x-clash-fragments": timelineDslJsonSchemaFragments,
-    "x-clash-features": { clipMask: timelineMaskDslFeature },
+    "x-clash-features": {
+      clipMask: timelineMaskDslFeature,
+      itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS,
+    },
     "x-clash-semantic-rules": TIMELINE_DSL_SEMANTIC_RULES,
   },
   features: {
     clipMask: timelineMaskDslFeature,
+    itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS,
   },
   examples: {
     maskKeyframes: TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE,

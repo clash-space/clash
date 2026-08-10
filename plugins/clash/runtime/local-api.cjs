@@ -4482,7 +4482,42 @@ var init_chunk_QT2SHN5K = __esm({
   }
 });
 
-// ../../packages/shared-types/dist/chunk-2B4Z6TLC.js
+// ../../packages/shared-types/dist/chunk-FQOJJELV.js
+function aspectRatioParameter(spec) {
+  return {
+    id: "aspect_ratio",
+    label: "Aspect Ratio",
+    type: "select",
+    ...spec.description ? { description: spec.description } : {},
+    ...spec.required === void 0 ? {} : { required: spec.required },
+    options: [
+      ...spec.auto ? [{ label: spec.auto.label, value: "auto" }] : [],
+      ...spec.ratios.map((value) => ({ label: value, value }))
+    ],
+    defaultValue: spec.defaultValue
+  };
+}
+function durationParameter(spec) {
+  return {
+    id: "duration",
+    label: "Duration",
+    type: "select",
+    options: [
+      ...spec.auto ? [{ label: spec.auto.label, value: "auto" }] : [],
+      ...spec.seconds.map((value) => ({ label: `${value}s`, value }))
+    ],
+    defaultValue: spec.defaultValue
+  };
+}
+function resolutionParameter(spec) {
+  return {
+    id: "resolution",
+    label: "Resolution",
+    type: "select",
+    options: spec.tiers.map((tier) => ({ label: tier.label, value: tier.value })),
+    defaultValue: spec.defaultValue
+  };
+}
 function flux3VideoParameters(options = {}) {
   const allowAutoDuration = options.allowAutoDuration ?? true;
   return [
@@ -4531,7 +4566,7 @@ function flux3VideoParameters(options = {}) {
 function resolveAspectRatio(modelId, modelParams2) {
   const card = MODEL_CARDS.find((c) => c.id === modelId);
   if (!card) return "16:9";
-  const paramId = card.aspectRatioParam || "aspect_ratio";
+  const paramId = "aspect_ratio";
   const arParam = card.parameters.find((p) => p.id === paramId);
   if (!arParam) return card.defaultAspectRatio;
   const value = modelParams2[paramId];
@@ -4585,9 +4620,42 @@ function isSafePluginRelativePath(value) {
   const segments = value.split("/");
   return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 }
-function composeExecutablePluginModelCards(baseModelsInput, registrationsInput) {
+function resolvePluginLanguage(runtime) {
+  if (runtime.kind !== "local") return void 0;
+  if (runtime.language) return runtime.language;
+  const entrypoint = runtime.entrypoint ?? "";
+  return entrypoint.toLowerCase().endsWith(".py") ? "python" : "node";
+}
+function resolveModelBindingFromProvider(binding, provider) {
+  const parsed = ExecutablePluginModelBindingInputSchema.parse(binding);
+  const defaults = provider.bindingDefaults ?? {};
+  const oauthIds = [
+    ...new Set(
+      provider.auth.filter((entry) => "id" in entry).map((entry) => entry.id)
+    )
+  ];
+  const resolved = {
+    ...parsed,
+    id: parsed.id ?? `${provider.id}-${parsed.modelId}`,
+    providerId: parsed.providerId ?? provider.id,
+    upstreamId: parsed.upstreamId ?? provider.upstreamId,
+    apiShape: parsed.apiShape ?? provider.apiShape,
+    executorExportId: parsed.executorExportId ?? provider.executorExportId
+  };
+  const inheritedOAuth = parsed.requiredOAuth ?? (oauthIds.length > 0 ? oauthIds : void 0);
+  if (inheritedOAuth) resolved.requiredOAuth = inheritedOAuth;
+  else delete resolved.requiredOAuth;
+  for (const key of ["priority", "weight", "region", "accountId"]) {
+    const value = parsed[key] ?? defaults[key];
+    if (value === void 0) delete resolved[key];
+    else resolved[key] = value;
+  }
+  return resolved;
+}
+function composeExecutablePluginModelCards(baseModelsInput, registrationsInput, modelBindingRegistrationsInput = []) {
   const baseModels = z.array(ModelCardSchema).parse(baseModelsInput);
   const registrations = z.array(ExecutablePluginCardRegistrationSchema).parse(registrationsInput);
+  const modelBindingRegistrations = z.array(ExecutablePluginModelBindingRegistrationSchema).parse(modelBindingRegistrationsInput);
   const pluginModels = /* @__PURE__ */ new Map();
   for (const registration of registrations) {
     if (registration.document.kind !== "model-card") continue;
@@ -4600,17 +4668,69 @@ function composeExecutablePluginModelCards(baseModelsInput, registrationsInput) 
     }
     const model = ModelCardSchema.parse({
       ...registration.document.spec,
-      providerImplementations: registration.document.spec.providerImplementations?.map(
-        (implementation) => implementation.projectorExportId && !implementation.projectorPluginId ? { ...implementation, projectorPluginId: registration.pluginId } : implementation
-      )
+      providerImplementations: registration.document.spec.providerImplementations?.map((implementation) => ({
+        ...implementation,
+        ...implementation.projectorExportId && !implementation.projectorPluginId ? { projectorPluginId: registration.pluginId } : {},
+        ...implementation.executorExportId && !implementation.executorPluginId ? { executorPluginId: registration.pluginId } : {}
+      }))
     });
     pluginModels.set(id, { pluginId: registration.pluginId, model });
   }
   const baseIds = new Set(baseModels.map((model) => model.id));
-  return [
+  const composed = [
     ...baseModels.map((model) => pluginModels.get(model.id)?.model ?? model),
     ...[...pluginModels.values()].map((entry) => entry.model).filter((model) => !baseIds.has(model.id)).sort((left, right) => left.id.localeCompare(right.id))
   ];
+  const bindingsByModel = /* @__PURE__ */ new Map();
+  for (const registration of modelBindingRegistrations) {
+    const { id: _id, modelId, ...implementationInput } = registration.document.spec;
+    const implementation = ModelProviderImplementationSchema.parse({
+      ...implementationInput,
+      ...implementationInput.projectorExportId && !implementationInput.projectorPluginId ? { projectorPluginId: registration.pluginId } : {},
+      ...implementationInput.executorExportId && !implementationInput.executorPluginId ? { executorPluginId: registration.pluginId } : {}
+    });
+    const entries = bindingsByModel.get(modelId) ?? [];
+    const routeKey = [implementation.providerId, implementation.accountId ?? "", implementation.region ?? ""].join(":");
+    const duplicate = entries.find((entry) => [
+      entry.implementation.providerId,
+      entry.implementation.accountId ?? "",
+      entry.implementation.region ?? ""
+    ].join(":") === routeKey);
+    if (duplicate) {
+      throw new Error(
+        `Plugins ${duplicate.pluginId} and ${registration.pluginId} both bind model Card ${modelId} to ${routeKey}.`
+      );
+    }
+    entries.push({ pluginId: registration.pluginId, implementation });
+    bindingsByModel.set(modelId, entries);
+  }
+  return composed.map((model) => {
+    const external = bindingsByModel.get(model.id) ?? [];
+    if (external.length === 0) return model;
+    const implementations = [...model.providerImplementations ?? []];
+    for (const entry of external) {
+      const routeKey = [entry.implementation.providerId, entry.implementation.accountId ?? "", entry.implementation.region ?? ""].join(":");
+      const duplicate = implementations.some((implementation) => [
+        implementation.providerId,
+        implementation.accountId ?? "",
+        implementation.region ?? ""
+      ].join(":") === routeKey);
+      if (duplicate) {
+        throw new Error(`Model Card ${model.id} already declares provider binding ${routeKey}.`);
+      }
+      implementations.push(entry.implementation);
+    }
+    const availableProviders = [.../* @__PURE__ */ new Set([
+      ...model.availableProviders ?? [],
+      ...implementations.map((implementation) => implementation.providerId)
+    ])];
+    return ModelCardSchema.parse({
+      ...model,
+      availableProviders,
+      defaultProvider: model.defaultProvider ?? availableProviders[0],
+      providerImplementations: implementations
+    });
+  });
 }
 function executablePluginDomainAllowed(hostname3, domains) {
   const host = hostname3.toLowerCase();
@@ -4653,10 +4773,28 @@ function executablePluginBrokerPermissionError(manifestInput, requestInput) {
   }
   return null;
 }
-function validateExecutablePluginPackage(manifestInput, cardDocuments, contractTestDocuments = {}) {
+function inheritBindingRoute(input, providers, bindingExportId) {
+  if (typeof input !== "object" || input === null) return input;
+  const document = input;
+  if (typeof document.spec !== "object" || document.spec === null) return input;
+  const spec = document.spec;
+  const declared = typeof spec.providerId === "string" ? spec.providerId : void 0;
+  const definitions = Object.values(providers).map((provider) => provider.spec);
+  const owner = declared ? definitions.find((definition) => definition.id === declared) : definitions.length === 1 ? definitions[0] : void 0;
+  if (!owner) {
+    if (declared || definitions.length === 0) return input;
+    throw new Error(
+      `Model Provider binding ${bindingExportId} must name its providerId: this package exports ${definitions.length} providers.`
+    );
+  }
+  return { ...document, spec: resolveModelBindingFromProvider(spec, owner) };
+}
+function validateExecutablePluginPackage(manifestInput, cardDocuments, contractTestDocuments = {}, artifacts = {}) {
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
   const functions = new Map(manifest.exports.functions.map((entry) => [entry.id, entry]));
   const cards = {};
+  const providers = {};
+  const modelBindings = {};
   const contractTests = {};
   for (const cardExport of manifest.exports.cards) {
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
@@ -4690,6 +4828,53 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     cards[cardExport.path] = card;
   }
+  for (const providerExport of manifest.exports.providers) {
+    const input = artifacts.providers?.[providerExport.path];
+    if (input === void 0) {
+      throw new Error(`Missing declared Provider document: ${providerExport.path}`);
+    }
+    const provider = ExecutablePluginProviderDocumentSchema.parse(input);
+    if (provider.spec.id !== providerExport.id) {
+      throw new Error(
+        `Provider ${providerExport.path} id ${provider.spec.id} does not match export id ${providerExport.id}.`
+      );
+    }
+    const executor = functions.get(provider.spec.executorExportId);
+    if (!executor || executor.kind !== "provider-executor") {
+      throw new Error(
+        `Provider ${provider.spec.id} requires provider executor export ${provider.spec.executorExportId}.`
+      );
+    }
+    providers[providerExport.path] = provider;
+  }
+  for (const bindingExport of manifest.exports.modelBindings) {
+    const input = artifacts.modelBindings?.[bindingExport.path];
+    if (input === void 0) {
+      throw new Error(`Missing declared model Provider binding: ${bindingExport.path}`);
+    }
+    const bindingInput = inheritBindingRoute(input, providers, bindingExport.id);
+    const binding = ExecutablePluginModelBindingDocumentSchema.parse(bindingInput);
+    if (binding.spec.id !== bindingExport.id) {
+      throw new Error(
+        `Model Provider binding ${bindingExport.path} id ${binding.spec.id} does not match export id ${bindingExport.id}.`
+      );
+    }
+    for (const [exportId, kind] of [
+      [binding.spec.projectorExportId, "provider-projector"],
+      [binding.spec.executorExportId, "provider-executor"]
+    ]) {
+      if (!exportId) continue;
+      const ownerId = kind === "provider-projector" ? binding.spec.projectorPluginId : binding.spec.executorPluginId;
+      if (ownerId && ownerId !== manifest.id) continue;
+      const implementation = functions.get(exportId);
+      if (!implementation || implementation.kind !== kind) {
+        throw new Error(
+          `Model Provider binding ${binding.spec.id} requires ${kind} export ${exportId}.`
+        );
+      }
+    }
+    modelBindings[bindingExport.path] = binding;
+  }
   for (const path of manifest.contractTests) {
     if (!Object.prototype.hasOwnProperty.call(contractTestDocuments, path)) {
       throw new Error(`Missing declared contract test: ${path}`);
@@ -4705,15 +4890,40 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     contractTests[path] = contractTest;
   }
-  return { manifest, cards, contractTests };
+  return { manifest, cards, providers, modelBindings, contractTests };
 }
-var ModelKindSchema, ModelTaskSchema, NANO_BANANA_ASPECT_RATIOS, NANO_BANANA_LITE_ASPECT_RATIOS, NANO_BANANA_RESOLUTIONS, SORA_ASPECT_RATIOS, FLUX_ASPECT_RATIOS, VEO3_ASPECT_RATIOS, VEO3_DURATION_PARAMETER, IMAGEN_ASPECT_RATIOS, RECRAFT_ASPECT_RATIOS, FLUX2_ASPECT_RATIOS, FLUX3_VIDEO_ASPECT_RATIOS, FLUX3_VIDEO_DEFAULT_PARAMS, FLUX3_KEYFRAME_VIDEO_DEFAULT_PARAMS, GPT_IMAGE_SIZES, SEEDANCE_ASPECT_RATIOS, GEMINI_TTS_VOICES, ModelParameterTypeSchema, ProviderSchema, ReferenceBindingSchema, ModelProviderConfigSchema, ModelParameterSchema, ReferenceMediaConstraintsSchema, RefSpecSchema, ModelInputModeSchema, ModelInputPresentationSchema, ModelInputRuleSchema, MusicInputMappingSchema, ModelConstraintValueSchema, ModelConstraintFieldSchema, ModelConstraintRuleSchema, ProviderCredentialRequirementsSchema, ModelProviderImplementationSchema, ModelCardSchema, GEMINI_TTS_PARAMETERS, MINIMAX_H3_IMAGE_CONSTRAINTS, MINIMAX_H3_VIDEO_CONSTRAINTS, MINIMAX_H3_AUDIO_CONSTRAINTS, MINIMAX_H3_MAX_EMBEDDED_REQUEST_BYTES, GROUPED_REFERENCE_BINDING, ORDERED_REFERENCE_BINDING, POSITIONAL_REFERENCE_BINDING, PIKA_2026_TEXT_MODEL_CARDS, MODEL_CARD_DEFINITIONS, SEEDANCE_2_FAL_PARAMETER_OVERRIDES, MINIMAX_H3_FAL_PARAMETER_OVERRIDES, MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES, SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES, MODEL_PROVIDER_IMPLEMENTATION_ROWS, MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID, MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS, MODEL_CARDS, MODEL_IDS, MODEL_ALIAS_TO_ID, MOCK_MODEL_CARDS, PLUGIN_ID_PATTERN, SEMVER_PATTERN, SHA256_PATTERN, PluginRelativePathSchema, ExecutablePluginRuntimeSchema, ExecutablePluginCardExportSchema, ExecutableActionPresentationSchema, ExecutableActionCardSchema, ExecutablePluginCardDocumentSchema, ExecutablePluginFunctionExportSchema, PluginNetworkPermissionsSchema, PluginFilesystemPermissionsSchema, ExecutablePluginPermissionsSchema, ExecutablePluginCardRegistrationSchema, ExecutablePluginBindingSchema, ExecutablePluginJsonValueSchema, ExecutablePluginAssetHandleSchema, ExecutablePluginReferenceBaseSchema, ExecutablePluginReferenceSchema, ExecutablePluginInvocationSchema, HostedExecutablePluginCapabilitySchema, ExecutablePluginOutputSchema, ExecutablePluginResultSchema, ExecutablePluginBrokerOperationSchema, ExecutablePluginBrokerRequestSchema, ExecutablePluginBrokerResponseSchema, ExecutablePluginContractBrokerFixtureSchema, ExecutablePluginContractTestDocumentSchema, ExecutablePluginManifestSchema, ExecutablePluginActivationReceiptSchema;
-var init_chunk_2B4Z6TLC = __esm({
-  "../../packages/shared-types/dist/chunk-2B4Z6TLC.js"() {
+var CANONICAL_RESOLUTION_TIERS, GPT_IMAGE_RESOLUTION_TIERS, GPT_IMAGE_ASPECT_RATIOS, ModelKindSchema, ModelTaskSchema, NANO_BANANA_ASPECT_RATIOS, NANO_BANANA_LITE_ASPECT_RATIOS, NANO_BANANA_RESOLUTIONS, SORA_ASPECT_RATIOS, CANONICAL_IMAGE_ASPECT_RATIOS, KLING_ASPECT_RATIOS, VEO3_ASPECT_RATIOS, VEO3_DURATION_PARAMETER, IMAGEN_ASPECT_RATIOS, FLUX3_VIDEO_ASPECT_RATIOS, FLUX3_VIDEO_DEFAULT_PARAMS, FLUX3_KEYFRAME_VIDEO_DEFAULT_PARAMS, SEEDANCE_ASPECT_RATIOS, GEMINI_TTS_VOICES, ModelParameterTypeSchema, BuiltinProviderSchema, ProviderSchema, ReferenceBindingSchema, ModelProviderConfigSchema, ModelParameterSchema, ReferenceMediaConstraintsSchema, RefSpecSchema, ModelInputModeSchema, ModelInputPresentationSchema, ModelInputRuleSchema, MusicInputMappingSchema, ModelConstraintValueSchema, ModelConstraintFieldSchema, ModelConstraintRuleSchema, ProviderCredentialRequirementsSchema, ModelProviderImplementationSchema, ModelCardSchema, GEMINI_TTS_PARAMETERS, MINIMAX_H3_IMAGE_CONSTRAINTS, MINIMAX_H3_VIDEO_CONSTRAINTS, MINIMAX_H3_AUDIO_CONSTRAINTS, MINIMAX_H3_MAX_EMBEDDED_REQUEST_BYTES, GROUPED_REFERENCE_BINDING, ORDERED_REFERENCE_BINDING, POSITIONAL_REFERENCE_BINDING, PIKA_2026_TEXT_MODEL_CARDS, MODEL_CARD_DEFINITIONS, SEEDANCE_2_FAL_PARAMETER_OVERRIDES, MINIMAX_H3_FAL_PARAMETER_OVERRIDES, MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES, SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES, MODEL_PROVIDER_IMPLEMENTATION_ROWS, MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID, MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS, MODEL_CARDS, MODEL_IDS, MODEL_ALIAS_TO_ID, MOCK_MODEL_CARDS, PLUGIN_ID_PATTERN, SEMVER_PATTERN, SHA256_PATTERN, PluginRelativePathSchema, ExecutablePluginRuntimeSchema, ExecutablePluginCardExportSchema, ExecutablePluginProviderExportSchema, ExecutablePluginModelBindingExportSchema, ExecutableActionPresentationSchema, ExecutableActionCardSchema, ExecutablePluginCardDocumentSchema, ExecutablePluginProviderAuthSchema, ExecutablePluginProviderDefinitionSchema, ExecutablePluginProviderDocumentSchema, ExecutablePluginModelBindingSpecSchema, ExecutablePluginModelBindingInputSchema, ExecutablePluginModelBindingDocumentSchema, ExecutablePluginFunctionExportSchema, PluginNetworkPermissionsSchema, PluginFilesystemPermissionsSchema, ExecutablePluginPermissionsSchema, ExecutablePluginCardRegistrationSchema, ExecutablePluginArtifactRegistrationBaseSchema, ExecutablePluginProviderRegistrationSchema, ExecutablePluginModelBindingRegistrationSchema, ExecutablePluginBindingSchema, ExecutablePluginJsonValueSchema, ExecutablePluginAssetHandleObjectSchema, ExecutablePluginAssetHandleSchema, ExecutablePluginAssetReadResultSchema, ExecutablePluginReferenceBaseSchema, ExecutablePluginReferenceSchema, ExecutablePluginInvocationSchema, HostedExecutablePluginCapabilitySchema, ExecutablePluginOutputSchema, ExecutablePluginResultSchema, ExecutablePluginBrokerOperationSchema, ExecutablePluginBrokerRequestSchema, ExecutablePluginBrokerResponseSchema, ExecutablePluginContractBrokerFixtureSchema, ExecutablePluginContractTestDocumentSchema, ExecutablePluginManifestSchema, ExecutablePluginActivationReceiptSchema;
+var init_chunk_FQOJJELV = __esm({
+  "../../packages/shared-types/dist/chunk-FQOJJELV.js"() {
     "use strict";
     init_chunk_QT2SHN5K();
     init_lib();
     init_lib();
+    CANONICAL_RESOLUTION_TIERS = [
+      { label: "0.5K (Draft)", value: "0.5K", pixels: 262144 },
+      { label: "1K (Fast)", value: "1K", pixels: 1048576 },
+      { label: "2K (Balanced)", value: "2K", pixels: 4194304 },
+      { label: "4K (High Quality)", value: "4K", pixels: 8294400 }
+    ];
+    GPT_IMAGE_RESOLUTION_TIERS = CANONICAL_RESOLUTION_TIERS.filter(
+      (tier) => tier.value === "1K" || tier.value === "2K" || tier.value === "4K"
+    );
+    GPT_IMAGE_ASPECT_RATIOS = [
+      { label: "1:1", value: "1:1" },
+      { label: "16:9", value: "16:9" },
+      { label: "9:16", value: "9:16" },
+      { label: "3:4", value: "3:4" },
+      { label: "4:3", value: "4:3" },
+      { label: "3:2", value: "3:2" },
+      { label: "2:3", value: "2:3" },
+      { label: "5:4", value: "5:4" },
+      { label: "4:5", value: "4:5" },
+      { label: "21:9", value: "21:9" },
+      { label: "2:1", value: "2:1" },
+      { label: "1:2", value: "1:2" },
+      { label: "3:1", value: "3:1" },
+      { label: "1:3", value: "1:3" }
+    ];
     ModelKindSchema = z.enum(["image", "video", "audio", "text", "asr"]);
     ModelTaskSchema = z.enum([
       "speech-to-text",
@@ -4748,22 +4958,22 @@ var init_chunk_2B4Z6TLC = __esm({
       { label: "16:9", value: "16:9" },
       { label: "21:9", value: "21:9" }
     ];
-    NANO_BANANA_RESOLUTIONS = [
-      { label: "0.5K (Draft)", value: "0.5K" },
-      { label: "1K (Fast)", value: "1K" },
-      { label: "2K (Balanced)", value: "2K" },
-      { label: "4K (High Quality)", value: "4K" }
-    ];
+    NANO_BANANA_RESOLUTIONS = CANONICAL_RESOLUTION_TIERS;
     SORA_ASPECT_RATIOS = [
       { label: "16:9", value: "16:9" },
       { label: "9:16", value: "9:16" }
     ];
-    FLUX_ASPECT_RATIOS = [
-      { label: "16:9", value: "landscape_16_9" },
-      { label: "9:16", value: "portrait_16_9" },
-      { label: "1:1", value: "square_hd" },
-      { label: "4:3", value: "landscape_4_3" },
-      { label: "3:4", value: "portrait_4_3" }
+    CANONICAL_IMAGE_ASPECT_RATIOS = [
+      { label: "1:1", value: "1:1" },
+      { label: "4:3", value: "4:3" },
+      { label: "16:9", value: "16:9" },
+      { label: "3:4", value: "3:4" },
+      { label: "9:16", value: "9:16" }
+    ];
+    KLING_ASPECT_RATIOS = [
+      { label: "16:9", value: "16:9" },
+      { label: "9:16", value: "9:16" },
+      { label: "1:1", value: "1:1" }
     ];
     VEO3_ASPECT_RATIOS = [
       { label: "16:9", value: "16:9" },
@@ -4782,22 +4992,6 @@ var init_chunk_2B4Z6TLC = __esm({
       { label: "1:1", value: "1:1" },
       { label: "4:3", value: "4:3" },
       { label: "3:4", value: "3:4" }
-    ];
-    RECRAFT_ASPECT_RATIOS = [
-      { label: "1:1 HD", value: "square_hd" },
-      { label: "1:1", value: "square" },
-      { label: "4:3", value: "landscape_4_3" },
-      { label: "16:9", value: "landscape_16_9" },
-      { label: "3:4", value: "portrait_4_3" },
-      { label: "9:16", value: "portrait_16_9" }
-    ];
-    FLUX2_ASPECT_RATIOS = [
-      { label: "1:1 HD", value: "square_hd" },
-      { label: "1:1", value: "square" },
-      { label: "4:3", value: "landscape_4_3" },
-      { label: "16:9", value: "landscape_16_9" },
-      { label: "3:4", value: "portrait_4_3" },
-      { label: "9:16", value: "portrait_16_9" }
     ];
     FLUX3_VIDEO_ASPECT_RATIOS = [
       { label: "Auto", value: "auto" },
@@ -4820,12 +5014,6 @@ var init_chunk_2B4Z6TLC = __esm({
       ...FLUX3_VIDEO_DEFAULT_PARAMS,
       duration: 5
     };
-    GPT_IMAGE_SIZES = [
-      { label: "Auto", value: "auto" },
-      { label: "1:1", value: "1024x1024" },
-      { label: "2:3", value: "1024x1536" },
-      { label: "3:2", value: "1536x1024" }
-    ];
     SEEDANCE_ASPECT_RATIOS = [
       { label: "Auto", value: "auto" },
       { label: "21:9", value: "21:9" },
@@ -4868,7 +5056,7 @@ var init_chunk_2B4Z6TLC = __esm({
       { label: "Sulafat - Warm", value: "Sulafat" }
     ];
     ModelParameterTypeSchema = z.enum(["select", "slider", "number", "text", "boolean"]);
-    ProviderSchema = z.enum([
+    BuiltinProviderSchema = z.enum([
       "local",
       "official",
       "fal",
@@ -4884,6 +5072,10 @@ var init_chunk_2B4Z6TLC = __esm({
       "mock",
       "custom"
     ]);
+    ProviderSchema = z.string().trim().regex(
+      /^[a-z0-9][a-z0-9._-]*$/,
+      "Provider ids must be lowercase plugin-safe identifiers."
+    );
     ReferenceBindingSchema = z.discriminatedUnion("type", [
       z.object({
         /** Provider receives the prompt and reference collections as separate fields. */
@@ -5062,6 +5254,12 @@ var init_chunk_2B4Z6TLC = __esm({
       /** Plugin that owns projectorExportId. The resolver selects an installed
        * exact version and persists it on the Canvas node. */
       projectorPluginId: z.string().min(1).optional(),
+      /** Function export that owns the full submit/poll/result lifecycle for a
+       * plugin-defined provider. Built-in adapters may omit it. */
+      executorExportId: z.string().min(1).optional(),
+      /** Plugin that owns executorExportId. Package composition fills this from
+       * immutable plugin provenance when omitted in a binding document. */
+      executorPluginId: z.string().min(1).optional(),
       priority: z.number().optional(),
       weight: z.number().optional(),
       requiredCredentials: z.array(z.string()).optional(),
@@ -5078,12 +5276,20 @@ var init_chunk_2B4Z6TLC = __esm({
        * the effective Card instead of being rendered and silently discarded. */
       excludedParameterIds: z.array(z.string().min(1)).optional()
     }).superRefine((implementation, ctx) => {
-      if (!implementation.projectorPluginId || implementation.projectorExportId) return;
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["projectorExportId"],
-        message: "projectorExportId is required when projectorPluginId is configured."
-      });
+      if (implementation.projectorPluginId && !implementation.projectorExportId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["projectorExportId"],
+          message: "projectorExportId is required when projectorPluginId is configured."
+        });
+      }
+      if (implementation.executorPluginId && !implementation.executorExportId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["executorExportId"],
+          message: "executorExportId is required when executorPluginId is configured."
+        });
+      }
     });
     ModelCardSchema = z.object({
       id: z.string(),
@@ -5103,12 +5309,6 @@ var init_chunk_2B4Z6TLC = __esm({
        * This is OUR representation — provider-specific values live in parameters/defaultParams.
        */
       defaultAspectRatio: z.string().default("16:9"),
-      /**
-       * Maps our canonical aspect ratio ("4:3") → provider-specific param value ("landscape_4_3").
-       * The key of the provider param in defaultParams (e.g. "aspect_ratio" or "image_size").
-       * If the provider uses the same format as ours, the mapping is identity.
-       */
-      aspectRatioParam: z.string().optional(),
       input: ModelInputRuleSchema.default({ requiresPrompt: true, inputMode: {}, promptModalities: ["text"] }),
       musicInput: MusicInputMappingSchema.optional(),
       /** Shared UI/runtime constraints. Providers may still translate the final
@@ -5273,6 +5473,10 @@ var init_chunk_2B4Z6TLC = __esm({
       audioCodecs: ["aac", "mp3"]
     };
     MINIMAX_H3_AUDIO_CONSTRAINTS = {
+      // The model accepts WAV and MP3, so `audio/mpeg` belongs here: it is MP3's registered
+      // media type and rejecting it would refuse a file the model can read. MiniMax derives a
+      // filename from the mime and will not take the `.mpeg` that `audio/mpeg` yields, so the
+      // transport spells it `audio/mp3` on the wire -- a provider dialect, like `adaptive`.
       mimeTypes: ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3"],
       fileExtensions: ["wav", "mp3"],
       maxBytes: 15 * 1024 * 1024,
@@ -5444,7 +5648,6 @@ var init_chunk_2B4Z6TLC = __esm({
         defaultProvider: "official",
         kind: "image",
         defaultAspectRatio: "16:9",
-        aspectRatioParam: "aspect_ratio",
         description: "Fast Gemini 3.1 Flash-Lite image generation.",
         parameters: [
           {
@@ -5469,15 +5672,21 @@ var init_chunk_2B4Z6TLC = __esm({
         defaultProvider: "official",
         kind: "image",
         defaultAspectRatio: "1:1",
-        aspectRatioParam: "size",
         description: "OpenAI GPT Image 2 \u2014 high-quality image generation and editing.",
         parameters: [
           {
-            id: "size",
-            label: "Size",
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
             type: "select",
-            options: GPT_IMAGE_SIZES.map((s) => ({ label: s.label, value: s.value })),
-            defaultValue: "auto"
+            options: GPT_IMAGE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "1:1"
+          },
+          {
+            id: "resolution",
+            label: "Resolution",
+            type: "select",
+            options: GPT_IMAGE_RESOLUTION_TIERS.map((t) => ({ label: t.label, value: t.value })),
+            defaultValue: "2K"
           },
           {
             id: "quality",
@@ -5503,13 +5712,13 @@ var init_chunk_2B4Z6TLC = __esm({
             defaultValue: "png"
           },
           {
+            // gpt-image-2 does not support transparent backgrounds.
             id: "background",
             label: "Background",
             type: "select",
             options: [
               { label: "Auto", value: "auto" },
-              { label: "Opaque", value: "opaque" },
-              { label: "Transparent", value: "transparent" }
+              { label: "Opaque", value: "opaque" }
             ],
             defaultValue: "auto"
           },
@@ -5553,23 +5762,25 @@ var init_chunk_2B4Z6TLC = __esm({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "1:1",
-        aspectRatioParam: "image_size",
         description: "ByteDance Seedream 4.5 image generation and editing through fal.ai.",
         parameters: [
+          aspectRatioParameter({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+            defaultValue: "auto",
+            auto: { label: "Auto" }
+          }),
           {
-            id: "image_size",
-            label: "Size",
+            // Seedream's own tier, kept separate from the ratio the way minimax-h3
+            // already separates them. Folding both into one `image_size` enum made
+            // "Auto 2K" look like an aspect ratio.
+            id: "resolution",
+            label: "Resolution",
             type: "select",
             options: [
-              { label: "Auto 2K", value: "auto_2K" },
-              { label: "Auto 4K", value: "auto_4K" },
-              { label: "1:1", value: "square_hd" },
-              { label: "4:3", value: "landscape_4_3" },
-              { label: "16:9", value: "landscape_16_9" },
-              { label: "3:4", value: "portrait_4_3" },
-              { label: "9:16", value: "portrait_16_9" }
+              { label: "2K", value: "2K" },
+              { label: "4K", value: "4K" }
             ],
-            defaultValue: "auto_2K"
+            defaultValue: "2K"
           },
           {
             id: "count",
@@ -5607,16 +5818,12 @@ var init_chunk_2B4Z6TLC = __esm({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "16:9",
-        aspectRatioParam: "image_size",
         description: "Ultra-fast image generation, ~1s per image.",
         parameters: [
-          {
-            id: "image_size",
-            label: "Aspect Ratio",
-            type: "select",
-            options: FLUX_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-            defaultValue: "landscape_16_9"
-          },
+          aspectRatioParameter({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+            defaultValue: "16:9"
+          }),
           {
             id: "num_inference_steps",
             label: "Steps",
@@ -5653,16 +5860,12 @@ var init_chunk_2B4Z6TLC = __esm({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "16:9",
-        aspectRatioParam: "image_size",
         description: "High-quality image generation with great prompt following.",
         parameters: [
-          {
-            id: "image_size",
-            label: "Aspect Ratio",
-            type: "select",
-            options: FLUX_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-            defaultValue: "landscape_16_9"
-          },
+          aspectRatioParameter({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+            defaultValue: "16:9"
+          }),
           {
             id: "num_inference_steps",
             label: "Steps",
@@ -5723,10 +5926,7 @@ var init_chunk_2B4Z6TLC = __esm({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "720p", value: "720p" },
-              { label: "1080p", value: "1080p" }
-            ],
+            options: [{ label: "720p", value: "720p" }, { label: "1080p", value: "1080p" }],
             defaultValue: "720p"
           },
           {
@@ -5784,10 +5984,7 @@ var init_chunk_2B4Z6TLC = __esm({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "720p", value: "720p" },
-              { label: "1080p", value: "1080p" }
-            ],
+            options: [{ label: "720p", value: "720p" }, { label: "1080p", value: "1080p" }],
             defaultValue: "720p"
           }
         ],
@@ -5830,10 +6027,7 @@ var init_chunk_2B4Z6TLC = __esm({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "480p", value: "480p" },
-              { label: "720p", value: "720p" }
-            ],
+            options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
             defaultValue: "720p"
           },
           {
@@ -5890,10 +6084,7 @@ var init_chunk_2B4Z6TLC = __esm({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "480p", value: "480p" },
-              { label: "720p", value: "720p" }
-            ],
+            options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
             defaultValue: "720p"
           },
           {
@@ -5954,10 +6145,7 @@ var init_chunk_2B4Z6TLC = __esm({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "480p", value: "480p" },
-              { label: "720p", value: "720p" }
-            ],
+            options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
             defaultValue: "720p"
           }
         ],
@@ -6012,10 +6200,7 @@ var init_chunk_2B4Z6TLC = __esm({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "480p", value: "480p" },
-              { label: "720p", value: "720p" }
-            ],
+            options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
             defaultValue: "720p"
           }
         ],
@@ -6063,10 +6248,7 @@ var init_chunk_2B4Z6TLC = __esm({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "768p", value: "768P" },
-              { label: "2K", value: "2K" }
-            ],
+            options: [{ label: "768P", value: "768P" }, { label: "2K", value: "2K" }],
             defaultValue: "2K"
           }
         ],
@@ -6120,10 +6302,7 @@ var init_chunk_2B4Z6TLC = __esm({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "768p", value: "768P" },
-              { label: "2K", value: "2K" }
-            ],
+            options: [{ label: "768P", value: "768P" }, { label: "2K", value: "2K" }],
             defaultValue: "2K"
           }
         ],
@@ -6152,16 +6331,10 @@ var init_chunk_2B4Z6TLC = __esm({
         defaultAspectRatio: "16:9",
         description: "Kling 3 Pro \u2014 first + optional end frame, with native audio.",
         parameters: [
-          {
-            id: "duration",
-            label: "Duration",
-            type: "select",
-            options: Array.from({ length: 13 }, (_, index) => ({
-              label: `${index + 3}s`,
-              value: String(index + 3)
-            })),
-            defaultValue: "5"
-          },
+          durationParameter({
+            seconds: Array.from({ length: 13 }, (_, index) => index + 3),
+            defaultValue: 5
+          }),
           {
             id: "generate_audio",
             label: "Native audio",
@@ -6170,7 +6343,7 @@ var init_chunk_2B4Z6TLC = __esm({
           }
         ],
         defaultParams: {
-          duration: "5",
+          duration: 5,
           generate_audio: true
         },
         input: { requiresPrompt: true, inputMode: { startEnd: {} } }
@@ -6254,16 +6427,12 @@ var init_chunk_2B4Z6TLC = __esm({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "16:9",
-        aspectRatioParam: "image_size",
         description: "Designer-grade image generation with color control and text rendering.",
         parameters: [
-          {
-            id: "image_size",
-            label: "Aspect Ratio",
-            type: "select",
-            options: RECRAFT_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-            defaultValue: "square_hd"
-          }
+          aspectRatioParameter({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+            defaultValue: "16:9"
+          })
         ],
         defaultParams: {
           image_size: "square_hd"
@@ -6279,16 +6448,12 @@ var init_chunk_2B4Z6TLC = __esm({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "4:3",
-        aspectRatioParam: "image_size",
         description: "Latest FLUX flagship \u2014 high-quality image generation.",
         parameters: [
-          {
-            id: "image_size",
-            label: "Aspect Ratio",
-            type: "select",
-            options: FLUX2_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-            defaultValue: "landscape_4_3"
-          },
+          aspectRatioParameter({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+            defaultValue: "16:9"
+          }),
           {
             id: "safety_tolerance",
             label: "Safety Tolerance",
@@ -6518,8 +6683,7 @@ var init_chunk_2B4Z6TLC = __esm({
             type: "select",
             readOnly: true,
             options: [{ label: "720p", value: "720p" }],
-            defaultValue: "720p",
-            description: "Gemini Omni Flash currently produces 720p video."
+            defaultValue: "720p"
           },
           {
             id: "frame_rate",
@@ -7324,6 +7488,506 @@ var init_chunk_2B4Z6TLC = __esm({
           similarity_boost: 0.75
         },
         input: { requiresPrompt: true, inputMode: {} }
+      },
+      // ─── Image: Kling Omni ─────────────────────────────────────
+      // Kling's omni image models take a prompt plus up to ten reference images and
+      // render at a named resolution tier rather than explicit dimensions.
+      {
+        id: "kling-image-o1",
+        name: "Kling Image O1",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Kling O1 image generation with optional reference images.",
+        parameters: [
+          aspectRatioParameter({
+            ratios: ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"],
+            defaultValue: "auto",
+            auto: { label: "Auto" }
+          }),
+          resolutionParameter({
+            tiers: [{ label: "1K", value: "1K" }, { label: "2K", value: "2K" }],
+            defaultValue: "1K"
+          })
+        ],
+        defaultParams: { aspect_ratio: "auto", resolution: "1K" },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 10 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      {
+        id: "kling-image-o3",
+        name: "Kling Image O3",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Kling O3 omni image generation with optional reference images.",
+        parameters: [
+          aspectRatioParameter({
+            ratios: ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"],
+            defaultValue: "auto",
+            auto: { label: "Auto" }
+          }),
+          resolutionParameter({
+            tiers: [{ label: "1K", value: "1K" }, { label: "2K", value: "2K" }],
+            defaultValue: "1K"
+          })
+        ],
+        defaultParams: { aspect_ratio: "auto", resolution: "1K" },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 10 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      // ─── Image: Midjourney ─────────────────────────────────────
+      // Midjourney is prompt-driven: aspect ratio and the styling knobs below are
+      // expressed as `--ar`, `--stylize`, `--chaos`, and `--weird` flags appended to the
+      // prompt, so the Card declares them as parameters and the transport renders the
+      // flags. `stylize` spans 0-1000 and `chaos`/`weird` 0-100 in Midjourney's own docs.
+      {
+        id: "midjourney-7",
+        name: "Midjourney 7",
+        provider: "Midjourney",
+        availableProviders: ["kie"],
+        defaultProvider: "kie",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Midjourney v7 image generation with optional image prompts.",
+        parameters: [
+          aspectRatioParameter({
+            ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+            defaultValue: "1:1"
+          }),
+          { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
+          { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
+          { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+        ],
+        defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 5 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      {
+        id: "midjourney-8.1",
+        name: "Midjourney 8.1",
+        provider: "Midjourney",
+        availableProviders: ["kie"],
+        defaultProvider: "kie",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Midjourney v8.1 image generation with optional image prompts.",
+        parameters: [
+          aspectRatioParameter({
+            ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+            defaultValue: "1:1"
+          }),
+          { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
+          { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
+          { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+        ],
+        defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 5 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      {
+        id: "midjourney-niji-7",
+        name: "Midjourney Niji 7",
+        provider: "Midjourney",
+        availableProviders: ["kie"],
+        defaultProvider: "kie",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Midjourney Niji 7, the anime-oriented model, with optional image prompts.",
+        parameters: [
+          aspectRatioParameter({
+            ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+            defaultValue: "1:1"
+          }),
+          { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
+          { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
+          { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+        ],
+        defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 5 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      // ─── Video: Seedance 2.0 speed tiers ───────────────────────
+      // Fast and mini are the same generation contract as Seedance 2.0 at lower cost, so
+      // they mirror its parameters and reference limits.
+      {
+        id: "seedance-2-fast-ref",
+        name: "Seedance 2.0 Fast (\u5168\u80FD\u53C2\u8003)",
+        provider: "ByteDance",
+        availableProviders: ["jimeng", "volcengine"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Seedance 2.0 Fast all-purpose generation with optional image, video, and audio references.",
+        parameters: [
+          durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "auto"
+          },
+          resolutionParameter({
+            tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+            defaultValue: "720p"
+          }),
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: POSITIONAL_REFERENCE_BINDING,
+          inputMode: {
+            images: { max: 9 },
+            videos: { max: 3 },
+            audios: { max: 3 },
+            maxTotalReferences: 12
+          },
+          promptModalities: ["text", "image", "video", "audio"]
+        }
+      },
+      {
+        id: "seedance-2-fast-startend",
+        name: "Seedance 2.0 Fast (\u9996\u5C3E\u5E27)",
+        provider: "ByteDance",
+        availableProviders: ["jimeng", "volcengine"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Seedance 2.0 Fast animation between a first and an optional last frame.",
+        parameters: [
+          durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "auto"
+          },
+          resolutionParameter({
+            tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+            defaultValue: "720p"
+          }),
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+        input: { requiresPrompt: true, inputMode: { startEnd: {} } }
+      },
+      {
+        id: "seedance-2-mini-ref",
+        name: "Seedance 2.0 Mini (\u5168\u80FD\u53C2\u8003)",
+        provider: "ByteDance",
+        availableProviders: ["jimeng", "volcengine"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Seedance 2.0 Mini all-purpose generation with optional image, video, and audio references.",
+        parameters: [
+          durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "auto"
+          },
+          resolutionParameter({
+            tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+            defaultValue: "720p"
+          }),
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: POSITIONAL_REFERENCE_BINDING,
+          inputMode: {
+            images: { max: 9 },
+            videos: { max: 3 },
+            audios: { max: 3 },
+            maxTotalReferences: 12
+          },
+          promptModalities: ["text", "image", "video", "audio"]
+        }
+      },
+      {
+        id: "seedance-2-mini-startend",
+        name: "Seedance 2.0 Mini (\u9996\u5C3E\u5E27)",
+        provider: "ByteDance",
+        availableProviders: ["jimeng", "volcengine"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Seedance 2.0 Mini animation between a first and an optional last frame.",
+        parameters: [
+          durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "auto"
+          },
+          resolutionParameter({
+            tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+            defaultValue: "720p"
+          }),
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+        input: { requiresPrompt: true, inputMode: { startEnd: {} } }
+      },
+      // ─── Video: Kling Omni ─────────────────────────────────────
+      // Kling's omni video models accept image and video references, render in a `std` or
+      // `pro` mode, and can stitch several shots from one prompt.
+      {
+        id: "kling-video-o1",
+        name: "Kling Video O1",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Kling O1 video generation with optional image and video references.",
+        parameters: [
+          durationParameter({ seconds: [5, 10], defaultValue: 5 }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: KLING_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "16:9"
+          },
+          {
+            id: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+            defaultValue: "pro"
+          },
+          { id: "multi_shot", label: "Multi-shot", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: 5, aspect_ratio: "16:9", mode: "pro", multi_shot: false },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 4 }, videos: { max: 1 } },
+          promptModalities: ["text", "image", "video"]
+        }
+      },
+      {
+        id: "kling-video-o3",
+        name: "Kling Video O3",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Kling O3 omni video generation with optional image and video references and native audio.",
+        parameters: [
+          durationParameter({ seconds: [5, 10], defaultValue: 5 }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: KLING_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "16:9"
+          },
+          {
+            id: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+            defaultValue: "pro"
+          },
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false },
+          { id: "multi_shot", label: "Multi-shot", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: 5, aspect_ratio: "16:9", mode: "pro", generate_audio: false, multi_shot: false },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 4 }, videos: { max: 1 } },
+          promptModalities: ["text", "image", "video"]
+        }
+      },
+      // ─── Video: driven performance ─────────────────────────────
+      // These take a subject and a driver rather than a prompt alone: Avatar animates one
+      // portrait from a speech clip, and the motion-control models transfer the motion of
+      // a source video onto a still.
+      {
+        id: "kling-avatar",
+        name: "Kling Avatar",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "video",
+        defaultAspectRatio: "9:16",
+        description: "Animate one portrait image so it speaks a supplied audio clip.",
+        parameters: [
+          {
+            id: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+            defaultValue: "std"
+          }
+        ],
+        defaultParams: { mode: "std" },
+        input: {
+          requiresPrompt: false,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 1 }, audios: { max: 1 } },
+          promptModalities: ["text", "image", "audio"]
+        }
+      },
+      {
+        id: "kling-motion-control",
+        name: "Kling Motion Control",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Transfer the motion of a source video onto a still character image.",
+        parameters: [
+          {
+            id: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+            defaultValue: "std"
+          },
+          {
+            id: "keep_original_sound",
+            label: "Keep original sound",
+            type: "select",
+            options: [{ label: "Yes", value: "yes" }, { label: "No", value: "no" }],
+            defaultValue: "yes"
+          },
+          {
+            id: "character_orientation",
+            label: "Character orientation",
+            type: "select",
+            options: [
+              { label: "Follow video", value: "video" },
+              { label: "Follow image", value: "image" }
+            ],
+            defaultValue: "video"
+          }
+        ],
+        defaultParams: { mode: "std", keep_original_sound: "yes", character_orientation: "video" },
+        input: {
+          requiresPrompt: false,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 1 }, videos: { max: 1 } },
+          promptModalities: ["text", "image", "video"]
+        }
+      },
+      {
+        id: "jimeng-motion-control-2",
+        name: "Jimeng Motion Control 2.0",
+        provider: "ByteDance",
+        availableProviders: ["jimeng"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Transfer the motion of a source video onto a still image with Jimeng 2.0.",
+        parameters: [],
+        defaultParams: {},
+        input: {
+          requiresPrompt: false,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 1 }, videos: { max: 1 } },
+          promptModalities: ["text", "image", "video"]
+        }
+      },
+      // ─── Audio: Seed Audio ─────────────────────────────────────
+      // Seed Audio clones a voice from a reference rather than selecting a preset one, so
+      // it takes an audio or image reference instead of a voice id.
+      {
+        id: "seed-audio-1",
+        name: "Seed Audio 1.0",
+        provider: "ByteDance",
+        availableProviders: ["volcengine"],
+        defaultProvider: "volcengine",
+        kind: "audio",
+        defaultAspectRatio: "1:1",
+        description: "Speech synthesis that reproduces the voice in a reference clip.",
+        parameters: [
+          { id: "speed", label: "Speed", type: "number", min: 0.5, max: 2, step: 0.1, defaultValue: 1 }
+        ],
+        defaultParams: { speed: 1 },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { audios: { max: 1 }, images: { max: 1 } },
+          promptModalities: ["text", "audio", "image"]
+        }
+      },
+      // ─── Audio: music ──────────────────────────────────────────
+      // Music generation is length-driven rather than duration-per-shot: the request names
+      // how long the finished track should be.
+      {
+        id: "elevenlabs-music-v2",
+        name: "ElevenLabs Music v2",
+        provider: "ElevenLabs",
+        availableProviders: ["elevenlabs"],
+        defaultProvider: "elevenlabs",
+        kind: "audio",
+        defaultAspectRatio: "1:1",
+        description: "Generate a music track from a text description, optionally instrumental.",
+        parameters: [
+          durationParameter({ seconds: [30, 60, 90, 120, 180, 240, 300], defaultValue: 60 }),
+          { id: "is_instrumental", label: "Instrumental only", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: 60, is_instrumental: false },
+        input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] }
+      },
+      {
+        id: "music-cover",
+        name: "Music Cover",
+        provider: "MiniMax",
+        availableProviders: ["minimax"],
+        defaultProvider: "minimax",
+        kind: "audio",
+        defaultAspectRatio: "1:1",
+        description: "Re-perform a supplied track, optionally with new lyrics.",
+        parameters: [
+          { id: "lyrics", label: "Lyrics", type: "text", defaultValue: "" }
+        ],
+        defaultParams: { lyrics: "" },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { audios: { max: 1 } },
+          promptModalities: ["text", "audio"]
+        }
       }
     ];
     SEEDANCE_2_FAL_PARAMETER_OVERRIDES = [
@@ -7665,8 +8329,32 @@ var init_chunk_2B4Z6TLC = __esm({
       z.object({
         kind: z.literal("local"),
         transport: z.literal("stdio"),
+        /**
+         * Which interpreter the host launches.
+         *
+         * A closed enum rather than a command line: the host builds the argv, so it can
+         * keep `--permission`, the network guard, and the Python filesystem allowlist
+         * attached. A plugin that could name its own command could name `bash` and step
+         * outside all of them.
+         *
+         * Optional only so the two manifests written before this field existed keep
+         * loading; `resolvePluginLanguage` falls back to the entrypoint extension.
+         * New drafts always declare it.
+         */
+        language: z.enum(["node", "python"]).optional(),
         entrypoint: PluginRelativePathSchema,
-        args: z.array(z.string()).default([])
+        args: z.array(z.string()).default([]),
+        /**
+         * Declares that the entrypoint is derived from source.
+         *
+         * Present means the host compiles `source` into `entrypoint` before validating,
+         * contract-testing, or activating, so a stale bundle cannot be packaged. Absent
+         * means the entrypoint is authored directly and the host never overwrites it --
+         * which is the normal case for Python, and for a hand-written `.mjs`.
+         */
+        build: z.object({
+          source: PluginRelativePathSchema
+        }).strict().optional()
       }),
       z.object({
         kind: z.literal("hosted"),
@@ -7677,6 +8365,16 @@ var init_chunk_2B4Z6TLC = __esm({
     ExecutablePluginCardExportSchema = z.object({
       id: z.string().trim().regex(PLUGIN_ID_PATTERN),
       kind: z.enum(["model-card", "action-card"]),
+      path: PluginRelativePathSchema
+    });
+    ExecutablePluginProviderExportSchema = z.object({
+      id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+      kind: z.literal("provider"),
+      path: PluginRelativePathSchema
+    });
+    ExecutablePluginModelBindingExportSchema = z.object({
+      id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+      kind: z.literal("model-provider-binding"),
       path: PluginRelativePathSchema
     });
     ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
@@ -7805,9 +8503,99 @@ var init_chunk_2B4Z6TLC = __esm({
         spec: ExecutableActionCardSchema
       }).strict()
     ]);
+    ExecutablePluginProviderAuthSchema = z.discriminatedUnion("type", [
+      z.object({
+        type: z.literal("api-key"),
+        credentialId: z.string().trim().min(1).default("apiKey"),
+        label: z.string().trim().min(1).optional()
+      }).strict(),
+      z.object({
+        type: z.literal("oauth"),
+        id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+        flow: z.literal("browser"),
+        authorizationUrl: z.string().url(),
+        callback: z.object({
+          type: z.literal("custom-scheme"),
+          scheme: z.string().trim().regex(/^[a-z][a-z0-9+.-]*$/)
+        }).strict(),
+        accessTokenField: z.string().trim().min(1).default("accessToken")
+      }).strict(),
+      z.object({
+        type: z.literal("local-token-import"),
+        id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+        label: z.string().trim().min(1).optional(),
+        source: z.object({
+          format: z.literal("electron-store-aes-256-gcm-v2"),
+          appDataSubdirectory: PluginRelativePathSchema,
+          configFile: PluginRelativePathSchema,
+          keyFile: PluginRelativePathSchema,
+          tokenPath: z.array(
+            z.string().trim().regex(/^[A-Za-z0-9_-]+$/).refine(
+              (segment) => !["__proto__", "constructor", "prototype"].includes(segment),
+              "Token path contains a reserved property."
+            )
+          ).min(1)
+        }).strict()
+      }).strict()
+    ]);
+    ExecutablePluginProviderDefinitionSchema = z.object({
+      id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+      name: z.string().trim().min(1),
+      description: z.string().trim().min(1).optional(),
+      upstreamId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+      apiShape: z.string().trim().regex(PLUGIN_ID_PATTERN),
+      executorExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+      auth: z.array(ExecutablePluginProviderAuthSchema).default([]),
+      /**
+       * Route values every binding of this provider inherits.
+       *
+       * A binding carries two facts: which catalogue model it routes, and the name that
+       * model has upstream. The rest of the route -- provider id, upstream, api shape,
+       * executor, credentials, priority -- belongs to the provider. Repeating it per
+       * binding produced no information and one real hazard: a single mistyped copy
+       * yields a route pointing at the wrong upstream while every sibling looks correct.
+       */
+      bindingDefaults: z.object({
+        priority: z.number().nonnegative().optional(),
+        weight: z.number().nonnegative().optional(),
+        region: z.string().trim().min(1).optional(),
+        accountId: z.string().trim().min(1).optional()
+      }).strict().optional()
+    }).strict();
+    ExecutablePluginProviderDocumentSchema = z.object({
+      apiVersion: z.literal("clash.provider/v1"),
+      kind: z.literal("provider"),
+      spec: ExecutablePluginProviderDefinitionSchema
+    }).strict();
+    ExecutablePluginModelBindingSpecSchema = z.intersection(
+      z.object({
+        id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+        modelId: z.string().trim().min(1)
+      }),
+      ModelProviderImplementationSchema
+    );
+    ExecutablePluginModelBindingInputSchema = z.object({
+      id: z.string().trim().regex(PLUGIN_ID_PATTERN).optional(),
+      modelId: z.string().trim().min(1, "A binding must name the model it routes (modelId)."),
+      upstreamModel: z.string().trim().min(1, "A binding must name its upstreamModel."),
+      providerId: z.string().trim().min(1).optional(),
+      upstreamId: z.string().trim().min(1).optional(),
+      apiShape: z.string().trim().min(1).optional(),
+      executorExportId: z.string().trim().min(1).optional(),
+      requiredOAuth: z.array(z.string()).optional(),
+      priority: z.number().optional(),
+      weight: z.number().optional(),
+      region: z.string().trim().min(1).optional(),
+      accountId: z.string().trim().min(1).optional()
+    }).passthrough();
+    ExecutablePluginModelBindingDocumentSchema = z.object({
+      apiVersion: z.literal("clash.binding/v1"),
+      kind: z.literal("model-provider-binding"),
+      spec: ExecutablePluginModelBindingSpecSchema
+    }).strict();
     ExecutablePluginFunctionExportSchema = z.object({
       id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-      kind: z.enum(["action", "provider-projector"]),
+      kind: z.enum(["action", "provider-projector", "provider-executor"]),
       handler: z.string().trim().min(1)
     });
     PluginNetworkPermissionsSchema = z.object({
@@ -7840,6 +8628,19 @@ var init_chunk_2B4Z6TLC = __esm({
       permissions: ExecutablePluginPermissionsSchema,
       document: ExecutablePluginCardDocumentSchema
     }).strict();
+    ExecutablePluginArtifactRegistrationBaseSchema = z.object({
+      pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+      version: z.string().trim().regex(SEMVER_PATTERN),
+      schemaHash: z.string().regex(SHA256_PATTERN),
+      runtime: ExecutablePluginRuntimeSchema,
+      permissions: ExecutablePluginPermissionsSchema
+    });
+    ExecutablePluginProviderRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
+      document: ExecutablePluginProviderDocumentSchema
+    }).strict();
+    ExecutablePluginModelBindingRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
+      document: ExecutablePluginModelBindingDocumentSchema
+    }).strict();
     ExecutablePluginBindingSchema = z.object({
       pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
       version: z.string().trim().regex(SEMVER_PATTERN),
@@ -7856,12 +8657,75 @@ var init_chunk_2B4Z6TLC = __esm({
         z.record(ExecutablePluginJsonValueSchema)
       ])
     );
-    ExecutablePluginAssetHandleSchema = z.object({
+    ExecutablePluginAssetHandleObjectSchema = z.object({
       assetId: z.string().trim().min(1),
       uri: z.string().regex(/^clash-asset:\/\/.+/),
       kind: AssetKindSchema,
-      mediaType: z.string().trim().min(1).optional()
+      mediaType: z.string().trim().min(1).optional(),
+      /**
+       * Where the bytes are, when the host has not stored them yet.
+       *
+       * A generation plugin ends up with a link its upstream published, and returning it through the
+       * asset channel keeps the media type a declared field instead of a hand-rolled one. Absent for a
+       * handle that names an asset the host already holds.
+       */
+      url: z.string().url().optional(),
+      /** Who can fetch `url`. The host cannot retrieve an address only the plugin can see. */
+      reach: z.enum(["public", "private"]).optional()
     }).strict();
+    ExecutablePluginAssetHandleSchema = ExecutablePluginAssetHandleObjectSchema.superRefine((handle, ctx) => {
+      if (handle.url && !handle.reach) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "An asset handle with a url must state its reach."
+        });
+      }
+      if (!handle.url && handle.reach) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "An asset handle's reach applies to a url."
+        });
+      }
+    });
+    ExecutablePluginAssetReadResultSchema = z.object({
+      handle: z.string().trim().min(1),
+      kind: AssetKindSchema,
+      mediaType: z.string().trim().min(1).optional(),
+      byteLength: z.number().int().nonnegative(),
+      /** Fetchable by the plugin. A `clash-asset://` handle is the request, not an answer. */
+      url: z.string().url().refine((value) => !value.startsWith("clash-asset://"), {
+        message: "asset.read url must be fetchable, not another asset handle."
+      }).optional(),
+      /**
+       * Who can fetch `url`.
+       *
+       * `public` means the provider can retrieve it directly, so it may be forwarded upstream.
+       * `private` means only this plugin process can -- a local asset served on loopback, say --
+       * and forwarding it would hand the provider an address that answers for somebody else.
+       * Both are `https?://` strings, so nothing downstream can tell them apart by inspection.
+       */
+      reach: z.enum(["public", "private"]).optional(),
+      dataBase64: z.string().optional()
+    }).strict().superRefine((result, ctx) => {
+      if (Boolean(result.url) === Boolean(result.dataBase64)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "asset.read returns exactly one of url or dataBase64."
+        });
+      }
+      if (result.url && !result.reach) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "asset.read url requires a reach of public or private."
+        });
+      }
+      if (result.dataBase64 && result.reach) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "asset.read reach applies to a url; bytes have none."
+        });
+      }
+    });
     ExecutablePluginReferenceBaseSchema = z.object({
       slot: z.string().trim().min(1),
       index: z.number().int().nonnegative()
@@ -7884,7 +8748,7 @@ var init_chunk_2B4Z6TLC = __esm({
       projectId: z.string().trim().min(1),
       nodeId: z.string().trim().min(1).optional(),
       target: ExecutablePluginBindingSchema.extend({
-        kind: z.enum(["action", "provider-projector"])
+        kind: z.enum(["action", "provider-projector", "provider-executor"])
       }),
       input: z.object({
         values: z.record(ExecutablePluginJsonValueSchema).default({}),
@@ -7908,7 +8772,7 @@ var init_chunk_2B4Z6TLC = __esm({
         projectId: z.string().trim().min(1),
         nodeId: z.string().trim().min(1).optional(),
         target: ExecutablePluginBindingSchema.extend({
-          kind: z.enum(["action", "provider-projector"])
+          kind: z.enum(["action", "provider-projector", "provider-executor"])
         }),
         actor: z.object({
           kind: z.enum(["user", "agent", "system"]),
@@ -7978,15 +8842,41 @@ var init_chunk_2B4Z6TLC = __esm({
         assetKind: AssetKindSchema,
         mediaType: z.string().trim().min(1).optional(),
         sourceHandle: z.string().regex(/^clash-plugin-output:\/\/.+/).optional(),
+        /**
+         * Where the result already lives, for the host to fetch once.
+         *
+         * A generation plugin normally ends up with a link the upstream published, and passing that
+         * through means the bytes cross the wire exactly once and never touch the plugin. Without this
+         * field the only ways to return such a result were to download it and re-encode it inline, or
+         * to smuggle the link through a free-form `kind: "value"` output -- which is what
+         * `hilo-hub-media` does, and why its media type is hardcoded per model kind instead of read
+         * from the response.
+         */
+        url: z.string().url().optional(),
+        /** Who can fetch `url`. A host cannot retrieve an address only the plugin can see. */
+        reach: z.enum(["public", "private"]).optional(),
         dataBase64: z.string().max(128 * 1024 * 1024).regex(
           /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
           "Plugin asset data must be canonical base64."
         ).optional()
       }).strict().superRefine((operation, ctx) => {
-        if (Boolean(operation.sourceHandle) === Boolean(operation.dataBase64)) {
+        const sources = [operation.sourceHandle, operation.url, operation.dataBase64].filter((source) => source !== void 0).length;
+        if (sources !== 1) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "asset.write requires exactly one of sourceHandle or dataBase64."
+            message: "asset.write requires exactly one of sourceHandle, url, or dataBase64."
+          });
+        }
+        if (operation.url && !operation.reach) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "asset.write url requires a reach of public or private."
+          });
+        }
+        if (!operation.url && operation.reach) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "asset.write reach applies to a url."
           });
         }
       }),
@@ -8003,7 +8893,7 @@ var init_chunk_2B4Z6TLC = __esm({
         prompt: z.string().trim().min(1).max(2e4),
         aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
         slot: z.string().trim().min(1),
-        references: z.array(ExecutablePluginAssetHandleSchema.extend({
+        references: z.array(ExecutablePluginAssetHandleObjectSchema.extend({
           kind: z.literal("image")
         }).strict()).max(5).default([])
       }).strict()
@@ -8053,7 +8943,7 @@ var init_chunk_2B4Z6TLC = __esm({
       description: z.string().trim().min(1).optional(),
       target: z.object({
         exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-        kind: z.enum(["action", "provider-projector"])
+        kind: z.enum(["action", "provider-projector", "provider-executor"])
       }).strict(),
       context: z.object({
         projectId: z.string().trim().min(1).default("contract-test-project"),
@@ -8090,6 +8980,8 @@ var init_chunk_2B4Z6TLC = __esm({
       runtime: ExecutablePluginRuntimeSchema,
       exports: z.object({
         cards: z.array(ExecutablePluginCardExportSchema).default([]),
+        providers: z.array(ExecutablePluginProviderExportSchema).default([]),
+        modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
         functions: z.array(ExecutablePluginFunctionExportSchema).default([])
       }),
       permissions: ExecutablePluginPermissionsSchema,
@@ -8099,6 +8991,8 @@ var init_chunk_2B4Z6TLC = __esm({
     }).superRefine((manifest, ctx) => {
       for (const [key, values] of [
         ["cards", manifest.exports.cards],
+        ["providers", manifest.exports.providers],
+        ["modelBindings", manifest.exports.modelBindings],
         ["functions", manifest.exports.functions]
       ]) {
         const ids = /* @__PURE__ */ new Set();
@@ -8123,6 +9017,20 @@ var init_chunk_2B4Z6TLC = __esm({
           });
         }
         cardPaths.add(card.path);
+      }
+      const artifactPaths = new Set(cardPaths);
+      for (const artifact of [
+        ...manifest.exports.providers,
+        ...manifest.exports.modelBindings
+      ]) {
+        if (artifactPaths.has(artifact.path)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["exports"],
+            message: "Plugin declarative artifact paths must be unique."
+          });
+        }
+        artifactPaths.add(artifact.path);
       }
       const contractTestPaths = /* @__PURE__ */ new Set();
       for (const path of manifest.contractTests) {
@@ -9720,7 +10628,7 @@ var init_esm = __esm({
   }
 });
 
-// ../../packages/shared-types/dist/chunk-PVL2FXUQ.js
+// ../../packages/shared-types/dist/chunk-XAYWVA4T.js
 function defineTimelineMaskField(annotation2) {
   return {
     ...annotation2,
@@ -9893,11 +10801,13 @@ function pushReferenceCycleIssues(indexedItems, itemById, issues) {
         for (const cyclicId of path.slice(existing)) {
           const cyclic = itemById.get(cyclicId);
           if (!cyclic) continue;
-          issues.push(issue(
-            "timeline.item.from-cycle",
-            ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
-            `from expression for ${cyclicId} participates in a reference cycle`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.from-cycle",
+              ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
+              `from expression for ${cyclicId} participates in a reference cycle`
+            )
+          );
         }
         break;
       }
@@ -9917,31 +10827,42 @@ function validateTransition(indexed, itemById, issues) {
   const from = nonEmptyString(fromId) ? itemById.get(fromId) : void 0;
   const to = nonEmptyString(toId) ? itemById.get(toId) : void 0;
   if (!from || !to) {
-    issues.push(issue(
-      "timeline.transition.reference",
-      [...itemPath],
-      "transition must reference two existing Timeline items"
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.reference",
+        [...itemPath],
+        "transition must reference two existing Timeline items"
+      )
+    );
     return;
   }
-  const transitionClipTypes = /* @__PURE__ */ new Set(["video", "image", "solid", "text"]);
+  const transitionClipTypes = /* @__PURE__ */ new Set([
+    "video",
+    "image",
+    "solid",
+    "text"
+  ]);
   const boundary = typeof from.item.from === "number" ? from.item.from + from.item.durationInFrames : Number.NaN;
   if (from.track.id !== to.track.id || !transitionClipTypes.has(from.item.type) || !transitionClipTypes.has(to.item.type) || boundary !== to.item.from) {
-    issues.push(issue(
-      "timeline.transition.continuity",
-      [...itemPath],
-      "transition references must be contiguous visual clips on the same track"
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.continuity",
+        [...itemPath],
+        "transition references must be contiguous visual clips on the same track"
+      )
+    );
     return;
   }
   if (typeof item.from === "number") {
     const expectedFrom = boundary - Math.floor(item.durationInFrames / 2);
     if (item.from !== expectedFrom) {
-      issues.push(issue(
-        "timeline.transition.centered-range",
-        [...itemPath, "from"],
-        `transition range must be centered on frame ${boundary}`
-      ));
+      issues.push(
+        issue(
+          "timeline.transition.centered-range",
+          [...itemPath, "from"],
+          `transition range must be centered on frame ${boundary}`
+        )
+      );
     }
   }
   const maximum = Math.max(
@@ -9949,11 +10870,13 @@ function validateTransition(indexed, itemById, issues) {
     Math.min(from.item.durationInFrames, to.item.durationInFrames) * 2
   );
   if (item.durationInFrames > maximum) {
-    issues.push(issue(
-      "timeline.transition.duration-handles",
-      [...itemPath, "durationInFrames"],
-      `transition duration cannot exceed ${maximum} frames for these clips`
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.duration-handles",
+        [...itemPath, "durationInFrames"],
+        `transition duration cannot exceed ${maximum} frames for these clips`
+      )
+    );
   }
 }
 function validFrameRange(start, end) {
@@ -9961,37 +10884,44 @@ function validFrameRange(start, end) {
 }
 function validateCaption(indexed, issues) {
   const { item, track, trackIndex, itemIndex } = indexed;
-  if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues)) return;
+  if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues))
+    return;
   const itemPath = ["tracks", trackIndex, "items", itemIndex];
   const cues = Array.isArray(item.cues) ? item.cues : [];
   const wordRefs = Array.isArray(item.wordRefs) ? item.wordRefs : [];
   const mappings = Array.isArray(item.sourceToOutputMap) ? item.sourceToOutputMap : [];
   if (cues.length === 0 || wordRefs.length === 0 || mappings.length === 0) {
-    issues.push(issue(
-      "timeline.caption.structured",
-      [...itemPath],
-      "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
-    ));
+    issues.push(
+      issue(
+        "timeline.caption.structured",
+        [...itemPath],
+        "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
+      )
+    );
     return;
   }
   const wordIds = /* @__PURE__ */ new Set();
   wordRefs.forEach((word, wordIndex) => {
     if (nonEmptyString(word.id)) wordIds.add(word.id);
     if (!nonEmptyString(word.id) || !validFrameRange(word.sourceStartFrame, word.sourceEndFrame)) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "wordRefs", wordIndex],
-        "caption word reference requires an id and a valid source frame range"
-      ));
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "wordRefs", wordIndex],
+          "caption word reference requires an id and a valid source frame range"
+        )
+      );
     }
   });
   mappings.forEach((mapping, mappingIndex) => {
     if (!validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) || !validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame)) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "sourceToOutputMap", mappingIndex],
-        "caption source-to-output mapping requires valid source and output frame ranges"
-      ));
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "sourceToOutputMap", mappingIndex],
+          "caption source-to-output mapping requires valid source and output frame ranges"
+        )
+      );
     }
   });
   cues.forEach((cue, cueIndex) => {
@@ -9999,13 +10929,19 @@ function validateCaption(indexed, issues) {
     const cueDuration = cue.durationInFrames;
     const cueEnd = typeof cueStart === "number" && typeof cueDuration === "number" ? cueStart + cueDuration : Number.NaN;
     const cueWordIds = Array.isArray(cue.wordIds) ? cue.wordIds : [];
-    const covered = mappings.some((mapping) => validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame);
-    if (!nonEmptyString(cue.id) || !nonEmptyString(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some((wordId) => !nonEmptyString(wordId) || !wordIds.has(wordId)) || !covered) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "cues", cueIndex],
-        "caption cue must fit the item and be covered by valid source word and frame lineage"
-      ));
+    const covered = mappings.some(
+      (mapping) => validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame
+    );
+    if (!nonEmptyString(cue.id) || !nonEmptyString(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some(
+      (wordId) => !nonEmptyString(wordId) || !wordIds.has(wordId)
+    ) || !covered) {
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "cues", cueIndex],
+          "caption cue must fit the item and be covered by valid source word and frame lineage"
+        )
+      );
     }
   });
 }
@@ -10029,175 +10965,233 @@ function evaluateStructuralSemanticRules(context) {
   let previousCategoryRank = -1;
   timeline.tracks.forEach((track, trackIndex) => {
     if (trackIds.has(track.id)) {
-      issues.push(issue(
-        "timeline.track.duplicate-id",
-        ["tracks", trackIndex, "id"],
-        `track id ${track.id} is duplicated`
-      ));
+      issues.push(
+        issue(
+          "timeline.track.duplicate-id",
+          ["tracks", trackIndex, "id"],
+          `track id ${track.id} is duplicated`
+        )
+      );
     }
     trackIds.add(track.id);
     if (track.category) {
       const rank = TIMELINE_DSL_TRACK_CATEGORIES.indexOf(track.category);
       if (rank < previousCategoryRank) {
-        issues.push(issue(
-          "timeline.track.category-order",
-          ["tracks", trackIndex, "category"],
-          "track categories must follow effect, text, visual, primary, audio order"
-        ));
+        issues.push(
+          issue(
+            "timeline.track.category-order",
+            ["tracks", trackIndex, "category"],
+            "track categories must follow effect, text, visual, primary, audio order"
+          )
+        );
       }
       previousCategoryRank = Math.max(previousCategoryRank, rank);
     }
     if (track.role && track.category) {
       const expectedCategory = TIMELINE_DSL_ROLE_CATEGORIES[track.role];
       if (expectedCategory !== null && expectedCategory !== track.category) {
-        issues.push(issue(
-          "timeline.track.role-category",
-          ["tracks", trackIndex, "category"],
-          `track role ${track.role} requires category ${expectedCategory}`
-        ));
+        issues.push(
+          issue(
+            "timeline.track.role-category",
+            ["tracks", trackIndex, "category"],
+            `track role ${track.role} requires category ${expectedCategory}`
+          )
+        );
       }
     }
-    const structuralCategories = new Set(track.items.map((item) => structuralCategory(item.type)));
+    const structuralCategories = new Set(
+      track.items.map((item) => structuralCategory(item.type))
+    );
     const legacyPrimary = timeline.primaryTrackId === track.id || track.role === "primary-video";
     const primaryCompatible = track.items.every(
       (item) => TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES.primary.includes(item.type)
     );
     if (!track.category && structuralCategories.size > 1 && !(legacyPrimary && primaryCompatible)) {
-      issues.push(issue(
-        "timeline.track.mixed-categories",
-        ["tracks", trackIndex, "items"],
-        `track ${track.id} mixes incompatible structural item categories`
-      ));
+      issues.push(
+        issue(
+          "timeline.track.mixed-categories",
+          ["tracks", trackIndex, "items"],
+          `track ${track.id} mixes incompatible structural item categories`
+        )
+      );
     }
     track.items.forEach((item, itemIndex) => {
       const itemPath = ["tracks", trackIndex, "items", itemIndex];
       if (itemIds.has(item.id)) {
-        issues.push(issue(
-          "timeline.item.duplicate-id",
-          [...itemPath, "id"],
-          `Timeline item id ${item.id} is duplicated`
-        ));
+        issues.push(
+          issue(
+            "timeline.item.duplicate-id",
+            [...itemPath, "id"],
+            `Timeline item id ${item.id} is duplicated`
+          )
+        );
       }
       itemIds.add(item.id);
       if (track.category) {
         const allowed = TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES[track.category];
         if (!allowed.includes(item.type)) {
-          issues.push(issue(
-            "timeline.track.category-item-mismatch",
-            [...itemPath],
-            `track category ${track.category} cannot contain ${item.type} items`
-          ));
+          issues.push(
+            issue(
+              "timeline.track.category-item-mismatch",
+              [...itemPath],
+              `track category ${track.category} cannot contain ${item.type} items`
+            )
+          );
         }
       }
       if (track.role) {
         const allowed = TIMELINE_DSL_ROLE_ALLOWED_ITEM_TYPES[track.role];
         if (!allowed.includes(item.type)) {
-          issues.push(issue(
-            "timeline.track.role-item-mismatch",
-            [...itemPath],
-            `track role ${track.role} cannot contain ${item.type} items`
-          ));
+          issues.push(
+            issue(
+              "timeline.track.role-item-mismatch",
+              [...itemPath],
+              `track role ${track.role} cannot contain ${item.type} items`
+            )
+          );
         }
       }
       const expression = parseFromExpression(item.from);
       const negativeNumericString = typeof item.from === "string" && Number.isFinite(Number(item.from.trim())) && Number(item.from.trim()) < 0;
       if (!expression || negativeNumericString) {
-        issues.push(issue(
-          "timeline.item.from-expression",
-          [...itemPath, "from"],
-          "from must be a non-negative frame or a valid Timeline relative expression"
-        ));
+        issues.push(
+          issue(
+            "timeline.item.from-expression",
+            [...itemPath, "from"],
+            "from must be a non-negative frame or a valid Timeline relative expression"
+          )
+        );
       } else if (expression.kind === "reference" && expression.refId !== "prev" && !itemById.has(expression.refId)) {
-        issues.push(issue(
-          "timeline.item.from-reference",
-          [...itemPath, "from"],
-          `from expression references unknown item ${expression.refId}`
-        ));
+        issues.push(
+          issue(
+            "timeline.item.from-reference",
+            [...itemPath, "from"],
+            `from expression references unknown item ${expression.refId}`
+          )
+        );
       }
       if (expression && (expression.kind === "absolute" ? !Number.isInteger(expression.value) : !Number.isInteger(expression.offset))) {
-        issues.push(issue(
-          "timeline.item.frame-integer",
-          [...itemPath, "from"],
-          "Timeline frame positions and expression offsets must be integers"
-        ));
+        issues.push(
+          issue(
+            "timeline.item.frame-integer",
+            [...itemPath, "from"],
+            "Timeline frame positions and expression offsets must be integers"
+          )
+        );
       }
       if (["video", "audio", "image", "sticker"].includes(item.type)) {
         if (![item.src, item.assetId, item.sourceNodeId].some(nonEmptyString)) {
-          issues.push(issue(
-            "timeline.item.source-required",
-            [...itemPath],
-            `${item.type} item must provide src, assetId, or sourceNodeId`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.source-required",
+              [...itemPath],
+              `${item.type} item must provide src, assetId, or sourceNodeId`
+            )
+          );
         }
       }
-      for (const animationField of ["entranceAnimation", "exitAnimation"]) {
+      for (const animationField of [
+        "entranceAnimation",
+        "exitAnimation"
+      ]) {
         const animation = item[animationField];
         if (animation && typeof animation.durationInFrames === "number" && animation.durationInFrames > item.durationInFrames) {
-          issues.push(issue(
-            "timeline.item.animation-duration",
-            [...itemPath, animationField, "durationInFrames"],
-            `${animationField} cannot exceed the owning item duration`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.animation-duration",
+              [...itemPath, animationField, "durationInFrames"],
+              `${animationField} cannot exceed the owning item duration`
+            )
+          );
+        }
+      }
+      const properties = item.properties;
+      for (const field2 of ["width", "height"]) {
+        const value = properties?.[field2];
+        if (typeof value === "number" && Math.abs(value) > 4) {
+          issues.push(
+            issue(
+              "timeline.item.scale-unit",
+              [...itemPath, "properties", field2],
+              `properties.${field2} is a unitless source-size multiplier, not pixels, and must be at most 4`
+            )
+          );
         }
       }
       if (item.type === "audio" && item.audioDucking !== void 0 && track.role !== "music") {
-        issues.push(issue(
-          "timeline.audio.ducking-track-role",
-          [...itemPath, "audioDucking"],
-          "audioDucking is only valid for audio items on a music track"
-        ));
+        issues.push(
+          issue(
+            "timeline.audio.ducking-track-role",
+            [...itemPath, "audioDucking"],
+            "audioDucking is only valid for audio items on a music track"
+          )
+        );
       }
       if (item.type === "composition") {
         if (!isLocalProjectPath(item.sourcePath)) {
-          issues.push(issue(
-            "timeline.composition.local-path",
-            [...itemPath, "sourcePath"],
-            "composition sourcePath must be a local project path"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.local-path",
+              [...itemPath, "sourcePath"],
+              "composition sourcePath must be a local project path"
+            )
+          );
         }
         if (item.renderedAssetPath !== void 0 && !isLocalProjectPath(item.renderedAssetPath)) {
-          issues.push(issue(
-            "timeline.composition.local-path",
-            [...itemPath, "renderedAssetPath"],
-            "composition renderedAssetPath must be a local project path"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.local-path",
+              [...itemPath, "renderedAssetPath"],
+              "composition renderedAssetPath must be a local project path"
+            )
+          );
         }
         if (item.compositionKind === "motion-graphics" && item.runtime !== "remotion") {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "runtime"],
-            "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "runtime"],
+              "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
+            )
+          );
         }
         if (item.runtime === "remotion" && (typeof item.sourceNodeId !== "string" || item.sourceNodeId.length === 0)) {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "sourceNodeId"],
-            "Remotion compositions require a live Canvas sourceNodeId"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "sourceNodeId"],
+              "Remotion compositions require a live Canvas sourceNodeId"
+            )
+          );
         }
         if (item.runtime === "react" && !isLocalProjectPath(item.renderedAssetPath)) {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "renderedAssetPath"],
-            "React compositions require a local renderedAssetPath"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "renderedAssetPath"],
+              "React compositions require a local renderedAssetPath"
+            )
+          );
         }
       }
       if (item.type === "derived-overlay") {
         if (!isLocalProjectPath(item.src)) {
-          issues.push(issue(
-            "timeline.derived-overlay.local-path",
-            [...itemPath, "src"],
-            "derived overlay src must be a local project or asset path"
-          ));
+          issues.push(
+            issue(
+              "timeline.derived-overlay.local-path",
+              [...itemPath, "src"],
+              "derived overlay src must be a local project or asset path"
+            )
+          );
         }
         if (item.sourceAssetId === item.derivedAssetId || nonEmptyString(item.assetId) && item.assetId !== item.derivedAssetId) {
-          issues.push(issue(
-            "timeline.derived-overlay.copy-on-write",
-            [...itemPath],
-            "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
-          ));
+          issues.push(
+            issue(
+              "timeline.derived-overlay.copy-on-write",
+              [...itemPath],
+              "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
+            )
+          );
         }
       }
     });
@@ -10208,19 +11202,25 @@ function evaluatePrimaryTrackSemanticRules(context) {
   const { timeline } = context;
   const issues = [];
   if (nonEmptyString(timeline.primaryTrackId)) {
-    const primaryTrack = timeline.tracks.find((track) => track.id === timeline.primaryTrackId);
+    const primaryTrack = timeline.tracks.find(
+      (track) => track.id === timeline.primaryTrackId
+    );
     if (!primaryTrack) {
-      issues.push(issue(
-        "timeline.primary-track.reference",
-        ["primaryTrackId"],
-        "primaryTrackId must reference an existing track"
-      ));
+      issues.push(
+        issue(
+          "timeline.primary-track.reference",
+          ["primaryTrackId"],
+          "primaryTrackId must reference an existing track"
+        )
+      );
     } else if (primaryTrack.category && primaryTrack.category !== "primary") {
-      issues.push(issue(
-        "timeline.primary-track.category",
-        ["primaryTrackId"],
-        "primaryTrackId must reference a primary category track"
-      ));
+      issues.push(
+        issue(
+          "timeline.primary-track.category",
+          ["primaryTrackId"],
+          "primaryTrackId must reference a primary category track"
+        )
+      );
     }
   }
   return issues;
@@ -10237,7 +11237,9 @@ function evaluateCaptionSemanticRules(context) {
 }
 function evaluateTransitionSemanticRules(context) {
   const issues = [];
-  context.indexedItems.forEach((indexed) => validateTransition(indexed, context.itemById, issues));
+  context.indexedItems.forEach(
+    (indexed) => validateTransition(indexed, context.itemById, issues)
+  );
   return issues;
 }
 function timelineDslSemanticIssues(input) {
@@ -10246,11 +11248,14 @@ function timelineDslSemanticIssues(input) {
   const compositeEvaluators = new Set(
     Object.values(TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS)
   );
-  for (const evaluator of compositeEvaluators) issues.push(...evaluator(context));
+  for (const evaluator of compositeEvaluators)
+    issues.push(...evaluator(context));
   return issues;
 }
 function hasMaskKeyframes(keyframes) {
-  return Object.keys(keyframes ?? {}).some((channel) => maskKeyframeChannels.has(channel));
+  return Object.keys(keyframes ?? {}).some(
+    (channel) => maskKeyframeChannels.has(channel)
+  );
 }
 function timelineMaskKeyframeSemanticIssues(item) {
   const issues = [];
@@ -10270,7 +11275,10 @@ function timelineMaskKeyframeSemanticIssues(item) {
       message: "mask keyframes require a mask"
     });
   }
-  for (const frameIssue of timelineKeyframeFrameIssues(item.keyframes, item.durationInFrames)) {
+  for (const frameIssue of timelineKeyframeFrameIssues(
+    item.keyframes,
+    item.durationInFrames
+  )) {
     issues.push({
       ruleId: frameIssue.reason === "duplicate" ? timelineKeyframeUniqueFrameRule.id : timelineKeyframeRangeRule.id,
       path: ["keyframes", frameIssue.channel, frameIssue.index, "frame"],
@@ -10297,7 +11305,9 @@ function canonicalTimelineDslContractJson(value) {
     return `[${value.map(canonicalTimelineDslContractJson).join(",")}]`;
   }
   if (value && typeof value === "object") {
-    return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`).join(",")}}`;
+    return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(
+      ([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`
+    ).join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
 }
@@ -10310,9 +11320,9 @@ function timelineDslContractFingerprint(value) {
   }
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
-var TIMELINE_KEYFRAME_INTERPOLATIONS, DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION, TIMELINE_KEYFRAME_SAMPLING_POLICY, TIMELINE_MASK_SHAPE_ANNOTATIONS, TIMELINE_MASK_SHAPES, TIMELINE_MASK_FEATHER_BLUR_DIVISOR, FiniteMaskVectorSchema, NonNegativeMaskVectorSchema, TIMELINE_MASK_FIELD_ANNOTATIONS, timelineMaskSchemaShape, TimelineItemMaskSchema, TIMELINE_MASK_FIELDS, TIMELINE_MASK_ANIMATION_BINDINGS, TIMELINE_MASK_VECTOR_ANIMATION_BINDINGS, TIMELINE_MASK_SCALAR_ANIMATION_BINDINGS, TIMELINE_MASK_STATIC_CONTROL_BINDINGS, TIMELINE_MASK_KEYFRAME_CHANNELS, DEFAULT_TIMELINE_ITEM_MASK, TIMELINE_MASK_APPLIES_TO_ITEM_TYPES, TIMELINE_MASK_EXCLUDED_ITEM_TYPES, TIMELINE_MASK_CAPABILITY_ANNOTATION, FiniteVectorSchema, NonNegativeVectorSchema, TIMELINE_TRANSFORM_KEYFRAME_ANNOTATIONS, timelineMaskKeyframeAnnotations, TIMELINE_KEYFRAME_CHANNEL_ANNOTATIONS, TIMELINE_KEYFRAME_CHANNELS, TimelineKeyframeInterpolationSchema, TimelineKeyframeFrameSchema, TimelineVectorKeyframeSchema, TimelineScalarKeyframeSchema, timelineItemKeyframesSchemaShape, TimelineItemKeyframesSchema, TIMELINE_DSL_RUNTIME_CONSUMERS, authored, derived, TIMELINE_DSL_ITEM_TYPES, TIMELINE_DSL_TRACK_CATEGORIES, TIMELINE_DSL_TRACK_ROLES, TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES, TIMELINE_DSL_ROLE_ALLOWED_ITEM_TYPES, TIMELINE_DSL_ROLE_CATEGORIES, TIMELINE_MEDIA_FITS, TIMELINE_TEXT_ALIGNMENTS, TIMELINE_CAPTION_POSITIONS, TIMELINE_CLIP_ANIMATION_TYPES, TIMELINE_COMPOSITION_KINDS, TIMELINE_COMPOSITION_RUNTIMES, TIMELINE_DERIVED_MEDIA_TYPES, TIMELINE_DERIVATION_KINDS, TIMELINE_TRANSITION_TYPES, NonEmptyStringSchema, FiniteNumberSchema, NonnegativeFrameSchema, PositiveFrameSchema, CssColorSchema, TimelineItemPropertiesSchema, TimelineEffectParamValueSchema, TimelineEffectInstanceRefSchema, TimelineMediaFitSchema, TimelineClipAnimationSchema, TimelineAudioDuckingSchema, TimelineCaptionCueSchema, TimelineCaptionWordReferenceSchema, TimelineSourceToOutputFrameMapSchema, TimelineTypographyStyleSchema, TimelineEditorTranscriptWordSchema, TimelineEditorAssetTranscriptSchema, TimelineMediaAssetRefSchema, TimelineSequenceSchema, TimelineDerivedAssetSchema, noControl, timelineControl, propertiesControl, rootFields, trackFields, itemBaseFields, itemTypeFields, TIMELINE_DSL_FIELD_ANNOTATIONS, TIMELINE_DSL_FIELD_CATALOG, IdentifierSchema, FiniteNumberSchema2, FrameSchema, PositiveFrameSchema2, PositionSchema, TimelineDocumentEnvelopeSchema, TimelineOwnerSchema, ProjectTimelineEntitySchema, TimelineIssueSchema, TimelineSchemaOutputSchema, TimelineValidationOutputSchema, TimelineProjectionOutputSchema, TimelineApplyOutputSchema, TimelineRenderTargetSchema, TimelineRenderReceiptSchema, timelineEditorItemVariantSchemas, TimelineItemEnvelopeSchema, TimelineTrackEnvelopeSchema, TimelineAssetEnvelopeSchema, TimelineTranscriptEnvelopeSchema, TimelineEditorStateEnvelopeSchema, TimelineCommandOutputSchema, agent, editorCommandDefaults, editorCommands, itemUpdateFields, ItemUpdatesSchema, TrackUpdatesSchema, editorActions, TIMELINE_OPERATION_REGISTRY, TIMELINE_OPERATION_CATALOG, OFFSET_RE, BARE_ID_RE, TIMELINE_DSL_GLOBAL_SEMANTIC_RULES, TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS, itemVariantSchemas, TimelineDslItemVariantSchema, itemFieldOwners, maskKeyframeChannels, itemBaseFieldApplicabilityRules, clipMaskRequiresMaskRule, timelineKeyframeRangeRule, timelineKeyframeUniqueFrameRule, timelineItemFieldApplicabilityRule, TIMELINE_DSL_SEMANTIC_RULES, TimelineDslItemSchema, TimelineDslTrackSchema, TimelineDslSchemaBase, TimelineDslSchema, timelineDslJsonSchema, timelineItemMaskJsonSchema, timelineItemKeyframesJsonSchema, timelineDslJsonSchemaDefinitions, timelineDslItemJsonSchema, timelineDslJsonSchemaFragments, timelineMaskExample, timelineMaskKeyframesExample, TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE, timelineMaskDslFeature, timelineDslSerializableDefinition, TIMELINE_DSL_DEFINITION;
-var init_chunk_PVL2FXUQ = __esm({
-  "../../packages/shared-types/dist/chunk-PVL2FXUQ.js"() {
+var TIMELINE_KEYFRAME_INTERPOLATIONS, DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION, TIMELINE_KEYFRAME_SAMPLING_POLICY, TIMELINE_MASK_SHAPE_ANNOTATIONS, TIMELINE_MASK_SHAPES, TIMELINE_MASK_FEATHER_BLUR_DIVISOR, FiniteMaskVectorSchema, NonNegativeMaskVectorSchema, TIMELINE_MASK_FIELD_ANNOTATIONS, timelineMaskSchemaShape, TimelineItemMaskSchema, TIMELINE_MASK_FIELDS, TIMELINE_MASK_ANIMATION_BINDINGS, TIMELINE_MASK_VECTOR_ANIMATION_BINDINGS, TIMELINE_MASK_SCALAR_ANIMATION_BINDINGS, TIMELINE_MASK_STATIC_CONTROL_BINDINGS, TIMELINE_MASK_KEYFRAME_CHANNELS, DEFAULT_TIMELINE_ITEM_MASK, TIMELINE_MASK_APPLIES_TO_ITEM_TYPES, TIMELINE_MASK_EXCLUDED_ITEM_TYPES, TIMELINE_MASK_CAPABILITY_ANNOTATION, FiniteVectorSchema, NonNegativeVectorSchema, TIMELINE_TRANSFORM_KEYFRAME_ANNOTATIONS, timelineMaskKeyframeAnnotations, TIMELINE_KEYFRAME_CHANNEL_ANNOTATIONS, TIMELINE_KEYFRAME_CHANNELS, TimelineKeyframeInterpolationSchema, TimelineKeyframeFrameSchema, TimelineVectorKeyframeSchema, TimelineScalarKeyframeSchema, timelineItemKeyframesSchemaShape, TimelineItemKeyframesSchema, TIMELINE_DSL_RUNTIME_CONSUMERS, authored, derived, TIMELINE_DSL_ITEM_TYPES, TIMELINE_DSL_TRACK_CATEGORIES, TIMELINE_DSL_TRACK_ROLES, TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES, TIMELINE_DSL_ROLE_ALLOWED_ITEM_TYPES, TIMELINE_DSL_ROLE_CATEGORIES, TIMELINE_MEDIA_FITS, TIMELINE_TEXT_ALIGNMENTS, TIMELINE_CAPTION_POSITIONS, TIMELINE_CLIP_ANIMATION_TYPES, TIMELINE_COMPOSITION_KINDS, TIMELINE_COMPOSITION_RUNTIMES, TIMELINE_DERIVED_MEDIA_TYPES, TIMELINE_DERIVATION_KINDS, TIMELINE_TRANSITION_TYPES, NonEmptyStringSchema, FiniteNumberSchema, NonnegativeFrameSchema, PositiveFrameSchema, CssColorSchema, TIMELINE_ITEM_TRANSFORM_SEMANTICS, TimelineItemPropertiesSchema, TimelineEffectParamValueSchema, TimelineEffectInstanceRefSchema, TimelineMediaFitSchema, TimelineClipAnimationSchema, TimelineAudioDuckingSchema, TimelineCaptionCueSchema, TimelineCaptionWordReferenceSchema, TimelineSourceToOutputFrameMapSchema, TimelineTypographyStyleSchema, TimelineEditorTranscriptWordSchema, TimelineEditorAssetTranscriptSchema, TimelineMediaAssetRefSchema, TimelineSequenceSchema, TimelineDerivedAssetSchema, noControl, timelineControl, propertiesControl, rootFields, trackFields, itemBaseFields, itemTypeFields, TIMELINE_DSL_FIELD_ANNOTATIONS, TIMELINE_DSL_FIELD_CATALOG, IdentifierSchema, FiniteNumberSchema2, FrameSchema, PositiveFrameSchema2, PositionSchema, TimelineDocumentEnvelopeSchema, TimelineOwnerSchema, ProjectTimelineEntitySchema, TimelineIssueSchema, TimelineSchemaOutputSchema, TimelineValidationOutputSchema, TimelineProjectionOutputSchema, TimelineApplyOutputSchema, TimelineRenderTargetSchema, TimelineRenderReceiptSchema, timelineEditorItemVariantSchemas, TimelineItemEnvelopeSchema, TimelineTrackEnvelopeSchema, TimelineAssetEnvelopeSchema, TimelineTranscriptEnvelopeSchema, TimelineEditorStateEnvelopeSchema, TimelineCommandOutputSchema, agent, editorCommandDefaults, editorCommands, itemUpdateFields, ItemUpdatesSchema, TrackUpdatesSchema, editorActions, TIMELINE_OPERATION_REGISTRY, TIMELINE_OPERATION_CATALOG, OFFSET_RE, BARE_ID_RE, TIMELINE_DSL_GLOBAL_SEMANTIC_RULES, TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS, itemVariantSchemas, TimelineDslItemVariantSchema, itemFieldOwners, maskKeyframeChannels, itemBaseFieldApplicabilityRules, clipMaskRequiresMaskRule, timelineKeyframeRangeRule, timelineKeyframeUniqueFrameRule, timelineItemFieldApplicabilityRule, TIMELINE_DSL_SEMANTIC_RULES, TimelineDslItemSchema, TimelineDslTrackSchema, TimelineDslSchemaBase, TimelineDslSchema, timelineDslJsonSchema, timelineItemMaskJsonSchema, timelineItemKeyframesJsonSchema, timelineDslJsonSchemaDefinitions, timelineDslItemJsonSchema, timelineDslJsonSchemaFragments, timelineMaskExample, timelineMaskKeyframesExample, TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE, timelineMaskDslFeature, timelineDslSerializableDefinition, TIMELINE_DSL_DEFINITION;
+var init_chunk_XAYWVA4T = __esm({
+  "../../packages/shared-types/dist/chunk-XAYWVA4T.js"() {
     "use strict";
     init_lib();
     init_lib();
@@ -10739,13 +11749,39 @@ var init_chunk_PVL2FXUQ = __esm({
     NonnegativeFrameSchema = z.number().int().nonnegative();
     PositiveFrameSchema = z.number().int().positive();
     CssColorSchema = z.string().min(1);
+    TIMELINE_ITEM_TRANSFORM_SEMANTICS = {
+      position: {
+        fields: ["properties.x", "properties.y"],
+        unit: "composition-pixels",
+        origin: "composition-center"
+      },
+      staticSize: {
+        fields: ["properties.width", "properties.height"],
+        unit: "unitless-source-size-multiplier",
+        outputPixels: false,
+        defaults: { width: 1, height: 1 },
+        oneByOneBehavior: "contain-fit-within-composition"
+      },
+      animatedScale: {
+        field: "keyframes.scale",
+        unit: "unitless-multiplier-of-static-size"
+      }
+    };
     TimelineItemPropertiesSchema = z.object({
-      x: FiniteNumberSchema,
-      y: FiniteNumberSchema,
-      width: FiniteNumberSchema,
-      height: FiniteNumberSchema,
-      rotation: FiniteNumberSchema.optional(),
-      opacity: z.number().finite().min(0).max(1).optional()
+      x: FiniteNumberSchema.describe(
+        "Horizontal center offset in composition pixels; 0 is the composition center."
+      ),
+      y: FiniteNumberSchema.describe(
+        "Vertical center offset in composition pixels; 0 is the composition center."
+      ),
+      width: FiniteNumberSchema.describe(
+        "Unitless multiplier of resolved source natural width; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+      ),
+      height: FiniteNumberSchema.describe(
+        "Unitless multiplier of resolved source natural height; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+      ),
+      rotation: FiniteNumberSchema.describe("Clockwise rotation in degrees.").optional(),
+      opacity: z.number().finite().min(0).max(1).describe("Unitless opacity from 0 through 1.").optional()
     });
     TimelineEffectParamValueSchema = z.union([
       z.string(),
@@ -10964,7 +12000,7 @@ var init_chunk_PVL2FXUQ = __esm({
         editor: noControl,
         runtimeConsumers: ["asset-loader", "canvas-link", "render"]
       }),
-      properties: authored(TimelineItemPropertiesSchema, "Static item transform used as fallback outside animated keyframe channels.", {
+      properties: authored(TimelineItemPropertiesSchema, "Static item transform: x/y are composition-center pixel offsets; width/height are unitless source-size multipliers, never output pixels.", {
         required: false,
         editor: propertiesControl,
         runtimeConsumers: ["editor", "preview", "render", "export"],
@@ -12091,32 +13127,171 @@ var init_chunk_PVL2FXUQ = __esm({
     OFFSET_RE = /^(.+?)\s*([+-])\s*([0-9]+(?:\.[0-9]+)?)$/;
     BARE_ID_RE = /^[A-Za-z0-9_.:-]+$/;
     TIMELINE_DSL_GLOBAL_SEMANTIC_RULES = [
-      { id: "timeline.track.duplicate-id", kind: "unique-field", objectPath: "tracks[]", field: "id" },
-      { id: "timeline.item.duplicate-id", kind: "unique-field-global", objectPath: "tracks[].items[]", field: "id" },
-      { id: "timeline.primary-track.reference", kind: "reference", objectPath: "primaryTrackId", targetPath: "tracks[].id" },
-      { id: "timeline.primary-track.category", kind: "referenced-object-field", objectPath: "primaryTrackId", field: "category", allowedValues: ["primary"] },
-      { id: "timeline.track.category-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "category" },
-      { id: "timeline.track.role-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "role" },
-      { id: "timeline.track.role-category", kind: "owner-field-consistency", objectPath: "tracks[]", fields: ["role", "category"], mapping: TIMELINE_DSL_ROLE_CATEGORIES },
-      { id: "timeline.track.category-order", kind: "ordered-enum", objectPath: "tracks[]", field: "category", order: TIMELINE_DSL_TRACK_CATEGORIES },
-      { id: "timeline.track.mixed-categories", kind: "single-structural-category", objectPath: "tracks[]" },
-      { id: "timeline.item.from-expression", kind: "expression-grammar", objectPath: "tracks[].items[]", field: "from" },
-      { id: "timeline.item.frame-integer", kind: "integer-frame", objectPath: "tracks[].items[]", field: "from" },
-      { id: "timeline.item.from-reference", kind: "reference", objectPath: "tracks[].items[].from", targetPath: "tracks[].items[].id" },
-      { id: "timeline.item.from-cycle", kind: "acyclic-reference", objectPath: "tracks[].items[].from" },
-      { id: "timeline.item.source-required", kind: "requires-any-field", objectPath: "tracks[].items[]", fields: ["src", "assetId", "sourceNodeId"] },
-      { id: "timeline.item.animation-duration", kind: "maximum-by-owner-field", objectPath: "tracks[].items[]", fields: ["entranceAnimation.durationInFrames", "exitAnimation.durationInFrames"], maximumPath: "durationInFrames" },
-      { id: "timeline.audio.ducking-track-role", kind: "field-requires-owner-value", objectPath: "tracks[].items[]", field: "audioDucking", ownerField: "role", ownerValue: "music" },
-      { id: "timeline.composition.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["sourcePath", "renderedAssetPath"] },
-      { id: "timeline.composition.preview-contract", kind: "conditional-required", objectPath: "tracks[].items[]" },
-      { id: "timeline.caption.structured", kind: "conditional-required", objectPath: "tracks[].items[]" },
-      { id: "timeline.caption.lineage", kind: "cross-field-lineage", objectPath: "tracks[].items[]" },
-      { id: "timeline.derived-overlay.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["src"] },
-      { id: "timeline.derived-overlay.copy-on-write", kind: "distinct-fields", objectPath: "tracks[].items[]", fields: ["sourceAssetId", "derivedAssetId"] },
-      { id: "timeline.transition.reference", kind: "references", objectPath: "tracks[].items[]", fields: ["fromItemId", "toItemId"] },
-      { id: "timeline.transition.continuity", kind: "same-track-contiguous-references", objectPath: "tracks[].items[]" },
-      { id: "timeline.transition.centered-range", kind: "centered-on-reference-boundary", objectPath: "tracks[].items[]" },
-      { id: "timeline.transition.duration-handles", kind: "maximum-by-reference-handles", objectPath: "tracks[].items[]" }
+      {
+        id: "timeline.track.duplicate-id",
+        kind: "unique-field",
+        objectPath: "tracks[]",
+        field: "id"
+      },
+      {
+        id: "timeline.item.duplicate-id",
+        kind: "unique-field-global",
+        objectPath: "tracks[].items[]",
+        field: "id"
+      },
+      {
+        id: "timeline.primary-track.reference",
+        kind: "reference",
+        objectPath: "primaryTrackId",
+        targetPath: "tracks[].id"
+      },
+      {
+        id: "timeline.primary-track.category",
+        kind: "referenced-object-field",
+        objectPath: "primaryTrackId",
+        field: "category",
+        allowedValues: ["primary"]
+      },
+      {
+        id: "timeline.track.category-item-mismatch",
+        kind: "allowed-item-types",
+        objectPath: "tracks[]",
+        discriminator: "category"
+      },
+      {
+        id: "timeline.track.role-item-mismatch",
+        kind: "allowed-item-types",
+        objectPath: "tracks[]",
+        discriminator: "role"
+      },
+      {
+        id: "timeline.track.role-category",
+        kind: "owner-field-consistency",
+        objectPath: "tracks[]",
+        fields: ["role", "category"],
+        mapping: TIMELINE_DSL_ROLE_CATEGORIES
+      },
+      {
+        id: "timeline.track.category-order",
+        kind: "ordered-enum",
+        objectPath: "tracks[]",
+        field: "category",
+        order: TIMELINE_DSL_TRACK_CATEGORIES
+      },
+      {
+        id: "timeline.track.mixed-categories",
+        kind: "single-structural-category",
+        objectPath: "tracks[]"
+      },
+      {
+        id: "timeline.item.from-expression",
+        kind: "expression-grammar",
+        objectPath: "tracks[].items[]",
+        field: "from"
+      },
+      {
+        id: "timeline.item.frame-integer",
+        kind: "integer-frame",
+        objectPath: "tracks[].items[]",
+        field: "from"
+      },
+      {
+        id: "timeline.item.from-reference",
+        kind: "reference",
+        objectPath: "tracks[].items[].from",
+        targetPath: "tracks[].items[].id"
+      },
+      {
+        id: "timeline.item.from-cycle",
+        kind: "acyclic-reference",
+        objectPath: "tracks[].items[].from"
+      },
+      {
+        id: "timeline.item.source-required",
+        kind: "requires-any-field",
+        objectPath: "tracks[].items[]",
+        fields: ["src", "assetId", "sourceNodeId"]
+      },
+      {
+        id: "timeline.item.animation-duration",
+        kind: "maximum-by-owner-field",
+        objectPath: "tracks[].items[]",
+        fields: [
+          "entranceAnimation.durationInFrames",
+          "exitAnimation.durationInFrames"
+        ],
+        maximumPath: "durationInFrames"
+      },
+      {
+        id: "timeline.item.scale-unit",
+        kind: "maximum-absolute-value",
+        objectPath: "tracks[].items[]",
+        fields: ["properties.width", "properties.height"],
+        maximum: 4,
+        unit: "unitless-source-size-multiplier"
+      },
+      {
+        id: "timeline.audio.ducking-track-role",
+        kind: "field-requires-owner-value",
+        objectPath: "tracks[].items[]",
+        field: "audioDucking",
+        ownerField: "role",
+        ownerValue: "music"
+      },
+      {
+        id: "timeline.composition.local-path",
+        kind: "local-path",
+        objectPath: "tracks[].items[]",
+        fields: ["sourcePath", "renderedAssetPath"]
+      },
+      {
+        id: "timeline.composition.preview-contract",
+        kind: "conditional-required",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.caption.structured",
+        kind: "conditional-required",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.caption.lineage",
+        kind: "cross-field-lineage",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.derived-overlay.local-path",
+        kind: "local-path",
+        objectPath: "tracks[].items[]",
+        fields: ["src"]
+      },
+      {
+        id: "timeline.derived-overlay.copy-on-write",
+        kind: "distinct-fields",
+        objectPath: "tracks[].items[]",
+        fields: ["sourceAssetId", "derivedAssetId"]
+      },
+      {
+        id: "timeline.transition.reference",
+        kind: "references",
+        objectPath: "tracks[].items[]",
+        fields: ["fromItemId", "toItemId"]
+      },
+      {
+        id: "timeline.transition.continuity",
+        kind: "same-track-contiguous-references",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.transition.centered-range",
+        kind: "centered-on-reference-boundary",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.transition.duration-handles",
+        kind: "maximum-by-reference-handles",
+        objectPath: "tracks[].items[]"
+      }
     ];
     TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
       "timeline.track.duplicate-id": evaluateStructuralSemanticRules,
@@ -12134,6 +13309,7 @@ var init_chunk_PVL2FXUQ = __esm({
       "timeline.item.from-cycle": evaluateReferenceCycleSemanticRules,
       "timeline.item.source-required": evaluateStructuralSemanticRules,
       "timeline.item.animation-duration": evaluateStructuralSemanticRules,
+      "timeline.item.scale-unit": evaluateStructuralSemanticRules,
       "timeline.audio.ducking-track-role": evaluateStructuralSemanticRules,
       "timeline.composition.local-path": evaluateStructuralSemanticRules,
       "timeline.composition.preview-contract": evaluateStructuralSemanticRules,
@@ -12149,11 +13325,11 @@ var init_chunk_PVL2FXUQ = __esm({
     itemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => {
       const baseShape = timelineDslAnnotatedObjectShape(
         TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-        { overrides: {
-          type: z.literal(type).describe(
-            TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description
-          )
-        } }
+        {
+          overrides: {
+            type: z.literal(type).describe(TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description)
+          }
+        }
       );
       const variantShape = timelineDslAnnotatedObjectShape(
         TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
@@ -12166,7 +13342,9 @@ var init_chunk_PVL2FXUQ = __esm({
     );
     itemFieldOwners = /* @__PURE__ */ new Map();
     for (const type of TIMELINE_DSL_ITEM_TYPES) {
-      for (const fieldName of Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type])) {
+      for (const fieldName of Object.keys(
+        TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
+      )) {
         const owners = itemFieldOwners.get(fieldName) ?? /* @__PURE__ */ new Set();
         owners.add(type);
         itemFieldOwners.set(fieldName, owners);
@@ -12175,14 +13353,18 @@ var init_chunk_PVL2FXUQ = __esm({
     maskKeyframeChannels = new Set(TIMELINE_MASK_KEYFRAME_CHANNELS);
     itemBaseFieldApplicabilityRules = Object.entries(
       TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase
-    ).flatMap(([fieldName, annotation2]) => annotation2.appliesToItemTypes && annotation2.applicabilityRuleId ? [{
-      id: annotation2.applicabilityRuleId,
-      kind: "allowed-item-types-when-present",
-      objectPath: "tracks[].items[]",
-      field: fieldName,
-      allowedItemTypes: annotation2.appliesToItemTypes,
-      ...annotation2.applicabilityMessage ? { message: annotation2.applicabilityMessage } : {}
-    }] : []);
+    ).flatMap(
+      ([fieldName, annotation2]) => annotation2.appliesToItemTypes && annotation2.applicabilityRuleId ? [
+        {
+          id: annotation2.applicabilityRuleId,
+          kind: "allowed-item-types-when-present",
+          objectPath: "tracks[].items[]",
+          field: fieldName,
+          allowedItemTypes: annotation2.appliesToItemTypes,
+          ...annotation2.applicabilityMessage ? { message: annotation2.applicabilityMessage } : {}
+        }
+      ] : []
+    );
     clipMaskRequiresMaskRule = {
       id: "timeline.clip-mask.requires-mask",
       kind: "requires-field-when-any-channel-present",
@@ -12227,45 +13409,51 @@ var init_chunk_PVL2FXUQ = __esm({
         ...TIMELINE_DSL_GLOBAL_SEMANTIC_RULES
       ]
     };
-    TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine((item, ctx) => {
-      const typedItem = item;
-      for (const [fieldName, owners] of itemFieldOwners) {
-        if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+    TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine(
+      (item, ctx) => {
+        const typedItem = item;
+        for (const [fieldName, owners] of itemFieldOwners) {
+          if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [fieldName],
+              message: `${fieldName} is not valid on ${typedItem.type} items`,
+              params: { ruleId: timelineItemFieldApplicabilityRule.id }
+            });
+          }
+        }
+        for (const issue22 of timelineMaskKeyframeSemanticIssues(typedItem)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            path: [fieldName],
-            message: `${fieldName} is not valid on ${typedItem.type} items`,
-            params: { ruleId: timelineItemFieldApplicabilityRule.id }
+            path: issue22.path,
+            message: issue22.message,
+            params: { ruleId: issue22.ruleId }
           });
         }
       }
-      for (const issue22 of timelineMaskKeyframeSemanticIssues(typedItem)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: issue22.path,
-          message: issue22.message,
-          params: { ruleId: issue22.ruleId }
-        });
+    ).describe("TimelineDslItem");
+    TimelineDslTrackSchema = z.object(
+      timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.track, {
+        overrides: { items: z.array(TimelineDslItemSchema) }
+      })
+    ).passthrough().describe("TimelineDslTrack");
+    TimelineDslSchemaBase = z.object(
+      timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.root, {
+        overrides: { tracks: z.array(TimelineDslTrackSchema) }
+      })
+    ).passthrough();
+    TimelineDslSchema = TimelineDslSchemaBase.superRefine(
+      (timeline, context) => {
+        for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: semanticIssue.path,
+            message: semanticIssue.message,
+            params: { ruleId: semanticIssue.ruleId }
+          });
+        }
       }
-    }).describe("TimelineDslItem");
-    TimelineDslTrackSchema = z.object(timelineDslAnnotatedObjectShape(
-      TIMELINE_DSL_FIELD_ANNOTATIONS.track,
-      { overrides: { items: z.array(TimelineDslItemSchema) } }
-    )).passthrough().describe("TimelineDslTrack");
-    TimelineDslSchemaBase = z.object(timelineDslAnnotatedObjectShape(
-      TIMELINE_DSL_FIELD_ANNOTATIONS.root,
-      { overrides: { tracks: z.array(TimelineDslTrackSchema) } }
-    )).passthrough();
-    TimelineDslSchema = TimelineDslSchemaBase.superRefine((timeline, context) => {
-      for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: semanticIssue.path,
-          message: semanticIssue.message,
-          params: { ruleId: semanticIssue.ruleId }
-        });
-      }
-    }).describe("TimelineDsl");
+    ).describe("TimelineDsl");
     timelineDslJsonSchema = zodToJsonSchema(TimelineDslSchema, {
       name: "TimelineDsl",
       target: "jsonSchema7"
@@ -12274,10 +13462,13 @@ var init_chunk_PVL2FXUQ = __esm({
       name: "TimelineItemMask",
       target: "jsonSchema7"
     });
-    timelineItemKeyframesJsonSchema = zodToJsonSchema(TimelineItemKeyframesSchema, {
-      name: "TimelineItemKeyframes",
-      target: "jsonSchema7"
-    });
+    timelineItemKeyframesJsonSchema = zodToJsonSchema(
+      TimelineItemKeyframesSchema,
+      {
+        name: "TimelineItemKeyframes",
+        target: "jsonSchema7"
+      }
+    );
     timelineDslJsonSchemaDefinitions = jsonSchemaObjectAtPath(
       timelineDslJsonSchema,
       ["definitions"]
@@ -12354,20 +13545,24 @@ var init_chunk_PVL2FXUQ = __esm({
       compositionHeight: 1080,
       fps: 30,
       durationInFrames: 60,
-      tracks: [{
-        id: "visual-overlays",
-        name: "Visual overlays",
-        category: "visual",
-        items: [{
-          id: "masked-image",
-          type: "image",
-          from: 0,
-          durationInFrames: 60,
-          sourceNodeId: "source-image-node",
-          mask: timelineMaskExample,
-          keyframes: timelineMaskKeyframesExample
-        }]
-      }]
+      tracks: [
+        {
+          id: "visual-overlays",
+          name: "Visual overlays",
+          category: "visual",
+          items: [
+            {
+              id: "masked-image",
+              type: "image",
+              from: 0,
+              durationInFrames: 60,
+              sourceNodeId: "source-image-node",
+              mask: timelineMaskExample,
+              keyframes: timelineMaskKeyframesExample
+            }
+          ]
+        }
+      ]
     };
     timelineMaskDslFeature = {
       yamlPath: TIMELINE_MASK_CAPABILITY_ANNOTATION.yamlPath,
@@ -12377,23 +13572,25 @@ var init_chunk_PVL2FXUQ = __esm({
       animatedChannels: TIMELINE_MASK_CAPABILITY_ANNOTATION.animatedChannels,
       defaultMask: TIMELINE_MASK_CAPABILITY_ANNOTATION.defaultMask,
       fieldDefinitions: Object.fromEntries(
-        Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(([field2, annotation2]) => [
-          field2,
-          {
-            description: annotation2.description,
-            invalidValueDescription: annotation2.invalidValueDescription,
-            unit: annotation2.unit,
-            defaultValue: annotation2.defaultValue,
-            animatedChannel: "animation" in annotation2 ? annotation2.animation?.channel ?? null : null
-          }
-        ])
+        Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(
+          ([field2, annotation2]) => [
+            field2,
+            {
+              description: annotation2.description,
+              invalidValueDescription: annotation2.invalidValueDescription,
+              unit: annotation2.unit,
+              defaultValue: annotation2.defaultValue,
+              animatedChannel: "animation" in annotation2 ? annotation2.animation?.channel ?? null : null
+            }
+          ]
+        )
       ),
       operations: TIMELINE_MASK_CAPABILITY_ANNOTATION.operations,
       runtimeBehavior: TIMELINE_MASK_CAPABILITY_ANNOTATION.runtimeBehavior,
       semantics: TIMELINE_MASK_CAPABILITY_ANNOTATION.semantics
     };
     timelineDslSerializableDefinition = {
-      schemaVersion: 5,
+      schemaVersion: 6,
       format: "clash.timeline.yaml",
       description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
       fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -12426,11 +13623,15 @@ var init_chunk_PVL2FXUQ = __esm({
       jsonSchema: {
         ...timelineDslJsonSchema,
         "x-clash-fragments": timelineDslJsonSchemaFragments,
-        "x-clash-features": { clipMask: timelineMaskDslFeature },
+        "x-clash-features": {
+          clipMask: timelineMaskDslFeature,
+          itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS
+        },
         "x-clash-semantic-rules": TIMELINE_DSL_SEMANTIC_RULES
       },
       features: {
-        clipMask: timelineMaskDslFeature
+        clipMask: timelineMaskDslFeature,
+        itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS
       },
       examples: {
         maskKeyframes: TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE
@@ -28298,6 +29499,17 @@ function extractLabelFromPrompt(promptText, fallback) {
   const first = lines[0] || fallback;
   return first.length > 60 ? first.slice(0, 57) + "..." : first;
 }
+function pendingDurationFallback(modelId) {
+  if (!modelId) return void 0;
+  const card = MODEL_CARDS.find((candidate) => candidate.id === normalizeModelId(modelId) || candidate.id === modelId);
+  if (!card) return void 0;
+  const declared = card.defaultParams?.duration;
+  if (declared !== void 0) return declared;
+  const parameter = card.parameters.find((candidate) => candidate.id === "duration");
+  if (!parameter) return void 0;
+  if (parameter.defaultValue !== void 0) return parameter.defaultValue;
+  return parameter.options?.[0]?.value;
+}
 function buildPendingAssetNode(input) {
   const {
     nodeId,
@@ -28321,8 +29533,8 @@ function buildPendingAssetNode(input) {
   const isAudio = effectiveOutputKind === "audio";
   const isText = effectiveOutputKind === "text";
   const rfType = isVideo ? RF_NODE_TYPE.Video : isAudio ? RF_NODE_TYPE.Audio : isText ? RF_NODE_TYPE.Text : RF_NODE_TYPE.Image;
-  const defaultLabel = isVideo ? "Generated Video" : isAudio ? "Generated Audio" : isText ? "Generated Text" : "Generated Image";
-  const label = input.label || extractLabelFromPrompt(prompt, defaultLabel);
+  const defaultLabel2 = isVideo ? "Generated Video" : isAudio ? "Generated Audio" : isText ? "Generated Text" : "Generated Image";
+  const label = input.label || extractLabelFromPrompt(prompt, defaultLabel2);
   const effectiveModelParams = isImage && !isCustom ? { ...modelParams2, count: 1 } : modelParams2;
   const data = {
     label,
@@ -28356,8 +29568,11 @@ function buildPendingAssetNode(input) {
     data.referenceAudioAssetIds = referenceAudioAssetIds;
   }
   if (isVideo && !isCustom) {
-    const dur = modelParams2.duration ?? 5;
-    data.duration = typeof dur === "string" ? parseInt(dur, 10) : Number(dur) || 5;
+    const declared = modelParams2.duration ?? pendingDurationFallback(modelId);
+    if (declared !== void 0) {
+      const numeric = typeof declared === "number" ? declared : Number(declared);
+      data.duration = Number.isFinite(numeric) ? numeric : declared;
+    }
   }
   return { id: nodeId, type: rfType, data };
 }
@@ -29053,10 +30268,10 @@ function reconcileProjectDirectorStageOwnership(doc) {
   };
 }
 function validateAgentObservation(options) {
-  if (options.actorClientType !== "agent") return { ok: true };
   const operation = options.operation.trim() || "writing";
   const observedVersion = options.observedVersion?.trim();
   if (!observedVersion) {
+    if (options.actorClientType !== "agent") return { ok: true };
     return {
       ok: false,
       code: "READ_REQUIRED",
@@ -29570,7 +30785,9 @@ function routesFromModelCard(model) {
     ...implementation.defaultParamOverrides ? { defaultParamOverrides: { ...implementation.defaultParamOverrides } } : {},
     ...implementation.excludedParameterIds?.length ? { excludedParameterIds: [...implementation.excludedParameterIds] } : {},
     ...implementation.projectorPluginId ? { projectorPluginId: implementation.projectorPluginId } : {},
-    ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {}
+    ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {},
+    ...implementation.executorPluginId ? { executorPluginId: implementation.executorPluginId } : {},
+    ...implementation.executorExportId ? { executorExportId: implementation.executorExportId } : {}
   }));
 }
 function routesFromModelCards(models) {
@@ -29713,12 +30930,12 @@ function canServeRoute(route, provider) {
 function providerCandidate(configuredProviders, route) {
   const candidates = providerCandidates(configuredProviders, route);
   if (!candidates.length) return void 0;
-  const compare = (a, b) => compareProviderCandidatesForModel(a, b, route.modelCode);
-  const runnable = candidates.filter((candidate) => canServeRoute(route, candidate.provider)).sort(compare);
+  const compare2 = (a, b) => compareProviderCandidatesForModel(a, b, route.modelCode);
+  const runnable = candidates.filter((candidate) => canServeRoute(route, candidate.provider)).sort(compare2);
   if (runnable[0]) return runnable[0];
-  const enabled = candidates.filter((candidate) => candidate.provider.enabled !== false).sort(compare);
+  const enabled = candidates.filter((candidate) => candidate.provider.enabled !== false).sort(compare2);
   if (enabled[0]) return enabled[0];
-  return candidates.sort(compare)[0];
+  return candidates.sort(compare2)[0];
 }
 function providerIndex(configuredProviders, route) {
   return providerCandidate(configuredProviders, route)?.index ?? Number.POSITIVE_INFINITY;
@@ -29899,6 +31116,24 @@ function listModelCatalogEntries(options = {}) {
     };
   });
 }
+function registerAssetMetadataKind(declaration) {
+  const issuesFor = (probe) => {
+    const result = declaration.schema.safeParse(probe);
+    return result.success ? [] : result.error.issues;
+  };
+  const complainsAbout = (issues, field2) => issues.some((issue3) => issue3.path.length === 1 && issue3.path[0] === field2);
+  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
+    );
+  }
+  if (!complainsAbout(issuesFor({ kind: declaration.kind }), "schemaVersion")) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schemaVersion`
+    );
+  }
+  declaredKinds.set(declaration.kind, declaration);
+}
 function loroSyncUpdateId(update) {
   let hash2 = 2166136261;
   for (const byte of update) {
@@ -29923,13 +31158,13 @@ function createMediaAssetCowNodeData(options) {
     ...options.sourceAssetId ? { sourceAssetId: options.sourceAssetId } : {}
   };
 }
-var import_loro_crdt, import_loro_crdt2, import_loro_crdt3, import_loro_crdt4, import_yaml, AgentAnnotationSurfaceSchema, AgentAnnotationVisualRectSchema, AgentAnnotationSelectionSchema, AgentAnnotationTargetSchema, AgentAnnotationDraftSchema, AgentAnnotationPromptPayloadSchema, FrameRangeSchema, AudioBeatSchema, AudioEnergyPointSchema, AudioSectionSchema, AudioBeatMetadataSchema, AudioStemTypeSchema, AudioStemAssetSchema, AudioStemSeparationMetadataSchema, LyricsAlignmentUnitSchema, LyricsUnmatchedRangeSchema, LyricsAlignmentMetadataSchema, AsrTimedWordSchema, AsrTimedSegmentSchema, AsrTimedTranscriptSchema, TranscriptWordSchema, AsrTranscriptMetadataSchema, TextCutSchema, CaptionCueSchema, TalkingHeadMetadataSchema, RightsMetadataSchema, ReferenceShotSchema, ReferenceVideoMetadataSchema, ReferenceDownloadSourceLedgerSchema, ReferenceDownloadFileSchema, ReferenceDownloadMetadataBaseSchema, ReferenceDownloadMetadataSchema, VisualMomentCandidateSchema, VideoVisualMomentMetadataSchema, CharacterReferenceViewKindSchema, CharacterReferenceViewSchema, ImageStoryboardMetadataSchema, SemanticReferenceRoleKindSchema, SemanticReferenceDownstreamUsageSchema, SemanticReferenceRoleSchema, SemanticReferenceRolesMetadataSchema, ProductLogoQaReferenceSchema, ProductLogoQaCheckKindSchema, ProductLogoQaCheckSchema, ProductLogoQaMetadataSchema, AnalysisBackendBenchmarkMetricSchema, AnalysisBackendBenchmarkCandidateSchema, AnalysisBackendBenchmarkMetadataSchema, ImageEmbeddingDistanceMetricSchema, ImageEmbeddingBaselineForSchema, ImageEmbeddingStoreItemSchema, ImageEmbeddingStoreMetadataSchema, ImageComfyuiApiFormatSchema, ImageComfyuiModelTypeSchema, ImageComfyuiModelReferenceSchema, ImageComfyuiCustomNodeSchema, ImageComfyuiInputKindSchema, ImageComfyuiInputSlotSchema, ImageComfyuiOutputStatusSchema, ImageComfyuiOutputMediaTypeSchema, ImageComfyuiOutputSchema, ImageComfyuiExecutionSchema, ImageComfyuiRunnerMetadataSchema, StoryboardPromptSchema, StoryboardPromptPackSchema, SafeZonesSchema, AdDeliveryVariantSchema, AdPackshotSpecSchema, AdEndCardSpecSchema, AdDeliveryMetadataSchema, AdDeliveryChecklistItemSchema, AdDeliverySpecProjectionSchema, AdDeliveryExportProbeSchema, AdDeliverySafeZoneViolationSchema, AdDeliveryVisualQaReportSchema, AdDeliveryExportValidationCheckSchema, AdDeliveryExportValidationReceiptSchema, AdVisualQaCheckKindSchema, AdVisualQaCheckSchema, AdVisualQaMetadataSchema, ContentCredentialModeSchema, ContentCredentialSignatureStatusSchema, ContentCredentialIngredientRelationshipSchema, ContentCredentialIngredientSchema, ContentCredentialActionSchema, ContentCredentialAssertionSchema, ContentCredentialsMetadataSchema, ProductionMetadataBaseSchema, ProductionMetadataSchema, AssetMetadataFillActionSchema, SourceHashSchema, TimelineTranscriptSourceSchema, TimelineTranscriptWordSchema, TimelineTranscriptProjectionSchema, TimelineTranscriptClipInputSchema, BuildTimelineTranscriptProjectionInputSchema, TEXT_MENTION_REGEX, IMAGE_MENTION_REGEX, DEFAULT_PROMPT_PLACEHOLDERS, DirectorReferenceAspectRatioSchema, DirectorReferenceVector3Schema, DirectorReferenceCameraOpticsSchema, DirectorReferenceCameraSchema, DirectorReferenceShotSchema, DirectorReferenceStillSchema, DirectorReferenceVideoSchema, DirectorReferencePacketSchema, NO_BOUND, ActionFamilySchema, ActionExecutorSchema, ActionOperationSpecSchema, ActionSpecSchema, ActionInvocationModeSchema, ActionSurfaceSchema, ACTION_INVOCATION_MODE, ASSET_ACTION_ID, CropRectSchema, ImageEditParamsSchema, VideoClipParamsSchema, BUILT_IN_ASSET_ACTION_SPECS, InvocationBaseSchema, ImageEditActionInvocationSchema, VideoEditActionInvocationSchema, AssetEditActionInvocationSchema, PositionSchema2, RF_NODE_TYPE, ACTION_TYPE, AGENT_NODE_TYPE_MAP, NodeStatusSchema, NodeDataSchema, UpstreamRefSchema, CanvasNodeSchema, CanvasEdgeSchema, LoroDocumentStateSchema, NodeType, ALL_NODE_TYPES, CONTENT_NODE_TYPES, GENERATION_NODE_TYPES, ProposalType, TaskStatus, CustomActionParameterSchema, CustomActionSecretSchema, ACTION_PROVIDER_IDS, ACTION_PROVIDER_ALIASES, ACTION_PROVIDER_PRESETS, ActionProviderIdSchema, ActionProviderRefSchema, CustomActionModelSchema, CustomActionDefinitionBaseSchema, CustomActionDefinitionSchema, NodeInfoSchema, EdgeInfoSchema, ProjectContextSchema, NODE_UPSTREAMS_CONTAINER, EDGE_IDENTITY_CONTAINER, GRAPH_SCHEMA_CONTAINER, EDGE_IDENTITY_VERSION_KEY, EDGE_IDENTITY_VERSION, DEFAULT_CANVAS_ID, Canvas, DirectorStageVector3Schema, DirectorStageTransformSchema, DirectorStagePoseSchema, DirectorStageAttachmentSocketSchema, DirectorStageAttachmentSchema, DirectorStageObjectBaseSchema, DirectorStagePropTypeSchema, DirectorStageSetTypeSchema, DirectorStageVehicleTypeSchema, DirectorStageLightTypeSchema, DirectorStageObjectSchema, DirectorStageCameraSchema, DirectorStageAspectRatioSchema, DirectorStageShotSchema, DirectorStageCameraRigPathSchema, DirectorStageCameraRigOrientationSchema, DirectorStageCameraRigLensSchema, DirectorStageCameraRigSchema, DirectorStageShotCompositionSchema, DirectorStageSequenceShotSchema, DirectorStageSignedAxisSchema, DirectorStageMotionAssetSchema, DirectorStageAnimationKeyframeSchema, DirectorStageAnimationTrackSchema, DirectorStageActionNameSchema, DirectorStageActionLayerSchema, DirectorStageActionClipSchema, DirectorStageStoryBeatSchema, DirectorStageCameraCueSchema, DirectorStageWorkingVolumePresetSchema, DirectorStageWorkingVolumeSchema, DirectorStageEnvironmentCalibrationSchema, DirectorStageStateSchema, directorStageContractSchemas, directorStageJsonSchemas, PROJECTION_OWNED_DATA_FIELDS, RUNTIME_OWNED_DATA_FIELDS, ACTION_CHECKPOINT_NODE_TYPES, MEDIA_ASSET_NODE_TYPES, ACTION_CHECKPOINT_SEMANTIC_FIELDS, AtomicTaskTypeSchema, ImageGenParamsSchema, VideoGenParamsSchema, AudioGenParamsSchema, TextGenParamsSchema, DescriptionParamsSchema, UnderstandParamsSchema, AtomicTaskRequestSchema, AtomicTaskResultSchema, DOStepStatusSchema, DOStateSchema, ModelUpstreamIdSchema, ModelUpstreamApiShapeSchema, ProviderOAuthIdSchema, ProviderAccountIdSchema, ModelCardProviderBindingSchema, UserModelCardConfigSchema, API_KEY_CREDENTIAL, BASE_URL_CREDENTIAL, FAL_IMAGE_ROUTES, FAL_VIDEO_ROUTES, GOOGLE_IMAGE_ROUTES, GOOGLE_VIDEO_ROUTES, MODEL_DECLARED_ROUTES, MOCK_DECLARED_ROUTES, MOCK_ROUTES, MODEL_UPSTREAM_ROUTES, CATEGORY_ALLOWED_ITEM_TYPES, CLIP_ANIMATION_TYPES, MEDIA_NODE_TYPES, TextRevisionActorSchema, TextRevisionContentDescriptorSchema, TextAppliedRevisionSchema, TextRevisionHistoryEntrySchema, AssetStatusSchema, TaskStateSchema, PipelineTaskDefSchema, SuperstepDefSchema, PipelineDefSchema, TaskRuntimeStateSchema, PipelineRuntimeStateSchema, ProviderUsageStatusSchema, ProviderUsagePricingSourceSchema, ProviderUsageAuditEventSchema;
+var import_loro_crdt, import_loro_crdt2, import_loro_crdt3, import_loro_crdt4, import_yaml, AgentAnnotationSurfaceSchema, AgentAnnotationVisualRectSchema, AgentAnnotationSelectionSchema, AgentAnnotationTargetSchema, AgentAnnotationDraftSchema, AgentAnnotationPromptPayloadSchema, FrameRangeSchema, AudioBeatSchema, AudioEnergyPointSchema, AudioSectionSchema, AudioBeatMetadataSchema, AudioStemTypeSchema, AudioStemAssetSchema, AudioStemSeparationMetadataSchema, LyricsAlignmentUnitSchema, LyricsUnmatchedRangeSchema, LyricsAlignmentMetadataSchema, AsrTimedWordSchema, AsrTimedSegmentSchema, AsrTimedTranscriptSchema, TranscriptWordSchema, AsrTranscriptMetadataSchema, TextCutSchema, CaptionCueSchema, TalkingHeadMetadataSchema, RightsMetadataSchema, ReferenceShotSchema, ReferenceVideoMetadataSchema, ReferenceDownloadSourceLedgerSchema, ReferenceDownloadFileSchema, ReferenceDownloadMetadataBaseSchema, ReferenceDownloadMetadataSchema, VisualMomentCandidateSchema, VideoVisualMomentMetadataSchema, CharacterReferenceViewKindSchema, CharacterReferenceViewSchema, ImageStoryboardMetadataSchema, SemanticReferenceRoleKindSchema, SemanticReferenceDownstreamUsageSchema, SemanticReferenceRoleSchema, SemanticReferenceRolesMetadataSchema, ProductLogoQaReferenceSchema, ProductLogoQaCheckKindSchema, ProductLogoQaCheckSchema, ProductLogoQaMetadataSchema, AnalysisBackendBenchmarkMetricSchema, AnalysisBackendBenchmarkCandidateSchema, AnalysisBackendBenchmarkMetadataSchema, ImageEmbeddingDistanceMetricSchema, ImageEmbeddingBaselineForSchema, ImageEmbeddingStoreItemSchema, ImageEmbeddingStoreMetadataSchema, ImageComfyuiApiFormatSchema, ImageComfyuiModelTypeSchema, ImageComfyuiModelReferenceSchema, ImageComfyuiCustomNodeSchema, ImageComfyuiInputKindSchema, ImageComfyuiInputSlotSchema, ImageComfyuiOutputStatusSchema, ImageComfyuiOutputMediaTypeSchema, ImageComfyuiOutputSchema, ImageComfyuiExecutionSchema, ImageComfyuiRunnerMetadataSchema, StoryboardPromptSchema, StoryboardPromptPackSchema, SafeZonesSchema, AdDeliveryVariantSchema, AdPackshotSpecSchema, AdEndCardSpecSchema, AdDeliveryMetadataSchema, AdDeliveryChecklistItemSchema, AdDeliverySpecProjectionSchema, AdDeliveryExportProbeSchema, AdDeliverySafeZoneViolationSchema, AdDeliveryVisualQaReportSchema, AdDeliveryExportValidationCheckSchema, AdDeliveryExportValidationReceiptSchema, AdVisualQaCheckKindSchema, AdVisualQaCheckSchema, AdVisualQaMetadataSchema, ContentCredentialModeSchema, ContentCredentialSignatureStatusSchema, ContentCredentialIngredientRelationshipSchema, ContentCredentialIngredientSchema, ContentCredentialActionSchema, ContentCredentialAssertionSchema, ContentCredentialsMetadataSchema, ProductionMetadataBaseSchema, ProductionMetadataSchema, AssetMetadataFillActionSchema, SourceHashSchema, TimelineTranscriptSourceSchema, TimelineTranscriptWordSchema, TimelineTranscriptProjectionSchema, TimelineTranscriptClipInputSchema, BuildTimelineTranscriptProjectionInputSchema, TEXT_MENTION_REGEX, IMAGE_MENTION_REGEX, DEFAULT_PROMPT_PLACEHOLDERS, DirectorReferenceAspectRatioSchema, DirectorReferenceVector3Schema, DirectorReferenceCameraOpticsSchema, DirectorReferenceCameraSchema, DirectorReferenceShotSchema, DirectorReferenceStillSchema, DirectorReferenceVideoSchema, DirectorReferencePacketSchema, NO_BOUND, ActionFamilySchema, ActionExecutorSchema, ActionOperationSpecSchema, ActionSpecSchema, ActionInvocationModeSchema, ActionSurfaceSchema, ACTION_INVOCATION_MODE, ASSET_ACTION_ID, CropRectSchema, ImageEditParamsSchema, VideoClipParamsSchema, BUILT_IN_ASSET_ACTION_SPECS, InvocationBaseSchema, ImageEditActionInvocationSchema, VideoEditActionInvocationSchema, AssetEditActionInvocationSchema, PositionSchema2, RF_NODE_TYPE, ACTION_TYPE, AGENT_NODE_TYPE_MAP, NodeStatusSchema, NodeDataSchema, UpstreamRefSchema, CanvasNodeSchema, CanvasEdgeSchema, LoroDocumentStateSchema, NodeType, ALL_NODE_TYPES, CONTENT_NODE_TYPES, GENERATION_NODE_TYPES, ProposalType, TaskStatus, CustomActionParameterSchema, CustomActionSecretSchema, ACTION_PROVIDER_IDS, ACTION_PROVIDER_ALIASES, ACTION_PROVIDER_PRESETS, ActionProviderIdSchema, ActionProviderRefSchema, CustomActionModelSchema, CustomActionDefinitionBaseSchema, CustomActionDefinitionSchema, NodeInfoSchema, EdgeInfoSchema, ProjectContextSchema, NODE_UPSTREAMS_CONTAINER, EDGE_IDENTITY_CONTAINER, GRAPH_SCHEMA_CONTAINER, EDGE_IDENTITY_VERSION_KEY, EDGE_IDENTITY_VERSION, DEFAULT_CANVAS_ID, Canvas, DirectorStageVector3Schema, DirectorStageTransformSchema, DirectorStagePoseSchema, DirectorStageAttachmentSocketSchema, DirectorStageAttachmentSchema, DirectorStageObjectBaseSchema, DirectorStagePropTypeSchema, DirectorStageSetTypeSchema, DirectorStageVehicleTypeSchema, DirectorStageLightTypeSchema, DirectorStageObjectSchema, DirectorStageCameraSchema, DirectorStageAspectRatioSchema, DirectorStageShotSchema, DirectorStageCameraRigPathSchema, DirectorStageCameraRigOrientationSchema, DirectorStageCameraRigLensSchema, DirectorStageCameraRigSchema, DirectorStageShotCompositionSchema, DirectorStageSequenceShotSchema, DirectorStageSignedAxisSchema, DirectorStageMotionAssetSchema, DirectorStageAnimationKeyframeSchema, DirectorStageAnimationTrackSchema, DirectorStageActionNameSchema, DirectorStageActionLayerSchema, DirectorStageActionClipSchema, DirectorStageStoryBeatSchema, DirectorStageCameraCueSchema, DirectorStageWorkingVolumePresetSchema, DirectorStageWorkingVolumeSchema, DirectorStageEnvironmentCalibrationSchema, DirectorStageStateSchema, directorStageContractSchemas, directorStageJsonSchemas, PROJECTION_OWNED_DATA_FIELDS, RUNTIME_OWNED_DATA_FIELDS, ACTION_CHECKPOINT_NODE_TYPES, MEDIA_ASSET_NODE_TYPES, ACTION_CHECKPOINT_SEMANTIC_FIELDS, AtomicTaskTypeSchema, ImageGenParamsSchema, VideoGenParamsSchema, AudioGenParamsSchema, TextGenParamsSchema, DescriptionParamsSchema, UnderstandParamsSchema, AtomicTaskRequestSchema, AtomicTaskResultSchema, DOStepStatusSchema, DOStateSchema, CredentialSourceKindSchema, DynamicProviderIdSchema, BuiltinModelUpstreamIdSchema, ModelUpstreamIdSchema, BuiltinModelUpstreamApiShapeSchema, ModelUpstreamApiShapeSchema, BuiltinProviderOAuthIdSchema, ProviderOAuthIdSchema, BuiltinProviderAccountIdSchema, ProviderAccountIdSchema, ModelCardProviderBindingSchema, UserModelCardConfigSchema, API_KEY_CREDENTIAL, BASE_URL_CREDENTIAL, FAL_IMAGE_ROUTES, FAL_VIDEO_ROUTES, GOOGLE_IMAGE_ROUTES, GOOGLE_VIDEO_ROUTES, MODEL_DECLARED_ROUTES, MOCK_DECLARED_ROUTES, MOCK_ROUTES, MODEL_UPSTREAM_ROUTES, MediaTranscriptMetadataSchema, MediaDescriptionMetadataSchema, declaredKinds, FillActionEnvelopeSchema, CATEGORY_ALLOWED_ITEM_TYPES, CLIP_ANIMATION_TYPES, MEDIA_NODE_TYPES, TextRevisionActorSchema, TextRevisionContentDescriptorSchema, TextAppliedRevisionSchema, TextRevisionHistoryEntrySchema, AssetStatusSchema, TaskStateSchema, PipelineTaskDefSchema, SuperstepDefSchema, PipelineDefSchema, TaskRuntimeStateSchema, PipelineRuntimeStateSchema, ProviderUsageStatusSchema, ProviderUsagePricingSourceSchema, ProviderUsageAuditEventSchema;
 var init_dist2 = __esm({
   "../../packages/shared-types/dist/index.js"() {
     "use strict";
-    init_chunk_2B4Z6TLC();
+    init_chunk_FQOJJELV();
     init_chunk_QT2SHN5K();
-    init_chunk_PVL2FXUQ();
+    init_chunk_XAYWVA4T();
     init_chunk_QEJHP4RV();
     init_lib();
     init_lib();
@@ -29944,6 +31179,8 @@ var init_dist2 = __esm({
     init_lib();
     import_loro_crdt2 = __toESM(require_nodejs(), 1);
     import_loro_crdt3 = __toESM(require_nodejs(), 1);
+    init_lib();
+    init_lib();
     init_lib();
     init_lib();
     import_loro_crdt4 = __toESM(require_nodejs(), 1);
@@ -31567,10 +32804,11 @@ var init_dist2 = __esm({
     EDGE_IDENTITY_VERSION = 1;
     DEFAULT_CANVAS_ID = "main";
     Canvas = class {
-      constructor(doc, broadcast, canvasId = "main") {
+      constructor(doc, broadcast, canvasId = "main", modelCards = MODEL_CARDS) {
         this.doc = doc;
         this.broadcast = broadcast;
         this.canvasId = canvasId;
+        this.modelCards = modelCards;
       }
       // ── Read ─────────────────────────────────────────────
       listNodes(nodeType, parentId) {
@@ -31945,7 +33183,7 @@ var init_dist2 = __esm({
         } else {
           const requestedModelId = nodeData.modelId || nodeData.model || "";
           const modelId = normalizeModelId(requestedModelId) ?? requestedModelId;
-          const modelCard = MODEL_CARDS.find((c) => c.id === modelId);
+          const modelCard = this.modelCards.find((c) => c.id === modelId);
           if (!modelCard) {
             return {
               assetNodeId: "",
@@ -32721,7 +33959,21 @@ var init_dist2 = __esm({
       created_at: z.number(),
       updated_at: z.number()
     });
-    ModelUpstreamIdSchema = z.enum([
+    CredentialSourceKindSchema = z.enum([
+      /** User supplies a static credential. */
+      "api-key",
+      /** Real authorization-code flow against an authorization server. */
+      "oauth",
+      /** Vendor-specific capture: complete a login page, read the token it redirects with. */
+      "login-page-capture",
+      /** Vendor-specific import: read the token an installed desktop app already holds. */
+      "local-app-store"
+    ]);
+    DynamicProviderIdSchema = z.string().trim().regex(
+      /^[a-z0-9][a-z0-9._-]*$/,
+      "Provider ecosystem ids must be lowercase plugin-safe identifiers."
+    );
+    BuiltinModelUpstreamIdSchema = z.enum([
       "local",
       "mock",
       "fal",
@@ -32741,7 +33993,8 @@ var init_dist2 = __esm({
       "elevenlabs",
       "suno"
     ]);
-    ModelUpstreamApiShapeSchema = z.enum([
+    ModelUpstreamIdSchema = DynamicProviderIdSchema;
+    BuiltinModelUpstreamApiShapeSchema = z.enum([
       "local-asr",
       "local-tts",
       "fal",
@@ -32763,10 +34016,12 @@ var init_dist2 = __esm({
       "elevenlabs",
       "suno"
     ]);
-    ProviderOAuthIdSchema = z.enum([
+    ModelUpstreamApiShapeSchema = DynamicProviderIdSchema;
+    BuiltinProviderOAuthIdSchema = z.enum([
       "dreamina"
     ]);
-    ProviderAccountIdSchema = z.enum([
+    ProviderOAuthIdSchema = DynamicProviderIdSchema;
+    BuiltinProviderAccountIdSchema = z.enum([
       "local",
       "official",
       "fal",
@@ -32782,6 +34037,7 @@ var init_dist2 = __esm({
       "mock",
       "custom"
     ]);
+    ProviderAccountIdSchema = DynamicProviderIdSchema;
     ModelCardProviderBindingSchema = z.object({
       providerAccountId: z.string().trim().min(1),
       upstreamModel: z.string().trim().min(1)
@@ -32839,6 +34095,58 @@ var init_dist2 = __esm({
       ...MOCK_DECLARED_ROUTES,
       ...MOCK_ROUTES
     ];
+    MediaTranscriptMetadataSchema = z.object({
+      schemaVersion: z.literal(1),
+      kind: z.literal("media.transcript"),
+      backendId: z.string().min(1),
+      modelId: z.string().min(1),
+      language: z.string().min(1).optional(),
+      /** The media this grid was transcribed from. */
+      sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+      /**
+       * The word grid itself. Downstream wordIds only mean anything against this,
+       * and it survives a reflow of `text` or `segments` unchanged.
+       */
+      contentHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+      /**
+       * Where the full body is stored. Distinct from `contentHash` on purpose: this
+       * addresses the whole document, so restating the same grid moves it.
+       */
+      bodyHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+      summary: z.object({
+        wordCount: z.number().int().nonnegative(),
+        durationMs: z.number().int().min(0),
+        segmentCount: z.number().int().nonnegative().optional(),
+        averageConfidence: z.number().min(0).max(1).optional()
+      })
+    });
+    MediaDescriptionMetadataSchema = z.object({
+      schemaVersion: z.literal(1),
+      kind: z.literal("media.description"),
+      text: z.string().min(1),
+      language: z.string().min(1).optional(),
+      /** Which model or person wrote it. */
+      producerModelId: z.string().min(1).optional(),
+      /** The media file this describes. */
+      sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u)
+    });
+    declaredKinds = /* @__PURE__ */ new Map();
+    FillActionEnvelopeSchema = z.object({
+      actionId: z.string().min(1),
+      targetAssetId: z.string().min(1),
+      metadataKind: z.string().min(1),
+      metadata: z.object({ kind: z.string().min(1) }).passthrough(),
+      producer: z.string().min(1),
+      createdAt: z.string().optional()
+    });
+    registerAssetMetadataKind({
+      kind: "media.transcript",
+      schema: MediaTranscriptMetadataSchema
+    });
+    registerAssetMetadataKind({
+      kind: "media.description",
+      schema: MediaDescriptionMetadataSchema
+    });
     CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
       Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
         category,
@@ -32978,7 +34286,7 @@ var init_dist2 = __esm({
   }
 });
 
-// ../../packages/clash-bridge/dist/chunk-55XZ4QEM.js
+// ../../packages/clash-bridge/dist/chunk-23NPDTX4.js
 function actionsDir() {
   return (0, import_path3.join)(paths().configDir, "actions");
 }
@@ -32991,7 +34299,13 @@ function hostedEntrypoint(manifest) {
 async function readHostedPackage(dir) {
   const raw2 = JSON.parse(await (0, import_promises2.readFile)((0, import_path3.join)(dir, "manifest.json"), "utf8"));
   if (raw2.apiVersion !== "clash.plugin/v1") {
-    return { manifest: raw2, cards: {}, contractTests: {} };
+    return {
+      manifest: raw2,
+      cards: {},
+      providers: {},
+      modelBindings: {},
+      contractTests: {}
+    };
   }
   const manifest = ExecutablePluginManifestSchema.parse(raw2);
   if (manifest.runtime.kind !== "local") {
@@ -33001,11 +34315,22 @@ async function readHostedPackage(dir) {
   for (const card of manifest.exports.cards) {
     cards[card.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_path3.join)(dir, card.path), "utf8"));
   }
+  const providers = {};
+  for (const provider of manifest.exports.providers) {
+    providers[provider.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_path3.join)(dir, provider.path), "utf8"));
+  }
+  const modelBindings = {};
+  for (const binding of manifest.exports.modelBindings) {
+    modelBindings[binding.path] = JSON.parse(await (0, import_promises2.readFile)((0, import_path3.join)(dir, binding.path), "utf8"));
+  }
   const contractTests = {};
   for (const path of manifest.contractTests) {
     contractTests[path] = JSON.parse(await (0, import_promises2.readFile)((0, import_path3.join)(dir, path), "utf8"));
   }
-  return validateExecutablePluginPackage(manifest, cards, contractTests);
+  return validateExecutablePluginPackage(manifest, cards, contractTests, {
+    providers,
+    modelBindings
+  });
 }
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -33014,14 +34339,16 @@ function canonicalJson(value) {
   }
   return JSON.stringify(value);
 }
-function executablePluginSchemaHash(manifest, cards) {
+function executablePluginSchemaHash(manifest, cards, providers = {}, modelBindings = {}) {
   return `sha256:${(0, import_crypto3.createHash)("sha256").update(canonicalJson({
     apiVersion: manifest.apiVersion,
     id: manifest.id,
     version: manifest.version,
     exports: manifest.exports,
     permissions: manifest.permissions,
-    cards
+    cards,
+    providers,
+    modelBindings
   })).digest("hex")}`;
 }
 async function executablePluginContentFiles(root, directory, output) {
@@ -33068,12 +34395,17 @@ async function createExecutablePluginActivationReceipt(pluginDir) {
     apiVersion: "clash.plugin.activation/v1",
     pluginId: hostedPackage.manifest.id,
     version: hostedPackage.manifest.version,
-    schemaHash: executablePluginSchemaHash(hostedPackage.manifest, hostedPackage.cards),
+    schemaHash: executablePluginSchemaHash(
+      hostedPackage.manifest,
+      hostedPackage.cards,
+      hostedPackage.providers,
+      hostedPackage.modelBindings
+    ),
     contentHash: await executablePluginDirectoryContentHash(pluginDir),
     activatedAt: (/* @__PURE__ */ new Date()).toISOString()
   });
 }
-async function verifyExecutablePluginActivation(actionsRoot, pluginDir, manifest, cards) {
+async function verifyExecutablePluginActivation(actionsRoot, pluginDir, manifest, cards, providers, modelBindings) {
   const receiptFile = executablePluginActivationReceiptPath(actionsRoot, manifest.id);
   let receipt;
   try {
@@ -33085,7 +34417,7 @@ async function verifyExecutablePluginActivation(actionsRoot, pluginDir, manifest
       `Plugin ${manifest.id} has no valid activation receipt; use clash action activate. ${error51.message}`
     );
   }
-  const schemaHash = executablePluginSchemaHash(manifest, cards);
+  const schemaHash = executablePluginSchemaHash(manifest, cards, providers, modelBindings);
   const contentHash = await executablePluginDirectoryContentHash(pluginDir);
   if (receipt.pluginId !== manifest.id || receipt.version !== manifest.version || receipt.schemaHash !== schemaHash || receipt.contentHash !== contentHash) {
     throw new Error(
@@ -33145,6 +34477,81 @@ function executablePluginNodeArgs(pluginDir, entrypointPath, runtimeArgs) {
     ...runtimeArgs
   ];
 }
+function ensurePythonNetworkGuardDir() {
+  if (pythonNetworkGuardDir && (0, import_fs.existsSync)((0, import_path3.join)(pythonNetworkGuardDir, "sitecustomize.py"))) {
+    return pythonNetworkGuardDir;
+  }
+  const dir = (0, import_path3.join)((0, import_os3.tmpdir)(), `clash-plugin-py-guard-${process.pid}`);
+  (0, import_fs.mkdirSync)(dir, { recursive: true });
+  (0, import_fs.writeFileSync)((0, import_path3.join)(dir, "sitecustomize.py"), PLUGIN_PYTHON_NETWORK_GUARD_SOURCE);
+  pythonNetworkGuardDir = dir;
+  return dir;
+}
+function executablePluginPythonArgs(entrypointPath, runtimeArgs) {
+  return ["-B", "-s", entrypointPath, ...runtimeArgs];
+}
+function executablePluginPythonEnv(manifest, sdkPythonDir, pluginDir) {
+  const env = credentialFreePluginEnv(manifest);
+  const guardDir = ensurePythonNetworkGuardDir();
+  env.PYTHONPATH = sdkPythonDir ? `${guardDir}${import_path3.delimiter}${sdkPythonDir}` : guardDir;
+  env.PYTHONDONTWRITEBYTECODE = "1";
+  env.PYTHONNOUSERSITE = "1";
+  if (pluginDir) {
+    const declaredReads = manifest.permissions?.filesystem?.read ?? [];
+    const allowed = [
+      pluginDir,
+      ...sdkPythonDir ? [sdkPythonDir] : [],
+      guardDir,
+      ...declaredReads
+    ];
+    env.CLASH_PLUGIN_ALLOWED_PATHS = allowed.join(import_path3.delimiter);
+  }
+  return env;
+}
+function managedLocalModelsPythonBin() {
+  const venvDir = (0, import_path3.join)(paths().configDir, "runtimes", "python", "local-models", "venv");
+  const bin = managedPythonBin(venvDir);
+  return (0, import_fs.existsSync)(bin) ? bin : null;
+}
+function resolveExecutablePluginPythonBin(opts) {
+  const hasRequirements = (0, import_fs.existsSync)((0, import_path3.join)(opts.pluginDir, "requirements.txt"));
+  const explicit = process.env.CLASH_ACTIONS_PYTHON;
+  if (explicit) {
+    if (!hasRequirements) return explicit;
+    return preparePythonRuntimeDeps({
+      pythonBin: explicit,
+      stampDir: explicitPythonStampDir(explicit),
+      actionId: opts.manifestId,
+      actionDir: opts.pluginDir,
+      sdkPythonDir: opts.sdkPythonDir,
+      logPrefix: opts.logPrefix,
+      installSdk: false
+    });
+  }
+  if (!hasRequirements) {
+    const localModelsPython = managedLocalModelsPythonBin();
+    if (localModelsPython) return localModelsPython;
+  }
+  const venvDir = managedPythonVenvDir();
+  const pythonBin = managedPythonBin(venvDir);
+  if (!(0, import_fs.existsSync)(pythonBin)) {
+    (0, import_fs.mkdirSync)(venvDir, { recursive: true });
+    process.stderr.write(`${opts.logPrefix}actions: python venv create path=${venvDir}
+`);
+    if (!runPythonSetup("python3", ["-m", "venv", venvDir], opts.logPrefix, opts.manifestId)) {
+      return null;
+    }
+  }
+  return preparePythonRuntimeDeps({
+    pythonBin,
+    stampDir: venvDir,
+    actionId: opts.manifestId,
+    actionDir: opts.pluginDir,
+    sdkPythonDir: opts.sdkPythonDir,
+    logPrefix: opts.logPrefix,
+    installSdk: false
+  });
+}
 async function runExecutablePluginContractTests(pluginDirInput) {
   const pluginDir = (0, import_fs.realpathSync)(pluginDirInput);
   const hostedPackage = await readHostedPackage(pluginDir);
@@ -33162,21 +34569,45 @@ async function runExecutablePluginContractTests(pluginDirInput) {
   const extension2 = manifest.runtime.entrypoint.toLowerCase().slice(
     manifest.runtime.entrypoint.lastIndexOf(".")
   );
-  if (extension2 !== ".js" && extension2 !== ".mjs") {
+  if (extension2 !== ".js" && extension2 !== ".mjs" && extension2 !== ".py") {
     throw new Error(
-      `Contract-tested v1 plugins require a sandboxed .js or .mjs entrypoint; got ${extension2 || "none"}.`
+      `Contract-tested v1 plugins require a sandboxed .js, .mjs or .py entrypoint; got ${extension2 || "none"}.`
     );
   }
+  const language = resolvePluginLanguage(manifest.runtime) ?? "node";
+  const sdkPythonDir = language === "python" ? resolveSdkPythonDir() : null;
+  const spawnPlan = language === "python" ? (() => {
+    const pythonBin = resolveExecutablePluginPythonBin({
+      manifestId: manifest.id,
+      pluginDir,
+      sdkPythonDir,
+      logPrefix: ""
+    });
+    if (!pythonBin) {
+      throw new Error(
+        `Plugin ${manifest.id} needs a Python runtime \u2014 set CLASH_ACTIONS_PYTHON or install the app-managed runtime.`
+      );
+    }
+    return {
+      bin: pythonBin,
+      args: executablePluginPythonArgs(entrypointPath, manifest.runtime.args),
+      env: executablePluginPythonEnv(manifest, sdkPythonDir, pluginDir)
+    };
+  })() : {
+    bin: resolveExecutablePluginNodePath(),
+    args: executablePluginNodeArgs(pluginDir, entrypointPath, manifest.runtime.args),
+    env: credentialFreePluginEnv(manifest)
+  };
   const schemaHash = executablePluginSchemaHash(manifest, cards);
   const completed = [];
   for (const path of manifest.contractTests) {
     const contractTest = contractTests[path];
     const child = (0, import_child_process2.spawn)(
-      resolveExecutablePluginNodePath(),
-      executablePluginNodeArgs(pluginDir, entrypointPath, manifest.runtime.args),
+      spawnPlan.bin,
+      spawnPlan.args,
       {
         cwd: pluginDir,
-        env: credentialFreePluginEnv(manifest),
+        env: spawnPlan.env,
         stdio: ["pipe", "pipe", "pipe"]
       }
     );
@@ -33322,9 +34753,10 @@ function prepareManagedPythonRuntime(opts) {
 }
 function preparePythonRuntimeDeps(opts) {
   const { pythonBin } = opts;
+  const installSdk = opts.installSdk ?? true;
   const stamp = readPythonDepsStamp(opts.stampDir);
   let changed = false;
-  if (opts.sdkPythonDir && (0, import_fs.existsSync)((0, import_path3.join)(opts.sdkPythonDir, "pyproject.toml"))) {
+  if (installSdk && opts.sdkPythonDir && (0, import_fs.existsSync)((0, import_path3.join)(opts.sdkPythonDir, "pyproject.toml"))) {
     const sdkKey = `${opts.sdkPythonDir}:${fileVersionKey((0, import_path3.join)(opts.sdkPythonDir, "pyproject.toml"))}`;
     const sdkStampMatches = stamp.sdk === sdkKey;
     const sdkImportsOk = sdkStampMatches ? canImportPythonSdkRuntimeDeps(pythonBin, opts.logPrefix, opts.actionId, false) : false;
@@ -33402,9 +34834,9 @@ function fileVersionKey(path) {
   const s = (0, import_fs.statSync)(path);
   return `${s.size}:${Math.round(s.mtimeMs)}`;
 }
-var import_child_process2, import_crypto3, import_assert, import_promises2, import_fs, import_path3, import_readline, PluginStdioSession, RESTART_BACKOFF_MIN_MS, RESTART_BACKOFF_MAX_MS, HEALTHY_UPTIME_MS, FAST_EXIT_DISABLE_MS, SHUTDOWN_GRACE_MS, PYTHON_DEPS_STAMP, WATCH_DEBOUNCE_MS, PLUGIN_NETWORK_GUARD, ActionsHost;
-var init_chunk_55XZ4QEM = __esm({
-  "../../packages/clash-bridge/dist/chunk-55XZ4QEM.js"() {
+var import_child_process2, import_crypto3, import_assert, import_promises2, import_fs, import_path3, import_os3, import_readline, PluginStdioSession, RESTART_BACKOFF_MIN_MS, RESTART_BACKOFF_MAX_MS, HEALTHY_UPTIME_MS, FAST_EXIT_DISABLE_MS, SHUTDOWN_GRACE_MS, PYTHON_DEPS_STAMP, WATCH_DEBOUNCE_MS, PLUGIN_NETWORK_GUARD, ActionsHost, PLUGIN_PYTHON_NETWORK_GUARD_SOURCE, pythonNetworkGuardDir;
+var init_chunk_23NPDTX4 = __esm({
+  "../../packages/clash-bridge/dist/chunk-23NPDTX4.js"() {
     "use strict";
     init_chunk_QHDUUIIF();
     import_child_process2 = require("child_process");
@@ -33413,6 +34845,7 @@ var init_chunk_55XZ4QEM = __esm({
     import_promises2 = require("fs/promises");
     import_fs = require("fs");
     import_path3 = require("path");
+    import_os3 = require("os");
     init_dist2();
     import_readline = require("readline");
     init_dist2();
@@ -33457,12 +34890,12 @@ var init_chunk_55XZ4QEM = __esm({
         if (this.pending.has(invocation.invocationId)) {
           return Promise.reject(new Error(`Invocation ${invocation.invocationId} is already running.`));
         }
-        return new Promise((resolve13, reject) => {
+        return new Promise((resolve14, reject) => {
           const timer = setTimeout(() => {
             this.pending.delete(invocation.invocationId);
             reject(new Error(`Plugin invocation ${invocation.invocationId} timed out.`));
           }, options.timeoutMs ?? 12e4);
-          this.pending.set(invocation.invocationId, { invocation, resolve: resolve13, reject, timer });
+          this.pending.set(invocation.invocationId, { invocation, resolve: resolve14, reject, timer });
           this.write(invocation);
         });
       }
@@ -33665,7 +35098,7 @@ syncBuiltinESMExports();
 `);
           return "skipped";
         }
-        const { manifest, cards } = hostedPackage;
+        const { manifest, cards, providers, modelBindings } = hostedPackage;
         if (this.env.executablePluginsOnly && !isExecutablePluginManifest(manifest)) {
           return "ignored";
         }
@@ -33681,7 +35114,14 @@ syncBuiltinESMExports();
         }
         if (isExecutablePluginManifest(manifest)) {
           try {
-            await verifyExecutablePluginActivation(this.root, dir, manifest, cards);
+            await verifyExecutablePluginActivation(
+              this.root,
+              dir,
+              manifest,
+              cards,
+              providers,
+              modelBindings
+            );
           } catch (error51) {
             process.stderr.write(`actions: ${manifest.id}: ${error51.message} \u2014 skipping
 `);
@@ -33710,7 +35150,9 @@ syncBuiltinESMExports();
           manifest,
           dir,
           cards,
-          ...isExecutablePluginManifest(manifest) ? { schemaHash: executablePluginSchemaHash(manifest, cards) } : {}
+          providers,
+          modelBindings,
+          ...isExecutablePluginManifest(manifest) ? { schemaHash: executablePluginSchemaHash(manifest, cards, providers, modelBindings) } : {}
         };
         const supervised = {
           loaded,
@@ -33753,13 +35195,13 @@ syncBuiltinESMExports();
           sup.session?.close();
           sup.session = null;
           if (!sup.child) continue;
-          pending.push(new Promise((resolve13) => {
+          pending.push(new Promise((resolve14) => {
             const child = sup.child;
             let resolved = false;
             const finish = () => {
               if (resolved) return;
               resolved = true;
-              resolve13();
+              resolve14();
             };
             child.once("exit", finish);
             try {
@@ -33790,6 +35232,52 @@ syncBuiltinESMExports();
           const { manifest, cards, schemaHash } = supervised.loaded;
           if (!isExecutablePluginManifest(manifest) || !supervised.session || !schemaHash) continue;
           for (const document of Object.values(cards)) {
+            registrations.push({
+              pluginId: manifest.id,
+              version: manifest.version,
+              schemaHash,
+              runtime: manifest.runtime,
+              permissions: manifest.permissions,
+              document
+            });
+          }
+        }
+        return registrations.sort(
+          (left, right) => `${left.pluginId}:${left.document.spec.id}`.localeCompare(
+            `${right.pluginId}:${right.document.spec.id}`
+          )
+        );
+      }
+      /** Activated Provider definitions, independent from the Model Card catalog. */
+      listProviders() {
+        const registrations = [];
+        for (const supervised of this.actions.values()) {
+          const { manifest, providers, schemaHash } = supervised.loaded;
+          if (!isExecutablePluginManifest(manifest) || !supervised.session || !schemaHash) continue;
+          for (const document of Object.values(providers)) {
+            registrations.push({
+              pluginId: manifest.id,
+              version: manifest.version,
+              schemaHash,
+              runtime: manifest.runtime,
+              permissions: manifest.permissions,
+              document
+            });
+          }
+        }
+        return registrations.sort(
+          (left, right) => `${left.pluginId}:${left.document.spec.id}`.localeCompare(
+            `${right.pluginId}:${right.document.spec.id}`
+          )
+        );
+      }
+      /** Activated provider-side implementations that attach to Cards by id. */
+      listModelBindings() {
+        const registrations = [];
+        for (const supervised of this.actions.values()) {
+          const { manifest, modelBindings, schemaHash } = supervised.loaded;
+          if (!isExecutablePluginManifest(manifest) || !supervised.session || !schemaHash) continue;
+          for (const document of Object.values(modelBindings)) {
             registrations.push({
               pluginId: manifest.id,
               version: manifest.version,
@@ -33941,7 +35429,14 @@ syncBuiltinESMExports();
           if (!isExecutablePluginManifest(manifest) && manifest.runtime && manifest.runtime !== "local") continue;
           if (isExecutablePluginManifest(manifest)) {
             try {
-              await verifyExecutablePluginActivation(this.root, dir, manifest, hostedPackage.cards);
+              await verifyExecutablePluginActivation(
+                this.root,
+                dir,
+                manifest,
+                hostedPackage.cards,
+                hostedPackage.providers,
+                hostedPackage.modelBindings
+              );
             } catch (error51) {
               const active = this.actions.get(manifest.id);
               if (active) await this.stopOne(manifest.id, "activation-receipt-mismatch");
@@ -34001,12 +35496,12 @@ syncBuiltinESMExports();
         sup.session = null;
         const child = sup.child;
         if (child) {
-          await new Promise((resolve13) => {
+          await new Promise((resolve14) => {
             let resolved = false;
             const finish = () => {
               if (resolved) return;
               resolved = true;
-              resolve13();
+              resolve14();
             };
             child.once("exit", finish);
             try {
@@ -34066,28 +35561,43 @@ syncBuiltinESMExports();
         let args;
         if (ext === ".py") {
           if (executablePlugin) {
-            process.stderr.write(
-              `actions: ${manifest.id}: sandboxed Python v1 plugins are not supported yet \u2014 use a bundled .mjs entrypoint
+            const pythonBin = resolveExecutablePluginPythonBin({
+              manifestId: manifest.id,
+              pluginDir: runtimeDir,
+              sdkPythonDir,
+              logPrefix: ""
+            });
+            if (!pythonBin) {
+              process.stderr.write(
+                `actions: ${manifest.id}: no Python runtime available for sandboxed plugin \u2014 set CLASH_ACTIONS_PYTHON or install the app-managed runtime
 `
+              );
+              return;
+            }
+            bin = pythonBin;
+            args = executablePluginPythonArgs(
+              runtimeEntrypointPath,
+              executableRuntime?.args ?? []
             );
-            return;
+            Object.assign(childEnv, executablePluginPythonEnv(manifest, sdkPythonDir, runtimeDir));
+          } else {
+            const explicitPython = process.env.CLASH_ACTIONS_PYTHON;
+            const pythonBin = explicitPython ? prepareExplicitPythonRuntime({
+              pythonBin: explicitPython,
+              actionId: manifest.id,
+              actionDir: dir,
+              sdkPythonDir,
+              logPrefix: ""
+            }) : prepareManagedPythonRuntime({
+              actionId: manifest.id,
+              actionDir: dir,
+              sdkPythonDir,
+              logPrefix: ""
+            });
+            if (!pythonBin) return;
+            bin = pythonBin;
+            args = [entrypointPath];
           }
-          const explicitPython = process.env.CLASH_ACTIONS_PYTHON;
-          const pythonBin = explicitPython ? prepareExplicitPythonRuntime({
-            pythonBin: explicitPython,
-            actionId: manifest.id,
-            actionDir: dir,
-            sdkPythonDir,
-            logPrefix: ""
-          }) : prepareManagedPythonRuntime({
-            actionId: manifest.id,
-            actionDir: dir,
-            sdkPythonDir,
-            logPrefix: ""
-          });
-          if (!pythonBin) return;
-          bin = pythonBin;
-          args = [entrypointPath];
         } else if (ext === ".js" || ext === ".mjs") {
           bin = resolveExecutablePluginNodePath();
           args = executablePlugin ? executablePluginNodeArgs(
@@ -34188,6 +35698,105 @@ syncBuiltinESMExports();
         });
       }
     };
+    PLUGIN_PYTHON_NETWORK_GUARD_SOURCE = `"""Clash executable-plugin sandbox: direct network and undeclared-path access is denied."""
+import builtins
+import io
+import os
+import socket
+import _socket
+
+_DENIED = (
+    "Direct plugin network access is denied; use the Clash capability broker. "
+    "(ERR_CLASH_PLUGIN_NETWORK_DENIED)"
+)
+
+_PATH_DENIED = (
+    "Undeclared filesystem access is denied; declare the path in the plugin manifest. "
+    "(ERR_CLASH_PLUGIN_PATH_DENIED)"
+)
+
+
+def _denied(*_args, **_kwargs):
+    # A denial must look like a denial: PermissionError with EPERM is what a
+    # kernel-level sandbox produces, so callers can handle one shape.
+    raise PermissionError(1, _DENIED)
+
+
+class _DeniedSocket(socket.socket):
+    def __init__(self, *_args, **_kwargs):
+        raise PermissionError(1, _DENIED)
+
+
+socket.socket = _DeniedSocket
+socket.create_connection = _denied
+socket.create_server = _denied
+socket.socketpair = _denied
+socket.getaddrinfo = _denied
+socket.gethostbyname = _denied
+socket.gethostbyname_ex = _denied
+socket.gethostbyaddr = _denied
+
+# The high-level module is only a wrapper. Patching it alone left \`import
+# _socket\` as a complete bypass, which is the first thing a hostile plugin
+# reaches for.
+_socket.socket = _denied
+_socket.socketpair = _denied
+_socket.getaddrinfo = _denied
+_socket.gethostbyname = _denied
+_socket.gethostbyname_ex = _denied
+_socket.gethostbyaddr = _denied
+
+# Paths the plugin is allowed to touch, injected by the Bridge. Anything else --
+# provider secrets, other plugins' packages, the rest of the machine -- is
+# refused before the syscall.
+_ALLOWED_PREFIXES = tuple(
+    os.path.realpath(entry)
+    for entry in os.environ.get("CLASH_PLUGIN_ALLOWED_PATHS", "").split(os.pathsep)
+    if entry
+)
+
+
+def _path_allowed(path):
+    if not _ALLOWED_PREFIXES:
+        return True
+    try:
+        resolved = os.path.realpath(path if isinstance(path, str) else os.fsdecode(path))
+    except (TypeError, ValueError):
+        return True
+    return any(
+        resolved == prefix or resolved.startswith(prefix + os.sep)
+        for prefix in _ALLOWED_PREFIXES
+    )
+
+
+_real_open = builtins.open
+_real_os_open = os.open
+_real_io_open = io.open
+
+
+def _guarded_open(file, *args, **kwargs):
+    if isinstance(file, (str, bytes, os.PathLike)) and not _path_allowed(file):
+        raise PermissionError(1, _PATH_DENIED)
+    return _real_open(file, *args, **kwargs)
+
+
+def _guarded_os_open(path, *args, **kwargs):
+    if not _path_allowed(path):
+        raise PermissionError(1, _PATH_DENIED)
+    return _real_os_open(path, *args, **kwargs)
+
+
+def _guarded_io_open(file, *args, **kwargs):
+    if isinstance(file, (str, bytes, os.PathLike)) and not _path_allowed(file):
+        raise PermissionError(1, _PATH_DENIED)
+    return _real_io_open(file, *args, **kwargs)
+
+
+builtins.open = _guarded_open
+io.open = _guarded_io_open
+os.open = _guarded_os_open
+`;
+    pythonNetworkGuardDir = null;
   }
 });
 
@@ -34207,8 +35816,79 @@ __export(actions_host_exports, {
 var init_actions_host = __esm({
   "../../packages/clash-bridge/dist/actions-host.js"() {
     "use strict";
-    init_chunk_55XZ4QEM();
+    init_chunk_23NPDTX4();
     init_chunk_QHDUUIIF();
+  }
+});
+
+// ../../packages/shared-runtime/dist/metadata-body-blobs.js
+function metadataBodyContentHash(body) {
+  return `sha256:${(0, import_node_crypto.createHash)("sha256").update(body, "utf8").digest("hex")}`;
+}
+function metadataBodyBlobPath(dataDir2, contentHash) {
+  const digest = /^sha256:([a-f0-9]{64})$/u.exec(contentHash)?.[1];
+  if (!digest)
+    throw new Error(`Invalid metadata body content hash: ${contentHash}`);
+  return (0, import_node_path.join)(dataDir2, METADATA_BODY_BLOB_DIRNAME, digest.slice(0, 2), `${digest}.json`);
+}
+function canonicalMetadataBody(body) {
+  const canonical = (value) => {
+    if (Array.isArray(value))
+      return value.map(canonical);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, item]) => [key, canonical(item)]));
+    }
+    return value;
+  };
+  return JSON.stringify(canonical(body));
+}
+async function storeMetadataBody(options) {
+  const serialized = canonicalMetadataBody(options.body);
+  const contentHash = metadataBodyContentHash(serialized);
+  if (options.expectedContentHash && options.expectedContentHash !== contentHash) {
+    throw new Error(`metadata body content hash mismatch: expected ${options.expectedContentHash}, got ${contentHash}`);
+  }
+  const path = metadataBodyBlobPath(options.dataDir, contentHash);
+  const bytes = Buffer.byteLength(serialized);
+  const existing = await (0, import_promises3.readFile)(path, "utf8").catch((error51) => {
+    if (error51 && typeof error51 === "object" && error51.code === "ENOENT") {
+      return null;
+    }
+    throw error51;
+  });
+  if (existing !== null) {
+    if (existing !== serialized) {
+      throw new Error(`metadata body blob ${contentHash} already exists with different content`);
+    }
+    return { contentHash, path, bytes, deduplicated: true };
+  }
+  await (0, import_promises3.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
+  await (0, import_promises3.writeFile)(path, serialized, { encoding: "utf8", mode: 292 });
+  await (0, import_promises3.chmod)(path, 292).catch(() => void 0);
+  return { contentHash, path, bytes, deduplicated: false };
+}
+async function readMetadataBody(options) {
+  const path = metadataBodyBlobPath(options.dataDir, options.contentHash);
+  const serialized = await (0, import_promises3.readFile)(path, "utf8").catch((error51) => {
+    if (error51 && typeof error51 === "object" && error51.code === "ENOENT") {
+      throw new Error(`metadata body ${options.contentHash} is not stored`);
+    }
+    throw error51;
+  });
+  const actual = metadataBodyContentHash(serialized);
+  if (actual !== options.contentHash) {
+    throw new Error(`metadata body blob is corrupt: ${options.contentHash} contains ${actual}`);
+  }
+  return JSON.parse(serialized);
+}
+var import_node_crypto, import_promises3, import_node_path, METADATA_BODY_BLOB_DIRNAME;
+var init_metadata_body_blobs = __esm({
+  "../../packages/shared-runtime/dist/metadata-body-blobs.js"() {
+    "use strict";
+    import_node_crypto = require("node:crypto");
+    import_promises3 = require("node:fs/promises");
+    import_node_path = require("node:path");
+    METADATA_BODY_BLOB_DIRNAME = "metadata-blobs";
   }
 });
 
@@ -34673,7 +36353,7 @@ async function generateBflFlux3Video(options) {
       throw new Error(`BFL FLUX 3 request failed: ${polled?.details?.error ?? polled?.details ?? polled?.status}`);
     }
     if (pollIntervalMs > 0)
-      await new Promise((resolve13) => setTimeout(resolve13, pollIntervalMs));
+      await new Promise((resolve14) => setTimeout(resolve14, pollIntervalMs));
   }
   throw new Error(`BFL FLUX 3 request timed out: ${requestId}`);
 }
@@ -34853,7 +36533,7 @@ async function downloadGeminiOmniVideo(input) {
         throw new Error("Gemini Omni generated video file processing failed.");
       }
       if ((input.pollIntervalMs ?? 5e3) > 0) {
-        await new Promise((resolve13) => setTimeout(resolve13, input.pollIntervalMs ?? 5e3));
+        await new Promise((resolve14) => setTimeout(resolve14, input.pollIntervalMs ?? 5e3));
       }
     }
     if (!active)
@@ -34978,7 +36658,7 @@ async function waitForPikaMediaJob(options) {
     if (job.status === "failed")
       throw pikaJobError(job);
     if (pollIntervalMs > 0) {
-      await new Promise((resolve13) => setTimeout(resolve13, pollIntervalMs));
+      await new Promise((resolve14) => setTimeout(resolve14, pollIntervalMs));
     }
   }
   throw new Error(`Pika media job timed out: ${options.jobId}`);
@@ -35253,6 +36933,7 @@ function buildProjectStatus(context, options) {
   const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
   const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
   const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
+  const metadataBodyBlobRoot = joinPath(localApiDataDir, "metadata-blobs");
   const loroReplicaRoot = joinPath(localApiProjectRoot, "loro");
   const loroSnapshotPath = joinPath(loroReplicaRoot, "snapshot.bin");
   const loroUpdatesLogPath = joinPath(loroReplicaRoot, "updates.log");
@@ -35273,6 +36954,7 @@ function buildProjectStatus(context, options) {
     loroUpdatesLogPath,
     mediaAssetBlobRoot,
     textRevisionBlobRoot,
+    metadataBodyBlobRoot,
     runtimeRoot
   ];
   const currentWorkspace = {
@@ -35404,6 +37086,13 @@ function buildProjectStatus(context, options) {
             kind: "content-addressed-files",
             path: textRevisionBlobRoot,
             mediaType: "text/markdown",
+            immutable: true,
+            agentWritable: false
+          },
+          assetMetadataBodies: {
+            kind: "content-addressed-files",
+            path: metadataBodyBlobRoot,
+            mediaType: "application/json",
             immutable: true,
             agentWritable: false
           }
@@ -35785,7 +37474,7 @@ function markerString2(markerPath, source, key) {
 async function existingInitialization(markerPath, requestedProjectId) {
   let source;
   try {
-    source = await (0, import_promises3.readFile)(markerPath, "utf8");
+    source = await (0, import_promises4.readFile)(markerPath, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT")
       return void 0;
@@ -35802,13 +37491,13 @@ async function existingInitialization(markerPath, requestedProjectId) {
   return { projectId, markerPath, workspaceId, reused: true };
 }
 async function initializeClashWorkspace(options = {}) {
-  const cwd = (0, import_node_path.resolve)(options.cwd ?? process.cwd());
-  const markerPath = (0, import_node_path.join)(cwd, ".clash", "project.toml");
+  const cwd = (0, import_node_path2.resolve)(options.cwd ?? process.cwd());
+  const markerPath = (0, import_node_path2.join)(cwd, ".clash", "project.toml");
   const requestedProjectId = options.projectId?.trim() || void 0;
   const existing = await existingInitialization(markerPath, requestedProjectId);
   if (existing)
     return existing;
-  const projectId = requestedProjectId ?? `local_${(0, import_node_crypto.randomUUID)()}`;
+  const projectId = requestedProjectId ?? `local_${(0, import_node_crypto2.randomUUID)()}`;
   const workspaceId = projectWorkspaceId("managed", projectId, cwd);
   const marker = [
     "schema_version = 1",
@@ -35817,9 +37506,9 @@ async function initializeClashWorkspace(options = {}) {
     'store = "managed"',
     ""
   ].join("\n");
-  await (0, import_promises3.mkdir)((0, import_node_path.dirname)(markerPath), { recursive: true });
+  await (0, import_promises4.mkdir)((0, import_node_path2.dirname)(markerPath), { recursive: true });
   try {
-    await (0, import_promises3.writeFile)(markerPath, marker, { encoding: "utf8", flag: "wx" });
+    await (0, import_promises4.writeFile)(markerPath, marker, { encoding: "utf8", flag: "wx" });
   } catch (error51) {
     if (error51.code !== "EEXIST")
       throw error51;
@@ -35830,13 +37519,13 @@ async function initializeClashWorkspace(options = {}) {
   }
   return { projectId, markerPath, workspaceId, reused: false };
 }
-var import_node_crypto, import_promises3, import_node_path;
+var import_node_crypto2, import_promises4, import_node_path2;
 var init_workspace_init = __esm({
   "../../packages/shared-runtime/dist/workspace-init.js"() {
     "use strict";
-    import_node_crypto = require("node:crypto");
-    import_promises3 = require("node:fs/promises");
-    import_node_path = require("node:path");
+    import_node_crypto2 = require("node:crypto");
+    import_promises4 = require("node:fs/promises");
+    import_node_path2 = require("node:path");
     init_project_status();
   }
 });
@@ -35914,6 +37603,141 @@ var init_mcp_command_menu = __esm({
   }
 });
 
+// ../../packages/shared-runtime/dist/local-daemon-runtime.js
+function parseMinimum(range) {
+  const match2 = /^>=\s*(\d+)\.(\d+)\.(\d+)/u.exec(range.trim());
+  if (!match2)
+    throw new Error(`Unsupported Node range: ${range}`);
+  return [Number(match2[1]), Number(match2[2]), Number(match2[3])];
+}
+function parseExclusiveMaximum(range) {
+  const match2 = /<\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?/u.exec(range);
+  if (!match2)
+    return void 0;
+  return [Number(match2[1]), Number(match2[2] ?? 0), Number(match2[3] ?? 0)];
+}
+function compare(a, b) {
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index])
+      return a[index] - b[index];
+  }
+  return 0;
+}
+function parseVersion(version2) {
+  const match2 = /^v?(\d+)\.(\d+)\.(\d+)/u.exec(version2.trim());
+  if (!match2)
+    return void 0;
+  return [Number(match2[1]), Number(match2[2]), Number(match2[3])];
+}
+function satisfies(version2, range) {
+  if (!version2)
+    return false;
+  const actual = parseVersion(version2);
+  if (!actual)
+    return false;
+  if (compare(actual, parseMinimum(range)) < 0)
+    return false;
+  const maximum = parseExclusiveMaximum(range);
+  if (maximum && compare(actual, maximum) >= 0)
+    return false;
+  return true;
+}
+function isElectronRuntime(execPath, env) {
+  if (env.ELECTRON_RUN_AS_NODE)
+    return true;
+  if (!execPath)
+    return false;
+  const name = (0, import_node_path3.basename)(execPath).toLowerCase();
+  if (name === "electron" || name.startsWith("electron"))
+    return true;
+  return /\.app\/contents\/(macos|frameworks)\//iu.test(execPath) || /[\\/]electron[\\/]dist[\\/]/iu.test(execPath);
+}
+function defaultProbeVersion(nodePath) {
+  try {
+    return (0, import_node_child_process.execFileSync)(nodePath, ["--version"], {
+      encoding: "utf8",
+      timeout: 5e3,
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+  } catch {
+    return void 0;
+  }
+}
+function resolveDaemonNodeRuntime(options) {
+  const env = options.env ?? {};
+  const probeVersion = options.probeVersion ?? defaultProbeVersion;
+  const fileExists = options.fileExists ?? import_node_fs.existsSync;
+  const explicit = env.CLASH_DAEMON_NODE_PATH?.trim();
+  if (explicit) {
+    return {
+      nodePath: explicit,
+      version: probeVersion(explicit),
+      source: "explicit",
+      inheritedFromLauncher: false
+    };
+  }
+  const execPath = options.execPath;
+  let reason;
+  if (isElectronRuntime(execPath, env)) {
+    reason = "launcher is an Electron runtime, which belongs to the GUI shell";
+  } else if (execPath) {
+    const version2 = probeVersion(execPath);
+    if (satisfies(version2, options.supportedRange)) {
+      return { nodePath: execPath, version: version2, source: "launcher", inheritedFromLauncher: true };
+    }
+    reason = `launcher Node ${version2 ?? "unknown"} does not satisfy ${options.supportedRange}`;
+  } else {
+    reason = "no launcher runtime was provided";
+  }
+  for (const candidate of options.candidates ?? []) {
+    if (options.fileExists && !fileExists(candidate))
+      continue;
+    const version2 = probeVersion(candidate);
+    if (satisfies(version2, options.supportedRange)) {
+      return { nodePath: candidate, version: version2, source: "discovered", inheritedFromLauncher: false, reason };
+    }
+  }
+  throw new Error(`No Node runtime satisfying ${options.supportedRange} was found for the Clash daemon (${reason ?? "no candidates"}). Set CLASH_DAEMON_NODE_PATH to pin one.`);
+}
+function defaultDaemonNodeCandidates(env = {}, deps = {}) {
+  const candidates = [];
+  const home = env.HOME?.trim();
+  if (home) {
+    candidates.push(`${home}/.local/share/clash/runtime/bin/node`);
+    const nvmRoot = env.NVM_DIR?.trim() || `${home}/.nvm`;
+    const listVersions = deps.listNvmVersions ?? defaultListNvmVersions;
+    const versions = [...listVersions(nvmRoot)].filter((entry) => /^v\d+\.\d+\.\d+$/u.test(entry)).sort(compareVersionDesc);
+    for (const version2 of versions) {
+      candidates.push(`${nvmRoot}/versions/node/${version2}/bin/node`);
+    }
+  }
+  candidates.push("/usr/local/bin/node", "/opt/homebrew/bin/node", "/usr/bin/node");
+  return candidates;
+}
+function compareVersionDesc(a, b) {
+  const left = parseVersion(a);
+  const right = parseVersion(b);
+  if (!left || !right)
+    return 0;
+  return -compare(left, right);
+}
+function defaultListNvmVersions(nvmRoot) {
+  try {
+    return (0, import_node_fs.readdirSync)(`${nvmRoot}/versions/node`);
+  } catch {
+    return [];
+  }
+}
+var import_node_child_process, import_node_fs, import_node_path3;
+var init_local_daemon_runtime = __esm({
+  "../../packages/shared-runtime/dist/local-daemon-runtime.js"() {
+    "use strict";
+    import_node_child_process = require("node:child_process");
+    import_node_fs = require("node:fs");
+    import_node_path3 = require("node:path");
+  }
+});
+
 // ../../packages/shared-runtime/dist/index.js
 var dist_exports = {};
 __export(dist_exports, {
@@ -35922,6 +37746,7 @@ __export(dist_exports, {
   LOCAL_HOST_DATA_SCHEMA_VERSION: () => LOCAL_HOST_DATA_SCHEMA_VERSION,
   LOCAL_HOST_PROTOCOL_VERSION: () => LOCAL_HOST_PROTOCOL_VERSION,
   LOCAL_HOST_RECORD_SCHEMA_VERSION: () => LOCAL_HOST_RECORD_SCHEMA_VERSION,
+  METADATA_BODY_BLOB_DIRNAME: () => METADATA_BODY_BLOB_DIRNAME,
   PIKA_MEDIA_BASE_URL: () => PIKA_MEDIA_BASE_URL,
   PROJECT_TIMELINE_APPLY_COMMAND: () => PROJECT_TIMELINE_APPLY_COMMAND,
   PROJECT_TIMELINE_FILE_PATTERN: () => PROJECT_TIMELINE_FILE_PATTERN,
@@ -35934,9 +37759,11 @@ __export(dist_exports, {
   buildMiniMaxH3Content: () => buildMiniMaxH3Content,
   buildProjectRecoveryPolicy: () => buildProjectRecoveryPolicy,
   buildProjectStatus: () => buildProjectStatus,
+  canonicalMetadataBody: () => canonicalMetadataBody,
   classifyClashMcpTool: () => classifyClashMcpTool,
   createGeminiOmniInteraction: () => createGeminiOmniInteraction,
   createPikaMediaJob: () => createPikaMediaJob,
+  defaultDaemonNodeCandidates: () => defaultDaemonNodeCandidates,
   defaultRuntimeCapabilities: () => defaultRuntimeCapabilities,
   desktopChromeMetrics: () => desktopChromeMetrics,
   desktopTrafficLightPosition: () => desktopTrafficLightPosition,
@@ -35954,14 +37781,19 @@ __export(dist_exports, {
   initializeClashWorkspace: () => initializeClashWorkspace,
   isCompatibleHost: () => isCompatibleHost,
   isLocalHostDiscoveryRecord: () => isLocalHostDiscoveryRecord,
+  metadataBodyBlobPath: () => metadataBodyBlobPath,
+  metadataBodyContentHash: () => metadataBodyContentHash,
   pikaBillingBasis: () => pikaBillingBasis,
   planCascadeTick: () => planCascadeTick,
   projectIdPathSegment: () => projectIdPathSegment,
   projectWorkspaceId: () => projectWorkspaceId,
   quotePikaCatalogRequest: () => quotePikaCatalogRequest,
+  readMetadataBody: () => readMetadataBody,
+  resolveDaemonNodeRuntime: () => resolveDaemonNodeRuntime,
   resolveFlux3KeyframeIndices: () => resolveFlux3KeyframeIndices,
   resolveRuntimeConfig: () => resolveRuntimeConfig,
   shouldClientOwnShutdown: () => shouldClientOwnShutdown,
+  storeMetadataBody: () => storeMetadataBody,
   syncWebSocketUrl: () => syncWebSocketUrl,
   uploadPikaMedia: () => uploadPikaMedia,
   visibleUserPromptText: () => visibleUserPromptText,
@@ -36077,6 +37909,7 @@ var LOCAL_HOST_RECORD_SCHEMA_VERSION, LOCAL_HOST_PROTOCOL_VERSION, LOCAL_HOST_DA
 var init_dist3 = __esm({
   "../../packages/shared-runtime/dist/index.js"() {
     "use strict";
+    init_metadata_body_blobs();
     init_cascade_scheduler();
     init_text_generation();
     init_prompt_content();
@@ -36089,6 +37922,7 @@ var init_dist3 = __esm({
     init_project_status();
     init_workspace_init();
     init_mcp_command_menu();
+    init_local_daemon_runtime();
     LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
     LOCAL_HOST_PROTOCOL_VERSION = 1;
     LOCAL_HOST_DATA_SCHEMA_VERSION = 1;
@@ -36123,26 +37957,26 @@ function resolveClashProfile(env = process.env) {
 function defaultClashHome(env = process.env) {
   const explicit = env.CLASH_HOME?.trim();
   if (explicit)
-    return (0, import_node_path2.resolve)(explicit);
-  const root = (0, import_node_path2.join)((0, import_node_os.homedir)(), ".clash");
-  return resolveClashProfile(env) === "dev" ? (0, import_node_path2.join)(root, "profiles", "dev") : root;
+    return (0, import_node_path4.resolve)(explicit);
+  const root = (0, import_node_path4.join)((0, import_node_os.homedir)(), ".clash");
+  return resolveClashProfile(env) === "dev" ? (0, import_node_path4.join)(root, "profiles", "dev") : root;
 }
 function defaultLocalApiDataDir(env = process.env) {
   const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
-  return explicit ? (0, import_node_path2.resolve)(explicit) : (0, import_node_path2.join)(defaultClashHome(env), "local-api");
+  return explicit ? (0, import_node_path4.resolve)(explicit) : (0, import_node_path4.join)(defaultClashHome(env), "local-api");
 }
 function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
   if (explicitClashHome?.trim())
-    return (0, import_node_path2.resolve)(explicitClashHome);
-  const resolved = (0, import_node_path2.resolve)(localDataDir);
-  return (0, import_node_path2.basename)(resolved) === "local-api" ? (0, import_node_path2.dirname)(resolved) : resolved;
+    return (0, import_node_path4.resolve)(explicitClashHome);
+  const resolved = (0, import_node_path4.resolve)(localDataDir);
+  return (0, import_node_path4.basename)(resolved) === "local-api" ? (0, import_node_path4.dirname)(resolved) : resolved;
 }
-var import_node_os, import_node_path2;
+var import_node_os, import_node_path4;
 var init_local_paths = __esm({
   "../../packages/shared-runtime/dist/local-paths.js"() {
     "use strict";
     import_node_os = require("node:os");
-    import_node_path2 = require("node:path");
+    import_node_path4 = require("node:path");
   }
 });
 
@@ -38394,7 +40228,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes3, createHash: createHash12 } = require("crypto");
+    var { randomBytes: randomBytes3, createHash: createHash13 } = require("crypto");
     var { Duplex, Readable: Readable2 } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -39062,7 +40896,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash12("sha1").update(key + GUID).digest("base64");
+        const digest = createHash13("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -39431,7 +41265,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash: createHash12 } = require("crypto");
+    var { createHash: createHash13 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -39738,7 +41572,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash12("sha1").update(key + GUID).digest("base64");
+        const digest = createHash13("sha1").update(key + GUID).digest("base64");
         const headers2 = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -43128,6 +44962,2223 @@ var require_ws = __commonJS({
   }
 });
 
+// ../../node_modules/.pnpm/esbuild@0.25.0/node_modules/esbuild/lib/main.js
+var require_main = __commonJS({
+  "../../node_modules/.pnpm/esbuild@0.25.0/node_modules/esbuild/lib/main.js"(exports2, module2) {
+    "use strict";
+    var __defProp2 = Object.defineProperty;
+    var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+    var __getOwnPropNames2 = Object.getOwnPropertyNames;
+    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+    var __export2 = (target, all) => {
+      for (var name in all)
+        __defProp2(target, name, { get: all[name], enumerable: true });
+    };
+    var __copyProps2 = (to, from, except, desc) => {
+      if (from && typeof from === "object" || typeof from === "function") {
+        for (let key of __getOwnPropNames2(from))
+          if (!__hasOwnProp2.call(to, key) && key !== except)
+            __defProp2(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable });
+      }
+      return to;
+    };
+    var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
+    var node_exports = {};
+    __export2(node_exports, {
+      analyzeMetafile: () => analyzeMetafile,
+      analyzeMetafileSync: () => analyzeMetafileSync,
+      build: () => build,
+      buildSync: () => buildSync,
+      context: () => context,
+      default: () => node_default,
+      formatMessages: () => formatMessages,
+      formatMessagesSync: () => formatMessagesSync,
+      initialize: () => initialize,
+      stop: () => stop,
+      transform: () => transform2,
+      transformSync: () => transformSync,
+      version: () => version2
+    });
+    module2.exports = __toCommonJS2(node_exports);
+    function encodePacket(packet) {
+      let visit = (value) => {
+        if (value === null) {
+          bb.write8(0);
+        } else if (typeof value === "boolean") {
+          bb.write8(1);
+          bb.write8(+value);
+        } else if (typeof value === "number") {
+          bb.write8(2);
+          bb.write32(value | 0);
+        } else if (typeof value === "string") {
+          bb.write8(3);
+          bb.write(encodeUTF8(value));
+        } else if (value instanceof Uint8Array) {
+          bb.write8(4);
+          bb.write(value);
+        } else if (value instanceof Array) {
+          bb.write8(5);
+          bb.write32(value.length);
+          for (let item of value) {
+            visit(item);
+          }
+        } else {
+          let keys = Object.keys(value);
+          bb.write8(6);
+          bb.write32(keys.length);
+          for (let key of keys) {
+            bb.write(encodeUTF8(key));
+            visit(value[key]);
+          }
+        }
+      };
+      let bb = new ByteBuffer();
+      bb.write32(0);
+      bb.write32(packet.id << 1 | +!packet.isRequest);
+      visit(packet.value);
+      writeUInt32LE(bb.buf, bb.len - 4, 0);
+      return bb.buf.subarray(0, bb.len);
+    }
+    function decodePacket(bytes) {
+      let visit = () => {
+        switch (bb.read8()) {
+          case 0:
+            return null;
+          case 1:
+            return !!bb.read8();
+          case 2:
+            return bb.read32();
+          case 3:
+            return decodeUTF8(bb.read());
+          case 4:
+            return bb.read();
+          case 5: {
+            let count = bb.read32();
+            let value2 = [];
+            for (let i = 0; i < count; i++) {
+              value2.push(visit());
+            }
+            return value2;
+          }
+          case 6: {
+            let count = bb.read32();
+            let value2 = {};
+            for (let i = 0; i < count; i++) {
+              value2[decodeUTF8(bb.read())] = visit();
+            }
+            return value2;
+          }
+          default:
+            throw new Error("Invalid packet");
+        }
+      };
+      let bb = new ByteBuffer(bytes);
+      let id = bb.read32();
+      let isRequest = (id & 1) === 0;
+      id >>>= 1;
+      let value = visit();
+      if (bb.ptr !== bytes.length) {
+        throw new Error("Invalid packet");
+      }
+      return { id, isRequest, value };
+    }
+    var ByteBuffer = class {
+      constructor(buf = new Uint8Array(1024)) {
+        this.buf = buf;
+        this.len = 0;
+        this.ptr = 0;
+      }
+      _write(delta) {
+        if (this.len + delta > this.buf.length) {
+          let clone2 = new Uint8Array((this.len + delta) * 2);
+          clone2.set(this.buf);
+          this.buf = clone2;
+        }
+        this.len += delta;
+        return this.len - delta;
+      }
+      write8(value) {
+        let offset = this._write(1);
+        this.buf[offset] = value;
+      }
+      write32(value) {
+        let offset = this._write(4);
+        writeUInt32LE(this.buf, value, offset);
+      }
+      write(bytes) {
+        let offset = this._write(4 + bytes.length);
+        writeUInt32LE(this.buf, bytes.length, offset);
+        this.buf.set(bytes, offset + 4);
+      }
+      _read(delta) {
+        if (this.ptr + delta > this.buf.length) {
+          throw new Error("Invalid packet");
+        }
+        this.ptr += delta;
+        return this.ptr - delta;
+      }
+      read8() {
+        return this.buf[this._read(1)];
+      }
+      read32() {
+        return readUInt32LE(this.buf, this._read(4));
+      }
+      read() {
+        let length = this.read32();
+        let bytes = new Uint8Array(length);
+        let ptr = this._read(bytes.length);
+        bytes.set(this.buf.subarray(ptr, ptr + length));
+        return bytes;
+      }
+    };
+    var encodeUTF8;
+    var decodeUTF8;
+    var encodeInvariant;
+    if (typeof TextEncoder !== "undefined" && typeof TextDecoder !== "undefined") {
+      let encoder = new TextEncoder();
+      let decoder = new TextDecoder();
+      encodeUTF8 = (text) => encoder.encode(text);
+      decodeUTF8 = (bytes) => decoder.decode(bytes);
+      encodeInvariant = 'new TextEncoder().encode("")';
+    } else if (typeof Buffer !== "undefined") {
+      encodeUTF8 = (text) => Buffer.from(text);
+      decodeUTF8 = (bytes) => {
+        let { buffer, byteOffset, byteLength } = bytes;
+        return Buffer.from(buffer, byteOffset, byteLength).toString();
+      };
+      encodeInvariant = 'Buffer.from("")';
+    } else {
+      throw new Error("No UTF-8 codec found");
+    }
+    if (!(encodeUTF8("") instanceof Uint8Array))
+      throw new Error(`Invariant violation: "${encodeInvariant} instanceof Uint8Array" is incorrectly false
+
+This indicates that your JavaScript environment is broken. You cannot use
+esbuild in this environment because esbuild relies on this invariant. This
+is not a problem with esbuild. You need to fix your environment instead.
+`);
+    function readUInt32LE(buffer, offset) {
+      return buffer[offset++] | buffer[offset++] << 8 | buffer[offset++] << 16 | buffer[offset++] << 24;
+    }
+    function writeUInt32LE(buffer, value, offset) {
+      buffer[offset++] = value;
+      buffer[offset++] = value >> 8;
+      buffer[offset++] = value >> 16;
+      buffer[offset++] = value >> 24;
+    }
+    var quote = JSON.stringify;
+    var buildLogLevelDefault = "warning";
+    var transformLogLevelDefault = "silent";
+    function validateTarget(target) {
+      validateStringValue(target, "target");
+      if (target.indexOf(",") >= 0) throw new Error(`Invalid target: ${target}`);
+      return target;
+    }
+    var canBeAnything = () => null;
+    var mustBeBoolean = (value) => typeof value === "boolean" ? null : "a boolean";
+    var mustBeString = (value) => typeof value === "string" ? null : "a string";
+    var mustBeRegExp = (value) => value instanceof RegExp ? null : "a RegExp object";
+    var mustBeInteger = (value) => typeof value === "number" && value === (value | 0) ? null : "an integer";
+    var mustBeValidPortNumber = (value) => typeof value === "number" && value === (value | 0) && value >= 0 && value <= 65535 ? null : "a valid port number";
+    var mustBeFunction = (value) => typeof value === "function" ? null : "a function";
+    var mustBeArray = (value) => Array.isArray(value) ? null : "an array";
+    var mustBeObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? null : "an object";
+    var mustBeEntryPoints = (value) => typeof value === "object" && value !== null ? null : "an array or an object";
+    var mustBeWebAssemblyModule = (value) => value instanceof WebAssembly.Module ? null : "a WebAssembly.Module";
+    var mustBeObjectOrNull = (value) => typeof value === "object" && !Array.isArray(value) ? null : "an object or null";
+    var mustBeStringOrBoolean = (value) => typeof value === "string" || typeof value === "boolean" ? null : "a string or a boolean";
+    var mustBeStringOrObject = (value) => typeof value === "string" || typeof value === "object" && value !== null && !Array.isArray(value) ? null : "a string or an object";
+    var mustBeStringOrArray = (value) => typeof value === "string" || Array.isArray(value) ? null : "a string or an array";
+    var mustBeStringOrUint8Array = (value) => typeof value === "string" || value instanceof Uint8Array ? null : "a string or a Uint8Array";
+    var mustBeStringOrURL = (value) => typeof value === "string" || value instanceof URL ? null : "a string or a URL";
+    function getFlag(object2, keys, key, mustBeFn) {
+      let value = object2[key];
+      keys[key + ""] = true;
+      if (value === void 0) return void 0;
+      let mustBe = mustBeFn(value);
+      if (mustBe !== null) throw new Error(`${quote(key)} must be ${mustBe}`);
+      return value;
+    }
+    function checkForInvalidFlags(object2, keys, where) {
+      for (let key in object2) {
+        if (!(key in keys)) {
+          throw new Error(`Invalid option ${where}: ${quote(key)}`);
+        }
+      }
+    }
+    function validateInitializeOptions(options) {
+      let keys = /* @__PURE__ */ Object.create(null);
+      let wasmURL = getFlag(options, keys, "wasmURL", mustBeStringOrURL);
+      let wasmModule = getFlag(options, keys, "wasmModule", mustBeWebAssemblyModule);
+      let worker = getFlag(options, keys, "worker", mustBeBoolean);
+      checkForInvalidFlags(options, keys, "in initialize() call");
+      return {
+        wasmURL,
+        wasmModule,
+        worker
+      };
+    }
+    function validateMangleCache(mangleCache) {
+      let validated;
+      if (mangleCache !== void 0) {
+        validated = /* @__PURE__ */ Object.create(null);
+        for (let key in mangleCache) {
+          let value = mangleCache[key];
+          if (typeof value === "string" || value === false) {
+            validated[key] = value;
+          } else {
+            throw new Error(`Expected ${quote(key)} in mangle cache to map to either a string or false`);
+          }
+        }
+      }
+      return validated;
+    }
+    function pushLogFlags(flags, options, keys, isTTY2, logLevelDefault) {
+      let color = getFlag(options, keys, "color", mustBeBoolean);
+      let logLevel = getFlag(options, keys, "logLevel", mustBeString);
+      let logLimit = getFlag(options, keys, "logLimit", mustBeInteger);
+      if (color !== void 0) flags.push(`--color=${color}`);
+      else if (isTTY2) flags.push(`--color=true`);
+      flags.push(`--log-level=${logLevel || logLevelDefault}`);
+      flags.push(`--log-limit=${logLimit || 0}`);
+    }
+    function validateStringValue(value, what, key) {
+      if (typeof value !== "string") {
+        throw new Error(`Expected value for ${what}${key !== void 0 ? " " + quote(key) : ""} to be a string, got ${typeof value} instead`);
+      }
+      return value;
+    }
+    function pushCommonFlags(flags, options, keys) {
+      let legalComments = getFlag(options, keys, "legalComments", mustBeString);
+      let sourceRoot = getFlag(options, keys, "sourceRoot", mustBeString);
+      let sourcesContent = getFlag(options, keys, "sourcesContent", mustBeBoolean);
+      let target = getFlag(options, keys, "target", mustBeStringOrArray);
+      let format = getFlag(options, keys, "format", mustBeString);
+      let globalName = getFlag(options, keys, "globalName", mustBeString);
+      let mangleProps = getFlag(options, keys, "mangleProps", mustBeRegExp);
+      let reserveProps = getFlag(options, keys, "reserveProps", mustBeRegExp);
+      let mangleQuoted = getFlag(options, keys, "mangleQuoted", mustBeBoolean);
+      let minify = getFlag(options, keys, "minify", mustBeBoolean);
+      let minifySyntax = getFlag(options, keys, "minifySyntax", mustBeBoolean);
+      let minifyWhitespace = getFlag(options, keys, "minifyWhitespace", mustBeBoolean);
+      let minifyIdentifiers = getFlag(options, keys, "minifyIdentifiers", mustBeBoolean);
+      let lineLimit = getFlag(options, keys, "lineLimit", mustBeInteger);
+      let drop = getFlag(options, keys, "drop", mustBeArray);
+      let dropLabels = getFlag(options, keys, "dropLabels", mustBeArray);
+      let charset = getFlag(options, keys, "charset", mustBeString);
+      let treeShaking = getFlag(options, keys, "treeShaking", mustBeBoolean);
+      let ignoreAnnotations = getFlag(options, keys, "ignoreAnnotations", mustBeBoolean);
+      let jsx = getFlag(options, keys, "jsx", mustBeString);
+      let jsxFactory = getFlag(options, keys, "jsxFactory", mustBeString);
+      let jsxFragment = getFlag(options, keys, "jsxFragment", mustBeString);
+      let jsxImportSource = getFlag(options, keys, "jsxImportSource", mustBeString);
+      let jsxDev = getFlag(options, keys, "jsxDev", mustBeBoolean);
+      let jsxSideEffects = getFlag(options, keys, "jsxSideEffects", mustBeBoolean);
+      let define = getFlag(options, keys, "define", mustBeObject);
+      let logOverride = getFlag(options, keys, "logOverride", mustBeObject);
+      let supported = getFlag(options, keys, "supported", mustBeObject);
+      let pure = getFlag(options, keys, "pure", mustBeArray);
+      let keepNames = getFlag(options, keys, "keepNames", mustBeBoolean);
+      let platform2 = getFlag(options, keys, "platform", mustBeString);
+      let tsconfigRaw = getFlag(options, keys, "tsconfigRaw", mustBeStringOrObject);
+      if (legalComments) flags.push(`--legal-comments=${legalComments}`);
+      if (sourceRoot !== void 0) flags.push(`--source-root=${sourceRoot}`);
+      if (sourcesContent !== void 0) flags.push(`--sources-content=${sourcesContent}`);
+      if (target) {
+        if (Array.isArray(target)) flags.push(`--target=${Array.from(target).map(validateTarget).join(",")}`);
+        else flags.push(`--target=${validateTarget(target)}`);
+      }
+      if (format) flags.push(`--format=${format}`);
+      if (globalName) flags.push(`--global-name=${globalName}`);
+      if (platform2) flags.push(`--platform=${platform2}`);
+      if (tsconfigRaw) flags.push(`--tsconfig-raw=${typeof tsconfigRaw === "string" ? tsconfigRaw : JSON.stringify(tsconfigRaw)}`);
+      if (minify) flags.push("--minify");
+      if (minifySyntax) flags.push("--minify-syntax");
+      if (minifyWhitespace) flags.push("--minify-whitespace");
+      if (minifyIdentifiers) flags.push("--minify-identifiers");
+      if (lineLimit) flags.push(`--line-limit=${lineLimit}`);
+      if (charset) flags.push(`--charset=${charset}`);
+      if (treeShaking !== void 0) flags.push(`--tree-shaking=${treeShaking}`);
+      if (ignoreAnnotations) flags.push(`--ignore-annotations`);
+      if (drop) for (let what of drop) flags.push(`--drop:${validateStringValue(what, "drop")}`);
+      if (dropLabels) flags.push(`--drop-labels=${Array.from(dropLabels).map((what) => validateStringValue(what, "dropLabels")).join(",")}`);
+      if (mangleProps) flags.push(`--mangle-props=${mangleProps.source}`);
+      if (reserveProps) flags.push(`--reserve-props=${reserveProps.source}`);
+      if (mangleQuoted !== void 0) flags.push(`--mangle-quoted=${mangleQuoted}`);
+      if (jsx) flags.push(`--jsx=${jsx}`);
+      if (jsxFactory) flags.push(`--jsx-factory=${jsxFactory}`);
+      if (jsxFragment) flags.push(`--jsx-fragment=${jsxFragment}`);
+      if (jsxImportSource) flags.push(`--jsx-import-source=${jsxImportSource}`);
+      if (jsxDev) flags.push(`--jsx-dev`);
+      if (jsxSideEffects) flags.push(`--jsx-side-effects`);
+      if (define) {
+        for (let key in define) {
+          if (key.indexOf("=") >= 0) throw new Error(`Invalid define: ${key}`);
+          flags.push(`--define:${key}=${validateStringValue(define[key], "define", key)}`);
+        }
+      }
+      if (logOverride) {
+        for (let key in logOverride) {
+          if (key.indexOf("=") >= 0) throw new Error(`Invalid log override: ${key}`);
+          flags.push(`--log-override:${key}=${validateStringValue(logOverride[key], "log override", key)}`);
+        }
+      }
+      if (supported) {
+        for (let key in supported) {
+          if (key.indexOf("=") >= 0) throw new Error(`Invalid supported: ${key}`);
+          const value = supported[key];
+          if (typeof value !== "boolean") throw new Error(`Expected value for supported ${quote(key)} to be a boolean, got ${typeof value} instead`);
+          flags.push(`--supported:${key}=${value}`);
+        }
+      }
+      if (pure) for (let fn of pure) flags.push(`--pure:${validateStringValue(fn, "pure")}`);
+      if (keepNames) flags.push(`--keep-names`);
+    }
+    function flagsForBuildOptions(callName, options, isTTY2, logLevelDefault, writeDefault) {
+      var _a22;
+      let flags = [];
+      let entries = [];
+      let keys = /* @__PURE__ */ Object.create(null);
+      let stdinContents = null;
+      let stdinResolveDir = null;
+      pushLogFlags(flags, options, keys, isTTY2, logLevelDefault);
+      pushCommonFlags(flags, options, keys);
+      let sourcemap = getFlag(options, keys, "sourcemap", mustBeStringOrBoolean);
+      let bundle = getFlag(options, keys, "bundle", mustBeBoolean);
+      let splitting = getFlag(options, keys, "splitting", mustBeBoolean);
+      let preserveSymlinks = getFlag(options, keys, "preserveSymlinks", mustBeBoolean);
+      let metafile = getFlag(options, keys, "metafile", mustBeBoolean);
+      let outfile = getFlag(options, keys, "outfile", mustBeString);
+      let outdir = getFlag(options, keys, "outdir", mustBeString);
+      let outbase = getFlag(options, keys, "outbase", mustBeString);
+      let tsconfig = getFlag(options, keys, "tsconfig", mustBeString);
+      let resolveExtensions = getFlag(options, keys, "resolveExtensions", mustBeArray);
+      let nodePathsInput = getFlag(options, keys, "nodePaths", mustBeArray);
+      let mainFields = getFlag(options, keys, "mainFields", mustBeArray);
+      let conditions = getFlag(options, keys, "conditions", mustBeArray);
+      let external = getFlag(options, keys, "external", mustBeArray);
+      let packages = getFlag(options, keys, "packages", mustBeString);
+      let alias = getFlag(options, keys, "alias", mustBeObject);
+      let loader = getFlag(options, keys, "loader", mustBeObject);
+      let outExtension = getFlag(options, keys, "outExtension", mustBeObject);
+      let publicPath = getFlag(options, keys, "publicPath", mustBeString);
+      let entryNames = getFlag(options, keys, "entryNames", mustBeString);
+      let chunkNames = getFlag(options, keys, "chunkNames", mustBeString);
+      let assetNames = getFlag(options, keys, "assetNames", mustBeString);
+      let inject = getFlag(options, keys, "inject", mustBeArray);
+      let banner = getFlag(options, keys, "banner", mustBeObject);
+      let footer = getFlag(options, keys, "footer", mustBeObject);
+      let entryPoints = getFlag(options, keys, "entryPoints", mustBeEntryPoints);
+      let absWorkingDir = getFlag(options, keys, "absWorkingDir", mustBeString);
+      let stdin = getFlag(options, keys, "stdin", mustBeObject);
+      let write = (_a22 = getFlag(options, keys, "write", mustBeBoolean)) != null ? _a22 : writeDefault;
+      let allowOverwrite = getFlag(options, keys, "allowOverwrite", mustBeBoolean);
+      let mangleCache = getFlag(options, keys, "mangleCache", mustBeObject);
+      keys.plugins = true;
+      checkForInvalidFlags(options, keys, `in ${callName}() call`);
+      if (sourcemap) flags.push(`--sourcemap${sourcemap === true ? "" : `=${sourcemap}`}`);
+      if (bundle) flags.push("--bundle");
+      if (allowOverwrite) flags.push("--allow-overwrite");
+      if (splitting) flags.push("--splitting");
+      if (preserveSymlinks) flags.push("--preserve-symlinks");
+      if (metafile) flags.push(`--metafile`);
+      if (outfile) flags.push(`--outfile=${outfile}`);
+      if (outdir) flags.push(`--outdir=${outdir}`);
+      if (outbase) flags.push(`--outbase=${outbase}`);
+      if (tsconfig) flags.push(`--tsconfig=${tsconfig}`);
+      if (packages) flags.push(`--packages=${packages}`);
+      if (resolveExtensions) {
+        let values = [];
+        for (let value of resolveExtensions) {
+          validateStringValue(value, "resolve extension");
+          if (value.indexOf(",") >= 0) throw new Error(`Invalid resolve extension: ${value}`);
+          values.push(value);
+        }
+        flags.push(`--resolve-extensions=${values.join(",")}`);
+      }
+      if (publicPath) flags.push(`--public-path=${publicPath}`);
+      if (entryNames) flags.push(`--entry-names=${entryNames}`);
+      if (chunkNames) flags.push(`--chunk-names=${chunkNames}`);
+      if (assetNames) flags.push(`--asset-names=${assetNames}`);
+      if (mainFields) {
+        let values = [];
+        for (let value of mainFields) {
+          validateStringValue(value, "main field");
+          if (value.indexOf(",") >= 0) throw new Error(`Invalid main field: ${value}`);
+          values.push(value);
+        }
+        flags.push(`--main-fields=${values.join(",")}`);
+      }
+      if (conditions) {
+        let values = [];
+        for (let value of conditions) {
+          validateStringValue(value, "condition");
+          if (value.indexOf(",") >= 0) throw new Error(`Invalid condition: ${value}`);
+          values.push(value);
+        }
+        flags.push(`--conditions=${values.join(",")}`);
+      }
+      if (external) for (let name of external) flags.push(`--external:${validateStringValue(name, "external")}`);
+      if (alias) {
+        for (let old in alias) {
+          if (old.indexOf("=") >= 0) throw new Error(`Invalid package name in alias: ${old}`);
+          flags.push(`--alias:${old}=${validateStringValue(alias[old], "alias", old)}`);
+        }
+      }
+      if (banner) {
+        for (let type in banner) {
+          if (type.indexOf("=") >= 0) throw new Error(`Invalid banner file type: ${type}`);
+          flags.push(`--banner:${type}=${validateStringValue(banner[type], "banner", type)}`);
+        }
+      }
+      if (footer) {
+        for (let type in footer) {
+          if (type.indexOf("=") >= 0) throw new Error(`Invalid footer file type: ${type}`);
+          flags.push(`--footer:${type}=${validateStringValue(footer[type], "footer", type)}`);
+        }
+      }
+      if (inject) for (let path3 of inject) flags.push(`--inject:${validateStringValue(path3, "inject")}`);
+      if (loader) {
+        for (let ext in loader) {
+          if (ext.indexOf("=") >= 0) throw new Error(`Invalid loader extension: ${ext}`);
+          flags.push(`--loader:${ext}=${validateStringValue(loader[ext], "loader", ext)}`);
+        }
+      }
+      if (outExtension) {
+        for (let ext in outExtension) {
+          if (ext.indexOf("=") >= 0) throw new Error(`Invalid out extension: ${ext}`);
+          flags.push(`--out-extension:${ext}=${validateStringValue(outExtension[ext], "out extension", ext)}`);
+        }
+      }
+      if (entryPoints) {
+        if (Array.isArray(entryPoints)) {
+          for (let i = 0, n = entryPoints.length; i < n; i++) {
+            let entryPoint = entryPoints[i];
+            if (typeof entryPoint === "object" && entryPoint !== null) {
+              let entryPointKeys = /* @__PURE__ */ Object.create(null);
+              let input = getFlag(entryPoint, entryPointKeys, "in", mustBeString);
+              let output = getFlag(entryPoint, entryPointKeys, "out", mustBeString);
+              checkForInvalidFlags(entryPoint, entryPointKeys, "in entry point at index " + i);
+              if (input === void 0) throw new Error('Missing property "in" for entry point at index ' + i);
+              if (output === void 0) throw new Error('Missing property "out" for entry point at index ' + i);
+              entries.push([output, input]);
+            } else {
+              entries.push(["", validateStringValue(entryPoint, "entry point at index " + i)]);
+            }
+          }
+        } else {
+          for (let key in entryPoints) {
+            entries.push([key, validateStringValue(entryPoints[key], "entry point", key)]);
+          }
+        }
+      }
+      if (stdin) {
+        let stdinKeys = /* @__PURE__ */ Object.create(null);
+        let contents = getFlag(stdin, stdinKeys, "contents", mustBeStringOrUint8Array);
+        let resolveDir = getFlag(stdin, stdinKeys, "resolveDir", mustBeString);
+        let sourcefile = getFlag(stdin, stdinKeys, "sourcefile", mustBeString);
+        let loader2 = getFlag(stdin, stdinKeys, "loader", mustBeString);
+        checkForInvalidFlags(stdin, stdinKeys, 'in "stdin" object');
+        if (sourcefile) flags.push(`--sourcefile=${sourcefile}`);
+        if (loader2) flags.push(`--loader=${loader2}`);
+        if (resolveDir) stdinResolveDir = resolveDir;
+        if (typeof contents === "string") stdinContents = encodeUTF8(contents);
+        else if (contents instanceof Uint8Array) stdinContents = contents;
+      }
+      let nodePaths = [];
+      if (nodePathsInput) {
+        for (let value of nodePathsInput) {
+          value += "";
+          nodePaths.push(value);
+        }
+      }
+      return {
+        entries,
+        flags,
+        write,
+        stdinContents,
+        stdinResolveDir,
+        absWorkingDir,
+        nodePaths,
+        mangleCache: validateMangleCache(mangleCache)
+      };
+    }
+    function flagsForTransformOptions(callName, options, isTTY2, logLevelDefault) {
+      let flags = [];
+      let keys = /* @__PURE__ */ Object.create(null);
+      pushLogFlags(flags, options, keys, isTTY2, logLevelDefault);
+      pushCommonFlags(flags, options, keys);
+      let sourcemap = getFlag(options, keys, "sourcemap", mustBeStringOrBoolean);
+      let sourcefile = getFlag(options, keys, "sourcefile", mustBeString);
+      let loader = getFlag(options, keys, "loader", mustBeString);
+      let banner = getFlag(options, keys, "banner", mustBeString);
+      let footer = getFlag(options, keys, "footer", mustBeString);
+      let mangleCache = getFlag(options, keys, "mangleCache", mustBeObject);
+      checkForInvalidFlags(options, keys, `in ${callName}() call`);
+      if (sourcemap) flags.push(`--sourcemap=${sourcemap === true ? "external" : sourcemap}`);
+      if (sourcefile) flags.push(`--sourcefile=${sourcefile}`);
+      if (loader) flags.push(`--loader=${loader}`);
+      if (banner) flags.push(`--banner=${banner}`);
+      if (footer) flags.push(`--footer=${footer}`);
+      return {
+        flags,
+        mangleCache: validateMangleCache(mangleCache)
+      };
+    }
+    function createChannel(streamIn) {
+      const requestCallbacksByKey = {};
+      const closeData = { didClose: false, reason: "" };
+      let responseCallbacks = {};
+      let nextRequestID = 0;
+      let nextBuildKey = 0;
+      let stdout = new Uint8Array(16 * 1024);
+      let stdoutUsed = 0;
+      let readFromStdout = (chunk) => {
+        let limit = stdoutUsed + chunk.length;
+        if (limit > stdout.length) {
+          let swap = new Uint8Array(limit * 2);
+          swap.set(stdout);
+          stdout = swap;
+        }
+        stdout.set(chunk, stdoutUsed);
+        stdoutUsed += chunk.length;
+        let offset = 0;
+        while (offset + 4 <= stdoutUsed) {
+          let length = readUInt32LE(stdout, offset);
+          if (offset + 4 + length > stdoutUsed) {
+            break;
+          }
+          offset += 4;
+          handleIncomingPacket(stdout.subarray(offset, offset + length));
+          offset += length;
+        }
+        if (offset > 0) {
+          stdout.copyWithin(0, offset, stdoutUsed);
+          stdoutUsed -= offset;
+        }
+      };
+      let afterClose = (error51) => {
+        closeData.didClose = true;
+        if (error51) closeData.reason = ": " + (error51.message || error51);
+        const text = "The service was stopped" + closeData.reason;
+        for (let id in responseCallbacks) {
+          responseCallbacks[id](text, null);
+        }
+        responseCallbacks = {};
+      };
+      let sendRequest = (refs, value, callback) => {
+        if (closeData.didClose) return callback("The service is no longer running" + closeData.reason, null);
+        let id = nextRequestID++;
+        responseCallbacks[id] = (error51, response) => {
+          try {
+            callback(error51, response);
+          } finally {
+            if (refs) refs.unref();
+          }
+        };
+        if (refs) refs.ref();
+        streamIn.writeToStdin(encodePacket({ id, isRequest: true, value }));
+      };
+      let sendResponse = (id, value) => {
+        if (closeData.didClose) throw new Error("The service is no longer running" + closeData.reason);
+        streamIn.writeToStdin(encodePacket({ id, isRequest: false, value }));
+      };
+      let handleRequest2 = async (id, request) => {
+        try {
+          if (request.command === "ping") {
+            sendResponse(id, {});
+            return;
+          }
+          if (typeof request.key === "number") {
+            const requestCallbacks = requestCallbacksByKey[request.key];
+            if (!requestCallbacks) {
+              return;
+            }
+            const callback = requestCallbacks[request.command];
+            if (callback) {
+              await callback(id, request);
+              return;
+            }
+          }
+          throw new Error(`Invalid command: ` + request.command);
+        } catch (e) {
+          const errors = [extractErrorMessageV8(e, streamIn, null, void 0, "")];
+          try {
+            sendResponse(id, { errors });
+          } catch {
+          }
+        }
+      };
+      let isFirstPacket = true;
+      let handleIncomingPacket = (bytes) => {
+        if (isFirstPacket) {
+          isFirstPacket = false;
+          let binaryVersion = String.fromCharCode(...bytes);
+          if (binaryVersion !== "0.25.0") {
+            throw new Error(`Cannot start service: Host version "${"0.25.0"}" does not match binary version ${quote(binaryVersion)}`);
+          }
+          return;
+        }
+        let packet = decodePacket(bytes);
+        if (packet.isRequest) {
+          handleRequest2(packet.id, packet.value);
+        } else {
+          let callback = responseCallbacks[packet.id];
+          delete responseCallbacks[packet.id];
+          if (packet.value.error) callback(packet.value.error, {});
+          else callback(null, packet.value);
+        }
+      };
+      let buildOrContext = ({ callName, refs, options, isTTY: isTTY2, defaultWD: defaultWD2, callback }) => {
+        let refCount = 0;
+        const buildKey = nextBuildKey++;
+        const requestCallbacks = {};
+        const buildRefs = {
+          ref() {
+            if (++refCount === 1) {
+              if (refs) refs.ref();
+            }
+          },
+          unref() {
+            if (--refCount === 0) {
+              delete requestCallbacksByKey[buildKey];
+              if (refs) refs.unref();
+            }
+          }
+        };
+        requestCallbacksByKey[buildKey] = requestCallbacks;
+        buildRefs.ref();
+        buildOrContextImpl(
+          callName,
+          buildKey,
+          sendRequest,
+          sendResponse,
+          buildRefs,
+          streamIn,
+          requestCallbacks,
+          options,
+          isTTY2,
+          defaultWD2,
+          (err, res) => {
+            try {
+              callback(err, res);
+            } finally {
+              buildRefs.unref();
+            }
+          }
+        );
+      };
+      let transform22 = ({ callName, refs, input, options, isTTY: isTTY2, fs: fs3, callback }) => {
+        const details = createObjectStash();
+        let start = (inputPath) => {
+          try {
+            if (typeof input !== "string" && !(input instanceof Uint8Array))
+              throw new Error('The input to "transform" must be a string or a Uint8Array');
+            let {
+              flags,
+              mangleCache
+            } = flagsForTransformOptions(callName, options, isTTY2, transformLogLevelDefault);
+            let request = {
+              command: "transform",
+              flags,
+              inputFS: inputPath !== null,
+              input: inputPath !== null ? encodeUTF8(inputPath) : typeof input === "string" ? encodeUTF8(input) : input
+            };
+            if (mangleCache) request.mangleCache = mangleCache;
+            sendRequest(refs, request, (error51, response) => {
+              if (error51) return callback(new Error(error51), null);
+              let errors = replaceDetailsInMessages(response.errors, details);
+              let warnings = replaceDetailsInMessages(response.warnings, details);
+              let outstanding = 1;
+              let next = () => {
+                if (--outstanding === 0) {
+                  let result = {
+                    warnings,
+                    code: response.code,
+                    map: response.map,
+                    mangleCache: void 0,
+                    legalComments: void 0
+                  };
+                  if ("legalComments" in response) result.legalComments = response == null ? void 0 : response.legalComments;
+                  if (response.mangleCache) result.mangleCache = response == null ? void 0 : response.mangleCache;
+                  callback(null, result);
+                }
+              };
+              if (errors.length > 0) return callback(failureErrorWithLog("Transform failed", errors, warnings), null);
+              if (response.codeFS) {
+                outstanding++;
+                fs3.readFile(response.code, (err, contents) => {
+                  if (err !== null) {
+                    callback(err, null);
+                  } else {
+                    response.code = contents;
+                    next();
+                  }
+                });
+              }
+              if (response.mapFS) {
+                outstanding++;
+                fs3.readFile(response.map, (err, contents) => {
+                  if (err !== null) {
+                    callback(err, null);
+                  } else {
+                    response.map = contents;
+                    next();
+                  }
+                });
+              }
+              next();
+            });
+          } catch (e) {
+            let flags = [];
+            try {
+              pushLogFlags(flags, options, {}, isTTY2, transformLogLevelDefault);
+            } catch {
+            }
+            const error51 = extractErrorMessageV8(e, streamIn, details, void 0, "");
+            sendRequest(refs, { command: "error", flags, error: error51 }, () => {
+              error51.detail = details.load(error51.detail);
+              callback(failureErrorWithLog("Transform failed", [error51], []), null);
+            });
+          }
+        };
+        if ((typeof input === "string" || input instanceof Uint8Array) && input.length > 1024 * 1024) {
+          let next = start;
+          start = () => fs3.writeFile(input, next);
+        }
+        start(null);
+      };
+      let formatMessages2 = ({ callName, refs, messages, options, callback }) => {
+        if (!options) throw new Error(`Missing second argument in ${callName}() call`);
+        let keys = {};
+        let kind = getFlag(options, keys, "kind", mustBeString);
+        let color = getFlag(options, keys, "color", mustBeBoolean);
+        let terminalWidth = getFlag(options, keys, "terminalWidth", mustBeInteger);
+        checkForInvalidFlags(options, keys, `in ${callName}() call`);
+        if (kind === void 0) throw new Error(`Missing "kind" in ${callName}() call`);
+        if (kind !== "error" && kind !== "warning") throw new Error(`Expected "kind" to be "error" or "warning" in ${callName}() call`);
+        let request = {
+          command: "format-msgs",
+          messages: sanitizeMessages(messages, "messages", null, "", terminalWidth),
+          isWarning: kind === "warning"
+        };
+        if (color !== void 0) request.color = color;
+        if (terminalWidth !== void 0) request.terminalWidth = terminalWidth;
+        sendRequest(refs, request, (error51, response) => {
+          if (error51) return callback(new Error(error51), null);
+          callback(null, response.messages);
+        });
+      };
+      let analyzeMetafile2 = ({ callName, refs, metafile, options, callback }) => {
+        if (options === void 0) options = {};
+        let keys = {};
+        let color = getFlag(options, keys, "color", mustBeBoolean);
+        let verbose = getFlag(options, keys, "verbose", mustBeBoolean);
+        checkForInvalidFlags(options, keys, `in ${callName}() call`);
+        let request = {
+          command: "analyze-metafile",
+          metafile
+        };
+        if (color !== void 0) request.color = color;
+        if (verbose !== void 0) request.verbose = verbose;
+        sendRequest(refs, request, (error51, response) => {
+          if (error51) return callback(new Error(error51), null);
+          callback(null, response.result);
+        });
+      };
+      return {
+        readFromStdout,
+        afterClose,
+        service: {
+          buildOrContext,
+          transform: transform22,
+          formatMessages: formatMessages2,
+          analyzeMetafile: analyzeMetafile2
+        }
+      };
+    }
+    function buildOrContextImpl(callName, buildKey, sendRequest, sendResponse, refs, streamIn, requestCallbacks, options, isTTY2, defaultWD2, callback) {
+      const details = createObjectStash();
+      const isContext = callName === "context";
+      const handleError = (e, pluginName) => {
+        const flags = [];
+        try {
+          pushLogFlags(flags, options, {}, isTTY2, buildLogLevelDefault);
+        } catch {
+        }
+        const message = extractErrorMessageV8(e, streamIn, details, void 0, pluginName);
+        sendRequest(refs, { command: "error", flags, error: message }, () => {
+          message.detail = details.load(message.detail);
+          callback(failureErrorWithLog(isContext ? "Context failed" : "Build failed", [message], []), null);
+        });
+      };
+      let plugins;
+      if (typeof options === "object") {
+        const value = options.plugins;
+        if (value !== void 0) {
+          if (!Array.isArray(value)) return handleError(new Error(`"plugins" must be an array`), "");
+          plugins = value;
+        }
+      }
+      if (plugins && plugins.length > 0) {
+        if (streamIn.isSync) return handleError(new Error("Cannot use plugins in synchronous API calls"), "");
+        handlePlugins(
+          buildKey,
+          sendRequest,
+          sendResponse,
+          refs,
+          streamIn,
+          requestCallbacks,
+          options,
+          plugins,
+          details
+        ).then(
+          (result) => {
+            if (!result.ok) return handleError(result.error, result.pluginName);
+            try {
+              buildOrContextContinue(result.requestPlugins, result.runOnEndCallbacks, result.scheduleOnDisposeCallbacks);
+            } catch (e) {
+              handleError(e, "");
+            }
+          },
+          (e) => handleError(e, "")
+        );
+        return;
+      }
+      try {
+        buildOrContextContinue(null, (result, done) => done([], []), () => {
+        });
+      } catch (e) {
+        handleError(e, "");
+      }
+      function buildOrContextContinue(requestPlugins, runOnEndCallbacks, scheduleOnDisposeCallbacks) {
+        const writeDefault = streamIn.hasFS;
+        const {
+          entries,
+          flags,
+          write,
+          stdinContents,
+          stdinResolveDir,
+          absWorkingDir,
+          nodePaths,
+          mangleCache
+        } = flagsForBuildOptions(callName, options, isTTY2, buildLogLevelDefault, writeDefault);
+        if (write && !streamIn.hasFS) throw new Error(`The "write" option is unavailable in this environment`);
+        const request = {
+          command: "build",
+          key: buildKey,
+          entries,
+          flags,
+          write,
+          stdinContents,
+          stdinResolveDir,
+          absWorkingDir: absWorkingDir || defaultWD2,
+          nodePaths,
+          context: isContext
+        };
+        if (requestPlugins) request.plugins = requestPlugins;
+        if (mangleCache) request.mangleCache = mangleCache;
+        const buildResponseToResult = (response, callback2) => {
+          const result = {
+            errors: replaceDetailsInMessages(response.errors, details),
+            warnings: replaceDetailsInMessages(response.warnings, details),
+            outputFiles: void 0,
+            metafile: void 0,
+            mangleCache: void 0
+          };
+          const originalErrors = result.errors.slice();
+          const originalWarnings = result.warnings.slice();
+          if (response.outputFiles) result.outputFiles = response.outputFiles.map(convertOutputFiles);
+          if (response.metafile) result.metafile = JSON.parse(response.metafile);
+          if (response.mangleCache) result.mangleCache = response.mangleCache;
+          if (response.writeToStdout !== void 0) console.log(decodeUTF8(response.writeToStdout).replace(/\n$/, ""));
+          runOnEndCallbacks(result, (onEndErrors, onEndWarnings) => {
+            if (originalErrors.length > 0 || onEndErrors.length > 0) {
+              const error51 = failureErrorWithLog("Build failed", originalErrors.concat(onEndErrors), originalWarnings.concat(onEndWarnings));
+              return callback2(error51, null, onEndErrors, onEndWarnings);
+            }
+            callback2(null, result, onEndErrors, onEndWarnings);
+          });
+        };
+        let latestResultPromise;
+        let provideLatestResult;
+        if (isContext)
+          requestCallbacks["on-end"] = (id, request2) => new Promise((resolve14) => {
+            buildResponseToResult(request2, (err, result, onEndErrors, onEndWarnings) => {
+              const response = {
+                errors: onEndErrors,
+                warnings: onEndWarnings
+              };
+              if (provideLatestResult) provideLatestResult(err, result);
+              latestResultPromise = void 0;
+              provideLatestResult = void 0;
+              sendResponse(id, response);
+              resolve14();
+            });
+          });
+        sendRequest(refs, request, (error51, response) => {
+          if (error51) return callback(new Error(error51), null);
+          if (!isContext) {
+            return buildResponseToResult(response, (err, res) => {
+              scheduleOnDisposeCallbacks();
+              return callback(err, res);
+            });
+          }
+          if (response.errors.length > 0) {
+            return callback(failureErrorWithLog("Context failed", response.errors, response.warnings), null);
+          }
+          let didDispose = false;
+          const result = {
+            rebuild: () => {
+              if (!latestResultPromise) latestResultPromise = new Promise((resolve14, reject) => {
+                let settlePromise;
+                provideLatestResult = (err, result2) => {
+                  if (!settlePromise) settlePromise = () => err ? reject(err) : resolve14(result2);
+                };
+                const triggerAnotherBuild = () => {
+                  const request2 = {
+                    command: "rebuild",
+                    key: buildKey
+                  };
+                  sendRequest(refs, request2, (error210, response2) => {
+                    if (error210) {
+                      reject(new Error(error210));
+                    } else if (settlePromise) {
+                      settlePromise();
+                    } else {
+                      triggerAnotherBuild();
+                    }
+                  });
+                };
+                triggerAnotherBuild();
+              });
+              return latestResultPromise;
+            },
+            watch: (options2 = {}) => new Promise((resolve14, reject) => {
+              if (!streamIn.hasFS) throw new Error(`Cannot use the "watch" API in this environment`);
+              const keys = {};
+              checkForInvalidFlags(options2, keys, `in watch() call`);
+              const request2 = {
+                command: "watch",
+                key: buildKey
+              };
+              sendRequest(refs, request2, (error210) => {
+                if (error210) reject(new Error(error210));
+                else resolve14(void 0);
+              });
+            }),
+            serve: (options2 = {}) => new Promise((resolve14, reject) => {
+              if (!streamIn.hasFS) throw new Error(`Cannot use the "serve" API in this environment`);
+              const keys = {};
+              const port2 = getFlag(options2, keys, "port", mustBeValidPortNumber);
+              const host = getFlag(options2, keys, "host", mustBeString);
+              const servedir = getFlag(options2, keys, "servedir", mustBeString);
+              const keyfile = getFlag(options2, keys, "keyfile", mustBeString);
+              const certfile = getFlag(options2, keys, "certfile", mustBeString);
+              const fallback = getFlag(options2, keys, "fallback", mustBeString);
+              const onRequest = getFlag(options2, keys, "onRequest", mustBeFunction);
+              checkForInvalidFlags(options2, keys, `in serve() call`);
+              const request2 = {
+                command: "serve",
+                key: buildKey,
+                onRequest: !!onRequest
+              };
+              if (port2 !== void 0) request2.port = port2;
+              if (host !== void 0) request2.host = host;
+              if (servedir !== void 0) request2.servedir = servedir;
+              if (keyfile !== void 0) request2.keyfile = keyfile;
+              if (certfile !== void 0) request2.certfile = certfile;
+              if (fallback !== void 0) request2.fallback = fallback;
+              sendRequest(refs, request2, (error210, response2) => {
+                if (error210) return reject(new Error(error210));
+                if (onRequest) {
+                  requestCallbacks["serve-request"] = (id, request3) => {
+                    onRequest(request3.args);
+                    sendResponse(id, {});
+                  };
+                }
+                resolve14(response2);
+              });
+            }),
+            cancel: () => new Promise((resolve14) => {
+              if (didDispose) return resolve14();
+              const request2 = {
+                command: "cancel",
+                key: buildKey
+              };
+              sendRequest(refs, request2, () => {
+                resolve14();
+              });
+            }),
+            dispose: () => new Promise((resolve14) => {
+              if (didDispose) return resolve14();
+              didDispose = true;
+              const request2 = {
+                command: "dispose",
+                key: buildKey
+              };
+              sendRequest(refs, request2, () => {
+                resolve14();
+                scheduleOnDisposeCallbacks();
+                refs.unref();
+              });
+            })
+          };
+          refs.ref();
+          callback(null, result);
+        });
+      }
+    }
+    var handlePlugins = async (buildKey, sendRequest, sendResponse, refs, streamIn, requestCallbacks, initialOptions, plugins, details) => {
+      let onStartCallbacks = [];
+      let onEndCallbacks = [];
+      let onResolveCallbacks = {};
+      let onLoadCallbacks = {};
+      let onDisposeCallbacks = [];
+      let nextCallbackID = 0;
+      let i = 0;
+      let requestPlugins = [];
+      let isSetupDone = false;
+      plugins = [...plugins];
+      for (let item of plugins) {
+        let keys = {};
+        if (typeof item !== "object") throw new Error(`Plugin at index ${i} must be an object`);
+        const name = getFlag(item, keys, "name", mustBeString);
+        if (typeof name !== "string" || name === "") throw new Error(`Plugin at index ${i} is missing a name`);
+        try {
+          let setup = getFlag(item, keys, "setup", mustBeFunction);
+          if (typeof setup !== "function") throw new Error(`Plugin is missing a setup function`);
+          checkForInvalidFlags(item, keys, `on plugin ${quote(name)}`);
+          let plugin = {
+            name,
+            onStart: false,
+            onEnd: false,
+            onResolve: [],
+            onLoad: []
+          };
+          i++;
+          let resolve14 = (path3, options = {}) => {
+            if (!isSetupDone) throw new Error('Cannot call "resolve" before plugin setup has completed');
+            if (typeof path3 !== "string") throw new Error(`The path to resolve must be a string`);
+            let keys2 = /* @__PURE__ */ Object.create(null);
+            let pluginName = getFlag(options, keys2, "pluginName", mustBeString);
+            let importer = getFlag(options, keys2, "importer", mustBeString);
+            let namespace = getFlag(options, keys2, "namespace", mustBeString);
+            let resolveDir = getFlag(options, keys2, "resolveDir", mustBeString);
+            let kind = getFlag(options, keys2, "kind", mustBeString);
+            let pluginData = getFlag(options, keys2, "pluginData", canBeAnything);
+            let importAttributes = getFlag(options, keys2, "with", mustBeObject);
+            checkForInvalidFlags(options, keys2, "in resolve() call");
+            return new Promise((resolve22, reject) => {
+              const request = {
+                command: "resolve",
+                path: path3,
+                key: buildKey,
+                pluginName: name
+              };
+              if (pluginName != null) request.pluginName = pluginName;
+              if (importer != null) request.importer = importer;
+              if (namespace != null) request.namespace = namespace;
+              if (resolveDir != null) request.resolveDir = resolveDir;
+              if (kind != null) request.kind = kind;
+              else throw new Error(`Must specify "kind" when calling "resolve"`);
+              if (pluginData != null) request.pluginData = details.store(pluginData);
+              if (importAttributes != null) request.with = sanitizeStringMap(importAttributes, "with");
+              sendRequest(refs, request, (error51, response) => {
+                if (error51 !== null) reject(new Error(error51));
+                else resolve22({
+                  errors: replaceDetailsInMessages(response.errors, details),
+                  warnings: replaceDetailsInMessages(response.warnings, details),
+                  path: response.path,
+                  external: response.external,
+                  sideEffects: response.sideEffects,
+                  namespace: response.namespace,
+                  suffix: response.suffix,
+                  pluginData: details.load(response.pluginData)
+                });
+              });
+            });
+          };
+          let promise2 = setup({
+            initialOptions,
+            resolve: resolve14,
+            onStart(callback) {
+              let registeredText = `This error came from the "onStart" callback registered here:`;
+              let registeredNote = extractCallerV8(new Error(registeredText), streamIn, "onStart");
+              onStartCallbacks.push({ name, callback, note: registeredNote });
+              plugin.onStart = true;
+            },
+            onEnd(callback) {
+              let registeredText = `This error came from the "onEnd" callback registered here:`;
+              let registeredNote = extractCallerV8(new Error(registeredText), streamIn, "onEnd");
+              onEndCallbacks.push({ name, callback, note: registeredNote });
+              plugin.onEnd = true;
+            },
+            onResolve(options, callback) {
+              let registeredText = `This error came from the "onResolve" callback registered here:`;
+              let registeredNote = extractCallerV8(new Error(registeredText), streamIn, "onResolve");
+              let keys2 = {};
+              let filter = getFlag(options, keys2, "filter", mustBeRegExp);
+              let namespace = getFlag(options, keys2, "namespace", mustBeString);
+              checkForInvalidFlags(options, keys2, `in onResolve() call for plugin ${quote(name)}`);
+              if (filter == null) throw new Error(`onResolve() call is missing a filter`);
+              let id = nextCallbackID++;
+              onResolveCallbacks[id] = { name, callback, note: registeredNote };
+              plugin.onResolve.push({ id, filter: filter.source, namespace: namespace || "" });
+            },
+            onLoad(options, callback) {
+              let registeredText = `This error came from the "onLoad" callback registered here:`;
+              let registeredNote = extractCallerV8(new Error(registeredText), streamIn, "onLoad");
+              let keys2 = {};
+              let filter = getFlag(options, keys2, "filter", mustBeRegExp);
+              let namespace = getFlag(options, keys2, "namespace", mustBeString);
+              checkForInvalidFlags(options, keys2, `in onLoad() call for plugin ${quote(name)}`);
+              if (filter == null) throw new Error(`onLoad() call is missing a filter`);
+              let id = nextCallbackID++;
+              onLoadCallbacks[id] = { name, callback, note: registeredNote };
+              plugin.onLoad.push({ id, filter: filter.source, namespace: namespace || "" });
+            },
+            onDispose(callback) {
+              onDisposeCallbacks.push(callback);
+            },
+            esbuild: streamIn.esbuild
+          });
+          if (promise2) await promise2;
+          requestPlugins.push(plugin);
+        } catch (e) {
+          return { ok: false, error: e, pluginName: name };
+        }
+      }
+      requestCallbacks["on-start"] = async (id, request) => {
+        details.clear();
+        let response = { errors: [], warnings: [] };
+        await Promise.all(onStartCallbacks.map(async ({ name, callback, note }) => {
+          try {
+            let result = await callback();
+            if (result != null) {
+              if (typeof result !== "object") throw new Error(`Expected onStart() callback in plugin ${quote(name)} to return an object`);
+              let keys = {};
+              let errors = getFlag(result, keys, "errors", mustBeArray);
+              let warnings = getFlag(result, keys, "warnings", mustBeArray);
+              checkForInvalidFlags(result, keys, `from onStart() callback in plugin ${quote(name)}`);
+              if (errors != null) response.errors.push(...sanitizeMessages(errors, "errors", details, name, void 0));
+              if (warnings != null) response.warnings.push(...sanitizeMessages(warnings, "warnings", details, name, void 0));
+            }
+          } catch (e) {
+            response.errors.push(extractErrorMessageV8(e, streamIn, details, note && note(), name));
+          }
+        }));
+        sendResponse(id, response);
+      };
+      requestCallbacks["on-resolve"] = async (id, request) => {
+        let response = {}, name = "", callback, note;
+        for (let id2 of request.ids) {
+          try {
+            ({ name, callback, note } = onResolveCallbacks[id2]);
+            let result = await callback({
+              path: request.path,
+              importer: request.importer,
+              namespace: request.namespace,
+              resolveDir: request.resolveDir,
+              kind: request.kind,
+              pluginData: details.load(request.pluginData),
+              with: request.with
+            });
+            if (result != null) {
+              if (typeof result !== "object") throw new Error(`Expected onResolve() callback in plugin ${quote(name)} to return an object`);
+              let keys = {};
+              let pluginName = getFlag(result, keys, "pluginName", mustBeString);
+              let path3 = getFlag(result, keys, "path", mustBeString);
+              let namespace = getFlag(result, keys, "namespace", mustBeString);
+              let suffix = getFlag(result, keys, "suffix", mustBeString);
+              let external = getFlag(result, keys, "external", mustBeBoolean);
+              let sideEffects = getFlag(result, keys, "sideEffects", mustBeBoolean);
+              let pluginData = getFlag(result, keys, "pluginData", canBeAnything);
+              let errors = getFlag(result, keys, "errors", mustBeArray);
+              let warnings = getFlag(result, keys, "warnings", mustBeArray);
+              let watchFiles = getFlag(result, keys, "watchFiles", mustBeArray);
+              let watchDirs = getFlag(result, keys, "watchDirs", mustBeArray);
+              checkForInvalidFlags(result, keys, `from onResolve() callback in plugin ${quote(name)}`);
+              response.id = id2;
+              if (pluginName != null) response.pluginName = pluginName;
+              if (path3 != null) response.path = path3;
+              if (namespace != null) response.namespace = namespace;
+              if (suffix != null) response.suffix = suffix;
+              if (external != null) response.external = external;
+              if (sideEffects != null) response.sideEffects = sideEffects;
+              if (pluginData != null) response.pluginData = details.store(pluginData);
+              if (errors != null) response.errors = sanitizeMessages(errors, "errors", details, name, void 0);
+              if (warnings != null) response.warnings = sanitizeMessages(warnings, "warnings", details, name, void 0);
+              if (watchFiles != null) response.watchFiles = sanitizeStringArray(watchFiles, "watchFiles");
+              if (watchDirs != null) response.watchDirs = sanitizeStringArray(watchDirs, "watchDirs");
+              break;
+            }
+          } catch (e) {
+            response = { id: id2, errors: [extractErrorMessageV8(e, streamIn, details, note && note(), name)] };
+            break;
+          }
+        }
+        sendResponse(id, response);
+      };
+      requestCallbacks["on-load"] = async (id, request) => {
+        let response = {}, name = "", callback, note;
+        for (let id2 of request.ids) {
+          try {
+            ({ name, callback, note } = onLoadCallbacks[id2]);
+            let result = await callback({
+              path: request.path,
+              namespace: request.namespace,
+              suffix: request.suffix,
+              pluginData: details.load(request.pluginData),
+              with: request.with
+            });
+            if (result != null) {
+              if (typeof result !== "object") throw new Error(`Expected onLoad() callback in plugin ${quote(name)} to return an object`);
+              let keys = {};
+              let pluginName = getFlag(result, keys, "pluginName", mustBeString);
+              let contents = getFlag(result, keys, "contents", mustBeStringOrUint8Array);
+              let resolveDir = getFlag(result, keys, "resolveDir", mustBeString);
+              let pluginData = getFlag(result, keys, "pluginData", canBeAnything);
+              let loader = getFlag(result, keys, "loader", mustBeString);
+              let errors = getFlag(result, keys, "errors", mustBeArray);
+              let warnings = getFlag(result, keys, "warnings", mustBeArray);
+              let watchFiles = getFlag(result, keys, "watchFiles", mustBeArray);
+              let watchDirs = getFlag(result, keys, "watchDirs", mustBeArray);
+              checkForInvalidFlags(result, keys, `from onLoad() callback in plugin ${quote(name)}`);
+              response.id = id2;
+              if (pluginName != null) response.pluginName = pluginName;
+              if (contents instanceof Uint8Array) response.contents = contents;
+              else if (contents != null) response.contents = encodeUTF8(contents);
+              if (resolveDir != null) response.resolveDir = resolveDir;
+              if (pluginData != null) response.pluginData = details.store(pluginData);
+              if (loader != null) response.loader = loader;
+              if (errors != null) response.errors = sanitizeMessages(errors, "errors", details, name, void 0);
+              if (warnings != null) response.warnings = sanitizeMessages(warnings, "warnings", details, name, void 0);
+              if (watchFiles != null) response.watchFiles = sanitizeStringArray(watchFiles, "watchFiles");
+              if (watchDirs != null) response.watchDirs = sanitizeStringArray(watchDirs, "watchDirs");
+              break;
+            }
+          } catch (e) {
+            response = { id: id2, errors: [extractErrorMessageV8(e, streamIn, details, note && note(), name)] };
+            break;
+          }
+        }
+        sendResponse(id, response);
+      };
+      let runOnEndCallbacks = (result, done) => done([], []);
+      if (onEndCallbacks.length > 0) {
+        runOnEndCallbacks = (result, done) => {
+          (async () => {
+            const onEndErrors = [];
+            const onEndWarnings = [];
+            for (const { name, callback, note } of onEndCallbacks) {
+              let newErrors;
+              let newWarnings;
+              try {
+                const value = await callback(result);
+                if (value != null) {
+                  if (typeof value !== "object") throw new Error(`Expected onEnd() callback in plugin ${quote(name)} to return an object`);
+                  let keys = {};
+                  let errors = getFlag(value, keys, "errors", mustBeArray);
+                  let warnings = getFlag(value, keys, "warnings", mustBeArray);
+                  checkForInvalidFlags(value, keys, `from onEnd() callback in plugin ${quote(name)}`);
+                  if (errors != null) newErrors = sanitizeMessages(errors, "errors", details, name, void 0);
+                  if (warnings != null) newWarnings = sanitizeMessages(warnings, "warnings", details, name, void 0);
+                }
+              } catch (e) {
+                newErrors = [extractErrorMessageV8(e, streamIn, details, note && note(), name)];
+              }
+              if (newErrors) {
+                onEndErrors.push(...newErrors);
+                try {
+                  result.errors.push(...newErrors);
+                } catch {
+                }
+              }
+              if (newWarnings) {
+                onEndWarnings.push(...newWarnings);
+                try {
+                  result.warnings.push(...newWarnings);
+                } catch {
+                }
+              }
+            }
+            done(onEndErrors, onEndWarnings);
+          })();
+        };
+      }
+      let scheduleOnDisposeCallbacks = () => {
+        for (const cb of onDisposeCallbacks) {
+          setTimeout(() => cb(), 0);
+        }
+      };
+      isSetupDone = true;
+      return {
+        ok: true,
+        requestPlugins,
+        runOnEndCallbacks,
+        scheduleOnDisposeCallbacks
+      };
+    };
+    function createObjectStash() {
+      const map2 = /* @__PURE__ */ new Map();
+      let nextID = 0;
+      return {
+        clear() {
+          map2.clear();
+        },
+        load(id) {
+          return map2.get(id);
+        },
+        store(value) {
+          if (value === void 0) return -1;
+          const id = nextID++;
+          map2.set(id, value);
+          return id;
+        }
+      };
+    }
+    function extractCallerV8(e, streamIn, ident) {
+      let note;
+      let tried = false;
+      return () => {
+        if (tried) return note;
+        tried = true;
+        try {
+          let lines = (e.stack + "").split("\n");
+          lines.splice(1, 1);
+          let location = parseStackLinesV8(streamIn, lines, ident);
+          if (location) {
+            note = { text: e.message, location };
+            return note;
+          }
+        } catch {
+        }
+      };
+    }
+    function extractErrorMessageV8(e, streamIn, stash, note, pluginName) {
+      let text = "Internal error";
+      let location = null;
+      try {
+        text = (e && e.message || e) + "";
+      } catch {
+      }
+      try {
+        location = parseStackLinesV8(streamIn, (e.stack + "").split("\n"), "");
+      } catch {
+      }
+      return { id: "", pluginName, text, location, notes: note ? [note] : [], detail: stash ? stash.store(e) : -1 };
+    }
+    function parseStackLinesV8(streamIn, lines, ident) {
+      let at = "    at ";
+      if (streamIn.readFileSync && !lines[0].startsWith(at) && lines[1].startsWith(at)) {
+        for (let i = 1; i < lines.length; i++) {
+          let line = lines[i];
+          if (!line.startsWith(at)) continue;
+          line = line.slice(at.length);
+          while (true) {
+            let match2 = /^(?:new |async )?\S+ \((.*)\)$/.exec(line);
+            if (match2) {
+              line = match2[1];
+              continue;
+            }
+            match2 = /^eval at \S+ \((.*)\)(?:, \S+:\d+:\d+)?$/.exec(line);
+            if (match2) {
+              line = match2[1];
+              continue;
+            }
+            match2 = /^(\S+):(\d+):(\d+)$/.exec(line);
+            if (match2) {
+              let contents;
+              try {
+                contents = streamIn.readFileSync(match2[1], "utf8");
+              } catch {
+                break;
+              }
+              let lineText = contents.split(/\r\n|\r|\n|\u2028|\u2029/)[+match2[2] - 1] || "";
+              let column = +match2[3] - 1;
+              let length = lineText.slice(column, column + ident.length) === ident ? ident.length : 0;
+              return {
+                file: match2[1],
+                namespace: "file",
+                line: +match2[2],
+                column: encodeUTF8(lineText.slice(0, column)).length,
+                length: encodeUTF8(lineText.slice(column, column + length)).length,
+                lineText: lineText + "\n" + lines.slice(1).join("\n"),
+                suggestion: ""
+              };
+            }
+            break;
+          }
+        }
+      }
+      return null;
+    }
+    function failureErrorWithLog(text, errors, warnings) {
+      let limit = 5;
+      text += errors.length < 1 ? "" : ` with ${errors.length} error${errors.length < 2 ? "" : "s"}:` + errors.slice(0, limit + 1).map((e, i) => {
+        if (i === limit) return "\n...";
+        if (!e.location) return `
+error: ${e.text}`;
+        let { file: file2, line, column } = e.location;
+        let pluginText = e.pluginName ? `[plugin: ${e.pluginName}] ` : "";
+        return `
+${file2}:${line}:${column}: ERROR: ${pluginText}${e.text}`;
+      }).join("");
+      let error51 = new Error(text);
+      for (const [key, value] of [["errors", errors], ["warnings", warnings]]) {
+        Object.defineProperty(error51, key, {
+          configurable: true,
+          enumerable: true,
+          get: () => value,
+          set: (value2) => Object.defineProperty(error51, key, {
+            configurable: true,
+            enumerable: true,
+            value: value2
+          })
+        });
+      }
+      return error51;
+    }
+    function replaceDetailsInMessages(messages, stash) {
+      for (const message of messages) {
+        message.detail = stash.load(message.detail);
+      }
+      return messages;
+    }
+    function sanitizeLocation(location, where, terminalWidth) {
+      if (location == null) return null;
+      let keys = {};
+      let file2 = getFlag(location, keys, "file", mustBeString);
+      let namespace = getFlag(location, keys, "namespace", mustBeString);
+      let line = getFlag(location, keys, "line", mustBeInteger);
+      let column = getFlag(location, keys, "column", mustBeInteger);
+      let length = getFlag(location, keys, "length", mustBeInteger);
+      let lineText = getFlag(location, keys, "lineText", mustBeString);
+      let suggestion = getFlag(location, keys, "suggestion", mustBeString);
+      checkForInvalidFlags(location, keys, where);
+      if (lineText) {
+        const relevantASCII = lineText.slice(
+          0,
+          (column && column > 0 ? column : 0) + (length && length > 0 ? length : 0) + (terminalWidth && terminalWidth > 0 ? terminalWidth : 80)
+        );
+        if (!/[\x7F-\uFFFF]/.test(relevantASCII) && !/\n/.test(lineText)) {
+          lineText = relevantASCII;
+        }
+      }
+      return {
+        file: file2 || "",
+        namespace: namespace || "",
+        line: line || 0,
+        column: column || 0,
+        length: length || 0,
+        lineText: lineText || "",
+        suggestion: suggestion || ""
+      };
+    }
+    function sanitizeMessages(messages, property, stash, fallbackPluginName, terminalWidth) {
+      let messagesClone = [];
+      let index = 0;
+      for (const message of messages) {
+        let keys = {};
+        let id = getFlag(message, keys, "id", mustBeString);
+        let pluginName = getFlag(message, keys, "pluginName", mustBeString);
+        let text = getFlag(message, keys, "text", mustBeString);
+        let location = getFlag(message, keys, "location", mustBeObjectOrNull);
+        let notes = getFlag(message, keys, "notes", mustBeArray);
+        let detail = getFlag(message, keys, "detail", canBeAnything);
+        let where = `in element ${index} of "${property}"`;
+        checkForInvalidFlags(message, keys, where);
+        let notesClone = [];
+        if (notes) {
+          for (const note of notes) {
+            let noteKeys = {};
+            let noteText = getFlag(note, noteKeys, "text", mustBeString);
+            let noteLocation = getFlag(note, noteKeys, "location", mustBeObjectOrNull);
+            checkForInvalidFlags(note, noteKeys, where);
+            notesClone.push({
+              text: noteText || "",
+              location: sanitizeLocation(noteLocation, where, terminalWidth)
+            });
+          }
+        }
+        messagesClone.push({
+          id: id || "",
+          pluginName: pluginName || fallbackPluginName,
+          text: text || "",
+          location: sanitizeLocation(location, where, terminalWidth),
+          notes: notesClone,
+          detail: stash ? stash.store(detail) : -1
+        });
+        index++;
+      }
+      return messagesClone;
+    }
+    function sanitizeStringArray(values, property) {
+      const result = [];
+      for (const value of values) {
+        if (typeof value !== "string") throw new Error(`${quote(property)} must be an array of strings`);
+        result.push(value);
+      }
+      return result;
+    }
+    function sanitizeStringMap(map2, property) {
+      const result = /* @__PURE__ */ Object.create(null);
+      for (const key in map2) {
+        const value = map2[key];
+        if (typeof value !== "string") throw new Error(`key ${quote(key)} in object ${quote(property)} must be a string`);
+        result[key] = value;
+      }
+      return result;
+    }
+    function convertOutputFiles({ path: path3, contents, hash: hash2 }) {
+      let text = null;
+      return {
+        path: path3,
+        contents,
+        hash: hash2,
+        get text() {
+          const binary = this.contents;
+          if (text === null || binary !== contents) {
+            contents = binary;
+            text = decodeUTF8(binary);
+          }
+          return text;
+        }
+      };
+    }
+    var fs = require("fs");
+    var os = require("os");
+    var path = require("path");
+    var ESBUILD_BINARY_PATH = process.env.ESBUILD_BINARY_PATH || ESBUILD_BINARY_PATH;
+    var isValidBinaryPath = (x) => !!x && x !== "/usr/bin/esbuild";
+    var packageDarwin_arm64 = "@esbuild/darwin-arm64";
+    var packageDarwin_x64 = "@esbuild/darwin-x64";
+    var knownWindowsPackages = {
+      "win32 arm64 LE": "@esbuild/win32-arm64",
+      "win32 ia32 LE": "@esbuild/win32-ia32",
+      "win32 x64 LE": "@esbuild/win32-x64"
+    };
+    var knownUnixlikePackages = {
+      "aix ppc64 BE": "@esbuild/aix-ppc64",
+      "android arm64 LE": "@esbuild/android-arm64",
+      "darwin arm64 LE": "@esbuild/darwin-arm64",
+      "darwin x64 LE": "@esbuild/darwin-x64",
+      "freebsd arm64 LE": "@esbuild/freebsd-arm64",
+      "freebsd x64 LE": "@esbuild/freebsd-x64",
+      "linux arm LE": "@esbuild/linux-arm",
+      "linux arm64 LE": "@esbuild/linux-arm64",
+      "linux ia32 LE": "@esbuild/linux-ia32",
+      "linux mips64el LE": "@esbuild/linux-mips64el",
+      "linux ppc64 LE": "@esbuild/linux-ppc64",
+      "linux riscv64 LE": "@esbuild/linux-riscv64",
+      "linux s390x BE": "@esbuild/linux-s390x",
+      "linux x64 LE": "@esbuild/linux-x64",
+      "linux loong64 LE": "@esbuild/linux-loong64",
+      "netbsd arm64 LE": "@esbuild/netbsd-arm64",
+      "netbsd x64 LE": "@esbuild/netbsd-x64",
+      "openbsd arm64 LE": "@esbuild/openbsd-arm64",
+      "openbsd x64 LE": "@esbuild/openbsd-x64",
+      "sunos x64 LE": "@esbuild/sunos-x64"
+    };
+    var knownWebAssemblyFallbackPackages = {
+      "android arm LE": "@esbuild/android-arm",
+      "android x64 LE": "@esbuild/android-x64"
+    };
+    function pkgAndSubpathForCurrentPlatform() {
+      let pkg;
+      let subpath;
+      let isWASM = false;
+      let platformKey2 = `${process.platform} ${os.arch()} ${os.endianness()}`;
+      if (platformKey2 in knownWindowsPackages) {
+        pkg = knownWindowsPackages[platformKey2];
+        subpath = "esbuild.exe";
+      } else if (platformKey2 in knownUnixlikePackages) {
+        pkg = knownUnixlikePackages[platformKey2];
+        subpath = "bin/esbuild";
+      } else if (platformKey2 in knownWebAssemblyFallbackPackages) {
+        pkg = knownWebAssemblyFallbackPackages[platformKey2];
+        subpath = "bin/esbuild";
+        isWASM = true;
+      } else {
+        throw new Error(`Unsupported platform: ${platformKey2}`);
+      }
+      return { pkg, subpath, isWASM };
+    }
+    function pkgForSomeOtherPlatform() {
+      const libMainJS = require.resolve("esbuild");
+      const nodeModulesDirectory = path.dirname(path.dirname(path.dirname(libMainJS)));
+      if (path.basename(nodeModulesDirectory) === "node_modules") {
+        for (const unixKey in knownUnixlikePackages) {
+          try {
+            const pkg = knownUnixlikePackages[unixKey];
+            if (fs.existsSync(path.join(nodeModulesDirectory, pkg))) return pkg;
+          } catch {
+          }
+        }
+        for (const windowsKey in knownWindowsPackages) {
+          try {
+            const pkg = knownWindowsPackages[windowsKey];
+            if (fs.existsSync(path.join(nodeModulesDirectory, pkg))) return pkg;
+          } catch {
+          }
+        }
+      }
+      return null;
+    }
+    function downloadedBinPath(pkg, subpath) {
+      const esbuildLibDir = path.dirname(require.resolve("esbuild"));
+      return path.join(esbuildLibDir, `downloaded-${pkg.replace("/", "-")}-${path.basename(subpath)}`);
+    }
+    function generateBinPath() {
+      if (isValidBinaryPath(ESBUILD_BINARY_PATH)) {
+        if (!fs.existsSync(ESBUILD_BINARY_PATH)) {
+          console.warn(`[esbuild] Ignoring bad configuration: ESBUILD_BINARY_PATH=${ESBUILD_BINARY_PATH}`);
+        } else {
+          return { binPath: ESBUILD_BINARY_PATH, isWASM: false };
+        }
+      }
+      const { pkg, subpath, isWASM } = pkgAndSubpathForCurrentPlatform();
+      let binPath;
+      try {
+        binPath = require.resolve(`${pkg}/${subpath}`);
+      } catch (e) {
+        binPath = downloadedBinPath(pkg, subpath);
+        if (!fs.existsSync(binPath)) {
+          try {
+            require.resolve(pkg);
+          } catch {
+            const otherPkg = pkgForSomeOtherPlatform();
+            if (otherPkg) {
+              let suggestions = `
+Specifically the "${otherPkg}" package is present but this platform
+needs the "${pkg}" package instead. People often get into this
+situation by installing esbuild on Windows or macOS and copying "node_modules"
+into a Docker image that runs Linux, or by copying "node_modules" between
+Windows and WSL environments.
+
+If you are installing with npm, you can try not copying the "node_modules"
+directory when you copy the files over, and running "npm ci" or "npm install"
+on the destination platform after the copy. Or you could consider using yarn
+instead of npm which has built-in support for installing a package on multiple
+platforms simultaneously.
+
+If you are installing with yarn, you can try listing both this platform and the
+other platform in your ".yarnrc.yml" file using the "supportedArchitectures"
+feature: https://yarnpkg.com/configuration/yarnrc/#supportedArchitectures
+Keep in mind that this means multiple copies of esbuild will be present.
+`;
+              if (pkg === packageDarwin_x64 && otherPkg === packageDarwin_arm64 || pkg === packageDarwin_arm64 && otherPkg === packageDarwin_x64) {
+                suggestions = `
+Specifically the "${otherPkg}" package is present but this platform
+needs the "${pkg}" package instead. People often get into this
+situation by installing esbuild with npm running inside of Rosetta 2 and then
+trying to use it with node running outside of Rosetta 2, or vice versa (Rosetta
+2 is Apple's on-the-fly x86_64-to-arm64 translation service).
+
+If you are installing with npm, you can try ensuring that both npm and node are
+not running under Rosetta 2 and then reinstalling esbuild. This likely involves
+changing how you installed npm and/or node. For example, installing node with
+the universal installer here should work: https://nodejs.org/en/download/. Or
+you could consider using yarn instead of npm which has built-in support for
+installing a package on multiple platforms simultaneously.
+
+If you are installing with yarn, you can try listing both "arm64" and "x64"
+in your ".yarnrc.yml" file using the "supportedArchitectures" feature:
+https://yarnpkg.com/configuration/yarnrc/#supportedArchitectures
+Keep in mind that this means multiple copies of esbuild will be present.
+`;
+              }
+              throw new Error(`
+You installed esbuild for another platform than the one you're currently using.
+This won't work because esbuild is written with native code and needs to
+install a platform-specific binary executable.
+${suggestions}
+Another alternative is to use the "esbuild-wasm" package instead, which works
+the same way on all platforms. But it comes with a heavy performance cost and
+can sometimes be 10x slower than the "esbuild" package, so you may also not
+want to do that.
+`);
+            }
+            throw new Error(`The package "${pkg}" could not be found, and is needed by esbuild.
+
+If you are installing esbuild with npm, make sure that you don't specify the
+"--no-optional" or "--omit=optional" flags. The "optionalDependencies" feature
+of "package.json" is used by esbuild to install the correct binary executable
+for your current platform.`);
+          }
+          throw e;
+        }
+      }
+      if (/\.zip\//.test(binPath)) {
+        let pnpapi;
+        try {
+          pnpapi = require("pnpapi");
+        } catch (e) {
+        }
+        if (pnpapi) {
+          const root = pnpapi.getPackageInformation(pnpapi.topLevel).packageLocation;
+          const binTargetPath = path.join(
+            root,
+            "node_modules",
+            ".cache",
+            "esbuild",
+            `pnpapi-${pkg.replace("/", "-")}-${"0.25.0"}-${path.basename(subpath)}`
+          );
+          if (!fs.existsSync(binTargetPath)) {
+            fs.mkdirSync(path.dirname(binTargetPath), { recursive: true });
+            fs.copyFileSync(binPath, binTargetPath);
+            fs.chmodSync(binTargetPath, 493);
+          }
+          return { binPath: binTargetPath, isWASM };
+        }
+      }
+      return { binPath, isWASM };
+    }
+    var child_process = require("child_process");
+    var crypto3 = require("crypto");
+    var path2 = require("path");
+    var fs2 = require("fs");
+    var os2 = require("os");
+    var tty = require("tty");
+    var worker_threads;
+    if (process.env.ESBUILD_WORKER_THREADS !== "0") {
+      try {
+        worker_threads = require("worker_threads");
+      } catch {
+      }
+      let [major, minor] = process.versions.node.split(".");
+      if (
+        // <v12.17.0 does not work
+        +major < 12 || +major === 12 && +minor < 17 || +major === 13 && +minor < 13
+      ) {
+        worker_threads = void 0;
+      }
+    }
+    var _a3;
+    var isInternalWorkerThread = ((_a3 = worker_threads == null ? void 0 : worker_threads.workerData) == null ? void 0 : _a3.esbuildVersion) === "0.25.0";
+    var esbuildCommandAndArgs = () => {
+      if ((!ESBUILD_BINARY_PATH || false) && (path2.basename(__filename) !== "main.js" || path2.basename(__dirname) !== "lib")) {
+        throw new Error(
+          `The esbuild JavaScript API cannot be bundled. Please mark the "esbuild" package as external so it's not included in the bundle.
+
+More information: The file containing the code for esbuild's JavaScript API (${__filename}) does not appear to be inside the esbuild package on the file system, which usually means that the esbuild package was bundled into another file. This is problematic because the API needs to run a binary executable inside the esbuild package which is located using a relative path from the API code to the executable. If the esbuild package is bundled, the relative path will be incorrect and the executable won't be found.`
+        );
+      }
+      if (false) {
+        return ["node", [path2.join(__dirname, "..", "bin", "esbuild")]];
+      } else {
+        const { binPath, isWASM } = generateBinPath();
+        if (isWASM) {
+          return ["node", [binPath]];
+        } else {
+          return [binPath, []];
+        }
+      }
+    };
+    var isTTY = () => tty.isatty(2);
+    var fsSync = {
+      readFile(tempFile, callback) {
+        try {
+          let contents = fs2.readFileSync(tempFile, "utf8");
+          try {
+            fs2.unlinkSync(tempFile);
+          } catch {
+          }
+          callback(null, contents);
+        } catch (err) {
+          callback(err, null);
+        }
+      },
+      writeFile(contents, callback) {
+        try {
+          let tempFile = randomFileName();
+          fs2.writeFileSync(tempFile, contents);
+          callback(tempFile);
+        } catch {
+          callback(null);
+        }
+      }
+    };
+    var fsAsync = {
+      readFile(tempFile, callback) {
+        try {
+          fs2.readFile(tempFile, "utf8", (err, contents) => {
+            try {
+              fs2.unlink(tempFile, () => callback(err, contents));
+            } catch {
+              callback(err, contents);
+            }
+          });
+        } catch (err) {
+          callback(err, null);
+        }
+      },
+      writeFile(contents, callback) {
+        try {
+          let tempFile = randomFileName();
+          fs2.writeFile(tempFile, contents, (err) => err !== null ? callback(null) : callback(tempFile));
+        } catch {
+          callback(null);
+        }
+      }
+    };
+    var version2 = "0.25.0";
+    var build = (options) => ensureServiceIsRunning().build(options);
+    var context = (buildOptions) => ensureServiceIsRunning().context(buildOptions);
+    var transform2 = (input, options) => ensureServiceIsRunning().transform(input, options);
+    var formatMessages = (messages, options) => ensureServiceIsRunning().formatMessages(messages, options);
+    var analyzeMetafile = (messages, options) => ensureServiceIsRunning().analyzeMetafile(messages, options);
+    var buildSync = (options) => {
+      if (worker_threads && !isInternalWorkerThread) {
+        if (!workerThreadService) workerThreadService = startWorkerThreadService(worker_threads);
+        return workerThreadService.buildSync(options);
+      }
+      let result;
+      runServiceSync((service) => service.buildOrContext({
+        callName: "buildSync",
+        refs: null,
+        options,
+        isTTY: isTTY(),
+        defaultWD,
+        callback: (err, res) => {
+          if (err) throw err;
+          result = res;
+        }
+      }));
+      return result;
+    };
+    var transformSync = (input, options) => {
+      if (worker_threads && !isInternalWorkerThread) {
+        if (!workerThreadService) workerThreadService = startWorkerThreadService(worker_threads);
+        return workerThreadService.transformSync(input, options);
+      }
+      let result;
+      runServiceSync((service) => service.transform({
+        callName: "transformSync",
+        refs: null,
+        input,
+        options: options || {},
+        isTTY: isTTY(),
+        fs: fsSync,
+        callback: (err, res) => {
+          if (err) throw err;
+          result = res;
+        }
+      }));
+      return result;
+    };
+    var formatMessagesSync = (messages, options) => {
+      if (worker_threads && !isInternalWorkerThread) {
+        if (!workerThreadService) workerThreadService = startWorkerThreadService(worker_threads);
+        return workerThreadService.formatMessagesSync(messages, options);
+      }
+      let result;
+      runServiceSync((service) => service.formatMessages({
+        callName: "formatMessagesSync",
+        refs: null,
+        messages,
+        options,
+        callback: (err, res) => {
+          if (err) throw err;
+          result = res;
+        }
+      }));
+      return result;
+    };
+    var analyzeMetafileSync = (metafile, options) => {
+      if (worker_threads && !isInternalWorkerThread) {
+        if (!workerThreadService) workerThreadService = startWorkerThreadService(worker_threads);
+        return workerThreadService.analyzeMetafileSync(metafile, options);
+      }
+      let result;
+      runServiceSync((service) => service.analyzeMetafile({
+        callName: "analyzeMetafileSync",
+        refs: null,
+        metafile: typeof metafile === "string" ? metafile : JSON.stringify(metafile),
+        options,
+        callback: (err, res) => {
+          if (err) throw err;
+          result = res;
+        }
+      }));
+      return result;
+    };
+    var stop = () => {
+      if (stopService) stopService();
+      if (workerThreadService) workerThreadService.stop();
+      return Promise.resolve();
+    };
+    var initializeWasCalled = false;
+    var initialize = (options) => {
+      options = validateInitializeOptions(options || {});
+      if (options.wasmURL) throw new Error(`The "wasmURL" option only works in the browser`);
+      if (options.wasmModule) throw new Error(`The "wasmModule" option only works in the browser`);
+      if (options.worker) throw new Error(`The "worker" option only works in the browser`);
+      if (initializeWasCalled) throw new Error('Cannot call "initialize" more than once');
+      ensureServiceIsRunning();
+      initializeWasCalled = true;
+      return Promise.resolve();
+    };
+    var defaultWD = process.cwd();
+    var longLivedService;
+    var stopService;
+    var ensureServiceIsRunning = () => {
+      if (longLivedService) return longLivedService;
+      let [command, args] = esbuildCommandAndArgs();
+      let child = child_process.spawn(command, args.concat(`--service=${"0.25.0"}`, "--ping"), {
+        windowsHide: true,
+        stdio: ["pipe", "pipe", "inherit"],
+        cwd: defaultWD
+      });
+      let { readFromStdout, afterClose, service } = createChannel({
+        writeToStdin(bytes) {
+          child.stdin.write(bytes, (err) => {
+            if (err) afterClose(err);
+          });
+        },
+        readFileSync: fs2.readFileSync,
+        isSync: false,
+        hasFS: true,
+        esbuild: node_exports
+      });
+      child.stdin.on("error", afterClose);
+      child.on("error", afterClose);
+      const stdin = child.stdin;
+      const stdout = child.stdout;
+      stdout.on("data", readFromStdout);
+      stdout.on("end", afterClose);
+      stopService = () => {
+        stdin.destroy();
+        stdout.destroy();
+        child.kill();
+        initializeWasCalled = false;
+        longLivedService = void 0;
+        stopService = void 0;
+      };
+      let refCount = 0;
+      child.unref();
+      if (stdin.unref) {
+        stdin.unref();
+      }
+      if (stdout.unref) {
+        stdout.unref();
+      }
+      const refs = {
+        ref() {
+          if (++refCount === 1) child.ref();
+        },
+        unref() {
+          if (--refCount === 0) child.unref();
+        }
+      };
+      longLivedService = {
+        build: (options) => new Promise((resolve14, reject) => {
+          service.buildOrContext({
+            callName: "build",
+            refs,
+            options,
+            isTTY: isTTY(),
+            defaultWD,
+            callback: (err, res) => err ? reject(err) : resolve14(res)
+          });
+        }),
+        context: (options) => new Promise((resolve14, reject) => service.buildOrContext({
+          callName: "context",
+          refs,
+          options,
+          isTTY: isTTY(),
+          defaultWD,
+          callback: (err, res) => err ? reject(err) : resolve14(res)
+        })),
+        transform: (input, options) => new Promise((resolve14, reject) => service.transform({
+          callName: "transform",
+          refs,
+          input,
+          options: options || {},
+          isTTY: isTTY(),
+          fs: fsAsync,
+          callback: (err, res) => err ? reject(err) : resolve14(res)
+        })),
+        formatMessages: (messages, options) => new Promise((resolve14, reject) => service.formatMessages({
+          callName: "formatMessages",
+          refs,
+          messages,
+          options,
+          callback: (err, res) => err ? reject(err) : resolve14(res)
+        })),
+        analyzeMetafile: (metafile, options) => new Promise((resolve14, reject) => service.analyzeMetafile({
+          callName: "analyzeMetafile",
+          refs,
+          metafile: typeof metafile === "string" ? metafile : JSON.stringify(metafile),
+          options,
+          callback: (err, res) => err ? reject(err) : resolve14(res)
+        }))
+      };
+      return longLivedService;
+    };
+    var runServiceSync = (callback) => {
+      let [command, args] = esbuildCommandAndArgs();
+      let stdin = new Uint8Array();
+      let { readFromStdout, afterClose, service } = createChannel({
+        writeToStdin(bytes) {
+          if (stdin.length !== 0) throw new Error("Must run at most one command");
+          stdin = bytes;
+        },
+        isSync: true,
+        hasFS: true,
+        esbuild: node_exports
+      });
+      callback(service);
+      let stdout = child_process.execFileSync(command, args.concat(`--service=${"0.25.0"}`), {
+        cwd: defaultWD,
+        windowsHide: true,
+        input: stdin,
+        // We don't know how large the output could be. If it's too large, the
+        // command will fail with ENOBUFS. Reserve 16mb for now since that feels
+        // like it should be enough. Also allow overriding this with an environment
+        // variable.
+        maxBuffer: +process.env.ESBUILD_MAX_BUFFER || 16 * 1024 * 1024
+      });
+      readFromStdout(stdout);
+      afterClose(null);
+    };
+    var randomFileName = () => {
+      return path2.join(os2.tmpdir(), `esbuild-${crypto3.randomBytes(32).toString("hex")}`);
+    };
+    var workerThreadService = null;
+    var startWorkerThreadService = (worker_threads2) => {
+      let { port1: mainPort, port2: workerPort } = new worker_threads2.MessageChannel();
+      let worker = new worker_threads2.Worker(__filename, {
+        workerData: { workerPort, defaultWD, esbuildVersion: "0.25.0" },
+        transferList: [workerPort],
+        // From node's documentation: https://nodejs.org/api/worker_threads.html
+        //
+        //   Take care when launching worker threads from preload scripts (scripts loaded
+        //   and run using the `-r` command line flag). Unless the `execArgv` option is
+        //   explicitly set, new Worker threads automatically inherit the command line flags
+        //   from the running process and will preload the same preload scripts as the main
+        //   thread. If the preload script unconditionally launches a worker thread, every
+        //   thread spawned will spawn another until the application crashes.
+        //
+        execArgv: []
+      });
+      let nextID = 0;
+      let fakeBuildError = (text) => {
+        let error51 = new Error(`Build failed with 1 error:
+error: ${text}`);
+        let errors = [{ id: "", pluginName: "", text, location: null, notes: [], detail: void 0 }];
+        error51.errors = errors;
+        error51.warnings = [];
+        return error51;
+      };
+      let validateBuildSyncOptions = (options) => {
+        if (!options) return;
+        let plugins = options.plugins;
+        if (plugins && plugins.length > 0) throw fakeBuildError(`Cannot use plugins in synchronous API calls`);
+      };
+      let applyProperties = (object2, properties) => {
+        for (let key in properties) {
+          object2[key] = properties[key];
+        }
+      };
+      let runCallSync = (command, args) => {
+        let id = nextID++;
+        let sharedBuffer = new SharedArrayBuffer(8);
+        let sharedBufferView = new Int32Array(sharedBuffer);
+        let msg = { sharedBuffer, id, command, args };
+        worker.postMessage(msg);
+        let status = Atomics.wait(sharedBufferView, 0, 0);
+        if (status !== "ok" && status !== "not-equal") throw new Error("Internal error: Atomics.wait() failed: " + status);
+        let { message: { id: id2, resolve: resolve14, reject, properties } } = worker_threads2.receiveMessageOnPort(mainPort);
+        if (id !== id2) throw new Error(`Internal error: Expected id ${id} but got id ${id2}`);
+        if (reject) {
+          applyProperties(reject, properties);
+          throw reject;
+        }
+        return resolve14;
+      };
+      worker.unref();
+      return {
+        buildSync(options) {
+          validateBuildSyncOptions(options);
+          return runCallSync("build", [options]);
+        },
+        transformSync(input, options) {
+          return runCallSync("transform", [input, options]);
+        },
+        formatMessagesSync(messages, options) {
+          return runCallSync("formatMessages", [messages, options]);
+        },
+        analyzeMetafileSync(metafile, options) {
+          return runCallSync("analyzeMetafile", [metafile, options]);
+        },
+        stop() {
+          worker.terminate();
+          workerThreadService = null;
+        }
+      };
+    };
+    var startSyncServiceWorker = () => {
+      let workerPort = worker_threads.workerData.workerPort;
+      let parentPort = worker_threads.parentPort;
+      let extractProperties = (object2) => {
+        let properties = {};
+        if (object2 && typeof object2 === "object") {
+          for (let key in object2) {
+            properties[key] = object2[key];
+          }
+        }
+        return properties;
+      };
+      try {
+        let service = ensureServiceIsRunning();
+        defaultWD = worker_threads.workerData.defaultWD;
+        parentPort.on("message", (msg) => {
+          (async () => {
+            let { sharedBuffer, id, command, args } = msg;
+            let sharedBufferView = new Int32Array(sharedBuffer);
+            try {
+              switch (command) {
+                case "build":
+                  workerPort.postMessage({ id, resolve: await service.build(args[0]) });
+                  break;
+                case "transform":
+                  workerPort.postMessage({ id, resolve: await service.transform(args[0], args[1]) });
+                  break;
+                case "formatMessages":
+                  workerPort.postMessage({ id, resolve: await service.formatMessages(args[0], args[1]) });
+                  break;
+                case "analyzeMetafile":
+                  workerPort.postMessage({ id, resolve: await service.analyzeMetafile(args[0], args[1]) });
+                  break;
+                default:
+                  throw new Error(`Invalid command: ${command}`);
+              }
+            } catch (reject) {
+              workerPort.postMessage({ id, reject, properties: extractProperties(reject) });
+            }
+            Atomics.add(sharedBufferView, 0, 1);
+            Atomics.notify(sharedBufferView, 0, Infinity);
+          })();
+        });
+      } catch (reject) {
+        parentPort.on("message", (msg) => {
+          let { sharedBuffer, id } = msg;
+          let sharedBufferView = new Int32Array(sharedBuffer);
+          workerPort.postMessage({ id, reject, properties: extractProperties(reject) });
+          Atomics.add(sharedBufferView, 0, 1);
+          Atomics.notify(sharedBufferView, 0, Infinity);
+        });
+      }
+    };
+    if (isInternalWorkerThread) {
+      startSyncServiceWorker();
+    }
+    var node_default = node_exports;
+  }
+});
+
 // ../../packages/cli/dist/actions.js
 var require_actions = __commonJS({
   "../../packages/cli/dist/actions.js"(exports2, module2) {
@@ -43179,8 +47230,8 @@ var require_actions = __commonJS({
     var import_commander = require_commander();
     var import_ws4 = __toESM2(require_ws());
     var import_node_fs22 = require("fs");
-    var import_promises210 = require("fs/promises");
-    var import_node_path32 = require("path");
+    var import_promises34 = require("fs/promises");
+    var import_node_path52 = require("path");
     var import_actions_host3 = (init_actions_host(), __toCommonJS(actions_host_exports));
     var util2;
     (function(util22) {
@@ -47329,6 +51380,31 @@ var require_actions = __commonJS({
       projectId: z3.string(),
       importedAt: z3.number()
     });
+    var CANONICAL_RESOLUTION_TIERS2 = [
+      { label: "0.5K (Draft)", value: "0.5K", pixels: 262144 },
+      { label: "1K (Fast)", value: "1K", pixels: 1048576 },
+      { label: "2K (Balanced)", value: "2K", pixels: 4194304 },
+      { label: "4K (High Quality)", value: "4K", pixels: 8294400 }
+    ];
+    var GPT_IMAGE_RESOLUTION_TIERS2 = CANONICAL_RESOLUTION_TIERS2.filter(
+      (tier) => tier.value === "1K" || tier.value === "2K" || tier.value === "4K"
+    );
+    var GPT_IMAGE_ASPECT_RATIOS2 = [
+      { label: "1:1", value: "1:1" },
+      { label: "16:9", value: "16:9" },
+      { label: "9:16", value: "9:16" },
+      { label: "3:4", value: "3:4" },
+      { label: "4:3", value: "4:3" },
+      { label: "3:2", value: "3:2" },
+      { label: "2:3", value: "2:3" },
+      { label: "5:4", value: "5:4" },
+      { label: "4:5", value: "4:5" },
+      { label: "21:9", value: "21:9" },
+      { label: "2:1", value: "2:1" },
+      { label: "1:2", value: "1:2" },
+      { label: "3:1", value: "3:1" },
+      { label: "1:3", value: "1:3" }
+    ];
     var ModelKindSchema2 = z3.enum(["image", "video", "audio", "text", "asr"]);
     var ModelTaskSchema2 = z3.enum([
       "speech-to-text",
@@ -47363,22 +51439,57 @@ var require_actions = __commonJS({
       { label: "16:9", value: "16:9" },
       { label: "21:9", value: "21:9" }
     ];
-    var NANO_BANANA_RESOLUTIONS2 = [
-      { label: "0.5K (Draft)", value: "0.5K" },
-      { label: "1K (Fast)", value: "1K" },
-      { label: "2K (Balanced)", value: "2K" },
-      { label: "4K (High Quality)", value: "4K" }
-    ];
+    var NANO_BANANA_RESOLUTIONS2 = CANONICAL_RESOLUTION_TIERS2;
     var SORA_ASPECT_RATIOS2 = [
       { label: "16:9", value: "16:9" },
       { label: "9:16", value: "9:16" }
     ];
-    var FLUX_ASPECT_RATIOS2 = [
-      { label: "16:9", value: "landscape_16_9" },
-      { label: "9:16", value: "portrait_16_9" },
-      { label: "1:1", value: "square_hd" },
-      { label: "4:3", value: "landscape_4_3" },
-      { label: "3:4", value: "portrait_4_3" }
+    var CANONICAL_IMAGE_ASPECT_RATIOS2 = [
+      { label: "1:1", value: "1:1" },
+      { label: "4:3", value: "4:3" },
+      { label: "16:9", value: "16:9" },
+      { label: "3:4", value: "3:4" },
+      { label: "9:16", value: "9:16" }
+    ];
+    function aspectRatioParameter2(spec) {
+      return {
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        ...spec.description ? { description: spec.description } : {},
+        ...spec.required === void 0 ? {} : { required: spec.required },
+        options: [
+          ...spec.auto ? [{ label: spec.auto.label, value: "auto" }] : [],
+          ...spec.ratios.map((value) => ({ label: value, value }))
+        ],
+        defaultValue: spec.defaultValue
+      };
+    }
+    function durationParameter2(spec) {
+      return {
+        id: "duration",
+        label: "Duration",
+        type: "select",
+        options: [
+          ...spec.auto ? [{ label: spec.auto.label, value: "auto" }] : [],
+          ...spec.seconds.map((value) => ({ label: `${value}s`, value }))
+        ],
+        defaultValue: spec.defaultValue
+      };
+    }
+    function resolutionParameter2(spec) {
+      return {
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: spec.tiers.map((tier) => ({ label: tier.label, value: tier.value })),
+        defaultValue: spec.defaultValue
+      };
+    }
+    var KLING_ASPECT_RATIOS2 = [
+      { label: "16:9", value: "16:9" },
+      { label: "9:16", value: "9:16" },
+      { label: "1:1", value: "1:1" }
     ];
     var VEO3_ASPECT_RATIOS2 = [
       { label: "16:9", value: "16:9" },
@@ -47397,22 +51508,6 @@ var require_actions = __commonJS({
       { label: "1:1", value: "1:1" },
       { label: "4:3", value: "4:3" },
       { label: "3:4", value: "3:4" }
-    ];
-    var RECRAFT_ASPECT_RATIOS2 = [
-      { label: "1:1 HD", value: "square_hd" },
-      { label: "1:1", value: "square" },
-      { label: "4:3", value: "landscape_4_3" },
-      { label: "16:9", value: "landscape_16_9" },
-      { label: "3:4", value: "portrait_4_3" },
-      { label: "9:16", value: "portrait_16_9" }
-    ];
-    var FLUX2_ASPECT_RATIOS2 = [
-      { label: "1:1 HD", value: "square_hd" },
-      { label: "1:1", value: "square" },
-      { label: "4:3", value: "landscape_4_3" },
-      { label: "16:9", value: "landscape_16_9" },
-      { label: "3:4", value: "portrait_4_3" },
-      { label: "9:16", value: "portrait_16_9" }
     ];
     var FLUX3_VIDEO_ASPECT_RATIOS2 = [
       { label: "Auto", value: "auto" },
@@ -47480,12 +51575,6 @@ var require_actions = __commonJS({
       ...FLUX3_VIDEO_DEFAULT_PARAMS2,
       duration: 5
     };
-    var GPT_IMAGE_SIZES2 = [
-      { label: "Auto", value: "auto" },
-      { label: "1:1", value: "1024x1024" },
-      { label: "2:3", value: "1024x1536" },
-      { label: "3:2", value: "1536x1024" }
-    ];
     var SEEDANCE_ASPECT_RATIOS2 = [
       { label: "Auto", value: "auto" },
       { label: "21:9", value: "21:9" },
@@ -47528,7 +51617,7 @@ var require_actions = __commonJS({
       { label: "Sulafat - Warm", value: "Sulafat" }
     ];
     var ModelParameterTypeSchema2 = z3.enum(["select", "slider", "number", "text", "boolean"]);
-    var ProviderSchema2 = z3.enum([
+    var BuiltinProviderSchema2 = z3.enum([
       "local",
       "official",
       "fal",
@@ -47544,6 +51633,10 @@ var require_actions = __commonJS({
       "mock",
       "custom"
     ]);
+    var ProviderSchema2 = z3.string().trim().regex(
+      /^[a-z0-9][a-z0-9._-]*$/,
+      "Provider ids must be lowercase plugin-safe identifiers."
+    );
     var ReferenceBindingSchema2 = z3.discriminatedUnion("type", [
       z3.object({
         /** Provider receives the prompt and reference collections as separate fields. */
@@ -47722,6 +51815,12 @@ var require_actions = __commonJS({
       /** Plugin that owns projectorExportId. The resolver selects an installed
        * exact version and persists it on the Canvas node. */
       projectorPluginId: z3.string().min(1).optional(),
+      /** Function export that owns the full submit/poll/result lifecycle for a
+       * plugin-defined provider. Built-in adapters may omit it. */
+      executorExportId: z3.string().min(1).optional(),
+      /** Plugin that owns executorExportId. Package composition fills this from
+       * immutable plugin provenance when omitted in a binding document. */
+      executorPluginId: z3.string().min(1).optional(),
       priority: z3.number().optional(),
       weight: z3.number().optional(),
       requiredCredentials: z3.array(z3.string()).optional(),
@@ -47738,12 +51837,20 @@ var require_actions = __commonJS({
        * the effective Card instead of being rendered and silently discarded. */
       excludedParameterIds: z3.array(z3.string().min(1)).optional()
     }).superRefine((implementation, ctx) => {
-      if (!implementation.projectorPluginId || implementation.projectorExportId) return;
-      ctx.addIssue({
-        code: z3.ZodIssueCode.custom,
-        path: ["projectorExportId"],
-        message: "projectorExportId is required when projectorPluginId is configured."
-      });
+      if (implementation.projectorPluginId && !implementation.projectorExportId) {
+        ctx.addIssue({
+          code: z3.ZodIssueCode.custom,
+          path: ["projectorExportId"],
+          message: "projectorExportId is required when projectorPluginId is configured."
+        });
+      }
+      if (implementation.executorPluginId && !implementation.executorExportId) {
+        ctx.addIssue({
+          code: z3.ZodIssueCode.custom,
+          path: ["executorExportId"],
+          message: "executorExportId is required when executorPluginId is configured."
+        });
+      }
     });
     var ModelCardSchema2 = z3.object({
       id: z3.string(),
@@ -47763,12 +51870,6 @@ var require_actions = __commonJS({
        * This is OUR representation — provider-specific values live in parameters/defaultParams.
        */
       defaultAspectRatio: z3.string().default("16:9"),
-      /**
-       * Maps our canonical aspect ratio ("4:3") → provider-specific param value ("landscape_4_3").
-       * The key of the provider param in defaultParams (e.g. "aspect_ratio" or "image_size").
-       * If the provider uses the same format as ours, the mapping is identity.
-       */
-      aspectRatioParam: z3.string().optional(),
       input: ModelInputRuleSchema2.default({ requiresPrompt: true, inputMode: {}, promptModalities: ["text"] }),
       musicInput: MusicInputMappingSchema2.optional(),
       /** Shared UI/runtime constraints. Providers may still translate the final
@@ -47896,7 +51997,7 @@ var require_actions = __commonJS({
     function resolveAspectRatio2(modelId, modelParams2) {
       const card = MODEL_CARDS2.find((c) => c.id === modelId);
       if (!card) return "16:9";
-      const paramId = card.aspectRatioParam || "aspect_ratio";
+      const paramId = "aspect_ratio";
       const arParam = card.parameters.find((p) => p.id === paramId);
       if (!arParam) return card.defaultAspectRatio;
       const value = modelParams2[paramId];
@@ -47945,6 +52046,10 @@ var require_actions = __commonJS({
       audioCodecs: ["aac", "mp3"]
     };
     var MINIMAX_H3_AUDIO_CONSTRAINTS2 = {
+      // The model accepts WAV and MP3, so `audio/mpeg` belongs here: it is MP3's registered
+      // media type and rejecting it would refuse a file the model can read. MiniMax derives a
+      // filename from the mime and will not take the `.mpeg` that `audio/mpeg` yields, so the
+      // transport spells it `audio/mp3` on the wire -- a provider dialect, like `adaptive`.
       mimeTypes: ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3"],
       fileExtensions: ["wav", "mp3"],
       maxBytes: 15 * 1024 * 1024,
@@ -48116,7 +52221,6 @@ var require_actions = __commonJS({
         defaultProvider: "official",
         kind: "image",
         defaultAspectRatio: "16:9",
-        aspectRatioParam: "aspect_ratio",
         description: "Fast Gemini 3.1 Flash-Lite image generation.",
         parameters: [
           {
@@ -48141,15 +52245,21 @@ var require_actions = __commonJS({
         defaultProvider: "official",
         kind: "image",
         defaultAspectRatio: "1:1",
-        aspectRatioParam: "size",
         description: "OpenAI GPT Image 2 \u2014 high-quality image generation and editing.",
         parameters: [
           {
-            id: "size",
-            label: "Size",
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
             type: "select",
-            options: GPT_IMAGE_SIZES2.map((s) => ({ label: s.label, value: s.value })),
-            defaultValue: "auto"
+            options: GPT_IMAGE_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "1:1"
+          },
+          {
+            id: "resolution",
+            label: "Resolution",
+            type: "select",
+            options: GPT_IMAGE_RESOLUTION_TIERS2.map((t) => ({ label: t.label, value: t.value })),
+            defaultValue: "2K"
           },
           {
             id: "quality",
@@ -48175,13 +52285,13 @@ var require_actions = __commonJS({
             defaultValue: "png"
           },
           {
+            // gpt-image-2 does not support transparent backgrounds.
             id: "background",
             label: "Background",
             type: "select",
             options: [
               { label: "Auto", value: "auto" },
-              { label: "Opaque", value: "opaque" },
-              { label: "Transparent", value: "transparent" }
+              { label: "Opaque", value: "opaque" }
             ],
             defaultValue: "auto"
           },
@@ -48225,23 +52335,25 @@ var require_actions = __commonJS({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "1:1",
-        aspectRatioParam: "image_size",
         description: "ByteDance Seedream 4.5 image generation and editing through fal.ai.",
         parameters: [
+          aspectRatioParameter2({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS2.map((r) => r.value),
+            defaultValue: "auto",
+            auto: { label: "Auto" }
+          }),
           {
-            id: "image_size",
-            label: "Size",
+            // Seedream's own tier, kept separate from the ratio the way minimax-h3
+            // already separates them. Folding both into one `image_size` enum made
+            // "Auto 2K" look like an aspect ratio.
+            id: "resolution",
+            label: "Resolution",
             type: "select",
             options: [
-              { label: "Auto 2K", value: "auto_2K" },
-              { label: "Auto 4K", value: "auto_4K" },
-              { label: "1:1", value: "square_hd" },
-              { label: "4:3", value: "landscape_4_3" },
-              { label: "16:9", value: "landscape_16_9" },
-              { label: "3:4", value: "portrait_4_3" },
-              { label: "9:16", value: "portrait_16_9" }
+              { label: "2K", value: "2K" },
+              { label: "4K", value: "4K" }
             ],
-            defaultValue: "auto_2K"
+            defaultValue: "2K"
           },
           {
             id: "count",
@@ -48279,16 +52391,12 @@ var require_actions = __commonJS({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "16:9",
-        aspectRatioParam: "image_size",
         description: "Ultra-fast image generation, ~1s per image.",
         parameters: [
-          {
-            id: "image_size",
-            label: "Aspect Ratio",
-            type: "select",
-            options: FLUX_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
-            defaultValue: "landscape_16_9"
-          },
+          aspectRatioParameter2({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS2.map((r) => r.value),
+            defaultValue: "16:9"
+          }),
           {
             id: "num_inference_steps",
             label: "Steps",
@@ -48325,16 +52433,12 @@ var require_actions = __commonJS({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "16:9",
-        aspectRatioParam: "image_size",
         description: "High-quality image generation with great prompt following.",
         parameters: [
-          {
-            id: "image_size",
-            label: "Aspect Ratio",
-            type: "select",
-            options: FLUX_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
-            defaultValue: "landscape_16_9"
-          },
+          aspectRatioParameter2({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS2.map((r) => r.value),
+            defaultValue: "16:9"
+          }),
           {
             id: "num_inference_steps",
             label: "Steps",
@@ -48395,10 +52499,7 @@ var require_actions = __commonJS({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "720p", value: "720p" },
-              { label: "1080p", value: "1080p" }
-            ],
+            options: [{ label: "720p", value: "720p" }, { label: "1080p", value: "1080p" }],
             defaultValue: "720p"
           },
           {
@@ -48456,10 +52557,7 @@ var require_actions = __commonJS({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "720p", value: "720p" },
-              { label: "1080p", value: "1080p" }
-            ],
+            options: [{ label: "720p", value: "720p" }, { label: "1080p", value: "1080p" }],
             defaultValue: "720p"
           }
         ],
@@ -48502,10 +52600,7 @@ var require_actions = __commonJS({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "480p", value: "480p" },
-              { label: "720p", value: "720p" }
-            ],
+            options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
             defaultValue: "720p"
           },
           {
@@ -48562,10 +52657,7 @@ var require_actions = __commonJS({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "480p", value: "480p" },
-              { label: "720p", value: "720p" }
-            ],
+            options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
             defaultValue: "720p"
           },
           {
@@ -48626,10 +52718,7 @@ var require_actions = __commonJS({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "480p", value: "480p" },
-              { label: "720p", value: "720p" }
-            ],
+            options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
             defaultValue: "720p"
           }
         ],
@@ -48684,10 +52773,7 @@ var require_actions = __commonJS({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "480p", value: "480p" },
-              { label: "720p", value: "720p" }
-            ],
+            options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
             defaultValue: "720p"
           }
         ],
@@ -48735,10 +52821,7 @@ var require_actions = __commonJS({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "768p", value: "768P" },
-              { label: "2K", value: "2K" }
-            ],
+            options: [{ label: "768P", value: "768P" }, { label: "2K", value: "2K" }],
             defaultValue: "2K"
           }
         ],
@@ -48792,10 +52875,7 @@ var require_actions = __commonJS({
             id: "resolution",
             label: "Resolution",
             type: "select",
-            options: [
-              { label: "768p", value: "768P" },
-              { label: "2K", value: "2K" }
-            ],
+            options: [{ label: "768P", value: "768P" }, { label: "2K", value: "2K" }],
             defaultValue: "2K"
           }
         ],
@@ -48824,16 +52904,10 @@ var require_actions = __commonJS({
         defaultAspectRatio: "16:9",
         description: "Kling 3 Pro \u2014 first + optional end frame, with native audio.",
         parameters: [
-          {
-            id: "duration",
-            label: "Duration",
-            type: "select",
-            options: Array.from({ length: 13 }, (_, index) => ({
-              label: `${index + 3}s`,
-              value: String(index + 3)
-            })),
-            defaultValue: "5"
-          },
+          durationParameter2({
+            seconds: Array.from({ length: 13 }, (_, index) => index + 3),
+            defaultValue: 5
+          }),
           {
             id: "generate_audio",
             label: "Native audio",
@@ -48842,7 +52916,7 @@ var require_actions = __commonJS({
           }
         ],
         defaultParams: {
-          duration: "5",
+          duration: 5,
           generate_audio: true
         },
         input: { requiresPrompt: true, inputMode: { startEnd: {} } }
@@ -48926,16 +53000,12 @@ var require_actions = __commonJS({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "16:9",
-        aspectRatioParam: "image_size",
         description: "Designer-grade image generation with color control and text rendering.",
         parameters: [
-          {
-            id: "image_size",
-            label: "Aspect Ratio",
-            type: "select",
-            options: RECRAFT_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
-            defaultValue: "square_hd"
-          }
+          aspectRatioParameter2({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS2.map((r) => r.value),
+            defaultValue: "16:9"
+          })
         ],
         defaultParams: {
           image_size: "square_hd"
@@ -48951,16 +53021,12 @@ var require_actions = __commonJS({
         defaultProvider: "fal",
         kind: "image",
         defaultAspectRatio: "4:3",
-        aspectRatioParam: "image_size",
         description: "Latest FLUX flagship \u2014 high-quality image generation.",
         parameters: [
-          {
-            id: "image_size",
-            label: "Aspect Ratio",
-            type: "select",
-            options: FLUX2_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
-            defaultValue: "landscape_4_3"
-          },
+          aspectRatioParameter2({
+            ratios: CANONICAL_IMAGE_ASPECT_RATIOS2.map((r) => r.value),
+            defaultValue: "16:9"
+          }),
           {
             id: "safety_tolerance",
             label: "Safety Tolerance",
@@ -49190,8 +53256,7 @@ var require_actions = __commonJS({
             type: "select",
             readOnly: true,
             options: [{ label: "720p", value: "720p" }],
-            defaultValue: "720p",
-            description: "Gemini Omni Flash currently produces 720p video."
+            defaultValue: "720p"
           },
           {
             id: "frame_rate",
@@ -49996,6 +54061,506 @@ var require_actions = __commonJS({
           similarity_boost: 0.75
         },
         input: { requiresPrompt: true, inputMode: {} }
+      },
+      // ─── Image: Kling Omni ─────────────────────────────────────
+      // Kling's omni image models take a prompt plus up to ten reference images and
+      // render at a named resolution tier rather than explicit dimensions.
+      {
+        id: "kling-image-o1",
+        name: "Kling Image O1",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Kling O1 image generation with optional reference images.",
+        parameters: [
+          aspectRatioParameter2({
+            ratios: ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"],
+            defaultValue: "auto",
+            auto: { label: "Auto" }
+          }),
+          resolutionParameter2({
+            tiers: [{ label: "1K", value: "1K" }, { label: "2K", value: "2K" }],
+            defaultValue: "1K"
+          })
+        ],
+        defaultParams: { aspect_ratio: "auto", resolution: "1K" },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 10 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      {
+        id: "kling-image-o3",
+        name: "Kling Image O3",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Kling O3 omni image generation with optional reference images.",
+        parameters: [
+          aspectRatioParameter2({
+            ratios: ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"],
+            defaultValue: "auto",
+            auto: { label: "Auto" }
+          }),
+          resolutionParameter2({
+            tiers: [{ label: "1K", value: "1K" }, { label: "2K", value: "2K" }],
+            defaultValue: "1K"
+          })
+        ],
+        defaultParams: { aspect_ratio: "auto", resolution: "1K" },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 10 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      // ─── Image: Midjourney ─────────────────────────────────────
+      // Midjourney is prompt-driven: aspect ratio and the styling knobs below are
+      // expressed as `--ar`, `--stylize`, `--chaos`, and `--weird` flags appended to the
+      // prompt, so the Card declares them as parameters and the transport renders the
+      // flags. `stylize` spans 0-1000 and `chaos`/`weird` 0-100 in Midjourney's own docs.
+      {
+        id: "midjourney-7",
+        name: "Midjourney 7",
+        provider: "Midjourney",
+        availableProviders: ["kie"],
+        defaultProvider: "kie",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Midjourney v7 image generation with optional image prompts.",
+        parameters: [
+          aspectRatioParameter2({
+            ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+            defaultValue: "1:1"
+          }),
+          { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
+          { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
+          { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+        ],
+        defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 5 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      {
+        id: "midjourney-8.1",
+        name: "Midjourney 8.1",
+        provider: "Midjourney",
+        availableProviders: ["kie"],
+        defaultProvider: "kie",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Midjourney v8.1 image generation with optional image prompts.",
+        parameters: [
+          aspectRatioParameter2({
+            ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+            defaultValue: "1:1"
+          }),
+          { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
+          { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
+          { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+        ],
+        defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 5 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      {
+        id: "midjourney-niji-7",
+        name: "Midjourney Niji 7",
+        provider: "Midjourney",
+        availableProviders: ["kie"],
+        defaultProvider: "kie",
+        kind: "image",
+        defaultAspectRatio: "1:1",
+        description: "Midjourney Niji 7, the anime-oriented model, with optional image prompts.",
+        parameters: [
+          aspectRatioParameter2({
+            ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+            defaultValue: "1:1"
+          }),
+          { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
+          { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
+          { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+        ],
+        defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 5 } },
+          promptModalities: ["text", "image"]
+        }
+      },
+      // ─── Video: Seedance 2.0 speed tiers ───────────────────────
+      // Fast and mini are the same generation contract as Seedance 2.0 at lower cost, so
+      // they mirror its parameters and reference limits.
+      {
+        id: "seedance-2-fast-ref",
+        name: "Seedance 2.0 Fast (\u5168\u80FD\u53C2\u8003)",
+        provider: "ByteDance",
+        availableProviders: ["jimeng", "volcengine"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Seedance 2.0 Fast all-purpose generation with optional image, video, and audio references.",
+        parameters: [
+          durationParameter2({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: SEEDANCE_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "auto"
+          },
+          resolutionParameter2({
+            tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+            defaultValue: "720p"
+          }),
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: POSITIONAL_REFERENCE_BINDING2,
+          inputMode: {
+            images: { max: 9 },
+            videos: { max: 3 },
+            audios: { max: 3 },
+            maxTotalReferences: 12
+          },
+          promptModalities: ["text", "image", "video", "audio"]
+        }
+      },
+      {
+        id: "seedance-2-fast-startend",
+        name: "Seedance 2.0 Fast (\u9996\u5C3E\u5E27)",
+        provider: "ByteDance",
+        availableProviders: ["jimeng", "volcengine"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Seedance 2.0 Fast animation between a first and an optional last frame.",
+        parameters: [
+          durationParameter2({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: SEEDANCE_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "auto"
+          },
+          resolutionParameter2({
+            tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+            defaultValue: "720p"
+          }),
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+        input: { requiresPrompt: true, inputMode: { startEnd: {} } }
+      },
+      {
+        id: "seedance-2-mini-ref",
+        name: "Seedance 2.0 Mini (\u5168\u80FD\u53C2\u8003)",
+        provider: "ByteDance",
+        availableProviders: ["jimeng", "volcengine"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Seedance 2.0 Mini all-purpose generation with optional image, video, and audio references.",
+        parameters: [
+          durationParameter2({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: SEEDANCE_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "auto"
+          },
+          resolutionParameter2({
+            tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+            defaultValue: "720p"
+          }),
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: POSITIONAL_REFERENCE_BINDING2,
+          inputMode: {
+            images: { max: 9 },
+            videos: { max: 3 },
+            audios: { max: 3 },
+            maxTotalReferences: 12
+          },
+          promptModalities: ["text", "image", "video", "audio"]
+        }
+      },
+      {
+        id: "seedance-2-mini-startend",
+        name: "Seedance 2.0 Mini (\u9996\u5C3E\u5E27)",
+        provider: "ByteDance",
+        availableProviders: ["jimeng", "volcengine"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Seedance 2.0 Mini animation between a first and an optional last frame.",
+        parameters: [
+          durationParameter2({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: SEEDANCE_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "auto"
+          },
+          resolutionParameter2({
+            tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+            defaultValue: "720p"
+          }),
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+        input: { requiresPrompt: true, inputMode: { startEnd: {} } }
+      },
+      // ─── Video: Kling Omni ─────────────────────────────────────
+      // Kling's omni video models accept image and video references, render in a `std` or
+      // `pro` mode, and can stitch several shots from one prompt.
+      {
+        id: "kling-video-o1",
+        name: "Kling Video O1",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Kling O1 video generation with optional image and video references.",
+        parameters: [
+          durationParameter2({ seconds: [5, 10], defaultValue: 5 }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: KLING_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "16:9"
+          },
+          {
+            id: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+            defaultValue: "pro"
+          },
+          { id: "multi_shot", label: "Multi-shot", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: 5, aspect_ratio: "16:9", mode: "pro", multi_shot: false },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 4 }, videos: { max: 1 } },
+          promptModalities: ["text", "image", "video"]
+        }
+      },
+      {
+        id: "kling-video-o3",
+        name: "Kling Video O3",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Kling O3 omni video generation with optional image and video references and native audio.",
+        parameters: [
+          durationParameter2({ seconds: [5, 10], defaultValue: 5 }),
+          {
+            id: "aspect_ratio",
+            label: "Aspect Ratio",
+            type: "select",
+            options: KLING_ASPECT_RATIOS2.map((r) => ({ label: r.label, value: r.value })),
+            defaultValue: "16:9"
+          },
+          {
+            id: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+            defaultValue: "pro"
+          },
+          { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false },
+          { id: "multi_shot", label: "Multi-shot", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: 5, aspect_ratio: "16:9", mode: "pro", generate_audio: false, multi_shot: false },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 4 }, videos: { max: 1 } },
+          promptModalities: ["text", "image", "video"]
+        }
+      },
+      // ─── Video: driven performance ─────────────────────────────
+      // These take a subject and a driver rather than a prompt alone: Avatar animates one
+      // portrait from a speech clip, and the motion-control models transfer the motion of
+      // a source video onto a still.
+      {
+        id: "kling-avatar",
+        name: "Kling Avatar",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "video",
+        defaultAspectRatio: "9:16",
+        description: "Animate one portrait image so it speaks a supplied audio clip.",
+        parameters: [
+          {
+            id: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+            defaultValue: "std"
+          }
+        ],
+        defaultParams: { mode: "std" },
+        input: {
+          requiresPrompt: false,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 1 }, audios: { max: 1 } },
+          promptModalities: ["text", "image", "audio"]
+        }
+      },
+      {
+        id: "kling-motion-control",
+        name: "Kling Motion Control",
+        provider: "Kuaishou",
+        availableProviders: ["kling"],
+        defaultProvider: "kling",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Transfer the motion of a source video onto a still character image.",
+        parameters: [
+          {
+            id: "mode",
+            label: "Mode",
+            type: "select",
+            options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+            defaultValue: "std"
+          },
+          {
+            id: "keep_original_sound",
+            label: "Keep original sound",
+            type: "select",
+            options: [{ label: "Yes", value: "yes" }, { label: "No", value: "no" }],
+            defaultValue: "yes"
+          },
+          {
+            id: "character_orientation",
+            label: "Character orientation",
+            type: "select",
+            options: [
+              { label: "Follow video", value: "video" },
+              { label: "Follow image", value: "image" }
+            ],
+            defaultValue: "video"
+          }
+        ],
+        defaultParams: { mode: "std", keep_original_sound: "yes", character_orientation: "video" },
+        input: {
+          requiresPrompt: false,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 1 }, videos: { max: 1 } },
+          promptModalities: ["text", "image", "video"]
+        }
+      },
+      {
+        id: "jimeng-motion-control-2",
+        name: "Jimeng Motion Control 2.0",
+        provider: "ByteDance",
+        availableProviders: ["jimeng"],
+        defaultProvider: "jimeng",
+        kind: "video",
+        defaultAspectRatio: "16:9",
+        description: "Transfer the motion of a source video onto a still image with Jimeng 2.0.",
+        parameters: [],
+        defaultParams: {},
+        input: {
+          requiresPrompt: false,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { images: { max: 1 }, videos: { max: 1 } },
+          promptModalities: ["text", "image", "video"]
+        }
+      },
+      // ─── Audio: Seed Audio ─────────────────────────────────────
+      // Seed Audio clones a voice from a reference rather than selecting a preset one, so
+      // it takes an audio or image reference instead of a voice id.
+      {
+        id: "seed-audio-1",
+        name: "Seed Audio 1.0",
+        provider: "ByteDance",
+        availableProviders: ["volcengine"],
+        defaultProvider: "volcengine",
+        kind: "audio",
+        defaultAspectRatio: "1:1",
+        description: "Speech synthesis that reproduces the voice in a reference clip.",
+        parameters: [
+          { id: "speed", label: "Speed", type: "number", min: 0.5, max: 2, step: 0.1, defaultValue: 1 }
+        ],
+        defaultParams: { speed: 1 },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { audios: { max: 1 }, images: { max: 1 } },
+          promptModalities: ["text", "audio", "image"]
+        }
+      },
+      // ─── Audio: music ──────────────────────────────────────────
+      // Music generation is length-driven rather than duration-per-shot: the request names
+      // how long the finished track should be.
+      {
+        id: "elevenlabs-music-v2",
+        name: "ElevenLabs Music v2",
+        provider: "ElevenLabs",
+        availableProviders: ["elevenlabs"],
+        defaultProvider: "elevenlabs",
+        kind: "audio",
+        defaultAspectRatio: "1:1",
+        description: "Generate a music track from a text description, optionally instrumental.",
+        parameters: [
+          durationParameter2({ seconds: [30, 60, 90, 120, 180, 240, 300], defaultValue: 60 }),
+          { id: "is_instrumental", label: "Instrumental only", type: "boolean", defaultValue: false }
+        ],
+        defaultParams: { duration: 60, is_instrumental: false },
+        input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] }
+      },
+      {
+        id: "music-cover",
+        name: "Music Cover",
+        provider: "MiniMax",
+        availableProviders: ["minimax"],
+        defaultProvider: "minimax",
+        kind: "audio",
+        defaultAspectRatio: "1:1",
+        description: "Re-perform a supplied track, optionally with new lyrics.",
+        parameters: [
+          { id: "lyrics", label: "Lyrics", type: "text", defaultValue: "" }
+        ],
+        defaultParams: { lyrics: "" },
+        input: {
+          requiresPrompt: true,
+          referenceBinding: { type: "grouped-references" },
+          inputMode: { audios: { max: 1 } },
+          promptModalities: ["text", "audio"]
+        }
       }
     ];
     var SEEDANCE_2_FAL_PARAMETER_OVERRIDES2 = [
@@ -50382,8 +54947,32 @@ var require_actions = __commonJS({
       z3.object({
         kind: z3.literal("local"),
         transport: z3.literal("stdio"),
+        /**
+         * Which interpreter the host launches.
+         *
+         * A closed enum rather than a command line: the host builds the argv, so it can
+         * keep `--permission`, the network guard, and the Python filesystem allowlist
+         * attached. A plugin that could name its own command could name `bash` and step
+         * outside all of them.
+         *
+         * Optional only so the two manifests written before this field existed keep
+         * loading; `resolvePluginLanguage` falls back to the entrypoint extension.
+         * New drafts always declare it.
+         */
+        language: z3.enum(["node", "python"]).optional(),
         entrypoint: PluginRelativePathSchema2,
-        args: z3.array(z3.string()).default([])
+        args: z3.array(z3.string()).default([]),
+        /**
+         * Declares that the entrypoint is derived from source.
+         *
+         * Present means the host compiles `source` into `entrypoint` before validating,
+         * contract-testing, or activating, so a stale bundle cannot be packaged. Absent
+         * means the entrypoint is authored directly and the host never overwrites it --
+         * which is the normal case for Python, and for a hand-written `.mjs`.
+         */
+        build: z3.object({
+          source: PluginRelativePathSchema2
+        }).strict().optional()
       }),
       z3.object({
         kind: z3.literal("hosted"),
@@ -50394,6 +54983,16 @@ var require_actions = __commonJS({
     var ExecutablePluginCardExportSchema2 = z3.object({
       id: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
       kind: z3.enum(["model-card", "action-card"]),
+      path: PluginRelativePathSchema2
+    });
+    var ExecutablePluginProviderExportSchema2 = z3.object({
+      id: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+      kind: z3.literal("provider"),
+      path: PluginRelativePathSchema2
+    });
+    var ExecutablePluginModelBindingExportSchema2 = z3.object({
+      id: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+      kind: z3.literal("model-provider-binding"),
       path: PluginRelativePathSchema2
     });
     var ExecutableActionPresentationSchema2 = z3.discriminatedUnion("type", [
@@ -50522,9 +55121,125 @@ var require_actions = __commonJS({
         spec: ExecutableActionCardSchema2
       }).strict()
     ]);
+    var ExecutablePluginProviderAuthSchema2 = z3.discriminatedUnion("type", [
+      z3.object({
+        type: z3.literal("api-key"),
+        credentialId: z3.string().trim().min(1).default("apiKey"),
+        label: z3.string().trim().min(1).optional()
+      }).strict(),
+      z3.object({
+        type: z3.literal("oauth"),
+        id: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+        flow: z3.literal("browser"),
+        authorizationUrl: z3.string().url(),
+        callback: z3.object({
+          type: z3.literal("custom-scheme"),
+          scheme: z3.string().trim().regex(/^[a-z][a-z0-9+.-]*$/)
+        }).strict(),
+        accessTokenField: z3.string().trim().min(1).default("accessToken")
+      }).strict(),
+      z3.object({
+        type: z3.literal("local-token-import"),
+        id: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+        label: z3.string().trim().min(1).optional(),
+        source: z3.object({
+          format: z3.literal("electron-store-aes-256-gcm-v2"),
+          appDataSubdirectory: PluginRelativePathSchema2,
+          configFile: PluginRelativePathSchema2,
+          keyFile: PluginRelativePathSchema2,
+          tokenPath: z3.array(
+            z3.string().trim().regex(/^[A-Za-z0-9_-]+$/).refine(
+              (segment) => !["__proto__", "constructor", "prototype"].includes(segment),
+              "Token path contains a reserved property."
+            )
+          ).min(1)
+        }).strict()
+      }).strict()
+    ]);
+    var ExecutablePluginProviderDefinitionSchema2 = z3.object({
+      id: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+      name: z3.string().trim().min(1),
+      description: z3.string().trim().min(1).optional(),
+      upstreamId: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+      apiShape: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+      executorExportId: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+      auth: z3.array(ExecutablePluginProviderAuthSchema2).default([]),
+      /**
+       * Route values every binding of this provider inherits.
+       *
+       * A binding carries two facts: which catalogue model it routes, and the name that
+       * model has upstream. The rest of the route -- provider id, upstream, api shape,
+       * executor, credentials, priority -- belongs to the provider. Repeating it per
+       * binding produced no information and one real hazard: a single mistyped copy
+       * yields a route pointing at the wrong upstream while every sibling looks correct.
+       */
+      bindingDefaults: z3.object({
+        priority: z3.number().nonnegative().optional(),
+        weight: z3.number().nonnegative().optional(),
+        region: z3.string().trim().min(1).optional(),
+        accountId: z3.string().trim().min(1).optional()
+      }).strict().optional()
+    }).strict();
+    var ExecutablePluginProviderDocumentSchema2 = z3.object({
+      apiVersion: z3.literal("clash.provider/v1"),
+      kind: z3.literal("provider"),
+      spec: ExecutablePluginProviderDefinitionSchema2
+    }).strict();
+    var ExecutablePluginModelBindingSpecSchema2 = z3.intersection(
+      z3.object({
+        id: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+        modelId: z3.string().trim().min(1)
+      }),
+      ModelProviderImplementationSchema2
+    );
+    var ExecutablePluginModelBindingInputSchema2 = z3.object({
+      id: z3.string().trim().regex(PLUGIN_ID_PATTERN2).optional(),
+      modelId: z3.string().trim().min(1, "A binding must name the model it routes (modelId)."),
+      upstreamModel: z3.string().trim().min(1, "A binding must name its upstreamModel."),
+      providerId: z3.string().trim().min(1).optional(),
+      upstreamId: z3.string().trim().min(1).optional(),
+      apiShape: z3.string().trim().min(1).optional(),
+      executorExportId: z3.string().trim().min(1).optional(),
+      requiredOAuth: z3.array(z3.string()).optional(),
+      priority: z3.number().optional(),
+      weight: z3.number().optional(),
+      region: z3.string().trim().min(1).optional(),
+      accountId: z3.string().trim().min(1).optional()
+    }).passthrough();
+    function resolveModelBindingFromProvider2(binding, provider) {
+      const parsed = ExecutablePluginModelBindingInputSchema2.parse(binding);
+      const defaults = provider.bindingDefaults ?? {};
+      const oauthIds = [
+        ...new Set(
+          provider.auth.filter((entry) => "id" in entry).map((entry) => entry.id)
+        )
+      ];
+      const resolved = {
+        ...parsed,
+        id: parsed.id ?? `${provider.id}-${parsed.modelId}`,
+        providerId: parsed.providerId ?? provider.id,
+        upstreamId: parsed.upstreamId ?? provider.upstreamId,
+        apiShape: parsed.apiShape ?? provider.apiShape,
+        executorExportId: parsed.executorExportId ?? provider.executorExportId
+      };
+      const inheritedOAuth = parsed.requiredOAuth ?? (oauthIds.length > 0 ? oauthIds : void 0);
+      if (inheritedOAuth) resolved.requiredOAuth = inheritedOAuth;
+      else delete resolved.requiredOAuth;
+      for (const key of ["priority", "weight", "region", "accountId"]) {
+        const value = parsed[key] ?? defaults[key];
+        if (value === void 0) delete resolved[key];
+        else resolved[key] = value;
+      }
+      return resolved;
+    }
+    var ExecutablePluginModelBindingDocumentSchema2 = z3.object({
+      apiVersion: z3.literal("clash.binding/v1"),
+      kind: z3.literal("model-provider-binding"),
+      spec: ExecutablePluginModelBindingSpecSchema2
+    }).strict();
     var ExecutablePluginFunctionExportSchema2 = z3.object({
       id: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
-      kind: z3.enum(["action", "provider-projector"]),
+      kind: z3.enum(["action", "provider-projector", "provider-executor"]),
       handler: z3.string().trim().min(1)
     });
     var PluginNetworkPermissionsSchema2 = z3.object({
@@ -50557,6 +55272,19 @@ var require_actions = __commonJS({
       permissions: ExecutablePluginPermissionsSchema2,
       document: ExecutablePluginCardDocumentSchema2
     }).strict();
+    var ExecutablePluginArtifactRegistrationBaseSchema2 = z3.object({
+      pluginId: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
+      version: z3.string().trim().regex(SEMVER_PATTERN2),
+      schemaHash: z3.string().regex(SHA256_PATTERN2),
+      runtime: ExecutablePluginRuntimeSchema2,
+      permissions: ExecutablePluginPermissionsSchema2
+    });
+    var ExecutablePluginProviderRegistrationSchema2 = ExecutablePluginArtifactRegistrationBaseSchema2.extend({
+      document: ExecutablePluginProviderDocumentSchema2
+    }).strict();
+    var ExecutablePluginModelBindingRegistrationSchema2 = ExecutablePluginArtifactRegistrationBaseSchema2.extend({
+      document: ExecutablePluginModelBindingDocumentSchema2
+    }).strict();
     var ExecutablePluginBindingSchema2 = z3.object({
       pluginId: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
       version: z3.string().trim().regex(SEMVER_PATTERN2),
@@ -50573,12 +55301,75 @@ var require_actions = __commonJS({
         z3.record(ExecutablePluginJsonValueSchema2)
       ])
     );
-    var ExecutablePluginAssetHandleSchema2 = z3.object({
+    var ExecutablePluginAssetHandleObjectSchema2 = z3.object({
       assetId: z3.string().trim().min(1),
       uri: z3.string().regex(/^clash-asset:\/\/.+/),
       kind: AssetKindSchema2,
-      mediaType: z3.string().trim().min(1).optional()
+      mediaType: z3.string().trim().min(1).optional(),
+      /**
+       * Where the bytes are, when the host has not stored them yet.
+       *
+       * A generation plugin ends up with a link its upstream published, and returning it through the
+       * asset channel keeps the media type a declared field instead of a hand-rolled one. Absent for a
+       * handle that names an asset the host already holds.
+       */
+      url: z3.string().url().optional(),
+      /** Who can fetch `url`. The host cannot retrieve an address only the plugin can see. */
+      reach: z3.enum(["public", "private"]).optional()
     }).strict();
+    var ExecutablePluginAssetHandleSchema2 = ExecutablePluginAssetHandleObjectSchema2.superRefine((handle, ctx) => {
+      if (handle.url && !handle.reach) {
+        ctx.addIssue({
+          code: z3.ZodIssueCode.custom,
+          message: "An asset handle with a url must state its reach."
+        });
+      }
+      if (!handle.url && handle.reach) {
+        ctx.addIssue({
+          code: z3.ZodIssueCode.custom,
+          message: "An asset handle's reach applies to a url."
+        });
+      }
+    });
+    var ExecutablePluginAssetReadResultSchema2 = z3.object({
+      handle: z3.string().trim().min(1),
+      kind: AssetKindSchema2,
+      mediaType: z3.string().trim().min(1).optional(),
+      byteLength: z3.number().int().nonnegative(),
+      /** Fetchable by the plugin. A `clash-asset://` handle is the request, not an answer. */
+      url: z3.string().url().refine((value) => !value.startsWith("clash-asset://"), {
+        message: "asset.read url must be fetchable, not another asset handle."
+      }).optional(),
+      /**
+       * Who can fetch `url`.
+       *
+       * `public` means the provider can retrieve it directly, so it may be forwarded upstream.
+       * `private` means only this plugin process can -- a local asset served on loopback, say --
+       * and forwarding it would hand the provider an address that answers for somebody else.
+       * Both are `https?://` strings, so nothing downstream can tell them apart by inspection.
+       */
+      reach: z3.enum(["public", "private"]).optional(),
+      dataBase64: z3.string().optional()
+    }).strict().superRefine((result, ctx) => {
+      if (Boolean(result.url) === Boolean(result.dataBase64)) {
+        ctx.addIssue({
+          code: z3.ZodIssueCode.custom,
+          message: "asset.read returns exactly one of url or dataBase64."
+        });
+      }
+      if (result.url && !result.reach) {
+        ctx.addIssue({
+          code: z3.ZodIssueCode.custom,
+          message: "asset.read url requires a reach of public or private."
+        });
+      }
+      if (result.dataBase64 && result.reach) {
+        ctx.addIssue({
+          code: z3.ZodIssueCode.custom,
+          message: "asset.read reach applies to a url; bytes have none."
+        });
+      }
+    });
     var ExecutablePluginReferenceBaseSchema2 = z3.object({
       slot: z3.string().trim().min(1),
       index: z3.number().int().nonnegative()
@@ -50601,7 +55392,7 @@ var require_actions = __commonJS({
       projectId: z3.string().trim().min(1),
       nodeId: z3.string().trim().min(1).optional(),
       target: ExecutablePluginBindingSchema2.extend({
-        kind: z3.enum(["action", "provider-projector"])
+        kind: z3.enum(["action", "provider-projector", "provider-executor"])
       }),
       input: z3.object({
         values: z3.record(ExecutablePluginJsonValueSchema2).default({}),
@@ -50625,7 +55416,7 @@ var require_actions = __commonJS({
         projectId: z3.string().trim().min(1),
         nodeId: z3.string().trim().min(1).optional(),
         target: ExecutablePluginBindingSchema2.extend({
-          kind: z3.enum(["action", "provider-projector"])
+          kind: z3.enum(["action", "provider-projector", "provider-executor"])
         }),
         actor: z3.object({
           kind: z3.enum(["user", "agent", "system"]),
@@ -50695,15 +55486,41 @@ var require_actions = __commonJS({
         assetKind: AssetKindSchema2,
         mediaType: z3.string().trim().min(1).optional(),
         sourceHandle: z3.string().regex(/^clash-plugin-output:\/\/.+/).optional(),
+        /**
+         * Where the result already lives, for the host to fetch once.
+         *
+         * A generation plugin normally ends up with a link the upstream published, and passing that
+         * through means the bytes cross the wire exactly once and never touch the plugin. Without this
+         * field the only ways to return such a result were to download it and re-encode it inline, or
+         * to smuggle the link through a free-form `kind: "value"` output -- which is what
+         * `hilo-hub-media` does, and why its media type is hardcoded per model kind instead of read
+         * from the response.
+         */
+        url: z3.string().url().optional(),
+        /** Who can fetch `url`. A host cannot retrieve an address only the plugin can see. */
+        reach: z3.enum(["public", "private"]).optional(),
         dataBase64: z3.string().max(128 * 1024 * 1024).regex(
           /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
           "Plugin asset data must be canonical base64."
         ).optional()
       }).strict().superRefine((operation, ctx) => {
-        if (Boolean(operation.sourceHandle) === Boolean(operation.dataBase64)) {
+        const sources = [operation.sourceHandle, operation.url, operation.dataBase64].filter((source) => source !== void 0).length;
+        if (sources !== 1) {
           ctx.addIssue({
             code: z3.ZodIssueCode.custom,
-            message: "asset.write requires exactly one of sourceHandle or dataBase64."
+            message: "asset.write requires exactly one of sourceHandle, url, or dataBase64."
+          });
+        }
+        if (operation.url && !operation.reach) {
+          ctx.addIssue({
+            code: z3.ZodIssueCode.custom,
+            message: "asset.write url requires a reach of public or private."
+          });
+        }
+        if (!operation.url && operation.reach) {
+          ctx.addIssue({
+            code: z3.ZodIssueCode.custom,
+            message: "asset.write reach applies to a url."
           });
         }
       }),
@@ -50720,7 +55537,7 @@ var require_actions = __commonJS({
         prompt: z3.string().trim().min(1).max(2e4),
         aspectRatio: z3.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
         slot: z3.string().trim().min(1),
-        references: z3.array(ExecutablePluginAssetHandleSchema2.extend({
+        references: z3.array(ExecutablePluginAssetHandleObjectSchema2.extend({
           kind: z3.literal("image")
         }).strict()).max(5).default([])
       }).strict()
@@ -50770,7 +55587,7 @@ var require_actions = __commonJS({
       description: z3.string().trim().min(1).optional(),
       target: z3.object({
         exportId: z3.string().trim().regex(PLUGIN_ID_PATTERN2),
-        kind: z3.enum(["action", "provider-projector"])
+        kind: z3.enum(["action", "provider-projector", "provider-executor"])
       }).strict(),
       context: z3.object({
         projectId: z3.string().trim().min(1).default("contract-test-project"),
@@ -50807,6 +55624,8 @@ var require_actions = __commonJS({
       runtime: ExecutablePluginRuntimeSchema2,
       exports: z3.object({
         cards: z3.array(ExecutablePluginCardExportSchema2).default([]),
+        providers: z3.array(ExecutablePluginProviderExportSchema2).default([]),
+        modelBindings: z3.array(ExecutablePluginModelBindingExportSchema2).default([]),
         functions: z3.array(ExecutablePluginFunctionExportSchema2).default([])
       }),
       permissions: ExecutablePluginPermissionsSchema2,
@@ -50816,6 +55635,8 @@ var require_actions = __commonJS({
     }).superRefine((manifest, ctx) => {
       for (const [key, values] of [
         ["cards", manifest.exports.cards],
+        ["providers", manifest.exports.providers],
+        ["modelBindings", manifest.exports.modelBindings],
         ["functions", manifest.exports.functions]
       ]) {
         const ids = /* @__PURE__ */ new Set();
@@ -50841,6 +55662,20 @@ var require_actions = __commonJS({
         }
         cardPaths.add(card.path);
       }
+      const artifactPaths = new Set(cardPaths);
+      for (const artifact of [
+        ...manifest.exports.providers,
+        ...manifest.exports.modelBindings
+      ]) {
+        if (artifactPaths.has(artifact.path)) {
+          ctx.addIssue({
+            code: z3.ZodIssueCode.custom,
+            path: ["exports"],
+            message: "Plugin declarative artifact paths must be unique."
+          });
+        }
+        artifactPaths.add(artifact.path);
+      }
       const contractTestPaths = /* @__PURE__ */ new Set();
       for (const path of manifest.contractTests) {
         if (contractTestPaths.has(path)) {
@@ -50861,10 +55696,28 @@ var require_actions = __commonJS({
       contentHash: z3.string().regex(SHA256_PATTERN2),
       activatedAt: z3.string().datetime()
     }).strict();
-    function validateExecutablePluginPackage2(manifestInput, cardDocuments, contractTestDocuments = {}) {
+    function inheritBindingRoute2(input, providers, bindingExportId) {
+      if (typeof input !== "object" || input === null) return input;
+      const document = input;
+      if (typeof document.spec !== "object" || document.spec === null) return input;
+      const spec = document.spec;
+      const declared = typeof spec.providerId === "string" ? spec.providerId : void 0;
+      const definitions = Object.values(providers).map((provider) => provider.spec);
+      const owner = declared ? definitions.find((definition) => definition.id === declared) : definitions.length === 1 ? definitions[0] : void 0;
+      if (!owner) {
+        if (declared || definitions.length === 0) return input;
+        throw new Error(
+          `Model Provider binding ${bindingExportId} must name its providerId: this package exports ${definitions.length} providers.`
+        );
+      }
+      return { ...document, spec: resolveModelBindingFromProvider2(spec, owner) };
+    }
+    function validateExecutablePluginPackage2(manifestInput, cardDocuments, contractTestDocuments = {}, artifacts = {}) {
       const manifest = ExecutablePluginManifestSchema2.parse(manifestInput);
       const functions = new Map(manifest.exports.functions.map((entry) => [entry.id, entry]));
       const cards = {};
+      const providers = {};
+      const modelBindings = {};
       const contractTests = {};
       for (const cardExport of manifest.exports.cards) {
         if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
@@ -50898,6 +55751,53 @@ var require_actions = __commonJS({
         }
         cards[cardExport.path] = card;
       }
+      for (const providerExport of manifest.exports.providers) {
+        const input = artifacts.providers?.[providerExport.path];
+        if (input === void 0) {
+          throw new Error(`Missing declared Provider document: ${providerExport.path}`);
+        }
+        const provider = ExecutablePluginProviderDocumentSchema2.parse(input);
+        if (provider.spec.id !== providerExport.id) {
+          throw new Error(
+            `Provider ${providerExport.path} id ${provider.spec.id} does not match export id ${providerExport.id}.`
+          );
+        }
+        const executor = functions.get(provider.spec.executorExportId);
+        if (!executor || executor.kind !== "provider-executor") {
+          throw new Error(
+            `Provider ${provider.spec.id} requires provider executor export ${provider.spec.executorExportId}.`
+          );
+        }
+        providers[providerExport.path] = provider;
+      }
+      for (const bindingExport of manifest.exports.modelBindings) {
+        const input = artifacts.modelBindings?.[bindingExport.path];
+        if (input === void 0) {
+          throw new Error(`Missing declared model Provider binding: ${bindingExport.path}`);
+        }
+        const bindingInput = inheritBindingRoute2(input, providers, bindingExport.id);
+        const binding = ExecutablePluginModelBindingDocumentSchema2.parse(bindingInput);
+        if (binding.spec.id !== bindingExport.id) {
+          throw new Error(
+            `Model Provider binding ${bindingExport.path} id ${binding.spec.id} does not match export id ${bindingExport.id}.`
+          );
+        }
+        for (const [exportId, kind] of [
+          [binding.spec.projectorExportId, "provider-projector"],
+          [binding.spec.executorExportId, "provider-executor"]
+        ]) {
+          if (!exportId) continue;
+          const ownerId = kind === "provider-projector" ? binding.spec.projectorPluginId : binding.spec.executorPluginId;
+          if (ownerId && ownerId !== manifest.id) continue;
+          const implementation = functions.get(exportId);
+          if (!implementation || implementation.kind !== kind) {
+            throw new Error(
+              `Model Provider binding ${binding.spec.id} requires ${kind} export ${exportId}.`
+            );
+          }
+        }
+        modelBindings[bindingExport.path] = binding;
+      }
       for (const path of manifest.contractTests) {
         if (!Object.prototype.hasOwnProperty.call(contractTestDocuments, path)) {
           throw new Error(`Missing declared contract test: ${path}`);
@@ -50913,7 +55813,7 @@ var require_actions = __commonJS({
         }
         contractTests[path] = contractTest;
       }
-      return { manifest, cards, contractTests };
+      return { manifest, cards, providers, modelBindings, contractTests };
     }
     function addedValues(before, after) {
       const existing = new Set(before);
@@ -52613,13 +57513,39 @@ var require_actions = __commonJS({
     var NonnegativeFrameSchema2 = z3.number().int().nonnegative();
     var PositiveFrameSchema3 = z3.number().int().positive();
     var CssColorSchema2 = z3.string().min(1);
+    var TIMELINE_ITEM_TRANSFORM_SEMANTICS2 = {
+      position: {
+        fields: ["properties.x", "properties.y"],
+        unit: "composition-pixels",
+        origin: "composition-center"
+      },
+      staticSize: {
+        fields: ["properties.width", "properties.height"],
+        unit: "unitless-source-size-multiplier",
+        outputPixels: false,
+        defaults: { width: 1, height: 1 },
+        oneByOneBehavior: "contain-fit-within-composition"
+      },
+      animatedScale: {
+        field: "keyframes.scale",
+        unit: "unitless-multiplier-of-static-size"
+      }
+    };
     var TimelineItemPropertiesSchema2 = z3.object({
-      x: FiniteNumberSchema3,
-      y: FiniteNumberSchema3,
-      width: FiniteNumberSchema3,
-      height: FiniteNumberSchema3,
-      rotation: FiniteNumberSchema3.optional(),
-      opacity: z3.number().finite().min(0).max(1).optional()
+      x: FiniteNumberSchema3.describe(
+        "Horizontal center offset in composition pixels; 0 is the composition center."
+      ),
+      y: FiniteNumberSchema3.describe(
+        "Vertical center offset in composition pixels; 0 is the composition center."
+      ),
+      width: FiniteNumberSchema3.describe(
+        "Unitless multiplier of resolved source natural width; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+      ),
+      height: FiniteNumberSchema3.describe(
+        "Unitless multiplier of resolved source natural height; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+      ),
+      rotation: FiniteNumberSchema3.describe("Clockwise rotation in degrees.").optional(),
+      opacity: z3.number().finite().min(0).max(1).describe("Unitless opacity from 0 through 1.").optional()
     });
     var TimelineEffectParamValueSchema2 = z3.union([
       z3.string(),
@@ -52838,7 +57764,7 @@ var require_actions = __commonJS({
         editor: noControl2,
         runtimeConsumers: ["asset-loader", "canvas-link", "render"]
       }),
-      properties: authored2(TimelineItemPropertiesSchema2, "Static item transform used as fallback outside animated keyframe channels.", {
+      properties: authored2(TimelineItemPropertiesSchema2, "Static item transform: x/y are composition-center pixel offsets; width/height are unitless source-size multipliers, never output pixels.", {
         required: false,
         editor: propertiesControl2,
         runtimeConsumers: ["editor", "preview", "render", "export"],
@@ -54050,32 +58976,171 @@ var require_actions = __commonJS({
       return null;
     }
     var TIMELINE_DSL_GLOBAL_SEMANTIC_RULES2 = [
-      { id: "timeline.track.duplicate-id", kind: "unique-field", objectPath: "tracks[]", field: "id" },
-      { id: "timeline.item.duplicate-id", kind: "unique-field-global", objectPath: "tracks[].items[]", field: "id" },
-      { id: "timeline.primary-track.reference", kind: "reference", objectPath: "primaryTrackId", targetPath: "tracks[].id" },
-      { id: "timeline.primary-track.category", kind: "referenced-object-field", objectPath: "primaryTrackId", field: "category", allowedValues: ["primary"] },
-      { id: "timeline.track.category-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "category" },
-      { id: "timeline.track.role-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "role" },
-      { id: "timeline.track.role-category", kind: "owner-field-consistency", objectPath: "tracks[]", fields: ["role", "category"], mapping: TIMELINE_DSL_ROLE_CATEGORIES2 },
-      { id: "timeline.track.category-order", kind: "ordered-enum", objectPath: "tracks[]", field: "category", order: TIMELINE_DSL_TRACK_CATEGORIES2 },
-      { id: "timeline.track.mixed-categories", kind: "single-structural-category", objectPath: "tracks[]" },
-      { id: "timeline.item.from-expression", kind: "expression-grammar", objectPath: "tracks[].items[]", field: "from" },
-      { id: "timeline.item.frame-integer", kind: "integer-frame", objectPath: "tracks[].items[]", field: "from" },
-      { id: "timeline.item.from-reference", kind: "reference", objectPath: "tracks[].items[].from", targetPath: "tracks[].items[].id" },
-      { id: "timeline.item.from-cycle", kind: "acyclic-reference", objectPath: "tracks[].items[].from" },
-      { id: "timeline.item.source-required", kind: "requires-any-field", objectPath: "tracks[].items[]", fields: ["src", "assetId", "sourceNodeId"] },
-      { id: "timeline.item.animation-duration", kind: "maximum-by-owner-field", objectPath: "tracks[].items[]", fields: ["entranceAnimation.durationInFrames", "exitAnimation.durationInFrames"], maximumPath: "durationInFrames" },
-      { id: "timeline.audio.ducking-track-role", kind: "field-requires-owner-value", objectPath: "tracks[].items[]", field: "audioDucking", ownerField: "role", ownerValue: "music" },
-      { id: "timeline.composition.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["sourcePath", "renderedAssetPath"] },
-      { id: "timeline.composition.preview-contract", kind: "conditional-required", objectPath: "tracks[].items[]" },
-      { id: "timeline.caption.structured", kind: "conditional-required", objectPath: "tracks[].items[]" },
-      { id: "timeline.caption.lineage", kind: "cross-field-lineage", objectPath: "tracks[].items[]" },
-      { id: "timeline.derived-overlay.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["src"] },
-      { id: "timeline.derived-overlay.copy-on-write", kind: "distinct-fields", objectPath: "tracks[].items[]", fields: ["sourceAssetId", "derivedAssetId"] },
-      { id: "timeline.transition.reference", kind: "references", objectPath: "tracks[].items[]", fields: ["fromItemId", "toItemId"] },
-      { id: "timeline.transition.continuity", kind: "same-track-contiguous-references", objectPath: "tracks[].items[]" },
-      { id: "timeline.transition.centered-range", kind: "centered-on-reference-boundary", objectPath: "tracks[].items[]" },
-      { id: "timeline.transition.duration-handles", kind: "maximum-by-reference-handles", objectPath: "tracks[].items[]" }
+      {
+        id: "timeline.track.duplicate-id",
+        kind: "unique-field",
+        objectPath: "tracks[]",
+        field: "id"
+      },
+      {
+        id: "timeline.item.duplicate-id",
+        kind: "unique-field-global",
+        objectPath: "tracks[].items[]",
+        field: "id"
+      },
+      {
+        id: "timeline.primary-track.reference",
+        kind: "reference",
+        objectPath: "primaryTrackId",
+        targetPath: "tracks[].id"
+      },
+      {
+        id: "timeline.primary-track.category",
+        kind: "referenced-object-field",
+        objectPath: "primaryTrackId",
+        field: "category",
+        allowedValues: ["primary"]
+      },
+      {
+        id: "timeline.track.category-item-mismatch",
+        kind: "allowed-item-types",
+        objectPath: "tracks[]",
+        discriminator: "category"
+      },
+      {
+        id: "timeline.track.role-item-mismatch",
+        kind: "allowed-item-types",
+        objectPath: "tracks[]",
+        discriminator: "role"
+      },
+      {
+        id: "timeline.track.role-category",
+        kind: "owner-field-consistency",
+        objectPath: "tracks[]",
+        fields: ["role", "category"],
+        mapping: TIMELINE_DSL_ROLE_CATEGORIES2
+      },
+      {
+        id: "timeline.track.category-order",
+        kind: "ordered-enum",
+        objectPath: "tracks[]",
+        field: "category",
+        order: TIMELINE_DSL_TRACK_CATEGORIES2
+      },
+      {
+        id: "timeline.track.mixed-categories",
+        kind: "single-structural-category",
+        objectPath: "tracks[]"
+      },
+      {
+        id: "timeline.item.from-expression",
+        kind: "expression-grammar",
+        objectPath: "tracks[].items[]",
+        field: "from"
+      },
+      {
+        id: "timeline.item.frame-integer",
+        kind: "integer-frame",
+        objectPath: "tracks[].items[]",
+        field: "from"
+      },
+      {
+        id: "timeline.item.from-reference",
+        kind: "reference",
+        objectPath: "tracks[].items[].from",
+        targetPath: "tracks[].items[].id"
+      },
+      {
+        id: "timeline.item.from-cycle",
+        kind: "acyclic-reference",
+        objectPath: "tracks[].items[].from"
+      },
+      {
+        id: "timeline.item.source-required",
+        kind: "requires-any-field",
+        objectPath: "tracks[].items[]",
+        fields: ["src", "assetId", "sourceNodeId"]
+      },
+      {
+        id: "timeline.item.animation-duration",
+        kind: "maximum-by-owner-field",
+        objectPath: "tracks[].items[]",
+        fields: [
+          "entranceAnimation.durationInFrames",
+          "exitAnimation.durationInFrames"
+        ],
+        maximumPath: "durationInFrames"
+      },
+      {
+        id: "timeline.item.scale-unit",
+        kind: "maximum-absolute-value",
+        objectPath: "tracks[].items[]",
+        fields: ["properties.width", "properties.height"],
+        maximum: 4,
+        unit: "unitless-source-size-multiplier"
+      },
+      {
+        id: "timeline.audio.ducking-track-role",
+        kind: "field-requires-owner-value",
+        objectPath: "tracks[].items[]",
+        field: "audioDucking",
+        ownerField: "role",
+        ownerValue: "music"
+      },
+      {
+        id: "timeline.composition.local-path",
+        kind: "local-path",
+        objectPath: "tracks[].items[]",
+        fields: ["sourcePath", "renderedAssetPath"]
+      },
+      {
+        id: "timeline.composition.preview-contract",
+        kind: "conditional-required",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.caption.structured",
+        kind: "conditional-required",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.caption.lineage",
+        kind: "cross-field-lineage",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.derived-overlay.local-path",
+        kind: "local-path",
+        objectPath: "tracks[].items[]",
+        fields: ["src"]
+      },
+      {
+        id: "timeline.derived-overlay.copy-on-write",
+        kind: "distinct-fields",
+        objectPath: "tracks[].items[]",
+        fields: ["sourceAssetId", "derivedAssetId"]
+      },
+      {
+        id: "timeline.transition.reference",
+        kind: "references",
+        objectPath: "tracks[].items[]",
+        fields: ["fromItemId", "toItemId"]
+      },
+      {
+        id: "timeline.transition.continuity",
+        kind: "same-track-contiguous-references",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.transition.centered-range",
+        kind: "centered-on-reference-boundary",
+        objectPath: "tracks[].items[]"
+      },
+      {
+        id: "timeline.transition.duration-handles",
+        kind: "maximum-by-reference-handles",
+        objectPath: "tracks[].items[]"
+      }
     ];
     function issue3(ruleId, path, message) {
       return { ruleId, path, message };
@@ -54116,11 +59181,13 @@ var require_actions = __commonJS({
             for (const cyclicId of path.slice(existing)) {
               const cyclic = itemById.get(cyclicId);
               if (!cyclic) continue;
-              issues.push(issue3(
-                "timeline.item.from-cycle",
-                ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
-                `from expression for ${cyclicId} participates in a reference cycle`
-              ));
+              issues.push(
+                issue3(
+                  "timeline.item.from-cycle",
+                  ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
+                  `from expression for ${cyclicId} participates in a reference cycle`
+                )
+              );
             }
             break;
           }
@@ -54140,31 +59207,42 @@ var require_actions = __commonJS({
       const from = nonEmptyString3(fromId) ? itemById.get(fromId) : void 0;
       const to = nonEmptyString3(toId) ? itemById.get(toId) : void 0;
       if (!from || !to) {
-        issues.push(issue3(
-          "timeline.transition.reference",
-          [...itemPath],
-          "transition must reference two existing Timeline items"
-        ));
+        issues.push(
+          issue3(
+            "timeline.transition.reference",
+            [...itemPath],
+            "transition must reference two existing Timeline items"
+          )
+        );
         return;
       }
-      const transitionClipTypes = /* @__PURE__ */ new Set(["video", "image", "solid", "text"]);
+      const transitionClipTypes = /* @__PURE__ */ new Set([
+        "video",
+        "image",
+        "solid",
+        "text"
+      ]);
       const boundary = typeof from.item.from === "number" ? from.item.from + from.item.durationInFrames : Number.NaN;
       if (from.track.id !== to.track.id || !transitionClipTypes.has(from.item.type) || !transitionClipTypes.has(to.item.type) || boundary !== to.item.from) {
-        issues.push(issue3(
-          "timeline.transition.continuity",
-          [...itemPath],
-          "transition references must be contiguous visual clips on the same track"
-        ));
+        issues.push(
+          issue3(
+            "timeline.transition.continuity",
+            [...itemPath],
+            "transition references must be contiguous visual clips on the same track"
+          )
+        );
         return;
       }
       if (typeof item.from === "number") {
         const expectedFrom = boundary - Math.floor(item.durationInFrames / 2);
         if (item.from !== expectedFrom) {
-          issues.push(issue3(
-            "timeline.transition.centered-range",
-            [...itemPath, "from"],
-            `transition range must be centered on frame ${boundary}`
-          ));
+          issues.push(
+            issue3(
+              "timeline.transition.centered-range",
+              [...itemPath, "from"],
+              `transition range must be centered on frame ${boundary}`
+            )
+          );
         }
       }
       const maximum = Math.max(
@@ -54172,11 +59250,13 @@ var require_actions = __commonJS({
         Math.min(from.item.durationInFrames, to.item.durationInFrames) * 2
       );
       if (item.durationInFrames > maximum) {
-        issues.push(issue3(
-          "timeline.transition.duration-handles",
-          [...itemPath, "durationInFrames"],
-          `transition duration cannot exceed ${maximum} frames for these clips`
-        ));
+        issues.push(
+          issue3(
+            "timeline.transition.duration-handles",
+            [...itemPath, "durationInFrames"],
+            `transition duration cannot exceed ${maximum} frames for these clips`
+          )
+        );
       }
     }
     function validFrameRange2(start, end) {
@@ -54184,37 +59264,44 @@ var require_actions = __commonJS({
     }
     function validateCaption2(indexed, issues) {
       const { item, track, trackIndex, itemIndex } = indexed;
-      if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues)) return;
+      if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues))
+        return;
       const itemPath = ["tracks", trackIndex, "items", itemIndex];
       const cues = Array.isArray(item.cues) ? item.cues : [];
       const wordRefs = Array.isArray(item.wordRefs) ? item.wordRefs : [];
       const mappings = Array.isArray(item.sourceToOutputMap) ? item.sourceToOutputMap : [];
       if (cues.length === 0 || wordRefs.length === 0 || mappings.length === 0) {
-        issues.push(issue3(
-          "timeline.caption.structured",
-          [...itemPath],
-          "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
-        ));
+        issues.push(
+          issue3(
+            "timeline.caption.structured",
+            [...itemPath],
+            "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
+          )
+        );
         return;
       }
       const wordIds = /* @__PURE__ */ new Set();
       wordRefs.forEach((word, wordIndex) => {
         if (nonEmptyString3(word.id)) wordIds.add(word.id);
         if (!nonEmptyString3(word.id) || !validFrameRange2(word.sourceStartFrame, word.sourceEndFrame)) {
-          issues.push(issue3(
-            "timeline.caption.lineage",
-            [...itemPath, "wordRefs", wordIndex],
-            "caption word reference requires an id and a valid source frame range"
-          ));
+          issues.push(
+            issue3(
+              "timeline.caption.lineage",
+              [...itemPath, "wordRefs", wordIndex],
+              "caption word reference requires an id and a valid source frame range"
+            )
+          );
         }
       });
       mappings.forEach((mapping, mappingIndex) => {
         if (!validFrameRange2(mapping.sourceStartFrame, mapping.sourceEndFrame) || !validFrameRange2(mapping.outputStartFrame, mapping.outputEndFrame)) {
-          issues.push(issue3(
-            "timeline.caption.lineage",
-            [...itemPath, "sourceToOutputMap", mappingIndex],
-            "caption source-to-output mapping requires valid source and output frame ranges"
-          ));
+          issues.push(
+            issue3(
+              "timeline.caption.lineage",
+              [...itemPath, "sourceToOutputMap", mappingIndex],
+              "caption source-to-output mapping requires valid source and output frame ranges"
+            )
+          );
         }
       });
       cues.forEach((cue, cueIndex) => {
@@ -54222,13 +59309,19 @@ var require_actions = __commonJS({
         const cueDuration = cue.durationInFrames;
         const cueEnd = typeof cueStart === "number" && typeof cueDuration === "number" ? cueStart + cueDuration : Number.NaN;
         const cueWordIds = Array.isArray(cue.wordIds) ? cue.wordIds : [];
-        const covered = mappings.some((mapping) => validFrameRange2(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange2(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame);
-        if (!nonEmptyString3(cue.id) || !nonEmptyString3(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange2(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some((wordId) => !nonEmptyString3(wordId) || !wordIds.has(wordId)) || !covered) {
-          issues.push(issue3(
-            "timeline.caption.lineage",
-            [...itemPath, "cues", cueIndex],
-            "caption cue must fit the item and be covered by valid source word and frame lineage"
-          ));
+        const covered = mappings.some(
+          (mapping) => validFrameRange2(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange2(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame
+        );
+        if (!nonEmptyString3(cue.id) || !nonEmptyString3(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange2(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some(
+          (wordId) => !nonEmptyString3(wordId) || !wordIds.has(wordId)
+        ) || !covered) {
+          issues.push(
+            issue3(
+              "timeline.caption.lineage",
+              [...itemPath, "cues", cueIndex],
+              "caption cue must fit the item and be covered by valid source word and frame lineage"
+            )
+          );
         }
       });
     }
@@ -54252,175 +59345,233 @@ var require_actions = __commonJS({
       let previousCategoryRank = -1;
       timeline.tracks.forEach((track, trackIndex) => {
         if (trackIds.has(track.id)) {
-          issues.push(issue3(
-            "timeline.track.duplicate-id",
-            ["tracks", trackIndex, "id"],
-            `track id ${track.id} is duplicated`
-          ));
+          issues.push(
+            issue3(
+              "timeline.track.duplicate-id",
+              ["tracks", trackIndex, "id"],
+              `track id ${track.id} is duplicated`
+            )
+          );
         }
         trackIds.add(track.id);
         if (track.category) {
           const rank = TIMELINE_DSL_TRACK_CATEGORIES2.indexOf(track.category);
           if (rank < previousCategoryRank) {
-            issues.push(issue3(
-              "timeline.track.category-order",
-              ["tracks", trackIndex, "category"],
-              "track categories must follow effect, text, visual, primary, audio order"
-            ));
+            issues.push(
+              issue3(
+                "timeline.track.category-order",
+                ["tracks", trackIndex, "category"],
+                "track categories must follow effect, text, visual, primary, audio order"
+              )
+            );
           }
           previousCategoryRank = Math.max(previousCategoryRank, rank);
         }
         if (track.role && track.category) {
           const expectedCategory = TIMELINE_DSL_ROLE_CATEGORIES2[track.role];
           if (expectedCategory !== null && expectedCategory !== track.category) {
-            issues.push(issue3(
-              "timeline.track.role-category",
-              ["tracks", trackIndex, "category"],
-              `track role ${track.role} requires category ${expectedCategory}`
-            ));
+            issues.push(
+              issue3(
+                "timeline.track.role-category",
+                ["tracks", trackIndex, "category"],
+                `track role ${track.role} requires category ${expectedCategory}`
+              )
+            );
           }
         }
-        const structuralCategories = new Set(track.items.map((item) => structuralCategory2(item.type)));
+        const structuralCategories = new Set(
+          track.items.map((item) => structuralCategory2(item.type))
+        );
         const legacyPrimary = timeline.primaryTrackId === track.id || track.role === "primary-video";
         const primaryCompatible = track.items.every(
           (item) => TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES2.primary.includes(item.type)
         );
         if (!track.category && structuralCategories.size > 1 && !(legacyPrimary && primaryCompatible)) {
-          issues.push(issue3(
-            "timeline.track.mixed-categories",
-            ["tracks", trackIndex, "items"],
-            `track ${track.id} mixes incompatible structural item categories`
-          ));
+          issues.push(
+            issue3(
+              "timeline.track.mixed-categories",
+              ["tracks", trackIndex, "items"],
+              `track ${track.id} mixes incompatible structural item categories`
+            )
+          );
         }
         track.items.forEach((item, itemIndex) => {
           const itemPath = ["tracks", trackIndex, "items", itemIndex];
           if (itemIds.has(item.id)) {
-            issues.push(issue3(
-              "timeline.item.duplicate-id",
-              [...itemPath, "id"],
-              `Timeline item id ${item.id} is duplicated`
-            ));
+            issues.push(
+              issue3(
+                "timeline.item.duplicate-id",
+                [...itemPath, "id"],
+                `Timeline item id ${item.id} is duplicated`
+              )
+            );
           }
           itemIds.add(item.id);
           if (track.category) {
             const allowed = TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES2[track.category];
             if (!allowed.includes(item.type)) {
-              issues.push(issue3(
-                "timeline.track.category-item-mismatch",
-                [...itemPath],
-                `track category ${track.category} cannot contain ${item.type} items`
-              ));
+              issues.push(
+                issue3(
+                  "timeline.track.category-item-mismatch",
+                  [...itemPath],
+                  `track category ${track.category} cannot contain ${item.type} items`
+                )
+              );
             }
           }
           if (track.role) {
             const allowed = TIMELINE_DSL_ROLE_ALLOWED_ITEM_TYPES2[track.role];
             if (!allowed.includes(item.type)) {
-              issues.push(issue3(
-                "timeline.track.role-item-mismatch",
-                [...itemPath],
-                `track role ${track.role} cannot contain ${item.type} items`
-              ));
+              issues.push(
+                issue3(
+                  "timeline.track.role-item-mismatch",
+                  [...itemPath],
+                  `track role ${track.role} cannot contain ${item.type} items`
+                )
+              );
             }
           }
           const expression = parseFromExpression2(item.from);
           const negativeNumericString = typeof item.from === "string" && Number.isFinite(Number(item.from.trim())) && Number(item.from.trim()) < 0;
           if (!expression || negativeNumericString) {
-            issues.push(issue3(
-              "timeline.item.from-expression",
-              [...itemPath, "from"],
-              "from must be a non-negative frame or a valid Timeline relative expression"
-            ));
+            issues.push(
+              issue3(
+                "timeline.item.from-expression",
+                [...itemPath, "from"],
+                "from must be a non-negative frame or a valid Timeline relative expression"
+              )
+            );
           } else if (expression.kind === "reference" && expression.refId !== "prev" && !itemById.has(expression.refId)) {
-            issues.push(issue3(
-              "timeline.item.from-reference",
-              [...itemPath, "from"],
-              `from expression references unknown item ${expression.refId}`
-            ));
+            issues.push(
+              issue3(
+                "timeline.item.from-reference",
+                [...itemPath, "from"],
+                `from expression references unknown item ${expression.refId}`
+              )
+            );
           }
           if (expression && (expression.kind === "absolute" ? !Number.isInteger(expression.value) : !Number.isInteger(expression.offset))) {
-            issues.push(issue3(
-              "timeline.item.frame-integer",
-              [...itemPath, "from"],
-              "Timeline frame positions and expression offsets must be integers"
-            ));
+            issues.push(
+              issue3(
+                "timeline.item.frame-integer",
+                [...itemPath, "from"],
+                "Timeline frame positions and expression offsets must be integers"
+              )
+            );
           }
           if (["video", "audio", "image", "sticker"].includes(item.type)) {
             if (![item.src, item.assetId, item.sourceNodeId].some(nonEmptyString3)) {
-              issues.push(issue3(
-                "timeline.item.source-required",
-                [...itemPath],
-                `${item.type} item must provide src, assetId, or sourceNodeId`
-              ));
+              issues.push(
+                issue3(
+                  "timeline.item.source-required",
+                  [...itemPath],
+                  `${item.type} item must provide src, assetId, or sourceNodeId`
+                )
+              );
             }
           }
-          for (const animationField of ["entranceAnimation", "exitAnimation"]) {
+          for (const animationField of [
+            "entranceAnimation",
+            "exitAnimation"
+          ]) {
             const animation = item[animationField];
             if (animation && typeof animation.durationInFrames === "number" && animation.durationInFrames > item.durationInFrames) {
-              issues.push(issue3(
-                "timeline.item.animation-duration",
-                [...itemPath, animationField, "durationInFrames"],
-                `${animationField} cannot exceed the owning item duration`
-              ));
+              issues.push(
+                issue3(
+                  "timeline.item.animation-duration",
+                  [...itemPath, animationField, "durationInFrames"],
+                  `${animationField} cannot exceed the owning item duration`
+                )
+              );
+            }
+          }
+          const properties = item.properties;
+          for (const field22 of ["width", "height"]) {
+            const value = properties?.[field22];
+            if (typeof value === "number" && Math.abs(value) > 4) {
+              issues.push(
+                issue3(
+                  "timeline.item.scale-unit",
+                  [...itemPath, "properties", field22],
+                  `properties.${field22} is a unitless source-size multiplier, not pixels, and must be at most 4`
+                )
+              );
             }
           }
           if (item.type === "audio" && item.audioDucking !== void 0 && track.role !== "music") {
-            issues.push(issue3(
-              "timeline.audio.ducking-track-role",
-              [...itemPath, "audioDucking"],
-              "audioDucking is only valid for audio items on a music track"
-            ));
+            issues.push(
+              issue3(
+                "timeline.audio.ducking-track-role",
+                [...itemPath, "audioDucking"],
+                "audioDucking is only valid for audio items on a music track"
+              )
+            );
           }
           if (item.type === "composition") {
             if (!isLocalProjectPath2(item.sourcePath)) {
-              issues.push(issue3(
-                "timeline.composition.local-path",
-                [...itemPath, "sourcePath"],
-                "composition sourcePath must be a local project path"
-              ));
+              issues.push(
+                issue3(
+                  "timeline.composition.local-path",
+                  [...itemPath, "sourcePath"],
+                  "composition sourcePath must be a local project path"
+                )
+              );
             }
             if (item.renderedAssetPath !== void 0 && !isLocalProjectPath2(item.renderedAssetPath)) {
-              issues.push(issue3(
-                "timeline.composition.local-path",
-                [...itemPath, "renderedAssetPath"],
-                "composition renderedAssetPath must be a local project path"
-              ));
+              issues.push(
+                issue3(
+                  "timeline.composition.local-path",
+                  [...itemPath, "renderedAssetPath"],
+                  "composition renderedAssetPath must be a local project path"
+                )
+              );
             }
             if (item.compositionKind === "motion-graphics" && item.runtime !== "remotion") {
-              issues.push(issue3(
-                "timeline.composition.preview-contract",
-                [...itemPath, "runtime"],
-                "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
-              ));
+              issues.push(
+                issue3(
+                  "timeline.composition.preview-contract",
+                  [...itemPath, "runtime"],
+                  "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
+                )
+              );
             }
             if (item.runtime === "remotion" && (typeof item.sourceNodeId !== "string" || item.sourceNodeId.length === 0)) {
-              issues.push(issue3(
-                "timeline.composition.preview-contract",
-                [...itemPath, "sourceNodeId"],
-                "Remotion compositions require a live Canvas sourceNodeId"
-              ));
+              issues.push(
+                issue3(
+                  "timeline.composition.preview-contract",
+                  [...itemPath, "sourceNodeId"],
+                  "Remotion compositions require a live Canvas sourceNodeId"
+                )
+              );
             }
             if (item.runtime === "react" && !isLocalProjectPath2(item.renderedAssetPath)) {
-              issues.push(issue3(
-                "timeline.composition.preview-contract",
-                [...itemPath, "renderedAssetPath"],
-                "React compositions require a local renderedAssetPath"
-              ));
+              issues.push(
+                issue3(
+                  "timeline.composition.preview-contract",
+                  [...itemPath, "renderedAssetPath"],
+                  "React compositions require a local renderedAssetPath"
+                )
+              );
             }
           }
           if (item.type === "derived-overlay") {
             if (!isLocalProjectPath2(item.src)) {
-              issues.push(issue3(
-                "timeline.derived-overlay.local-path",
-                [...itemPath, "src"],
-                "derived overlay src must be a local project or asset path"
-              ));
+              issues.push(
+                issue3(
+                  "timeline.derived-overlay.local-path",
+                  [...itemPath, "src"],
+                  "derived overlay src must be a local project or asset path"
+                )
+              );
             }
             if (item.sourceAssetId === item.derivedAssetId || nonEmptyString3(item.assetId) && item.assetId !== item.derivedAssetId) {
-              issues.push(issue3(
-                "timeline.derived-overlay.copy-on-write",
-                [...itemPath],
-                "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
-              ));
+              issues.push(
+                issue3(
+                  "timeline.derived-overlay.copy-on-write",
+                  [...itemPath],
+                  "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
+                )
+              );
             }
           }
         });
@@ -54431,19 +59582,25 @@ var require_actions = __commonJS({
       const { timeline } = context;
       const issues = [];
       if (nonEmptyString3(timeline.primaryTrackId)) {
-        const primaryTrack = timeline.tracks.find((track) => track.id === timeline.primaryTrackId);
+        const primaryTrack = timeline.tracks.find(
+          (track) => track.id === timeline.primaryTrackId
+        );
         if (!primaryTrack) {
-          issues.push(issue3(
-            "timeline.primary-track.reference",
-            ["primaryTrackId"],
-            "primaryTrackId must reference an existing track"
-          ));
+          issues.push(
+            issue3(
+              "timeline.primary-track.reference",
+              ["primaryTrackId"],
+              "primaryTrackId must reference an existing track"
+            )
+          );
         } else if (primaryTrack.category && primaryTrack.category !== "primary") {
-          issues.push(issue3(
-            "timeline.primary-track.category",
-            ["primaryTrackId"],
-            "primaryTrackId must reference a primary category track"
-          ));
+          issues.push(
+            issue3(
+              "timeline.primary-track.category",
+              ["primaryTrackId"],
+              "primaryTrackId must reference a primary category track"
+            )
+          );
         }
       }
       return issues;
@@ -54460,7 +59617,9 @@ var require_actions = __commonJS({
     }
     function evaluateTransitionSemanticRules2(context) {
       const issues = [];
-      context.indexedItems.forEach((indexed) => validateTransition2(indexed, context.itemById, issues));
+      context.indexedItems.forEach(
+        (indexed) => validateTransition2(indexed, context.itemById, issues)
+      );
       return issues;
     }
     var TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS2 = Object.freeze({
@@ -54479,6 +59638,7 @@ var require_actions = __commonJS({
       "timeline.item.from-cycle": evaluateReferenceCycleSemanticRules2,
       "timeline.item.source-required": evaluateStructuralSemanticRules2,
       "timeline.item.animation-duration": evaluateStructuralSemanticRules2,
+      "timeline.item.scale-unit": evaluateStructuralSemanticRules2,
       "timeline.audio.ducking-track-role": evaluateStructuralSemanticRules2,
       "timeline.composition.local-path": evaluateStructuralSemanticRules2,
       "timeline.composition.preview-contract": evaluateStructuralSemanticRules2,
@@ -54497,17 +59657,18 @@ var require_actions = __commonJS({
       const compositeEvaluators = new Set(
         Object.values(TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS2)
       );
-      for (const evaluator of compositeEvaluators) issues.push(...evaluator(context));
+      for (const evaluator of compositeEvaluators)
+        issues.push(...evaluator(context));
       return issues;
     }
     var itemVariantSchemas2 = TIMELINE_DSL_ITEM_TYPES2.map((type) => {
       const baseShape = timelineDslAnnotatedObjectShape2(
         TIMELINE_DSL_FIELD_ANNOTATIONS2.itemBase,
-        { overrides: {
-          type: z3.literal(type).describe(
-            TIMELINE_DSL_FIELD_ANNOTATIONS2.itemBase.type.description
-          )
-        } }
+        {
+          overrides: {
+            type: z3.literal(type).describe(TIMELINE_DSL_FIELD_ANNOTATIONS2.itemBase.type.description)
+          }
+        }
       );
       const variantShape = timelineDslAnnotatedObjectShape2(
         TIMELINE_DSL_FIELD_ANNOTATIONS2.itemTypes[type]
@@ -54520,7 +59681,9 @@ var require_actions = __commonJS({
     );
     var itemFieldOwners2 = /* @__PURE__ */ new Map();
     for (const type of TIMELINE_DSL_ITEM_TYPES2) {
-      for (const fieldName of Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS2.itemTypes[type])) {
+      for (const fieldName of Object.keys(
+        TIMELINE_DSL_FIELD_ANNOTATIONS2.itemTypes[type]
+      )) {
         const owners = itemFieldOwners2.get(fieldName) ?? /* @__PURE__ */ new Set();
         owners.add(type);
         itemFieldOwners2.set(fieldName, owners);
@@ -54529,14 +59692,18 @@ var require_actions = __commonJS({
     var maskKeyframeChannels2 = new Set(TIMELINE_MASK_KEYFRAME_CHANNELS2);
     var itemBaseFieldApplicabilityRules2 = Object.entries(
       TIMELINE_DSL_FIELD_ANNOTATIONS2.itemBase
-    ).flatMap(([fieldName, annotation22]) => annotation22.appliesToItemTypes && annotation22.applicabilityRuleId ? [{
-      id: annotation22.applicabilityRuleId,
-      kind: "allowed-item-types-when-present",
-      objectPath: "tracks[].items[]",
-      field: fieldName,
-      allowedItemTypes: annotation22.appliesToItemTypes,
-      ...annotation22.applicabilityMessage ? { message: annotation22.applicabilityMessage } : {}
-    }] : []);
+    ).flatMap(
+      ([fieldName, annotation22]) => annotation22.appliesToItemTypes && annotation22.applicabilityRuleId ? [
+        {
+          id: annotation22.applicabilityRuleId,
+          kind: "allowed-item-types-when-present",
+          objectPath: "tracks[].items[]",
+          field: fieldName,
+          allowedItemTypes: annotation22.appliesToItemTypes,
+          ...annotation22.applicabilityMessage ? { message: annotation22.applicabilityMessage } : {}
+        }
+      ] : []
+    );
     var clipMaskRequiresMaskRule2 = {
       id: "timeline.clip-mask.requires-mask",
       kind: "requires-field-when-any-channel-present",
@@ -54582,7 +59749,9 @@ var require_actions = __commonJS({
       ]
     };
     function hasMaskKeyframes2(keyframes) {
-      return Object.keys(keyframes ?? {}).some((channel) => maskKeyframeChannels2.has(channel));
+      return Object.keys(keyframes ?? {}).some(
+        (channel) => maskKeyframeChannels2.has(channel)
+      );
     }
     function timelineMaskKeyframeSemanticIssues2(item) {
       const issues = [];
@@ -54602,7 +59771,10 @@ var require_actions = __commonJS({
           message: "mask keyframes require a mask"
         });
       }
-      for (const frameIssue of timelineKeyframeFrameIssues2(item.keyframes, item.durationInFrames)) {
+      for (const frameIssue of timelineKeyframeFrameIssues2(
+        item.keyframes,
+        item.durationInFrames
+      )) {
         issues.push({
           ruleId: frameIssue.reason === "duplicate" ? timelineKeyframeUniqueFrameRule2.id : timelineKeyframeRangeRule2.id,
           path: ["keyframes", frameIssue.channel, frameIssue.index, "frame"],
@@ -54611,45 +59783,51 @@ var require_actions = __commonJS({
       }
       return issues;
     }
-    var TimelineDslItemSchema2 = TimelineDslItemVariantSchema2.superRefine((item, ctx) => {
-      const typedItem = item;
-      for (const [fieldName, owners] of itemFieldOwners2) {
-        if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+    var TimelineDslItemSchema2 = TimelineDslItemVariantSchema2.superRefine(
+      (item, ctx) => {
+        const typedItem = item;
+        for (const [fieldName, owners] of itemFieldOwners2) {
+          if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+            ctx.addIssue({
+              code: z3.ZodIssueCode.custom,
+              path: [fieldName],
+              message: `${fieldName} is not valid on ${typedItem.type} items`,
+              params: { ruleId: timelineItemFieldApplicabilityRule2.id }
+            });
+          }
+        }
+        for (const issue22 of timelineMaskKeyframeSemanticIssues2(typedItem)) {
           ctx.addIssue({
             code: z3.ZodIssueCode.custom,
-            path: [fieldName],
-            message: `${fieldName} is not valid on ${typedItem.type} items`,
-            params: { ruleId: timelineItemFieldApplicabilityRule2.id }
+            path: issue22.path,
+            message: issue22.message,
+            params: { ruleId: issue22.ruleId }
           });
         }
       }
-      for (const issue22 of timelineMaskKeyframeSemanticIssues2(typedItem)) {
-        ctx.addIssue({
-          code: z3.ZodIssueCode.custom,
-          path: issue22.path,
-          message: issue22.message,
-          params: { ruleId: issue22.ruleId }
-        });
+    ).describe("TimelineDslItem");
+    var TimelineDslTrackSchema2 = z3.object(
+      timelineDslAnnotatedObjectShape2(TIMELINE_DSL_FIELD_ANNOTATIONS2.track, {
+        overrides: { items: z3.array(TimelineDslItemSchema2) }
+      })
+    ).passthrough().describe("TimelineDslTrack");
+    var TimelineDslSchemaBase2 = z3.object(
+      timelineDslAnnotatedObjectShape2(TIMELINE_DSL_FIELD_ANNOTATIONS2.root, {
+        overrides: { tracks: z3.array(TimelineDslTrackSchema2) }
+      })
+    ).passthrough();
+    var TimelineDslSchema2 = TimelineDslSchemaBase2.superRefine(
+      (timeline, context) => {
+        for (const semanticIssue of timelineDslSemanticIssues2(timeline)) {
+          context.addIssue({
+            code: z3.ZodIssueCode.custom,
+            path: semanticIssue.path,
+            message: semanticIssue.message,
+            params: { ruleId: semanticIssue.ruleId }
+          });
+        }
       }
-    }).describe("TimelineDslItem");
-    var TimelineDslTrackSchema2 = z3.object(timelineDslAnnotatedObjectShape2(
-      TIMELINE_DSL_FIELD_ANNOTATIONS2.track,
-      { overrides: { items: z3.array(TimelineDslItemSchema2) } }
-    )).passthrough().describe("TimelineDslTrack");
-    var TimelineDslSchemaBase2 = z3.object(timelineDslAnnotatedObjectShape2(
-      TIMELINE_DSL_FIELD_ANNOTATIONS2.root,
-      { overrides: { tracks: z3.array(TimelineDslTrackSchema2) } }
-    )).passthrough();
-    var TimelineDslSchema2 = TimelineDslSchemaBase2.superRefine((timeline, context) => {
-      for (const semanticIssue of timelineDslSemanticIssues2(timeline)) {
-        context.addIssue({
-          code: z3.ZodIssueCode.custom,
-          path: semanticIssue.path,
-          message: semanticIssue.message,
-          params: { ruleId: semanticIssue.ruleId }
-        });
-      }
-    }).describe("TimelineDsl");
+    ).describe("TimelineDsl");
     var timelineDslJsonSchema2 = zodToJsonSchema2(TimelineDslSchema2, {
       name: "TimelineDsl",
       target: "jsonSchema7"
@@ -54658,10 +59836,13 @@ var require_actions = __commonJS({
       name: "TimelineItemMask",
       target: "jsonSchema7"
     });
-    var timelineItemKeyframesJsonSchema2 = zodToJsonSchema2(TimelineItemKeyframesSchema2, {
-      name: "TimelineItemKeyframes",
-      target: "jsonSchema7"
-    });
+    var timelineItemKeyframesJsonSchema2 = zodToJsonSchema2(
+      TimelineItemKeyframesSchema2,
+      {
+        name: "TimelineItemKeyframes",
+        target: "jsonSchema7"
+      }
+    );
     function jsonSchemaObject2(value, label) {
       if (!value || typeof value !== "object" || Array.isArray(value)) {
         throw new Error(`Timeline DSL JSON Schema is missing ${label}`);
@@ -54751,20 +59932,24 @@ var require_actions = __commonJS({
       compositionHeight: 1080,
       fps: 30,
       durationInFrames: 60,
-      tracks: [{
-        id: "visual-overlays",
-        name: "Visual overlays",
-        category: "visual",
-        items: [{
-          id: "masked-image",
-          type: "image",
-          from: 0,
-          durationInFrames: 60,
-          sourceNodeId: "source-image-node",
-          mask: timelineMaskExample2,
-          keyframes: timelineMaskKeyframesExample2
-        }]
-      }]
+      tracks: [
+        {
+          id: "visual-overlays",
+          name: "Visual overlays",
+          category: "visual",
+          items: [
+            {
+              id: "masked-image",
+              type: "image",
+              from: 0,
+              durationInFrames: 60,
+              sourceNodeId: "source-image-node",
+              mask: timelineMaskExample2,
+              keyframes: timelineMaskKeyframesExample2
+            }
+          ]
+        }
+      ]
     };
     var timelineMaskDslFeature2 = {
       yamlPath: TIMELINE_MASK_CAPABILITY_ANNOTATION2.yamlPath,
@@ -54774,16 +59959,18 @@ var require_actions = __commonJS({
       animatedChannels: TIMELINE_MASK_CAPABILITY_ANNOTATION2.animatedChannels,
       defaultMask: TIMELINE_MASK_CAPABILITY_ANNOTATION2.defaultMask,
       fieldDefinitions: Object.fromEntries(
-        Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS2).map(([field22, annotation22]) => [
-          field22,
-          {
-            description: annotation22.description,
-            invalidValueDescription: annotation22.invalidValueDescription,
-            unit: annotation22.unit,
-            defaultValue: annotation22.defaultValue,
-            animatedChannel: "animation" in annotation22 ? annotation22.animation?.channel ?? null : null
-          }
-        ])
+        Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS2).map(
+          ([field22, annotation22]) => [
+            field22,
+            {
+              description: annotation22.description,
+              invalidValueDescription: annotation22.invalidValueDescription,
+              unit: annotation22.unit,
+              defaultValue: annotation22.defaultValue,
+              animatedChannel: "animation" in annotation22 ? annotation22.animation?.channel ?? null : null
+            }
+          ]
+        )
       ),
       operations: TIMELINE_MASK_CAPABILITY_ANNOTATION2.operations,
       runtimeBehavior: TIMELINE_MASK_CAPABILITY_ANNOTATION2.runtimeBehavior,
@@ -54794,7 +59981,9 @@ var require_actions = __commonJS({
         return `[${value.map(canonicalTimelineDslContractJson2).join(",")}]`;
       }
       if (value && typeof value === "object") {
-        return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson2(entry)}`).join(",")}}`;
+        return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(
+          ([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson2(entry)}`
+        ).join(",")}}`;
       }
       return JSON.stringify(value) ?? "null";
     }
@@ -54808,7 +59997,7 @@ var require_actions = __commonJS({
       return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
     }
     var timelineDslSerializableDefinition2 = {
-      schemaVersion: 5,
+      schemaVersion: 6,
       format: "clash.timeline.yaml",
       description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
       fieldCatalog: TIMELINE_DSL_FIELD_CATALOG2,
@@ -54841,11 +60030,15 @@ var require_actions = __commonJS({
       jsonSchema: {
         ...timelineDslJsonSchema2,
         "x-clash-fragments": timelineDslJsonSchemaFragments2,
-        "x-clash-features": { clipMask: timelineMaskDslFeature2 },
+        "x-clash-features": {
+          clipMask: timelineMaskDslFeature2,
+          itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS2
+        },
         "x-clash-semantic-rules": TIMELINE_DSL_SEMANTIC_RULES2
       },
       features: {
-        clipMask: timelineMaskDslFeature2
+        clipMask: timelineMaskDslFeature2,
+        itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS2
       },
       examples: {
         maskKeyframes: TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE2
@@ -57036,6 +62229,17 @@ var require_actions = __commonJS({
       const first = lines[0] || fallback;
       return first.length > 60 ? first.slice(0, 57) + "..." : first;
     }
+    function pendingDurationFallback2(modelId) {
+      if (!modelId) return void 0;
+      const card = MODEL_CARDS2.find((candidate) => candidate.id === normalizeModelId2(modelId) || candidate.id === modelId);
+      if (!card) return void 0;
+      const declared = card.defaultParams?.duration;
+      if (declared !== void 0) return declared;
+      const parameter = card.parameters.find((candidate) => candidate.id === "duration");
+      if (!parameter) return void 0;
+      if (parameter.defaultValue !== void 0) return parameter.defaultValue;
+      return parameter.options?.[0]?.value;
+    }
     function buildPendingAssetNode2(input) {
       const {
         nodeId,
@@ -57059,8 +62263,8 @@ var require_actions = __commonJS({
       const isAudio = effectiveOutputKind === "audio";
       const isText = effectiveOutputKind === "text";
       const rfType = isVideo ? RF_NODE_TYPE2.Video : isAudio ? RF_NODE_TYPE2.Audio : isText ? RF_NODE_TYPE2.Text : RF_NODE_TYPE2.Image;
-      const defaultLabel = isVideo ? "Generated Video" : isAudio ? "Generated Audio" : isText ? "Generated Text" : "Generated Image";
-      const label = input.label || extractLabelFromPrompt2(prompt, defaultLabel);
+      const defaultLabel2 = isVideo ? "Generated Video" : isAudio ? "Generated Audio" : isText ? "Generated Text" : "Generated Image";
+      const label = input.label || extractLabelFromPrompt2(prompt, defaultLabel2);
       const effectiveModelParams = isImage && !isCustom ? { ...modelParams2, count: 1 } : modelParams2;
       const data = {
         label,
@@ -57094,8 +62298,11 @@ var require_actions = __commonJS({
         data.referenceAudioAssetIds = referenceAudioAssetIds;
       }
       if (isVideo && !isCustom) {
-        const dur = modelParams2.duration ?? 5;
-        data.duration = typeof dur === "string" ? parseInt(dur, 10) : Number(dur) || 5;
+        const declared = modelParams2.duration ?? pendingDurationFallback2(modelId);
+        if (declared !== void 0) {
+          const numeric = typeof declared === "number" ? declared : Number(declared);
+          data.duration = Number.isFinite(numeric) ? numeric : declared;
+        }
       }
       return { id: nodeId, type: rfType, data };
     }
@@ -58189,10 +63396,11 @@ var require_actions = __commonJS({
       };
     }
     var Canvas2 = class {
-      constructor(doc, broadcast, canvasId = "main") {
+      constructor(doc, broadcast, canvasId = "main", modelCards = MODEL_CARDS2) {
         this.doc = doc;
         this.broadcast = broadcast;
         this.canvasId = canvasId;
+        this.modelCards = modelCards;
       }
       // ── Read ─────────────────────────────────────────────
       listNodes(nodeType, parentId) {
@@ -58567,7 +63775,7 @@ var require_actions = __commonJS({
         } else {
           const requestedModelId = nodeData.modelId || nodeData.model || "";
           const modelId = normalizeModelId2(requestedModelId) ?? requestedModelId;
-          const modelCard = MODEL_CARDS2.find((c) => c.id === modelId);
+          const modelCard = this.modelCards.find((c) => c.id === modelId);
           if (!modelCard) {
             return {
               assetNodeId: "",
@@ -59498,7 +64706,21 @@ var require_actions = __commonJS({
       created_at: z3.number(),
       updated_at: z3.number()
     });
-    var ModelUpstreamIdSchema2 = z3.enum([
+    var CredentialSourceKindSchema2 = z3.enum([
+      /** User supplies a static credential. */
+      "api-key",
+      /** Real authorization-code flow against an authorization server. */
+      "oauth",
+      /** Vendor-specific capture: complete a login page, read the token it redirects with. */
+      "login-page-capture",
+      /** Vendor-specific import: read the token an installed desktop app already holds. */
+      "local-app-store"
+    ]);
+    var DynamicProviderIdSchema2 = z3.string().trim().regex(
+      /^[a-z0-9][a-z0-9._-]*$/,
+      "Provider ecosystem ids must be lowercase plugin-safe identifiers."
+    );
+    var BuiltinModelUpstreamIdSchema2 = z3.enum([
       "local",
       "mock",
       "fal",
@@ -59518,7 +64740,8 @@ var require_actions = __commonJS({
       "elevenlabs",
       "suno"
     ]);
-    var ModelUpstreamApiShapeSchema2 = z3.enum([
+    var ModelUpstreamIdSchema2 = DynamicProviderIdSchema2;
+    var BuiltinModelUpstreamApiShapeSchema2 = z3.enum([
       "local-asr",
       "local-tts",
       "fal",
@@ -59540,10 +64763,12 @@ var require_actions = __commonJS({
       "elevenlabs",
       "suno"
     ]);
-    var ProviderOAuthIdSchema2 = z3.enum([
+    var ModelUpstreamApiShapeSchema2 = DynamicProviderIdSchema2;
+    var BuiltinProviderOAuthIdSchema2 = z3.enum([
       "dreamina"
     ]);
-    var ProviderAccountIdSchema2 = z3.enum([
+    var ProviderOAuthIdSchema2 = DynamicProviderIdSchema2;
+    var BuiltinProviderAccountIdSchema2 = z3.enum([
       "local",
       "official",
       "fal",
@@ -59635,7 +64860,9 @@ var require_actions = __commonJS({
         ...implementation.defaultParamOverrides ? { defaultParamOverrides: { ...implementation.defaultParamOverrides } } : {},
         ...implementation.excludedParameterIds?.length ? { excludedParameterIds: [...implementation.excludedParameterIds] } : {},
         ...implementation.projectorPluginId ? { projectorPluginId: implementation.projectorPluginId } : {},
-        ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {}
+        ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {},
+        ...implementation.executorPluginId ? { executorPluginId: implementation.executorPluginId } : {},
+        ...implementation.executorExportId ? { executorExportId: implementation.executorExportId } : {}
       }));
     }
     function routesFromModelCards2(models) {
@@ -59656,6 +64883,76 @@ var require_actions = __commonJS({
       ...MOCK_DECLARED_ROUTES2,
       ...MOCK_ROUTES2
     ];
+    var MediaTranscriptMetadataSchema2 = z3.object({
+      schemaVersion: z3.literal(1),
+      kind: z3.literal("media.transcript"),
+      backendId: z3.string().min(1),
+      modelId: z3.string().min(1),
+      language: z3.string().min(1).optional(),
+      /** The media this grid was transcribed from. */
+      sourceHash: z3.string().regex(/^sha256:[a-f0-9]{64}$/u),
+      /**
+       * The word grid itself. Downstream wordIds only mean anything against this,
+       * and it survives a reflow of `text` or `segments` unchanged.
+       */
+      contentHash: z3.string().regex(/^sha256:[a-f0-9]{64}$/u),
+      /**
+       * Where the full body is stored. Distinct from `contentHash` on purpose: this
+       * addresses the whole document, so restating the same grid moves it.
+       */
+      bodyHash: z3.string().regex(/^sha256:[a-f0-9]{64}$/u),
+      summary: z3.object({
+        wordCount: z3.number().int().nonnegative(),
+        durationMs: z3.number().int().min(0),
+        segmentCount: z3.number().int().nonnegative().optional(),
+        averageConfidence: z3.number().min(0).max(1).optional()
+      })
+    });
+    var MediaDescriptionMetadataSchema2 = z3.object({
+      schemaVersion: z3.literal(1),
+      kind: z3.literal("media.description"),
+      text: z3.string().min(1),
+      language: z3.string().min(1).optional(),
+      /** Which model or person wrote it. */
+      producerModelId: z3.string().min(1).optional(),
+      /** The media file this describes. */
+      sourceHash: z3.string().regex(/^sha256:[a-f0-9]{64}$/u)
+    });
+    var declaredKinds2 = /* @__PURE__ */ new Map();
+    function registerAssetMetadataKind2(declaration) {
+      const issuesFor = (probe) => {
+        const result = declaration.schema.safeParse(probe);
+        return result.success ? [] : result.error.issues;
+      };
+      const complainsAbout = (issues, field22) => issues.some((issue22) => issue22.path.length === 1 && issue22.path[0] === field22);
+      if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+        throw new Error(
+          `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
+        );
+      }
+      if (!complainsAbout(issuesFor({ kind: declaration.kind }), "schemaVersion")) {
+        throw new Error(
+          `Asset metadata kind ${declaration.kind} must declare a schemaVersion`
+        );
+      }
+      declaredKinds2.set(declaration.kind, declaration);
+    }
+    var FillActionEnvelopeSchema2 = z3.object({
+      actionId: z3.string().min(1),
+      targetAssetId: z3.string().min(1),
+      metadataKind: z3.string().min(1),
+      metadata: z3.object({ kind: z3.string().min(1) }).passthrough(),
+      producer: z3.string().min(1),
+      createdAt: z3.string().optional()
+    });
+    registerAssetMetadataKind2({
+      kind: "media.transcript",
+      schema: MediaTranscriptMetadataSchema2
+    });
+    registerAssetMetadataKind2({
+      kind: "media.description",
+      schema: MediaDescriptionMetadataSchema2
+    });
     var CONNECT_TIMEOUT_MS = 1e4;
     var FLUSH_TIMEOUT_MS = 5e3;
     var CLOSE_TIMEOUT_MS = 2e3;
@@ -59799,7 +65096,7 @@ var require_actions = __commonJS({
       }
       // ─── Lifecycle ──────────────────────────────────────────────
       async connect() {
-        return new Promise((resolve22, reject) => {
+        return new Promise((resolve42, reject) => {
           const url2 = `${this.serverUrl}/sync/${encodeURIComponent(this.projectId)}`;
           const ws = new this.WS(url2, void 0, {
             headers: {
@@ -59854,7 +65151,7 @@ var require_actions = __commonJS({
                 this.doc.commit({ origin: "sys:workspace-reconcile" });
               }
               clearTimeout(timeout);
-              resolve22();
+              resolve42();
             } else {
               this.doc.import(data);
             }
@@ -59914,11 +65211,11 @@ var require_actions = __commonJS({
         this.unsubscribe?.();
         this.unsubscribe = null;
         if (this.ws && this.ws.readyState !== WS_CLOSED) {
-          await new Promise((resolve22) => {
-            const timer = setTimeout(resolve22, CLOSE_TIMEOUT_MS);
+          await new Promise((resolve42) => {
+            const timer = setTimeout(resolve42, CLOSE_TIMEOUT_MS);
             this.ws.onclose = () => {
               clearTimeout(timer);
-              resolve22();
+              resolve42();
             };
             this.ws.close(1e3, "done");
           });
@@ -60094,9 +65391,9 @@ var require_actions = __commonJS({
       errorMessage: z3.string().optional(),
       occurredAt: z3.string().datetime()
     });
-    var import_node_crypto19 = require("crypto");
-    var import_node_fs9 = require("fs");
-    var import_node_path27 = require("path");
+    var import_node_crypto22 = require("crypto");
+    var import_node_fs10 = require("fs");
+    var import_node_path210 = require("path");
     var import_yaml22 = require_dist();
     var import_shared_runtime22 = (init_dist3(), __toCommonJS(dist_exports));
     var import_local_paths32 = (init_local_paths(), __toCommonJS(local_paths_exports));
@@ -60104,57 +65401,57 @@ var require_actions = __commonJS({
     function resolveClashRoot(env = process.env) {
       return (0, import_local_paths9.defaultClashHome)(env);
     }
-    var import_promises32 = require("fs/promises");
-    var import_node_path28 = require("path");
+    var import_promises35 = require("fs/promises");
+    var import_node_path30 = require("path");
     var import_shared_runtime6 = (init_dist3(), __toCommonJS(dist_exports));
     var import_local_paths22 = (init_local_paths(), __toCommonJS(local_paths_exports));
     function getDefaultHostDiscoveryRunDir2() {
-      return (0, import_node_path28.join)(resolveClashRoot(), "run");
+      return (0, import_node_path30.join)(resolveClashRoot(), "run");
     }
     function getHostDiscoveryPath2(runDir = getDefaultHostDiscoveryRunDir2()) {
-      return (0, import_node_path28.join)(runDir, "host.json");
+      return (0, import_node_path30.join)(runDir, "host.json");
     }
     function configDir(env = process.env) {
       return resolveClashRoot(env);
     }
     function configFilePath(env = process.env) {
-      return (0, import_node_path27.join)(configDir(env), "config.yaml");
+      return (0, import_node_path210.join)(configDir(env), "config.yaml");
     }
     function credentialsFilePath(env = process.env) {
-      return (0, import_node_path27.join)(configDir(env), "credentials.json");
+      return (0, import_node_path210.join)(configDir(env), "credentials.json");
     }
     function isRecord42(value) {
       return !!value && typeof value === "object" && !Array.isArray(value);
     }
     function readObject(path) {
-      if (!(0, import_node_fs9.existsSync)(path)) return {};
+      if (!(0, import_node_fs10.existsSync)(path)) return {};
       try {
-        const value = JSON.parse((0, import_node_fs9.readFileSync)(path, "utf8"));
+        const value = JSON.parse((0, import_node_fs10.readFileSync)(path, "utf8"));
         return isRecord42(value) ? value : {};
       } catch {
         return {};
       }
     }
     function atomicWrite2(path, contents) {
-      const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto19.randomUUID)()}.tmp`;
-      (0, import_node_fs9.writeFileSync)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
-      (0, import_node_fs9.chmodSync)(temporaryPath, 384);
-      (0, import_node_fs9.renameSync)(temporaryPath, path);
-      (0, import_node_fs9.chmodSync)(path, 384);
+      const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto22.randomUUID)()}.tmp`;
+      (0, import_node_fs10.writeFileSync)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
+      (0, import_node_fs10.chmodSync)(temporaryPath, 384);
+      (0, import_node_fs10.renameSync)(temporaryPath, path);
+      (0, import_node_fs10.chmodSync)(path, 384);
     }
     function wait2(milliseconds) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
     }
     function withConfigLock2(dir, task) {
-      (0, import_node_fs9.mkdirSync)(dir, { recursive: true, mode: 448 });
-      (0, import_node_fs9.chmodSync)(dir, 448);
-      const lockPath = (0, import_node_path27.join)(dir, ".config.lock");
+      (0, import_node_fs10.mkdirSync)(dir, { recursive: true, mode: 448 });
+      (0, import_node_fs10.chmodSync)(dir, 448);
+      const lockPath = (0, import_node_path210.join)(dir, ".config.lock");
       const deadline = Date.now() + 5e3;
       while (true) {
         try {
-          (0, import_node_fs9.mkdirSync)(lockPath, { mode: 448 });
-          (0, import_node_fs9.writeFileSync)(
-            (0, import_node_path27.join)(lockPath, "owner"),
+          (0, import_node_fs10.mkdirSync)(lockPath, { mode: 448 });
+          (0, import_node_fs10.writeFileSync)(
+            (0, import_node_path210.join)(lockPath, "owner"),
             `pid=${process.pid}
 created_at=${(/* @__PURE__ */ new Date()).toISOString()}
 `,
@@ -60165,12 +65462,12 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
           if (error51.code !== "EEXIST") throw error51;
           let stale = false;
           try {
-            stale = Date.now() - (0, import_node_fs9.statSync)(lockPath).mtimeMs > 3e4;
+            stale = Date.now() - (0, import_node_fs10.statSync)(lockPath).mtimeMs > 3e4;
           } catch {
             continue;
           }
           if (stale) {
-            (0, import_node_fs9.rmSync)(lockPath, { recursive: true, force: true });
+            (0, import_node_fs10.rmSync)(lockPath, { recursive: true, force: true });
             continue;
           }
           if (Date.now() >= deadline) {
@@ -60182,11 +65479,11 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
       try {
         return task();
       } finally {
-        (0, import_node_fs9.rmSync)(lockPath, { recursive: true, force: true });
+        (0, import_node_fs10.rmSync)(lockPath, { recursive: true, force: true });
       }
     }
     function updateYamlServerUrl(path, serverUrl) {
-      const document = (0, import_yaml22.parseDocument)((0, import_node_fs9.existsSync)(path) ? (0, import_node_fs9.readFileSync)(path, "utf8") : "");
+      const document = (0, import_yaml22.parseDocument)((0, import_node_fs10.existsSync)(path) ? (0, import_node_fs10.readFileSync)(path, "utf8") : "");
       if (document.errors.length > 0) {
         throw new Error(`Cannot update config.yaml: ${document.errors[0]?.message ?? "invalid YAML"}`);
       }
@@ -60207,12 +65504,12 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
     }
     function migrateLegacyConfig(env = process.env) {
       const dir = configDir(env);
-      const legacyPath = (0, import_node_path27.join)(dir, "config.json");
-      if (!(0, import_node_fs9.existsSync)(legacyPath)) return;
+      const legacyPath = (0, import_node_path210.join)(dir, "config.json");
+      if (!(0, import_node_fs10.existsSync)(legacyPath)) return;
       const legacy = readObject(legacyPath);
       const configPath = configFilePath(env);
       const credentialsPath = credentialsFilePath(env);
-      (0, import_node_fs9.mkdirSync)(dir, { recursive: true, mode: 448 });
+      (0, import_node_fs10.mkdirSync)(dir, { recursive: true, mode: 448 });
       withConfigLock2(dir, () => {
         const existing = loadConfigFiles(env);
         updateYamlServerUrl(
@@ -60223,15 +65520,15 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
           credentialsPath,
           existing.apiKey ?? (typeof legacy.apiKey === "string" ? legacy.apiKey : void 0)
         );
-        (0, import_node_fs9.unlinkSync)(legacyPath);
+        (0, import_node_fs10.unlinkSync)(legacyPath);
       });
     }
     function loadConfigFiles(env = process.env) {
       let serverUrl;
       const configPath = configFilePath(env);
-      if ((0, import_node_fs9.existsSync)(configPath)) {
+      if ((0, import_node_fs10.existsSync)(configPath)) {
         try {
-          const document = (0, import_yaml22.parseDocument)((0, import_node_fs9.readFileSync)(configPath, "utf8"));
+          const document = (0, import_yaml22.parseDocument)((0, import_node_fs10.readFileSync)(configPath, "utf8"));
           const root = document.toJS();
           if (isRecord42(root) && isRecord42(root.server) && typeof root.server.url === "string") {
             serverUrl = root.server.url;
@@ -60254,7 +65551,7 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
     }
     function discoveredServerUrl() {
       try {
-        const value = JSON.parse((0, import_node_fs9.readFileSync)(getHostDiscoveryPath2(), "utf8"));
+        const value = JSON.parse((0, import_node_fs10.readFileSync)(getHostDiscoveryPath2(), "utf8"));
         if (!(0, import_shared_runtime22.isLocalHostDiscoveryRecord)(value)) return void 0;
         if ((value.profile ?? "prod") !== (0, import_local_paths32.resolveClashProfile)()) return void 0;
         try {
@@ -60291,6 +65588,91 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
       }
       return key;
     }
+    var import_node_path32 = require("path");
+    function managedStorageDraftHint() {
+      return "Keep plugin drafts in your own working directory, then register one with `clash action activate <directory>`; Clash stores and owns the activated copy. Start a new draft with `clash action init-plugin <directory>`, or pull an active plugin out to edit with `clash action checkout <id> <directory>`.";
+    }
+    function isInsideManagedStorage(candidate, env = process.env) {
+      const managedRoot = (0, import_node_path32.resolve)(configDir(env));
+      const target = (0, import_node_path32.resolve)(candidate);
+      if (target === managedRoot) return true;
+      const rel = (0, import_node_path32.relative)(managedRoot, target);
+      return rel.length > 0 && !rel.startsWith("..") && !(0, import_node_path32.isAbsolute)(rel);
+    }
+    function assertDraftOutsideManagedStorage(candidate, env = process.env) {
+      if (!isInsideManagedStorage(candidate, env)) return;
+      throw new Error(
+        `Refusing to use ${(0, import_node_path32.resolve)(candidate)} as a plugin draft: it is inside Clash's product-internal storage, which holds activated plugins and their rollback state. ${managedStorageDraftHint()}`
+      );
+    }
+    var import_esbuild = require_main();
+    var import_promises210 = require("fs/promises");
+    var import_node_path42 = require("path");
+    function pluginBuildPlan(runtime) {
+      if (runtime.kind !== "local") return void 0;
+      const source = runtime.build?.source;
+      const entrypoint = runtime.entrypoint;
+      if (!source || !entrypoint) return void 0;
+      return { source, entrypoint };
+    }
+    function assertInsidePlugin(pluginDir, candidate, label) {
+      const absolute = (0, import_node_path42.resolve)(pluginDir, candidate);
+      const rel = (0, import_node_path42.relative)(pluginDir, absolute);
+      if (rel.startsWith("..") || (0, import_node_path42.isAbsolute)(rel)) {
+        throw new Error(`Plugin ${label} must stay inside the plugin directory: ${candidate}`);
+      }
+      return absolute;
+    }
+    function formatMessages(messages) {
+      return messages.map((message) => {
+        const where = message.location ? `${message.location.file}:${message.location.line}:${message.location.column}` : "";
+        return where ? `${where}: ${message.text}` : message.text;
+      }).join("\n");
+    }
+    async function buildPluginEntrypoint(pluginDirInput, runtime) {
+      const pluginDir = (0, import_node_path42.resolve)(pluginDirInput);
+      const plan = pluginBuildPlan(runtime);
+      if (!plan) {
+        throw new Error("This runtime declares no build; its entrypoint is authored directly.");
+      }
+      const sourcePath = assertInsidePlugin(pluginDir, plan.source, "build source");
+      const outputPath = assertInsidePlugin(pluginDir, plan.entrypoint, "entrypoint");
+      try {
+        await (0, import_promises210.access)(sourcePath);
+      } catch {
+        throw new Error(`Plugin build source is missing: ${plan.source}`);
+      }
+      await (0, import_promises210.mkdir)((0, import_node_path42.dirname)(outputPath), { recursive: true });
+      const result = await (0, import_esbuild.build)({
+        entryPoints: [sourcePath],
+        outfile: outputPath,
+        bundle: true,
+        format: "esm",
+        platform: "node",
+        target: "node22",
+        // Only builtins may stay external; nothing else is resolvable at runtime.
+        packages: "bundle",
+        external: [],
+        logLevel: "silent",
+        absWorkingDir: pluginDir,
+        sourcemap: false,
+        write: true
+      }).catch((error51) => {
+        const errors = error51.errors ?? [];
+        const detail = errors.length > 0 ? formatMessages(errors) : error51.message;
+        throw new Error(`Plugin build failed:
+${detail}`);
+      });
+      if (result.errors.length > 0) {
+        throw new Error(`Plugin build failed:
+${formatMessages(result.errors)}`);
+      }
+      return outputPath;
+    }
+    async function buildPluginEntrypointIfDeclared(pluginDir, runtime) {
+      if (!pluginBuildPlan(runtime)) return void 0;
+      return buildPluginEntrypoint(pluginDir, runtime);
+    }
     function isJsonMode(options) {
       return options.json === true || !process.stdout.isTTY;
     }
@@ -60299,7 +65681,7 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
     }
     var REGISTRY_URL = "https://raw.githubusercontent.com/clash-community/awesome-actions/main/registry.json";
     function localActionsDir(env = process.env) {
-      return (0, import_node_path32.join)(resolveClashRoot(env), "actions");
+      return (0, import_node_path52.join)(resolveClashRoot(env), "actions");
     }
     function customActionSecretHint(runtime) {
       return runtime === "local" ? "  \u2192 Local actions read credentials from their local runtime environment." : "  \u2192 Remote worker action secrets are managed in hosted/remote Settings.";
@@ -60372,6 +65754,30 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
             throw new Error(`Invalid Card JSON at ${card.path}: ${error51.message}`);
           }
         }
+        const providerDocuments = {};
+        for (const provider of parsedManifest.exports.providers) {
+          const encoded = files[provider.path];
+          if (typeof encoded !== "string") {
+            throw new Error(`Missing declared Provider document: ${provider.path}`);
+          }
+          try {
+            providerDocuments[provider.path] = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+          } catch (error51) {
+            throw new Error(`Invalid Provider JSON at ${provider.path}: ${error51.message}`);
+          }
+        }
+        const modelBindingDocuments = {};
+        for (const binding of parsedManifest.exports.modelBindings) {
+          const encoded = files[binding.path];
+          if (typeof encoded !== "string") {
+            throw new Error(`Missing declared model Provider binding: ${binding.path}`);
+          }
+          try {
+            modelBindingDocuments[binding.path] = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+          } catch (error51) {
+            throw new Error(`Invalid model Provider binding JSON at ${binding.path}: ${error51.message}`);
+          }
+        }
         const contractTestDocuments = {};
         for (const path of parsedManifest.contractTests) {
           const encoded = files[path];
@@ -60387,7 +65793,11 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
         const validated = validateExecutablePluginPackage2(
           parsedManifest,
           cardDocuments,
-          contractTestDocuments
+          contractTestDocuments,
+          {
+            providers: providerDocuments,
+            modelBindings: modelBindingDocuments
+          }
         );
         return {
           id,
@@ -60427,15 +65837,15 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
     async function writeExecutablePluginActivationReceipt(root, pluginDir) {
       const receipt = await (0, import_actions_host3.createExecutablePluginActivationReceipt)(pluginDir);
       const target = (0, import_actions_host3.executablePluginActivationReceiptPath)(root, receipt.pluginId);
-      await (0, import_promises210.mkdir)((0, import_node_path32.dirname)(target), { recursive: true });
-      const staging = await (0, import_promises210.mkdtemp)((0, import_node_path32.join)((0, import_node_path32.dirname)(target), `.${receipt.pluginId}-`));
-      const stagedReceipt = (0, import_node_path32.join)(staging, "receipt.json");
+      await (0, import_promises34.mkdir)((0, import_node_path52.dirname)(target), { recursive: true });
+      const staging = await (0, import_promises34.mkdtemp)((0, import_node_path52.join)((0, import_node_path52.dirname)(target), `.${receipt.pluginId}-`));
+      const stagedReceipt = (0, import_node_path52.join)(staging, "receipt.json");
       try {
-        await (0, import_promises210.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
+        await (0, import_promises34.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
 `);
-        await (0, import_promises210.rename)(stagedReceipt, target);
+        await (0, import_promises34.rename)(stagedReceipt, target);
       } finally {
-        if ((0, import_node_fs22.existsSync)(staging)) await (0, import_promises210.rm)(staging, { recursive: true, force: true });
+        if ((0, import_node_fs22.existsSync)(staging)) await (0, import_promises34.rm)(staging, { recursive: true, force: true });
       }
     }
     async function checkoutExecutablePluginDraft(options) {
@@ -60444,15 +65854,15 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
         throw new Error(`Invalid executable plugin id ${id}.`);
       }
       const root = options.root ?? localActionsDir();
-      const sourceDir = (0, import_node_path32.join)(root, id);
-      const targetDir = (0, import_node_path32.resolve)(options.pluginDir);
+      const sourceDir = (0, import_node_path52.join)(root, id);
+      const targetDir = (0, import_node_path52.resolve)(options.pluginDir);
       const pkg = await packageExecutablePluginDraft(sourceDir);
       if (pkg.id !== id) {
         throw new Error(`Active directory ${id} contains plugin ${pkg.id}.`);
       }
       const receiptPath = (0, import_actions_host3.executablePluginActivationReceiptPath)(root, id);
       const storedReceipt = ExecutablePluginActivationReceiptSchema2.parse(
-        JSON.parse(await (0, import_promises210.readFile)(receiptPath, "utf8"))
+        JSON.parse(await (0, import_promises34.readFile)(receiptPath, "utf8"))
       );
       const currentReceipt = await (0, import_actions_host3.createExecutablePluginActivationReceipt)(sourceDir);
       if (storedReceipt.pluginId !== currentReceipt.pluginId || storedReceipt.version !== currentReceipt.version || storedReceipt.schemaHash !== currentReceipt.schemaHash || storedReceipt.contentHash !== currentReceipt.contentHash) {
@@ -60460,9 +65870,9 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
           `Active plugin ${id} differs from its activation receipt; restore or reactivate it before checkout.`
         );
       }
-      await (0, import_promises210.mkdir)((0, import_node_path32.dirname)(targetDir), { recursive: true });
+      await (0, import_promises34.mkdir)((0, import_node_path52.dirname)(targetDir), { recursive: true });
       try {
-        await (0, import_promises210.mkdir)(targetDir);
+        await (0, import_promises34.mkdir)(targetDir);
       } catch (error51) {
         if (error51.code === "EEXIST") {
           throw new Error(`Plugin draft directory already exists: ${targetDir}`);
@@ -60470,18 +65880,18 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
         throw error51;
       }
       try {
-        await (0, import_promises210.writeFile)(
-          (0, import_node_path32.join)(targetDir, "manifest.json"),
-          await (0, import_promises210.readFile)((0, import_node_path32.join)(sourceDir, "manifest.json"))
+        await (0, import_promises34.writeFile)(
+          (0, import_node_path52.join)(targetDir, "manifest.json"),
+          await (0, import_promises34.readFile)((0, import_node_path52.join)(sourceDir, "manifest.json"))
         );
         for (const [relativePath, encoded] of Object.entries(pkg.files)) {
-          const destination = (0, import_node_path32.join)(targetDir, relativePath);
-          await (0, import_promises210.mkdir)((0, import_node_path32.dirname)(destination), { recursive: true });
-          await (0, import_promises210.writeFile)(destination, Buffer.from(encoded, "base64"));
+          const destination = (0, import_node_path52.join)(targetDir, relativePath);
+          await (0, import_promises34.mkdir)((0, import_node_path52.dirname)(destination), { recursive: true });
+          await (0, import_promises34.writeFile)(destination, Buffer.from(encoded, "base64"));
         }
         return { pluginDir: targetDir, id, version: currentReceipt.version };
       } catch (error51) {
-        await (0, import_promises210.rm)(targetDir, { recursive: true, force: true });
+        await (0, import_promises34.rm)(targetDir, { recursive: true, force: true });
         throw error51;
       }
     }
@@ -60493,15 +65903,21 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
       return id.split(/[._-]+/).filter(Boolean).map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`).join(" ");
     }
     async function scaffoldExecutablePluginDraft(options) {
-      const pluginDir = (0, import_node_path32.resolve)(options.pluginDir);
+      const pluginDir = (0, import_node_path52.resolve)(options.pluginDir);
       const id = options.id.trim();
       const name = options.name?.trim() || defaultPluginName(id);
       const kind = options.kind ?? "action";
-      if (kind !== "action" && kind !== "provider-projector") {
+      if (kind !== "action" && kind !== "provider-projector" && kind !== "provider-executor") {
         throw new Error(`Unsupported plugin kind ${String(kind)}.`);
+      }
+      const language = options.language ?? "ts";
+      if (language !== "ts" && language !== "python") {
+        throw new Error(`Unsupported plugin language ${String(language)}; use ts or python.`);
       }
       const functionKind = kind;
       const cardKind = kind === "action" ? "action-card" : "model-card";
+      const outputSlot = kind === "action" ? "result" : "request";
+      const valueKey = kind === "action" ? "text" : "prompt";
       const cardPath = `cards/${id}.json`;
       const contractTestPath = `contract-tests/${id}.json`;
       const manifest = {
@@ -60510,7 +65926,13 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
         version: "0.1.0",
         name,
         description: `Agent-editable ${kind} plugin.`,
-        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
+        runtime: language === "python" ? { kind: "local", transport: "stdio", language: "python", entrypoint: "handler.py" } : {
+          kind: "local",
+          transport: "stdio",
+          language: "node",
+          entrypoint: "dist/stdio.mjs",
+          build: { source: "src/stdio.ts" }
+        },
         exports: {
           cards: [{ id, kind: cardKind, path: cardPath }],
           functions: [{ id, kind: functionKind, handler: "run" }]
@@ -60569,9 +65991,9 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
         { [cardPath]: card },
         { [contractTestPath]: contractTest }
       );
-      await (0, import_promises210.mkdir)((0, import_node_path32.dirname)(pluginDir), { recursive: true });
+      await (0, import_promises34.mkdir)((0, import_node_path52.dirname)(pluginDir), { recursive: true });
       try {
-        await (0, import_promises210.mkdir)(pluginDir);
+        await (0, import_promises34.mkdir)(pluginDir);
       } catch (error51) {
         if (error51.code === "EEXIST") {
           throw new Error(`Plugin draft directory already exists: ${pluginDir}`);
@@ -60579,43 +66001,73 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
         throw error51;
       }
       try {
-        await (0, import_promises210.mkdir)((0, import_node_path32.join)(pluginDir, "cards"));
-        await (0, import_promises210.mkdir)((0, import_node_path32.join)(pluginDir, "contract-tests"));
-        await (0, import_promises210.writeFile)((0, import_node_path32.join)(pluginDir, "manifest.json"), jsonDocument(manifest));
-        await (0, import_promises210.writeFile)((0, import_node_path32.join)(pluginDir, cardPath), jsonDocument(card));
-        await (0, import_promises210.writeFile)((0, import_node_path32.join)(pluginDir, contractTestPath), jsonDocument(contractTest));
-        await (0, import_promises210.writeFile)((0, import_node_path32.join)(pluginDir, "handler.mjs"), [
-          'import { createInterface } from "node:readline";',
-          "",
-          `const exportId = ${JSON.stringify(id)};`,
-          `const pluginKind = ${JSON.stringify(kind)};`,
-          "",
-          'createInterface({ input: process.stdin }).on("line", (line) => {',
-          "  const invocation = JSON.parse(line);",
-          '  if (invocation.protocol !== "clash.plugin.invoke/v1") return;',
-          '  const prompt = typeof invocation.input?.values?.prompt === "string"',
-          "    ? invocation.input.values.prompt",
-          '    : "";',
-          '  const value = pluginKind === "action" ? { text: prompt } : { prompt };',
-          '  const slot = pluginKind === "action" ? "result" : "request";',
-          "  const result = invocation.target?.exportId === exportId",
-          "    ? {",
-          '        protocol: "clash.plugin.result/v1",',
-          "        invocationId: invocation.invocationId,",
-          '        status: "completed",',
-          '        outputs: [{ slot, kind: "value", value }],',
-          "      }",
-          "    : {",
-          '        protocol: "clash.plugin.result/v1",',
-          "        invocationId: invocation.invocationId,",
-          '        status: "failed",',
-          '        error: { code: "UNKNOWN_EXPORT", message: "Unknown export", retryable: false },',
-          "      };",
-          "  process.stdout.write(`${JSON.stringify(result)}\\n`);",
-          "});",
-          ""
-        ].join("\n"));
-        await (0, import_promises210.writeFile)((0, import_node_path32.join)(pluginDir, "AGENTS.md"), [
+        await (0, import_promises34.mkdir)((0, import_node_path52.join)(pluginDir, "cards"));
+        await (0, import_promises34.mkdir)((0, import_node_path52.join)(pluginDir, "contract-tests"));
+        await (0, import_promises34.writeFile)((0, import_node_path52.join)(pluginDir, "manifest.json"), jsonDocument(manifest));
+        await (0, import_promises34.writeFile)((0, import_node_path52.join)(pluginDir, cardPath), jsonDocument(card));
+        await (0, import_promises34.writeFile)((0, import_node_path52.join)(pluginDir, contractTestPath), jsonDocument(contractTest));
+        if (language === "python") {
+          await (0, import_promises34.writeFile)((0, import_node_path52.join)(pluginDir, "handler.py"), [
+            "import json",
+            "import sys",
+            "",
+            `EXPORT_ID = ${JSON.stringify(id)}`,
+            "",
+            "for line in sys.stdin:",
+            "    invocation = json.loads(line)",
+            '    if invocation.get("protocol") != "clash.plugin.invoke/v1":',
+            "        continue",
+            '    prompt = (invocation.get("input") or {}).get("values", {}).get("prompt") or ""',
+            '    if (invocation.get("target") or {}).get("exportId") == EXPORT_ID:',
+            "        result = {",
+            '            "protocol": "clash.plugin.result/v1",',
+            '            "invocationId": invocation["invocationId"],',
+            '            "status": "completed",',
+            `            "outputs": [{"slot": ${JSON.stringify(outputSlot)}, "kind": "value", "value": {${JSON.stringify(valueKey)}: prompt}}],`,
+            "        }",
+            "    else:",
+            "        result = {",
+            '            "protocol": "clash.plugin.result/v1",',
+            '            "invocationId": invocation["invocationId"],',
+            '            "status": "failed",',
+            '            "error": {"code": "UNKNOWN_EXPORT", "message": "Unknown export", "retryable": False},',
+            "        }",
+            '    sys.stdout.write(json.dumps(result) + "\\n")',
+            "    sys.stdout.flush()",
+            ""
+          ].join("\n"));
+        } else {
+          await (0, import_promises34.mkdir)((0, import_node_path52.join)(pluginDir, "src"), { recursive: true });
+          await (0, import_promises34.writeFile)((0, import_node_path52.join)(pluginDir, "src", "stdio.ts"), [
+            'import { createInterface } from "node:readline";',
+            "",
+            `const exportId = ${JSON.stringify(id)};`,
+            "",
+            'createInterface({ input: process.stdin }).on("line", (line) => {',
+            "  const invocation = JSON.parse(line);",
+            '  if (invocation.protocol !== "clash.plugin.invoke/v1") return;',
+            '  const prompt = typeof invocation.input?.values?.prompt === "string"',
+            "    ? invocation.input.values.prompt",
+            '    : "";',
+            "  const result = invocation.target?.exportId === exportId",
+            "    ? {",
+            '        protocol: "clash.plugin.result/v1",',
+            "        invocationId: invocation.invocationId,",
+            '        status: "completed",',
+            `        outputs: [{ slot: ${JSON.stringify(outputSlot)}, kind: "value", value: { ${valueKey}: prompt } }],`,
+            "      }",
+            "    : {",
+            '        protocol: "clash.plugin.result/v1",',
+            "        invocationId: invocation.invocationId,",
+            '        status: "failed",',
+            '        error: { code: "UNKNOWN_EXPORT", message: "Unknown export", retryable: false },',
+            "      };",
+            "  process.stdout.write(`${JSON.stringify(result)}\\n`);",
+            "});",
+            ""
+          ].join("\n"));
+        }
+        await (0, import_promises34.writeFile)((0, import_node_path52.join)(pluginDir, "AGENTS.md"), [
           "# Executable Plugin Authoring",
           "",
           "This directory is intentionally agent-editable.",
@@ -60631,25 +66083,25 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
         const validated = await validateExecutablePluginDraft(pluginDir);
         return {
           pluginDir,
-          manifestPath: (0, import_node_path32.join)(pluginDir, "manifest.json"),
-          cardPath: (0, import_node_path32.join)(pluginDir, cardPath),
-          contractTestPath: (0, import_node_path32.join)(pluginDir, contractTestPath),
+          manifestPath: (0, import_node_path52.join)(pluginDir, "manifest.json"),
+          cardPath: (0, import_node_path52.join)(pluginDir, cardPath),
+          contractTestPath: (0, import_node_path52.join)(pluginDir, contractTestPath),
           contractTests: validated.contractTests
         };
       } catch (error51) {
-        await (0, import_promises210.rm)(pluginDir, { recursive: true, force: true });
+        await (0, import_promises34.rm)(pluginDir, { recursive: true, force: true });
         throw error51;
       }
     }
     async function collectPluginDraftFiles(root, directory, output) {
-      for (const entry of await (0, import_promises210.readdir)(directory, { withFileTypes: true })) {
+      for (const entry of await (0, import_promises34.readdir)(directory, { withFileTypes: true })) {
         if (entry.name === "node_modules") continue;
-        const absolutePath = (0, import_node_path32.join)(directory, entry.name);
+        const absolutePath = (0, import_node_path52.join)(directory, entry.name);
         const relativePath = absolutePath.slice(root.length + 1).split("\\").join("/");
         if (!isSafePluginRelativePath2(relativePath)) {
           throw new Error(`Refusing suspicious draft path: ${relativePath}`);
         }
-        const metadata = await (0, import_promises210.lstat)(absolutePath);
+        const metadata = await (0, import_promises34.lstat)(absolutePath);
         if (metadata.isSymbolicLink()) {
           throw new Error(`Executable plugin drafts cannot contain symbolic links: ${relativePath}`);
         }
@@ -60658,11 +66110,11 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
           continue;
         }
         if (!metadata.isFile() || relativePath === "manifest.json") continue;
-        output[relativePath] = (await (0, import_promises210.readFile)(absolutePath)).toString("base64");
+        output[relativePath] = (await (0, import_promises34.readFile)(absolutePath)).toString("base64");
       }
     }
     async function packageExecutablePluginDraft(pluginDir) {
-      const manifest = JSON.parse(await (0, import_promises210.readFile)((0, import_node_path32.join)(pluginDir, "manifest.json"), "utf8"));
+      const manifest = JSON.parse(await (0, import_promises34.readFile)((0, import_node_path52.join)(pluginDir, "manifest.json"), "utf8"));
       if (typeof manifest.id !== "string") {
         throw new Error("Executable plugin draft manifest id is required.");
       }
@@ -60675,17 +66127,31 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
       return validated;
     }
     async function validateExecutablePluginDraft(pluginDir) {
+      await buildDeclaredPluginEntrypoint(pluginDir);
       const pkg = await packageExecutablePluginDraft(pluginDir);
       const contractTests = await (0, import_actions_host3.runExecutablePluginContractTests)(pluginDir);
       return { package: pkg, contractTests };
     }
+    async function buildDeclaredPluginEntrypoint(pluginDir) {
+      let runtime;
+      try {
+        const manifest = JSON.parse(
+          await (0, import_promises34.readFile)((0, import_node_path52.join)(pluginDir, "manifest.json"), "utf8")
+        );
+        runtime = manifest.runtime ?? manifest.spec?.runtime;
+      } catch {
+        return;
+      }
+      if (!runtime || typeof runtime !== "object") return;
+      await buildPluginEntrypointIfDeclared(pluginDir, runtime);
+    }
     async function activateExecutablePluginDraft(options) {
       const validated = await validateExecutablePluginDraft(options.pluginDir);
       const root = options.root ?? localActionsDir();
-      const existingManifestPath = (0, import_node_path32.join)(root, validated.package.id, "manifest.json");
+      const existingManifestPath = (0, import_node_path52.join)(root, validated.package.id, "manifest.json");
       let existingManifest;
       if ((0, import_node_fs22.existsSync)(existingManifestPath)) {
-        existingManifest = JSON.parse(await (0, import_promises210.readFile)(existingManifestPath, "utf8"));
+        existingManifest = JSON.parse(await (0, import_promises34.readFile)(existingManifestPath, "utf8"));
       }
       const permissionIncrease = permissionUpgradeForDownloadedPackage(
         validated.package,
@@ -60702,10 +66168,10 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
     }
     async function activateDownloadedActionPackage2(input, root = localActionsDir()) {
       const pkg = validateDownloadedActionPackage(input);
-      const targetDir = (0, import_node_path32.join)(root, pkg.id);
-      if (pkg.format === "executable-plugin" && (0, import_node_fs22.existsSync)((0, import_node_path32.join)(targetDir, "manifest.json"))) {
+      const targetDir = (0, import_node_path52.join)(root, pkg.id);
+      if (pkg.format === "executable-plugin" && (0, import_node_fs22.existsSync)((0, import_node_path52.join)(targetDir, "manifest.json"))) {
         const existing = ExecutablePluginManifestSchema2.parse(
-          JSON.parse(await (0, import_promises210.readFile)((0, import_node_path32.join)(targetDir, "manifest.json"), "utf8"))
+          JSON.parse(await (0, import_promises34.readFile)((0, import_node_path52.join)(targetDir, "manifest.json"), "utf8"))
         );
         const next = ExecutablePluginManifestSchema2.parse(pkg.manifest);
         if (existing.version === next.version) {
@@ -60714,18 +66180,18 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
           );
         }
       }
-      await (0, import_promises210.mkdir)(root, { recursive: true });
-      const stagingDir = await (0, import_promises210.mkdtemp)(`${root}.staging-${pkg.id}-`);
+      await (0, import_promises34.mkdir)(root, { recursive: true });
+      const stagingDir = await (0, import_promises34.mkdtemp)(`${root}.staging-${pkg.id}-`);
       let rollbackDir;
       let contractTests;
       try {
         for (const [relPath, encoded] of Object.entries(pkg.files)) {
-          const destination = (0, import_node_path32.join)(stagingDir, relPath);
-          await (0, import_promises210.mkdir)((0, import_node_path32.join)(destination, ".."), { recursive: true });
-          await (0, import_promises210.writeFile)(destination, Buffer.from(encoded, "base64"));
+          const destination = (0, import_node_path52.join)(stagingDir, relPath);
+          await (0, import_promises34.mkdir)((0, import_node_path52.join)(destination, ".."), { recursive: true });
+          await (0, import_promises34.writeFile)(destination, Buffer.from(encoded, "base64"));
         }
-        await (0, import_promises210.writeFile)(
-          (0, import_node_path32.join)(stagingDir, "manifest.json"),
+        await (0, import_promises34.writeFile)(
+          (0, import_node_path52.join)(stagingDir, "manifest.json"),
           `${JSON.stringify(pkg.manifest, null, 2)}
 `
         );
@@ -60736,28 +66202,28 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
           }
         }
         if ((0, import_node_fs22.existsSync)(targetDir)) {
-          const rollbackRoot = (0, import_node_path32.join)(root, ".rollback", pkg.id);
-          await (0, import_promises210.mkdir)(rollbackRoot, { recursive: true });
-          const existing = JSON.parse(await (0, import_promises210.readFile)((0, import_node_path32.join)(targetDir, "manifest.json"), "utf8"));
-          rollbackDir = (0, import_node_path32.join)(
+          const rollbackRoot = (0, import_node_path52.join)(root, ".rollback", pkg.id);
+          await (0, import_promises34.mkdir)(rollbackRoot, { recursive: true });
+          const existing = JSON.parse(await (0, import_promises34.readFile)((0, import_node_path52.join)(targetDir, "manifest.json"), "utf8"));
+          rollbackDir = (0, import_node_path52.join)(
             rollbackRoot,
             `${String(Date.now()).padStart(16, "0")}-${existing.version ?? "unknown"}`
           );
-          await (0, import_promises210.rename)(targetDir, rollbackDir);
+          await (0, import_promises34.rename)(targetDir, rollbackDir);
         }
         try {
-          await (0, import_promises210.rename)(stagingDir, targetDir);
+          await (0, import_promises34.rename)(stagingDir, targetDir);
           if (pkg.format === "executable-plugin") {
             await writeExecutablePluginActivationReceipt(root, targetDir);
           }
         } catch (error51) {
           if ((0, import_node_fs22.existsSync)(targetDir) && !(0, import_node_fs22.existsSync)(stagingDir)) {
             try {
-              await (0, import_promises210.rename)(targetDir, stagingDir);
+              await (0, import_promises34.rename)(targetDir, stagingDir);
             } catch {
             }
           }
-          if (rollbackDir && !(0, import_node_fs22.existsSync)(targetDir)) await (0, import_promises210.rename)(rollbackDir, targetDir);
+          if (rollbackDir && !(0, import_node_fs22.existsSync)(targetDir)) await (0, import_promises34.rename)(rollbackDir, targetDir);
           throw error51;
         }
         return {
@@ -60766,26 +66232,26 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
           ...contractTests ? { contractTests } : {}
         };
       } catch (error51) {
-        if ((0, import_node_fs22.existsSync)(stagingDir)) await (0, import_promises210.rm)(stagingDir, { recursive: true, force: true });
+        if ((0, import_node_fs22.existsSync)(stagingDir)) await (0, import_promises34.rm)(stagingDir, { recursive: true, force: true });
         throw error51;
       }
     }
     async function rollbackDownloadedActionPackage(root, id) {
-      const rollbackRoot = (0, import_node_path32.join)(root, ".rollback", id);
-      const entries = (await (0, import_promises210.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
+      const rollbackRoot = (0, import_node_path52.join)(root, ".rollback", id);
+      const entries = (await (0, import_promises34.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
       const selected = entries[0];
       if (!selected) throw new Error(`No rollback version is available for ${id}.`);
-      const targetDir = (0, import_node_path32.join)(root, id);
-      const selectedDir = (0, import_node_path32.join)(rollbackRoot, selected);
-      const displacedDir = (0, import_node_path32.join)(root, ".rollback-displaced", id, String(Date.now()));
+      const targetDir = (0, import_node_path52.join)(root, id);
+      const selectedDir = (0, import_node_path52.join)(rollbackRoot, selected);
+      const displacedDir = (0, import_node_path52.join)(root, ".rollback-displaced", id, String(Date.now()));
       if ((0, import_node_fs22.existsSync)(targetDir)) {
-        await (0, import_promises210.mkdir)((0, import_node_path32.join)(displacedDir, ".."), { recursive: true });
-        await (0, import_promises210.rename)(targetDir, displacedDir);
+        await (0, import_promises34.mkdir)((0, import_node_path52.join)(displacedDir, ".."), { recursive: true });
+        await (0, import_promises34.rename)(targetDir, displacedDir);
       }
       try {
-        await (0, import_promises210.rename)(selectedDir, targetDir);
+        await (0, import_promises34.rename)(selectedDir, targetDir);
         const restoredManifest = JSON.parse(
-          await (0, import_promises210.readFile)((0, import_node_path32.join)(targetDir, "manifest.json"), "utf8")
+          await (0, import_promises34.readFile)((0, import_node_path52.join)(targetDir, "manifest.json"), "utf8")
         );
         if (restoredManifest.apiVersion === "clash.plugin/v1") {
           await writeExecutablePluginActivationReceipt(root, targetDir);
@@ -60793,14 +66259,14 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
       } catch (error51) {
         if ((0, import_node_fs22.existsSync)(targetDir) && !(0, import_node_fs22.existsSync)(selectedDir)) {
           try {
-            await (0, import_promises210.rename)(targetDir, selectedDir);
+            await (0, import_promises34.rename)(targetDir, selectedDir);
           } catch {
           }
         }
-        if ((0, import_node_fs22.existsSync)(displacedDir) && !(0, import_node_fs22.existsSync)(targetDir)) await (0, import_promises210.rename)(displacedDir, targetDir);
+        if ((0, import_node_fs22.existsSync)(displacedDir) && !(0, import_node_fs22.existsSync)(targetDir)) await (0, import_promises34.rename)(displacedDir, targetDir);
         throw error51;
       }
-      const manifest = JSON.parse(await (0, import_promises210.readFile)((0, import_node_path32.join)(targetDir, "manifest.json"), "utf8"));
+      const manifest = JSON.parse(await (0, import_promises34.readFile)((0, import_node_path52.join)(targetDir, "manifest.json"), "utf8"));
       return { targetDir, version: manifest.version ?? "0.0.0" };
     }
     async function connectToProject(projectId) {
@@ -60818,13 +66284,18 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
       return client2;
     }
     var actionsCommand = new import_commander.Command("action").description("Create, validate, activate, and manage executable plugins and canvas actions");
-    actionsCommand.command("init-plugin").description("Create a complete agent-editable plugin draft with a Card, handler, and contract").argument("<directory>", "New plugin draft directory (must not already exist)").requiredOption("--id <id>", "Stable plugin and export id").option("--name <name>", "User-facing plugin and Card name").option("--kind <kind>", "action or provider-projector", "action").option("--json", "Output as JSON").action(async (directory, options) => {
+    actionsCommand.command("init-plugin").description("Create a complete agent-editable plugin draft with a Card, handler, and contract").argument("<directory>", "New plugin draft directory (must not already exist)").requiredOption("--id <id>", "Stable plugin and export id").option("--name <name>", "User-facing plugin and Card name").option("--kind <kind>", "action, provider-projector, or provider-executor", "action").option("--lang <language>", "ts or python", "ts").option("--json", "Output as JSON").action(async (directory, options) => {
       try {
+        assertDraftOutsideManagedStorage(directory);
+        if (options.lang !== "ts" && options.lang !== "python") {
+          throw new Error(`Unsupported --lang ${String(options.lang)}; expected ts or python.`);
+        }
         const created = await scaffoldExecutablePluginDraft({
-          pluginDir: (0, import_node_path32.resolve)(directory),
+          pluginDir: (0, import_node_path52.resolve)(directory),
           id: options.id,
           name: options.name,
-          kind: options.kind
+          kind: options.kind,
+          language: options.lang
         });
         const result = {
           created: true,
@@ -60848,9 +66319,10 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
     });
     actionsCommand.command("checkout").description("Copy an attested active plugin to a separate agent-editable draft").argument("<id>", "Active executable plugin id").argument("<directory>", "New draft directory (must not already exist)").option("--json", "Output as JSON").action(async (id, directory, options) => {
       try {
+        assertDraftOutsideManagedStorage(directory);
         const checkedOut = await checkoutExecutablePluginDraft({
           id,
-          pluginDir: (0, import_node_path32.resolve)(directory)
+          pluginDir: (0, import_node_path52.resolve)(directory)
         });
         const result = { checkedOut: true, ...checkedOut };
         if (isJsonMode(options)) printJson(result);
@@ -60864,8 +66336,9 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
       }
     });
     actionsCommand.command("validate").description("Validate an agent-edited executable plugin draft and run all declared contracts").argument("<directory>", "Unpacked plugin draft directory").option("--json", "Output as JSON").action(async (directory, options) => {
-      const pluginDir = (0, import_node_path32.resolve)(directory);
+      const pluginDir = (0, import_node_path52.resolve)(directory);
       try {
+        assertDraftOutsideManagedStorage(pluginDir);
         const validated = await validateExecutablePluginDraft(pluginDir);
         const result = {
           valid: true,
@@ -60886,8 +66359,9 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
       }
     });
     actionsCommand.command("activate").description("Validate, contract-test, approve capabilities, and atomically activate a plugin draft").argument("<directory>", "Unpacked plugin draft directory").option("-y, --yes", "Approve requested capability increases without an interactive prompt").option("--json", "Output as JSON").action(async (directory, options) => {
-      const pluginDir = (0, import_node_path32.resolve)(directory);
+      const pluginDir = (0, import_node_path52.resolve)(directory);
       try {
+        assertDraftOutsideManagedStorage(pluginDir);
         const activated = await activateExecutablePluginDraft({
           pluginDir,
           approvePermissionIncrease: options.yes ? async () => true : async (diff) => confirm(
@@ -60897,7 +66371,7 @@ Approve and activate? [y/N] `
           )
         });
         const manifest = JSON.parse(
-          await (0, import_promises210.readFile)((0, import_node_path32.join)(activated.targetDir, "manifest.json"), "utf8")
+          await (0, import_promises34.readFile)((0, import_node_path52.join)(activated.targetDir, "manifest.json"), "utf8")
         );
         const result = {
           activated: true,
@@ -61075,7 +66549,7 @@ ${actions.length} action(s)`);
       }
     });
     actionsCommand.command("uninstall").description("Remove a locally-installed action package from $CLASH_HOME/actions/").argument("<id>", "Action id").option("-y, --yes", "Skip confirmation prompt").option("--json", "Output as JSON").action(async (id, options) => {
-      const dir = (0, import_node_path32.join)(localActionsDir(), id);
+      const dir = (0, import_node_path52.join)(localActionsDir(), id);
       if (!(0, import_node_fs22.existsSync)(dir)) {
         console.error(`Not installed: ${dir}`);
         process.exit(1);
@@ -61228,8 +66702,8 @@ ${actions.length} action(s)`);
         console.error(`Server returned a package with mismatched id (${pkg.id} != ${id})`);
         process.exit(1);
       }
-      const targetDir = (0, import_node_path32.join)(localActionsDir(), id);
-      const manifestPath = (0, import_node_path32.join)(targetDir, "manifest.json");
+      const targetDir = (0, import_node_path52.join)(localActionsDir(), id);
+      const manifestPath = (0, import_node_path52.join)(targetDir, "manifest.json");
       const newVersion = pkg.manifest.version ?? "0.0.0";
       let existingManifest;
       if ((0, import_node_fs22.existsSync)(manifestPath)) {
@@ -61293,8 +66767,8 @@ Approve and activate? [y/N] `
         return [];
       }
       for (const entry of entries) {
-        const dir = (0, import_node_path32.join)(actionsDir2, entry);
-        const manifestPath = (0, import_node_path32.join)(dir, "manifest.json");
+        const dir = (0, import_node_path52.join)(actionsDir2, entry);
+        const manifestPath = (0, import_node_path52.join)(dir, "manifest.json");
         if (!(0, import_node_fs22.existsSync)(manifestPath)) continue;
         try {
           const m = JSON.parse((0, import_node_fs22.readFileSync)(manifestPath, "utf-8"));
@@ -61308,12 +66782,12 @@ Approve and activate? [y/N] `
     async function confirm(question) {
       if (!process.stdin.isTTY) return false;
       process.stdout.write(question);
-      return new Promise((resolve22) => {
+      return new Promise((resolve42) => {
         const onData = (chunk) => {
           const ans = chunk.toString("utf-8").trim().toLowerCase();
           process.stdin.removeListener("data", onData);
           process.stdin.pause();
-          resolve22(ans === "y" || ans === "yes");
+          resolve42(ans === "y" || ans === "yes");
         };
         process.stdin.resume();
         process.stdin.once("data", onData);
@@ -61323,17 +66797,17 @@ Approve and activate? [y/N] `
 });
 
 // src/local-api-entry.ts
-var import_node_fs8 = require("node:fs");
+var import_node_fs9 = require("node:fs");
 var import_node_url4 = require("node:url");
-var import_node_path26 = require("node:path");
+var import_node_path29 = require("node:path");
 
 // ../../apps/local-api/dist/server.js
 var import_node_module5 = require("node:module");
-var import_node_crypto18 = require("node:crypto");
-var import_node_path25 = require("node:path");
+var import_node_crypto21 = require("node:crypto");
+var import_node_path28 = require("node:path");
 var import_node_url3 = require("node:url");
-var import_node_fs7 = require("node:fs");
-var import_promises31 = require("node:fs/promises");
+var import_node_fs8 = require("node:fs");
+var import_promises33 = require("node:fs/promises");
 
 // ../../node_modules/.pnpm/@hono+node-server@1.19.14_hono@4.12.27/node_modules/@hono/node-server/dist/index.mjs
 var import_http = require("http");
@@ -61829,7 +67303,7 @@ var responseViaResponseObject = async (res, outgoing, options = {}) => {
         });
         if (!chunk) {
           if (i === 1) {
-            await new Promise((resolve13) => setTimeout(resolve13));
+            await new Promise((resolve14) => setTimeout(resolve14));
             maxReadCount = 3;
             continue;
           }
@@ -61976,7 +67450,7 @@ var serve = (options, listeningListener) => {
   return server2;
 };
 
-// ../../packages/clash-bridge/dist/chunk-HQUNPLBO.js
+// ../../packages/clash-bridge/dist/chunk-Y5Z2UTB3.js
 init_chunk_QHDUUIIF();
 var import_crypto2 = require("crypto");
 var import_promises = require("fs/promises");
@@ -61984,14 +67458,15 @@ var import_net = require("net");
 var import_os2 = require("os");
 var import_path2 = require("path");
 init_dist2();
-var MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
+var PLUGIN_FUNCTION_KINDS = ["action", "provider-projector", "provider-executor"];
+var MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 var UNIX_SOCKET_PATH_BUDGET_BYTES = 96;
 var socketStartupTails = /* @__PURE__ */ new Map();
 async function withSocketStartupLock(socketPath, operation) {
   const previous = socketStartupTails.get(socketPath) ?? Promise.resolve();
   let release;
-  const current = new Promise((resolve13) => {
-    release = resolve13;
+  const current = new Promise((resolve14) => {
+    release = resolve14;
   });
   socketStartupTails.set(socketPath, current);
   await previous;
@@ -62014,9 +67489,9 @@ function pluginHostSocketPath(env = process.env, configDir = paths().configDir) 
   const preferred = (0, import_path2.join)(configDir, "sockets", "plugin-host.sock");
   if (Buffer.byteLength(preferred) <= UNIX_SOCKET_PATH_BUDGET_BYTES) return preferred;
   const suffix = (0, import_crypto2.createHash)("sha256").update(configDir).digest("hex").slice(0, 16);
-  const basename5 = `clash-plugin-host-${suffix}.sock`;
-  const temporary = (0, import_path2.join)((0, import_os2.tmpdir)(), basename5);
-  return Buffer.byteLength(temporary) <= UNIX_SOCKET_PATH_BUDGET_BYTES ? temporary : (0, import_path2.join)("/tmp", basename5);
+  const basename7 = `clash-plugin-host-${suffix}.sock`;
+  const temporary = (0, import_path2.join)((0, import_os2.tmpdir)(), basename7);
+  return Buffer.byteLength(temporary) <= UNIX_SOCKET_PATH_BUDGET_BYTES ? temporary : (0, import_path2.join)("/tmp", basename7);
 }
 function nonEmptyString2(value, field2) {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field2} must be a non-empty string.`);
@@ -62027,6 +67502,9 @@ function parseRequest(value) {
   const request = value;
   if (request.protocol !== "clash.plugin-host/v1") throw new Error("Unsupported plugin host protocol.");
   const requestId = nonEmptyString2(request.requestId, "requestId");
+  if (request.operation === "list-providers" || request.operation === "list-model-bindings") {
+    return { protocol: "clash.plugin-host/v1", requestId, operation: request.operation };
+  }
   if (request.operation === "list-cards") {
     return {
       protocol: "clash.plugin-host/v1",
@@ -62036,8 +67514,10 @@ function parseRequest(value) {
   }
   const pluginId = nonEmptyString2(request.pluginId, "pluginId");
   if (request.operation === "resolve") {
-    if (request.kind !== "action" && request.kind !== "provider-projector") {
-      throw new Error("Invalid plugin function kind.");
+    if (!PLUGIN_FUNCTION_KINDS.includes(request.kind)) {
+      throw new Error(
+        `Invalid plugin function kind ${JSON.stringify(request.kind)}; expected one of ${PLUGIN_FUNCTION_KINDS.join(", ")}.`
+      );
     }
     return {
       protocol: "clash.plugin-host/v1",
@@ -62064,9 +67544,18 @@ function parseRequest(value) {
   }
   throw new Error("Unknown plugin host operation.");
 }
-function writeResponse(socket, response) {
-  socket.end(`${JSON.stringify(response)}
+function requestIdFromPartialFrame(partial2) {
+  const match2 = /"requestId"\s*:\s*"([^"]+)"/.exec(partial2);
+  return match2?.[1] ?? "unknown";
+}
+function writePluginHostResponse(socket, response) {
+  if (socket.writableEnded || socket.destroyed) return;
+  try {
+    socket.end(`${JSON.stringify(response)}
 `);
+  } catch (error51) {
+    console.warn(`[plugin-host] dropping response ${response.requestId}: ${error51.message}`);
+  }
 }
 async function handleRequest(host, input) {
   let requestId = "unknown";
@@ -62076,6 +67565,26 @@ async function handleRequest(host, input) {
     }
     const request = parseRequest(input);
     requestId = request.requestId;
+    if (request.operation === "list-providers") {
+      return {
+        protocol: "clash.plugin-host/v1",
+        requestId,
+        status: "ok",
+        result: ExecutablePluginProviderRegistrationSchema.array().parse(
+          host.listProviders?.() ?? []
+        )
+      };
+    }
+    if (request.operation === "list-model-bindings") {
+      return {
+        protocol: "clash.plugin-host/v1",
+        requestId,
+        status: "ok",
+        result: ExecutablePluginModelBindingRegistrationSchema.array().parse(
+          host.listModelBindings?.() ?? []
+        )
+      };
+    }
     if (request.operation === "list-cards") {
       return {
         protocol: "clash.plugin-host/v1",
@@ -62119,7 +67628,7 @@ async function handleRequest(host, input) {
   }
 }
 async function socketIsActive(socketPath) {
-  return new Promise((resolve13) => {
+  return new Promise((resolve14) => {
     const socket = (0, import_net.createConnection)(socketPath);
     let settled = false;
     const finish = (active) => {
@@ -62127,7 +67636,7 @@ async function socketIsActive(socketPath) {
       settled = true;
       clearTimeout(timer);
       socket.destroy();
-      resolve13(active);
+      resolve14(active);
     };
     const timer = setTimeout(() => finish(false), 200);
     socket.once("connect", () => finish(true));
@@ -62150,26 +67659,33 @@ async function startPluginHostIpcServer(options) {
     }
     const server2 = (0, import_net.createServer)((socket) => {
       let buffer = "";
+      let answered = false;
       socket.on("data", (chunk) => {
+        if (answered) return;
         buffer += chunk.toString("utf8");
         if (Buffer.byteLength(buffer) > MAX_MESSAGE_BYTES) {
-          writeResponse(socket, {
+          writePluginHostResponse(socket, {
             protocol: "clash.plugin-host/v1",
-            requestId: "unknown",
+            requestId: requestIdFromPartialFrame(buffer),
             status: "error",
-            error: { code: "message_too_large", message: "Plugin host request is too large." }
+            error: {
+              code: "message_too_large",
+              message: `Plugin host request is too large (over ${Math.floor(MAX_MESSAGE_BYTES / (1024 * 1024))} MB).`
+            }
           });
+          answered = true;
           return;
         }
         const newline = buffer.indexOf("\n");
         if (newline < 0) return;
         const line = buffer.slice(0, newline);
         buffer = "";
+        answered = true;
         let message;
         try {
           message = JSON.parse(line);
         } catch (error51) {
-          writeResponse(socket, {
+          writePluginHostResponse(socket, {
             protocol: "clash.plugin-host/v1",
             requestId: "unknown",
             status: "error",
@@ -62177,22 +67693,24 @@ async function startPluginHostIpcServer(options) {
           });
           return;
         }
-        void handleRequest(options.host, message).then((response) => writeResponse(socket, response));
+        void handleRequest(options.host, message).then((response) => writePluginHostResponse(socket, response)).catch((error51) => {
+          console.warn(`[plugin-host] request failed after reply: ${error51.message}`);
+        });
       });
     });
-    await new Promise((resolve13, reject) => {
+    await new Promise((resolve14, reject) => {
       server2.once("error", reject);
       server2.listen(socketPath, () => {
         server2.off("error", reject);
-        resolve13();
+        resolve14();
       });
     });
     if (process.platform !== "win32") await (0, import_promises.chmod)(socketPath, 384);
     return {
       socketPath,
       close: async () => {
-        await new Promise((resolve13, reject) => {
-          server2.close((error51) => error51 ? reject(error51) : resolve13());
+        await new Promise((resolve14, reject) => {
+          server2.close((error51) => error51 ? reject(error51) : resolve14());
         });
         if (process.platform !== "win32") {
           await (0, import_promises.unlink)(socketPath).catch((error51) => {
@@ -62217,6 +67735,27 @@ var PluginHostClient = class {
       operation: "list-cards"
     }));
   }
+  /**
+   * Providers and model bindings the loaded plugins export.
+   *
+   * `local-api` has always called both; they existed only inside a committed host bundle under this
+   * package's `dist`, so rebuilding from source removed them and the host died on its first model
+   * listing. Declared here so the source is the definition.
+   */
+  async listProviders() {
+    return ExecutablePluginProviderRegistrationSchema.array().parse(await this.request({
+      protocol: "clash.plugin-host/v1",
+      requestId: (0, import_crypto2.randomUUID)(),
+      operation: "list-providers"
+    }));
+  }
+  async listModelBindings() {
+    return ExecutablePluginModelBindingRegistrationSchema.array().parse(await this.request({
+      protocol: "clash.plugin-host/v1",
+      requestId: (0, import_crypto2.randomUUID)(),
+      operation: "list-model-bindings"
+    }));
+  }
   async resolveBinding(pluginId, exportId, kind) {
     return ExecutablePluginBindingSchema.parse(await this.request({
       protocol: "clash.plugin-host/v1",
@@ -62238,7 +67777,7 @@ var PluginHostClient = class {
     }));
   }
   request(request) {
-    return new Promise((resolve13, reject) => {
+    return new Promise((resolve14, reject) => {
       const socket = (0, import_net.createConnection)(this.socketPath);
       let buffer = "";
       let settled = false;
@@ -62248,7 +67787,7 @@ var PluginHostClient = class {
         clearTimeout(timer);
         socket.destroy();
         if (error51) reject(error51);
-        else resolve13(value);
+        else resolve14(value);
       };
       const requestTimeoutMs = request.operation === "invoke" && request.timeoutMs ? Math.max(this.timeoutMs, request.timeoutMs + 1e3) : this.timeoutMs;
       const timer = setTimeout(
@@ -62293,11 +67832,11 @@ init_dist3();
 init_dist2();
 
 // ../../apps/local-api/dist/app.js
-var import_promises17 = require("node:fs/promises");
-var import_node_crypto9 = require("node:crypto");
-var import_node_child_process4 = require("node:child_process");
-var import_node_fs4 = require("node:fs");
-var import_node_path16 = require("node:path");
+var import_promises19 = require("node:fs/promises");
+var import_node_crypto11 = require("node:crypto");
+var import_node_child_process5 = require("node:child_process");
+var import_node_fs5 = require("node:fs");
+var import_node_path19 = require("node:path");
 var import_node_util4 = require("node:util");
 
 // ../../node_modules/.pnpm/hono@4.12.27/node_modules/hono/dist/compose.js
@@ -64458,22 +69997,116 @@ var cors = (options) => {
 // ../../apps/local-api/dist/local-paths.js
 init_local_paths();
 
+// ../../apps/local-api/dist/local-token-import.js
+var import_node_crypto3 = require("node:crypto");
+var import_promises5 = require("node:fs/promises");
+var import_node_os2 = require("node:os");
+var import_node_path5 = require("node:path");
+var ENCRYPTED_V2_PREFIX = "v2enc:";
+var KEY_LENGTH = 32;
+var IV_LENGTH = 16;
+var AUTH_TAG_LENGTH = 16;
+function defaultLocalTokenAppDataRoot(options = {}) {
+  const platform2 = options.platform ?? process.platform;
+  const homeDirectory = options.homeDirectory ?? (0, import_node_os2.homedir)();
+  const env = options.env ?? process.env;
+  if (platform2 === "darwin")
+    return (0, import_node_path5.join)(homeDirectory, "Library", "Application Support");
+  if (platform2 === "win32")
+    return env.APPDATA?.trim() || (0, import_node_path5.join)(homeDirectory, "AppData", "Roaming");
+  return env.XDG_CONFIG_HOME?.trim() || (0, import_node_path5.join)(homeDirectory, ".config");
+}
+function resolveInside(root, relativePath) {
+  const absoluteRoot = (0, import_node_path5.resolve)(root);
+  const target = (0, import_node_path5.resolve)(absoluteRoot, relativePath);
+  const fromRoot = (0, import_node_path5.relative)(absoluteRoot, target);
+  if (!fromRoot || fromRoot === ".")
+    return target;
+  if ((0, import_node_path5.isAbsolute)(fromRoot) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
+    throw new Error("Local token source escapes the application data root.");
+  }
+  return target;
+}
+function objectAtPath(input, path) {
+  let current = input;
+  for (const segment of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return void 0;
+    }
+    if (!Object.prototype.hasOwnProperty.call(current, segment))
+      return void 0;
+    current = current[segment];
+  }
+  return current;
+}
+function decodeV2Token(stored, key) {
+  if (!stored.startsWith(ENCRYPTED_V2_PREFIX)) {
+    throw new Error("Local token is not encrypted with the supported v2 format.");
+  }
+  const parts = stored.slice(ENCRYPTED_V2_PREFIX.length).split(":");
+  if (parts.length !== 3)
+    throw new Error("Local token ciphertext is malformed.");
+  const [ivBase64, authTagBase64, ciphertextBase64] = parts;
+  const iv = Buffer.from(ivBase64, "base64");
+  const authTag = Buffer.from(authTagBase64, "base64");
+  const ciphertext = Buffer.from(ciphertextBase64, "base64");
+  if (iv.length !== IV_LENGTH || authTag.length !== AUTH_TAG_LENGTH || ciphertext.length === 0) {
+    throw new Error("Local token ciphertext is malformed.");
+  }
+  try {
+    const decipher = (0, import_node_crypto3.createDecipheriv)("aes-256-gcm", key, iv);
+    decipher.setAuthTag(authTag);
+    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8").trim();
+    if (!plaintext)
+      throw new Error("Local token is empty.");
+    return plaintext;
+  } catch (error51) {
+    if (error51 instanceof Error && error51.message === "Local token is empty.")
+      throw error51;
+    throw new Error("Local token could not be decrypted with the app key.");
+  }
+}
+async function importLocalProviderToken(options) {
+  const root = options.applicationSupportRoot ?? defaultLocalTokenAppDataRoot();
+  const appDataDirectory = resolveInside(root, options.auth.source.appDataSubdirectory);
+  const configPath = resolveInside(appDataDirectory, options.auth.source.configFile);
+  const keyPath = resolveInside(appDataDirectory, options.auth.source.keyFile);
+  const [configBytes, key] = await Promise.all([(0, import_promises5.readFile)(configPath), (0, import_promises5.readFile)(keyPath)]);
+  if (key.length !== KEY_LENGTH) {
+    throw new Error(`Local token key must be ${KEY_LENGTH} bytes.`);
+  }
+  let config2;
+  try {
+    config2 = JSON.parse(configBytes.toString("utf8"));
+  } catch {
+    throw new Error("Local token config is not valid JSON.");
+  }
+  const stored = objectAtPath(config2, options.auth.source.tokenPath);
+  if (typeof stored !== "string" || !stored.trim()) {
+    throw new Error("Local token config does not contain the declared token field.");
+  }
+  return {
+    accessToken: decodeV2Token(stored.trim(), key),
+    importedFrom: (0, import_node_path5.basename)(appDataDirectory)
+  };
+}
+
 // ../../apps/local-api/dist/app.js
 init_dist3();
 init_dist2();
 
 // ../../apps/local-api/dist/text-revision-content.js
-var import_node_crypto2 = require("node:crypto");
-var import_promises4 = require("node:fs/promises");
-var import_node_path3 = require("node:path");
+var import_node_crypto4 = require("node:crypto");
+var import_promises6 = require("node:fs/promises");
+var import_node_path6 = require("node:path");
 function textRevisionContentHash(content) {
-  return (0, import_node_crypto2.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_node_crypto4.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function textRevisionContentBlobPath(dataDir2, contentHash) {
   if (!/^[a-f0-9]{16}$/.test(contentHash)) {
     throw new Error("Invalid text revision content hash");
   }
-  return (0, import_node_path3.join)(dataDir2, "text-revision-blobs", contentHash.slice(0, 2), `${contentHash}.md`);
+  return (0, import_node_path6.join)(dataDir2, "text-revision-blobs", contentHash.slice(0, 2), `${contentHash}.md`);
 }
 function textRevisionContentUrl(revision) {
   return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/text-revisions/${encodeURIComponent(revision.revisionId)}/content`;
@@ -64499,7 +70132,7 @@ async function storeTextRevisionContentBlob(dataDir2, revision, content) {
     throw new Error("text revision contentHash does not match content");
   }
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const existing = await (0, import_promises4.readFile)(path, "utf8").catch((error51) => {
+  const existing = await (0, import_promises6.readFile)(path, "utf8").catch((error51) => {
     if (error51 && typeof error51 === "object" && error51.code === "ENOENT")
       return null;
     throw error51;
@@ -64508,21 +70141,21 @@ async function storeTextRevisionContentBlob(dataDir2, revision, content) {
     if (existing !== content) {
       throw new Error("text revision content blob already exists with different content");
     }
-    await (0, import_promises4.chmod)(path, 292).catch(() => void 0);
+    await (0, import_promises6.chmod)(path, 292).catch(() => void 0);
     return {
       ...textRevisionContentDescriptor(revision, { stored: true })
     };
   }
-  await (0, import_promises4.mkdir)((0, import_node_path3.dirname)(path), { recursive: true });
-  await (0, import_promises4.writeFile)(path, content, { encoding: "utf8", mode: 292 });
-  await (0, import_promises4.chmod)(path, 292).catch(() => void 0);
+  await (0, import_promises6.mkdir)((0, import_node_path6.dirname)(path), { recursive: true });
+  await (0, import_promises6.writeFile)(path, content, { encoding: "utf8", mode: 292 });
+  await (0, import_promises6.chmod)(path, 292).catch(() => void 0);
   return {
     ...textRevisionContentDescriptor(revision, { stored: true })
   };
 }
 async function withTextRevisionContentDescriptor(dataDir2, revision) {
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const fileStat = await (0, import_promises4.stat)(path).catch(() => null);
+  const fileStat = await (0, import_promises6.stat)(path).catch(() => null);
   if (!fileStat?.isFile())
     return revision;
   return {
@@ -64532,14 +70165,14 @@ async function withTextRevisionContentDescriptor(dataDir2, revision) {
 }
 
 // ../../apps/local-api/dist/fal-mock.js
-var import_node_child_process = require("node:child_process");
-var import_node_crypto3 = require("node:crypto");
-var import_node_fs = require("node:fs");
-var import_promises5 = require("node:fs/promises");
-var import_node_os2 = require("node:os");
-var import_node_path4 = require("node:path");
+var import_node_child_process2 = require("node:child_process");
+var import_node_crypto5 = require("node:crypto");
+var import_node_fs2 = require("node:fs");
+var import_promises7 = require("node:fs/promises");
+var import_node_os3 = require("node:os");
+var import_node_path7 = require("node:path");
 var import_node_util = require("node:util");
-var execFileAsync = (0, import_node_util.promisify)(import_node_child_process.execFile);
+var execFileAsync = (0, import_node_util.promisify)(import_node_child_process2.execFile);
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -64675,11 +70308,11 @@ function resolveFfmpegPath() {
     "/usr/local/bin/ffmpeg",
     "/usr/bin/ffmpeg"
   ].filter((value) => !!value);
-  return candidates.find((candidate) => (0, import_node_fs.existsSync)(candidate)) ?? null;
+  return candidates.find((candidate) => (0, import_node_fs2.existsSync)(candidate)) ?? null;
 }
 function resolveQlmanagePath() {
   const candidates = ["/usr/bin/qlmanage"].filter((value) => !!value);
-  return candidates.find((candidate) => (0, import_node_fs.existsSync)(candidate)) ?? null;
+  return candidates.find((candidate) => (0, import_node_fs2.existsSync)(candidate)) ?? null;
 }
 var FONT_5X7 = {
   " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
@@ -64812,11 +70445,11 @@ async function makeRenderedVideoFrame(record2, dir) {
   if (!qlmanage)
     return null;
   const layout = makeVideoFrameLayout(record2);
-  const svgPath = (0, import_node_path4.join)(dir, "frame.svg");
-  await (0, import_promises5.writeFile)(svgPath, makeVideoFrameSvg(record2, layout), "utf8");
+  const svgPath = (0, import_node_path7.join)(dir, "frame.svg");
+  await (0, import_promises7.writeFile)(svgPath, makeVideoFrameSvg(record2, layout), "utf8");
   await execFileAsync(qlmanage, ["-t", "-s", String(layout.canvasWidth), "-o", dir, svgPath], { timeout: 1e4, maxBuffer: 1024 * 1024 * 10 });
   const pngPath = `${svgPath}.png`;
-  return (0, import_node_fs.existsSync)(pngPath) ? { path: pngPath, layout } : null;
+  return (0, import_node_fs2.existsSync)(pngPath) ? { path: pngPath, layout } : null;
 }
 function makePpmFrame(record2) {
   const { width, height } = record2;
@@ -64908,14 +70541,14 @@ async function makeMp4(record2) {
       extension: ".mp4"
     };
   }
-  const dir = await (0, import_promises5.mkdtemp)((0, import_node_path4.join)((0, import_node_os2.tmpdir)(), "clash-fal-video-"));
-  const framePath = (0, import_node_path4.join)(dir, "frame.ppm");
-  const outputPath = (0, import_node_path4.join)(dir, "mock.mp4");
+  const dir = await (0, import_promises7.mkdtemp)((0, import_node_path7.join)((0, import_node_os3.tmpdir)(), "clash-fal-video-"));
+  const framePath = (0, import_node_path7.join)(dir, "frame.ppm");
+  const outputPath = (0, import_node_path7.join)(dir, "mock.mp4");
   try {
     const renderedFrame = await makeRenderedVideoFrame(record2, dir).catch(() => null);
     const inputFramePath = renderedFrame?.path ?? framePath;
     if (!renderedFrame) {
-      await (0, import_promises5.writeFile)(framePath, makePpmFrame(record2));
+      await (0, import_promises7.writeFile)(framePath, makePpmFrame(record2));
     }
     const videoFilter = renderedFrame ? `crop=${makeEven(renderedFrame.layout.contentWidth)}:${makeEven(renderedFrame.layout.contentHeight)}:${makeEven(renderedFrame.layout.contentX)}:${makeEven(renderedFrame.layout.contentY)},scale=${record2.width}:${record2.height},setsar=1` : void 0;
     await execFileAsync(ffmpeg, [
@@ -64944,12 +70577,12 @@ async function makeMp4(record2) {
       outputPath
     ], { timeout: 3e4, maxBuffer: 1024 * 1024 * 10 });
     return {
-      bytes: await (0, import_promises5.readFile)(outputPath),
+      bytes: await (0, import_promises7.readFile)(outputPath),
       contentType: "video/mp4",
       extension: ".mp4"
     };
   } finally {
-    await (0, import_promises5.rm)(dir, { recursive: true, force: true });
+    await (0, import_promises7.rm)(dir, { recursive: true, force: true });
   }
 }
 function waveformForPrompt(prompt, bars = 128) {
@@ -65082,7 +70715,7 @@ function createMockFalQueueService() {
   return {
     async submit(modelId, rawInput, options) {
       const input = normalizeFalInput(rawInput);
-      const requestId = `fal-mock-${(0, import_node_crypto3.randomUUID)()}`;
+      const requestId = `fal-mock-${(0, import_node_crypto5.randomUUID)()}`;
       const prompt = stringValue(input.prompt) ?? stringValue(input.text) ?? "Mock fal output";
       const kind = inferOutputKind(modelId, input);
       const { width, height } = dimensionsForInput(input);
@@ -65253,12 +70886,12 @@ init_dist2();
 init_dist3();
 
 // ../../apps/local-api/dist/dreamina-cli.js
-var import_node_child_process2 = require("node:child_process");
-var import_promises6 = require("node:fs/promises");
-var import_node_os3 = require("node:os");
-var import_node_path5 = require("node:path");
+var import_node_child_process3 = require("node:child_process");
+var import_promises8 = require("node:fs/promises");
+var import_node_os4 = require("node:os");
+var import_node_path8 = require("node:path");
 var import_node_util2 = require("node:util");
-var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process2.execFile);
+var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process3.execFile);
 var DreaminaCliCommandError = class extends Error {
   result;
   constructor(message, result, options) {
@@ -65334,9 +70967,9 @@ function mediaTypeForFile(name) {
   return "application/octet-stream";
 }
 async function firstDownloadedMedia(downloadDir) {
-  const names = await (0, import_promises6.readdir)(downloadDir).catch(() => []);
+  const names = await (0, import_promises8.readdir)(downloadDir).catch(() => []);
   const media = names.filter((name) => /\.(mp4|mov|webm|png|jpe?g)$/i.test(name)).sort()[0];
-  return media ? { path: (0, import_node_path5.join)(downloadDir, media), contentType: mediaTypeForFile(media) } : null;
+  return media ? { path: (0, import_node_path8.join)(downloadDir, media), contentType: mediaTypeForFile(media) } : null;
 }
 function extensionForMedia(contentType, url2) {
   const normalized = contentType.toLowerCase().split(";", 1)[0];
@@ -65369,11 +71002,11 @@ async function stageReference(url2, targetBase, fetchImpl) {
     bytes = new Uint8Array(await response.arrayBuffer());
   }
   const path = `${targetBase}${extensionForMedia(contentType, url2)}`;
-  await (0, import_promises6.writeFile)(path, bytes);
+  await (0, import_promises8.writeFile)(path, bytes);
   return path;
 }
 async function stageReferences(urls, inputDir, prefix, fetchImpl) {
-  return Promise.all((urls ?? []).map((url2, index) => stageReference(url2, (0, import_node_path5.join)(inputDir, `${prefix}-${index + 1}`), fetchImpl)));
+  return Promise.all((urls ?? []).map((url2, index) => stageReference(url2, (0, import_node_path8.join)(inputDir, `${prefix}-${index + 1}`), fetchImpl)));
 }
 function createDreaminaCliOAuthDriver(options = {}) {
   const run2 = options.run ?? createDreaminaCliRun(options.binary);
@@ -65467,11 +71100,11 @@ ${result.stderr}`);
 }
 async function generateDreaminaCliVideoMedia(input) {
   const run2 = input.run ?? createDreaminaCliRun(input.binary);
-  const workDir = await (0, import_promises6.mkdtemp)((0, import_node_path5.join)((0, import_node_os3.tmpdir)(), "dreamina-cli-"));
+  const workDir = await (0, import_promises8.mkdtemp)((0, import_node_path8.join)((0, import_node_os4.tmpdir)(), "dreamina-cli-"));
   try {
-    const inputDir = (0, import_node_path5.join)(workDir, "input");
-    const downloadDir = (0, import_node_path5.join)(workDir, "output");
-    await Promise.all([(0, import_promises6.mkdir)(inputDir, { recursive: true }), (0, import_promises6.mkdir)(downloadDir, { recursive: true })]);
+    const inputDir = (0, import_node_path8.join)(workDir, "input");
+    const downloadDir = (0, import_node_path8.join)(workDir, "output");
+    await Promise.all([(0, import_promises8.mkdir)(inputDir, { recursive: true }), (0, import_promises8.mkdir)(downloadDir, { recursive: true })]);
     const fetchImpl = input.fetch ?? fetch;
     const [referenceImagePaths, referenceVideoPaths, referenceAudioPaths] = await Promise.all([
       stageReferences(input.referenceImageUrls, inputDir, "image", fetchImpl),
@@ -65479,8 +71112,8 @@ async function generateDreaminaCliVideoMedia(input) {
       stageReferences(input.referenceAudioUrls, inputDir, "audio", fetchImpl)
     ]);
     const [startFramePath, endFramePath] = await Promise.all([
-      input.startFrameUrl ? stageReference(input.startFrameUrl, (0, import_node_path5.join)(inputDir, "start"), fetchImpl) : void 0,
-      input.endFrameUrl ? stageReference(input.endFrameUrl, (0, import_node_path5.join)(inputDir, "end"), fetchImpl) : void 0
+      input.startFrameUrl ? stageReference(input.startFrameUrl, (0, import_node_path8.join)(inputDir, "start"), fetchImpl) : void 0,
+      input.endFrameUrl ? stageReference(input.endFrameUrl, (0, import_node_path8.join)(inputDir, "end"), fetchImpl) : void 0
     ]);
     const submitted = await generateDreaminaCliVideo({
       ...input,
@@ -65509,22 +71142,22 @@ ${result.stderr}`;
       if (media) {
         return {
           ...submitted,
-          bytes: new Uint8Array(await (0, import_promises6.readFile)(media.path)),
+          bytes: new Uint8Array(await (0, import_promises8.readFile)(media.path)),
           contentType: media.contentType
         };
       }
       if (pollIntervalMs > 0)
-        await new Promise((resolve13) => setTimeout(resolve13, pollIntervalMs));
+        await new Promise((resolve14) => setTimeout(resolve14, pollIntervalMs));
     }
     throw new Error(`Dreamina CLI task timed out after ${maxWaitMs}ms. Task: ${submitted.taskId}`);
   } finally {
-    await (0, import_promises6.rm)(workDir, { recursive: true, force: true }).catch(() => void 0);
+    await (0, import_promises8.rm)(workDir, { recursive: true, force: true }).catch(() => void 0);
   }
 }
 
 // ../../apps/local-api/dist/provider-test-recorder.js
-var import_promises7 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_promises9 = require("node:fs/promises");
+var import_node_path9 = require("node:path");
 var import_node_buffer = require("node:buffer");
 init_dist2();
 var PROVIDER_TEST_RECORDING_SCHEMA_VERSION = 1;
@@ -65617,11 +71250,11 @@ function createProviderTestRecorder(options) {
   };
 }
 async function createJsonlProviderTestRecorder(filePath) {
-  await (0, import_promises7.mkdir)((0, import_node_path6.dirname)(filePath), { recursive: true });
+  await (0, import_promises9.mkdir)((0, import_node_path9.dirname)(filePath), { recursive: true });
   let writeQueue = Promise.resolve();
   return createProviderTestRecorder({
     write: (event) => {
-      const write = writeQueue.then(() => (0, import_promises7.appendFile)(filePath, providerTestRecordingEventToJsonl(event), "utf8"));
+      const write = writeQueue.then(() => (0, import_promises9.appendFile)(filePath, providerTestRecordingEventToJsonl(event), "utf8"));
       writeQueue = write.catch(() => void 0);
       return write;
     }
@@ -65658,7 +71291,7 @@ function createProviderTestRecordingFetch(options) {
   };
 }
 async function readJsonlProviderTestRecording(filePath) {
-  const raw2 = await (0, import_promises7.readFile)(filePath, "utf8");
+  const raw2 = await (0, import_promises9.readFile)(filePath, "utf8");
   const lines = raw2.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const events = [];
   for (const [index, line] of lines.entries()) {
@@ -65985,7 +71618,7 @@ var LOCAL_EXECUTABLE_MODEL_API_SHAPES = /* @__PURE__ */ new Set([
 function localExecutableModelCards(models) {
   return models.map((model) => ({
     ...model,
-    providerImplementations: (model.providerImplementations ?? []).filter((implementation) => LOCAL_EXECUTABLE_MODEL_API_SHAPES.has(implementation.apiShape))
+    providerImplementations: (model.providerImplementations ?? []).filter((implementation) => LOCAL_EXECUTABLE_MODEL_API_SHAPES.has(implementation.apiShape) || !!implementation.executorExportId)
   }));
 }
 function promptForRoute(input, route) {
@@ -66002,6 +71635,25 @@ function promptForRoute(input, route) {
     },
     tokens: binding.tokens ?? {}
   });
+}
+var REFERENCE_MIME_ALIASES = {
+  // Same bytes, and the spelling whose derived extension is allowed.
+  "audio/mpeg": "audio/mp3",
+  "audio/x-wav": "audio/wav",
+  "image/jpg": "image/jpeg"
+};
+function durationSecondsOrUndefined(duration3) {
+  if (typeof duration3 === "number")
+    return duration3;
+  if (typeof duration3 === "string") {
+    const parsed = Number(duration3);
+    if (Number.isFinite(parsed))
+      return parsed;
+  }
+  return void 0;
+}
+function referenceDataUrlMimeType(contentType) {
+  return REFERENCE_MIME_ALIASES[contentType] ?? contentType;
 }
 async function loadReferenceData(fetchImpl, mediaUrl2) {
   const dataUri = /^data:([^;,]+);base64,(.*)$/s.exec(mediaUrl2);
@@ -66347,7 +71999,7 @@ async function generateGeminiOmniVideo(input, route, options, auth) {
     model: route.upstreamModel,
     input: await geminiOmniInput(input, options.fetch),
     aspectRatio: input.aspectRatio === "9:16" ? "9:16" : "16:9",
-    duration: input.duration ?? numberParam2(input.modelParams, "duration", 5),
+    duration: durationSecondsOrUndefined(input.duration) ?? numberParam2(input.modelParams, "duration", 5),
     fetch: providerFetch
   });
   const interactionId = geminiOmniInteractionId(interaction);
@@ -66359,7 +72011,7 @@ async function generateGeminiOmniVideo(input, route, options, auth) {
       throw new Error(`Gemini Omni interaction ${status}: ${interaction.error?.message ?? "unknown failure"}`);
     }
     if (attempt > 0)
-      await new Promise((resolve13) => setTimeout(resolve13, 5e3));
+      await new Promise((resolve14) => setTimeout(resolve14, 5e3));
     interaction = await getGeminiOmniInteraction({
       apiKey: auth.apiKey,
       gatewayToken: auth.gatewayToken,
@@ -66523,7 +72175,7 @@ function googleAgentPlatformVideoBody(input) {
     sampleCount: Math.max(1, Math.min(4, numberParam2(params, "count", 1))),
     personGeneration: stringParam2(params, "person_generation") || "allow_adult"
   };
-  const durationSeconds = input.duration ?? numberParam2(params, "duration", 0);
+  const durationSeconds = durationSecondsOrUndefined(input.duration) ?? numberParam2(params, "duration", 0);
   if (durationSeconds > 0)
     parameters.durationSeconds = durationSeconds;
   const negativePrompt = stringParam2(params, "negative_prompt") || stringParam2(params, "negativePrompt");
@@ -66660,7 +72312,7 @@ async function generateGoogleAgentPlatformVideo(input, route, fetchImpl, rawCred
     }
     if (operation?.done)
       break;
-    await new Promise((resolve13) => setTimeout(resolve13, 5e3));
+    await new Promise((resolve14) => setTimeout(resolve14, 5e3));
   }
   if (!operation?.done) {
     throw new Error(`Google Cloud Agent Platform video request timed out: ${operationName}`);
@@ -66967,6 +72619,76 @@ function materializeProviderPluginAssets(value, assetUrls) {
   }
   return value;
 }
+function providerPluginExecutorRequest(input, kind, route) {
+  if (!route.executorPluginId || !route.executorExportId) {
+    throw new Error(`Route ${route.modelCode} has no executable provider executor.`);
+  }
+  if (input.pluginBinding && (input.pluginBinding.pluginId !== route.executorPluginId || input.pluginBinding.exportId !== route.executorExportId)) {
+    throw new Error(`Pinned plugin ${input.pluginBinding.pluginId}/${input.pluginBinding.exportId} does not match route executor ${route.executorPluginId}/${route.executorExportId}.`);
+  }
+  return {
+    pluginId: route.executorPluginId,
+    exportId: route.executorExportId,
+    kind,
+    taskId: input.taskId,
+    projectId: input.projectId ?? "local",
+    ...input.nodeId ? { nodeId: input.nodeId } : {},
+    ...input.pluginBinding ? { binding: input.pluginBinding } : {},
+    input: {
+      values: {
+        modelId: route.modelCode,
+        upstreamModel: route.upstreamModel,
+        prompt: promptForRoute(input, route),
+        ...input.aspectRatio !== void 0 ? { aspectRatio: input.aspectRatio } : {},
+        ...input.duration !== void 0 ? { duration: input.duration } : {},
+        modelParams: input.modelParams ?? {},
+        ...input.startFrameUrl ? { startFrameUrl: input.startFrameUrl } : {},
+        ...input.endFrameUrl ? { endFrameUrl: input.endFrameUrl } : {},
+        ...input.referenceImageUrls?.length ? { referenceImageUrls: input.referenceImageUrls } : {},
+        ...input.referenceVideoUrls?.length ? { referenceVideoUrls: input.referenceVideoUrls } : {},
+        ...input.referenceAudioUrls?.length ? { referenceAudioUrls: input.referenceAudioUrls } : {}
+      },
+      references: []
+    }
+  };
+}
+async function generatePluginProviderMedia(input, kind, route, options) {
+  const [startFrameUrl, endFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls] = await Promise.all([
+    input.startFrameUrl ? inlineLoopbackReference(options.fetch, input.startFrameUrl) : Promise.resolve(void 0),
+    input.endFrameUrl ? inlineLoopbackReference(options.fetch, input.endFrameUrl) : Promise.resolve(void 0),
+    Promise.all((input.referenceImageUrls ?? []).map((url2) => inlineLoopbackReference(options.fetch, url2))),
+    Promise.all((input.referenceVideoUrls ?? []).map((url2) => inlineLoopbackReference(options.fetch, url2))),
+    Promise.all((input.referenceAudioUrls ?? []).map((url2) => inlineLoopbackReference(options.fetch, url2)))
+  ]);
+  const response = await options.providerPluginExecutor(providerPluginExecutorRequest({
+    ...input,
+    ...startFrameUrl ? { startFrameUrl } : {},
+    ...endFrameUrl ? { endFrameUrl } : {},
+    ...referenceImageUrls.length ? { referenceImageUrls } : {},
+    ...referenceVideoUrls.length ? { referenceVideoUrls } : {},
+    ...referenceAudioUrls.length ? { referenceAudioUrls } : {}
+  }, kind, route));
+  if (response.binding.pluginId !== route.executorPluginId || response.binding.exportId !== route.executorExportId) {
+    throw new Error(`Provider plugin resolved ${response.binding.pluginId}/${response.binding.exportId}, expected ${route.executorPluginId}/${route.executorExportId}.`);
+  }
+  if (input.pluginBinding && (response.binding.version !== input.pluginBinding.version || response.binding.schemaHash !== input.pluginBinding.schemaHash)) {
+    throw new Error(`Provider plugin binding drifted from ${input.pluginBinding.version}/${input.pluginBinding.schemaHash}.`);
+  }
+  const downloaded = await downloadProviderMedia(options.fetch, response.media.url, kind);
+  return {
+    ...downloaded,
+    ...response.media.contentType ? { contentType: response.media.contentType } : {},
+    ...response.media.width !== void 0 ? { width: response.media.width } : {},
+    ...response.media.height !== void 0 ? { height: response.media.height } : {},
+    ...response.media.durationMs !== void 0 ? { durationMs: response.media.durationMs } : {},
+    ...response.media.waveform ? { waveform: response.media.waveform } : {},
+    ...response.media.transcript ? { transcript: response.media.transcript } : {},
+    requestId: response.media.requestId ?? input.taskId,
+    provider: route.providerId ?? route.upstreamId,
+    modelEndpoint: route.upstreamModel,
+    pluginBinding: response.binding
+  };
+}
 async function generateFalMedia(input, kind, route, options, apiKey) {
   const queueBaseUrl = normalizeBaseUrl2(options.falQueueBaseUrl, "https://queue.fal.run");
   let pluginBinding;
@@ -67028,7 +72750,7 @@ async function generateFalMedia(input, kind, route, options, apiKey) {
       throw new Error(`fal request failed: ${statusJson.error ?? status}`);
     }
     if (status !== "COMPLETED")
-      await new Promise((resolve13) => setTimeout(resolve13, 1e3));
+      await new Promise((resolve14) => setTimeout(resolve14, 1e3));
   }
   if (status !== "COMPLETED")
     throw new Error(`fal request timed out: ${requestId}`);
@@ -67148,7 +72870,7 @@ async function inlineLoopbackReference(fetchImpl, mediaUrl2) {
   } catch {
     return mediaUrl2;
   }
-  if (url2.hostname !== "127.0.0.1" && url2.hostname !== "localhost" && url2.hostname !== "::1") {
+  if (url2.hostname !== "127.0.0.1" && url2.hostname !== "localhost" && url2.hostname !== "::1" && url2.hostname !== "[::1]") {
     return mediaUrl2;
   }
   const response = await fetchImpl(mediaUrl2);
@@ -67157,7 +72879,7 @@ async function inlineLoopbackReference(fetchImpl, mediaUrl2) {
   }
   const contentType = (response.headers.get("content-type") || "application/octet-stream").split(";", 1)[0].toLowerCase();
   const bytes = Buffer.from(await response.arrayBuffer());
-  return `data:${contentType};base64,${bytes.toString("base64")}`;
+  return `data:${referenceDataUrlMimeType(contentType)};base64,${bytes.toString("base64")}`;
 }
 async function generateBflVideoMedia(input, route, options, apiKey, accountBaseUrl) {
   const [referenceImageUrls, referenceVideoUrls] = await Promise.all([
@@ -67236,7 +72958,7 @@ async function generateKieMedia(input, kind, route, options, apiKey) {
     }
     state = kieTaskState(task);
     if (state === "pending")
-      await new Promise((resolve13) => setTimeout(resolve13, 1e3));
+      await new Promise((resolve14) => setTimeout(resolve14, 1e3));
   }
   if (state === "pending")
     throw new Error(`KIE request timed out: ${taskId}`);
@@ -67309,7 +73031,7 @@ async function generateSunoMedia(input, route, options, apiKey, callbackUrl) {
     }
     if (status === "SUCCESS")
       break;
-    await new Promise((resolve13) => setTimeout(resolve13, 5e3));
+    await new Promise((resolve14) => setTimeout(resolve14, 5e3));
   }
   if (task?.data?.status !== "SUCCESS") {
     throw new Error(`Suno API generation timed out: ${taskId}`);
@@ -67334,8 +73056,8 @@ async function generateMiniMaxMedia(input, kind, route, options, apiKey, account
     "content-type": "application/json"
   };
   if (kind === "audio") {
-    const format = stringParam2(input.modelParams, "format") || "mp3";
     const isMusic = route.upstreamModel.startsWith("music-");
+    const format = stringParam2(input.modelParams, "format") || (isMusic ? "mp3" : "wav");
     const body = isMusic ? {
       model: route.upstreamModel,
       prompt: input.prompt,
@@ -67449,7 +73171,7 @@ async function generateMiniMaxMedia(input, kind, route, options, apiKey, account
     if (status === "failed" || status === "cancelled") {
       throw new Error(`MiniMax H3 generation failed: ${task?.error?.message ?? task?.message ?? status}`);
     }
-    await new Promise((resolve13) => setTimeout(resolve13, 5e3));
+    await new Promise((resolve14) => setTimeout(resolve14, 5e3));
   }
   if (String(task?.status ?? "").toLowerCase() !== "succeeded") {
     throw new Error(`MiniMax H3 generation timed out: ${taskId}`);
@@ -67515,7 +73237,7 @@ async function generateReplicateMedia(input, kind, route, options, apiKey) {
     }
     state = replicateState(prediction);
     if (state === "pending")
-      await new Promise((resolve13) => setTimeout(resolve13, 1e3));
+      await new Promise((resolve14) => setTimeout(resolve14, 1e3));
   }
   if (state === "pending")
     throw new Error(`Replicate request timed out: ${predictionId}`);
@@ -67896,7 +73618,8 @@ function createMockExternalAigcService(options = {}) {
     if (baseCard) {
       const effectiveCard = applyModelProviderImplementation(baseCard, route);
       const lyricsParam = effectiveCard.musicInput?.lyricsParam;
-      const durationParam = input.duration !== void 0 ? coerceModelParameterInput(effectiveCard, "duration", input.duration) : void 0;
+      const cardTakesDuration = effectiveCard.parameters.some((parameter) => parameter.id === "duration") || effectiveCard.defaultParams.duration !== void 0;
+      const durationParam = input.duration !== void 0 && cardTakesDuration ? coerceModelParameterInput(effectiveCard, "duration", input.duration) : void 0;
       const effectiveModelParams = {
         ...input.modelParams,
         ...durationParam !== void 0 ? { duration: durationParam } : {},
@@ -67922,6 +73645,15 @@ function createMockExternalAigcService(options = {}) {
       });
       if (validationError)
         throw new Error(validationError);
+    }
+    if (route.executorPluginId && route.executorExportId) {
+      if (!options.providerPluginExecutor) {
+        throw new ProviderPluginHostUnavailableError(`Provider executor ${route.executorPluginId}/${route.executorExportId} is unavailable.`);
+      }
+      return generatePluginProviderMedia(input, kind, route, {
+        fetch: fetchImpl,
+        providerPluginExecutor: options.providerPluginExecutor
+      });
     }
     if (route.apiShape === "openai-images") {
       const apiKey = credential(route, providerAccounts, "apiKey");
@@ -68275,10 +74007,10 @@ ${input.prompt || "Mock text"}`),
 }
 
 // ../../apps/local-api/dist/audio-config.js
-var import_node_fs3 = require("node:fs");
-var import_promises11 = require("node:fs/promises");
-var import_node_os4 = require("node:os");
-var import_node_path10 = require("node:path");
+var import_node_fs4 = require("node:fs");
+var import_promises13 = require("node:fs/promises");
+var import_node_os5 = require("node:os");
+var import_node_path13 = require("node:path");
 var import_node_url = require("node:url");
 
 // ../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/wrapper.mjs
@@ -68319,12 +74051,12 @@ var PythonLocalModelRpcClient = class {
   requestPersistentPythonRpc(request) {
     const worker = ensurePersistentPythonWorker(this.workerConfig);
     const id = `${process.pid}-${Date.now()}-${pythonRpcRequestSequence += 1}`;
-    return new Promise((resolve13, reject) => {
+    return new Promise((resolve14, reject) => {
       const timer = setTimeout(() => {
         failPersistentPythonWorker(worker, new Error(`Local model RPC timed out after ${this.timeoutMs}ms`));
         worker.child.kill("SIGKILL");
       }, this.timeoutMs);
-      worker.pending.set(id, { resolve: resolve13, reject, timer });
+      worker.pending.set(id, { resolve: resolve14, reject, timer });
       worker.child.stdin.write(`${JSON.stringify({ ...request, adapter: this.adapter, id })}
 `, (error51) => {
         if (error51) failPersistentPythonWorker(worker, error51);
@@ -68707,11 +74439,11 @@ function optionalConfidence(value, label) {
 
 // ../../apps/local-api/dist/local-config-store.js
 var import_node_module = require("node:module");
-var import_promises8 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_promises10 = require("node:fs/promises");
+var import_node_path10 = require("node:path");
 var require2 = (0, import_node_module.createRequire)(__clash_import_meta_url);
 function sqlitePath(dataDir2) {
-  return (0, import_node_path7.join)(dataDir2, "local.sqlite");
+  return (0, import_node_path10.join)(dataDir2, "local.sqlite");
 }
 function openDatabase(path) {
   const { DatabaseSync } = require2("node:sqlite");
@@ -68736,7 +74468,7 @@ function applySchema(db) {
 }
 async function exists(path) {
   try {
-    await (0, import_promises8.stat)(path);
+    await (0, import_promises10.stat)(path);
     return true;
   } catch {
     return false;
@@ -68745,14 +74477,14 @@ async function exists(path) {
 function createSqliteLocalConfigStore(dataDir2) {
   const path = sqlitePath(dataDir2);
   async function withDb(task) {
-    await (0, import_promises8.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises10.mkdir)(dataDir2, { recursive: true });
     const db = openDatabase(path);
     try {
       applySchema(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises8.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises10.chmod)(path, 384).catch(() => void 0);
     }
   }
   return {
@@ -68792,10 +74524,10 @@ function createSqliteLocalConfigStore(dataDir2) {
 }
 
 // ../../apps/local-api/dist/user-config.js
-var import_node_crypto4 = require("node:crypto");
-var import_node_fs2 = require("node:fs");
-var import_promises9 = require("node:fs/promises");
-var import_node_path8 = require("node:path");
+var import_node_crypto6 = require("node:crypto");
+var import_node_fs3 = require("node:fs");
+var import_promises11 = require("node:fs/promises");
+var import_node_path11 = require("node:path");
 var import_yaml2 = __toESM(require_dist(), 1);
 var writes = /* @__PURE__ */ new Map();
 var LOCK_TIMEOUT_MS = 5e3;
@@ -68804,7 +74536,7 @@ function isRecord5(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function sourceHash(source) {
-  return (0, import_node_crypto4.createHash)("sha256").update(source).digest("hex");
+  return (0, import_node_crypto6.createHash)("sha256").update(source).digest("hex");
 }
 function optionalRecord(root, key) {
   const value = root[key];
@@ -68867,7 +74599,7 @@ function validateClashUserConfig(value) {
 }
 async function readText(path) {
   try {
-    return await (0, import_promises9.readFile)(path, "utf8");
+    return await (0, import_promises11.readFile)(path, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT")
       return null;
@@ -68875,38 +74607,38 @@ async function readText(path) {
   }
 }
 async function atomicWrite(path, contents) {
-  await (0, import_promises9.mkdir)((0, import_node_path8.dirname)(path), { recursive: true, mode: 448 });
-  const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto4.randomUUID)()}.tmp`;
+  await (0, import_promises11.mkdir)((0, import_node_path11.dirname)(path), { recursive: true, mode: 448 });
+  const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto6.randomUUID)()}.tmp`;
   try {
-    await (0, import_promises9.writeFile)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
-    await (0, import_promises9.chmod)(temporaryPath, 384);
-    await (0, import_promises9.rename)(temporaryPath, path);
-    await (0, import_promises9.chmod)(path, 384);
+    await (0, import_promises11.writeFile)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
+    await (0, import_promises11.chmod)(temporaryPath, 384);
+    await (0, import_promises11.rename)(temporaryPath, path);
+    await (0, import_promises11.chmod)(path, 384);
   } finally {
-    await (0, import_promises9.rm)(temporaryPath, { force: true }).catch(() => void 0);
+    await (0, import_promises11.rm)(temporaryPath, { force: true }).catch(() => void 0);
   }
 }
 async function wait(milliseconds) {
-  await new Promise((resolve13) => setTimeout(resolve13, milliseconds));
+  await new Promise((resolve14) => setTimeout(resolve14, milliseconds));
 }
 async function withConfigLock(clashHome, task) {
-  await (0, import_promises9.mkdir)(clashHome, { recursive: true, mode: 448 });
-  await (0, import_promises9.chmod)(clashHome, 448);
-  const lockPath = (0, import_node_path8.join)(clashHome, ".config.lock");
+  await (0, import_promises11.mkdir)(clashHome, { recursive: true, mode: 448 });
+  await (0, import_promises11.chmod)(clashHome, 448);
+  const lockPath = (0, import_node_path11.join)(clashHome, ".config.lock");
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   while (true) {
     try {
-      await (0, import_promises9.mkdir)(lockPath, { mode: 448 });
-      await (0, import_promises9.writeFile)((0, import_node_path8.join)(lockPath, "owner"), `pid=${process.pid}
+      await (0, import_promises11.mkdir)(lockPath, { mode: 448 });
+      await (0, import_promises11.writeFile)((0, import_node_path11.join)(lockPath, "owner"), `pid=${process.pid}
 created_at=${(/* @__PURE__ */ new Date()).toISOString()}
 `, { encoding: "utf8", mode: 384 });
       break;
     } catch (error51) {
       if (error51.code !== "EEXIST")
         throw error51;
-      const info = await (0, import_promises9.stat)(lockPath).catch(() => null);
+      const info = await (0, import_promises11.stat)(lockPath).catch(() => null);
       if (info && Date.now() - info.mtimeMs > STALE_LOCK_MS) {
-        await (0, import_promises9.rm)(lockPath, { recursive: true, force: true });
+        await (0, import_promises11.rm)(lockPath, { recursive: true, force: true });
         continue;
       }
       if (Date.now() >= deadline) {
@@ -68918,7 +74650,7 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
   try {
     return await task();
   } finally {
-    await (0, import_promises9.rm)(lockPath, { recursive: true, force: true });
+    await (0, import_promises11.rm)(lockPath, { recursive: true, force: true });
   }
 }
 function serializeYamlSection(source, name, value) {
@@ -68965,9 +74697,9 @@ async function serializedWrite(path, task) {
 }
 function createClashUserConfigStore(localDataDir) {
   const clashHome = clashHomeForLocalDataDir(localDataDir);
-  const configPath = (0, import_node_path8.join)(clashHome, "config.yaml");
-  const credentialsPath = (0, import_node_path8.join)(clashHome, "credentials.json");
-  const legacyConfigPath = (0, import_node_path8.join)(clashHome, "config.json");
+  const configPath = (0, import_node_path11.join)(clashHome, "config.yaml");
+  const credentialsPath = (0, import_node_path11.join)(clashHome, "credentials.json");
+  const legacyConfigPath = (0, import_node_path11.join)(clashHome, "config.json");
   let rootMigration = null;
   const ensureRootMigrated = () => {
     rootMigration ??= (async () => {
@@ -69002,7 +74734,7 @@ function createClashUserConfigStore(localDataDir) {
             ...typeof current.cliApiKey === "string" ? {} : { cliApiKey: legacy.apiKey }
           })));
         }
-        await (0, import_promises9.unlink)(legacyConfigPath).catch((error51) => {
+        await (0, import_promises11.unlink)(legacyConfigPath).catch((error51) => {
           if (error51.code !== "ENOENT")
             throw error51;
         });
@@ -69062,13 +74794,13 @@ function createClashUserConfigStore(localDataDir) {
 }
 function watchClashUserConfig(localDataDir, options) {
   const store = createClashUserConfigStore(localDataDir);
-  (0, import_node_fs2.mkdirSync)(store.clashHome, { recursive: true, mode: 448 });
+  (0, import_node_fs3.mkdirSync)(store.clashHome, { recursive: true, mode: 448 });
   let timer = null;
   let closed = false;
   let lastAppliedHash;
   let lastAppliedConfig = null;
   try {
-    const initialSource = (0, import_node_fs2.readFileSync)(store.configPath, "utf8");
+    const initialSource = (0, import_node_fs3.readFileSync)(store.configPath, "utf8");
     lastAppliedHash = sourceHash(initialSource);
     const initialDocument = (0, import_yaml2.parseDocument)(initialSource);
     if (initialDocument.errors.length === 0) {
@@ -69099,7 +74831,7 @@ function watchClashUserConfig(localDataDir, options) {
     lastAppliedHash = hash2;
     lastAppliedConfig = value;
   };
-  const watcher = (0, import_node_fs2.watch)(store.clashHome, (eventType, filename) => {
+  const watcher = (0, import_node_fs3.watch)(store.clashHome, (eventType, filename) => {
     if (closed || filename?.toString() !== "config.yaml")
       return;
     if (eventType !== "change" && eventType !== "rename")
@@ -69125,17 +74857,17 @@ function watchClashUserConfig(localDataDir, options) {
 }
 
 // ../../apps/local-api/dist/managed-local-model-python.js
-var import_node_child_process3 = require("node:child_process");
-var import_promises10 = require("node:fs/promises");
-var import_node_path9 = require("node:path");
+var import_node_child_process4 = require("node:child_process");
+var import_promises12 = require("node:fs/promises");
+var import_node_path12 = require("node:path");
 var import_node_util3 = require("node:util");
-var execFileAsync3 = (0, import_node_util3.promisify)(import_node_child_process3.execFile);
+var execFileAsync3 = (0, import_node_util3.promisify)(import_node_child_process4.execFile);
 var MANAGED_RUNTIME_SCHEMA_VERSION = 1;
-var MANAGED_RUNTIME_RELATIVE_ROOT = (0, import_node_path9.join)("runtimes", "python", "local-models");
+var MANAGED_RUNTIME_RELATIVE_ROOT = (0, import_node_path12.join)("runtimes", "python", "local-models");
 var MANAGED_RUNTIME_STAMP = "runtime.json";
 var preparations = /* @__PURE__ */ new Map();
 function pythonBinaryForVenv(venvDir) {
-  return process.platform === "win32" ? (0, import_node_path9.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path9.join)(venvDir, "bin", "python");
+  return process.platform === "win32" ? (0, import_node_path12.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path12.join)(venvDir, "bin", "python");
 }
 async function defaultRunCommand(command, args, options) {
   const result = await execFileAsync3(command, args, options);
@@ -69147,14 +74879,14 @@ async function defaultRunCommand(command, args, options) {
 function pythonEnvironment(env, sdkPythonPath) {
   return {
     ...env,
-    PYTHONPATH: [sdkPythonPath, env.PYTHONPATH].filter(Boolean).join(import_node_path9.delimiter),
+    PYTHONPATH: [sdkPythonPath, env.PYTHONPATH].filter(Boolean).join(import_node_path12.delimiter),
     PIP_DISABLE_PIP_VERSION_CHECK: "1",
     PIP_NO_INPUT: "1"
   };
 }
 async function readStamp(path) {
   try {
-    const parsed = JSON.parse(await (0, import_promises10.readFile)(path, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises12.readFile)(path, "utf8"));
     if (parsed.version !== MANAGED_RUNTIME_SCHEMA_VERSION)
       return null;
     if (typeof parsed.sdkPythonPath !== "string" || !parsed.sdkPythonPath)
@@ -69168,17 +74900,17 @@ async function readStamp(path) {
 }
 async function pathExists(path) {
   try {
-    await (0, import_promises10.access)(path);
+    await (0, import_promises12.access)(path);
     return true;
   } catch {
     return false;
   }
 }
 function createManagedLocalModelPythonEnvironment(options) {
-  const runtimeRoot = (0, import_node_path9.join)(options.clashHome, MANAGED_RUNTIME_RELATIVE_ROOT);
-  const venvDir = (0, import_node_path9.join)(runtimeRoot, "venv");
+  const runtimeRoot = (0, import_node_path12.join)(options.clashHome, MANAGED_RUNTIME_RELATIVE_ROOT);
+  const venvDir = (0, import_node_path12.join)(runtimeRoot, "venv");
   const pythonBinary = pythonBinaryForVenv(venvDir);
-  const stampPath = (0, import_node_path9.join)(runtimeRoot, MANAGED_RUNTIME_STAMP);
+  const stampPath = (0, import_node_path12.join)(runtimeRoot, MANAGED_RUNTIME_STAMP);
   const bootstrapPython = options.bootstrapPython ?? options.env?.CLASH_LOCAL_MODELS_BOOTSTRAP_PYTHON ?? process.env.CLASH_LOCAL_MODELS_BOOTSTRAP_PYTHON ?? "python3";
   const runCommand = options.runCommand ?? defaultRunCommand;
   const env = pythonEnvironment(options.env ?? process.env, options.sdkPythonPath);
@@ -69193,17 +74925,17 @@ function createManagedLocalModelPythonEnvironment(options) {
     return stamp?.sdkPythonPath === options.sdkPythonPath;
   }
   async function prepare() {
-    await (0, import_promises10.mkdir)(runtimeRoot, { recursive: true });
+    await (0, import_promises12.mkdir)(runtimeRoot, { recursive: true });
     if (await pathExists(pythonBinary)) {
       try {
         await verify(pythonBinary);
         verified = true;
       } catch {
-        await (0, import_promises10.rm)(venvDir, { recursive: true, force: true });
+        await (0, import_promises12.rm)(venvDir, { recursive: true, force: true });
       }
     }
     if (!await pathExists(pythonBinary)) {
-      const stagingDir = (0, import_node_path9.join)(runtimeRoot, `.venv-${process.pid}-${Date.now()}`);
+      const stagingDir = (0, import_node_path12.join)(runtimeRoot, `.venv-${process.pid}-${Date.now()}`);
       try {
         await runCommand(bootstrapPython, ["-m", "venv", stagingDir], {
           env,
@@ -69213,14 +74945,14 @@ function createManagedLocalModelPythonEnvironment(options) {
         const stagingPython = pythonBinaryForVenv(stagingDir);
         await verify(stagingPython);
         try {
-          await (0, import_promises10.rename)(stagingDir, venvDir);
+          await (0, import_promises12.rename)(stagingDir, venvDir);
         } catch (error51) {
           if (!await pathExists(pythonBinary))
             throw error51;
           await verify(pythonBinary);
         }
       } finally {
-        await (0, import_promises10.rm)(stagingDir, { recursive: true, force: true });
+        await (0, import_promises12.rm)(stagingDir, { recursive: true, force: true });
       }
       verified = true;
     }
@@ -69229,10 +74961,10 @@ function createManagedLocalModelPythonEnvironment(options) {
       sdkPythonPath: options.sdkPythonPath,
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    const temporaryStamp = (0, import_node_path9.join)((0, import_node_path9.dirname)(stampPath), `.${MANAGED_RUNTIME_STAMP}-${process.pid}`);
-    await (0, import_promises10.writeFile)(temporaryStamp, `${JSON.stringify(stamp, null, 2)}
+    const temporaryStamp = (0, import_node_path12.join)((0, import_node_path12.dirname)(stampPath), `.${MANAGED_RUNTIME_STAMP}-${process.pid}`);
+    await (0, import_promises12.writeFile)(temporaryStamp, `${JSON.stringify(stamp, null, 2)}
 `, { mode: 384 });
-    await (0, import_promises10.rename)(temporaryStamp, stampPath);
+    await (0, import_promises12.rename)(temporaryStamp, stampPath);
     return pythonBinary;
   }
   return {
@@ -69480,11 +75212,11 @@ async function writeConfig(store, config2) {
 function defaultClashSdkPythonPath() {
   const explicit = process.env.CLASH_PYTHON_SDK_PATH?.trim();
   if (explicit)
-    return (0, import_node_path10.resolve)(explicit);
-  const inherited = process.env.PYTHONPATH?.split(import_node_path10.delimiter).find((entry) => entry && (0, import_node_fs3.existsSync)((0, import_node_path10.join)(entry, "clash_sdk", "local_models", "rpc.py")));
+    return (0, import_node_path13.resolve)(explicit);
+  const inherited = process.env.PYTHONPATH?.split(import_node_path13.delimiter).find((entry) => entry && (0, import_node_fs4.existsSync)((0, import_node_path13.join)(entry, "clash_sdk", "local_models", "rpc.py")));
   if (inherited)
-    return (0, import_node_path10.resolve)(inherited);
-  return (0, import_node_path10.resolve)((0, import_node_path10.dirname)((0, import_node_url.fileURLToPath)(__clash_import_meta_url)), "../../..", "packages", "clash-sdk", "python");
+    return (0, import_node_path13.resolve)(inherited);
+  return (0, import_node_path13.resolve)((0, import_node_path13.dirname)((0, import_node_url.fileURLToPath)(__clash_import_meta_url)), "../../..", "packages", "clash-sdk", "python");
 }
 function displayErrorMessage(error51) {
   return error51 instanceof Error ? error51.message : String(error51);
@@ -69559,7 +75291,7 @@ function createHookBackedRuntime(options, pythonBinary, cacheDir, pythonPath) {
     async transcribe(input) {
       if (!options.builtinTranscribe)
         return fallback.transcribe(input);
-      const file2 = new File([await (0, import_promises11.readFile)(input.audioPath)], (0, import_node_path10.basename)(input.audioPath), { type: "audio/webm" });
+      const file2 = new File([await (0, import_promises13.readFile)(input.audioPath)], (0, import_node_path13.basename)(input.audioPath), { type: "audio/webm" });
       return options.builtinTranscribe({
         file: file2,
         model: input.model,
@@ -69583,11 +75315,11 @@ function createDefaultTtsRuntime(options, pythonBinary, cacheDir, pythonPath) {
   });
 }
 async function transcribeWithRuntime(runtime, input, model) {
-  const dir = await (0, import_promises11.mkdtemp)((0, import_node_path10.join)((0, import_node_os4.tmpdir)(), "clash-asr-"));
-  const extension2 = (0, import_node_path10.extname)(input.file.name || "") || ".webm";
-  const audioPath = (0, import_node_path10.join)(dir, (0, import_node_path10.basename)(input.file.name || `input${extension2}`));
+  const dir = await (0, import_promises13.mkdtemp)((0, import_node_path13.join)((0, import_node_os5.tmpdir)(), "clash-asr-"));
+  const extension2 = (0, import_node_path13.extname)(input.file.name || "") || ".webm";
+  const audioPath = (0, import_node_path13.join)(dir, (0, import_node_path13.basename)(input.file.name || `input${extension2}`));
   try {
-    await (0, import_promises11.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
+    await (0, import_promises13.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
     return await runtime.transcribe({
       model,
       audioPath,
@@ -69598,7 +75330,7 @@ async function transcribeWithRuntime(runtime, input, model) {
       throw error51;
     throw new LocalAudioConfigError(`Local ASR transcription failed: ${displayErrorMessage(error51)}`, 502);
   } finally {
-    await (0, import_promises11.rm)(dir, { recursive: true, force: true });
+    await (0, import_promises13.rm)(dir, { recursive: true, force: true });
   }
 }
 function createLocalAudioConfigStore(options) {
@@ -69612,10 +75344,10 @@ function createLocalAudioConfigStore(options) {
     sdkPythonPath: pythonSdkPath
   }) : null;
   const pythonBinary = explicitPythonBinary ?? managedPythonEnvironment?.pythonBinary ?? DEFAULT_PYTHON_BINARY;
-  const asrCacheDir = (0, import_node_path10.join)(options.dataDir, "models", "speech", "asr");
+  const asrCacheDir = (0, import_node_path13.join)(options.dataDir, "models", "speech", "asr");
   const defaultAsrRuntime = createDefaultAsrRuntime(options, pythonBinary, asrCacheDir, pythonSdkPath);
   const asrRuntime = managedPythonEnvironment && !options.asrRuntime && !options.builtinStatus && !options.builtinInstall && !options.builtinTranscribe ? withManagedPythonAsrRuntime(defaultAsrRuntime, managedPythonEnvironment) : defaultAsrRuntime;
-  const ttsCacheDir = (0, import_node_path10.join)(options.dataDir, "models", "speech", "tts");
+  const ttsCacheDir = (0, import_node_path13.join)(options.dataDir, "models", "speech", "tts");
   const defaultTtsRuntime = createDefaultTtsRuntime(options, pythonBinary, ttsCacheDir, pythonSdkPath);
   const ttsRuntime = managedPythonEnvironment && !options.ttsRuntime ? withManagedPythonTtsRuntime(defaultTtsRuntime, managedPythonEnvironment) : defaultTtsRuntime;
   const asrStatusCache = createRuntimeStatusCache();
@@ -69825,8 +75557,8 @@ function createLocalAudioConfigStore(options) {
       if (!status.available) {
         throw new LocalAudioConfigError(`Selected TTS model is not downloaded. Open Settings > Models and download it.${status.message ? ` ${status.message}.` : ""}`, 409);
       }
-      const dir = await (0, import_promises11.mkdtemp)((0, import_node_path10.join)((0, import_node_os4.tmpdir)(), "clash-tts-"));
-      const outputPath = (0, import_node_path10.join)(dir, "speech.wav");
+      const dir = await (0, import_promises13.mkdtemp)((0, import_node_path13.join)((0, import_node_os5.tmpdir)(), "clash-tts-"));
+      const outputPath = (0, import_node_path13.join)(dir, "speech.wav");
       try {
         const synthesis = await ttsRuntime.synthesize({
           model,
@@ -69838,7 +75570,7 @@ function createLocalAudioConfigStore(options) {
         });
         const { outputPath: _outputPath, ...metadata } = synthesis;
         return {
-          audio: new Uint8Array(await (0, import_promises11.readFile)(outputPath)),
+          audio: new Uint8Array(await (0, import_promises13.readFile)(outputPath)),
           metadata
         };
       } catch (error51) {
@@ -69846,22 +75578,22 @@ function createLocalAudioConfigStore(options) {
           throw error51;
         throw new LocalAudioConfigError(`Local TTS synthesis failed: ${displayErrorMessage(error51)}`, 502);
       } finally {
-        await (0, import_promises11.rm)(dir, { recursive: true, force: true });
+        await (0, import_promises13.rm)(dir, { recursive: true, force: true });
       }
     }
   };
 }
 
 // ../../apps/local-api/dist/sync.js
-var import_node_crypto7 = require("node:crypto");
-var import_node_path14 = require("node:path");
+var import_node_crypto9 = require("node:crypto");
+var import_node_path17 = require("node:path");
 var import_loro_crdt6 = __toESM(require_nodejs(), 1);
 init_dist2();
 
 // ../../apps/local-api/dist/loro/file-replica-store.js
-var import_promises12 = require("node:fs/promises");
-var import_node_crypto5 = require("node:crypto");
-var import_node_path11 = require("node:path");
+var import_promises14 = require("node:fs/promises");
+var import_node_crypto7 = require("node:crypto");
+var import_node_path14 = require("node:path");
 var import_loro_crdt5 = __toESM(require_nodejs(), 1);
 function exactBytes(view) {
   return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength ? view : new Uint8Array(view);
@@ -69877,7 +75609,7 @@ var FileReplicaStore = class {
   }
   async loadSnapshot(projectId) {
     try {
-      return exactBytes(await (0, import_promises12.readFile)(this.snapshotPath(projectId)));
+      return exactBytes(await (0, import_promises14.readFile)(this.snapshotPath(projectId)));
     } catch (error51) {
       if (isMissingFile(error51))
         return null;
@@ -69891,17 +75623,17 @@ var FileReplicaStore = class {
   }
   async appendUpdateUnsafe(projectId, update) {
     const logPath = this.updateLogPath(projectId);
-    await (0, import_promises12.mkdir)(this.loroDir(projectId), { recursive: true });
+    await (0, import_promises14.mkdir)(this.loroDir(projectId), { recursive: true });
     const updateBytes = exactBytes(update);
     const header = Buffer.alloc(4);
     header.writeUInt32BE(updateBytes.byteLength, 0);
-    await (0, import_promises12.appendFile)(logPath, Buffer.concat([header, Buffer.from(updateBytes)]));
+    await (0, import_promises14.appendFile)(logPath, Buffer.concat([header, Buffer.from(updateBytes)]));
   }
   async loadUpdateLog(projectId) {
     const logPath = this.updateLogPath(projectId);
     let log2;
     try {
-      log2 = await (0, import_promises12.readFile)(logPath);
+      log2 = await (0, import_promises14.readFile)(logPath);
     } catch (error51) {
       if (isMissingFile(error51))
         return [];
@@ -69911,14 +75643,14 @@ var FileReplicaStore = class {
     let offset = 0;
     while (offset < log2.byteLength) {
       if (offset + 4 > log2.byteLength) {
-        await (0, import_promises12.truncate)(logPath, offset);
+        await (0, import_promises14.truncate)(logPath, offset);
         break;
       }
       const length = log2.readUInt32BE(offset);
       const recordStart = offset + 4;
       const recordEnd = recordStart + length;
       if (recordEnd > log2.byteLength) {
-        await (0, import_promises12.truncate)(logPath, offset);
+        await (0, import_promises14.truncate)(logPath, offset);
         break;
       }
       updates.push(exactBytes(log2.subarray(recordStart, recordEnd)));
@@ -69949,34 +75681,34 @@ var FileReplicaStore = class {
   }
   async saveSnapshotAtomicUnsafe(projectId, snapshot) {
     const dir = this.loroDir(projectId);
-    await (0, import_promises12.mkdir)(dir, { recursive: true });
+    await (0, import_promises14.mkdir)(dir, { recursive: true });
     const finalPath = this.snapshotPath(projectId);
-    const tempPath = (0, import_node_path11.join)(dir, `snapshot.bin.${process.pid}.${(0, import_node_crypto5.randomUUID)()}.tmp`);
+    const tempPath = (0, import_node_path14.join)(dir, `snapshot.bin.${process.pid}.${(0, import_node_crypto7.randomUUID)()}.tmp`);
     const snapshotBytes = exactBytes(snapshot);
     try {
-      const handle = await (0, import_promises12.open)(tempPath, "wx");
+      const handle = await (0, import_promises14.open)(tempPath, "wx");
       try {
         await handle.writeFile(snapshotBytes);
         await handle.sync();
       } finally {
         await handle.close();
       }
-      await (0, import_promises12.rename)(tempPath, finalPath);
+      await (0, import_promises14.rename)(tempPath, finalPath);
     } catch (error51) {
-      await (0, import_promises12.rm)(tempPath, { force: true }).catch(() => {
+      await (0, import_promises14.rm)(tempPath, { force: true }).catch(() => {
       });
       throw error51;
     }
   }
   async truncateUpdateLog(projectId) {
     const logPath = this.updateLogPath(projectId);
-    await (0, import_promises12.mkdir)(this.loroDir(projectId), { recursive: true });
+    await (0, import_promises14.mkdir)(this.loroDir(projectId), { recursive: true });
     try {
-      await (0, import_promises12.truncate)(logPath, 0);
+      await (0, import_promises14.truncate)(logPath, 0);
     } catch (error51) {
       if (!isMissingFile(error51))
         throw error51;
-      await (0, import_promises12.writeFile)(logPath, new Uint8Array(), { mode: 384 });
+      await (0, import_promises14.writeFile)(logPath, new Uint8Array(), { mode: 384 });
     }
   }
   async recover(projectId) {
@@ -69984,7 +75716,7 @@ var FileReplicaStore = class {
   }
   async deleteReplica(projectId) {
     await this.enqueueProjectWrite(projectId, async () => {
-      await (0, import_promises12.rm)(this.projectDir(projectId), { recursive: true, force: true });
+      await (0, import_promises14.rm)(this.projectDir(projectId), { recursive: true, force: true });
     });
   }
   async recoverUnsafe(projectId) {
@@ -70000,16 +75732,16 @@ var FileReplicaStore = class {
     return doc;
   }
   loroDir(projectId) {
-    return (0, import_node_path11.join)(this.projectDir(projectId), "loro");
+    return (0, import_node_path14.join)(this.projectDir(projectId), "loro");
   }
   projectDir(projectId) {
-    return (0, import_node_path11.join)(this.rootDir, encodeURIComponent(projectId));
+    return (0, import_node_path14.join)(this.rootDir, encodeURIComponent(projectId));
   }
   snapshotPath(projectId) {
-    return (0, import_node_path11.join)(this.loroDir(projectId), "snapshot.bin");
+    return (0, import_node_path14.join)(this.loroDir(projectId), "snapshot.bin");
   }
   updateLogPath(projectId) {
-    return (0, import_node_path11.join)(this.loroDir(projectId), "updates.log");
+    return (0, import_node_path14.join)(this.loroDir(projectId), "updates.log");
   }
   async enqueueProjectWrite(projectId, task) {
     const key = encodeURIComponent(projectId);
@@ -70027,14 +75759,14 @@ var FileReplicaStore = class {
 };
 
 // ../../apps/local-api/dist/local-processor.js
-var import_node_crypto6 = require("node:crypto");
-var import_promises15 = require("node:fs/promises");
+var import_node_crypto8 = require("node:crypto");
+var import_promises17 = require("node:fs/promises");
 init_dist2();
 
 // ../../apps/local-api/dist/local-metadata-store.js
 var import_node_module2 = require("node:module");
-var import_promises13 = require("node:fs/promises");
-var import_node_path12 = require("node:path");
+var import_promises15 = require("node:fs/promises");
+var import_node_path15 = require("node:path");
 var EMPTY_METADATA_DB = {
   projects: [],
   assets: [],
@@ -70048,7 +75780,7 @@ var EMPTY_METADATA_DB = {
 var METADATA_MIGRATION_ID = "metadata-sqlite-v1";
 var require3 = (0, import_node_module2.createRequire)(__clash_import_meta_url);
 function sqlitePath2(dataDir2) {
-  return (0, import_node_path12.join)(dataDir2, "local.sqlite");
+  return (0, import_node_path15.join)(dataDir2, "local.sqlite");
 }
 function openDatabase2(path) {
   const { DatabaseSync } = require3("node:sqlite");
@@ -70092,6 +75824,20 @@ function applySchema2(db) {
       created_at TEXT,
       position INTEGER NOT NULL,
       PRIMARY KEY (project_id, asset_id, position)
+    );
+
+    CREATE TABLE IF NOT EXISTS asset_metadata_index (
+      asset_id TEXT NOT NULL,
+      metadata_kind TEXT NOT NULL,
+      project_id TEXT,
+      schema_version INTEGER,
+      content_hash TEXT,
+      body_hash TEXT,
+      producer TEXT NOT NULL,
+      summary_json TEXT,
+      identity_json TEXT NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      PRIMARY KEY (asset_id, metadata_kind)
     );
 
     CREATE TABLE IF NOT EXISTS local_config (
@@ -70478,21 +76224,21 @@ function createLocalMetadataStore(dataDir2) {
   const path = sqlitePath2(dataDir2);
   async function exists2() {
     try {
-      await (0, import_promises13.stat)(path);
+      await (0, import_promises15.stat)(path);
       return true;
     } catch {
       return false;
     }
   }
   async function withDb(task) {
-    await (0, import_promises13.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises15.mkdir)(dataDir2, { recursive: true });
     const db = openDatabase2(path);
     try {
       applySchema2(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises13.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises15.chmod)(path, 384).catch(() => void 0);
     }
   }
   function insertMutationAudit(db, record2) {
@@ -70952,6 +76698,62 @@ function createLocalMetadataStore(dataDir2) {
     `).get(projectId, revisionId));
     return row ? textRevisionFromRow(row) : null;
   }
+  async function upsertAssetMetadataIndex(record2) {
+    await withDb((db) => {
+      db.prepare(`
+      INSERT INTO asset_metadata_index (
+        asset_id, metadata_kind, project_id, schema_version, content_hash,
+        body_hash, producer, summary_json, identity_json, recorded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(asset_id, metadata_kind) DO UPDATE SET
+        project_id = excluded.project_id,
+        schema_version = excluded.schema_version,
+        content_hash = excluded.content_hash,
+        body_hash = excluded.body_hash,
+        producer = excluded.producer,
+        summary_json = excluded.summary_json,
+        identity_json = excluded.identity_json,
+        recorded_at = excluded.recorded_at
+    `).run(record2.assetId, record2.metadataKind, record2.projectId ?? null, record2.schemaVersion ?? null, record2.contentHash ?? null, record2.bodyHash ?? null, record2.producer, record2.summary === void 0 ? null : JSON.stringify(record2.summary), JSON.stringify(record2.identity), Date.now());
+    });
+  }
+  async function listAssetMetadataIndex(filter = {}) {
+    return withDb((db) => {
+      const conditions = [];
+      const params = [];
+      if (filter.assetId) {
+        conditions.push("asset_id = ?");
+        params.push(filter.assetId);
+      }
+      if (filter.metadataKind) {
+        conditions.push("metadata_kind = ?");
+        params.push(filter.metadataKind);
+      }
+      if (filter.projectId) {
+        conditions.push("project_id = ?");
+        params.push(filter.projectId);
+      }
+      const rows = db.prepare(`
+      SELECT asset_id, metadata_kind, project_id, schema_version, content_hash,
+             body_hash, producer, summary_json, identity_json, recorded_at
+        FROM asset_metadata_index
+        ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
+       ORDER BY asset_id, metadata_kind
+    `).all(...params);
+      return rows.map((row) => ({
+        assetId: row.asset_id,
+        metadataKind: row.metadata_kind,
+        ...row.project_id === null ? {} : { projectId: row.project_id },
+        ...row.schema_version === null ? {} : { schemaVersion: row.schema_version },
+        ...row.content_hash === null ? {} : { contentHash: row.content_hash },
+        ...row.body_hash === null ? {} : { bodyHash: row.body_hash },
+        producer: row.producer,
+        ...typeof row.summary_json === "string" ? { summary: JSON.parse(row.summary_json) } : {},
+        identity: JSON.parse(String(row.identity_json)),
+        recordedAt: row.recorded_at
+      }));
+    });
+  }
   return {
     path,
     load,
@@ -70964,15 +76766,17 @@ function createLocalMetadataStore(dataDir2) {
     listPluginBrokerAudit,
     upsertTextRevision,
     listTextRevisions,
-    getTextRevision
+    getTextRevision,
+    upsertAssetMetadataIndex,
+    listAssetMetadataIndex
   };
 }
 
 // ../../apps/local-api/dist/local-asset-paths.js
-var import_promises14 = require("node:fs/promises");
-var import_node_path13 = require("node:path");
+var import_promises16 = require("node:fs/promises");
+var import_node_path16 = require("node:path");
 function assetRoot(dataDir2) {
-  return (0, import_node_path13.join)(dataDir2, "assets");
+  return (0, import_node_path16.join)(dataDir2, "assets");
 }
 function normalizeAssetStorageKey(storageKey) {
   const raw2 = storageKey.trim();
@@ -70984,13 +76788,13 @@ function normalizeAssetStorageKey(storageKey) {
   if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
     throw new Error("Invalid asset storage key");
   }
-  return (0, import_node_path13.normalize)(slashKey).replace(/\\/g, "/");
+  return (0, import_node_path16.normalize)(slashKey).replace(/\\/g, "/");
 }
 function localBlobAssetPath(clashRoot, storageKey) {
-  const root = (0, import_node_path13.join)(clashRoot, "assets", "blobs");
+  const root = (0, import_node_path16.join)(clashRoot, "assets", "blobs");
   const blobKey = storageKey.slice("local-blobs/".length);
-  const resolved = (0, import_node_path13.normalize)((0, import_node_path13.join)(root, blobKey));
-  const rel = (0, import_node_path13.relative)(root, resolved);
+  const resolved = (0, import_node_path16.normalize)((0, import_node_path16.join)(root, blobKey));
+  const rel = (0, import_node_path16.relative)(root, resolved);
   if (!blobKey || rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid local blob path");
   }
@@ -71002,8 +76806,8 @@ function assetPath(dataDir2, storageKey, clashRoot) {
     return localBlobAssetPath(clashHomeForLocalDataDir(dataDir2, clashRoot), normalizedKey);
   }
   const root = assetRoot(dataDir2);
-  const resolved = (0, import_node_path13.normalize)((0, import_node_path13.join)(root, normalizedKey));
-  const rel = (0, import_node_path13.relative)(root, resolved);
+  const resolved = (0, import_node_path16.normalize)((0, import_node_path16.join)(root, normalizedKey));
+  const rel = (0, import_node_path16.relative)(root, resolved);
   if (rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid asset path");
   }
@@ -71013,21 +76817,21 @@ function localAssetPathCandidate(dataDir2, storageKey, clashRoot) {
   const normalizedKey = normalizeAssetStorageKey(storageKey);
   if (normalizedKey.startsWith("local-blobs/")) {
     const ownerRoot2 = clashHomeForLocalDataDir(dataDir2, clashRoot);
-    const root = (0, import_node_path13.join)(ownerRoot2, "assets", "blobs");
+    const root = (0, import_node_path16.join)(ownerRoot2, "assets", "blobs");
     return { ownerRoot: ownerRoot2, root, path: localBlobAssetPath(ownerRoot2, normalizedKey) };
   }
-  const ownerRoot = (0, import_node_path13.resolve)(dataDir2);
+  const ownerRoot = (0, import_node_path16.resolve)(dataDir2);
   return { ownerRoot, root: assetRoot(dataDir2), path: assetPath(dataDir2, normalizedKey, clashRoot) };
 }
 function assertRealAssetPathInsideRoot(rootRealPath, targetRealPath) {
-  const rel = (0, import_node_path13.relative)(rootRealPath, targetRealPath);
-  if (rel.startsWith("..") || rel === ".." || (0, import_node_path13.isAbsolute)(rel)) {
+  const rel = (0, import_node_path16.relative)(rootRealPath, targetRealPath);
+  if (rel.startsWith("..") || rel === ".." || (0, import_node_path16.isAbsolute)(rel)) {
     throw new Error("Asset path escapes local asset storage");
   }
 }
 async function realpathOrNull(path) {
   try {
-    return await (0, import_promises14.realpath)(path);
+    return await (0, import_promises16.realpath)(path);
   } catch (error51) {
     if (error51.code === "ENOENT")
       return null;
@@ -71036,22 +76840,22 @@ async function realpathOrNull(path) {
 }
 async function assetPathForRead(dataDir2, storageKey, clashRoot) {
   const candidate = localAssetPathCandidate(dataDir2, storageKey, clashRoot);
-  const ownerRootRealPath = await (0, import_promises14.realpath)(candidate.ownerRoot);
-  const rootRealPath = await (0, import_promises14.realpath)(candidate.root);
+  const ownerRootRealPath = await (0, import_promises16.realpath)(candidate.ownerRoot);
+  const rootRealPath = await (0, import_promises16.realpath)(candidate.root);
   assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
-  const targetRealPath = await (0, import_promises14.realpath)(candidate.path);
+  const targetRealPath = await (0, import_promises16.realpath)(candidate.path);
   assertRealAssetPathInsideRoot(rootRealPath, targetRealPath);
   return candidate.path;
 }
 async function assetPathForWrite(dataDir2, storageKey, clashRoot) {
   const candidate = localAssetPathCandidate(dataDir2, storageKey, clashRoot);
-  await (0, import_promises14.mkdir)(candidate.ownerRoot, { recursive: true });
-  await (0, import_promises14.mkdir)(candidate.root, { recursive: true });
-  const ownerRootRealPath = await (0, import_promises14.realpath)(candidate.ownerRoot);
-  const rootRealPath = await (0, import_promises14.realpath)(candidate.root);
+  await (0, import_promises16.mkdir)(candidate.ownerRoot, { recursive: true });
+  await (0, import_promises16.mkdir)(candidate.root, { recursive: true });
+  const ownerRootRealPath = await (0, import_promises16.realpath)(candidate.ownerRoot);
+  const rootRealPath = await (0, import_promises16.realpath)(candidate.root);
   assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
-  await (0, import_promises14.mkdir)((0, import_node_path13.dirname)(candidate.path), { recursive: true });
-  const parentRealPath = await (0, import_promises14.realpath)((0, import_node_path13.dirname)(candidate.path));
+  await (0, import_promises16.mkdir)((0, import_node_path16.dirname)(candidate.path), { recursive: true });
+  const parentRealPath = await (0, import_promises16.realpath)((0, import_node_path16.dirname)(candidate.path));
   assertRealAssetPathInsideRoot(rootRealPath, parentRealPath);
   const existingTargetRealPath = await realpathOrNull(candidate.path);
   if (existingTargetRealPath) {
@@ -71063,7 +76867,7 @@ async function assetPathForDelete(dataDir2, storageKey, clashRoot) {
   const candidate = localAssetPathCandidate(dataDir2, storageKey, clashRoot);
   const ownerRootRealPath = await realpathOrNull(candidate.ownerRoot);
   const rootRealPath = await realpathOrNull(candidate.root);
-  const parentRealPath = await realpathOrNull((0, import_node_path13.dirname)(candidate.path));
+  const parentRealPath = await realpathOrNull((0, import_node_path16.dirname)(candidate.path));
   if (ownerRootRealPath && rootRealPath) {
     assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
   }
@@ -71078,8 +76882,8 @@ function normalizeLocalBlobStorageKey(localBlobKey) {
     throw new Error("localBlobKey must start with blobs/");
   }
   const root = "blobs";
-  const resolved = (0, import_node_path13.normalize)((0, import_node_path13.join)(root, normalized.slice("blobs/".length)));
-  const rel = (0, import_node_path13.relative)(root, resolved);
+  const resolved = (0, import_node_path16.normalize)((0, import_node_path16.join)(root, normalized.slice("blobs/".length)));
+  const rel = (0, import_node_path16.relative)(root, resolved);
   if (!rel || rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid local blob path");
   }
@@ -71120,8 +76924,9 @@ function providerPromptFromData(data, fallback) {
   return extractPromptText(parsePromptParts(authoredPrompt));
 }
 function localAssetReferenceUrl(baseUrl2, storageKey) {
+  const base = typeof baseUrl2 === "function" ? baseUrl2() : baseUrl2;
   const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
-  return `${baseUrl2.replace(/\/+$/, "")}/assets/${encodedKey}`;
+  return `${base.replace(/\/+$/, "")}/assets/${encodedKey}`;
 }
 function modelFromData(data, fallback) {
   return typeof data.modelId === "string" && data.modelId.trim() ? data.modelId : typeof data.model === "string" && data.model.trim() ? data.model : fallback;
@@ -71129,14 +76934,28 @@ function modelFromData(data, fallback) {
 function aspectRatioFromData(data) {
   return stringParam3(data, "aspectRatio") ?? stringParam3(data, "aspect_ratio");
 }
-function durationFromData(data, fallback) {
-  return Math.max(1, Math.min(30, numberParam3(data, "duration") ?? fallback));
+function cardDurationFallback(card) {
+  const declared = card.defaultParams?.duration;
+  if (declared !== void 0)
+    return declared;
+  const parameter = card.parameters.find((candidate) => candidate.id === "duration");
+  if (!parameter)
+    return void 0;
+  if (parameter.defaultValue !== void 0)
+    return parameter.defaultValue;
+  return parameter.options?.[0]?.value;
+}
+function durationFromData(data, card) {
+  const requested = numberParam3(data, "duration");
+  if (requested !== void 0)
+    return Math.max(1, Math.min(30, requested));
+  return card ? cardDurationFallback(card) : void 0;
 }
 function stringList(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.length > 0) : [];
 }
 function textHash(content) {
-  return (0, import_node_crypto6.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_node_crypto8.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function textRevisionActor(nodeData, userId) {
   if (nodeData.actorType !== "user" && nodeData.actorType !== "agent")
@@ -71159,7 +76978,7 @@ function generatedTextRevision(options) {
     createdAt,
     actor: actor ?? null
   });
-  const suffix = (0, import_node_crypto6.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
+  const suffix = (0, import_node_crypto8.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
   return {
     schemaVersion: 1,
     kind: "clash.text.revision",
@@ -71183,7 +77002,7 @@ async function recordGeneratedTextRevision(options) {
   }, { resultEntityId: revision.revisionId });
   await storeTextRevisionContentBlob(options.dataDir, revision, options.content);
   await createLocalMetadataStore(options.dataDir).upsertTextRevision(revision, {
-    id: (0, import_node_crypto6.randomUUID)(),
+    id: (0, import_node_crypto8.randomUUID)(),
     createdAt: Date.now(),
     operation: mutation.operation,
     entity: mutation.entity,
@@ -71249,7 +77068,7 @@ async function saveAsset(options) {
   const extension2 = extensionForContentType(options.contentType);
   const storageKey = `generated/${sanitizeStorageSegment(options.taskId)}${extension2}`;
   const assetPath2 = await assetPathForWrite(options.dataDir, storageKey);
-  await (0, import_promises15.writeFile)(assetPath2, options.bytes);
+  await (0, import_promises17.writeFile)(assetPath2, options.bytes);
   const now = Math.floor(Date.now() / 1e3);
   const assetId = `local-asset-${sanitizeStorageSegment(options.taskId)}`;
   const model = modelFromData(options.nodeData, `mock-${options.kind}`);
@@ -71293,7 +77112,7 @@ async function saveAsset(options) {
     projectId: options.projectId,
     importedAt: now
   }, {
-    id: (0, import_node_crypto6.randomUUID)(),
+    id: (0, import_node_crypto8.randomUUID)(),
     createdAt: Date.now(),
     operation: mutation.operation,
     entity: mutation.entity,
@@ -71307,8 +77126,9 @@ async function saveAsset(options) {
   return asset;
 }
 function localAssetHttpUrl(mediaBaseUrl, storageKey) {
+  const base = typeof mediaBaseUrl === "function" ? mediaBaseUrl() : mediaBaseUrl;
   const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
-  return `${mediaBaseUrl.replace(/\/+$/, "")}/assets/${encodedKey}`;
+  return `${base.replace(/\/+$/, "")}/assets/${encodedKey}`;
 }
 async function resolveLocalTimelineDslReferences(options) {
   const resolved = structuredClone(options.timelineDsl);
@@ -71759,10 +77579,10 @@ function createLocalWorkflowProcessor(options) {
           }) : kind === "video" ? await aigc.generateVideo({
             ...common,
             aspectRatio: aspectRatioFromData(data),
-            duration: durationFromData(data, 4)
+            duration: durationFromData(data, modelCard)
           }) : await aigc.generateAudio({
             ...common,
-            duration: durationFromData(data, 5)
+            duration: durationFromData(data, modelCard)
           });
           const asset = await saveAsset({
             dataDir: options.dataDir,
@@ -71868,7 +77688,7 @@ function createHttpRemoteLoroPersistence(options) {
   };
 }
 async function loadDoc(options) {
-  const store = new FileReplicaStore((0, import_node_path14.join)(options.dataDir, "projects"));
+  const store = new FileReplicaStore((0, import_node_path17.join)(options.dataDir, "projects"));
   let doc;
   try {
     doc = await store.recover(options.projectId);
@@ -72295,7 +78115,7 @@ function presenceFromHeaders(headers2) {
   const userName = headerString(headers2["x-user-name"]);
   const name = clientType === "agent" ? headerString(headers2["x-agent-name"]) ?? userName ?? "Local Agent" : clientType === "cli" ? userName ?? "Local CLI" : userName ?? "Local User";
   return {
-    id: (0, import_node_crypto7.randomUUID)(),
+    id: (0, import_node_crypto9.randomUUID)(),
     clientType,
     userId,
     name
@@ -72555,60 +78375,7 @@ function createLocalSyncConfigStore(options) {
 }
 
 // ../../apps/local-api/dist/provider-accounts.js
-var PROVIDER_IDS = /* @__PURE__ */ new Set([
-  "local",
-  "official",
-  "fal",
-  "kie",
-  "replicate",
-  "kling",
-  "minimax",
-  "jimeng",
-  "volcengine",
-  "elevenlabs",
-  "suno",
-  "mock",
-  "custom"
-]);
-var UPSTREAM_IDS = /* @__PURE__ */ new Set([
-  "local",
-  "mock",
-  "fal",
-  "bfl",
-  "google-ai-studio",
-  "google-agent-platform",
-  "openai",
-  "anthropic",
-  "openrouter",
-  "replicate",
-  "kie",
-  "kling",
-  "minimax",
-  "jimeng",
-  "volcengine",
-  "elevenlabs",
-  "suno"
-]);
-var API_SHAPES = /* @__PURE__ */ new Set([
-  "local-asr",
-  "local-tts",
-  "fal",
-  "bfl",
-  "google-agent-platform",
-  "google-ai-studio",
-  "google-ai-studio-interactions",
-  "openai-images",
-  "openai-compatible",
-  "anthropic-compatible",
-  "replicate",
-  "kie",
-  "kling",
-  "minimax",
-  "modelark",
-  "dreamina-cli",
-  "elevenlabs",
-  "suno"
-]);
+init_dist2();
 function stringField(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
@@ -72665,21 +78432,21 @@ function defaultUpstream(providerId) {
   if (providerId === "fal" || providerId === "pika" || providerId === "local" || providerId === "kie" || providerId === "replicate" || providerId === "kling" || providerId === "minimax" || providerId === "jimeng" || providerId === "volcengine" || providerId === "elevenlabs" || providerId === "suno" || providerId === "mock") {
     return providerId;
   }
-  return void 0;
+  return providerId === "official" || providerId === "custom" ? void 0 : providerId;
 }
 function normalizeProviderAccountInput(value) {
   if (!value || typeof value !== "object")
     return null;
   const raw2 = value;
   const providerId = stringField(raw2.providerId);
-  if (!providerId || !PROVIDER_IDS.has(providerId))
+  if (!providerId || !ProviderAccountIdSchema.safeParse(providerId).success)
     return null;
   const id = stringField(raw2.id);
   const label = stringField(raw2.label);
   const rawUpstreamId = stringField(raw2.upstreamId);
-  const upstreamId = rawUpstreamId && UPSTREAM_IDS.has(rawUpstreamId) ? rawUpstreamId : defaultUpstream(providerId);
+  const upstreamId = rawUpstreamId && ModelUpstreamIdSchema.safeParse(rawUpstreamId).success ? rawUpstreamId : defaultUpstream(providerId);
   const rawApiShape = stringField(raw2.apiShape);
-  const apiShape = rawApiShape && API_SHAPES.has(rawApiShape) ? rawApiShape : void 0;
+  const apiShape = rawApiShape && ModelUpstreamApiShapeSchema.safeParse(rawApiShape).success ? rawApiShape : void 0;
   if (providerId === "custom" && (!upstreamId || apiShape !== "openai-compatible" && apiShape !== "anthropic-compatible"))
     return null;
   const region = stringField(raw2.region);
@@ -72709,32 +78476,43 @@ function configuredCredentialsForAccount(account) {
 function authorizedOAuthRecords(records, userId) {
   return records.filter((record2) => (record2.userId ?? userId) === userId).filter((record2) => record2.status === "authorized");
 }
-function oauthAccounts(records, userId) {
-  const record2 = authorizedOAuthRecords(records, userId).find((candidate) => candidate.providerId === "dreamina");
-  if (!record2)
-    return [];
-  return [{
-    providerId: "jimeng",
-    upstreamId: "jimeng",
+function oauthAccount(record2) {
+  if (record2.providerId === "dreamina") {
+    return {
+      providerId: "jimeng",
+      upstreamId: "jimeng",
+      ...record2.accountLabel ? { label: record2.accountLabel } : {},
+      enabled: true
+    };
+  }
+  return {
+    ...record2.accountId ? { id: record2.accountId } : {},
+    providerId: record2.providerId,
+    upstreamId: record2.providerId,
     ...record2.accountLabel ? { label: record2.accountLabel } : {},
-    enabled: true
-  }];
+    enabled: true,
+    ...record2.accessToken ? { credentials: { apiKey: record2.accessToken } } : {}
+  };
 }
 function oauthForAccount(account, records) {
-  if (account.providerId !== "jimeng")
+  return [...new Set(records.flatMap((record2) => {
+    if (account.providerId === "jimeng" && record2.providerId === "dreamina")
+      return ["dreamina"];
+    const matchesAccount = !record2.accountId || !account.id || record2.accountId === account.id;
+    if (!matchesAccount)
+      return [];
+    if (record2.providerId === account.providerId)
+      return [record2.providerId];
     return [];
-  const hasDreamina = records.some((record2) => {
-    return record2.providerId === "dreamina";
-  });
-  return hasDreamina ? ["dreamina"] : [];
+  }))];
 }
 function isRuntimeProviderAccount(account) {
-  if (!PROVIDER_IDS.has(account.providerId))
+  if (!ProviderAccountIdSchema.safeParse(account.providerId).success)
     return false;
   if (account.providerId === "official") {
-    return Boolean(account.upstreamId && UPSTREAM_IDS.has(account.upstreamId));
+    return Boolean(account.upstreamId && ModelUpstreamIdSchema.safeParse(account.upstreamId).success);
   }
-  return !account.upstreamId || UPSTREAM_IDS.has(account.upstreamId);
+  return !account.upstreamId || ModelUpstreamIdSchema.safeParse(account.upstreamId).success;
 }
 function publicProviderAccounts(stored, userId, oauthRecords = []) {
   return providerAccountsForRuntime(stored, userId, oauthRecords).map(({ credentials: _credentials, ...account }) => account);
@@ -72749,9 +78527,27 @@ function providerAccountsForRuntime(stored, userId, oauthRecords = []) {
       continue;
     merged.set(providerAccountKey(account), account);
   }
-  if (![...merged.values()].some((account) => account.providerId === "jimeng")) {
-    for (const account of oauthAccounts(oauthRecords, userId))
-      merged.set(providerAccountKey(account), account);
+  for (const record2 of connectedOAuth) {
+    const oauth = oauthAccount(record2);
+    const existingEntry = [...merged.entries()].find(([, account]) => {
+      if (account.providerId !== oauth.providerId)
+        return false;
+      if (record2.providerId === "dreamina")
+        return true;
+      return record2.accountId ? account.id === record2.accountId : true;
+    });
+    if (existingEntry) {
+      const [key, account] = existingEntry;
+      merged.set(key, {
+        ...account,
+        ...oauth.label && !account.label ? { label: oauth.label } : {},
+        ...record2.accessToken ? {
+          credentials: { ...account.credentials ?? {}, apiKey: record2.accessToken }
+        } : {}
+      });
+    } else {
+      merged.set(providerAccountKey(oauth), oauth);
+    }
   }
   return [...merged.values()].sort((a, b) => {
     const base = providerAccountBaseKey(a).localeCompare(providerAccountBaseKey(b));
@@ -72850,7 +78646,7 @@ async function generateFalDirectorModel({ input, apiKey, fetch: fetchImpl = fetc
       throw new Error(`fal 3D model request failed: ${statusJson.error ?? status}`);
     }
     if (pollIntervalMs > 0) {
-      await new Promise((resolve13) => setTimeout(resolve13, pollIntervalMs));
+      await new Promise((resolve14) => setTimeout(resolve14, pollIntervalMs));
     }
   }
   if (!completed)
@@ -72882,10 +78678,10 @@ async function generateFalDirectorModel({ input, apiKey, fetch: fetchImpl = fetc
 }
 
 // ../../apps/local-api/dist/local-provider-store.js
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 var import_node_module3 = require("node:module");
-var import_promises16 = require("node:fs/promises");
-var import_node_path15 = require("node:path");
+var import_promises18 = require("node:fs/promises");
+var import_node_path18 = require("node:path");
 init_dist2();
 var require4 = (0, import_node_module3.createRequire)(__clash_import_meta_url);
 var PROVIDER_ACCOUNTS_MIGRATION_ID = "provider-accounts-sqlite-v1";
@@ -72893,10 +78689,10 @@ var PROVIDER_OAUTH_MIGRATION_ID = "provider-oauth-sqlite-v1";
 var SECRET_PREFIX = "enc:v1:";
 var secretKeyCache = /* @__PURE__ */ new Map();
 function sqlitePath3(dataDir2) {
-  return (0, import_node_path15.join)(dataDir2, "local.sqlite");
+  return (0, import_node_path18.join)(dataDir2, "local.sqlite");
 }
 function fallbackKeyPath(dataDir2) {
-  return (0, import_node_path15.join)(dataDir2, "provider-secret.key");
+  return (0, import_node_path18.join)(dataDir2, "provider-secret.key");
 }
 function openDatabase3(path) {
   const { DatabaseSync } = require4("node:sqlite");
@@ -73279,21 +79075,21 @@ function keyFromString(value) {
     if (decoded.byteLength === 32)
       return decoded;
   }
-  return (0, import_node_crypto8.createHash)("sha256").update(trimmed).digest();
+  return (0, import_node_crypto10.createHash)("sha256").update(trimmed).digest();
 }
 async function resolveKeyFromFile(dataDir2) {
   const path = fallbackKeyPath(dataDir2);
   try {
-    const existing = (await (0, import_promises16.readFile)(path, "utf8")).trim();
+    const existing = (await (0, import_promises18.readFile)(path, "utf8")).trim();
     if (existing)
       return keyFromString(`base64:${existing}`);
   } catch {
   }
-  await (0, import_promises16.mkdir)(dataDir2, { recursive: true });
-  const generated = (0, import_node_crypto8.randomBytes)(32).toString("base64");
-  await (0, import_promises16.writeFile)(path, `${generated}
+  await (0, import_promises18.mkdir)(dataDir2, { recursive: true });
+  const generated = (0, import_node_crypto10.randomBytes)(32).toString("base64");
+  await (0, import_promises18.writeFile)(path, `${generated}
 `, { mode: 384 });
-  await (0, import_promises16.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
   return keyFromString(`base64:${generated}`);
 }
 async function resolveProviderSecretKey(dataDir2) {
@@ -73310,8 +79106,8 @@ async function resolveProviderSecretKey(dataDir2) {
   return task;
 }
 function encryptSecret(value, key, aad) {
-  const iv = (0, import_node_crypto8.randomBytes)(12);
-  const cipher = (0, import_node_crypto8.createCipheriv)("aes-256-gcm", key, iv);
+  const iv = (0, import_node_crypto10.randomBytes)(12);
+  const cipher = (0, import_node_crypto10.createCipheriv)("aes-256-gcm", key, iv);
   cipher.setAAD(Buffer.from(aad, "utf8"));
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -73332,7 +79128,7 @@ function decryptSecret(value, key, aad) {
   if (version2 !== "v1")
     throw new Error(`Unsupported encrypted local provider secret version: ${version2}`);
   try {
-    const decipher = (0, import_node_crypto8.createDecipheriv)("aes-256-gcm", key, Buffer.from(ivText, "base64"));
+    const decipher = (0, import_node_crypto10.createDecipheriv)("aes-256-gcm", key, Buffer.from(ivText, "base64"));
     decipher.setAAD(Buffer.from(aad, "utf8"));
     decipher.setAuthTag(Buffer.from(tagText, "base64"));
     return Buffer.concat([
@@ -73641,21 +79437,21 @@ function createLocalProviderStore(dataDir2) {
   const path = sqlitePath3(dataDir2);
   async function exists2() {
     try {
-      await (0, import_promises16.stat)(path);
+      await (0, import_promises18.stat)(path);
       return true;
     } catch {
       return false;
     }
   }
   async function withDb(task) {
-    await (0, import_promises16.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises18.mkdir)(dataDir2, { recursive: true });
     const db = openDatabase3(path);
     try {
       applySchema3(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises16.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
     }
   }
   async function ensureProviderAccountsMigrated() {
@@ -73877,7 +79673,7 @@ function createLocalProviderStore(dataDir2) {
 }
 
 // ../../apps/local-api/dist/app.js
-var execFileAsync4 = (0, import_node_util4.promisify)(import_node_child_process4.execFile);
+var execFileAsync4 = (0, import_node_util4.promisify)(import_node_child_process5.execFile);
 function parseAssetEditInvocation(input) {
   if (typeof input.raw === "string" && input.raw.trim()) {
     return AssetEditActionInvocationSchema.parse(JSON.parse(input.raw));
@@ -73896,17 +79692,17 @@ function parseAssetEditInvocation(input) {
   });
 }
 function localFfmpegPath() {
-  return [process.env.FFMPEG_PATH, "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"].filter((candidate) => !!candidate).find((candidate) => (0, import_node_fs4.existsSync)(candidate)) ?? null;
+  return [process.env.FFMPEG_PATH, "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"].filter((candidate) => !!candidate).find((candidate) => (0, import_node_fs5.existsSync)(candidate)) ?? null;
 }
 function localFfprobePath() {
   const ffmpeg = localFfmpegPath();
   return [
     process.env.FFPROBE_PATH,
-    ffmpeg ? (0, import_node_path16.join)((0, import_node_path16.dirname)(ffmpeg), "ffprobe") : void 0,
+    ffmpeg ? (0, import_node_path19.join)((0, import_node_path19.dirname)(ffmpeg), "ffprobe") : void 0,
     "/opt/homebrew/bin/ffprobe",
     "/usr/local/bin/ffprobe",
     "/usr/bin/ffprobe"
-  ].filter((candidate) => !!candidate).find((candidate) => (0, import_node_fs4.existsSync)(candidate)) ?? null;
+  ].filter((candidate) => !!candidate).find((candidate) => (0, import_node_fs5.existsSync)(candidate)) ?? null;
 }
 function finitePositiveNumber(value) {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -73914,7 +79710,7 @@ function finitePositiveNumber(value) {
 }
 async function probeLocalAsset(input) {
   const sourcePath = await assetPathForRead(input.dataDir, input.srcR2Key, input.clashRoot);
-  const fileInfo = await (0, import_promises17.stat)(sourcePath);
+  const fileInfo = await (0, import_promises19.stat)(sourcePath);
   const baseMetadata = { bytes: fileInfo.size };
   if (input.kind === "model")
     return { metadata: baseMetadata };
@@ -73953,7 +79749,7 @@ async function probeLocalAsset(input) {
     return { metadata };
   const coverR2Key = `covers/${input.assetId}.jpg`;
   const coverPath = await assetPathForWrite(input.dataDir, coverR2Key);
-  await (0, import_promises17.mkdir)((0, import_node_path16.dirname)(coverPath), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_node_path19.dirname)(coverPath), { recursive: true });
   const seekSeconds = durationSeconds ? Math.min(1, Math.max(0, durationSeconds / 2)) : 0;
   await execFileAsync4(ffmpeg, [
     "-y",
@@ -74014,7 +79810,7 @@ async function preflightTextRevisionContentBlob(dataDir2, revision, content) {
     throw new Error("text revision contentHash does not match content");
   }
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const existing = await (0, import_promises17.readFile)(path, "utf8").catch((error51) => {
+  const existing = await (0, import_promises19.readFile)(path, "utf8").catch((error51) => {
     if (error51 && typeof error51 === "object" && error51.code === "ENOENT")
       return null;
     throw error51;
@@ -74030,9 +79826,9 @@ function localMutationEnvelope(operation, kind, id) {
   };
 }
 function sha256Hex(bytes) {
-  return (0, import_node_crypto9.createHash)("sha256").update(bytes).digest("hex");
+  return (0, import_node_crypto11.createHash)("sha256").update(bytes).digest("hex");
 }
-var LOCAL_API_READ_RECEIPT_SECRET = (0, import_node_crypto9.randomBytes)(32).toString("hex");
+var LOCAL_API_READ_RECEIPT_SECRET = (0, import_node_crypto11.randomBytes)(32).toString("hex");
 var PROJECT_PURGE_DELAY_MS = 7 * 24 * 60 * 60 * 1e3;
 function refreshAssetReferenceProjectionState(current, projectIds, projectedCanvasAssetRefs) {
   const observedAt = Math.floor(Date.now() / 1e3);
@@ -74182,7 +79978,7 @@ function sanitizeFileName(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 function contentTypeForPath(path) {
-  const ext = (0, import_node_path16.extname)(path).toLowerCase();
+  const ext = (0, import_node_path19.extname)(path).toLowerCase();
   if (ext === ".png")
     return "image/png";
   if (ext === ".jpg" || ext === ".jpeg")
@@ -74316,6 +80112,15 @@ function createDb(dataDir2) {
     await writeQueue.catch(() => void 0);
     return metadataStore.getTextRevision(projectId, revisionId);
   }
+  async function upsertAssetMetadataIndex(record2) {
+    const task = writeQueue.catch(() => void 0).then(() => metadataStore.upsertAssetMetadataIndex(record2));
+    writeQueue = task.then(() => void 0, () => void 0);
+    return task;
+  }
+  async function listAssetMetadataIndex(filter) {
+    await writeQueue.catch(() => void 0);
+    return metadataStore.listAssetMetadataIndex(filter);
+  }
   async function listProviderUsageEvents(userId, limit) {
     await writeQueue.catch(() => void 0);
     return providerStore.listProviderUsageEvents(userId, limit);
@@ -74328,6 +80133,8 @@ function createDb(dataDir2) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
+    upsertAssetMetadataIndex,
+    listAssetMetadataIndex,
     listProviderUsageEvents
   };
 }
@@ -74337,7 +80144,7 @@ function sanitizeMutationForAudit(mutation) {
 }
 function mutationAuditRecord(options) {
   return {
-    id: (0, import_node_crypto9.randomUUID)(),
+    id: (0, import_node_crypto11.randomUUID)(),
     createdAt: Date.now(),
     operation: options.mutation.operation,
     entity: options.mutation.entity,
@@ -74522,7 +80329,7 @@ function stringArray(value) {
 async function collectProjectCanvasAssetRefs(dataDir2, projectIds) {
   if (projectIds.length === 0)
     return [];
-  const store = new FileReplicaStore((0, import_node_path16.join)(dataDir2, "projects"));
+  const store = new FileReplicaStore((0, import_node_path19.join)(dataDir2, "projects"));
   const refs = [];
   for (const projectId of projectIds) {
     const doc = await store.recover(projectId);
@@ -74548,7 +80355,7 @@ function isRecord6(value) {
 }
 async function discoverProjectReplicaIds(dataDir2) {
   try {
-    const entries = await (0, import_promises17.readdir)((0, import_node_path16.join)(dataDir2, "projects"), {
+    const entries = await (0, import_promises19.readdir)((0, import_node_path19.join)(dataDir2, "projects"), {
       withFileTypes: true,
       encoding: "utf8"
     });
@@ -74825,7 +80632,7 @@ function toV1Project(project, state, assetMode = "preview") {
   };
 }
 function localApiProjectReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`project:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`project:${readToken}`).digest("base64url");
 }
 function projectReceiptReadToken(project) {
   const readToken = projectReadToken(project);
@@ -74838,7 +80645,7 @@ function verifyLocalApiProjectReadReceipt(proof) {
   return proof.namespace === "project" && proof.receipt === localApiProjectReadReceipt(proof.baseReadToken);
 }
 function localApiSessionReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`session:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`session:${readToken}`).digest("base64url");
 }
 function sessionReceiptReadToken(session) {
   const readToken = sessionReadToken(session);
@@ -74851,7 +80658,7 @@ function verifyLocalApiSessionReadReceipt(proof) {
   return proof.namespace === "session" && proof.receipt === localApiSessionReadReceipt(proof.baseReadToken);
 }
 function localApiLocalConfigReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`local-config:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`local-config:${readToken}`).digest("base64url");
 }
 function localConfigReceiptReadToken(config2) {
   const readToken = localConfigReadToken({
@@ -74904,7 +80711,7 @@ function localAgentServersReceiptReadToken(result) {
   });
 }
 function localApiProviderAccountReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-account:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-account:${readToken}`).digest("base64url");
 }
 function providerAccountReceiptReadToken(account) {
   const readToken = providerAccountReadToken(account);
@@ -74917,7 +80724,7 @@ function verifyLocalApiProviderAccountReadReceipt(proof) {
   return proof.namespace === "provider-account" && proof.receipt === localApiProviderAccountReadReceipt(proof.baseReadToken);
 }
 function localApiProviderAccountsReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-accounts:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-accounts:${readToken}`).digest("base64url");
 }
 function providerAccountsReceiptReadToken(accounts) {
   const readToken = providerAccountsReadToken(accounts);
@@ -74936,7 +80743,7 @@ function providerOAuthBaseReadToken(record2) {
   });
 }
 function localApiProviderOAuthReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-oauth:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-oauth:${readToken}`).digest("base64url");
 }
 function providerOAuthReceiptReadToken(record2) {
   const readToken = providerOAuthBaseReadToken(record2);
@@ -74967,16 +80774,16 @@ function publicModelProvidersResponse(accounts) {
   };
 }
 function localApiCanvasReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-node:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-node:${readToken}`).digest("base64url");
 }
 function localApiCanvasEdgeReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-edge:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-edge:${readToken}`).digest("base64url");
 }
 function localApiCanvasEdgesReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-edges:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-edges:${readToken}`).digest("base64url");
 }
 function localApiCanvasBatchDeleteReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-batch-delete:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-batch-delete:${readToken}`).digest("base64url");
 }
 function canvasNodeReceiptReadToken(node) {
   const readToken = canvasNodeReadToken(node);
@@ -75136,7 +80943,7 @@ function canvasNodeDataPatchFromBody(body) {
   return { ok: true, patch };
 }
 function localApiAssetReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset:${readToken}`).digest("base64url");
 }
 function assetReceiptReadToken(asset) {
   const readToken = assetReadToken(asset);
@@ -75149,7 +80956,7 @@ function verifyLocalApiAssetReadReceipt(proof) {
   return proof.namespace === "asset" && proof.receipt === localApiAssetReadReceipt(proof.baseReadToken);
 }
 function localApiAssetRefReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset-ref:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset-ref:${readToken}`).digest("base64url");
 }
 function assetRefReceiptReadToken(ref) {
   const readToken = assetRefReadToken(ref);
@@ -75162,7 +80969,7 @@ function verifyLocalApiAssetRefReadReceipt(proof) {
   return proof.namespace === "asset-ref" && proof.receipt === localApiAssetRefReadReceipt(proof.baseReadToken);
 }
 function localApiAssetGcReadReceipt(readToken) {
-  return (0, import_node_crypto9.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset-gc:${readToken}`).digest("base64url");
+  return (0, import_node_crypto11.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset-gc:${readToken}`).digest("base64url");
 }
 function assetGarbageCollectionReadToken(plan) {
   return agentReadToken({
@@ -75562,7 +81369,51 @@ function parseProviderOAuthId(value) {
   const parsed = ProviderOAuthIdSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
+function parseBrowserProviderOAuthState(value) {
+  if (!value)
+    return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed.protocol !== "clash.provider-oauth.browser/v1" || parsed.auth?.type !== "oauth") {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+async function pluginBrowserOAuth(options, oauthId) {
+  const registrations = options.listPluginProviders ? await options.listPluginProviders() : [];
+  for (const registration of registrations) {
+    const auth = registration.document.spec.auth.find((candidate) => candidate.type === "oauth" && candidate.id === oauthId);
+    if (auth)
+      return auth;
+  }
+  return null;
+}
+async function pluginLocalTokenImport(options, oauthId) {
+  const registrations = options.listPluginProviders ? await options.listPluginProviders() : [];
+  for (const registration of registrations) {
+    const auth = registration.document.spec.auth.find((candidate) => candidate.type === "local-token-import" && candidate.id === oauthId);
+    if (auth)
+      return auth;
+  }
+  return null;
+}
+function browserOAuthToken(callbackUrl, auth) {
+  const callback = new URL(callbackUrl);
+  if (callback.protocol !== `${auth.callback.scheme}:`) {
+    throw new Error(`OAuth callback must use the ${auth.callback.scheme}: scheme.`);
+  }
+  const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
+  const accessToken = callback.searchParams.get(auth.accessTokenField) ?? fragment.get(auth.accessTokenField);
+  if (!accessToken?.trim()) {
+    throw new Error(`OAuth callback is missing ${auth.accessTokenField}.`);
+  }
+  return accessToken.trim();
+}
 function publicProviderOAuth(record2) {
+  const browserState = parseBrowserProviderOAuthState(record2.oauthState);
   return {
     providerId: record2.providerId,
     ...record2.accountId ? { accountId: record2.accountId } : {},
@@ -75574,6 +81425,10 @@ function publicProviderOAuth(record2) {
     ...record2.intervalSeconds !== void 0 ? { intervalSeconds: record2.intervalSeconds } : {},
     ...record2.accountLabel ? { accountLabel: record2.accountLabel } : {},
     ...record2.error ? { error: record2.error } : {},
+    ...browserState ? {
+      flow: "browser",
+      callbackScheme: browserState.auth.callback.scheme
+    } : {},
     hasAccessToken: typeof record2.accessToken === "string" && record2.accessToken.trim().length > 0
   };
 }
@@ -75675,13 +81530,16 @@ function displayModelName(modelId) {
 function userModelCardConfigs(state, userId) {
   return state.modelCardConfigs.filter((config2) => (config2.userId ?? userId) === userId).map(({ userId: _userId, ...config2 }) => config2);
 }
-async function effectiveModelCards(state, userId, listPluginCards) {
+async function effectiveModelCards(state, userId, listPluginCards, listPluginModelBindings) {
   const providers = publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth);
-  const pluginCards = listPluginCards ? await listPluginCards() : [];
+  const [pluginCards, pluginModelBindings] = await Promise.all([
+    listPluginCards ? listPluginCards() : [],
+    listPluginModelBindings ? listPluginModelBindings() : []
+  ]);
   return buildEffectiveModelCards({
     configs: userModelCardConfigs(state, userId),
     providers,
-    baseModels: localExecutableModelCards(composeExecutablePluginModelCards(MODEL_CARDS, pluginCards))
+    baseModels: localExecutableModelCards(composeExecutablePluginModelCards(MODEL_CARDS, pluginCards, pluginModelBindings))
   });
 }
 function executablePluginActionDefinitions(registrations) {
@@ -75814,16 +81672,16 @@ function providerTestStubForAccount(account, modelId, route) {
   }).find((stub) => stub.providerId === account.providerId && (!account.upstreamId || stub.upstreamId === account.upstreamId) && (stub.region ?? "") === (account.region ?? "") && stub.modelId === modelId && (!route || stub.apiShape === route.apiShape));
 }
 function sameLocalBrokerToken(left, right) {
-  const leftDigest = (0, import_node_crypto9.createHash)("sha256").update(left).digest();
-  const rightDigest = (0, import_node_crypto9.createHash)("sha256").update(right).digest();
-  return (0, import_node_crypto9.timingSafeEqual)(leftDigest, rightDigest);
+  const leftDigest = (0, import_node_crypto11.createHash)("sha256").update(left).digest();
+  const rightDigest = (0, import_node_crypto11.createHash)("sha256").update(right).digest();
+  return (0, import_node_crypto11.timingSafeEqual)(leftDigest, rightDigest);
 }
 function createLocalApiApp(options) {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
-  const localApiDataDir = (0, import_node_path16.resolve)(options.dataDir);
+  const localApiDataDir = (0, import_node_path19.resolve)(options.dataDir);
   const clashRoot = clashHomeForLocalDataDir(options.dataDir, options.clashRoot);
-  const replicaStore = new FileReplicaStore((0, import_node_path16.join)(options.dataDir, "projects"));
+  const replicaStore = new FileReplicaStore((0, import_node_path19.join)(options.dataDir, "projects"));
   const sessionMessageStore = createLocalSessionMessageStore(db);
   options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
   const falMock2 = options.falMock ?? createMockFalQueueService();
@@ -75843,7 +81701,7 @@ function createLocalApiApp(options) {
     },
     modelCards: async () => {
       const state = await db.load();
-      return effectiveModelCards(state, userId, options.listPluginCards);
+      return effectiveModelCards(state, userId, options.listPluginCards, options.listPluginModelBindings);
     },
     fetch: options.voiceInputFetch,
     googleAiStudioBaseUrl: options.voiceInputGoogleAiStudioBaseUrl
@@ -76137,7 +81995,7 @@ function createLocalApiApp(options) {
       },
       userId
     };
-    const effectiveModels = await effectiveModelCards(state, userId, options.listPluginCards);
+    const effectiveModels = await effectiveModelCards(state, userId, options.listPluginCards, options.listPluginModelBindings);
     const providerTestModels = account.providerId === "mock" ? [...effectiveModels, ...MOCK_MODEL_CARDS] : effectiveModels;
     const providerSupports = listProviderModelSupport({
       models: providerTestModels,
@@ -76360,6 +82218,107 @@ function createLocalApiApp(options) {
       providers: state.providerOAuth.filter((record2) => record2.userId === userId).sort((a, b) => a.providerId.localeCompare(b.providerId) || (a.accountId ?? "").localeCompare(b.accountId ?? "")).map(publicProviderOAuthWithReadReceipt)
     });
   });
+  app.post("/api/v1/provider-oauth/:providerId/import-local", async (c) => {
+    const rawProviderId = c.req.param("providerId");
+    const providerId = parseProviderOAuthId(rawProviderId);
+    const envelope = {
+      operation: "provider_oauth_import",
+      entity: {
+        kind: "provider-oauth",
+        id: providerOAuthEntityId(rawProviderId)
+      }
+    };
+    if (!providerId) {
+      return c.json({
+        error: "Unsupported OAuth provider",
+        mutation: hostMutationRejected(envelope, "Unsupported OAuth provider")
+      }, 404);
+    }
+    const auth = await pluginLocalTokenImport(options, providerId);
+    if (!auth) {
+      return c.json({
+        error: "Local token import is not configured for this provider",
+        mutation: hostMutationRejected(envelope, "Local token import is not configured for this provider")
+      }, 404);
+    }
+    const body = await c.req.json().catch(() => ({}));
+    const accountId = stringBodyField(body.accountId);
+    const accountLabel = stringBodyField(body.accountLabel);
+    const entityId = providerOAuthEntityId(providerId, accountId);
+    const preconditions = requestProjectWritePreconditions(c, body);
+    const beforeState = await db.load();
+    const beforeRecord = beforeState.providerOAuth.find((record3) => providerOAuthMatches(record3, userId, providerId, accountId));
+    const needsReadProof = !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const hostMutation = beforeRecord && needsReadProof ? validateProviderOAuthReadMutation({
+      record: beforeRecord,
+      operation: "import",
+      preconditions
+    }) : null;
+    if (hostMutation && !hostMutation.ok) {
+      return c.json({ error: hostMutation.error, mutation: hostMutation.mutation }, 409);
+    }
+    if (!beforeRecord && preconditions.expectedReadToken) {
+      const message = "Provider OAuth record not found. Read /api/v1/provider-oauth first, then retry.";
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected({
+          operation: "provider_oauth_import",
+          entity: { kind: "provider-oauth", id: entityId },
+          expectedReadToken: preconditions.expectedReadToken
+        }, message)
+      }, 409);
+    }
+    let imported;
+    try {
+      imported = await importLocalProviderToken({
+        auth,
+        applicationSupportRoot: options.localTokenImportAppDataRoot
+      });
+    } catch (error51) {
+      const message = error51 instanceof Error ? error51.message : String(error51);
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected({
+          operation: "provider_oauth_import",
+          entity: { kind: "provider-oauth", id: entityId }
+        }, message)
+      }, 422);
+    }
+    const record2 = await db.update((state) => upsertProviderOAuth(state, userId, providerId, {
+      ...accountId ? { accountId } : {},
+      status: "authorized",
+      accessToken: imported.accessToken,
+      tokenType: "Bearer",
+      accountLabel,
+      refreshToken: void 0,
+      verificationUri: void 0,
+      userCode: void 0,
+      deviceCode: void 0,
+      oauthState: void 0,
+      intervalSeconds: void 0,
+      expiresAt: void 0,
+      error: void 0
+    }));
+    const readToken = providerOAuthReceiptReadToken(record2);
+    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
+      operation: "provider_oauth_import",
+      entity: { kind: "provider-oauth", id: entityId }
+    }, {
+      resultEntityId: entityId,
+      ...hostMutation ? { afterReadToken: readToken } : {}
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "provider OAuth local token import"
+    }));
+    return c.json({
+      ...publicProviderOAuth(record2),
+      importedFrom: imported.importedFrom,
+      ...hostMutation ? { readToken } : {},
+      mutation
+    });
+  });
   app.post("/api/v1/provider-oauth/:providerId/start", async (c) => {
     const rawProviderId = c.req.param("providerId");
     const providerId = parseProviderOAuthId(rawProviderId);
@@ -76376,17 +82335,19 @@ function createLocalApiApp(options) {
       }, 404);
     }
     const driver = options.providerOAuth?.[providerId];
-    if (!driver) {
+    const browserAuth = driver ? null : await pluginBrowserOAuth(options, providerId);
+    if (!driver && !browserAuth) {
+      const configuredBuiltin = providerId === "dreamina";
       return c.json({
-        error: "OAuth provider is not configured",
+        error: configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
         mutation: hostMutationRejected({
           operation: "provider_oauth_start",
           entity: {
             kind: "provider-oauth",
             id: providerOAuthEntityId(providerId)
           }
-        }, "OAuth provider is not configured")
-      }, 501);
+        }, configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider")
+      }, configuredBuiltin ? 501 : 404);
     }
     const body = await c.req.json().catch(() => ({}));
     const accountId = stringBodyField(body.accountId);
@@ -76420,7 +82381,15 @@ function createLocalApiApp(options) {
         }, message)
       }, 409);
     }
-    const started = await driver.start();
+    const started = driver ? await driver.start() : {
+      verificationUri: browserAuth.authorizationUrl,
+      userCode: "",
+      deviceCode: (0, import_node_crypto11.randomUUID)(),
+      oauthState: JSON.stringify({
+        protocol: "clash.provider-oauth.browser/v1",
+        auth: browserAuth
+      })
+    };
     const record2 = await db.update((state) => {
       return upsertProviderOAuth(state, userId, providerId, {
         ...accountId ? { accountId } : {},
@@ -76456,6 +82425,10 @@ function createLocalApiApp(options) {
     }));
     return c.json({
       ...publicProviderOAuth(record2),
+      ...browserAuth ? {
+        flow: "browser",
+        callbackScheme: browserAuth.callback.scheme
+      } : {},
       ...hostMutation ? { readToken } : {},
       mutation
     });
@@ -76476,17 +82449,19 @@ function createLocalApiApp(options) {
       }, 404);
     }
     const driver = options.providerOAuth?.[providerId];
-    if (!driver) {
+    const browserAuth = driver ? null : await pluginBrowserOAuth(options, providerId);
+    if (!driver && !browserAuth) {
+      const configuredBuiltin = providerId === "dreamina";
       return c.json({
-        error: "OAuth provider is not configured",
+        error: configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
         mutation: hostMutationRejected({
           operation: "provider_oauth_complete",
           entity: {
             kind: "provider-oauth",
             id: providerOAuthEntityId(providerId)
           }
-        }, "OAuth provider is not configured")
-      }, 501);
+        }, configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider")
+      }, configuredBuiltin ? 501 : 404);
     }
     const body = await c.req.json().catch(() => ({}));
     const accountId = stringBodyField(body.accountId);
@@ -76520,7 +82495,8 @@ function createLocalApiApp(options) {
       }, 409);
     }
     const deviceCode = typeof body.deviceCode === "string" && body.deviceCode.trim() ? body.deviceCode.trim() : existing?.deviceCode;
-    if (!deviceCode) {
+    const callbackUrl = stringBodyField(body.callbackUrl);
+    if (!deviceCode && !browserAuth) {
       return c.json({
         error: "deviceCode is required",
         mutation: hostMutationRejected({
@@ -76534,10 +82510,14 @@ function createLocalApiApp(options) {
     }
     let completed;
     try {
-      completed = await driver.complete({
+      completed = driver ? await driver.complete({
         deviceCode,
         ...existing?.oauthState ? { oauthState: existing.oauthState } : {}
-      });
+      }) : {
+        accessToken: browserOAuthToken(callbackUrl ?? "", parseBrowserProviderOAuthState(existing?.oauthState)?.auth ?? browserAuth),
+        tokenType: "Bearer",
+        accountLabel: existing?.accountLabel
+      };
     } catch (error51) {
       const message = error51 instanceof Error ? error51.message : String(error51);
       const record3 = await db.update((state) => {
@@ -76680,11 +82660,22 @@ function createLocalApiApp(options) {
     const registrations = options.listPluginCards ? await options.listPluginCards() : [];
     return c.json({ actions: executablePluginActionDefinitions(registrations) });
   });
+  app.get("/api/v1/plugin-providers", async (c) => {
+    const registrations = options.listPluginProviders ? await options.listPluginProviders() : [];
+    return c.json({
+      providers: registrations.map((registration) => ({
+        pluginId: registration.pluginId,
+        pluginVersion: registration.version,
+        schemaHash: registration.schemaHash,
+        ...registration.document.spec
+      }))
+    });
+  });
   app.get("/api/v1/models/catalog", async (c) => {
     const state = await db.load();
     const configuredProviders = publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth);
     const entries = listModelCatalogEntries({
-      models: await effectiveModelCards(state, userId, options.listPluginCards),
+      models: await effectiveModelCards(state, userId, options.listPluginCards, options.listPluginModelBindings),
       configuredProviders
     });
     const models = await Promise.all(entries.map(async (entry) => {
@@ -76704,14 +82695,25 @@ function createLocalApiApp(options) {
           ...runtimeStatus.message ? { message: runtimeStatus.message } : {}
         }
       } : entry;
-      if (!route?.projectorPluginId || !route.projectorExportId || !options.resolvePluginBinding) {
+      if (!route || !options.resolvePluginBinding) {
         return entryWithReadiness;
       }
-      const projectorBinding = await options.resolvePluginBinding(route.projectorPluginId, route.projectorExportId, "provider-projector");
+      const projectorBinding = route.projectorPluginId && route.projectorExportId ? await options.resolvePluginBinding(route.projectorPluginId, route.projectorExportId, "provider-projector") : void 0;
+      const executorBinding = route.executorPluginId && route.executorExportId ? await options.resolvePluginBinding(route.executorPluginId, route.executorExportId, "provider-executor") : void 0;
+      if (!projectorBinding && !executorBinding)
+        return entryWithReadiness;
       return {
         ...entryWithReadiness,
-        selectedRoute: { ...route, projectorBinding },
-        routes: entry.routes.map((candidate) => candidate.projectorPluginId === route.projectorPluginId && candidate.projectorExportId === route.projectorExportId ? { ...candidate, projectorBinding } : candidate)
+        selectedRoute: {
+          ...route,
+          ...projectorBinding ? { projectorBinding } : {},
+          ...executorBinding ? { executorBinding } : {}
+        },
+        routes: entry.routes.map((candidate) => ({
+          ...candidate,
+          ...projectorBinding && candidate.projectorPluginId === route.projectorPluginId && candidate.projectorExportId === route.projectorExportId ? { projectorBinding } : {},
+          ...executorBinding && candidate.executorPluginId === route.executorPluginId && candidate.executorExportId === route.executorExportId ? { executorBinding } : {}
+        }))
       };
     }));
     return c.json({ models });
@@ -76720,7 +82722,7 @@ function createLocalApiApp(options) {
     const modelId = c.req.param("modelId").trim();
     const body = await c.req.json().catch(() => null);
     const state = await db.load();
-    const builtInModelIds = new Set((await effectiveModelCards(state, userId, options.listPluginCards)).map((model) => model.id));
+    const builtInModelIds = new Set((await effectiveModelCards(state, userId, options.listPluginCards, options.listPluginModelBindings)).map((model) => model.id));
     const config2 = normalizeModelCardConfigInput(modelId, body, state.providerAccounts.filter((account) => (account.userId ?? userId) === userId), builtInModelIds);
     if (!config2)
       return c.json({ error: "Invalid model card config" }, 400);
@@ -76825,6 +82827,36 @@ function createLocalApiApp(options) {
     }
   });
   app.get("/api/v1/local/audio", async (c) => c.json(publicLocalAudioConfig(await localAudioReadState(audioConfig))));
+  app.put("/api/v1/local/asset-metadata", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.assetId !== "string" || !body.assetId.trim() || typeof body.metadataKind !== "string" || !body.metadataKind.trim() || typeof body.producer !== "string" || !body.producer.trim() || !body.identity || typeof body.identity !== "object" || Array.isArray(body.identity)) {
+      return c.json({ error: "assetId, metadataKind, producer, and an identity object are required" }, 400);
+    }
+    const identity = body.identity;
+    if (identity.kind !== body.metadataKind) {
+      return c.json({ error: `identity.kind must equal metadataKind ${body.metadataKind}` }, 400);
+    }
+    await db.upsertAssetMetadataIndex({
+      assetId: body.assetId,
+      metadataKind: body.metadataKind,
+      ...typeof body.projectId === "string" && body.projectId.trim() ? { projectId: body.projectId } : {},
+      ...typeof identity.schemaVersion === "number" ? { schemaVersion: identity.schemaVersion } : {},
+      ...typeof identity.contentHash === "string" ? { contentHash: identity.contentHash } : {},
+      ...typeof identity.bodyHash === "string" ? { bodyHash: identity.bodyHash } : {},
+      producer: body.producer,
+      ...identity.summary === void 0 ? {} : { summary: identity.summary },
+      identity
+    });
+    return c.json({ recorded: true, assetId: body.assetId, metadataKind: body.metadataKind });
+  });
+  app.get("/api/v1/local/asset-metadata", async (c) => {
+    const rows = await db.listAssetMetadataIndex({
+      ...c.req.query("assetId") ? { assetId: c.req.query("assetId") } : {},
+      ...c.req.query("kind") ? { metadataKind: c.req.query("kind") } : {},
+      ...c.req.query("projectId") ? { projectId: c.req.query("projectId") } : {}
+    });
+    return c.json({ metadata: rows });
+  });
   const resolveVoiceInputRoute = async () => {
     const resolvedSelection = audioConfig.getVoiceInputSelection ? await audioConfig.getVoiceInputSelection() : await audioConfig.getPublicConfig().then(({ asr }) => ({
       enabled: asr.enabled,
@@ -76835,7 +82867,7 @@ function createLocalApiApp(options) {
     const state = await db.load();
     const configuredProviders = publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth);
     const entry = listModelCatalogEntries({
-      models: await effectiveModelCards(state, userId, options.listPluginCards),
+      models: await effectiveModelCards(state, userId, options.listPluginCards, options.listPluginModelBindings),
       configuredProviders
     }).find((candidate) => candidate.model.id === resolvedSelection.model);
     const route = entry?.selectedRoute ?? entry?.routes.find((candidate) => candidate.apiShape === "local-asr");
@@ -77106,7 +83138,7 @@ function createLocalApiApp(options) {
       }
       const state = await db.load();
       const catalog = listModelCatalogEntries({
-        models: await effectiveModelCards(state, userId, options.listPluginCards),
+        models: await effectiveModelCards(state, userId, options.listPluginCards, options.listPluginModelBindings),
         configuredProviders: publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth)
       });
       const entry = catalog.find((candidate) => candidate.model.id === selection.model);
@@ -77117,7 +83149,7 @@ function createLocalApiApp(options) {
           throw new LocalAudioConfigError("The selected voice input model is not configured. Open Settings > Models and configure a provider.", 409);
         }
         const generated = await voiceInputAigc.generateText({
-          taskId: (0, import_node_crypto9.randomUUID)(),
+          taskId: (0, import_node_crypto11.randomUUID)(),
           prompt: typeof language === "string" && language.trim() ? `Transcribe the attached audio verbatim in ${language.trim()}. Return only the transcript.` : "Transcribe the attached audio verbatim. Return only the transcript.",
           model: entry.model.id,
           modelParams: { require_real_provider: true },
@@ -78099,7 +84131,7 @@ function createLocalApiApp(options) {
       return c.json({ error: "text revision not found" }, 404);
     let content;
     try {
-      content = await (0, import_promises17.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
+      content = await (0, import_promises19.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
     } catch {
       return c.json({ error: "text revision content not found" }, 404);
     }
@@ -79360,7 +85392,7 @@ function createLocalApiApp(options) {
         }, 409);
       }
     }
-    await (0, import_promises17.writeFile)(path, bytes);
+    await (0, import_promises19.writeFile)(path, bytes);
     const at = Math.floor(Date.now() / 1e3);
     const exp = signedUrlExp();
     const asset = {
@@ -79430,7 +85462,7 @@ function createLocalApiApp(options) {
         mutation: hostMutationRejected(envelope, message)
       }, 400);
     }
-    await (0, import_promises17.writeFile)(path, new Uint8Array(await file2.arrayBuffer()));
+    await (0, import_promises19.writeFile)(path, new Uint8Array(await file2.arrayBuffer()));
     const preconditions = requestProjectWritePreconditions(c);
     const mutation = hostMutationSucceeded(envelope, {
       resultEntityId: storageKey
@@ -79452,7 +85484,7 @@ function createLocalApiApp(options) {
     }
     try {
       const path = await assetPathForRead(options.dataDir, storageKey, clashRoot);
-      const fileInfo = await (0, import_promises17.stat)(path);
+      const fileInfo = await (0, import_promises19.stat)(path);
       const range = parseAssetByteRange(c.req.header("range"), fileInfo.size);
       if (range === "unsatisfiable") {
         return new Response(null, {
@@ -79465,7 +85497,7 @@ function createLocalApiApp(options) {
       }
       if (range) {
         const length = range.end - range.start + 1;
-        const handle = await (0, import_promises17.open)(path, "r");
+        const handle = await (0, import_promises19.open)(path, "r");
         try {
           const bytes2 = new Uint8Array(length);
           const { bytesRead } = await handle.read(bytes2, 0, length, range.start);
@@ -79483,7 +85515,7 @@ function createLocalApiApp(options) {
           await handle.close();
         }
       }
-      const bytes = await (0, import_promises17.readFile)(path);
+      const bytes = await (0, import_promises19.readFile)(path);
       return new Response(bytes, {
         headers: {
           "accept-ranges": "bytes",
@@ -79542,8 +85574,8 @@ function createLocalApiApp(options) {
     const fileName = generated.fileName.toLowerCase().endsWith(".glb") ? generated.fileName : `${generated.fileName}.glb`;
     const storageKey = `projects/${sanitizeFileName(projectId)}/generated-models/${assetId}.glb`;
     const outputPath = await assetPathForWrite(options.dataDir, storageKey);
-    await (0, import_promises17.mkdir)((0, import_node_path16.dirname)(outputPath), { recursive: true });
-    await (0, import_promises17.writeFile)(outputPath, generated.bytes);
+    await (0, import_promises19.mkdir)((0, import_node_path19.dirname)(outputPath), { recursive: true });
+    await (0, import_promises19.writeFile)(outputPath, generated.bytes);
     const at = Math.floor(Date.now() / 1e3);
     const sourceUrl = localAssetUrl(c, storageKey);
     const asset = {
@@ -79643,8 +85675,8 @@ function createLocalApiApp(options) {
     const storageKey = `projects/${sanitizeFileName(projectId)}/edits/${assetId}.${ext}`;
     const path = await assetPathForWrite(options.dataDir, storageKey);
     const bytes = new Uint8Array(await file2.arrayBuffer());
-    await (0, import_promises17.mkdir)((0, import_node_path16.join)(path, ".."), { recursive: true });
-    await (0, import_promises17.writeFile)(path, bytes);
+    await (0, import_promises19.mkdir)((0, import_node_path19.join)(path, ".."), { recursive: true });
+    await (0, import_promises19.writeFile)(path, bytes);
     const at = Math.floor(Date.now() / 1e3);
     const asset = {
       id: assetId,
@@ -79711,7 +85743,7 @@ function createLocalApiApp(options) {
     const storageKey = `projects/${sanitizeFileName(projectId)}/edits/${assetId}.mp4`;
     const inputPath = await assetPathForRead(options.dataDir, source.srcR2Key, clashRoot);
     const outputPath = await assetPathForWrite(options.dataDir, storageKey);
-    await (0, import_promises17.mkdir)((0, import_node_path16.dirname)(outputPath), { recursive: true });
+    await (0, import_promises19.mkdir)((0, import_node_path19.dirname)(outputPath), { recursive: true });
     try {
       await execFileAsync4(ffmpeg, [
         "-y",
@@ -79730,10 +85762,10 @@ function createLocalApiApp(options) {
         outputPath
       ]);
     } catch (error51) {
-      await (0, import_promises17.rm)(outputPath, { force: true });
+      await (0, import_promises19.rm)(outputPath, { force: true });
       return c.json({ error: `Video trim failed: ${errorMessage2(error51)}` }, 500);
     }
-    const bytes = await (0, import_promises17.readFile)(outputPath);
+    const bytes = await (0, import_promises19.readFile)(outputPath);
     const at = Math.floor(Date.now() / 1e3);
     const asset = {
       id: assetId,
@@ -79945,7 +85977,7 @@ function createLocalApiApp(options) {
     };
     let fileInfo;
     try {
-      fileInfo = await (0, import_promises17.stat)(await assetPathForRead(options.dataDir, srcR2Key, clashRoot));
+      fileInfo = await (0, import_promises19.stat)(await assetPathForRead(options.dataDir, srcR2Key, clashRoot));
       if (!fileInfo.isFile())
         throw new Error("Local blob is not a file");
     } catch {
@@ -80256,7 +86288,7 @@ function createLocalApiApp(options) {
     });
     if (result.status === 200) {
       for (const key of result.blobKeys) {
-        await (0, import_promises17.rm)(await assetPathForDelete(options.dataDir, key, clashRoot), {
+        await (0, import_promises19.rm)(await assetPathForDelete(options.dataDir, key, clashRoot), {
           force: true
         });
       }
@@ -80600,15 +86632,15 @@ function createLocalApiApp(options) {
 }
 
 // ../../apps/local-api/dist/host-discovery.js
-var import_node_crypto10 = require("node:crypto");
-var import_promises18 = require("node:fs/promises");
-var import_node_path17 = require("node:path");
+var import_node_crypto12 = require("node:crypto");
+var import_promises20 = require("node:fs/promises");
+var import_node_path20 = require("node:path");
 init_dist3();
 function getDefaultHostDiscoveryRunDir(env = process.env) {
-  return (0, import_node_path17.join)(clashHomeForLocalDataDir(defaultLocalApiDataDir(env)), "run");
+  return (0, import_node_path20.join)(clashHomeForLocalDataDir(defaultLocalApiDataDir(env)), "run");
 }
 function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()) {
-  return (0, import_node_path17.join)(runDir, "host.json");
+  return (0, import_node_path20.join)(runDir, "host.json");
 }
 function createHostDiscoveryRecord(options) {
   const now = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
@@ -80616,7 +86648,7 @@ function createHostDiscoveryRecord(options) {
     schemaVersion: LOCAL_HOST_RECORD_SCHEMA_VERSION,
     protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
     dataSchemaVersion: LOCAL_HOST_DATA_SCHEMA_VERSION,
-    hostId: options.hostId ?? (0, import_node_crypto10.randomUUID)(),
+    hostId: options.hostId ?? (0, import_node_crypto12.randomUUID)(),
     endpoint: options.endpoint,
     pid: options.pid ?? process.pid,
     launchMode: options.launchMode,
@@ -80634,20 +86666,31 @@ async function writeHostDiscovery(record2, options = {}) {
     throw new Error("Invalid local host discovery record");
   }
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
-  await (0, import_promises18.mkdir)(runDir, { recursive: true });
+  await (0, import_promises20.mkdir)(runDir, { recursive: true });
   const finalPath = getHostDiscoveryPath(runDir);
-  const tmpPath = (0, import_node_path17.join)(runDir, `host.${record2.hostId}.${process.pid}.${Date.now()}.tmp`);
-  await (0, import_promises18.writeFile)(tmpPath, `${JSON.stringify(record2, null, 2)}
+  const pidExists = options.pidExists ?? defaultPidExists;
+  let incumbent;
+  try {
+    incumbent = JSON.parse(await (0, import_promises20.readFile)(finalPath, "utf8"));
+  } catch (error51) {
+    if (!isNotFound(error51))
+      throw error51;
+  }
+  if (isLocalHostDiscoveryRecord(incumbent) && incumbent.pid !== record2.pid && pidExists(incumbent.pid)) {
+    throw new Error(`A local host is already active on ${incumbent.endpoint} (pid ${incumbent.pid}); stop it before starting another.`);
+  }
+  const tmpPath = (0, import_node_path20.join)(runDir, `host.${record2.hostId}.${process.pid}.${Date.now()}.tmp`);
+  await (0, import_promises20.writeFile)(tmpPath, `${JSON.stringify(record2, null, 2)}
 `, { encoding: "utf8", mode: 384 });
-  await (0, import_promises18.rename)(tmpPath, finalPath);
-  await (0, import_promises18.chmod)(finalPath, 384).catch(() => void 0);
+  await (0, import_promises20.rename)(tmpPath, finalPath);
+  await (0, import_promises20.chmod)(finalPath, 384).catch(() => void 0);
 }
 async function removeHostDiscovery(hostId, options = {}) {
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
   const filePath = getHostDiscoveryPath(runDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises18.readFile)(filePath, "utf8"));
+    parsed = JSON.parse(await (0, import_promises20.readFile)(filePath, "utf8"));
   } catch (error51) {
     if (isNotFound(error51))
       return;
@@ -80655,14 +86698,33 @@ async function removeHostDiscovery(hostId, options = {}) {
   }
   if (!isLocalHostDiscoveryRecord(parsed) || parsed.hostId !== hostId)
     return;
-  await (0, import_promises18.rm)(filePath, { force: true });
+  await (0, import_promises20.rm)(filePath, { force: true });
+}
+function defaultPidExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error51) {
+    return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "EPERM");
+  }
 }
 function isNotFound(error51) {
   return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ENOENT");
 }
 
+// ../../apps/local-api/dist/media-base-url.js
+function resolveMediaBaseUrl(boundPort) {
+  return () => {
+    const port2 = boundPort();
+    if (!port2) {
+      throw new Error("Local host is not listening yet; no media base URL is available.");
+    }
+    return `http://127.0.0.1:${port2}`;
+  };
+}
+
 // ../../apps/local-api/dist/provider-plugin-projector.js
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto13 = require("node:crypto");
 init_dist2();
 function projectionFromResult(resultInput) {
   const result = ExecutablePluginResultSchema.parse(resultInput);
@@ -80701,7 +86763,7 @@ function createBridgeProviderPluginProjector(options) {
     }
     const invocation = ExecutablePluginInvocationSchema.parse({
       protocol: "clash.plugin.invoke/v1",
-      invocationId: (0, import_node_crypto11.randomUUID)(),
+      invocationId: (0, import_node_crypto13.randomUUID)(),
       taskId: request.taskId,
       projectId: request.projectId,
       ...request.nodeId ? { nodeId: request.nodeId } : {},
@@ -80733,15 +86795,106 @@ function bridgeHostUnavailable(error51) {
   return code === "ENOENT" || code === "ECONNREFUSED" || /plugin host.*(closed|timed out)/i.test(message) || /executable plugin .* (is not installed|is not running)/i.test(message);
 }
 
+// ../../apps/local-api/dist/provider-plugin-executor.js
+var import_node_crypto14 = require("node:crypto");
+init_dist2();
+var PROVIDER_PLUGIN_EXECUTION_TIMEOUT_MS = 30 * 6e4;
+function mediaFromResult(input) {
+  const result = ExecutablePluginResultSchema.parse(input);
+  if (result.status === "failed") {
+    throw new Error(`Provider plugin failed (${result.error.code}): ${result.error.message}`);
+  }
+  const output = result.outputs.find((entry) => entry.slot === "media");
+  if (!output)
+    throw new Error("Provider plugin returned no media output.");
+  if (output.kind === "asset") {
+    const { asset } = output;
+    if (!asset.url) {
+      throw new Error("Provider plugin media asset carries no url for the host to fetch.");
+    }
+    if (asset.reach !== "public") {
+      throw new Error(`Provider plugin media url is reachable only by the plugin (reach ${asset.reach}); the host cannot fetch it.`);
+    }
+    return {
+      url: new URL(asset.url).toString(),
+      ...asset.mediaType ? { contentType: asset.mediaType } : {}
+    };
+  }
+  if (!output.value || typeof output.value !== "object" || Array.isArray(output.value)) {
+    throw new Error("Provider plugin returned no media value output.");
+  }
+  const value = output.value;
+  if (typeof value.url !== "string") {
+    throw new Error("Provider plugin media URL must be a string.");
+  }
+  const url2 = new URL(value.url).toString();
+  const optionalString3 = (key) => typeof value[key] === "string" && value[key] ? String(value[key]) : void 0;
+  const optionalNumber3 = (key) => typeof value[key] === "number" && Number.isFinite(value[key]) ? Number(value[key]) : void 0;
+  const waveform = Array.isArray(value.waveform) && value.waveform.every((entry) => typeof entry === "number" && Number.isFinite(entry)) ? value.waveform : void 0;
+  return {
+    url: url2,
+    ...optionalString3("contentType") ? { contentType: optionalString3("contentType") } : {},
+    ...optionalString3("requestId") ? { requestId: optionalString3("requestId") } : {},
+    ...optionalNumber3("width") !== void 0 ? { width: optionalNumber3("width") } : {},
+    ...optionalNumber3("height") !== void 0 ? { height: optionalNumber3("height") } : {},
+    ...optionalNumber3("durationMs") !== void 0 ? { durationMs: optionalNumber3("durationMs") } : {},
+    ...waveform ? { waveform } : {},
+    ...optionalString3("transcript") ? { transcript: optionalString3("transcript") } : {}
+  };
+}
+function createBridgeProviderPluginExecutor(options) {
+  return async (request) => {
+    let binding;
+    try {
+      binding = request.binding ? ExecutablePluginBindingSchema.parse(request.binding) : await options.client.resolveBinding(request.pluginId, request.exportId, "provider-executor");
+    } catch (error51) {
+      if (bridgeHostUnavailable2(error51)) {
+        throw new ProviderPluginHostUnavailableError(error51.message, { cause: error51 });
+      }
+      throw error51;
+    }
+    if (binding.pluginId !== request.pluginId || binding.exportId !== request.exportId) {
+      throw new Error(`Bridge resolved ${binding.pluginId}/${binding.exportId}, expected ${request.pluginId}/${request.exportId}.`);
+    }
+    const invocation = ExecutablePluginInvocationSchema.parse({
+      protocol: "clash.plugin.invoke/v1",
+      invocationId: (0, import_node_crypto14.randomUUID)(),
+      taskId: request.taskId,
+      projectId: request.projectId,
+      ...request.nodeId ? { nodeId: request.nodeId } : {},
+      target: { ...binding, kind: "provider-executor" },
+      input: request.input,
+      actor: { kind: "system", id: "local-aigc" }
+    });
+    let result;
+    try {
+      result = await options.client.invoke(request.pluginId, invocation, {
+        timeoutMs: PROVIDER_PLUGIN_EXECUTION_TIMEOUT_MS
+      });
+    } catch (error51) {
+      if (bridgeHostUnavailable2(error51)) {
+        throw new ProviderPluginHostUnavailableError(error51.message, { cause: error51 });
+      }
+      throw error51;
+    }
+    return { binding, media: mediaFromResult(result) };
+  };
+}
+function bridgeHostUnavailable2(error51) {
+  const code = error51 && typeof error51 === "object" && "code" in error51 ? String(error51.code) : "";
+  const message = error51 instanceof Error ? error51.message : String(error51);
+  return code === "ENOENT" || code === "ECONNREFUSED" || /plugin host.*(closed|timed out)/i.test(message) || /executable plugin .* (is not installed|is not running)/i.test(message);
+}
+
 // ../../apps/local-api/dist/plugin-action-runtime.js
-var import_node_crypto12 = require("node:crypto");
+var import_node_crypto15 = require("node:crypto");
 init_dist2();
 function createBridgeExecutablePluginActionInvoker(options) {
   return async (request) => {
     const binding = ExecutablePluginBindingSchema.parse(request.binding);
     const invocation = ExecutablePluginInvocationSchema.parse({
       protocol: "clash.plugin.invoke/v1",
-      invocationId: (0, import_node_crypto12.randomUUID)(),
+      invocationId: (0, import_node_crypto15.randomUUID)(),
       taskId: request.taskId,
       projectId: request.projectId,
       ...request.nodeId ? { nodeId: request.nodeId } : {},
@@ -80756,10 +86909,10 @@ function createBridgeExecutablePluginActionInvoker(options) {
 }
 
 // ../../apps/local-api/dist/bundled-plugins.js
-var import_node_fs5 = require("node:fs");
-var import_promises19 = require("node:fs/promises");
+var import_node_fs6 = require("node:fs");
+var import_promises21 = require("node:fs/promises");
 var import_node_module4 = require("node:module");
-var import_node_path18 = require("node:path");
+var import_node_path21 = require("node:path");
 var import_node_url2 = require("node:url");
 var import_actions = __toESM(require_actions(), 1);
 var FIRST_PARTY_MEDIA_ID = "clash-first-party-media";
@@ -80788,10 +86941,10 @@ function bundledPluginPaths() {
       entrypointPath: require5.resolve("@clash-plugin/first-party-media/stdio")
     };
   } catch (error51) {
-    const workspacePlugin = (0, import_node_path18.resolve)((0, import_node_path18.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), "../../../plugins/first-party-media");
-    const manifestPath = (0, import_node_path18.join)(workspacePlugin, "manifest.json");
-    const entrypointPath = (0, import_node_path18.join)(workspacePlugin, "dist", "stdio.mjs");
-    if ((0, import_node_fs5.existsSync)(manifestPath) && (0, import_node_fs5.existsSync)(entrypointPath)) {
+    const workspacePlugin = (0, import_node_path21.resolve)((0, import_node_path21.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), "../../../plugins/first-party-media");
+    const manifestPath = (0, import_node_path21.join)(workspacePlugin, "manifest.json");
+    const entrypointPath = (0, import_node_path21.join)(workspacePlugin, "dist", "stdio.mjs");
+    if ((0, import_node_fs6.existsSync)(manifestPath) && (0, import_node_fs6.existsSync)(entrypointPath)) {
       return { manifestPath, entrypointPath };
     }
     throw error51;
@@ -80805,17 +86958,17 @@ function bundledCodexImagegenPaths() {
       entrypointPath: require5.resolve("@clash-plugin/codex-imagegen/stdio")
     };
   } catch (error51) {
-    const workspacePlugin = (0, import_node_path18.resolve)((0, import_node_path18.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), "../../../plugins/codex-imagegen");
-    const manifestPath = (0, import_node_path18.join)(workspacePlugin, "manifest.json");
-    const entrypointPath = (0, import_node_path18.join)(workspacePlugin, "dist", "stdio.mjs");
-    if ((0, import_node_fs5.existsSync)(manifestPath) && (0, import_node_fs5.existsSync)(entrypointPath)) {
+    const workspacePlugin = (0, import_node_path21.resolve)((0, import_node_path21.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), "../../../plugins/codex-imagegen");
+    const manifestPath = (0, import_node_path21.join)(workspacePlugin, "manifest.json");
+    const entrypointPath = (0, import_node_path21.join)(workspacePlugin, "dist", "stdio.mjs");
+    if ((0, import_node_fs6.existsSync)(manifestPath) && (0, import_node_fs6.existsSync)(entrypointPath)) {
       return { manifestPath, entrypointPath };
     }
     throw error51;
   }
 }
 function createCodexImagegenMarketplace(options) {
-  const targetDir = (0, import_node_path18.join)(options.actionsRoot, CODEX_IMAGEGEN_PLUGIN_ID);
+  const targetDir = (0, import_node_path21.join)(options.actionsRoot, CODEX_IMAGEGEN_PLUGIN_ID);
   const sourcePaths = () => {
     if (options.manifestPath && options.entrypointPath) {
       return { manifestPath: options.manifestPath, entrypointPath: options.entrypointPath };
@@ -80825,9 +86978,9 @@ function createCodexImagegenMarketplace(options) {
   return {
     actions: [CODEX_IMAGEGEN_MARKETPLACE_ACTION],
     async listInstalled() {
-      if (!(0, import_node_fs5.existsSync)((0, import_node_path18.join)(targetDir, "manifest.json")))
+      if (!(0, import_node_fs6.existsSync)((0, import_node_path21.join)(targetDir, "manifest.json")))
         return [];
-      const manifest = JSON.parse(await (0, import_promises19.readFile)((0, import_node_path18.join)(targetDir, "manifest.json"), "utf8"));
+      const manifest = JSON.parse(await (0, import_promises21.readFile)((0, import_node_path21.join)(targetDir, "manifest.json"), "utf8"));
       return [{
         actionId: CODEX_IMAGEGEN_ACTION_ID,
         name: "Codex ImageGen",
@@ -80843,24 +86996,24 @@ function createCodexImagegenMarketplace(options) {
       if (packageId !== CODEX_IMAGEGEN_PLUGIN_ID) {
         throw new Error(`Unknown local action package: ${packageId}`);
       }
-      if ((0, import_node_fs5.existsSync)((0, import_node_path18.join)(targetDir, "manifest.json"))) {
+      if ((0, import_node_fs6.existsSync)((0, import_node_path21.join)(targetDir, "manifest.json"))) {
         return { actionId: CODEX_IMAGEGEN_ACTION_ID, packageId, installed: false, targetDir };
       }
       const { manifestPath, entrypointPath } = sourcePaths();
-      const manifest = JSON.parse(await (0, import_promises19.readFile)(manifestPath, "utf8"));
+      const manifest = JSON.parse(await (0, import_promises21.readFile)(manifestPath, "utf8"));
       if (manifest.id !== CODEX_IMAGEGEN_PLUGIN_ID || !manifest.runtime?.entrypoint) {
         throw new Error("Bundled Codex ImageGen package is invalid.");
       }
       const files = {
-        [manifest.runtime.entrypoint]: (await (0, import_promises19.readFile)(entrypointPath)).toString("base64")
+        [manifest.runtime.entrypoint]: (await (0, import_promises21.readFile)(entrypointPath)).toString("base64")
       };
       for (const card of manifest.exports?.cards ?? []) {
         if (!card.path)
           continue;
-        files[card.path] = (await (0, import_promises19.readFile)((0, import_node_path18.join)((0, import_node_path18.dirname)(manifestPath), card.path))).toString("base64");
+        files[card.path] = (await (0, import_promises21.readFile)((0, import_node_path21.join)((0, import_node_path21.dirname)(manifestPath), card.path))).toString("base64");
       }
       for (const contractPath of manifest.contractTests ?? []) {
-        files[contractPath] = (await (0, import_promises19.readFile)((0, import_node_path18.join)((0, import_node_path18.dirname)(manifestPath), contractPath))).toString("base64");
+        files[contractPath] = (await (0, import_promises21.readFile)((0, import_node_path21.join)((0, import_node_path21.dirname)(manifestPath), contractPath))).toString("base64");
       }
       const activated = await (0, import_actions.activateDownloadedActionPackage)({
         id: CODEX_IMAGEGEN_PLUGIN_ID,
@@ -80878,36 +87031,36 @@ function createCodexImagegenMarketplace(options) {
       if (actionId !== CODEX_IMAGEGEN_ACTION_ID) {
         throw new Error(`Unknown local action: ${actionId}`);
       }
-      if (!(0, import_node_fs5.existsSync)(targetDir))
+      if (!(0, import_node_fs6.existsSync)(targetDir))
         return;
-      const trashRoot = (0, import_node_path18.join)(options.actionsRoot, ".trash");
-      await (0, import_promises19.mkdir)(trashRoot, { recursive: true });
-      const firstTrash = (0, import_node_path18.join)(trashRoot, CODEX_IMAGEGEN_PLUGIN_ID);
-      const destination = (0, import_node_fs5.existsSync)(firstTrash) ? (0, import_node_path18.join)(trashRoot, `${CODEX_IMAGEGEN_PLUGIN_ID}-${Date.now()}`) : firstTrash;
-      await (0, import_promises19.rename)(targetDir, destination);
+      const trashRoot = (0, import_node_path21.join)(options.actionsRoot, ".trash");
+      await (0, import_promises21.mkdir)(trashRoot, { recursive: true });
+      const firstTrash = (0, import_node_path21.join)(trashRoot, CODEX_IMAGEGEN_PLUGIN_ID);
+      const destination = (0, import_node_fs6.existsSync)(firstTrash) ? (0, import_node_path21.join)(trashRoot, `${CODEX_IMAGEGEN_PLUGIN_ID}-${Date.now()}`) : firstTrash;
+      await (0, import_promises21.rename)(targetDir, destination);
     }
   };
 }
 async function ensureBundledFirstPartyMediaPlugin(options) {
-  const targetDir = (0, import_node_path18.join)(options.actionsRoot, FIRST_PARTY_MEDIA_ID);
-  if ((0, import_node_fs5.existsSync)((0, import_node_path18.join)(targetDir, "manifest.json"))) {
+  const targetDir = (0, import_node_path21.join)(options.actionsRoot, FIRST_PARTY_MEDIA_ID);
+  if ((0, import_node_fs6.existsSync)((0, import_node_path21.join)(targetDir, "manifest.json"))) {
     return { installed: false, targetDir };
   }
   const defaults = options.manifestPath && options.entrypointPath ? null : bundledPluginPaths();
   const manifestPath = options.manifestPath ?? defaults.manifestPath;
   const entrypointPath = options.entrypointPath ?? defaults.entrypointPath;
-  const manifest = JSON.parse(await (0, import_promises19.readFile)(manifestPath, "utf8"));
+  const manifest = JSON.parse(await (0, import_promises21.readFile)(manifestPath, "utf8"));
   if (manifest.id !== FIRST_PARTY_MEDIA_ID) {
     throw new Error(`Bundled plugin id must be ${FIRST_PARTY_MEDIA_ID}.`);
   }
   if (manifest.runtime?.kind !== "local" || !manifest.runtime.entrypoint) {
     throw new Error("Bundled first-party media plugin must have a local entrypoint.");
   }
-  const entrypoint = await (0, import_promises19.readFile)(entrypointPath);
+  const entrypoint = await (0, import_promises21.readFile)(entrypointPath);
   const files = {
     [manifest.runtime.entrypoint]: entrypoint.toString("base64")
   };
-  const manifestDir = (0, import_node_path18.dirname)(manifestPath);
+  const manifestDir = (0, import_node_path21.dirname)(manifestPath);
   const declaredDocuments = [
     ...(manifest.exports?.cards ?? []).map((card) => card.path),
     ...manifest.contractTests ?? []
@@ -80915,7 +87068,7 @@ async function ensureBundledFirstPartyMediaPlugin(options) {
   for (const relativePath of declaredDocuments) {
     if (!relativePath)
       continue;
-    files[relativePath] = (await (0, import_promises19.readFile)((0, import_node_path18.join)(manifestDir, relativePath))).toString("base64");
+    files[relativePath] = (await (0, import_promises21.readFile)((0, import_node_path21.join)(manifestDir, relativePath))).toString("base64");
   }
   const activated = await (0, import_actions.activateDownloadedActionPackage)({
     id: FIRST_PARTY_MEDIA_ID,
@@ -80926,19 +87079,19 @@ async function ensureBundledFirstPartyMediaPlugin(options) {
 }
 
 // ../../apps/local-api/dist/codex-imagegen.js
-var import_node_child_process5 = require("node:child_process");
-var import_node_fs6 = require("node:fs");
-var import_promises20 = require("node:fs/promises");
-var import_node_os5 = require("node:os");
-var import_node_path19 = require("node:path");
+var import_node_child_process6 = require("node:child_process");
+var import_node_fs7 = require("node:fs");
+var import_promises22 = require("node:fs/promises");
+var import_node_os6 = require("node:os");
+var import_node_path22 = require("node:path");
 var PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 function executableNames() {
   return process.platform === "win32" ? ["codex.exe", "codex.cmd", "codex"] : ["codex"];
 }
 function resolveCodexCli(env = process.env) {
   if (env.CODEX_BIN) {
-    const configured = (0, import_node_path19.resolve)(env.CODEX_BIN);
-    if ((0, import_node_fs6.existsSync)(configured))
+    const configured = (0, import_node_path22.resolve)(env.CODEX_BIN);
+    if ((0, import_node_fs7.existsSync)(configured))
       return configured;
   }
   const candidates = process.platform === "darwin" ? [
@@ -80947,13 +87100,13 @@ function resolveCodexCli(env = process.env) {
     "/Applications/ChatGPT.app/Contents/Resources/codex",
     "/Applications/Codex.app/Contents/Resources/codex"
   ] : [];
-  const installed = candidates.find((candidate) => (0, import_node_fs6.existsSync)(candidate));
+  const installed = candidates.find((candidate) => (0, import_node_fs7.existsSync)(candidate));
   if (installed)
     return installed;
-  for (const directory of (env.PATH ?? "").split(import_node_path19.delimiter).filter(Boolean)) {
+  for (const directory of (env.PATH ?? "").split(import_node_path22.delimiter).filter(Boolean)) {
     for (const name of executableNames()) {
-      const candidate = (0, import_node_path19.resolve)(directory, name);
-      if ((0, import_node_fs6.existsSync)(candidate))
+      const candidate = (0, import_node_path22.resolve)(directory, name);
+      if ((0, import_node_fs7.existsSync)(candidate))
         return candidate;
     }
   }
@@ -80966,7 +87119,7 @@ function referenceExtension(mediaType, asset) {
     return ".webp";
   if (mediaType === "image/heic")
     return ".heic";
-  const uriExtension = (0, import_node_path19.extname)(asset.uri).toLowerCase();
+  const uriExtension = (0, import_node_path22.extname)(asset.uri).toLowerCase();
   return [".png", ".jpg", ".jpeg", ".webp", ".heic"].includes(uriExtension) ? uriExtension : ".png";
 }
 function codexPrompt(input, outputPath) {
@@ -80985,7 +87138,7 @@ function createCodexImageGenerator(options = {}) {
   const environment = options.env ?? process.env;
   const codexPath = options.codexPath ?? resolveCodexCli(environment);
   const run2 = options.exec ?? ((file2, args, execOptions) => new Promise((resolveRun, rejectRun) => {
-    const child = (0, import_node_child_process5.execFile)(file2, args, {
+    const child = (0, import_node_child_process6.execFile)(file2, args, {
       ...execOptions,
       encoding: "utf8"
     }, (error51, stdout, stderr) => {
@@ -81001,13 +87154,13 @@ function createCodexImageGenerator(options = {}) {
     if (!codexPath) {
       throw new Error("Codex CLI was not found. Install Codex or set CODEX_BIN, then sign in with `codex login`.");
     }
-    const workDir = await (0, import_promises20.mkdtemp)((0, import_node_path19.join)((0, import_node_os5.tmpdir)(), "clash-codex-imagegen-"));
-    const outputPath = (0, import_node_path19.join)(workDir, "result.png");
+    const workDir = await (0, import_promises22.mkdtemp)((0, import_node_path22.join)((0, import_node_os6.tmpdir)(), "clash-codex-imagegen-"));
+    const outputPath = (0, import_node_path22.join)(workDir, "result.png");
     try {
       const referencePaths = [];
       for (const [index, reference] of input.references.entries()) {
-        const path = (0, import_node_path19.join)(workDir, `reference-${index + 1}${referenceExtension(reference.mediaType, reference.asset)}`);
-        await (0, import_promises20.writeFile)(path, reference.bytes);
+        const path = (0, import_node_path22.join)(workDir, `reference-${index + 1}${referenceExtension(reference.mediaType, reference.asset)}`);
+        await (0, import_promises22.writeFile)(path, reference.bytes);
         referencePaths.push(path);
       }
       const args = [
@@ -81036,7 +87189,7 @@ function createCodexImageGenerator(options = {}) {
         const detail = [processError?.stderr, processError?.stdout, processError?.message].map((value) => typeof value === "string" ? value.trim() : "").find(Boolean)?.slice(-2e3) ?? String(error51);
         throw new Error(`Codex ImageGen failed: ${detail}`);
       }
-      const bytes = await (0, import_promises20.readFile)(outputPath).catch(() => null);
+      const bytes = await (0, import_promises22.readFile)(outputPath).catch(() => null);
       if (!bytes) {
         throw new Error("Codex ImageGen completed without writing result.png.");
       }
@@ -81045,19 +87198,19 @@ function createCodexImageGenerator(options = {}) {
       }
       return { mediaType: "image/png", bytes: new Uint8Array(bytes) };
     } finally {
-      await (0, import_promises20.rm)(workDir, { recursive: true, force: true });
+      await (0, import_promises22.rm)(workDir, { recursive: true, force: true });
     }
   };
 }
 
 // ../../apps/local-api/dist/dreamina-cli-runtime.js
-var import_node_child_process6 = require("node:child_process");
-var import_node_crypto13 = require("node:crypto");
-var import_promises21 = require("node:fs/promises");
-var import_node_os6 = require("node:os");
-var import_node_path20 = require("node:path");
+var import_node_child_process7 = require("node:child_process");
+var import_node_crypto16 = require("node:crypto");
+var import_promises23 = require("node:fs/promises");
+var import_node_os7 = require("node:os");
+var import_node_path23 = require("node:path");
 var import_node_util5 = require("node:util");
-var execFileAsync5 = (0, import_node_util5.promisify)(import_node_child_process6.execFile);
+var execFileAsync5 = (0, import_node_util5.promisify)(import_node_child_process7.execFile);
 var DREAMINA_CLI_VERSION = "1.4.15";
 var RELEASE_BASE = `https://github.com/clash-space/clash/releases/download/dreamina-cli-v${DREAMINA_CLI_VERSION}`;
 var DREAMINA_CLI_ARTIFACTS = {
@@ -81090,7 +87243,7 @@ function executableName(platform2) {
   return platform2.platform === "win32" ? "dreamina.exe" : "dreamina";
 }
 function dreaminaCliBinaryPath(dataDir2, platform2 = process) {
-  return (0, import_node_path20.join)(dataDir2, "tools", "dreamina", DREAMINA_CLI_VERSION, executableName(platform2));
+  return (0, import_node_path23.join)(dataDir2, "tools", "dreamina", DREAMINA_CLI_VERSION, executableName(platform2));
 }
 function dreaminaCliArtifact(platform2 = process) {
   const artifact = DREAMINA_CLI_ARTIFACTS[platformKey(platform2)];
@@ -81147,7 +87300,7 @@ function upstreamSha256(bytes, platform2) {
     const restored = replaceAllExact(bytes, dreaminaSecurityShimExecutablePath(), DREAMINA_SECURITY_UPSTREAM_PATH);
     normalized = restored.count === 1 ? restored.bytes : bytes;
   }
-  return (0, import_node_crypto13.createHash)("sha256").update(normalized).digest("hex");
+  return (0, import_node_crypto16.createHash)("sha256").update(normalized).digest("hex");
 }
 async function downloadVerifiedArtifact(artifact, fetchImpl) {
   const response = await fetchImpl(artifact.url);
@@ -81155,7 +87308,7 @@ async function downloadVerifiedArtifact(artifact, fetchImpl) {
     throw new Error(`Dreamina CLI download failed: ${response.status} ${response.statusText}`);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
-  const checksum = (0, import_node_crypto13.createHash)("sha256").update(bytes).digest("hex");
+  const checksum = (0, import_node_crypto16.createHash)("sha256").update(bytes).digest("hex");
   if (checksum !== artifact.sha256) {
     throw new Error(`Dreamina CLI checksum mismatch: expected ${artifact.sha256}, received ${checksum}.`);
   }
@@ -81163,7 +87316,7 @@ async function downloadVerifiedArtifact(artifact, fetchImpl) {
 }
 async function managedDarwinBinaryIsValid(binary) {
   try {
-    const bytes = await (0, import_promises21.readFile)(binary);
+    const bytes = await (0, import_promises23.readFile)(binary);
     if (Buffer.from(bytes).indexOf(Buffer.from(dreaminaSecurityShimExecutablePath())) < 0)
       return false;
     await execFileAsync5("/usr/bin/codesign", ["--verify", "--strict", binary]);
@@ -81174,31 +87327,31 @@ async function managedDarwinBinaryIsValid(binary) {
 }
 async function ensurePinnedDarwinRuntime(options) {
   const upstreamPath = `${options.binary}.upstream`;
-  let upstream = await (0, import_promises21.readFile)(upstreamPath).catch(() => null);
+  let upstream = await (0, import_promises23.readFile)(upstreamPath).catch(() => null);
   let downloaded = false;
-  if (!upstream || (0, import_node_crypto13.createHash)("sha256").update(upstream).digest("hex") !== options.artifact.sha256) {
-    const candidate = await (0, import_promises21.readFile)(options.binary).catch(() => null);
+  if (!upstream || (0, import_node_crypto16.createHash)("sha256").update(upstream).digest("hex") !== options.artifact.sha256) {
+    const candidate = await (0, import_promises23.readFile)(options.binary).catch(() => null);
     if (candidate && upstreamSha256(candidate, { platform: "darwin", arch: process.arch }) === options.artifact.sha256) {
       upstream = replaceAllExact(candidate, dreaminaSecurityShimExecutablePath(), DREAMINA_SECURITY_UPSTREAM_PATH).bytes;
     } else {
       upstream = Buffer.from(await downloadVerifiedArtifact(options.artifact, options.fetch));
       downloaded = true;
     }
-    const stagedUpstream = `${upstreamPath}.${(0, import_node_crypto13.randomUUID)()}.tmp`;
-    await (0, import_promises21.writeFile)(stagedUpstream, upstream, { mode: 384 });
-    await (0, import_promises21.chmod)(stagedUpstream, 384);
-    await (0, import_promises21.rename)(stagedUpstream, upstreamPath);
+    const stagedUpstream = `${upstreamPath}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
+    await (0, import_promises23.writeFile)(stagedUpstream, upstream, { mode: 384 });
+    await (0, import_promises23.chmod)(stagedUpstream, 384);
+    await (0, import_promises23.rename)(stagedUpstream, upstreamPath);
   }
   if (!upstream)
     throw new Error("Dreamina CLI upstream artifact is unavailable.");
   if (await managedDarwinBinaryIsValid(options.binary))
     return { installed: downloaded };
   const patched = patchDreaminaCliBytes(upstream, { platform: "darwin", arch: process.arch }, true);
-  const staged = `${options.binary}.${(0, import_node_crypto13.randomUUID)()}.tmp`;
-  await (0, import_promises21.writeFile)(staged, patched, { mode: 493 });
-  await (0, import_promises21.chmod)(staged, 493);
+  const staged = `${options.binary}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
+  await (0, import_promises23.writeFile)(staged, patched, { mode: 493 });
+  await (0, import_promises23.chmod)(staged, 493);
   await execFileAsync5("/usr/bin/codesign", ["--force", "--sign", "-", staged]);
-  await (0, import_promises21.rename)(staged, options.binary);
+  await (0, import_promises23.rename)(staged, options.binary);
   return { installed: true };
 }
 async function ensureDreaminaCliRuntime(options) {
@@ -81208,41 +87361,41 @@ async function ensureDreaminaCliRuntime(options) {
   };
   const artifact = options.artifact ?? dreaminaCliArtifact(platform2);
   const binary = dreaminaCliBinaryPath(options.dataDir, platform2);
-  const versionDir = (0, import_node_path20.join)(options.dataDir, "tools", "dreamina", DREAMINA_CLI_VERSION);
-  await (0, import_promises21.mkdir)(versionDir, { recursive: true });
+  const versionDir = (0, import_node_path23.join)(options.dataDir, "tools", "dreamina", DREAMINA_CLI_VERSION);
+  await (0, import_promises23.mkdir)(versionDir, { recursive: true });
   if (platform2.platform === "darwin" && isPinnedArtifact(artifact)) {
     const result = await ensurePinnedDarwinRuntime({
       binary,
       artifact,
       fetch: options.fetch ?? fetch
     });
-    await (0, import_promises21.stat)(binary);
+    await (0, import_promises23.stat)(binary);
     return { binary, version: DREAMINA_CLI_VERSION, installed: result.installed };
   }
-  const existingBytes = await (0, import_promises21.readFile)(binary).catch(() => null);
+  const existingBytes = await (0, import_promises23.readFile)(binary).catch(() => null);
   if (existingBytes && upstreamSha256(existingBytes, platform2) === artifact.sha256) {
     const patched = patchDreaminaCliBytes(existingBytes, platform2, isPinnedArtifact(artifact));
     if (!Buffer.from(patched).equals(existingBytes)) {
-      const staged2 = `${binary}.${(0, import_node_crypto13.randomUUID)()}.tmp`;
-      await (0, import_promises21.writeFile)(staged2, patched, { mode: 493 });
-      await (0, import_promises21.chmod)(staged2, 493);
-      await (0, import_promises21.rename)(staged2, binary);
+      const staged2 = `${binary}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
+      await (0, import_promises23.writeFile)(staged2, patched, { mode: 493 });
+      await (0, import_promises23.chmod)(staged2, 493);
+      await (0, import_promises23.rename)(staged2, binary);
     }
     return { binary, version: DREAMINA_CLI_VERSION, installed: false };
   }
   const upstreamBytes = await downloadVerifiedArtifact(artifact, options.fetch ?? fetch);
-  const staged = (0, import_node_path20.join)(versionDir, `.${executableName(platform2)}.${(0, import_node_crypto13.randomUUID)()}.tmp`);
+  const staged = (0, import_node_path23.join)(versionDir, `.${executableName(platform2)}.${(0, import_node_crypto16.randomUUID)()}.tmp`);
   try {
     const bytes = patchDreaminaCliBytes(upstreamBytes, platform2, isPinnedArtifact(artifact));
-    await (0, import_promises21.writeFile)(staged, bytes, { mode: 493 });
+    await (0, import_promises23.writeFile)(staged, bytes, { mode: 493 });
     if (platform2.platform !== "win32")
-      await (0, import_promises21.chmod)(staged, 493);
-    await (0, import_promises21.rename)(staged, binary);
+      await (0, import_promises23.chmod)(staged, 493);
+    await (0, import_promises23.rename)(staged, binary);
   } catch (error51) {
-    await (0, import_promises21.unlink)(staged).catch(() => void 0);
+    await (0, import_promises23.unlink)(staged).catch(() => void 0);
     throw error51;
   }
-  await (0, import_promises21.stat)(binary);
+  await (0, import_promises23.stat)(binary);
   return { binary, version: DREAMINA_CLI_VERSION, installed: true };
 }
 function parseAuthEnvelope(value) {
@@ -81350,36 +87503,36 @@ if (process.argv[2] === "-i") {
 }
 `;
 async function ensureSecurityShim(dataDir2) {
-  const toolsDir = (0, import_node_path20.join)(dataDir2, "tools", "dreamina");
-  const source = (0, import_node_path20.join)(toolsDir, "security-shim.mjs");
+  const toolsDir = (0, import_node_path23.join)(dataDir2, "tools", "dreamina");
+  const source = (0, import_node_path23.join)(toolsDir, "security-shim.mjs");
   const executable = dreaminaSecurityShimExecutablePath();
-  await (0, import_promises21.mkdir)(toolsDir, { recursive: true });
-  if (await (0, import_promises21.readFile)(source, "utf8").catch(() => "") !== DREAMINA_SECURITY_SHIM_SOURCE) {
-    await (0, import_promises21.writeFile)(source, DREAMINA_SECURITY_SHIM_SOURCE, { mode: 384 });
-    await (0, import_promises21.chmod)(source, 384);
+  await (0, import_promises23.mkdir)(toolsDir, { recursive: true });
+  if (await (0, import_promises23.readFile)(source, "utf8").catch(() => "") !== DREAMINA_SECURITY_SHIM_SOURCE) {
+    await (0, import_promises23.writeFile)(source, DREAMINA_SECURITY_SHIM_SOURCE, { mode: 384 });
+    await (0, import_promises23.chmod)(source, 384);
   }
-  const existing = await (0, import_promises21.lstat)(executable).catch(() => null);
+  const existing = await (0, import_promises23.lstat)(executable).catch(() => null);
   if (existing && (existing.isSymbolicLink() || typeof process.getuid === "function" && existing.uid !== process.getuid())) {
     throw new Error(`Unsafe Dreamina security shim path: ${executable}`);
   }
   const wrapper = '#!/bin/sh\nexec "$CLASH_DREAMINA_NODE" "$CLASH_DREAMINA_SECURITY_SHIM" "$@"\n';
-  const staged = `${executable}.${(0, import_node_crypto13.randomUUID)()}.tmp`;
-  await (0, import_promises21.writeFile)(staged, wrapper, { mode: 448 });
-  await (0, import_promises21.chmod)(staged, 448);
-  await (0, import_promises21.rename)(staged, executable);
+  const staged = `${executable}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
+  await (0, import_promises23.writeFile)(staged, wrapper, { mode: 448 });
+  await (0, import_promises23.chmod)(staged, 448);
+  await (0, import_promises23.rename)(staged, executable);
   return { executable, source };
 }
 function createDatabaseDreaminaCliAuthSandbox(config2) {
   return {
     async run({ run: run2, args, options, authState }) {
-      const root = await (0, import_promises21.mkdtemp)((0, import_node_path20.join)((0, import_node_os6.tmpdir)(), "clash-dreamina-auth-"));
-      const home = (0, import_node_path20.join)(root, "home");
-      const authFile = (0, import_node_path20.join)(root, "oauth.json");
+      const root = await (0, import_promises23.mkdtemp)((0, import_node_path23.join)((0, import_node_os7.tmpdir)(), "clash-dreamina-auth-"));
+      const home = (0, import_node_path23.join)(root, "home");
+      const authFile = (0, import_node_path23.join)(root, "oauth.json");
       try {
-        await (0, import_promises21.mkdir)(home, { recursive: true });
+        await (0, import_promises23.mkdir)(home, { recursive: true });
         const initial = authState ? parseAuthEnvelope(authState) : { version: 1, items: [] };
-        await (0, import_promises21.writeFile)(authFile, JSON.stringify(initial), { mode: 384 });
-        await (0, import_promises21.chmod)(authFile, 384);
+        await (0, import_promises23.writeFile)(authFile, JSON.stringify(initial), { mode: 384 });
+        await (0, import_promises23.chmod)(authFile, 384);
         const shim = await ensureSecurityShim(config2.dataDir);
         let result;
         try {
@@ -81397,17 +87550,17 @@ function createDatabaseDreaminaCliAuthSandbox(config2) {
           });
         } catch (error51) {
           if (options?.captureAuthState && error51 instanceof DreaminaCliCommandError) {
-            const captured2 = parseAuthEnvelope(await (0, import_promises21.readFile)(authFile, "utf8"));
+            const captured2 = parseAuthEnvelope(await (0, import_promises23.readFile)(authFile, "utf8"));
             error51.result.authState = JSON.stringify(captured2);
           }
           throw error51;
         }
         if (!options?.captureAuthState)
           return result;
-        const captured = parseAuthEnvelope(await (0, import_promises21.readFile)(authFile, "utf8"));
+        const captured = parseAuthEnvelope(await (0, import_promises23.readFile)(authFile, "utf8"));
         return { ...result, authState: JSON.stringify(captured) };
       } finally {
-        await (0, import_promises21.rm)(root, { recursive: true, force: true }).catch(() => void 0);
+        await (0, import_promises23.rm)(root, { recursive: true, force: true }).catch(() => void 0);
       }
     }
   };
@@ -81424,10 +87577,10 @@ function createManagedDreaminaCliRun(options) {
 }
 
 // ../../apps/local-api/dist/local-acp.js
-var import_node_child_process9 = require("node:child_process");
-var import_node_crypto15 = require("node:crypto");
-var import_promises27 = require("node:fs/promises");
-var import_node_path22 = require("node:path");
+var import_node_child_process10 = require("node:child_process");
+var import_node_crypto18 = require("node:crypto");
+var import_promises29 = require("node:fs/promises");
+var import_node_path25 = require("node:path");
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -83043,8 +89196,8 @@ function emoji() {
 }
 var ipv4 = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
 var ipv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/;
-var mac = (delimiter7) => {
-  const escapedDelim = escapeRegex(delimiter7 ?? ":");
+var mac = (delimiter8) => {
+  const escapedDelim = escapeRegex(delimiter8 ?? ":");
   return new RegExp(`^(?:[0-9A-F]{2}${escapedDelim}){5}[0-9A-F]{2}$|^(?:[0-9a-f]{2}${escapedDelim}){5}[0-9a-f]{2}$`);
 };
 var cidrv4 = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/;
@@ -98106,8 +104259,8 @@ var Connection = class {
     this.requestHandler = requestHandler;
     this.notificationHandler = notificationHandler;
     this.stream = stream;
-    this.closedPromise = new Promise((resolve13) => {
-      this.abortController.signal.addEventListener("abort", () => resolve13());
+    this.closedPromise = new Promise((resolve14) => {
+      this.abortController.signal.addEventListener("abort", () => resolve14());
     });
     void this.receive();
   }
@@ -98277,11 +104430,11 @@ var Connection = class {
       return rejectedPromise(this.closedReason());
     }
     const id = this.nextRequestId++;
-    const responsePromise = new Promise((resolve13, reject) => {
+    const responsePromise = new Promise((resolve14, reject) => {
       this.pendingResponses.set(id, {
         resolve: (response) => {
           try {
-            resolve13(mapResponse ? mapResponse(response) : response);
+            resolve14(mapResponse ? mapResponse(response) : response);
           } catch (error51) {
             reject(error51);
           }
@@ -98804,8 +104957,8 @@ var AcpSessionImpl = class {
       } else if (ended || this.#disposed) {
         break;
       } else {
-        await new Promise((resolve13) => {
-          this.#waiters.push(resolve13);
+        await new Promise((resolve14) => {
+          this.#waiters.push(resolve14);
         });
       }
     }
@@ -98857,7 +105010,7 @@ var AcpSessionImpl = class {
     const deadline = Date.now() + LOAD_REPLAY_MAX_SETTLE_MS;
     let lastSeen = this.#lastSuppressedLoadReplayAt;
     while (Date.now() < deadline) {
-      await new Promise((resolve13) => setTimeout(resolve13, LOAD_REPLAY_QUIET_MS));
+      await new Promise((resolve14) => setTimeout(resolve14, LOAD_REPLAY_QUIET_MS));
       if (this.#lastSuppressedLoadReplayAt === lastSeen)
         return;
       lastSeen = this.#lastSuppressedLoadReplayAt;
@@ -98925,7 +105078,7 @@ var AcpRuntimeImpl = class {
 };
 
 // ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/acp-runtime/spawners/node.js
-var import_node_child_process7 = require("node:child_process");
+var import_node_child_process8 = require("node:child_process");
 var activeChildren = /* @__PURE__ */ new Set();
 var cleanupHandlersInstalled = false;
 function killProcessTree(child, signal, detached) {
@@ -98971,7 +105124,7 @@ var NodeSpawner = class {
         env[key] = value;
     }
     const detached = process.platform !== "win32";
-    const child = (0, import_node_child_process7.spawn)(spec.command, spec.args ?? [], {
+    const child = (0, import_node_child_process8.spawn)(spec.command, spec.args ?? [], {
       env,
       cwd: spec.cwd,
       stdio: ["pipe", "pipe", "pipe"],
@@ -98992,13 +105145,13 @@ var NodeSpawner = class {
           spec.onDiagnosticLine?.(buffer);
       });
     }
-    const exited = new Promise((resolve13) => {
+    const exited = new Promise((resolve14) => {
       let settled = false;
       const settle = (code, signal) => {
         if (settled)
           return;
         settled = true;
-        resolve13({ code, signal });
+        resolve14({ code, signal });
       };
       child.once("exit", settle);
       child.once("close", settle);
@@ -99032,8 +105185,8 @@ async function waitForChildExit(exited, timeoutMs) {
   try {
     return await Promise.race([
       exited.then(() => true),
-      new Promise((resolve13) => {
-        timer = setTimeout(() => resolve13(false), timeoutMs);
+      new Promise((resolve14) => {
+        timer = setTimeout(() => resolve14(false), timeoutMs);
         timer.unref?.();
       })
     ]);
@@ -99092,14 +105245,14 @@ function nodeWritableToWeb(stream) {
     write(chunk) {
       if (stream.destroyed || stream.writableEnded)
         return;
-      return new Promise((resolve13, reject) => {
+      return new Promise((resolve14, reject) => {
         const onError = (error51) => {
           cleanup();
           reject(error51);
         };
         const onDrain = () => {
           cleanup();
-          resolve13();
+          resolve14();
         };
         const cleanup = () => {
           stream.off("error", onError);
@@ -99111,7 +105264,7 @@ function nodeWritableToWeb(stream) {
             onError(error51);
           else if (canContinue) {
             cleanup();
-            resolve13();
+            resolve14();
           }
         });
         if (!canContinue)
@@ -99121,7 +105274,7 @@ function nodeWritableToWeb(stream) {
     close() {
       if (stream.destroyed || stream.writableEnded)
         return;
-      return new Promise((resolve13) => stream.end(resolve13));
+      return new Promise((resolve14) => stream.end(resolve14));
     },
     abort() {
       stream.destroy();
@@ -99131,8 +105284,8 @@ function nodeWritableToWeb(stream) {
 
 // ../../packages/clash-bridge/dist/chunk-Z7KC3PHH.js
 var import_fs2 = require("fs");
-var import_promises22 = require("fs/promises");
-var import_os3 = require("os");
+var import_promises24 = require("fs/promises");
+var import_os4 = require("os");
 var import_path5 = require("path");
 
 // ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/index.js
@@ -101093,12 +107246,12 @@ var Connection2 = class {
       return rejectedPromise2(this.closedReason());
     }
     const id = this.nextRequestId++;
-    const responsePromise = new Promise((resolve13, reject) => {
+    const responsePromise = new Promise((resolve14, reject) => {
       this.pendingResponses.set(id, {
         resolve: (response) => {
           try {
             const value = mapResponse ? mapResponse(response) : response;
-            resolve13(value);
+            resolve14(value);
           } catch (error51) {
             reject(error51);
           }
@@ -101140,8 +107293,8 @@ var Connection2 = class {
   initialize(stream, handlers) {
     this.stream = stream;
     this.staticHandlers = handlers;
-    this.closedPromise = new Promise((resolve13) => {
-      this.abortController.signal.addEventListener("abort", () => resolve13());
+    this.closedPromise = new Promise((resolve14) => {
+      this.abortController.signal.addEventListener("abort", () => resolve14());
     });
     void this.receive();
   }
@@ -101738,8 +107891,8 @@ var AsyncQueue = class {
     if (this.failed) {
       return Promise.reject(this.failure);
     }
-    return new Promise((resolve13, reject) => {
-      this.waiters.push({ resolve: resolve13, reject });
+    return new Promise((resolve14, reject) => {
+      this.waiters.push({ resolve: resolve14, reject });
     });
   }
 };
@@ -103101,8 +109254,8 @@ async function waitForSignalOrTimeout(signal, timeoutMs) {
   try {
     await Promise.race([
       signal,
-      new Promise((resolve13) => {
-        timer = setTimeout(resolve13, timeoutMs);
+      new Promise((resolve14) => {
+        timer = setTimeout(resolve14, timeoutMs);
         timer.unref?.();
       })
     ]);
@@ -103183,17 +109336,17 @@ function unauthenticatedDiagnostic(lines) {
   return null;
 }
 async function allowDiagnosticsToFlush() {
-  await new Promise((resolve13) => setTimeout(resolve13, 25));
+  await new Promise((resolve14) => setTimeout(resolve14, 25));
 }
 async function probeAgentSessionConfig(options) {
-  const cwd = options.cwd ?? (0, import_path5.join)((0, import_os3.tmpdir)(), "clash-acp-probe");
-  await (0, import_promises22.mkdir)(cwd, { recursive: true });
+  const cwd = options.cwd ?? (0, import_path5.join)((0, import_os4.tmpdir)(), "clash-acp-probe");
+  await (0, import_promises24.mkdir)(cwd, { recursive: true });
   let updatedConfigOptions = [];
   let updatedAvailableCommands = [];
   let updatedModeId = null;
   let resolveAvailableCommands = null;
-  const availableCommandsReady = new Promise((resolve13) => {
-    resolveAvailableCommands = resolve13;
+  const availableCommandsReady = new Promise((resolve14) => {
+    resolveAvailableCommands = resolve14;
   });
   const client2 = {
     sessionUpdate: async (params) => {
@@ -103306,15 +109459,15 @@ async function probeAgentSessionConfig(options) {
   }
 }
 async function authenticateAgent(options) {
-  const cwd = options.cwd ?? (0, import_path5.join)((0, import_os3.tmpdir)(), "clash-acp-auth");
-  await (0, import_promises22.mkdir)(cwd, { recursive: true });
+  const cwd = options.cwd ?? (0, import_path5.join)((0, import_os4.tmpdir)(), "clash-acp-auth");
+  await (0, import_promises24.mkdir)(cwd, { recursive: true });
   const env = mergedStringEnv(options.agent.env, options.env);
   let authTerminalId = 0;
   let activeAuthMethodName = "Agent";
   let resolveTerminalLaunch = null;
   let rejectTerminalLaunch = null;
-  const terminalLaunch = new Promise((resolve13, reject) => {
-    resolveTerminalLaunch = resolve13;
+  const terminalLaunch = new Promise((resolve14, reject) => {
+    resolveTerminalLaunch = resolve14;
     rejectTerminalLaunch = reject;
   });
   void terminalLaunch.catch(() => void 0);
@@ -103405,8 +109558,8 @@ async function authenticateAgent(options) {
         });
         void authPromise.catch(() => void 0);
         let launchGraceTimer;
-        const launchGrace = agentAuthLaunchGraceMs > 0 ? new Promise((resolve13) => {
-          launchGraceTimer = setTimeout(() => resolve13("launched"), agentAuthLaunchGraceMs);
+        const launchGrace = agentAuthLaunchGraceMs > 0 ? new Promise((resolve14) => {
+          launchGraceTimer = setTimeout(() => resolve14("launched"), agentAuthLaunchGraceMs);
           launchGraceTimer.unref?.();
         }) : null;
         try {
@@ -103439,8 +109592,8 @@ async function authenticateAgent(options) {
   }
 }
 async function probeAgentAuthStatus(options) {
-  const cwd = options.cwd ?? (0, import_path5.join)((0, import_os3.tmpdir)(), "clash-acp-auth-probe");
-  await (0, import_promises22.mkdir)(cwd, { recursive: true });
+  const cwd = options.cwd ?? (0, import_path5.join)((0, import_os4.tmpdir)(), "clash-acp-auth-probe");
+  await (0, import_promises24.mkdir)(cwd, { recursive: true });
   const connection = await spawnAcpProbeAgent({
     agent: options.agent,
     cwd,
@@ -103558,7 +109711,7 @@ async function listLocalAgentSessions(agent2) {
 
 // ../../packages/clash-bridge/dist/chunk-G3AV3ZNV.js
 var import_fs3 = require("fs");
-var import_promises23 = require("fs/promises");
+var import_promises25 = require("fs/promises");
 var import_path6 = require("path");
 function registryShimName(id) {
   return `clash-acp-${id}`;
@@ -103689,7 +109842,7 @@ var KNOWN_ACP_AGENTS = [
 ];
 async function isExecutable(path, platform2 = process.platform) {
   try {
-    await (0, import_promises23.access)(path, platform2 === "win32" ? import_fs3.constants.F_OK : import_fs3.constants.X_OK);
+    await (0, import_promises25.access)(path, platform2 === "win32" ? import_fs3.constants.F_OK : import_fs3.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -103734,7 +109887,7 @@ function candidateSystemDirs(options) {
 async function candidateNodeVersionDirs(root, suffix) {
   const dirs = [];
   try {
-    for (const entry of await (0, import_promises23.readdir)(root, { withFileTypes: true })) {
+    for (const entry of await (0, import_promises25.readdir)(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       dirs.push((0, import_path6.join)(root, entry.name, ...suffix));
     }
@@ -103853,14 +110006,14 @@ async function detectAll(options = {}) {
 
 // ../../packages/clash-bridge/dist/chunk-TSSNRI4Q.js
 init_chunk_QHDUUIIF();
-var import_promises24 = require("fs/promises");
-var import_os4 = require("os");
+var import_promises26 = require("fs/promises");
+var import_os5 = require("os");
 var import_path7 = require("path");
-var ROOT = (0, import_path7.join)((0, import_os4.homedir)(), ".claude", "projects");
+var ROOT = (0, import_path7.join)((0, import_os5.homedir)(), ".claude", "projects");
 async function listLocalCcSessions(limit = 20) {
   let projectDirs;
   try {
-    projectDirs = await (0, import_promises24.readdir)(ROOT);
+    projectDirs = await (0, import_promises26.readdir)(ROOT);
   } catch (e) {
     if (e.code === "ENOENT") return [];
     throw e;
@@ -103873,7 +110026,7 @@ async function listLocalCcSessions(limit = 20) {
     const projPath = (0, import_path7.join)(ROOT, projDir);
     let entries = [];
     try {
-      entries = await (0, import_promises24.readdir)(projPath);
+      entries = await (0, import_promises26.readdir)(projPath);
     } catch {
       continue;
     }
@@ -103881,7 +110034,7 @@ async function listLocalCcSessions(limit = 20) {
       if (!entry.endsWith(".jsonl")) continue;
       const file2 = (0, import_path7.join)(projPath, entry);
       try {
-        const st = await (0, import_promises24.stat)(file2);
+        const st = await (0, import_promises26.stat)(file2);
         if (!st.isFile()) continue;
         const id = entry.slice(0, -".jsonl".length);
         const title = await readFirstSummary(file2);
@@ -103903,7 +110056,7 @@ async function listLocalCcSessions(limit = 20) {
 async function readFirstSummary(file2) {
   let text;
   try {
-    const buf = await (0, import_promises24.readFile)(file2, { encoding: "utf-8" });
+    const buf = await (0, import_promises26.readFile)(file2, { encoding: "utf-8" });
     text = buf;
   } catch {
     return "";
@@ -103950,7 +110103,7 @@ init_chunk_QHDUUIIF();
 
 // ../../packages/clash-bridge/dist/chunk-HRJ66JTC.js
 init_chunk_QHDUUIIF();
-var import_promises25 = require("fs/promises");
+var import_promises27 = require("fs/promises");
 var import_fs4 = require("fs");
 var import_path8 = require("path");
 var import_url6 = require("url");
@@ -103994,7 +110147,7 @@ function bundledAgentsDir() {
 }
 async function readAgentRuntime(agentTemplateId) {
   try {
-    const text = await (0, import_promises25.readFile)((0, import_path8.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
+    const text = await (0, import_promises27.readFile)((0, import_path8.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
     return JSON.parse(text);
   } catch {
     return null;
@@ -104035,7 +110188,7 @@ function pluginMcpEnv(runtimeEnv, pluginEnv, usesElectronNode) {
 }
 async function resolvePluginMcpServers(pluginRoot, runtimeEnv) {
   const manifest = JSON.parse(
-    await (0, import_promises25.readFile)((0, import_path8.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")
+    await (0, import_promises27.readFile)((0, import_path8.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")
   );
   const pluginName = typeof manifest.name === "string" ? manifest.name : "plugin";
   const mcpManifestPath = manifest.mcpServers;
@@ -104043,7 +110196,7 @@ async function resolvePluginMcpServers(pluginRoot, runtimeEnv) {
     throw new Error(`built-in plugin '${pluginName}' has no valid mcpServers manifest`);
   }
   const mcpPath = resolvePluginPath(pluginRoot, pluginRoot, mcpManifestPath);
-  const mcpConfig = JSON.parse(await (0, import_promises25.readFile)(mcpPath, "utf8"));
+  const mcpConfig = JSON.parse(await (0, import_promises27.readFile)(mcpPath, "utf8"));
   const wrapped = isRecord8(mcpConfig.mcpServers) ? mcpConfig.mcpServers : isRecord8(mcpConfig.mcp_servers) ? mcpConfig.mcp_servers : mcpConfig;
   const servers = [];
   for (const [serverName, rawServer] of Object.entries(wrapped)) {
@@ -104089,7 +110242,7 @@ async function ensureAgentCwd(agentTemplateId, projectId, capabilities = {}) {
   const canonicalProjectId = projectId && projectId.length > 0 ? projectId : DEFAULT_PROJECT;
   const projectPathSegment = projectIdPathSegment(canonicalProjectId);
   const cwd = (0, import_path8.join)(paths().projectsDir, projectPathSegment);
-  await (0, import_promises25.mkdir)(cwd, { recursive: true });
+  await (0, import_promises27.mkdir)(cwd, { recursive: true });
   await ensureProjectWorkspaceLayout(cwd);
   await assertAgentTemplate(agentTemplateId);
   await installNativeAgentSkills(
@@ -104102,16 +110255,16 @@ async function ensureAgentCwd(agentTemplateId, projectId, capabilities = {}) {
 }
 async function ensureProjectWorkspaceLayout(cwd) {
   await Promise.all([
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "drafts"), { recursive: true }),
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "projections", "text"), { recursive: true }),
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "projections", "timelines"), { recursive: true }),
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "projections", "storyboards"), { recursive: true }),
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "projections", "prompts"), { recursive: true }),
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "projections", "metadata"), { recursive: true }),
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "timelines"), { recursive: true }),
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "sessions"), { recursive: true }),
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "assets", "links"), { recursive: true }),
-    (0, import_promises25.mkdir)((0, import_path8.join)(cwd, "runtime"), { recursive: true })
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "drafts"), { recursive: true }),
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "projections", "text"), { recursive: true }),
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "projections", "timelines"), { recursive: true }),
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "projections", "storyboards"), { recursive: true }),
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "projections", "prompts"), { recursive: true }),
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "projections", "metadata"), { recursive: true }),
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "timelines"), { recursive: true }),
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "sessions"), { recursive: true }),
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "assets", "links"), { recursive: true }),
+    (0, import_promises27.mkdir)((0, import_path8.join)(cwd, "runtime"), { recursive: true })
   ]);
 }
 function sanitize(id) {
@@ -104121,7 +110274,7 @@ async function assertAgentTemplate(agentTemplateId) {
   const templateId = sanitize(agentTemplateId);
   const runtimePath = (0, import_path8.join)(bundledAgentsDir(), templateId, "runtime.json");
   try {
-    const runtime = await (0, import_promises25.lstat)(runtimePath);
+    const runtime = await (0, import_promises27.lstat)(runtimePath);
     if (!runtime.isFile()) throw new Error(`unknown agent template: ${templateId}`);
   } catch (e) {
     if (e.code === "ENOENT") {
@@ -104143,7 +110296,7 @@ function resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory) {
   return root;
 }
 async function replaceManagedSkillLink(target, source) {
-  const current = await (0, import_promises25.lstat)(target).catch((error51) => {
+  const current = await (0, import_promises27.lstat)(target).catch((error51) => {
     if (error51.code === "ENOENT") return null;
     throw error51;
   });
@@ -104151,17 +110304,17 @@ async function replaceManagedSkillLink(target, source) {
     if (!current.isSymbolicLink()) {
       throw new Error(`Cannot install bundled Clash skill over an existing workspace entry: ${target}`);
     }
-    if (await (0, import_promises25.readlink)(target) === source) return;
-    await (0, import_promises25.unlink)(target);
+    if (await (0, import_promises27.readlink)(target) === source) return;
+    await (0, import_promises27.unlink)(target);
   }
-  await (0, import_promises25.symlink)(source, target, "dir");
+  await (0, import_promises27.symlink)(source, target, "dir");
 }
 async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory, cwd) {
   const root = resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory);
   if (!root) return;
   const runtime = await readAgentRuntime(agentTemplateId);
   if (!runtime?.plugins?.length) return;
-  await (0, import_promises25.mkdir)(root, { recursive: true });
+  await (0, import_promises27.mkdir)(root, { recursive: true });
   for (const pluginId of runtime.plugins) {
     const pluginRoot = (0, import_path8.join)(
       bundledAgentsDir(),
@@ -104170,12 +110323,12 @@ async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory
       sanitize(pluginId)
     );
     const manifest = JSON.parse(
-      await (0, import_promises25.readFile)((0, import_path8.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")
+      await (0, import_promises27.readFile)((0, import_path8.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")
     );
     const configuredRoots = typeof manifest.skills === "string" ? [manifest.skills] : Array.isArray(manifest.skills) ? manifest.skills.filter((entry) => typeof entry === "string") : [];
     for (const configuredRoot of configuredRoots) {
       const skillRoot = resolvePluginPath(pluginRoot, pluginRoot, configuredRoot);
-      const entries = await (0, import_promises25.readdir)(skillRoot, { withFileTypes: true });
+      const entries = await (0, import_promises27.readdir)(skillRoot, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         await replaceManagedSkillLink(
@@ -104188,8 +110341,8 @@ async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory
 }
 async function writeProjectMarker(cwd, projectId) {
   const markerDir = (0, import_path8.join)(cwd, ".clash");
-  await (0, import_promises25.mkdir)(markerDir, { recursive: true });
-  await (0, import_promises25.writeFile)(
+  await (0, import_promises27.mkdir)(markerDir, { recursive: true });
+  await (0, import_promises27.writeFile)(
     (0, import_path8.join)(markerDir, "project.toml"),
     [
       "schema_version = 1",
@@ -104766,12 +110919,12 @@ var SessionManager = class {
 init_chunk_QHDUUIIF();
 
 // ../../apps/local-api/dist/acp-registry-installer.js
-var import_node_child_process8 = require("node:child_process");
-var import_node_crypto14 = require("node:crypto");
-var import_promises26 = require("node:fs/promises");
-var import_node_path21 = require("node:path");
+var import_node_child_process9 = require("node:child_process");
+var import_node_crypto17 = require("node:crypto");
+var import_promises28 = require("node:fs/promises");
+var import_node_path24 = require("node:path");
 var import_node_util6 = require("node:util");
-var execFileAsync6 = (0, import_node_util6.promisify)(import_node_child_process8.execFile);
+var execFileAsync6 = (0, import_node_util6.promisify)(import_node_child_process9.execFile);
 var ACP_REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 function currentPlatformKey() {
   const os = process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : process.platform === "win32" ? "windows" : process.platform;
@@ -104828,9 +110981,9 @@ function renderShellShim(commandPath, args = [], env = {}) {
   ].join("\n");
 }
 async function writeExecutableShim(shimPath, commandPath, args = [], env = {}) {
-  await (0, import_promises26.mkdir)((0, import_node_path21.dirname)(shimPath), { recursive: true });
-  await (0, import_promises26.writeFile)(shimPath, renderShellShim(commandPath, args, env), "utf8");
-  await (0, import_promises26.chmod)(shimPath, 493);
+  await (0, import_promises28.mkdir)((0, import_node_path24.dirname)(shimPath), { recursive: true });
+  await (0, import_promises28.writeFile)(shimPath, renderShellShim(commandPath, args, env), "utf8");
+  await (0, import_promises28.chmod)(shimPath, 493);
 }
 async function fetchBytes(url2, fetchImpl) {
   const response = await fetchImpl(url2);
@@ -104862,7 +111015,7 @@ async function listAcpRegistryCatalog(options = {}) {
   });
 }
 function assertSafeRelativeCommand(cmd) {
-  if ((0, import_node_path21.isAbsolute)(cmd))
+  if ((0, import_node_path24.isAbsolute)(cmd))
     throw new Error(`Registry command must be relative: ${cmd}`);
   const normalized = cmd.replace(/\\/g, "/");
   if (normalized.split("/").includes(".."))
@@ -104901,24 +111054,24 @@ function rawBinaryFileName(url2) {
 }
 function versionedInstallDir(root, registryId, version2, archiveUrl) {
   const versionLabel = sanitizePathComponent(version2 ?? "unknown");
-  const hash2 = (0, import_node_crypto14.createHash)("sha256").update(`${version2 ?? ""}\0${archiveUrl}`).digest("hex").slice(0, 16);
-  return (0, import_node_path21.join)(root, "registry", sanitizePathComponent(registryId), `v_${versionLabel}_${hash2}`);
+  const hash2 = (0, import_node_crypto17.createHash)("sha256").update(`${version2 ?? ""}\0${archiveUrl}`).digest("hex").slice(0, 16);
+  return (0, import_node_path24.join)(root, "registry", sanitizePathComponent(registryId), `v_${versionLabel}_${hash2}`);
 }
 function registryInstallMetadataPath(root, registryId) {
-  return (0, import_node_path21.join)(root, "registry", sanitizePathComponent(registryId), "install.json");
+  return (0, import_node_path24.join)(root, "registry", sanitizePathComponent(registryId), "install.json");
 }
 async function writeRegistryInstallMetadata(options, metadata) {
   const installRoot = options.installRoot ?? options.binDir;
   if (!installRoot)
     throw new Error("Install metadata requires an install root");
   const metadataPath = registryInstallMetadataPath(installRoot, options.registryId);
-  await (0, import_promises26.mkdir)((0, import_node_path21.dirname)(metadataPath), { recursive: true });
-  await (0, import_promises26.writeFile)(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+  await (0, import_promises28.mkdir)((0, import_node_path24.dirname)(metadataPath), { recursive: true });
+  await (0, import_promises28.writeFile)(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
 }
 async function readAcpRegistryInstallMetadata(options) {
   const installRoot = options.installRoot ?? options.binDir;
   try {
-    const parsed = JSON.parse(await (0, import_promises26.readFile)(registryInstallMetadataPath(installRoot, options.registryId), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises28.readFile)(registryInstallMetadataPath(installRoot, options.registryId), "utf8"));
     if (parsed.source !== "registry" || parsed.registryId !== options.registryId || typeof parsed.shimName !== "string") {
       return null;
     }
@@ -104937,7 +111090,7 @@ function verifySha256(bytes, expected) {
   if (!expected)
     return;
   const normalized = expected.startsWith("sha256:") ? expected.slice("sha256:".length) : expected;
-  const actual = (0, import_node_crypto14.createHash)("sha256").update(bytes).digest("hex");
+  const actual = (0, import_node_crypto17.createHash)("sha256").update(bytes).digest("hex");
   if (actual.toLowerCase() !== normalized.toLowerCase()) {
     throw new Error(`ACP registry archive checksum mismatch: expected ${normalized}, got ${actual}`);
   }
@@ -104947,25 +111100,25 @@ async function installBinaryDistribution(agent2, target, options) {
   const installRoot = options.installRoot ?? options.binDir;
   const finalDir = versionedInstallDir(installRoot, options.registryId, agent2.version, target.archive);
   const commandRelativePath = assertSafeRelativeCommand(target.cmd);
-  const commandPath = (0, import_node_path21.resolve)(finalDir, commandRelativePath);
-  const relativeCommandPath = (0, import_node_path21.relative)((0, import_node_path21.resolve)(finalDir), commandPath);
-  if (relativeCommandPath.startsWith("..") || (0, import_node_path21.isAbsolute)(relativeCommandPath)) {
+  const commandPath = (0, import_node_path24.resolve)(finalDir, commandRelativePath);
+  const relativeCommandPath = (0, import_node_path24.relative)((0, import_node_path24.resolve)(finalDir), commandPath);
+  if (relativeCommandPath.startsWith("..") || (0, import_node_path24.isAbsolute)(relativeCommandPath)) {
     throw new Error(`Registry command escapes install directory: ${target.cmd}`);
   }
   try {
-    await (0, import_promises26.chmod)(commandPath, 493);
+    await (0, import_promises28.chmod)(commandPath, 493);
   } catch {
     const tmpDir = `${finalDir}.tmp-${process.pid}-${Date.now()}`;
-    await (0, import_promises26.rm)(tmpDir, { recursive: true, force: true });
-    await (0, import_promises26.mkdir)(tmpDir, { recursive: true });
+    await (0, import_promises28.rm)(tmpDir, { recursive: true, force: true });
+    await (0, import_promises28.mkdir)(tmpDir, { recursive: true });
     const bytes = await fetchBytes(target.archive, fetchImpl);
     verifySha256(bytes, target.sha256);
     const kind = archiveKind(target.archive);
-    const archivePath = (0, import_node_path21.join)(tmpDir, `download${kind === "zip" ? ".zip" : kind === "tar-gz" ? ".tar.gz" : kind === "tar-bz2" ? ".tar.bz2" : (0, import_node_path21.extname)(rawBinaryFileName(target.archive))}`);
+    const archivePath = (0, import_node_path24.join)(tmpDir, `download${kind === "zip" ? ".zip" : kind === "tar-gz" ? ".tar.gz" : kind === "tar-bz2" ? ".tar.bz2" : (0, import_node_path24.extname)(rawBinaryFileName(target.archive))}`);
     if (kind === "raw") {
-      await (0, import_promises26.writeFile)((0, import_node_path21.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
+      await (0, import_promises28.writeFile)((0, import_node_path24.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
     } else {
-      await (0, import_promises26.writeFile)(archivePath, bytes);
+      await (0, import_promises28.writeFile)(archivePath, bytes);
       if (kind === "zip") {
         await execFileAsync6("unzip", ["-q", archivePath, "-d", tmpDir]);
       } else if (kind === "tar-gz") {
@@ -104973,14 +111126,14 @@ async function installBinaryDistribution(agent2, target, options) {
       } else {
         await execFileAsync6("tar", ["-xjf", archivePath, "-C", tmpDir]);
       }
-      await (0, import_promises26.rm)(archivePath, { force: true });
+      await (0, import_promises28.rm)(archivePath, { force: true });
     }
-    await (0, import_promises26.rm)(finalDir, { recursive: true, force: true });
-    await (0, import_promises26.mkdir)((0, import_node_path21.dirname)(finalDir), { recursive: true });
-    await (0, import_promises26.rename)(tmpDir, finalDir);
-    await (0, import_promises26.chmod)(commandPath, 493);
+    await (0, import_promises28.rm)(finalDir, { recursive: true, force: true });
+    await (0, import_promises28.mkdir)((0, import_node_path24.dirname)(finalDir), { recursive: true });
+    await (0, import_promises28.rename)(tmpDir, finalDir);
+    await (0, import_promises28.chmod)(commandPath, 493);
   }
-  const shimPath = (0, import_node_path21.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path24.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, commandPath, options.shimArgs ?? target.args ?? [], {
     ...target.env ?? {},
     ...options.shimEnv ?? {}
@@ -105000,19 +111153,19 @@ function packagePathParts(packageName) {
 }
 async function resolvePackageBin(prefixDir, packageSpec) {
   const packageName = packageNameFromSpec(packageSpec);
-  const packageJsonPath = (0, import_node_path21.join)(prefixDir, "node_modules", ...packagePathParts(packageName), "package.json");
-  const pkg = JSON.parse(await (0, import_promises26.readFile)(packageJsonPath, "utf8"));
-  const unscopedName = (0, import_node_path21.basename)(packageName);
+  const packageJsonPath = (0, import_node_path24.join)(prefixDir, "node_modules", ...packagePathParts(packageName), "package.json");
+  const pkg = JSON.parse(await (0, import_promises28.readFile)(packageJsonPath, "utf8"));
+  const unscopedName = (0, import_node_path24.basename)(packageName);
   const binName = typeof pkg.bin === "string" ? unscopedName : pkg.bin?.[unscopedName] ? unscopedName : Object.keys(pkg.bin ?? {})[0];
   if (!binName)
     throw new Error(`${packageSpec} does not expose an executable bin`);
-  const candidate = (0, import_node_path21.join)(prefixDir, "node_modules", ".bin", process.platform === "win32" ? `${binName}.cmd` : binName);
+  const candidate = (0, import_node_path24.join)(prefixDir, "node_modules", ".bin", process.platform === "win32" ? `${binName}.cmd` : binName);
   return candidate;
 }
 async function installNpxDistribution(npx, options) {
   const installRoot = options.installRoot ?? options.binDir;
-  const prefixDir = (0, import_node_path21.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "npx");
-  await (0, import_promises26.mkdir)(prefixDir, { recursive: true });
+  const prefixDir = (0, import_node_path24.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "npx");
+  await (0, import_promises28.mkdir)(prefixDir, { recursive: true });
   await execFileAsync6(options.npmCommand ?? "npm", ["install", "--prefix", prefixDir, "--omit=dev", "--no-audit", "--no-fund", npx.package], {
     env: {
       ...process.env,
@@ -105022,7 +111175,7 @@ async function installNpxDistribution(npx, options) {
     maxBuffer: 1024 * 1024
   });
   const packageBin = await resolvePackageBin(prefixDir, npx.package);
-  const shimPath = (0, import_node_path21.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path24.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, packageBin, options.shimArgs ?? npx.args ?? [], {
     ...npx.env ?? {},
     ...options.shimEnv ?? {}
@@ -105033,18 +111186,18 @@ function pythonPackageNameFromSpec(packageSpec) {
   return packageSpec.split(/[<>=!~\[]/, 1)[0].trim().replace(/_/g, "-");
 }
 async function firstExecutableInDir(binDir, preferredName) {
-  const entries = await (0, import_promises26.readdir)(binDir).catch(() => []);
+  const entries = await (0, import_promises28.readdir)(binDir).catch(() => []);
   const preferred = [
     preferredName,
     preferredName.replace(/-/g, "_"),
-    (0, import_node_path21.basename)(preferredName)
+    (0, import_node_path24.basename)(preferredName)
   ];
   for (const name of [...preferred, ...entries]) {
     if (!entries.includes(name))
       continue;
-    const candidate = (0, import_node_path21.join)(binDir, name);
+    const candidate = (0, import_node_path24.join)(binDir, name);
     try {
-      await (0, import_promises26.access)(candidate);
+      await (0, import_promises28.access)(candidate);
       return candidate;
     } catch {
     }
@@ -105053,10 +111206,10 @@ async function firstExecutableInDir(binDir, preferredName) {
 }
 async function installUvxDistribution(uvx, options) {
   const installRoot = options.installRoot ?? options.binDir;
-  const prefixDir = (0, import_node_path21.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "uvx");
-  const toolDir = (0, import_node_path21.join)(prefixDir, "tools");
-  const toolBinDir = (0, import_node_path21.join)(prefixDir, "bin");
-  await (0, import_promises26.mkdir)(toolBinDir, { recursive: true });
+  const prefixDir = (0, import_node_path24.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "uvx");
+  const toolDir = (0, import_node_path24.join)(prefixDir, "tools");
+  const toolBinDir = (0, import_node_path24.join)(prefixDir, "bin");
+  await (0, import_promises28.mkdir)(toolBinDir, { recursive: true });
   await execFileAsync6("uv", ["tool", "install", "--force", uvx.package], {
     env: {
       ...process.env,
@@ -105068,7 +111221,7 @@ async function installUvxDistribution(uvx, options) {
     maxBuffer: 1024 * 1024
   });
   const packageBin = await firstExecutableInDir(toolBinDir, pythonPackageNameFromSpec(uvx.package));
-  const shimPath = (0, import_node_path21.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path24.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, packageBin, options.shimArgs ?? uvx.args ?? [], {
     ...uvx.env ?? {},
     ...options.shimEnv ?? {}
@@ -105130,22 +111283,22 @@ async function installAcpRegistryAgent(options) {
 async function installManagedAdapter(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const bytes = await fetchBytes(options.downloadUrl, fetchImpl);
-  await (0, import_promises26.mkdir)(options.binDir, { recursive: true });
-  const commandPath = (0, import_node_path21.join)(options.binDir, (0, import_node_path21.basename)(options.command));
-  await (0, import_promises26.writeFile)(commandPath, bytes);
-  await (0, import_promises26.chmod)(commandPath, 493);
+  await (0, import_promises28.mkdir)(options.binDir, { recursive: true });
+  const commandPath = (0, import_node_path24.join)(options.binDir, (0, import_node_path24.basename)(options.command));
+  await (0, import_promises28.writeFile)(commandPath, bytes);
+  await (0, import_promises28.chmod)(commandPath, 493);
   return { commandPath };
 }
 async function uninstallAcpRegistryAgent(options) {
   const installRoot = options.installRoot ?? options.binDir;
-  await (0, import_promises26.rm)((0, import_node_path21.join)(options.binDir, options.shimName), { force: true });
-  await (0, import_promises26.rm)((0, import_node_path21.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
+  await (0, import_promises28.rm)((0, import_node_path24.join)(options.binDir, options.shimName), { force: true });
+  await (0, import_promises28.rm)((0, import_node_path24.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
     recursive: true,
     force: true
   });
 }
 async function uninstallManagedAdapter(options) {
-  await (0, import_promises26.rm)((0, import_node_path21.join)(options.binDir, (0, import_node_path21.basename)(options.command)), { force: true });
+  await (0, import_promises28.rm)((0, import_node_path24.join)(options.binDir, (0, import_node_path24.basename)(options.command)), { force: true });
 }
 
 // ../../apps/local-api/dist/local-acp.js
@@ -105470,7 +111623,7 @@ function normalizeRunPreferences(value) {
 function createLocalHarnessConfigStore(dataDir2) {
   const userConfig = createClashUserConfigStore(dataDir2);
   const legacyStore = createSqliteLocalConfigStore(dataDir2);
-  const legacySidecarPath = (0, import_node_path22.join)(dataDir2, "harnesses.json");
+  const legacySidecarPath = (0, import_node_path25.join)(dataDir2, "harnesses.json");
   let migration = null;
   const ensureMigrated = () => {
     migration ??= (async () => {
@@ -105478,7 +111631,7 @@ function createLocalHarnessConfigStore(dataDir2) {
         return;
       let legacy = null;
       try {
-        legacy = JSON.parse(await (0, import_promises27.readFile)(legacySidecarPath, "utf8"));
+        legacy = JSON.parse(await (0, import_promises29.readFile)(legacySidecarPath, "utf8"));
       } catch {
         legacy = await legacyStore.getJson(LOCAL_HARNESS_CONFIG_KEY);
       }
@@ -105487,7 +111640,7 @@ function createLocalHarnessConfigStore(dataDir2) {
         return;
       await userConfig.setSection("harnesses", migrated);
       await legacyStore.delete(LOCAL_HARNESS_CONFIG_KEY);
-      await (0, import_promises27.unlink)(legacySidecarPath).catch(() => void 0);
+      await (0, import_promises29.unlink)(legacySidecarPath).catch(() => void 0);
     })();
     return migration;
   };
@@ -105705,7 +111858,7 @@ async function geminiAuthPreflight(env) {
       message: "Cannot inspect Gemini auth because HOME is not set."
     };
   }
-  const settings = readJsonObject(await (0, import_promises27.readFile)((0, import_node_path22.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
+  const settings = readJsonObject(await (0, import_promises29.readFile)((0, import_node_path25.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
   const selectedType = nestedString(settings, ["security", "auth", "selectedType"]);
   if (selectedType) {
     return {
@@ -105713,7 +111866,7 @@ async function geminiAuthPreflight(env) {
       message: `Gemini auth method selected: ${selectedType}.`
     };
   }
-  const accounts = readJsonObject(await (0, import_promises27.readFile)((0, import_node_path22.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
+  const accounts = readJsonObject(await (0, import_promises29.readFile)((0, import_node_path25.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
   const activeAccount = nestedString(accounts, ["active"]);
   const hadOldAccounts = Array.isArray(accounts?.old) && accounts.old.length > 0;
   return {
@@ -105756,8 +111909,8 @@ function terminalAuthShellCommand(options) {
   return parts.join(" ");
 }
 function spawnDetachedCommand(command, args, options = {}) {
-  return new Promise((resolve13, reject) => {
-    const child = (0, import_node_child_process9.spawn)(command, args, {
+  return new Promise((resolve14, reject) => {
+    const child = (0, import_node_child_process10.spawn)(command, args, {
       env: {
         ...process.env,
         ...mergedStringEnv2(options.env ?? {})
@@ -105768,7 +111921,7 @@ function spawnDetachedCommand(command, args, options = {}) {
     child.once("error", reject);
     child.once("spawn", () => {
       child.unref();
-      resolve13();
+      resolve14();
     });
   });
 }
@@ -105793,7 +111946,7 @@ async function launchInteractiveAuthCommand(options) {
   if (!terminal) {
     throw new Error(`Interactive auth launch is not supported on ${process.platform}. Run ${[options.command, ...options.args].join(" ")} manually.`);
   }
-  const child = (0, import_node_child_process9.spawn)(terminal, ["-e", "sh", "-lc", shellCommand], {
+  const child = (0, import_node_child_process10.spawn)(terminal, ["-e", "sh", "-lc", shellCommand], {
     detached: true,
     stdio: "ignore"
   });
@@ -105927,7 +112080,7 @@ var LocalAcpRuntimeAdapter = class {
         ...Object.fromEntries(Object.entries(this.spawnEnv).filter((entry) => typeof entry[1] === "string"))
       }
     }));
-    this.createSessionId = options.createSessionId ?? import_node_crypto15.randomUUID;
+    this.createSessionId = options.createSessionId ?? import_node_crypto18.randomUUID;
     this.createSessionManager = options.createSessionManager ?? createDefaultSessionManager;
     this.harnessConfig = options.harnessConfig ?? null;
     this.runPreferences = options.runPreferences ?? null;
@@ -106259,8 +112412,8 @@ var LocalAcpRuntimeAdapter = class {
         ...registryLatestVersion ? { latestVersion: registryLatestVersion } : {}
       };
     }
-    const shimPath = (0, import_node_path22.join)(this.harnessDownloadDir, (0, import_node_path22.basename)(entry.spec.command));
-    const installed = await (0, import_promises27.access)(shimPath).then(() => true, () => false);
+    const shimPath = (0, import_node_path25.join)(this.harnessDownloadDir, (0, import_node_path25.basename)(entry.spec.command));
+    const installed = await (0, import_promises29.access)(shimPath).then(() => true, () => false);
     if (!installed) {
       return {
         installed: false,
@@ -106296,7 +112449,7 @@ var LocalAcpRuntimeAdapter = class {
     if (!this.harnessDownloadDir)
       return void 0;
     try {
-      const packageJson = JSON.parse(await (0, import_promises27.readFile)((0, import_node_path22.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
+      const packageJson = JSON.parse(await (0, import_promises29.readFile)((0, import_node_path25.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
       return typeof packageJson.version === "string" && packageJson.version.length > 0 ? packageJson.version : void 0;
     } catch {
       return void 0;
@@ -106418,7 +112571,7 @@ var LocalAcpRuntimeAdapter = class {
         throw new Error(`${entry.label} is missing an ACP registry id`);
       await installAcpRegistryAgent({
         registryId: entry.registryId,
-        shimName: (0, import_node_path22.basename)(entry.spec.command),
+        shimName: (0, import_node_path25.basename)(entry.spec.command),
         binDir: this.harnessDownloadDir,
         installRoot: this.harnessDownloadDir,
         fetchImpl: this.fetchImpl,
@@ -106468,7 +112621,7 @@ var LocalAcpRuntimeAdapter = class {
         throw new Error(`${entry.label} is missing an ACP registry id`);
       await uninstallAcpRegistryAgent({
         registryId: entry.registryId,
-        shimName: (0, import_node_path22.basename)(entry.spec.command),
+        shimName: (0, import_node_path25.basename)(entry.spec.command),
         binDir: this.harnessDownloadDir,
         installRoot: this.harnessDownloadDir
       });
@@ -106732,8 +112885,8 @@ var LocalAcpRuntimeAdapter = class {
     if (entry.id !== sessionId) {
       return Promise.resolve({ outcome: { outcome: "cancelled" } });
     }
-    const requestId = (0, import_node_crypto15.randomUUID)();
-    return new Promise((resolve13) => {
+    const requestId = (0, import_node_crypto18.randomUUID)();
+    return new Promise((resolve14) => {
       const message = {
         type: "session.permission_request",
         session_id: sessionId,
@@ -106744,7 +112897,7 @@ var LocalAcpRuntimeAdapter = class {
       entry.pendingPermissions.set(requestId, {
         optionIds: new Set(request.options.map((option) => option.optionId)),
         message,
-        resolve: resolve13
+        resolve: resolve14
       });
       for (const client2 of entry.clients)
         sendJson(client2, message);
@@ -106793,7 +112946,7 @@ var LocalAcpRuntimeAdapter = class {
     const entry = this.sessions.get(sessionId);
     if (!entry)
       throw new Error("Local ACP text session failed to start.");
-    const turnId = `text-gen-${(0, import_node_crypto15.randomUUID)().slice(0, 8)}`;
+    const turnId = `text-gen-${(0, import_node_crypto18.randomUUID)().slice(0, 8)}`;
     const chunks = [];
     const prompt = [
       params.systemPrompt ? `System instructions:
@@ -106801,7 +112954,7 @@ ${params.systemPrompt}` : "",
       "Generate only the requested text. Do not edit the canvas or call tools unless strictly required for the text.",
       params.prompt
     ].filter(Boolean).join("\n\n");
-    return await new Promise((resolve13, reject) => {
+    return await new Promise((resolve14, reject) => {
       const timeout = setTimeout(() => {
         cleanup();
         reject(new Error("Local ACP text generation timed out."));
@@ -106825,7 +112978,7 @@ ${params.systemPrompt}` : "",
             reject(new Error("Local ACP text generation returned no text."));
             return;
           }
-          resolve13({ text, sessionId, agentId: params.agentId });
+          resolve14({ text, sessionId, agentId: params.agentId });
         }
       };
       const cleanup = () => {
@@ -107399,11 +113552,13 @@ function attachLocalAcpSessions(server2, adapter) {
 }
 
 // ../../apps/local-api/dist/local-plugin-broker.js
-var import_node_crypto16 = require("node:crypto");
+var import_node_crypto19 = require("node:crypto");
 init_actions_host();
+init_dist2();
 var CREDENTIAL_HEADER_NAMES = /* @__PURE__ */ new Set([
   "authorization",
   "api-key",
+  "token",
   "x-api-key",
   "xi-api-key",
   "x-goog-api-key"
@@ -107427,6 +113582,9 @@ function authorizationHeaders(providerId, credentials) {
     return { authorization: `Token ${apiKey}` };
   if (providerId === "elevenlabs")
     return { "xi-api-key": apiKey };
+  if (providerId === "hilo-hub") {
+    return { authorization: `Bearer ${apiKey}`, token: apiKey };
+  }
   if (providerId === "google" || providerId === "google-ai-studio") {
     return { "x-goog-api-key": apiKey };
   }
@@ -107484,7 +113642,7 @@ function requestTarget(operation) {
 function createLocalExecutablePluginBroker(options) {
   const credentialCapabilities = /* @__PURE__ */ new Map();
   const now = options.now ?? Date.now;
-  const credentialHandleTtlMs = options.credentialHandleTtlMs ?? 15 * 6e4;
+  const credentialHandleTtlMs = options.credentialHandleTtlMs ?? 30 * 6e4;
   const brokerFetch = options.fetch ?? fetch;
   return async (request, context) => {
     const target = requestTarget(request.operation);
@@ -107522,7 +113680,7 @@ function createLocalExecutablePluginBroker(options) {
         if (!account?.credentials) {
           throw new Error(`No enabled provider account satisfies ${operation.secretId}.`);
         }
-        const handle = `clash-secret://${(0, import_node_crypto16.randomUUID)()}`;
+        const handle = `clash-secret://${(0, import_node_crypto19.randomUUID)()}`;
         credentialCapabilities.set(handle, {
           invocationId: request.invocationId,
           pluginId: context.manifest.id,
@@ -107547,7 +113705,13 @@ function createLocalExecutablePluginBroker(options) {
         }
         const headers2 = safeRequestHeaders(operation.headers, credential);
         const body = operation.body === void 0 ? void 0 : typeof operation.body === "string" ? operation.body : JSON.stringify(operation.body);
-        const response = await brokerFetch(operation.url, {
+        const trafficFetch = options.providerTrafficFetch?.({
+          pluginId: context.manifest.id,
+          pluginVersion: context.manifest.version,
+          ...credential?.providerId ? { providerId: credential.providerId } : {},
+          ...credential?.accountId ? { accountId: credential.accountId } : {}
+        });
+        const response = await (trafficFetch ?? brokerFetch)(operation.url, {
           method: operation.method,
           headers: headers2,
           ...body !== void 0 ? { body } : {},
@@ -107568,13 +113732,13 @@ function createLocalExecutablePluginBroker(options) {
         if (asset.kind !== operation.asset.kind) {
           throw new Error(`Asset ${operation.asset.assetId} kind ${asset.kind} does not match ${operation.asset.kind}.`);
         }
-        result = {
-          handle: `clash-plugin-asset://${(0, import_node_crypto16.randomUUID)()}`,
+        result = ExecutablePluginAssetReadResultSchema.parse({
+          handle: `clash-plugin-asset://${(0, import_node_crypto19.randomUUID)()}`,
           kind: asset.kind,
           ...asset.mediaType ? { mediaType: asset.mediaType } : {},
           byteLength: asset.bytes.byteLength,
           dataBase64: Buffer.from(asset.bytes).toString("base64")
-        };
+        });
       } else if (operation.kind === "asset.write") {
         if (!options.writeAsset)
           throw new Error("Local asset write broker is unavailable.");
@@ -107641,10 +113805,10 @@ function createLocalExecutablePluginBroker(options) {
 }
 
 // ../../apps/local-api/dist/remotion-timeline-renderer.js
-var import_promises28 = require("node:fs/promises");
-var import_node_os7 = require("node:os");
-var import_node_path23 = require("node:path");
-var import_promises29 = require("node:fs/promises");
+var import_promises30 = require("node:fs/promises");
+var import_node_os8 = require("node:os");
+var import_node_path26 = require("node:path");
+var import_promises31 = require("node:fs/promises");
 function positiveNumber(value, fallback, label) {
   const candidate = value === void 0 ? fallback : value;
   if (typeof candidate !== "number" || !Number.isFinite(candidate) || candidate <= 0) {
@@ -107676,9 +113840,9 @@ function createRemotionTimelineRenderer(options) {
   const render = (request) => {
     const current = queue.then(async () => {
       const inputProps = renderInput(request.timelineDsl);
-      const outputDir = await (0, import_promises29.mkdtemp)((0, import_node_path23.join)((0, import_node_os7.tmpdir)(), "clash-timeline-render-"));
+      const outputDir = await (0, import_promises31.mkdtemp)((0, import_node_path26.join)((0, import_node_os8.tmpdir)(), "clash-timeline-render-"));
       options.onRenderDirectory?.(outputDir);
-      const outputPath = (0, import_node_path23.join)(outputDir, `${safeTaskSegment(request.taskId)}.mp4`);
+      const outputPath = (0, import_node_path26.join)(outputDir, `${safeTaskSegment(request.taskId)}.mp4`);
       try {
         const [serveUrl, renderer] = await Promise.all([
           serveUrlPromise ??= options.resolveServeUrl(),
@@ -107697,7 +113861,7 @@ function createRemotionTimelineRenderer(options) {
           inputProps
         });
         return {
-          bytes: await (0, import_promises28.readFile)(outputPath),
+          bytes: await (0, import_promises30.readFile)(outputPath),
           contentType: "video/mp4",
           width: inputProps.compositionWidth,
           height: inputProps.compositionHeight,
@@ -107709,7 +113873,7 @@ function createRemotionTimelineRenderer(options) {
           cause: error51
         });
       } finally {
-        await (0, import_promises28.rm)(outputDir, { recursive: true, force: true });
+        await (0, import_promises30.rm)(outputDir, { recursive: true, force: true });
       }
     });
     queue = current.then(() => void 0, () => void 0);
@@ -107719,10 +113883,10 @@ function createRemotionTimelineRenderer(options) {
 }
 
 // ../../apps/local-api/dist/director-stage-renderer.js
-var import_node_crypto17 = require("node:crypto");
+var import_node_crypto20 = require("node:crypto");
 var import_node_http = require("node:http");
-var import_promises30 = require("node:fs/promises");
-var import_node_path24 = require("node:path");
+var import_promises32 = require("node:fs/promises");
+var import_node_path27 = require("node:path");
 init_dist2();
 var MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -107735,7 +113899,7 @@ var MIME_TYPES = {
   ".wasm": "application/wasm"
 };
 function sha256(value) {
-  return (0, import_node_crypto17.createHash)("sha256").update(value).digest("hex");
+  return (0, import_node_crypto20.createHash)("sha256").update(value).digest("hex");
 }
 function validatedRequest(input) {
   const state = DirectorStageStateSchema.parse(input.state);
@@ -107762,24 +113926,24 @@ function validatedRequest(input) {
   return { ...input, state, frames };
 }
 async function startBundleServer(bundleDir) {
-  const bundleRoot = (0, import_node_path24.resolve)(bundleDir);
-  const staticRoot = (0, import_node_path24.dirname)(bundleRoot);
-  if (!(await (0, import_promises30.stat)((0, import_node_path24.resolve)(bundleRoot, "index.html"))).isFile()) {
+  const bundleRoot = (0, import_node_path27.resolve)(bundleDir);
+  const staticRoot = (0, import_node_path27.dirname)(bundleRoot);
+  if (!(await (0, import_promises32.stat)((0, import_node_path27.resolve)(bundleRoot, "index.html"))).isFile()) {
     throw new Error(`Packaged Director renderer is missing index.html: ${bundleRoot}`);
   }
   const server2 = (0, import_node_http.createServer)(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url ?? "/", "http://127.0.0.1").pathname);
       const requestedPath = pathname === "/" ? "/director-bundle/index.html" : pathname;
-      const filePath = (0, import_node_path24.resolve)(staticRoot, `.${requestedPath}`);
-      const outside = (0, import_node_path24.relative)(staticRoot, filePath);
-      if (outside === ".." || outside.startsWith(`..${import_node_path24.sep}`)) {
+      const filePath = (0, import_node_path27.resolve)(staticRoot, `.${requestedPath}`);
+      const outside = (0, import_node_path27.relative)(staticRoot, filePath);
+      if (outside === ".." || outside.startsWith(`..${import_node_path27.sep}`)) {
         response.writeHead(403).end("forbidden");
         return;
       }
-      const content = await (0, import_promises30.readFile)(filePath);
+      const content = await (0, import_promises32.readFile)(filePath);
       response.writeHead(200, {
-        "content-type": MIME_TYPES[(0, import_node_path24.extname)(filePath).toLowerCase()] ?? "application/octet-stream",
+        "content-type": MIME_TYPES[(0, import_node_path27.extname)(filePath).toLowerCase()] ?? "application/octet-stream",
         "cache-control": "no-store"
       });
       response.end(content);
@@ -107909,15 +114073,15 @@ function resolveClashCliEntry(env) {
   return (0, import_node_module5.createRequire)(__clash_import_meta_url).resolve("@clash-space/cli");
 }
 function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl: apiBaseUrl2, env = process.env }) {
-  const localDataDir = (0, import_node_path25.resolve)(dataDir2);
+  const localDataDir = (0, import_node_path28.resolve)(dataDir2);
   const clashHome = clashHomeForLocalDataDir(localDataDir);
   const profile = resolveClashProfile(env);
-  const binDir = (0, import_node_path25.join)(localDataDir, "agent-bin");
-  (0, import_node_fs7.mkdirSync)(binDir, { recursive: true });
+  const binDir = (0, import_node_path28.join)(localDataDir, "agent-bin");
+  (0, import_node_fs8.mkdirSync)(binDir, { recursive: true });
   const apiUrl2 = apiBaseUrl2;
   const cliEntry = resolveClashCliEntry(env);
-  const shim = (0, import_node_path25.join)(binDir, "clash");
-  (0, import_node_fs7.writeFileSync)(shim, [
+  const shim = (0, import_node_path28.join)(binDir, "clash");
+  (0, import_node_fs8.writeFileSync)(shim, [
     "#!/bin/sh",
     `export CLASH_API_URL=${shellQuote3(apiUrl2)}`,
     `export CLASH_HOME=${shellQuote3(clashHome)}`,
@@ -107937,7 +114101,7 @@ function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl: apiBaseUrl2, e
     `exec ${shellQuote3(process.execPath)} ${shellQuote3(cliEntry)} "$@"`,
     ""
   ].join("\n"), "utf8");
-  (0, import_node_fs7.chmodSync)(shim, 493);
+  (0, import_node_fs8.chmodSync)(shim, 493);
   return {
     CLASH_API_URL: apiUrl2,
     CLASH_HOME: clashHome,
@@ -107946,7 +114110,7 @@ function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl: apiBaseUrl2, e
     ...env.CLASH_NODE_EXEC_PATH ? { CLASH_NODE_EXEC_PATH: env.CLASH_NODE_EXEC_PATH } : {},
     ...env.CLASH_CLI_ENTRY_PATH ? { CLASH_CLI_ENTRY_PATH: env.CLASH_CLI_ENTRY_PATH } : {},
     ...env.CLASH_CLI_NODE_PATH ? { CLASH_CLI_NODE_PATH: env.CLASH_CLI_NODE_PATH } : {},
-    PATH: [binDir, env.PATH].filter(Boolean).join(import_node_path25.delimiter)
+    PATH: [binDir, env.PATH].filter(Boolean).join(import_node_path28.delimiter)
   };
 }
 function createMockCanvasPatch(turnId, text) {
@@ -108098,7 +114262,7 @@ function createMockMissingReadProofPatch(turnId) {
 function createMockAcpSessionManager(send) {
   const delayMs = Number(process.env.CLASH_E2E_STUB_ACP_DELAY_MS ?? "0");
   const promptDelayMs = Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
-  const waitForPromptDelay = () => promptDelayMs > 0 ? new Promise((resolve13) => setTimeout(resolve13, promptDelayMs)) : Promise.resolve();
+  const waitForPromptDelay = () => promptDelayMs > 0 ? new Promise((resolve14) => setTimeout(resolve14, promptDelayMs)) : Promise.resolve();
   return {
     start: ({ session_id }) => {
       send({
@@ -108208,7 +114372,7 @@ function createMockAcpSessionManager(send) {
   };
 }
 function withMockHarnessUpdateFixture(adapter, localDataDir) {
-  const readyPath = (0, import_node_path25.join)(localDataDir, ".e2e-harness-update-ready");
+  const readyPath = (0, import_node_path28.join)(localDataDir, ".e2e-harness-update-ready");
   const listHarnesses = adapter.listHarnesses.bind(adapter);
   const getSessionRuntimeStatus = adapter.getSessionRuntimeStatus.bind(adapter);
   const restartSession = adapter.restartSession.bind(adapter);
@@ -108216,7 +114380,7 @@ function withMockHarnessUpdateFixture(adapter, localDataDir) {
   let restarted = false;
   adapter.listHarnesses = async (options) => {
     const result = await listHarnesses(options);
-    if (!(0, import_node_fs7.existsSync)(readyPath))
+    if (!(0, import_node_fs8.existsSync)(readyPath))
       return result;
     const mock = result.harnesses.find((harness) => harness.id === "mock-acp");
     if (!mock)
@@ -108280,14 +114444,14 @@ function createConfiguredLocalAcpAdapter(env = process.env, options = {}) {
     });
     return env.CLASH_E2E_STUB_HARNESS_UPDATE === "1" ? withMockHarnessUpdateFixture(adapter, localDataDir) : adapter;
   }
-  const harnessDownloadDir = (0, import_node_path25.join)(localDataDir, "acp-bin");
+  const harnessDownloadDir = (0, import_node_path28.join)(localDataDir, "acp-bin");
   const acpBinDir = env.CLASH_ACP_TEST_BIN_DIR || harnessDownloadDir;
   return createLocalAcpAdapter({
     harnessConfig: createLocalHarnessConfigStore(localDataDir),
     runPreferences: createLocalAcpRunPreferencesStore(localDataDir),
     capabilityCache: createLocalAcpCapabilityCacheStore(localDataDir),
     harnessDownloadDir,
-    probeCwd: (0, import_node_path25.join)(localDataDir, "acp-probe"),
+    probeCwd: (0, import_node_path28.join)(localDataDir, "acp-probe"),
     spawnEnv: {
       ...createLocalAgentToolEnv({
         dataDir: localDataDir,
@@ -108306,7 +114470,7 @@ async function loadLocalProviderAccounts(dataDir2, userId = "local-user") {
   ]);
   return providerAccountsForRuntime(providerAccounts, userId, providerOAuth);
 }
-async function loadLocalModelCards(dataDir2, userId = "local-user", pluginCards = []) {
+async function loadLocalModelCards(dataDir2, userId = "local-user", pluginCards = [], pluginModelBindings = []) {
   const store = createLocalProviderStore(dataDir2);
   const [providerAccounts, providerOAuth, modelCardConfigs] = await Promise.all([
     store.loadProviderAccounts(),
@@ -108317,16 +114481,53 @@ async function loadLocalModelCards(dataDir2, userId = "local-user", pluginCards 
   return buildEffectiveModelCards({
     configs: modelCardConfigs.filter((config2) => (config2.userId ?? userId) === userId).map(({ userId: _userId, ...config2 }) => config2),
     providers,
-    baseModels: composeExecutablePluginModelCards(MODEL_CARDS, pluginCards)
+    baseModels: composeExecutablePluginModelCards(MODEL_CARDS, pluginCards, pluginModelBindings)
   });
+}
+function createPluginBrokerTrafficFetch(options) {
+  let recorder;
+  return (context) => async (input, init) => {
+    recorder ??= createJsonlProviderTestRecorder(options.recordingPath);
+    const providerId = context.providerId ?? context.pluginId;
+    const recording = createProviderTestRecordingFetch({
+      fetch: options.fetch,
+      recorder: await recorder,
+      stub: {
+        id: [context.pluginId, context.pluginVersion, providerId, context.accountId ?? ""].join(":"),
+        providerId,
+        upstreamId: providerId,
+        modelId: context.pluginId,
+        modelName: context.pluginId,
+        shape: "image",
+        apiShape: providerId,
+        requiredCredentials: [],
+        requiredOAuth: [],
+        input: { shape: "image", model: context.pluginId, prompt: "" }
+      }
+    });
+    return recording(input, init);
+  };
 }
 function createLocalPluginBrokerServices(options) {
   const providerStore = createLocalProviderStore(options.dataDir);
   const metadataStore = createLocalMetadataStore(options.dataDir);
   const clashRoot = clashHomeForLocalDataDir(options.dataDir);
   return createLocalExecutablePluginBroker({
-    loadProviderAccounts: () => providerStore.loadProviderAccounts(),
+    ...options.credentialHandleTtlMs !== void 0 ? { credentialHandleTtlMs: options.credentialHandleTtlMs } : {},
+    loadProviderAccounts: async () => {
+      const [accounts, oauthRecords] = await Promise.all([
+        providerStore.loadProviderAccounts(),
+        providerStore.loadProviderOAuth()
+      ]);
+      return providerAccountsForRuntime(accounts, "local-user", oauthRecords);
+    },
     ...options.fetch ? { fetch: options.fetch } : {},
+    ...options.providerTrafficRecordingPath ? {
+      providerTrafficFetch: createPluginBrokerTrafficFetch({
+        recordingPath: options.providerTrafficRecordingPath,
+        fetch: options.fetch ?? fetch
+      })
+    } : {},
     generateCodexImage: createCodexImageGenerator(),
     readAsset: async ({ assetId, projectId }) => {
       const metadata = await metadataStore.load();
@@ -108335,7 +114536,7 @@ function createLocalPluginBrokerServices(options) {
       if (!asset?.srcR2Key) {
         throw new Error(`Asset ${assetId} is not available in project ${projectId}.`);
       }
-      const bytes = await (0, import_promises31.readFile)(await assetPathForRead(options.dataDir, asset.srcR2Key, clashRoot));
+      const bytes = await (0, import_promises33.readFile)(await assetPathForRead(options.dataDir, asset.srcR2Key, clashRoot));
       const metadataRecord = asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata) ? asset.metadata : {};
       return {
         kind: asset.kind,
@@ -108344,7 +114545,7 @@ function createLocalPluginBrokerServices(options) {
       };
     },
     writeAsset: async ({ pluginId, pluginVersion, projectId, invocationId, taskId, slot, kind, mediaType, bytes }) => {
-      const contentHash = (0, import_node_crypto18.createHash)("sha256").update(bytes).digest("hex");
+      const contentHash = (0, import_node_crypto21.createHash)("sha256").update(bytes).digest("hex");
       const safe = (value) => value.replace(/[^a-zA-Z0-9._-]/g, "-");
       const extension2 = mediaType === "image/jpeg" ? "jpg" : mediaType === "image/webp" ? "webp" : mediaType === "video/mp4" ? "mp4" : mediaType === "audio/mpeg" ? "mp3" : mediaType === "audio/wav" ? "wav" : kind === "video" ? "mp4" : kind === "audio" ? "mp3" : kind === "model" ? "bin" : "png";
       const assetId = [
@@ -108359,7 +114560,7 @@ function createLocalPluginBrokerServices(options) {
         "plugins",
         `${assetId}.${extension2}`
       ].join("/");
-      await (0, import_promises31.writeFile)(await assetPathForWrite(options.dataDir, storageKey, clashRoot), bytes);
+      await (0, import_promises33.writeFile)(await assetPathForWrite(options.dataDir, storageKey, clashRoot), bytes);
       const at = Math.floor(Date.now() / 1e3);
       await metadataStore.upsertAsset({
         id: assetId,
@@ -108392,7 +114593,7 @@ function createLocalPluginBrokerServices(options) {
       };
     },
     audit: (record2) => metadataStore.appendPluginBrokerAudit({
-      id: (0, import_node_crypto18.randomUUID)(),
+      id: (0, import_node_crypto21.randomUUID)(),
       ...record2
     })
   });
@@ -108400,17 +114601,23 @@ function createLocalPluginBrokerServices(options) {
 function startLocalApiServer(options) {
   const clashHome = clashHomeForLocalDataDir(options.dataDir);
   const discoveryEnabled = options.discovery?.enabled !== false;
-  const pendingDiscoveryHostId = discoveryEnabled ? (0, import_node_crypto18.randomUUID)() : void 0;
+  const pendingDiscoveryHostId = discoveryEnabled ? (0, import_node_crypto21.randomUUID)() : void 0;
   const discoveryProfile = resolveClashProfile(process.env);
   const codexImagegenMarketplace = createCodexImagegenMarketplace({
-    actionsRoot: (0, import_node_path25.join)(clashHome, "actions")
+    actionsRoot: (0, import_node_path28.join)(clashHome, "actions")
   });
   const providerStore = createLocalProviderStore(options.dataDir);
-  const pluginBroker = createLocalPluginBrokerServices({ dataDir: options.dataDir });
-  const pluginBrokerToken = `${(0, import_node_crypto18.randomUUID)()}${(0, import_node_crypto18.randomUUID)()}`;
+  const pluginBrokerRecordingPath = process.env.CLASH_PROVIDER_TRAFFIC_RECORDING_PATH?.trim();
+  const configuredCredentialTtlMinutes = Number(process.env.CLASH_PLUGIN_CREDENTIAL_TTL_MINUTES?.trim());
+  const pluginBroker = createLocalPluginBrokerServices({
+    dataDir: options.dataDir,
+    ...pluginBrokerRecordingPath ? { providerTrafficRecordingPath: pluginBrokerRecordingPath } : {},
+    ...Number.isFinite(configuredCredentialTtlMinutes) && configuredCredentialTtlMinutes > 0 ? { credentialHandleTtlMs: configuredCredentialTtlMinutes * 6e4 } : {}
+  });
+  const pluginBrokerToken = `${(0, import_node_crypto21.randomUUID)()}${(0, import_node_crypto21.randomUUID)()}`;
   let bundledPluginError;
   const bundledPluginsReady = ensureBundledFirstPartyMediaPlugin({
-    actionsRoot: (0, import_node_path25.join)(clashHome, "actions")
+    actionsRoot: (0, import_node_path28.join)(clashHome, "actions")
   }).catch((error51) => {
     bundledPluginError = error51;
     console.error("[local-api] bundled executable plugin seed degraded:", error51 instanceof Error ? error51.message : String(error51));
@@ -108419,6 +114626,7 @@ function startLocalApiServer(options) {
     socketPath: pluginHostSocketPath(process.env, clashHome)
   });
   const bridgeProjector = createBridgeProviderPluginProjector({ client: pluginHostClient });
+  const bridgeProviderExecutor = createBridgeProviderPluginExecutor({ client: pluginHostClient });
   const bridgeExecutablePluginAction = createBridgeExecutablePluginActionInvoker({
     client: pluginHostClient
   });
@@ -108432,7 +114640,7 @@ function startLocalApiServer(options) {
       serverUrl: `http://127.0.0.1:${options.port}`,
       apiKey: "",
       runtimeId: "local-api",
-      actionsRoot: (0, import_node_path25.join)(clashHome, "actions"),
+      actionsRoot: (0, import_node_path28.join)(clashHome, "actions"),
       executablePluginsOnly: true,
       pluginBroker
     });
@@ -108454,6 +114662,10 @@ function startLocalApiServer(options) {
     await ensurePluginRuntime();
     return bridgeProjector(request);
   };
+  const providerPluginExecutor = async (request) => {
+    await ensurePluginRuntime();
+    return bridgeProviderExecutor(request);
+  };
   const executablePluginAction = async (request) => {
     await ensurePluginRuntime();
     return bridgeExecutablePluginAction(request);
@@ -108462,7 +114674,15 @@ function startLocalApiServer(options) {
     await ensurePluginRuntime();
     return pluginHostClient.listCards();
   };
-  const discoveryRunDir = options.discovery?.runDir ?? (0, import_node_path25.join)(clashHome, "run");
+  const listPluginProviders = async () => {
+    await ensurePluginRuntime();
+    return pluginHostClient.listProviders();
+  };
+  const listPluginModelBindings = async () => {
+    await ensurePluginRuntime();
+    return pluginHostClient.listModelBindings();
+  };
+  const discoveryRunDir = options.discovery?.runDir ?? (0, import_node_path28.join)(clashHome, "run");
   const localAcp = options.localAcp ?? createConfiguredLocalAcpAdapter(process.env, {
     apiBaseUrl: `http://127.0.0.1:${options.port}`,
     dataDir: options.dataDir
@@ -108564,12 +114784,15 @@ function startLocalApiServer(options) {
       return pluginHostClient.resolveBinding(pluginId, exportId, kind);
     },
     listPluginCards,
-    directorStageRenderer: options.directorStageRenderer
+    directorStageRenderer: options.directorStageRenderer,
+    listPluginModelBindings,
+    listPluginProviders
   });
+  let boundPort = options.port || void 0;
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
-    mediaBaseUrl: `http://127.0.0.1:${options.port}`,
-    modelCards: async () => loadLocalModelCards(options.dataDir, "local-user", await listPluginCards()),
+    mediaBaseUrl: resolveMediaBaseUrl(() => boundPort),
+    modelCards: async () => loadLocalModelCards(options.dataDir, "local-user", await listPluginCards(), await listPluginModelBindings()),
     executablePluginAction,
     timelineRenderer: options.timelineRenderer,
     textAgent: localAcp.runTextTask ? {
@@ -108592,7 +114815,7 @@ function startLocalApiServer(options) {
       fal: falMock2,
       origin: `http://127.0.0.1:${options.port}`,
       providerAccounts: () => loadLocalProviderAccounts(options.dataDir),
-      modelCards: async () => loadLocalModelCards(options.dataDir, "local-user", await listPluginCards()),
+      modelCards: async () => loadLocalModelCards(options.dataDir, "local-user", await listPluginCards(), await listPluginModelBindings()),
       openAiBaseUrl: process.env.OPENAI_BASE_URL,
       anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
       falQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
@@ -108603,6 +114826,7 @@ function startLocalApiServer(options) {
       providerUsageAudit: (event) => providerStore.appendProviderUsageEvent(event),
       providerTraffic,
       providerPluginProjector,
+      providerPluginExecutor,
       dreaminaRun,
       localTts
     })
@@ -108611,13 +114835,14 @@ function startLocalApiServer(options) {
   let resolveListening;
   let rejectListening;
   let settled = false;
-  const listening = new Promise((resolve13, reject) => {
-    resolveListening = resolve13;
+  const listening = new Promise((resolve14, reject) => {
+    resolveListening = resolve14;
     rejectListening = reject;
   });
   let publishedDiscoveryHostId;
   const server2 = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: options.port }, (info) => {
     settled = true;
+    boundPort = info.port;
     localAcp.updateSpawnEnv(createLocalAgentToolEnv({
       dataDir: options.dataDir,
       apiBaseUrl: `http://127.0.0.1:${info.port}`,
@@ -108667,7 +114892,7 @@ async function writeServerDiscoveryRecord(actualPort, options, runDir, pluginBro
   const record2 = createHostDiscoveryRecord({
     hostId,
     endpoint: `http://127.0.0.1:${actualPort}`,
-    agentCliPath: (0, import_node_path25.join)(options.dataDir, "agent-bin", "clash"),
+    agentCliPath: (0, import_node_path28.join)(options.dataDir, "agent-bin", "clash"),
     launchMode: options.discovery?.launchMode ?? "cli-once",
     startedBy: options.discovery?.startedBy ?? "cli",
     ownerClientId: options.discovery?.ownerClientId,
@@ -108730,7 +114955,7 @@ async function main() {
   const startedBy = process.env.CLASH_DAEMON_STARTED_BY === "cli" ? "cli" : "plugin";
   const dataDir2 = defaultLocalApiDataDir(process.env);
   const remotionBundle = process.env.CLASH_REMOTION_BUNDLE_PATH?.trim() || (0, import_node_url4.fileURLToPath)(new URL("./remotion-bundle", __clash_import_meta_url));
-  if (!(0, import_node_fs8.existsSync)(remotionBundle)) {
+  if (!(0, import_node_fs9.existsSync)(remotionBundle)) {
     throw new Error(`Packaged Remotion bundle is missing: ${remotionBundle}`);
   }
   const timelineRenderer = createRemotionTimelineRenderer({
@@ -108744,7 +114969,7 @@ async function main() {
     }
   });
   const directorBundle = process.env.CLASH_DIRECTOR_BUNDLE_PATH?.trim() || (0, import_node_url4.fileURLToPath)(new URL("./director-bundle", __clash_import_meta_url));
-  if (!(0, import_node_fs8.existsSync)(directorBundle)) {
+  if (!(0, import_node_fs9.existsSync)(directorBundle)) {
     throw new Error(`Packaged Director bundle is missing: ${directorBundle}`);
   }
   const directorStageRenderer = createHeadlessDirectorStageRenderer({
@@ -108757,7 +114982,7 @@ async function main() {
       });
     }
   });
-  const runDir = process.env.CLASH_HOST_RUN_DIR?.trim() || (0, import_node_path26.join)(clashHomeForLocalDataDir(dataDir2), "run");
+  const runDir = process.env.CLASH_HOST_RUN_DIR?.trim() || (0, import_node_path29.join)(clashHomeForLocalDataDir(dataDir2), "run");
   server = await startLocalApiServer({
     port: Number(process.env.PORT ?? 0),
     dataDir: dataDir2,

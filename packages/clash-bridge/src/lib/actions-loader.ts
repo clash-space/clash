@@ -43,7 +43,8 @@ import { createHash } from "node:crypto";
 import { deepStrictEqual } from "node:assert";
 import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, watch, type FSWatcher, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, delimiter, relative } from "node:path";
+import { tmpdir } from "node:os";
 import {
   ExecutablePluginActivationReceiptSchema,
   ExecutablePluginManifestSchema,
@@ -54,9 +55,14 @@ import {
   type ExecutablePluginManifest,
   type ExecutablePluginBinding,
   type ExecutablePluginCardRegistration,
+  type ExecutablePluginProviderRegistration,
+  type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginActivationReceipt,
   type ExecutablePluginCardDocument,
+  type ExecutablePluginProviderDocument,
+  type ExecutablePluginModelBindingDocument,
   type ExecutablePluginContractTestDocument,
+  resolvePluginLanguage,
 } from "@clash/shared-types";
 import { paths } from "./platform.js";
 import {
@@ -175,13 +181,21 @@ function hostedEntrypoint(manifest: HostedActionManifest): string {
 interface HostedActionPackage {
   manifest: HostedActionManifest;
   cards: Record<string, ExecutablePluginCardDocument>;
+  providers: Record<string, ExecutablePluginProviderDocument>;
+  modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
   contractTests: Record<string, ExecutablePluginContractTestDocument>;
 }
 
 async function readHostedPackage(dir: string): Promise<HostedActionPackage> {
   const raw = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8")) as Record<string, unknown>;
   if (raw.apiVersion !== "clash.plugin/v1") {
-    return { manifest: raw as unknown as ActionManifest, cards: {}, contractTests: {} };
+    return {
+      manifest: raw as unknown as ActionManifest,
+      cards: {},
+      providers: {},
+      modelBindings: {},
+      contractTests: {},
+    };
   }
 
   const manifest = ExecutablePluginManifestSchema.parse(raw);
@@ -192,11 +206,22 @@ async function readHostedPackage(dir: string): Promise<HostedActionPackage> {
   for (const card of manifest.exports.cards) {
     cards[card.path] = JSON.parse(await readFile(join(dir, card.path), "utf8"));
   }
+  const providers: Record<string, unknown> = {};
+  for (const provider of manifest.exports.providers) {
+    providers[provider.path] = JSON.parse(await readFile(join(dir, provider.path), "utf8"));
+  }
+  const modelBindings: Record<string, unknown> = {};
+  for (const binding of manifest.exports.modelBindings) {
+    modelBindings[binding.path] = JSON.parse(await readFile(join(dir, binding.path), "utf8"));
+  }
   const contractTests: Record<string, unknown> = {};
   for (const path of manifest.contractTests) {
     contractTests[path] = JSON.parse(await readFile(join(dir, path), "utf8"));
   }
-  return validateExecutablePluginPackage(manifest, cards, contractTests);
+  return validateExecutablePluginPackage(manifest, cards, contractTests, {
+    providers,
+    modelBindings,
+  });
 }
 
 function canonicalJson(value: unknown): string {
@@ -213,6 +238,8 @@ function canonicalJson(value: unknown): string {
 function executablePluginSchemaHash(
   manifest: ExecutablePluginManifest,
   cards: Record<string, ExecutablePluginCardDocument>,
+  providers: Record<string, ExecutablePluginProviderDocument> = {},
+  modelBindings: Record<string, ExecutablePluginModelBindingDocument> = {},
 ): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(canonicalJson({
     apiVersion: manifest.apiVersion,
@@ -221,6 +248,8 @@ function executablePluginSchemaHash(
     exports: manifest.exports,
     permissions: manifest.permissions,
     cards,
+    providers,
+    modelBindings,
   })).digest("hex")}`;
 }
 
@@ -282,7 +311,12 @@ export async function createExecutablePluginActivationReceipt(
     apiVersion: "clash.plugin.activation/v1",
     pluginId: hostedPackage.manifest.id,
     version: hostedPackage.manifest.version,
-    schemaHash: executablePluginSchemaHash(hostedPackage.manifest, hostedPackage.cards),
+    schemaHash: executablePluginSchemaHash(
+      hostedPackage.manifest,
+      hostedPackage.cards,
+      hostedPackage.providers,
+      hostedPackage.modelBindings,
+    ),
     contentHash: await executablePluginDirectoryContentHash(pluginDir),
     activatedAt: new Date().toISOString(),
   });
@@ -293,6 +327,8 @@ async function verifyExecutablePluginActivation(
   pluginDir: string,
   manifest: ExecutablePluginManifest,
   cards: Record<string, ExecutablePluginCardDocument>,
+  providers: Record<string, ExecutablePluginProviderDocument>,
+  modelBindings: Record<string, ExecutablePluginModelBindingDocument>,
 ): Promise<void> {
   const receiptFile = executablePluginActivationReceiptPath(actionsRoot, manifest.id);
   let receipt: ExecutablePluginActivationReceipt;
@@ -306,7 +342,7 @@ async function verifyExecutablePluginActivation(
         + `${(error as Error).message}`,
     );
   }
-  const schemaHash = executablePluginSchemaHash(manifest, cards);
+  const schemaHash = executablePluginSchemaHash(manifest, cards, providers, modelBindings);
   const contentHash = await executablePluginDirectoryContentHash(pluginDir);
   if (receipt.pluginId !== manifest.id
     || receipt.version !== manifest.version
@@ -324,6 +360,8 @@ interface LoadedAction {
   /** Absolute path to the action's directory. */
   dir: string;
   cards: Record<string, ExecutablePluginCardDocument>;
+  providers: Record<string, ExecutablePluginProviderDocument>;
+  modelBindings: Record<string, ExecutablePluginModelBindingDocument>;
   schemaHash?: `sha256:${string}`;
 }
 
@@ -431,7 +469,7 @@ export class ActionsHost {
       process.stderr.write(`actions: ${dirName}: invalid manifest.json (${(e as Error).message}) — skipping\n`);
       return "skipped";
     }
-    const { manifest, cards } = hostedPackage;
+    const { manifest, cards, providers, modelBindings } = hostedPackage;
     if (this.env.executablePluginsOnly && !isExecutablePluginManifest(manifest)) {
       return "ignored";
     }
@@ -446,7 +484,14 @@ export class ActionsHost {
     }
     if (isExecutablePluginManifest(manifest)) {
       try {
-        await verifyExecutablePluginActivation(this.root, dir, manifest, cards);
+        await verifyExecutablePluginActivation(
+          this.root,
+          dir,
+          manifest,
+          cards,
+          providers,
+          modelBindings,
+        );
       } catch (error) {
         process.stderr.write(`actions: ${manifest.id}: ${(error as Error).message} — skipping\n`);
         return "skipped";
@@ -477,8 +522,10 @@ export class ActionsHost {
       manifest,
       dir,
       cards,
+      providers,
+      modelBindings,
       ...(isExecutablePluginManifest(manifest)
-        ? { schemaHash: executablePluginSchemaHash(manifest, cards) }
+        ? { schemaHash: executablePluginSchemaHash(manifest, cards, providers, modelBindings) }
         : {}),
     };
     const supervised: SupervisedAction = {
@@ -575,11 +622,59 @@ export class ActionsHost {
     );
   }
 
+  /** Activated Provider definitions, independent from the Model Card catalog. */
+  listProviders(): ExecutablePluginProviderRegistration[] {
+    const registrations: ExecutablePluginProviderRegistration[] = [];
+    for (const supervised of this.actions.values()) {
+      const { manifest, providers, schemaHash } = supervised.loaded;
+      if (!isExecutablePluginManifest(manifest) || !supervised.session || !schemaHash) continue;
+      for (const document of Object.values(providers)) {
+        registrations.push({
+          pluginId: manifest.id,
+          version: manifest.version,
+          schemaHash,
+          runtime: manifest.runtime,
+          permissions: manifest.permissions,
+          document,
+        });
+      }
+    }
+    return registrations.sort((left, right) =>
+      `${left.pluginId}:${left.document.spec.id}`.localeCompare(
+        `${right.pluginId}:${right.document.spec.id}`,
+      ),
+    );
+  }
+
+  /** Activated provider-side implementations that attach to Cards by id. */
+  listModelBindings(): ExecutablePluginModelBindingRegistration[] {
+    const registrations: ExecutablePluginModelBindingRegistration[] = [];
+    for (const supervised of this.actions.values()) {
+      const { manifest, modelBindings, schemaHash } = supervised.loaded;
+      if (!isExecutablePluginManifest(manifest) || !supervised.session || !schemaHash) continue;
+      for (const document of Object.values(modelBindings)) {
+        registrations.push({
+          pluginId: manifest.id,
+          version: manifest.version,
+          schemaHash,
+          runtime: manifest.runtime,
+          permissions: manifest.permissions,
+          document,
+        });
+      }
+    }
+    return registrations.sort((left, right) =>
+      `${left.pluginId}:${left.document.spec.id}`.localeCompare(
+        `${right.pluginId}:${right.document.spec.id}`,
+      ),
+    );
+  }
+
   /** Resolve the active immutable contract before a Canvas node is authored. */
   resolveBinding(
     pluginId: string,
     exportId: string,
-    kind: "action" | "provider-projector",
+    kind: "action" | "provider-projector" | "provider-executor",
   ): ExecutablePluginBinding {
     const supervised = this.actions.get(pluginId);
     if (!supervised || !isExecutablePluginManifest(supervised.loaded.manifest)) {
@@ -730,7 +825,14 @@ export class ActionsHost {
 
       if (isExecutablePluginManifest(manifest)) {
         try {
-          await verifyExecutablePluginActivation(this.root, dir, manifest, hostedPackage.cards);
+          await verifyExecutablePluginActivation(
+            this.root,
+            dir,
+            manifest,
+            hostedPackage.cards,
+            hostedPackage.providers,
+            hostedPackage.modelBindings,
+          );
         } catch (error) {
           const active = this.actions.get(manifest.id);
           if (active) await this.stopOne(manifest.id, "activation-receipt-mismatch");
@@ -892,29 +994,44 @@ export class ActionsHost {
     let args: string[];
     if (ext === ".py") {
       if (executablePlugin) {
-        process.stderr.write(
-          `actions: ${manifest.id}: sandboxed Python v1 plugins are not supported yet — use a bundled .mjs entrypoint\n`,
-        );
-        return;
-      }
-      const explicitPython = process.env.CLASH_ACTIONS_PYTHON;
-      const pythonBin = explicitPython
-        ? prepareExplicitPythonRuntime({
-          pythonBin: explicitPython,
-          actionId: manifest.id,
-          actionDir: dir,
-          sdkPythonDir,
-          logPrefix: "",
-        })
-        : prepareManagedPythonRuntime({
-          actionId: manifest.id,
-          actionDir: dir,
+        const pythonBin = resolveExecutablePluginPythonBin({
+          manifestId: manifest.id,
+          pluginDir: runtimeDir,
           sdkPythonDir,
           logPrefix: "",
         });
-      if (!pythonBin) return;
-      bin = pythonBin;
-      args = [entrypointPath];
+        if (!pythonBin) {
+          process.stderr.write(
+            `actions: ${manifest.id}: no Python runtime available for sandboxed plugin — set CLASH_ACTIONS_PYTHON or install the app-managed runtime\n`,
+          );
+          return;
+        }
+        bin = pythonBin;
+        args = executablePluginPythonArgs(
+          runtimeEntrypointPath,
+          executableRuntime?.args ?? [],
+        );
+        Object.assign(childEnv, executablePluginPythonEnv(manifest, sdkPythonDir, runtimeDir));
+      } else {
+        const explicitPython = process.env.CLASH_ACTIONS_PYTHON;
+        const pythonBin = explicitPython
+          ? prepareExplicitPythonRuntime({
+            pythonBin: explicitPython,
+            actionId: manifest.id,
+            actionDir: dir,
+            sdkPythonDir,
+            logPrefix: "",
+          })
+          : prepareManagedPythonRuntime({
+            actionId: manifest.id,
+            actionDir: dir,
+            sdkPythonDir,
+            logPrefix: "",
+          });
+        if (!pythonBin) return;
+        bin = pythonBin;
+        args = [entrypointPath];
+      }
     } else if (ext === ".js" || ext === ".mjs") {
       bin = resolveExecutablePluginNodePath();
       args = executablePlugin
@@ -1098,6 +1215,227 @@ function executablePluginNodeArgs(
 }
 
 /**
+ * Python analog of the Node import-map network guard. Injected as a
+ * `sitecustomize.py` that Python's site machinery imports before the plugin
+ * entrypoint runs; it replaces every socket constructor with a raising stub so
+ * urllib/http.client/requests all fail with the same marker as the Node
+ * sandbox. Best-effort like the Node guard — the hard boundaries remain the
+ * broker, the credential-free environment, and the domain allowlist.
+ */
+const PLUGIN_PYTHON_NETWORK_GUARD_SOURCE = `"""Clash executable-plugin sandbox: direct network and undeclared-path access is denied."""
+import builtins
+import io
+import os
+import socket
+import _socket
+
+_DENIED = (
+    "Direct plugin network access is denied; use the Clash capability broker. "
+    "(ERR_CLASH_PLUGIN_NETWORK_DENIED)"
+)
+
+_PATH_DENIED = (
+    "Undeclared filesystem access is denied; declare the path in the plugin manifest. "
+    "(ERR_CLASH_PLUGIN_PATH_DENIED)"
+)
+
+
+def _denied(*_args, **_kwargs):
+    # A denial must look like a denial: PermissionError with EPERM is what a
+    # kernel-level sandbox produces, so callers can handle one shape.
+    raise PermissionError(1, _DENIED)
+
+
+class _DeniedSocket(socket.socket):
+    def __init__(self, *_args, **_kwargs):
+        raise PermissionError(1, _DENIED)
+
+
+socket.socket = _DeniedSocket
+socket.create_connection = _denied
+socket.create_server = _denied
+socket.socketpair = _denied
+socket.getaddrinfo = _denied
+socket.gethostbyname = _denied
+socket.gethostbyname_ex = _denied
+socket.gethostbyaddr = _denied
+
+# The high-level module is only a wrapper. Patching it alone left \`import
+# _socket\` as a complete bypass, which is the first thing a hostile plugin
+# reaches for.
+_socket.socket = _denied
+_socket.socketpair = _denied
+_socket.getaddrinfo = _denied
+_socket.gethostbyname = _denied
+_socket.gethostbyname_ex = _denied
+_socket.gethostbyaddr = _denied
+
+# Paths the plugin is allowed to touch, injected by the Bridge. Anything else --
+# provider secrets, other plugins' packages, the rest of the machine -- is
+# refused before the syscall.
+_ALLOWED_PREFIXES = tuple(
+    os.path.realpath(entry)
+    for entry in os.environ.get("CLASH_PLUGIN_ALLOWED_PATHS", "").split(os.pathsep)
+    if entry
+)
+
+
+def _path_allowed(path):
+    if not _ALLOWED_PREFIXES:
+        return True
+    try:
+        resolved = os.path.realpath(path if isinstance(path, str) else os.fsdecode(path))
+    except (TypeError, ValueError):
+        return True
+    return any(
+        resolved == prefix or resolved.startswith(prefix + os.sep)
+        for prefix in _ALLOWED_PREFIXES
+    )
+
+
+_real_open = builtins.open
+_real_os_open = os.open
+_real_io_open = io.open
+
+
+def _guarded_open(file, *args, **kwargs):
+    if isinstance(file, (str, bytes, os.PathLike)) and not _path_allowed(file):
+        raise PermissionError(1, _PATH_DENIED)
+    return _real_open(file, *args, **kwargs)
+
+
+def _guarded_os_open(path, *args, **kwargs):
+    if not _path_allowed(path):
+        raise PermissionError(1, _PATH_DENIED)
+    return _real_os_open(path, *args, **kwargs)
+
+
+def _guarded_io_open(file, *args, **kwargs):
+    if isinstance(file, (str, bytes, os.PathLike)) and not _path_allowed(file):
+        raise PermissionError(1, _PATH_DENIED)
+    return _real_io_open(file, *args, **kwargs)
+
+
+builtins.open = _guarded_open
+io.open = _guarded_io_open
+os.open = _guarded_os_open
+`;
+
+let pythonNetworkGuardDir: string | null = null;
+
+function ensurePythonNetworkGuardDir(): string {
+  if (pythonNetworkGuardDir && existsSync(join(pythonNetworkGuardDir, "sitecustomize.py"))) {
+    return pythonNetworkGuardDir;
+  }
+  const dir = join(tmpdir(), `clash-plugin-py-guard-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "sitecustomize.py"), PLUGIN_PYTHON_NETWORK_GUARD_SOURCE);
+  pythonNetworkGuardDir = dir;
+  return dir;
+}
+
+function executablePluginPythonArgs(
+  entrypointPath: string,
+  runtimeArgs: readonly string[],
+): string[] {
+  // -B: no .pyc writes inside the attested package; -s: no user site-packages.
+  // No -E/-I: the sitecustomize network guard arrives via PYTHONPATH, which the
+  // Bridge fully controls because the plugin env is built from scratch.
+  return ["-B", "-s", entrypointPath, ...runtimeArgs];
+}
+
+function executablePluginPythonEnv(
+  manifest: Pick<ExecutablePluginManifest, "id" | "version" | "permissions">,
+  sdkPythonDir: string | null,
+  pluginDir?: string,
+): NodeJS.ProcessEnv {
+  const env = credentialFreePluginEnv(manifest);
+  const guardDir = ensurePythonNetworkGuardDir();
+  env.PYTHONPATH = sdkPythonDir ? `${guardDir}${delimiter}${sdkPythonDir}` : guardDir;
+  env.PYTHONDONTWRITEBYTECODE = "1";
+  env.PYTHONNOUSERSITE = "1";
+  // Mirrors the Node sandbox's `--allow-fs-read=<pluginDir>`: the same declared
+  // surface, expressed for the interpreter that has no permission model. The
+  // manifest's own declared reads are honoured so a plugin can still be given
+  // explicit access. Deliberately not the temp root: a local host's data dir can
+  // live under it, so allowing it would re-open the secrets this guard protects.
+  if (pluginDir) {
+    const declaredReads = manifest.permissions?.filesystem?.read ?? [];
+    const allowed = [
+      pluginDir,
+      ...(sdkPythonDir ? [sdkPythonDir] : []),
+      guardDir,
+      ...declaredReads,
+    ];
+    env.CLASH_PLUGIN_ALLOWED_PATHS = allowed.join(delimiter);
+  }
+  return env;
+}
+
+/**
+ * App-internal Python prepared for the local ASR/TTS model runtimes. Reused
+ * for sandboxed plugins so a packaged desktop install needs no system Python.
+ * Path mirrors apps/local-api/src/managed-local-model-python.ts.
+ */
+function managedLocalModelsPythonBin(): string | null {
+  const venvDir = join(paths().configDir, "runtimes", "python", "local-models", "venv");
+  const bin = managedPythonBin(venvDir);
+  return existsSync(bin) ? bin : null;
+}
+
+/**
+ * Interpreter for a sandboxed Python executable plugin, in order:
+ * 1. CLASH_ACTIONS_PYTHON (explicit override; dev/test hermetic path)
+ * 2. the local-models venv the app already maintains for ASR/TTS — only for
+ *    dependency-free plugins so plugin pip installs never pollute it
+ * 3. the actions-managed venv (created on demand), where a plugin's
+ *    requirements.txt installs through the existing stamped machinery
+ */
+function resolveExecutablePluginPythonBin(opts: {
+  manifestId: string;
+  pluginDir: string;
+  sdkPythonDir: string | null;
+  logPrefix: string;
+}): string | null {
+  const hasRequirements = existsSync(join(opts.pluginDir, "requirements.txt"));
+  const explicit = process.env.CLASH_ACTIONS_PYTHON;
+  if (explicit) {
+    if (!hasRequirements) return explicit;
+    return preparePythonRuntimeDeps({
+      pythonBin: explicit,
+      stampDir: explicitPythonStampDir(explicit),
+      actionId: opts.manifestId,
+      actionDir: opts.pluginDir,
+      sdkPythonDir: opts.sdkPythonDir,
+      logPrefix: opts.logPrefix,
+      installSdk: false,
+    });
+  }
+  if (!hasRequirements) {
+    const localModelsPython = managedLocalModelsPythonBin();
+    if (localModelsPython) return localModelsPython;
+  }
+  const venvDir = managedPythonVenvDir();
+  const pythonBin = managedPythonBin(venvDir);
+  if (!existsSync(pythonBin)) {
+    mkdirSync(venvDir, { recursive: true });
+    process.stderr.write(`${opts.logPrefix}actions: python venv create path=${venvDir}\n`);
+    if (!runPythonSetup("python3", ["-m", "venv", venvDir], opts.logPrefix, opts.manifestId)) {
+      return null;
+    }
+  }
+  return preparePythonRuntimeDeps({
+    pythonBin,
+    stampDir: venvDir,
+    actionId: opts.manifestId,
+    actionDir: opts.pluginDir,
+    sdkPythonDir: opts.sdkPythonDir,
+    logPrefix: opts.logPrefix,
+    installSdk: false,
+  });
+}
+
+/**
  * Run an unpacked draft's declarative contracts through the same credential-
  * free stdio session and Node permission sandbox used by ActionsHost. Broker
  * responses come exclusively from the contract document's inert fixtures.
@@ -1121,22 +1459,51 @@ export async function runExecutablePluginContractTests(
   const extension = manifest.runtime.entrypoint.toLowerCase().slice(
     manifest.runtime.entrypoint.lastIndexOf("."),
   );
-  if (extension !== ".js" && extension !== ".mjs") {
+  // The extension whitelist stays as a sandbox check: these are the only shapes the
+  // host knows how to launch under `--permission`. It no longer decides *which*
+  // interpreter runs -- the manifest declares that, so the two concerns are separate.
+  if (extension !== ".js" && extension !== ".mjs" && extension !== ".py") {
     throw new Error(
-      `Contract-tested v1 plugins require a sandboxed .js or .mjs entrypoint; got ${extension || "none"}.`,
+      `Contract-tested v1 plugins require a sandboxed .js, .mjs or .py entrypoint; got ${extension || "none"}.`,
     );
   }
+  const language = resolvePluginLanguage(manifest.runtime) ?? "node";
+  const sdkPythonDir = language === "python" ? resolveSdkPythonDir() : null;
+  const spawnPlan = language === "python"
+    ? (() => {
+      const pythonBin = resolveExecutablePluginPythonBin({
+        manifestId: manifest.id,
+        pluginDir,
+        sdkPythonDir,
+        logPrefix: "",
+      });
+      if (!pythonBin) {
+        throw new Error(
+          `Plugin ${manifest.id} needs a Python runtime — set CLASH_ACTIONS_PYTHON or install the app-managed runtime.`,
+        );
+      }
+      return {
+        bin: pythonBin,
+        args: executablePluginPythonArgs(entrypointPath, manifest.runtime.args),
+        env: executablePluginPythonEnv(manifest, sdkPythonDir, pluginDir),
+      };
+    })()
+    : {
+      bin: resolveExecutablePluginNodePath(),
+      args: executablePluginNodeArgs(pluginDir, entrypointPath, manifest.runtime.args),
+      env: credentialFreePluginEnv(manifest),
+    };
   const schemaHash = executablePluginSchemaHash(manifest, cards);
   const completed: ExecutablePluginContractTestRun["tests"] = [];
 
   for (const path of manifest.contractTests) {
     const contractTest = contractTests[path];
     const child: ChildProcess = spawn(
-      resolveExecutablePluginNodePath(),
-      executablePluginNodeArgs(pluginDir, entrypointPath, manifest.runtime.args),
+      spawnPlan.bin,
+      spawnPlan.args,
       {
         cwd: pluginDir,
-        env: credentialFreePluginEnv(manifest),
+        env: spawnPlan.env,
         stdio: ["pipe", "pipe", "pipe"],
       },
     );
@@ -1316,11 +1683,16 @@ function preparePythonRuntimeDeps(opts: {
   actionDir: string;
   sdkPythonDir: string | null;
   logPrefix: string;
+  /** Sandboxed executable plugins speak raw stdio JSONL; they import the pure-
+   * Python SDK via PYTHONPATH and never need the agent's aiohttp, so the SDK
+   * pip step is skipped for them. Plugin requirements.txt still installs. */
+  installSdk?: boolean;
 }): string | null {
   const { pythonBin } = opts;
+  const installSdk = opts.installSdk ?? true;
   const stamp = readPythonDepsStamp(opts.stampDir);
   let changed = false;
-  if (opts.sdkPythonDir && existsSync(join(opts.sdkPythonDir, "pyproject.toml"))) {
+  if (installSdk && opts.sdkPythonDir && existsSync(join(opts.sdkPythonDir, "pyproject.toml"))) {
     const sdkKey = `${opts.sdkPythonDir}:${fileVersionKey(join(opts.sdkPythonDir, "pyproject.toml"))}`;
     const sdkStampMatches = stamp.sdk === sdkKey;
     const sdkImportsOk = sdkStampMatches

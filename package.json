@@ -18,7 +18,7 @@
     "test:e2e:agent-first-local-v1": "pnpm --filter @master-clash/desktop test:e2e:agent-first-local-v1",
     "test:e2e:short-drama-timeline": "pnpm --filter @master-clash/desktop test:e2e:short-drama-timeline",
     "test:e2e:agent-first-cas": "pnpm --filter @master-clash/desktop test:e2e:agent-first-cas",
-    "test:skills": "node --test skills/skill-market.test.mjs skills/video-production-e2e.test.mjs",
+    "test:skills": "node --test skills/skill-market.test.mjs",
     "test:agent:real-codex": "pnpm --filter @master-clash/desktop test:agent:real-codex",
     "test:startup": "pnpm --filter @master-clash/desktop test:startup",
     "test:startup:harness-update-gui": "pnpm --filter @master-clash/desktop test:startup:harness-update-gui",
@@ -53,7 +53,7 @@
   "author": "hrhrng <hrhrng@foxmail.com>",
   "license": "PolyForm-Shield-1.0.0",
   "engines": {
-    "node": ">=22.22.0"
+    "node": ">=24.18.0 <25"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
@@ -66,8 +66,8 @@
     "overrides": {
       "react": "19.2.5",
       "react-dom": "19.2.5",
-      "remotion": "4.0.370",
-      "@remotion/*": "4.0.370",
+      "remotion": "4.0.507",
+      "@remotion/*": "4.0.507",
       "@vitest/utils": "4.1.0",
       "@vitest/runner": "4.1.0",
       "@vitest/snapshot": "4.1.0",

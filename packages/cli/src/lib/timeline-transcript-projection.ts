@@ -1,11 +1,15 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
 import {
   AsrTimedTranscriptSchema,
   buildTimelineTranscriptProjection,
   projectAsrTimedTranscriptWords,
 } from "@clash/shared-types";
+
+import { readAssetMetadataBody } from "./attach-asset-metadata";
+import { transcriptGridHash } from "./attach-transcript";
 
 type EditorTranscriptWord = {
   id: string;
@@ -168,9 +172,65 @@ function transcriptFromPersistedTextLineage(input: {
   };
 }
 
-export function writeTimelineTranscriptProjection(
+/**
+ * The asset's own `media.transcript` is the canonical word grid: real backend
+ * and model provenance, body in the content-addressed store. Editor caches and
+ * persisted text lineage are only fallbacks for assets nothing transcribed.
+ */
+async function transcriptFromAssetMetadata(input: {
+  cwd: string;
+  assetId: string;
+  dataDir?: string;
+}): Promise<EditorAssetTranscript | null> {
+  let manifestRaw: string;
+  try {
+    manifestRaw = await readFile(join(input.cwd, "assets", "manifest.json"), "utf8");
+  } catch {
+    return null;
+  }
+  let identity:
+    | { bodyHash?: unknown; contentHash?: unknown; backendId?: unknown; modelId?: unknown; language?: unknown }
+    | undefined;
+  try {
+    const manifest = JSON.parse(manifestRaw) as {
+      assets?: Array<{ id?: unknown; metadata?: Record<string, unknown> }>;
+    };
+    const asset = manifest.assets?.find((candidate) => candidate.id === input.assetId);
+    const attached = asset?.metadata?.["media.transcript"];
+    identity = attached && typeof attached === "object" && !Array.isArray(attached)
+      ? attached as typeof identity
+      : undefined;
+  } catch {
+    return null;
+  }
+  if (!identity || typeof identity.bodyHash !== "string") return null;
+
+  const body = AsrTimedTranscriptSchema.parse(
+    await readAssetMetadataBody({
+      contentHash: identity.bodyHash,
+      ...(input.dataDir ? { dataDir: input.dataDir } : {}),
+    }),
+  );
+  if (typeof identity.contentHash === "string" && transcriptGridHash(body) !== identity.contentHash) {
+    throw new Error(
+      `media.transcript on ${input.assetId} pins a different word grid than its stored body; ` +
+      "re-attach the transcript before projecting it into a timeline.",
+    );
+  }
+  return {
+    assetId: input.assetId,
+    text: body.text,
+    durationMs: body.durationMs,
+    words: body.words,
+    backendId: body.backendId,
+    modelId: body.modelId,
+    ...(body.language ? { language: body.language } : {}),
+  };
+}
+
+export async function writeTimelineTranscriptProjection(
   input: WriteTimelineTranscriptProjectionInput,
-): WriteTimelineTranscriptProjectionResult | null {
+): Promise<WriteTimelineTranscriptProjectionResult | null> {
   if (!input.state || typeof input.state !== "object" || Array.isArray(input.state)) return null;
   const state = input.state as TimelineStateRecord;
   const spokenTracks = selectSpokenTracks(state);
@@ -197,7 +257,9 @@ export function writeTimelineTranscriptProjection(
       const clipId = typeof item.id === "string" && item.id
         ? item.id
         : `${spokenTrack.id}-clip-${clips.length}`;
-      const transcript = transcripts[item.assetId] ?? transcriptFromPersistedTextLineage({
+      const transcript = await transcriptFromAssetMetadata({ cwd: input.cwd, assetId: item.assetId })
+        ?? transcripts[item.assetId]
+        ?? transcriptFromPersistedTextLineage({
         state,
         trackId: spokenTrack.id,
         assetId: item.assetId,

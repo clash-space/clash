@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.22.0
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install ffmpeg
@@ -42,7 +42,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.22.0
+          node-version-file: .nvmrc
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
@@ -123,7 +123,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.22.0
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install Linux packaging dependencies

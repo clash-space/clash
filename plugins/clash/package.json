@@ -10,11 +10,20 @@
   "main": "./runtime/index.js",
   "types": "./runtime/index.d.ts",
   "exports": {
-    ".": { "types": "./runtime/index.d.ts", "import": "./runtime/index.js" }
+    ".": {
+      "types": "./runtime/index.d.ts",
+      "import": "./runtime/index.js"
+    }
   },
-  "files": [".codex-plugin", ".mcp.json", "README.md", "runtime", "skills"],
+  "files": [
+    ".codex-plugin",
+    ".mcp.json",
+    "README.md",
+    "runtime",
+    "skills"
+  ],
   "scripts": {
-    "build:deps": "pnpm --filter @clash/shared-mcp build && pnpm --filter @master-clash/local-api build:with-deps && pnpm --filter @master-clash/render-server build && node ../../apps/render-server/dist/prebundle.js && pnpm --filter @clash-space/mcp-server build && pnpm --filter @clash-space/timeline-plugin build && pnpm --filter @clash-space/director-plugin build",
+    "build:deps": "pnpm --filter @clash/shared-mcp build && pnpm --filter @clash-space/bridge build && pnpm --filter @master-clash/local-api build:with-deps && pnpm --filter @master-clash/render-server build && node ../../apps/render-server/dist/prebundle.js && pnpm --filter @clash-space/mcp-server build && pnpm --filter @clash-space/timeline-plugin build && pnpm --filter @clash-space/director-plugin build",
     "build:host": "tsx scripts/build-host-runtime.ts",
     "build:core": "pnpm build:deps && tsup && pnpm build:host && tsx scripts/copy-app-bundles.ts",
     "bundle:agents": "tsx scripts/bundle-agent-runtime.ts",
@@ -33,7 +42,7 @@
     "@clash-space/timeline-plugin": "workspace:*",
     "@master-clash/local-api": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@remotion/renderer": "4.0.370",
+    "@remotion/renderer": "4.0.507",
     "loro-crdt": "^1.10.3",
     "zod": "^4.1.13"
   },
@@ -44,6 +53,8 @@
     "tsx": "^4.23.0",
     "typescript": "^5.9.0"
   },
-  "engines": { "node": ">=22.22.0" },
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "license": "MIT"
 }

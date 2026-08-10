@@ -716,7 +716,10 @@ describe("ProjectWorkspaceNavigator", () => {
     expect(JSON.parse(dragData.get("asset") ?? "{}")).toMatchObject({
       id: "asset-video",
       backingAssetId: "asset-video",
-      src: "/teaser.mp4",
+      // Video `url` may be a cover image, so playback resolves from the
+      // immutable storageKey through the asset serving route. Asserting the raw
+      // `url` here would lock in dragging a poster frame instead of the media.
+      src: "/assets/cuts/teaser.mp4",
       type: "video",
     });
 

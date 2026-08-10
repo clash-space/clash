@@ -9,6 +9,7 @@ type CliTraceStarted = {
   cwd: string;
   argv: string[];
   caseId?: string;
+  origin?: "mcp-transport";
 };
 
 function appendTrace(path: string, event: object): void {
@@ -33,6 +34,10 @@ export function installCliTrace(input: {
   const env = input.env ?? process.env;
   const configuredPath = env.CLASH_CLI_TRACE_PATH?.trim();
   if (!configuredPath) return;
+  const origin =
+    env.CLASH_CLI_TRACE_ORIGIN?.trim() === "mcp-transport"
+      ? "mcp-transport"
+      : undefined;
   const path = resolve(configuredPath);
   const now = input.now ?? (() => new Date());
   const monotonicNow = input.monotonicNow ?? (() => process.hrtime.bigint());
@@ -45,6 +50,7 @@ export function installCliTrace(input: {
     cwd: input.cwd ?? process.cwd(),
     argv: input.argv ?? process.argv.slice(2),
     ...(env.CLASH_BENCH_CASE_ID ? { caseId: env.CLASH_BENCH_CASE_ID } : {}),
+    ...(origin ? { origin } : {}),
   };
   appendTrace(path, started);
 
@@ -64,6 +70,7 @@ export function installCliTrace(input: {
       exitCode,
       signal: null,
       ...(started.caseId ? { caseId: started.caseId } : {}),
+      ...(started.origin ? { origin: started.origin } : {}),
     });
   };
   const onExit = input.onExit ?? ((handler) => process.once("exit", handler));

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = resolve(__dirname, "../../../..");
+import { sourceContains, sourceMatches } from "../test-support/source-match";
 const projectEditorSource = readFileSync(
   resolve(root, "packages/web-ui/src/components/ProjectEditor.tsx"),
   "utf8",
@@ -147,9 +148,13 @@ describe("ProjectEditor toolbar surface", () => {
     expect(projectEditorSource).toMatch(
       /const sectionSpacing\s*=\s*item\.id\s*===\s*["']actions["']\s*\?\s*["']mt-\[var\(--clash-toolbar-section-gap\)\]["']\s*:\s*["']{2};/,
     );
-    expect(projectEditorSource).not.toContain(
-      'size="md"\n                                                shape="rounded"',
-    );
+    // The collapsed-folders control sits on the same chrome grid as its siblings,
+    // so it must not be the one md-sized button. Matched on the normalized form:
+    // the old literal also encoded this file's indentation.
+    expect(
+      sourceContains(projectEditorSource, 'size="md" shape="rounded"'),
+      "toolbar controls must stay on the sm chrome grid",
+    ).toBe(false);
   });
 
   it("uses a shared rhythm with an offset action phase instead of pairwise row anchors", () => {

@@ -28,6 +28,7 @@ import {
   resolveCanvasProjectId,
 } from "./canvas";
 import {
+  requireCurrentTextVersion,
   assertTextNotReferenced,
   createTextAppliedRevision,
   createTextCowNodeData,
@@ -53,43 +54,41 @@ function isAgentTextClient(): boolean {
   return resolveCanvasPresenceOptions().clientType === "agent";
 }
 
-async function recordTextObservation(
+export async function recordTextObservation(
   context: ResolvedProjectContext,
   nodeId: string,
   revision: string,
 ): Promise<void> {
-  if (!isAgentTextClient()) return;
   if (!context.workspaceRoot) {
     throw new Error("Agent reads require a cwd linked through .clash/project.toml.");
   }
   await recordWorktreeObservation({
     workspaceRoot: context.workspaceRoot,
     projectId: context.projectId,
-    entityKind: "text",
+    entityKind: "canvas-node",
     entityId: nodeId,
     revision,
   });
 }
 
-async function requireTextObservation(
+export async function requireTextObservation(
   context: ResolvedProjectContext,
   nodeId: string,
 ): Promise<string | undefined> {
-  if (!isAgentTextClient()) return undefined;
   if (!context.workspaceRoot) {
     throw new Error("READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and pull the text first.");
   }
   const observation = await requireWorktreeObservation({
     workspaceRoot: context.workspaceRoot,
     projectId: context.projectId,
-    entityKind: "text",
+    entityKind: "canvas-node",
     entityId: nodeId,
   });
   if (!observation.ok) throw new Error(`${observation.code}: ${observation.error}`);
   return observation.revision;
 }
 
-function publicTextMutationResult<T extends Record<string, unknown>>(result: T): Omit<T, "readToken" | "version"> {
+export function publicTextMutationResult<T extends Record<string, unknown>>(result: T): Omit<T, "readToken" | "version"> {
   return publicAgentCommandResult(result) as Omit<T, "readToken" | "version">;
 }
 
@@ -671,7 +670,7 @@ export type TextNodeReadResult = TextNodeLike & {
   readToken?: string;
 };
 
-async function readNode(projectId: string, nodeId: string): Promise<TextNodeReadResult | null> {
+export async function readNode(projectId: string, nodeId: string): Promise<TextNodeReadResult | null> {
   const daemonResult = await runCommand(projectId, {
     action: "get",
     projectId,
@@ -701,7 +700,7 @@ async function readNode(projectId: string, nodeId: string): Promise<TextNodeRead
   }
 }
 
-async function applyTextContent(
+export async function applyTextContent(
   projectId: string,
   nodeId: string,
   content: string,
@@ -749,6 +748,14 @@ async function applyTextContent(
   try {
     const current = client.readNode(nodeId);
     if (!current) throw new Error(`Node not found: ${nodeId}`);
+    // The daemon enforces CAS server-side; without it the check has to happen
+    // here or the write lands unconditionally.
+    requireCurrentTextVersion({
+      observedVersion: cas.observedVersion,
+      projectId,
+      nodeId,
+      currentContent: textContentFromNode(current as TextNodeLike),
+    });
     if (isCanvasNodeImmutable({ nodeId, edges: client.canvas.listEdges() })) {
       throw new Error("IMMUTABLE_NODE");
     }

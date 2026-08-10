@@ -6,10 +6,12 @@ export { matchRequiredProductOperations } from "./product-operations";
 export {
   createClaudeAgentAdapter,
   createCodexAgentAdapter,
+  createPiAgentAdapter,
   reevaluateBenchmarkRun,
   runBenchmarkSuite,
   type ClaudeAgentAdapterOptions,
   type CodexAgentAdapterOptions,
+  type PiAgentAdapterOptions,
 } from "./runner";
 export {
   ArtifactBenchmarkCaseSchema,

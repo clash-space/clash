@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createCipheriv, createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
@@ -4745,7 +4745,7 @@ describe("local API app", () => {
     const invalid = await app.request("/api/v1/model-providers", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ providers: [{ providerId: "not-a-provider" }] }),
+      body: JSON.stringify({ providers: [{ providerId: "Not A Provider" }] }),
     });
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toEqual({
@@ -4851,7 +4851,7 @@ describe("local API app", () => {
     const resolvePluginBinding = vi.fn(async (
       pluginId: string,
       exportId: string,
-      _kind: "action" | "provider-projector",
+      _kind: "action" | "provider-projector" | "provider-executor",
     ) => ({ ...projectorBinding, pluginId, exportId }));
     const pluginH3 = MODEL_CARDS.find((model) => model.id === "minimax-h3")!;
     const listPluginCards = vi.fn(async () => [
@@ -4888,11 +4888,33 @@ describe("local API app", () => {
         },
       },
     ]);
+    const listPluginModelBindings = vi.fn(async () => [{
+      pluginId: "hilo-hub-media",
+      version: "1.0.0",
+      schemaHash: `sha256:${"d".repeat(64)}` as const,
+      runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
+      permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
+      document: {
+        apiVersion: "clash.binding/v1" as const,
+        kind: "model-provider-binding" as const,
+        spec: {
+          id: "hilo-hub-minimax-h3",
+          modelId: "minimax-h3",
+          providerId: "hilo-hub",
+          upstreamId: "hilo-hub",
+          upstreamModel: "MiniMax-H3",
+          apiShape: "hilo-hub",
+          executorExportId: "hilo-hub-execute",
+          requiredOAuth: ["hilo-hub"],
+        },
+      },
+    }]);
     const reopened = createLocalApiApp({
       dataDir,
       userId: "local-user",
       resolvePluginBinding,
       listPluginCards,
+      listPluginModelBindings,
     });
     const providers = await reopened.request("/api/v1/model-providers");
     expect(await providers.json()).toEqual({
@@ -4903,7 +4925,12 @@ describe("local API app", () => {
     const catalog = await reopened.request("/api/v1/models/catalog");
     const catalogJson = (await catalog.json()) as {
       models: Array<{
-        model: { id: string; name: string };
+        model: {
+          id: string;
+          name: string;
+          availableProviders?: string[];
+          providerImplementations?: Array<{ providerId: string; executorPluginId?: string }>;
+        };
         tier: string;
         selectedRoute?: {
           providerId?: string;
@@ -4928,8 +4955,14 @@ describe("local API app", () => {
     });
     const h3 = catalogJson.models.find((entry) => entry.model.id === "minimax-h3");
     expect(h3?.model.name).toBe("Agent-edited MiniMax H3");
+    expect(h3?.model.availableProviders).toContain("hilo-hub");
+    expect(h3?.model.providerImplementations).toContainEqual(expect.objectContaining({
+      providerId: "hilo-hub",
+      executorPluginId: "hilo-hub-media",
+    }));
     expect(h3?.selectedRoute?.projectorBinding).toEqual(projectorBinding);
     expect(listPluginCards).toHaveBeenCalledOnce();
+    expect(listPluginModelBindings).toHaveBeenCalledOnce();
     expect(resolvePluginBinding).toHaveBeenCalledWith(
       "clash-first-party-media",
       "fal-h3",
@@ -6394,6 +6427,213 @@ describe("local API app", () => {
     expect(catalogJson.models.find((entry) => entry.model.id === "flux-schnell")).toMatchObject({
       selectedRoute: { providerId: "fal", upstreamId: "fal" },
     });
+  });
+
+  it("lists activated plugin Provider definitions without folding them into Model Cards", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      listPluginProviders: async () => [{
+        pluginId: "hilo-hub-media",
+        version: "1.0.0",
+        schemaHash: `sha256:${"e".repeat(64)}`,
+        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs", args: [] },
+        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
+        document: {
+          apiVersion: "clash.provider/v1",
+          kind: "provider",
+          spec: {
+            id: "hilo-hub",
+            name: "MiniMax Hilo Hub",
+            description: "Hub OAuth media provider",
+            upstreamId: "hilo-hub",
+            apiShape: "hilo-hub",
+            executorExportId: "hilo-hub-execute",
+            auth: [{
+              type: "oauth",
+              id: "hilo-hub",
+              flow: "browser",
+              authorizationUrl: "https://hub.minimax.io/login",
+              callback: { type: "custom-scheme", scheme: "minimax-hub" },
+              accessTokenField: "accessToken",
+            }],
+          },
+        },
+      }],
+    });
+
+    const response = await app.request("/api/v1/plugin-providers");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      providers: [{
+        pluginId: "hilo-hub-media",
+        pluginVersion: "1.0.0",
+        schemaHash: `sha256:${"e".repeat(64)}`,
+        id: "hilo-hub",
+        name: "MiniMax Hilo Hub",
+        description: "Hub OAuth media provider",
+        upstreamId: "hilo-hub",
+        apiShape: "hilo-hub",
+        executorExportId: "hilo-hub-execute",
+        auth: [{
+          type: "oauth",
+          id: "hilo-hub",
+          flow: "browser",
+          authorizationUrl: "https://hub.minimax.io/login",
+          callback: { type: "custom-scheme", scheme: "minimax-hub" },
+          accessTokenField: "accessToken",
+        }],
+      }],
+    });
+  });
+
+  it("runs plugin-declared browser OAuth and stores the Hub access token", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      listPluginProviders: async () => [{
+        pluginId: "hilo-hub-media",
+        version: "1.0.0",
+        schemaHash: `sha256:${"e".repeat(64)}`,
+        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs", args: [] },
+        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
+        document: {
+          apiVersion: "clash.provider/v1",
+          kind: "provider",
+          spec: {
+            id: "hilo-hub",
+            name: "MiniMax Hilo Hub",
+            upstreamId: "hilo-hub",
+            apiShape: "hilo-hub",
+            executorExportId: "hilo-hub-execute",
+            auth: [{
+              type: "oauth",
+              id: "hilo-hub",
+              flow: "browser",
+              authorizationUrl: "https://hub.minimax.io/login",
+              callback: { type: "custom-scheme", scheme: "minimax-hub" },
+              accessTokenField: "accessToken",
+            }],
+          },
+        },
+      }],
+    } as any);
+
+    const start = await app.request("/api/v1/provider-oauth/hilo-hub/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "hilo-hub-primary", accountLabel: "Hilo Hub" }),
+    });
+    expect(start.status).toBe(200);
+    expect(await start.json()).toMatchObject({
+      providerId: "hilo-hub",
+      accountId: "hilo-hub-primary",
+      status: "pending",
+      flow: "browser",
+      verificationUri: "https://hub.minimax.io/login",
+      callbackScheme: "minimax-hub",
+    });
+
+    const complete = await app.request("/api/v1/provider-oauth/hilo-hub/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId: "hilo-hub-primary",
+        callbackUrl: "minimax-hub://auth-callback?accessToken=hub-access-token",
+      }),
+    });
+    expect(complete.status).toBe(200);
+    expect(await complete.json()).toMatchObject({
+      providerId: "hilo-hub",
+      accountId: "hilo-hub-primary",
+      status: "authorized",
+      hasAccessToken: true,
+    });
+  });
+
+  it("explicitly imports an AES-GCM token from a plugin-declared local app source", async () => {
+    const applicationSupportRoot = join(dataDir, "application-support");
+    const appDataDirectory = join(applicationSupportRoot, "@hilo", "MiniMax Hub Global");
+    const key = Buffer.alloc(32, 7);
+    const iv = Buffer.alloc(16, 9);
+    const accessToken = "hub-local-access-token";
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    const ciphertext = Buffer.concat([cipher.update(accessToken, "utf8"), cipher.final()]);
+    const encrypted = [
+      "v2enc",
+      iv.toString("base64"),
+      cipher.getAuthTag().toString("base64"),
+      ciphertext.toString("base64"),
+    ].join(":");
+    await mkdir(appDataDirectory, { recursive: true });
+    await writeFile(join(appDataDirectory, ".token-key"), key);
+    await writeFile(join(appDataDirectory, "hub-config-global.json"), JSON.stringify({
+      tokens: { accessToken: encrypted },
+    }));
+
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localTokenImportAppDataRoot: applicationSupportRoot,
+      listPluginProviders: async () => [{
+        pluginId: "hilo-hub-media",
+        version: "1.0.0",
+        schemaHash: `sha256:${"e".repeat(64)}`,
+        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs", args: [] },
+        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
+        document: {
+          apiVersion: "clash.provider/v1",
+          kind: "provider",
+          spec: {
+            id: "hilo-hub",
+            name: "MiniMax Hilo Hub",
+            upstreamId: "hilo-hub",
+            apiShape: "hilo-hub",
+            executorExportId: "hilo-hub-execute",
+            auth: [{
+              type: "local-token-import",
+              id: "hilo-hub",
+              label: "Reuse MiniMax Hub login",
+              source: {
+                format: "electron-store-aes-256-gcm-v2",
+                appDataSubdirectory: "@hilo/MiniMax Hub Global",
+                configFile: "hub-config-global.json",
+                keyFile: ".token-key",
+                tokenPath: ["tokens", "accessToken"],
+              },
+            }],
+          },
+        },
+      }],
+    } as any);
+
+    const imported = await app.request("/api/v1/provider-oauth/hilo-hub/import-local", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "hilo-hub-primary", accountLabel: "Local Hub" }),
+    });
+
+    expect(imported.status).toBe(200);
+    const importedJson = await imported.json();
+    expect(importedJson).toMatchObject({
+      providerId: "hilo-hub",
+      accountId: "hilo-hub-primary",
+      accountLabel: "Local Hub",
+      status: "authorized",
+      hasAccessToken: true,
+      importedFrom: "MiniMax Hub Global",
+    });
+    const stored = await createLocalProviderStore(dataDir).loadProviderOAuth();
+    expect(stored).toEqual([
+      expect.objectContaining({
+        providerId: "hilo-hub",
+        accountId: "hilo-hub-primary",
+        accessToken,
+        status: "authorized",
+      }),
+    ]);
+    expect(JSON.stringify(importedJson)).not.toContain(accessToken);
   });
 
   it("records mutation envelopes for provider OAuth lifecycle writes", async () => {

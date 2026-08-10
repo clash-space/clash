@@ -204,7 +204,7 @@ export class ClashMcpServer extends McpServer {
       }),
       inputSchema: {
         operation: z.string().min(1).optional().describe(
-          "Command-local Canvas operation or complete clash_canvas_* leaf name",
+          "Omit this field entirely to reveal live contracts; never send an empty string, list_operations, or contracts. Otherwise pass a command-local Canvas operation or complete clash_canvas_* leaf name",
         ),
         arguments: z.record(z.string(), z.unknown()).optional().describe(
           "Arguments validated against the selected operation's live input schema",
@@ -236,7 +236,7 @@ export class ClashMcpServer extends McpServer {
           "Required for contract disclosure and command-local short operations; complete leaf names may infer it",
         ),
         operation: z.string().min(1).optional().describe(
-          "Command-local operation for the selected kind, or a complete clash_timeline_* or clash_director_* leaf name",
+          "Omit this field entirely to reveal live contracts for the selected kind; never send an empty string, list_operations, or contracts. Otherwise pass a command-local operation or complete clash_timeline_* or clash_director_* leaf name",
         ),
         arguments: z.record(z.string(), z.unknown()).optional().describe(
           "Arguments validated against the selected operation's live input schema",

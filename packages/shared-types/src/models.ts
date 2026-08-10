@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+import {
+  GPT_IMAGE_ASPECT_RATIOS,
+  GPT_IMAGE_RESOLUTION_TIERS,
+} from './gpt-image-size';
+import { CANONICAL_RESOLUTION_TIERS, type CanonicalResolutionTier } from './resolution-tiers';
+
 export const ModelKindSchema = z.enum(['image', 'video', 'audio', 'text', 'asr']);
 export type ModelKind = z.infer<typeof ModelKindSchema>;
 
@@ -52,14 +58,9 @@ export const NANO_BANANA_LITE_ASPECT_RATIOS = [
 ] as const;
 
 /**
- * Nano Banana 2 resolutions (fal.ai)
+ * Nano Banana 2 resolutions (fal.ai) — this model names the K tiers itself.
  */
-export const NANO_BANANA_RESOLUTIONS = [
-  { label: '0.5K (Draft)', value: '0.5K' },
-  { label: '1K (Fast)', value: '1K' },
-  { label: '2K (Balanced)', value: '2K' },
-  { label: '4K (High Quality)', value: '4K' },
-] as const;
+export const NANO_BANANA_RESOLUTIONS = CANONICAL_RESOLUTION_TIERS;
 
 /**
  * Sora 2 aspect ratios (fal.ai)
@@ -70,15 +71,94 @@ export const SORA_ASPECT_RATIOS = [
 ] as const;
 
 /**
- * FLUX aspect ratios (fal.ai) — mapped to fal image_size values
+ * The canonical aspect ratios most image models offer.
+ *
+ * Cards speak ratios; provider spellings such as fal's `landscape_16_9` are the
+ * transport's business. Keeping provider values in the cards meant the same ratio
+ * was written several ways, a card's own `defaultAspectRatio` was not selectable in
+ * its own options, and resolution tiers leaked in as duplicate "ratios"
+ * (`1:1 HD` sitting next to `1:1`).
  */
-export const FLUX_ASPECT_RATIOS = [
-  { label: '16:9', value: 'landscape_16_9' },
-  { label: '9:16', value: 'portrait_16_9' },
-  { label: '1:1', value: 'square_hd' },
-  { label: '4:3', value: 'landscape_4_3' },
-  { label: '3:4', value: 'portrait_4_3' },
+export const CANONICAL_IMAGE_ASPECT_RATIOS = [
+  { label: '1:1', value: '1:1' },
+  { label: '4:3', value: '4:3' },
+  { label: '16:9', value: '16:9' },
+  { label: '3:4', value: '3:4' },
+  { label: '9:16', value: '9:16' },
 ] as const;
+
+/**
+ * Builders for the parameters that several kinds share.
+ *
+ * `aspect_ratio` spans image and video, `duration` spans video and audio, and
+ * `resolution` spans both. Declaring them by hand let the same concept drift: one
+ * card labelled the ratio "Aspect ratio" while twenty used "Aspect Ratio", and one
+ * card's durations were strings while the rest were numbers, so a consumer
+ * comparing `value === 5` silently missed. Prefer these builders for new cards;
+ * they are the shape `model-parameter-shape.test.ts` guards.
+ */
+export function aspectRatioParameter(spec: {
+  ratios: readonly string[];
+  defaultValue: string;
+  /** Include the canonical `auto` sentinel. Provider spellings stay in the adapter. */
+  auto?: { label: string };
+  description?: string;
+  required?: boolean;
+}) {
+  return {
+    id: 'aspect_ratio',
+    label: 'Aspect Ratio',
+    type: 'select' as const,
+    ...(spec.description ? { description: spec.description } : {}),
+    ...(spec.required === undefined ? {} : { required: spec.required }),
+    options: [
+      ...(spec.auto ? [{ label: spec.auto.label, value: 'auto' }] : []),
+      ...spec.ratios.map(value => ({ label: value, value })),
+    ],
+    defaultValue: spec.defaultValue,
+  };
+}
+
+/** Seconds are always numbers, so `value === 5` means the same thing everywhere. */
+export function durationParameter(spec: {
+  seconds: readonly number[];
+  defaultValue: number | 'auto';
+  auto?: { label: string };
+}) {
+  return {
+    id: 'duration',
+    label: 'Duration',
+    type: 'select' as const,
+    options: [
+      ...(spec.auto ? [{ label: spec.auto.label, value: 'auto' as const }] : []),
+      ...spec.seconds.map(value => ({ label: `${value}s`, value })),
+    ],
+    defaultValue: spec.defaultValue,
+  };
+}
+
+/**
+ * A resolution control listing exactly what the provider accepts.
+ *
+ * Unlike aspect ratio, resolution is not one quantity with several spellings. A
+ * provider's options are a menu of concrete outputs, and the names are already exact:
+ * `720p` is 1280x720, `fhd` is 1920x1080. Mapping those onto a shared tier ladder
+ * would assert equalities that are false -- a 1K budget is 1048576 pixels while 720p
+ * is 921600 -- and would lose the exact dimensions to gain nothing. So cards carry
+ * the provider's own values, and no translation happens on the way out.
+ */
+export function resolutionParameter(spec: {
+  tiers: readonly { label: string; value: string }[];
+  defaultValue: string;
+}) {
+  return {
+    id: 'resolution',
+    label: 'Resolution',
+    type: 'select' as const,
+    options: spec.tiers.map(tier => ({ label: tier.label, value: tier.value })),
+    defaultValue: spec.defaultValue,
+  };
+}
 
 /**
  * Kling aspect ratios (fal.ai)
@@ -114,30 +194,6 @@ export const IMAGEN_ASPECT_RATIOS = [
   { label: '1:1', value: '1:1' },
   { label: '4:3', value: '4:3' },
   { label: '3:4', value: '3:4' },
-] as const;
-
-/**
- * Recraft V4 aspect ratios — mapped to fal image_size values
- */
-export const RECRAFT_ASPECT_RATIOS = [
-  { label: '1:1 HD', value: 'square_hd' },
-  { label: '1:1', value: 'square' },
-  { label: '4:3', value: 'landscape_4_3' },
-  { label: '16:9', value: 'landscape_16_9' },
-  { label: '3:4', value: 'portrait_4_3' },
-  { label: '9:16', value: 'portrait_16_9' },
-] as const;
-
-/**
- * FLUX 2 Pro aspect ratios — mapped to fal image_size values
- */
-export const FLUX2_ASPECT_RATIOS = [
-  { label: '1:1 HD', value: 'square_hd' },
-  { label: '1:1', value: 'square' },
-  { label: '4:3', value: 'landscape_4_3' },
-  { label: '16:9', value: 'landscape_16_9' },
-  { label: '3:4', value: 'portrait_4_3' },
-  { label: '9:16', value: 'portrait_16_9' },
 ] as const;
 
 export const FLUX3_VIDEO_ASPECT_RATIOS = [
@@ -210,13 +266,6 @@ const FLUX3_KEYFRAME_VIDEO_DEFAULT_PARAMS = {
   duration: 5,
 } as const;
 
-export const GPT_IMAGE_SIZES = [
-  { label: 'Auto', value: 'auto' },
-  { label: '1:1', value: '1024x1024' },
-  { label: '2:3', value: '1024x1536' },
-  { label: '3:2', value: '1536x1024' },
-] as const;
-
 /**
  * Seedance 2.0 aspect ratios — passed directly (no mapping needed).
  */
@@ -269,7 +318,7 @@ export type ModelParameterType = z.infer<typeof ModelParameterTypeSchema>;
 /**
  * Provider configuration for models
  */
-export const ProviderSchema = z.enum([
+export const BuiltinProviderSchema = z.enum([
   'local',
   'official',
   'fal',
@@ -285,6 +334,10 @@ export const ProviderSchema = z.enum([
   'mock',
   'custom',
 ]);
+export const ProviderSchema = z.string().trim().regex(
+  /^[a-z0-9][a-z0-9._-]*$/,
+  'Provider ids must be lowercase plugin-safe identifiers.',
+);
 export type Provider = z.infer<typeof ProviderSchema>;
 
 export const ReferenceBindingSchema = z.discriminatedUnion('type', [
@@ -511,6 +564,12 @@ export const ModelProviderImplementationSchema = z.object({
   /** Plugin that owns projectorExportId. The resolver selects an installed
    * exact version and persists it on the Canvas node. */
   projectorPluginId: z.string().min(1).optional(),
+  /** Function export that owns the full submit/poll/result lifecycle for a
+   * plugin-defined provider. Built-in adapters may omit it. */
+  executorExportId: z.string().min(1).optional(),
+  /** Plugin that owns executorExportId. Package composition fills this from
+   * immutable plugin provenance when omitted in a binding document. */
+  executorPluginId: z.string().min(1).optional(),
   priority: z.number().optional(),
   weight: z.number().optional(),
   requiredCredentials: z.array(z.string()).optional(),
@@ -530,12 +589,20 @@ export const ModelProviderImplementationSchema = z.object({
   // A Card shipped inside the owning plugin may omit projectorPluginId; the
   // package validator binds the export to manifest.id. An explicit external
   // plugin id, however, is meaningless without its export id.
-  if (!implementation.projectorPluginId || implementation.projectorExportId) return;
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    path: ['projectorExportId'],
-    message: 'projectorExportId is required when projectorPluginId is configured.',
-  });
+  if (implementation.projectorPluginId && !implementation.projectorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['projectorExportId'],
+      message: 'projectorExportId is required when projectorPluginId is configured.',
+    });
+  }
+  if (implementation.executorPluginId && !implementation.executorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['executorExportId'],
+      message: 'executorExportId is required when executorPluginId is configured.',
+    });
+  }
 });
 export type ModelProviderImplementation = z.infer<typeof ModelProviderImplementationSchema>;
 
@@ -557,12 +624,6 @@ export const ModelCardSchema = z.object({
    * This is OUR representation — provider-specific values live in parameters/defaultParams.
    */
   defaultAspectRatio: z.string().default('16:9'),
-  /**
-   * Maps our canonical aspect ratio ("4:3") → provider-specific param value ("landscape_4_3").
-   * The key of the provider param in defaultParams (e.g. "aspect_ratio" or "image_size").
-   * If the provider uses the same format as ours, the mapping is identity.
-   */
-  aspectRatioParam: z.string().optional(),
   input: ModelInputRuleSchema.default({ requiresPrompt: true, inputMode: {}, promptModalities: ['text'] }),
   musicInput: MusicInputMappingSchema.optional(),
   /** Shared UI/runtime constraints. Providers may still translate the final
@@ -714,8 +775,9 @@ export function resolveAspectRatio(
   const card = MODEL_CARDS.find(c => c.id === modelId);
   if (!card) return '16:9';
 
-  // Find the aspect ratio parameter (by aspectRatioParam or fallback to 'aspect_ratio')
-  const paramId = card.aspectRatioParam || 'aspect_ratio';
+  // Every card names the ratio parameter `aspect_ratio`; provider spellings are the
+  // adapter's business.
+  const paramId = 'aspect_ratio';
   const arParam = card.parameters.find(p => p.id === paramId);
   if (!arParam) return card.defaultAspectRatio;
 
@@ -748,7 +810,7 @@ export function snapAspectRatio(
   if (!width || !height) return null;
   const card = MODEL_CARDS.find(c => c.id === modelId);
   if (!card) return null;
-  const paramId = card.aspectRatioParam || 'aspect_ratio';
+  const paramId = 'aspect_ratio';
   const arParam = card.parameters.find(p => p.id === paramId);
   if (!arParam?.options?.length) return null;
 
@@ -817,6 +879,10 @@ const MINIMAX_H3_VIDEO_CONSTRAINTS = {
 } as const;
 
 const MINIMAX_H3_AUDIO_CONSTRAINTS = {
+  // The model accepts WAV and MP3, so `audio/mpeg` belongs here: it is MP3's registered
+  // media type and rejecting it would refuse a file the model can read. MiniMax derives a
+  // filename from the mime and will not take the `.mpeg` that `audio/mpeg` yields, so the
+  // transport spells it `audio/mp3` on the wire -- a provider dialect, like `adaptive`.
   mimeTypes: ['audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3'],
   fileExtensions: ['wav', 'mp3'],
   maxBytes: 15 * 1024 * 1024,
@@ -995,7 +1061,6 @@ const MODEL_CARD_DEFINITIONS = [
     defaultProvider: 'official',
     kind: 'image',
     defaultAspectRatio: '16:9',
-    aspectRatioParam: 'aspect_ratio',
     description: 'Fast Gemini 3.1 Flash-Lite image generation.',
     parameters: [
       {
@@ -1021,15 +1086,21 @@ const MODEL_CARD_DEFINITIONS = [
     defaultProvider: 'official',
     kind: 'image',
     defaultAspectRatio: '1:1',
-    aspectRatioParam: 'size',
     description: 'OpenAI GPT Image 2 — high-quality image generation and editing.',
     parameters: [
       {
-        id: 'size',
-        label: 'Size',
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
         type: 'select',
-        options: GPT_IMAGE_SIZES.map(s => ({ label: s.label, value: s.value })),
-        defaultValue: 'auto',
+        options: GPT_IMAGE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '1:1',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: GPT_IMAGE_RESOLUTION_TIERS.map(t => ({ label: t.label, value: t.value })),
+        defaultValue: '2K',
       },
       {
         id: 'quality',
@@ -1055,13 +1126,13 @@ const MODEL_CARD_DEFINITIONS = [
         defaultValue: 'png',
       },
       {
+        // gpt-image-2 does not support transparent backgrounds.
         id: 'background',
         label: 'Background',
         type: 'select',
         options: [
           { label: 'Auto', value: 'auto' },
           { label: 'Opaque', value: 'opaque' },
-          { label: 'Transparent', value: 'transparent' },
         ],
         defaultValue: 'auto',
       },
@@ -1106,23 +1177,25 @@ const MODEL_CARD_DEFINITIONS = [
     defaultProvider: 'fal',
     kind: 'image',
     defaultAspectRatio: '1:1',
-    aspectRatioParam: 'image_size',
     description: 'ByteDance Seedream 4.5 image generation and editing through fal.ai.',
     parameters: [
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
+        defaultValue: 'auto',
+        auto: { label: 'Auto' },
+      }),
       {
-        id: 'image_size',
-        label: 'Size',
+        // Seedream's own tier, kept separate from the ratio the way minimax-h3
+        // already separates them. Folding both into one `image_size` enum made
+        // "Auto 2K" look like an aspect ratio.
+        id: 'resolution',
+        label: 'Resolution',
         type: 'select',
         options: [
-          { label: 'Auto 2K', value: 'auto_2K' },
-          { label: 'Auto 4K', value: 'auto_4K' },
-          { label: '1:1', value: 'square_hd' },
-          { label: '4:3', value: 'landscape_4_3' },
-          { label: '16:9', value: 'landscape_16_9' },
-          { label: '3:4', value: 'portrait_4_3' },
-          { label: '9:16', value: 'portrait_16_9' },
+          { label: '2K', value: '2K' },
+          { label: '4K', value: '4K' },
         ],
-        defaultValue: 'auto_2K',
+        defaultValue: '2K',
       },
       {
         id: 'count',
@@ -1161,16 +1234,12 @@ const MODEL_CARD_DEFINITIONS = [
     defaultProvider: 'fal',
     kind: 'image',
     defaultAspectRatio: '16:9',
-    aspectRatioParam: 'image_size',
     description: 'Ultra-fast image generation, ~1s per image.',
     parameters: [
-      {
-        id: 'image_size',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: FLUX_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: 'landscape_16_9',
-      },
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
+        defaultValue: '16:9',
+      }),
       {
         id: 'num_inference_steps',
         label: 'Steps',
@@ -1208,16 +1277,12 @@ const MODEL_CARD_DEFINITIONS = [
     defaultProvider: 'fal',
     kind: 'image',
     defaultAspectRatio: '16:9',
-    aspectRatioParam: 'image_size',
     description: 'High-quality image generation with great prompt following.',
     parameters: [
-      {
-        id: 'image_size',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: FLUX_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: 'landscape_16_9',
-      },
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
+        defaultValue: '16:9',
+      }),
       {
         id: 'num_inference_steps',
         label: 'Steps',
@@ -1279,10 +1344,7 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'resolution',
         label: 'Resolution',
         type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-          { label: '1080p', value: '1080p' },
-        ],
+        options: [{ label: '720p', value: '720p' }, { label: '1080p', value: '1080p' }],
         defaultValue: '720p',
       },
       {
@@ -1341,10 +1403,7 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'resolution',
         label: 'Resolution',
         type: 'select',
-        options: [
-          { label: '720p', value: '720p' },
-          { label: '1080p', value: '1080p' },
-        ],
+        options: [{ label: '720p', value: '720p' }, { label: '1080p', value: '1080p' }],
         defaultValue: '720p',
       },
     ],
@@ -1388,10 +1447,7 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'resolution',
         label: 'Resolution',
         type: 'select',
-        options: [
-          { label: '480p', value: '480p' },
-          { label: '720p', value: '720p' },
-        ],
+        options: [{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }],
         defaultValue: '720p',
       },
       {
@@ -1449,10 +1505,7 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'resolution',
         label: 'Resolution',
         type: 'select',
-        options: [
-          { label: '480p', value: '480p' },
-          { label: '720p', value: '720p' },
-        ],
+        options: [{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }],
         defaultValue: '720p',
       },
       {
@@ -1514,10 +1567,7 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'resolution',
         label: 'Resolution',
         type: 'select',
-        options: [
-          { label: '480p', value: '480p' },
-          { label: '720p', value: '720p' },
-        ],
+        options: [{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }],
         defaultValue: '720p',
       },
     ],
@@ -1573,10 +1623,7 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'resolution',
         label: 'Resolution',
         type: 'select',
-        options: [
-          { label: '480p', value: '480p' },
-          { label: '720p', value: '720p' },
-        ],
+        options: [{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }],
         defaultValue: '720p',
       },
     ],
@@ -1625,10 +1672,7 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'resolution',
         label: 'Resolution',
         type: 'select',
-        options: [
-          { label: '768p', value: '768P' },
-          { label: '2K', value: '2K' },
-        ],
+        options: [{ label: '768P', value: '768P' }, { label: '2K', value: '2K' }],
         defaultValue: '2K',
       },
     ],
@@ -1683,10 +1727,7 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'resolution',
         label: 'Resolution',
         type: 'select',
-        options: [
-          { label: '768p', value: '768P' },
-          { label: '2K', value: '2K' },
-        ],
+        options: [{ label: '768P', value: '768P' }, { label: '2K', value: '2K' }],
         defaultValue: '2K',
       },
     ],
@@ -1716,16 +1757,10 @@ const MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: '16:9',
     description: 'Kling 3 Pro — first + optional end frame, with native audio.',
     parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: Array.from({ length: 13 }, (_, index) => ({
-          label: `${index + 3}s`,
-          value: String(index + 3),
-        })),
-        defaultValue: '5',
-      },
+      durationParameter({
+        seconds: Array.from({ length: 13 }, (_, index) => index + 3),
+        defaultValue: 5,
+      }),
       {
         id: 'generate_audio',
         label: 'Native audio',
@@ -1734,7 +1769,7 @@ const MODEL_CARD_DEFINITIONS = [
       },
     ],
     defaultParams: {
-      duration: '5',
+      duration: 5,
       generate_audio: true,
     },
     input: { requiresPrompt: true, inputMode: { startEnd: {} } },
@@ -1820,16 +1855,12 @@ const MODEL_CARD_DEFINITIONS = [
     defaultProvider: 'fal',
     kind: 'image',
     defaultAspectRatio: '16:9',
-    aspectRatioParam: 'image_size',
     description: 'Designer-grade image generation with color control and text rendering.',
     parameters: [
-      {
-        id: 'image_size',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: RECRAFT_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: 'square_hd',
-      },
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
+        defaultValue: '16:9',
+      }),
     ],
     defaultParams: {
       image_size: 'square_hd',
@@ -1846,16 +1877,12 @@ const MODEL_CARD_DEFINITIONS = [
     defaultProvider: 'fal',
     kind: 'image',
     defaultAspectRatio: '4:3',
-    aspectRatioParam: 'image_size',
     description: 'Latest FLUX flagship — high-quality image generation.',
     parameters: [
-      {
-        id: 'image_size',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: FLUX2_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: 'landscape_4_3',
-      },
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
+        defaultValue: '16:9',
+      }),
       {
         id: 'safety_tolerance',
         label: 'Safety Tolerance',
@@ -2089,7 +2116,6 @@ const MODEL_CARD_DEFINITIONS = [
         readOnly: true,
         options: [{ label: '720p', value: '720p' }],
         defaultValue: '720p',
-        description: 'Gemini Omni Flash currently produces 720p video.',
       },
       {
         id: 'frame_rate',
@@ -2896,6 +2922,513 @@ const MODEL_CARD_DEFINITIONS = [
       similarity_boost: 0.75,
     },
     input: { requiresPrompt: true, inputMode: {} },
+  },
+
+  // ─── Image: Kling Omni ─────────────────────────────────────
+  // Kling's omni image models take a prompt plus up to ten reference images and
+  // render at a named resolution tier rather than explicit dimensions.
+  {
+    id: 'kling-image-o1',
+    name: 'Kling Image O1',
+    provider: 'Kuaishou',
+    availableProviders: ['kling'],
+    defaultProvider: 'kling',
+    kind: 'image',
+    defaultAspectRatio: '1:1',
+    description: 'Kling O1 image generation with optional reference images.',
+    parameters: [
+      aspectRatioParameter({
+        ratios: ['21:9', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16'],
+        defaultValue: 'auto',
+        auto: { label: 'Auto' },
+      }),
+      resolutionParameter({
+        tiers: [{ label: '1K', value: '1K' }, { label: '2K', value: '2K' }],
+        defaultValue: '1K',
+      }),
+    ],
+    defaultParams: { aspect_ratio: 'auto', resolution: '1K' },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 10 } },
+      promptModalities: ['text', 'image'],
+    },
+  },
+  {
+    id: 'kling-image-o3',
+    name: 'Kling Image O3',
+    provider: 'Kuaishou',
+    availableProviders: ['kling'],
+    defaultProvider: 'kling',
+    kind: 'image',
+    defaultAspectRatio: '1:1',
+    description: 'Kling O3 omni image generation with optional reference images.',
+    parameters: [
+      aspectRatioParameter({
+        ratios: ['21:9', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16'],
+        defaultValue: 'auto',
+        auto: { label: 'Auto' },
+      }),
+      resolutionParameter({
+        tiers: [{ label: '1K', value: '1K' }, { label: '2K', value: '2K' }],
+        defaultValue: '1K',
+      }),
+    ],
+    defaultParams: { aspect_ratio: 'auto', resolution: '1K' },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 10 } },
+      promptModalities: ['text', 'image'],
+    },
+  },
+
+  // ─── Image: Midjourney ─────────────────────────────────────
+  // Midjourney is prompt-driven: aspect ratio and the styling knobs below are
+  // expressed as `--ar`, `--stylize`, `--chaos`, and `--weird` flags appended to the
+  // prompt, so the Card declares them as parameters and the transport renders the
+  // flags. `stylize` spans 0-1000 and `chaos`/`weird` 0-100 in Midjourney's own docs.
+  {
+    id: 'midjourney-7',
+    name: 'Midjourney 7',
+    provider: 'Midjourney',
+    availableProviders: ['kie'],
+    defaultProvider: 'kie',
+    kind: 'image',
+    defaultAspectRatio: '1:1',
+    description: 'Midjourney v7 image generation with optional image prompts.',
+    parameters: [
+      aspectRatioParameter({
+        ratios: ['21:9', '16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'],
+        defaultValue: '1:1',
+      }),
+      { id: 'stylize', label: 'Stylize', type: 'number', min: 0, max: 1000, step: 1, defaultValue: 100 },
+      { id: 'chaos', label: 'Chaos', type: 'number', min: 0, max: 100, step: 1, defaultValue: 0 },
+      { id: 'weird', label: 'Weird', type: 'number', min: 0, max: 100, step: 1, defaultValue: 0 },
+    ],
+    defaultParams: { aspect_ratio: '1:1', stylize: 100, chaos: 0, weird: 0 },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 5 } },
+      promptModalities: ['text', 'image'],
+    },
+  },
+  {
+    id: 'midjourney-8.1',
+    name: 'Midjourney 8.1',
+    provider: 'Midjourney',
+    availableProviders: ['kie'],
+    defaultProvider: 'kie',
+    kind: 'image',
+    defaultAspectRatio: '1:1',
+    description: 'Midjourney v8.1 image generation with optional image prompts.',
+    parameters: [
+      aspectRatioParameter({
+        ratios: ['21:9', '16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'],
+        defaultValue: '1:1',
+      }),
+      { id: 'stylize', label: 'Stylize', type: 'number', min: 0, max: 1000, step: 1, defaultValue: 100 },
+      { id: 'chaos', label: 'Chaos', type: 'number', min: 0, max: 100, step: 1, defaultValue: 0 },
+      { id: 'weird', label: 'Weird', type: 'number', min: 0, max: 100, step: 1, defaultValue: 0 },
+    ],
+    defaultParams: { aspect_ratio: '1:1', stylize: 100, chaos: 0, weird: 0 },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 5 } },
+      promptModalities: ['text', 'image'],
+    },
+  },
+  {
+    id: 'midjourney-niji-7',
+    name: 'Midjourney Niji 7',
+    provider: 'Midjourney',
+    availableProviders: ['kie'],
+    defaultProvider: 'kie',
+    kind: 'image',
+    defaultAspectRatio: '1:1',
+    description: 'Midjourney Niji 7, the anime-oriented model, with optional image prompts.',
+    parameters: [
+      aspectRatioParameter({
+        ratios: ['21:9', '16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'],
+        defaultValue: '1:1',
+      }),
+      { id: 'stylize', label: 'Stylize', type: 'number', min: 0, max: 1000, step: 1, defaultValue: 100 },
+      { id: 'chaos', label: 'Chaos', type: 'number', min: 0, max: 100, step: 1, defaultValue: 0 },
+      { id: 'weird', label: 'Weird', type: 'number', min: 0, max: 100, step: 1, defaultValue: 0 },
+    ],
+    defaultParams: { aspect_ratio: '1:1', stylize: 100, chaos: 0, weird: 0 },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 5 } },
+      promptModalities: ['text', 'image'],
+    },
+  },
+
+  // ─── Video: Seedance 2.0 speed tiers ───────────────────────
+  // Fast and mini are the same generation contract as Seedance 2.0 at lower cost, so
+  // they mirror its parameters and reference limits.
+  {
+    id: 'seedance-2-fast-ref',
+    name: 'Seedance 2.0 Fast (全能参考)',
+    provider: 'ByteDance',
+    availableProviders: ['jimeng', 'volcengine'],
+    defaultProvider: 'jimeng',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Seedance 2.0 Fast all-purpose generation with optional image, video, and audio references.',
+    parameters: [
+      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: 'auto', auto: { label: 'Auto' } }),
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: SEEDANCE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'auto',
+      },
+      resolutionParameter({
+        tiers: [{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }],
+        defaultValue: '720p',
+      }),
+      { id: 'generate_audio', label: 'Native audio', type: 'boolean', defaultValue: false },
+    ],
+    defaultParams: { duration: 'auto', aspect_ratio: 'auto', resolution: '720p', generate_audio: false },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: POSITIONAL_REFERENCE_BINDING,
+      inputMode: {
+        images: { max: 9 },
+        videos: { max: 3 },
+        audios: { max: 3 },
+        maxTotalReferences: 12,
+      },
+      promptModalities: ['text', 'image', 'video', 'audio'],
+    },
+  },
+  {
+    id: 'seedance-2-fast-startend',
+    name: 'Seedance 2.0 Fast (首尾帧)',
+    provider: 'ByteDance',
+    availableProviders: ['jimeng', 'volcengine'],
+    defaultProvider: 'jimeng',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Seedance 2.0 Fast animation between a first and an optional last frame.',
+    parameters: [
+      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: 'auto', auto: { label: 'Auto' } }),
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: SEEDANCE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'auto',
+      },
+      resolutionParameter({
+        tiers: [{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }],
+        defaultValue: '720p',
+      }),
+      { id: 'generate_audio', label: 'Native audio', type: 'boolean', defaultValue: false },
+    ],
+    defaultParams: { duration: 'auto', aspect_ratio: 'auto', resolution: '720p', generate_audio: false },
+    input: { requiresPrompt: true, inputMode: { startEnd: {} } },
+  },
+  {
+    id: 'seedance-2-mini-ref',
+    name: 'Seedance 2.0 Mini (全能参考)',
+    provider: 'ByteDance',
+    availableProviders: ['jimeng', 'volcengine'],
+    defaultProvider: 'jimeng',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Seedance 2.0 Mini all-purpose generation with optional image, video, and audio references.',
+    parameters: [
+      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: 'auto', auto: { label: 'Auto' } }),
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: SEEDANCE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'auto',
+      },
+      resolutionParameter({
+        tiers: [{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }],
+        defaultValue: '720p',
+      }),
+      { id: 'generate_audio', label: 'Native audio', type: 'boolean', defaultValue: false },
+    ],
+    defaultParams: { duration: 'auto', aspect_ratio: 'auto', resolution: '720p', generate_audio: false },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: POSITIONAL_REFERENCE_BINDING,
+      inputMode: {
+        images: { max: 9 },
+        videos: { max: 3 },
+        audios: { max: 3 },
+        maxTotalReferences: 12,
+      },
+      promptModalities: ['text', 'image', 'video', 'audio'],
+    },
+  },
+  {
+    id: 'seedance-2-mini-startend',
+    name: 'Seedance 2.0 Mini (首尾帧)',
+    provider: 'ByteDance',
+    availableProviders: ['jimeng', 'volcengine'],
+    defaultProvider: 'jimeng',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Seedance 2.0 Mini animation between a first and an optional last frame.',
+    parameters: [
+      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: 'auto', auto: { label: 'Auto' } }),
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: SEEDANCE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: 'auto',
+      },
+      resolutionParameter({
+        tiers: [{ label: '480p', value: '480p' }, { label: '720p', value: '720p' }],
+        defaultValue: '720p',
+      }),
+      { id: 'generate_audio', label: 'Native audio', type: 'boolean', defaultValue: false },
+    ],
+    defaultParams: { duration: 'auto', aspect_ratio: 'auto', resolution: '720p', generate_audio: false },
+    input: { requiresPrompt: true, inputMode: { startEnd: {} } },
+  },
+
+  // ─── Video: Kling Omni ─────────────────────────────────────
+  // Kling's omni video models accept image and video references, render in a `std` or
+  // `pro` mode, and can stitch several shots from one prompt.
+  {
+    id: 'kling-video-o1',
+    name: 'Kling Video O1',
+    provider: 'Kuaishou',
+    availableProviders: ['kling'],
+    defaultProvider: 'kling',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Kling O1 video generation with optional image and video references.',
+    parameters: [
+      durationParameter({ seconds: [5, 10], defaultValue: 5 }),
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: KLING_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'mode',
+        label: 'Mode',
+        type: 'select',
+        options: [{ label: 'Standard', value: 'std' }, { label: 'Pro', value: 'pro' }],
+        defaultValue: 'pro',
+      },
+      { id: 'multi_shot', label: 'Multi-shot', type: 'boolean', defaultValue: false },
+    ],
+    defaultParams: { duration: 5, aspect_ratio: '16:9', mode: 'pro', multi_shot: false },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 4 }, videos: { max: 1 } },
+      promptModalities: ['text', 'image', 'video'],
+    },
+  },
+  {
+    id: 'kling-video-o3',
+    name: 'Kling Video O3',
+    provider: 'Kuaishou',
+    availableProviders: ['kling'],
+    defaultProvider: 'kling',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Kling O3 omni video generation with optional image and video references and native audio.',
+    parameters: [
+      durationParameter({ seconds: [5, 10], defaultValue: 5 }),
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: KLING_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'mode',
+        label: 'Mode',
+        type: 'select',
+        options: [{ label: 'Standard', value: 'std' }, { label: 'Pro', value: 'pro' }],
+        defaultValue: 'pro',
+      },
+      { id: 'generate_audio', label: 'Native audio', type: 'boolean', defaultValue: false },
+      { id: 'multi_shot', label: 'Multi-shot', type: 'boolean', defaultValue: false },
+    ],
+    defaultParams: { duration: 5, aspect_ratio: '16:9', mode: 'pro', generate_audio: false, multi_shot: false },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 4 }, videos: { max: 1 } },
+      promptModalities: ['text', 'image', 'video'],
+    },
+  },
+
+  // ─── Video: driven performance ─────────────────────────────
+  // These take a subject and a driver rather than a prompt alone: Avatar animates one
+  // portrait from a speech clip, and the motion-control models transfer the motion of
+  // a source video onto a still.
+  {
+    id: 'kling-avatar',
+    name: 'Kling Avatar',
+    provider: 'Kuaishou',
+    availableProviders: ['kling'],
+    defaultProvider: 'kling',
+    kind: 'video',
+    defaultAspectRatio: '9:16',
+    description: 'Animate one portrait image so it speaks a supplied audio clip.',
+    parameters: [
+      {
+        id: 'mode',
+        label: 'Mode',
+        type: 'select',
+        options: [{ label: 'Standard', value: 'std' }, { label: 'Pro', value: 'pro' }],
+        defaultValue: 'std',
+      },
+    ],
+    defaultParams: { mode: 'std' },
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 1 }, audios: { max: 1 } },
+      promptModalities: ['text', 'image', 'audio'],
+    },
+  },
+  {
+    id: 'kling-motion-control',
+    name: 'Kling Motion Control',
+    provider: 'Kuaishou',
+    availableProviders: ['kling'],
+    defaultProvider: 'kling',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Transfer the motion of a source video onto a still character image.',
+    parameters: [
+      {
+        id: 'mode',
+        label: 'Mode',
+        type: 'select',
+        options: [{ label: 'Standard', value: 'std' }, { label: 'Pro', value: 'pro' }],
+        defaultValue: 'std',
+      },
+      {
+        id: 'keep_original_sound',
+        label: 'Keep original sound',
+        type: 'select',
+        options: [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }],
+        defaultValue: 'yes',
+      },
+      {
+        id: 'character_orientation',
+        label: 'Character orientation',
+        type: 'select',
+        options: [
+          { label: 'Follow video', value: 'video' },
+          { label: 'Follow image', value: 'image' },
+        ],
+        defaultValue: 'video',
+      },
+    ],
+    defaultParams: { mode: 'std', keep_original_sound: 'yes', character_orientation: 'video' },
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 1 }, videos: { max: 1 } },
+      promptModalities: ['text', 'image', 'video'],
+    },
+  },
+  {
+    id: 'jimeng-motion-control-2',
+    name: 'Jimeng Motion Control 2.0',
+    provider: 'ByteDance',
+    availableProviders: ['jimeng'],
+    defaultProvider: 'jimeng',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Transfer the motion of a source video onto a still image with Jimeng 2.0.',
+    parameters: [],
+    defaultParams: {},
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { images: { max: 1 }, videos: { max: 1 } },
+      promptModalities: ['text', 'image', 'video'],
+    },
+  },
+
+  // ─── Audio: Seed Audio ─────────────────────────────────────
+  // Seed Audio clones a voice from a reference rather than selecting a preset one, so
+  // it takes an audio or image reference instead of a voice id.
+  {
+    id: 'seed-audio-1',
+    name: 'Seed Audio 1.0',
+    provider: 'ByteDance',
+    availableProviders: ['volcengine'],
+    defaultProvider: 'volcengine',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Speech synthesis that reproduces the voice in a reference clip.',
+    parameters: [
+      { id: 'speed', label: 'Speed', type: 'number', min: 0.5, max: 2, step: 0.1, defaultValue: 1 },
+    ],
+    defaultParams: { speed: 1 },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { audios: { max: 1 }, images: { max: 1 } },
+      promptModalities: ['text', 'audio', 'image'],
+    },
+  },
+
+  // ─── Audio: music ──────────────────────────────────────────
+  // Music generation is length-driven rather than duration-per-shot: the request names
+  // how long the finished track should be.
+  {
+    id: 'elevenlabs-music-v2',
+    name: 'ElevenLabs Music v2',
+    provider: 'ElevenLabs',
+    availableProviders: ['elevenlabs'],
+    defaultProvider: 'elevenlabs',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Generate a music track from a text description, optionally instrumental.',
+    parameters: [
+      durationParameter({ seconds: [30, 60, 90, 120, 180, 240, 300], defaultValue: 60 }),
+      { id: 'is_instrumental', label: 'Instrumental only', type: 'boolean', defaultValue: false },
+    ],
+    defaultParams: { duration: 60, is_instrumental: false },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+  },
+  {
+    id: 'music-cover',
+    name: 'Music Cover',
+    provider: 'MiniMax',
+    availableProviders: ['minimax'],
+    defaultProvider: 'minimax',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Re-perform a supplied track, optionally with new lyrics.',
+    parameters: [
+      { id: 'lyrics', label: 'Lyrics', type: 'text', defaultValue: '' },
+    ],
+    defaultParams: { lyrics: '' },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: 'grouped-references' },
+      inputMode: { audios: { max: 1 } },
+      promptModalities: ['text', 'audio'],
+    },
   },
 ];
 

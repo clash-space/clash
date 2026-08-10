@@ -28,7 +28,25 @@ describe("artifact gallery", () => {
       writeFile(join(caseRoot, "workspace", "poses", "start.png"), "png"),
       writeFile(join(caseRoot, "workspace", "character.json"), "{}"),
       writeFile(join(caseRoot, "logs", "events.jsonl"), "{}\n"),
-      writeFile(join(caseRoot, "logs", "trajectory.json"), "{}\n"),
+      writeFile(
+        join(caseRoot, "logs", "trajectory.json"),
+        `${JSON.stringify({
+          usability: {
+            successfulClashActionCount: 8,
+            failedClashActionCount: 2,
+            errorCodes: ["READ_REQUIRED", "UNKNOWN_OPTION"],
+            recoveryCount: 1,
+            parameterErrorCount: 1,
+            helpActionCount: 2,
+            contractDiscoveryActionCount: 3,
+            contractResponseBytes: 2_400_000,
+            largestContractResponseBytes: 2_300_000,
+            timeToFirstSuccessfulMutationMs: 420,
+            transportsUsed: ["mcp", "cli"],
+            transportSwitchCount: 2,
+          },
+        })}\n`,
+      ),
     ]);
     const report = {
       schemaVersion: 1,
@@ -42,6 +60,14 @@ describe("artifact gallery", () => {
           id: "mg-wave",
           workspace: join(caseRoot, "workspace"),
           status: "pass",
+          attempt: 2,
+          forcePending: true,
+          failure: {
+            classification: "evaluation",
+            retryable: false,
+            phase: "artifact-evaluation",
+            detail: "missing required body-part markers",
+          },
           agent: {
             status: "completed",
             exitCode: 0,
@@ -84,7 +110,17 @@ describe("artifact gallery", () => {
             taskId: "mg-wave",
             status: "pass",
             score: 100,
-            checks: [],
+            checks: [
+              {
+                id: "pose-coverage",
+                type: "visual-frames",
+                status: "fail",
+                required: true,
+                weight: 20,
+                awardedWeight: 0,
+                detail: "foreground coverage 0.02/0.05",
+              },
+            ],
             artifacts: [
               {
                 id: "video",
@@ -143,6 +179,21 @@ describe("artifact gallery", () => {
     expect(html).toContain("mg-wave/logs/trajectory.json");
     expect(html).toContain("agent-member-id-cleared");
     expect(html).toContain("codex-command line 17");
+    expect(html).toContain("Automated evidence score");
+    expect(html).toContain("not an aesthetic score");
+    expect(html).toContain("pose-coverage");
+    expect(html).toContain("foreground coverage 0.02/0.05");
+    expect(html).toContain("Attempt 2");
+    expect(html).toContain("force-pending");
+    expect(html).toContain("evaluation failure");
+    expect(html).toContain("Tool usability diagnostics");
+    expect(html).toContain("Non-gating");
+    expect(html).toContain("2 failed Clash actions");
+    expect(html).toContain("READ_REQUIRED");
+    expect(html).toContain("2.40 MB contract responses");
+    expect(html).toContain("420 ms to first successful mutation");
+    expect(html).toContain("MCP + CLI");
+    expect(html).toContain("2 transport switches");
     expect(html).toContain(
       "CLASH_AGENT_MEMBER_ID= clash timeline apply --timeline main",
     );

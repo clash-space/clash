@@ -77,7 +77,7 @@ export function createHostDiscoveryRecord(options: {
 
 export async function writeHostDiscovery(
   record: LocalHostDiscoveryRecord,
-  options: HostDiscoveryWriteOptions = {},
+  options: HostDiscoveryWriteOptions & { pidExists?: (pid: number) => boolean } = {},
 ): Promise<void> {
   if (!isLocalHostDiscoveryRecord(record)) {
     throw new Error("Invalid local host discovery record");
@@ -85,6 +85,31 @@ export async function writeHostDiscovery(
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
   await mkdir(runDir, { recursive: true });
   const finalPath = getHostDiscoveryPath(runDir);
+
+  // One live host owns the record.
+  //
+  // The file is replaced by rename, so a second host used to displace a running one without
+  // either noticing. Both stayed up on their own random ports and clients followed whichever
+  // wrote last, while asset URLs already handed out still pointed at the displaced port --
+  // inlining a reference then failed with a bare `fetch failed` even though the upstream was
+  // fine. Refusing the write turns that silent race into a startup error naming the holder.
+  const pidExists = options.pidExists ?? defaultPidExists;
+  let incumbent: unknown;
+  try {
+    incumbent = JSON.parse(await readFile(finalPath, "utf8"));
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+  }
+  if (
+    isLocalHostDiscoveryRecord(incumbent)
+    && incumbent.pid !== record.pid
+    && pidExists(incumbent.pid)
+  ) {
+    throw new Error(
+      `A local host is already active on ${incumbent.endpoint} (pid ${incumbent.pid}); stop it before starting another.`,
+    );
+  }
+
   const tmpPath = join(runDir, `host.${record.hostId}.${process.pid}.${Date.now()}.tmp`);
   await writeFile(tmpPath, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await rename(tmpPath, finalPath);

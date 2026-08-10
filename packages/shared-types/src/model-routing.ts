@@ -4,7 +4,12 @@ import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type 
 import { findCompatibleModels, type Modality } from "./model-capabilities";
 import type { ExecutablePluginBinding } from "./executable-plugin";
 
-export const ModelUpstreamIdSchema = z.enum([
+const DynamicProviderIdSchema = z.string().trim().regex(
+  /^[a-z0-9][a-z0-9._-]*$/,
+  "Provider ecosystem ids must be lowercase plugin-safe identifiers.",
+);
+
+export const BuiltinModelUpstreamIdSchema = z.enum([
   "local",
   "mock",
   "fal",
@@ -24,9 +29,10 @@ export const ModelUpstreamIdSchema = z.enum([
   "elevenlabs",
   "suno",
 ]);
+export const ModelUpstreamIdSchema = DynamicProviderIdSchema;
 export type ModelUpstreamId = z.infer<typeof ModelUpstreamIdSchema>;
 
-export const ModelUpstreamApiShapeSchema = z.enum([
+export const BuiltinModelUpstreamApiShapeSchema = z.enum([
   "local-asr",
   "local-tts",
   "fal",
@@ -48,14 +54,16 @@ export const ModelUpstreamApiShapeSchema = z.enum([
   "elevenlabs",
   "suno",
 ]);
+export const ModelUpstreamApiShapeSchema = DynamicProviderIdSchema;
 export type ModelUpstreamApiShape = z.infer<typeof ModelUpstreamApiShapeSchema>;
 
-export const ProviderOAuthIdSchema = z.enum([
+export const BuiltinProviderOAuthIdSchema = z.enum([
   "dreamina",
 ]);
+export const ProviderOAuthIdSchema = DynamicProviderIdSchema;
 export type ProviderOAuthId = z.infer<typeof ProviderOAuthIdSchema>;
 
-export const ProviderAccountIdSchema = z.enum([
+export const BuiltinProviderAccountIdSchema = z.enum([
   "local",
   "official",
   "fal",
@@ -71,6 +79,7 @@ export const ProviderAccountIdSchema = z.enum([
   "mock",
   "custom",
 ]);
+export const ProviderAccountIdSchema = DynamicProviderIdSchema;
 export type ProviderAccountId = z.infer<typeof ProviderAccountIdSchema>;
 
 export interface ModelUpstreamRoute {
@@ -108,6 +117,11 @@ export interface ModelUpstreamRoute {
   projectorExportId?: string;
   /** Exact active projector resolved by the Kernel for author-time Canvas pinning. */
   projectorBinding?: ExecutablePluginBinding;
+  /** Executable Plugin that owns the provider's full execution lifecycle. */
+  executorPluginId?: string;
+  executorExportId?: string;
+  /** Exact active executor resolved by the Kernel for author-time Canvas pinning. */
+  executorBinding?: ExecutablePluginBinding;
 }
 
 export interface ModelProviderSupportedModel {
@@ -399,6 +413,8 @@ function routesFromModelCard(model: ModelCard): ModelUpstreamRoute[] {
       : {}),
     ...(implementation.projectorPluginId ? { projectorPluginId: implementation.projectorPluginId } : {}),
     ...(implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {}),
+    ...(implementation.executorPluginId ? { executorPluginId: implementation.executorPluginId } : {}),
+    ...(implementation.executorExportId ? { executorExportId: implementation.executorExportId } : {}),
   }));
 }
 

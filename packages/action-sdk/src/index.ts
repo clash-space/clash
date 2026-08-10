@@ -1,3 +1,5 @@
+import { ExecutablePluginAssetReadResultSchema } from "@clash/shared-types";
+import type { AssetKind } from "@clash/shared-types";
 /**
  * @clash/action-sdk — Types for building Clash canvas actions.
  *
@@ -30,7 +32,9 @@ import {
   type ExecutablePluginResult,
 } from "@clash/shared-types";
 
+export { ExecutablePluginAssetReadResultSchema } from "@clash/shared-types";
 export type {
+  AssetKind,
   ExecutablePluginAssetHandle,
   ExecutablePluginBinding,
   ExecutablePluginBrokerOperation,
@@ -40,6 +44,74 @@ export type {
   ExecutablePluginReference,
   ExecutablePluginResult,
 } from "@clash/shared-types";
+
+/**
+ * An asset the host has resolved for the plugin, in whichever form the host could supply.
+ *
+ * How we can supply an asset and what a provider accepts are independent axes. We hold either
+ * a local file or something already published; a provider takes inline bytes, a URL it fetches
+ * itself, or an upload endpoint of its own. Only the plugin author knows the provider's
+ * column, so the SDK states our side exactly and leaves the choice to them:
+ *
+ * ```ts
+ * const reference = await resolveAssetReference(context, handle);
+ * if (reference.form === "url" && reference.forwardable) {
+ *   body.image_url = reference.url;              // provider fetches it
+ * } else {
+ *   body.image_url = await uploadToProvider(reference);   // bytes, or a URL only we can read
+ * }
+ * ```
+ *
+ * `forwardable` is the distinction that cannot be recovered by inspection: a local asset served
+ * on loopback and a published asset are both `https?://` strings, and handing the former to a
+ * provider points it at whatever answers on its own loopback.
+ */
+export type ResolvedAssetReference =
+  | {
+      form: "bytes";
+      kind: AssetKind;
+      mediaType?: string;
+      byteLength: number;
+      dataBase64: string;
+    }
+  | {
+      form: "url";
+      kind: AssetKind;
+      mediaType?: string;
+      byteLength: number;
+      url: string;
+      /** True when the provider may fetch this URL directly. */
+      forwardable: boolean;
+    };
+
+/**
+ * Resolves a `clash-asset://` handle through the broker into whichever form the host has.
+ *
+ * Validates the answer against the shared contract, so a plugin never has to guess the shape
+ * or the handle prefix. The installed hilo plugin checks for `asset://` while the host emits
+ * `clash-asset://`; a typed entry point removes the class of mistake rather than the instance.
+ */
+export async function resolveAssetReference(
+  context: HostedExecutablePluginContext,
+  asset: ExecutablePluginAssetHandle,
+): Promise<ResolvedAssetReference> {
+  const answer = await context.broker({ kind: "asset.read", asset });
+  const result = ExecutablePluginAssetReadResultSchema.parse(answer);
+  const common = {
+    kind: result.kind,
+    ...(result.mediaType ? { mediaType: result.mediaType } : {}),
+    byteLength: result.byteLength,
+  };
+  if (result.dataBase64 !== undefined) {
+    return { form: "bytes", ...common, dataBase64: result.dataBase64 };
+  }
+  return {
+    form: "url",
+    ...common,
+    url: result.url!,
+    forwardable: result.reach === "public",
+  };
+}
 
 export interface HostedExecutablePluginContext {
   broker(operation: ExecutablePluginBrokerOperation): Promise<ExecutablePluginJsonValue>;

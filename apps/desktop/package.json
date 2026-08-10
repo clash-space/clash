@@ -49,7 +49,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@remotion/renderer": "4.0.370",
+    "@remotion/renderer": "4.0.507",
     "@clash-space/cli": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
     "@master-clash/local-api": "workspace:*"
@@ -57,7 +57,7 @@
   "devDependencies": {
     "@agentclientprotocol/claude-agent-acp": "^0.47.0",
     "@agentclientprotocol/codex-acp": "^1.1.7",
-    "@remotion/bundler": "4.0.370",
+    "@remotion/bundler": "4.0.507",
     "@types/node": "^22.13.0",
     "electron": "^42.3.2",
     "electron-builder": "26.15.3",

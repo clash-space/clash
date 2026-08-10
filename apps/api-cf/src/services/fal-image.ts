@@ -8,6 +8,11 @@
  *   - fal-ai/flux/dev            (high-quality text-to-image)
  */
 import { fal } from "@fal-ai/client";
+import {
+  gptImageSizeForRatio,
+  parseAspectRatio,
+  resolveGptImageSize,
+} from "@clash/shared-types";
 
 interface ImageGenParams {
   text: string;
@@ -56,7 +61,7 @@ const FAL_IMAGE_MODELS: Record<string, FalImageContract> = {
 /**
  * Convert a generic aspect-ratio string (e.g. "16:9") to a fal.ai image_size value.
  */
-function aspectRatioToImageSize(ar: string): string {
+function aspectRatioToImageSize(ar: string): string | { width: number; height: number } {
   const map: Record<string, string> = {
     '16:9': 'landscape_16_9',
     '9:16': 'portrait_16_9',
@@ -68,7 +73,41 @@ function aspectRatioToImageSize(ar: string): string {
     '4:5': 'portrait_4_3',
     '5:4': 'landscape_4_3',
   };
-  return map[ar] || 'landscape_16_9';
+  const named = map[ar];
+  if (named) return named;
+  // fal's named presets only cover a handful of ratios, so anything else has to be
+  // sent as explicit dimensions. Falling back to landscape_16_9 silently rewrote
+  // the caller's request: a 2:1 equirectangular panorama came back as 16:9, and the
+  // client then rejected it for not being exactly 2:1.
+  const ratio = parseAspectRatio(ar);
+  if (ratio !== undefined) return gptImageSizeForRatio(ar, '2K');
+  return 'landscape_16_9';
+}
+
+/**
+ * Translate the product's canonical ratio into fal's `image_size`.
+ *
+ * Model cards declare ratios; this is the only place fal's spelling exists. An
+ * explicit `image_size` still wins, so a caller that genuinely needs a fal preset
+ * or exact dimensions can say so.
+ */
+function falImageSize(
+  params: Record<string, unknown>,
+  aspectRatio: string | undefined,
+  fallbackRatio: string,
+): string | { width: number; height: number } {
+  const explicit = params.image_size;
+  if (
+    explicit &&
+    (typeof explicit === 'string' ||
+      (typeof explicit === 'object' && !Array.isArray(explicit)))
+  ) {
+    return explicit as string | { width: number; height: number };
+  }
+  const declared =
+    typeof params.aspect_ratio === 'string' ? params.aspect_ratio : aspectRatio;
+  if (!declared || declared === 'auto') return aspectRatioToImageSize(fallbackRatio);
+  return aspectRatioToImageSize(declared);
 }
 
 function gptImageSize(
@@ -81,11 +120,10 @@ function gptImageSize(
   )) {
     return params.image_size as string | { width: number; height: number };
   }
-  const size = typeof params.size === "string" ? params.size : undefined;
-  if (size === "auto") return "auto";
-  const match = size ? /^(\d+)x(\d+)$/.exec(size) : null;
-  if (match) return { width: Number(match[1]), height: Number(match[2]) };
-  return aspectRatioToImageSize(aspectRatio || "1:1");
+  // gpt-image-2 accepts any resolution within its documented constraints, so the
+  // declared ratio and resolution tier are resolved into a concrete size by the
+  // shared helper rather than squeezed through a fixed preset list.
+  return resolveGptImageSize(params, aspectRatio);
 }
 
 /**
@@ -126,7 +164,13 @@ export async function generateImage(
   ) {
     input = {
       prompt,
-      image_size: extraParams.image_size || 'auto_2K',
+      // Seedream's tier only applies when the ratio is auto; a named preset already
+      // fixes the size.
+      image_size:
+        typeof params.aspectRatio === 'string' && params.aspectRatio !== 'auto'
+          ? falImageSize(extraParams, params.aspectRatio, '1:1')
+          : (extraParams.image_size as string) ||
+            `auto_${(extraParams.resolution as string) || '2K'}`,
       num_images: (extraParams.count as number) ?? 1,
       max_images: (extraParams.max_images as number) ?? 1,
       enable_safety_checker: extraParams.enable_safety_checker ?? true,
@@ -137,13 +181,13 @@ export async function generateImage(
   } else if (modelId === 'fal-ai/recraft/v4/pro/text-to-image') {
     input = {
       prompt,
-      image_size: (extraParams.image_size as string) || 'square_hd',
+      image_size: falImageSize(extraParams, params.aspectRatio, '1:1'),
       enable_safety_checker: false,
     };
   } else if (modelId === 'fal-ai/flux-2-pro' || modelId === 'fal-ai/flux-2-pro/edit') {
     input = {
       prompt,
-      image_size: (extraParams.image_size as string) || 'landscape_4_3',
+      image_size: falImageSize(extraParams, params.aspectRatio, '4:3'),
       output_format: 'png',
       safety_tolerance: (extraParams.safety_tolerance as string) || '2',
       enable_safety_checker: false,
@@ -152,7 +196,7 @@ export async function generateImage(
       input.image_urls = params.referenceImageUrls;
     }
   } else if (modelId === 'fal-ai/flux/schnell' || modelId === 'fal-ai/flux/dev') {
-    const imageSize = (extraParams.image_size as string) || aspectRatioToImageSize(params.aspectRatio || '16:9');
+    const imageSize = falImageSize(extraParams, params.aspectRatio, '16:9');
     input = {
       prompt,
       image_size: imageSize,

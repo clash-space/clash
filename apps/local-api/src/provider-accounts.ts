@@ -6,6 +6,11 @@ import type {
   ProviderAccountId,
   UserModelCardConfig,
 } from "@clash/shared-types";
+import {
+  ModelUpstreamApiShapeSchema,
+  ModelUpstreamIdSchema,
+  ProviderAccountIdSchema,
+} from "@clash/shared-types";
 
 export type LocalUserModelCardConfig = UserModelCardConfig & {
   userId?: string;
@@ -63,61 +68,6 @@ export type RuntimeProviderAccountAvailability = ProviderAccountAvailability & {
   createdAt?: string;
   updatedAt?: string;
 };
-
-const PROVIDER_IDS = new Set<ProviderAccountId>([
-  "local",
-  "official",
-  "fal",
-  "kie",
-  "replicate",
-  "kling",
-  "minimax",
-  "jimeng",
-  "volcengine",
-  "elevenlabs",
-  "suno",
-  "mock",
-  "custom",
-]);
-const UPSTREAM_IDS = new Set<ModelUpstreamId>([
-  "local",
-  "mock",
-  "fal",
-  "bfl",
-  "google-ai-studio",
-  "google-agent-platform",
-  "openai",
-  "anthropic",
-  "openrouter",
-  "replicate",
-  "kie",
-  "kling",
-  "minimax",
-  "jimeng",
-  "volcengine",
-  "elevenlabs",
-  "suno",
-]);
-const API_SHAPES = new Set<ModelUpstreamApiShape>([
-  "local-asr",
-  "local-tts",
-  "fal",
-  "bfl",
-  "google-agent-platform",
-  "google-ai-studio",
-  "google-ai-studio-interactions",
-  "openai-images",
-  "openai-compatible",
-  "anthropic-compatible",
-  "replicate",
-  "kie",
-  "kling",
-  "minimax",
-  "modelark",
-  "dreamina-cli",
-  "elevenlabs",
-  "suno",
-]);
 
 function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -190,22 +140,24 @@ function defaultUpstream(providerId: ProviderAccountId): ModelUpstreamId | undef
   ) {
     return providerId;
   }
-  return undefined;
+  return providerId === "official" || providerId === "custom" ? undefined : providerId;
 }
 
 export function normalizeProviderAccountInput(value: unknown): Omit<LocalProviderAccountConfig, "userId" | "createdAt" | "updatedAt"> | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
   const providerId = stringField(raw.providerId) as ProviderAccountId | undefined;
-  if (!providerId || !PROVIDER_IDS.has(providerId)) return null;
+  if (!providerId || !ProviderAccountIdSchema.safeParse(providerId).success) return null;
   const id = stringField(raw.id);
   const label = stringField(raw.label);
   const rawUpstreamId = stringField(raw.upstreamId) as ModelUpstreamId | undefined;
-  const upstreamId = rawUpstreamId && UPSTREAM_IDS.has(rawUpstreamId)
+  const upstreamId = rawUpstreamId && ModelUpstreamIdSchema.safeParse(rawUpstreamId).success
     ? rawUpstreamId
     : defaultUpstream(providerId);
   const rawApiShape = stringField(raw.apiShape) as ModelUpstreamApiShape | undefined;
-  const apiShape = rawApiShape && API_SHAPES.has(rawApiShape) ? rawApiShape : undefined;
+  const apiShape = rawApiShape && ModelUpstreamApiShapeSchema.safeParse(rawApiShape).success
+    ? rawApiShape
+    : undefined;
   if (providerId === "custom" && (
     !upstreamId ||
     (apiShape !== "openai-compatible" && apiShape !== "anthropic-compatible")
@@ -245,32 +197,41 @@ function authorizedOAuthRecords(records: LocalProviderOAuthRecord[], userId: str
     .filter((record) => record.status === "authorized");
 }
 
-function oauthAccounts(records: LocalProviderOAuthRecord[], userId: string): LocalProviderAccountConfig[] {
-  const record = authorizedOAuthRecords(records, userId)
-    .find((candidate) => candidate.providerId === "dreamina");
-  if (!record) return [];
-  return [{
-    providerId: "jimeng",
-    upstreamId: "jimeng",
+function oauthAccount(record: LocalProviderOAuthRecord): LocalProviderAccountConfig {
+  if (record.providerId === "dreamina") {
+    return {
+      providerId: "jimeng",
+      upstreamId: "jimeng",
+      ...(record.accountLabel ? { label: record.accountLabel } : {}),
+      enabled: true,
+    };
+  }
+  return {
+    ...(record.accountId ? { id: record.accountId } : {}),
+    providerId: record.providerId,
+    upstreamId: record.providerId,
     ...(record.accountLabel ? { label: record.accountLabel } : {}),
     enabled: true,
-  }];
+    ...(record.accessToken ? { credentials: { apiKey: record.accessToken } } : {}),
+  };
 }
 
 function oauthForAccount(account: Pick<LocalProviderAccountConfig, "id" | "providerId">, records: LocalProviderOAuthRecord[]): ProviderOAuthId[] {
-  if (account.providerId !== "jimeng") return [];
-  const hasDreamina = records.some((record) => {
-    return record.providerId === "dreamina";
-  });
-  return hasDreamina ? ["dreamina"] : [];
+  return [...new Set(records.flatMap((record) => {
+    if (account.providerId === "jimeng" && record.providerId === "dreamina") return ["dreamina"];
+    const matchesAccount = !record.accountId || !account.id || record.accountId === account.id;
+    if (!matchesAccount) return [];
+    if (record.providerId === account.providerId) return [record.providerId];
+    return [];
+  }))];
 }
 
 function isRuntimeProviderAccount(account: LocalProviderAccountConfig): boolean {
-  if (!PROVIDER_IDS.has(account.providerId)) return false;
+  if (!ProviderAccountIdSchema.safeParse(account.providerId).success) return false;
   if (account.providerId === "official") {
-    return Boolean(account.upstreamId && UPSTREAM_IDS.has(account.upstreamId));
+    return Boolean(account.upstreamId && ModelUpstreamIdSchema.safeParse(account.upstreamId).success);
   }
-  return !account.upstreamId || UPSTREAM_IDS.has(account.upstreamId);
+  return !account.upstreamId || ModelUpstreamIdSchema.safeParse(account.upstreamId).success;
 }
 
 export function publicProviderAccounts(
@@ -293,8 +254,25 @@ export function providerAccountsForRuntime(
     if (!isRuntimeProviderAccount(account)) continue;
     merged.set(providerAccountKey(account), account);
   }
-  if (![...merged.values()].some((account) => account.providerId === "jimeng")) {
-    for (const account of oauthAccounts(oauthRecords, userId)) merged.set(providerAccountKey(account), account);
+  for (const record of connectedOAuth) {
+    const oauth = oauthAccount(record);
+    const existingEntry = [...merged.entries()].find(([, account]) => {
+      if (account.providerId !== oauth.providerId) return false;
+      if (record.providerId === "dreamina") return true;
+      return record.accountId ? account.id === record.accountId : true;
+    });
+    if (existingEntry) {
+      const [key, account] = existingEntry;
+      merged.set(key, {
+        ...account,
+        ...(oauth.label && !account.label ? { label: oauth.label } : {}),
+        ...(record.accessToken ? {
+          credentials: { ...(account.credentials ?? {}), apiKey: record.accessToken },
+        } : {}),
+      });
+    } else {
+      merged.set(providerAccountKey(oauth), oauth);
+    }
   }
   return [...merged.values()]
     .sort((a, b) => {

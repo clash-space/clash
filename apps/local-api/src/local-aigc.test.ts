@@ -39,6 +39,208 @@ describe("local mock AIGC", () => {
     expect(routes("elevenlabs-tts")).toEqual([]);
   });
 
+  it("executes a plugin-defined Provider route through its pinned executor", async () => {
+    const base = MODEL_CARDS.find((card) => card.id === "minimax-h3")!;
+    const binding = {
+      pluginId: "hilo-hub-media",
+      version: "1.0.0",
+      exportId: "hilo-hub-execute",
+      schemaHash: `sha256:${"f".repeat(64)}` as const,
+    };
+    const requests: any[] = [];
+    const service = createMockExternalAigcService({
+      modelCards: async () => [{
+        ...base,
+        availableProviders: ["hilo-hub"],
+        defaultProvider: "hilo-hub",
+        providerImplementations: [{
+          providerId: "hilo-hub",
+          upstreamId: "hilo-hub",
+          upstreamModel: "MiniMax-H3",
+          apiShape: "hilo-hub",
+          executorPluginId: "hilo-hub-media",
+          executorExportId: "hilo-hub-execute",
+          requiredOAuth: ["hilo-hub"],
+        }],
+      }],
+      providerAccounts: async () => [{
+        id: "hilo-hub-primary",
+        providerId: "hilo-hub",
+        upstreamId: "hilo-hub",
+        apiShape: "hilo-hub",
+        enabled: true,
+        availableOAuth: ["hilo-hub"],
+      }],
+      providerPluginExecutor: async (request: unknown) => {
+        requests.push(request);
+        return {
+          binding,
+          media: {
+            url: "https://hub-cdn.test/h3.mp4",
+            contentType: "video/mp4",
+            requestId: "hub-task-1",
+          },
+        };
+      },
+      fetch: async (input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url === "https://hub-cdn.test/h3.mp4") {
+          return new Response("hilo-h3-video", { headers: { "content-type": "video/mp4" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateVideo({
+      taskId: "task-hilo-h3",
+      projectId: "project-hilo-h3",
+      prompt: "cinematic character reveal",
+      model: "minimax-h3",
+      duration: 8,
+      aspectRatio: "16:9",
+      referenceImageUrls: ["https://media.test/character.png"],
+      modelParams: { resolution: "2K" },
+      pluginBinding: binding,
+    });
+
+    expect(requests).toMatchObject([{
+      pluginId: "hilo-hub-media",
+      exportId: "hilo-hub-execute",
+      binding,
+      input: {
+        values: {
+          modelId: "minimax-h3",
+          upstreamModel: "MiniMax-H3",
+          prompt: "cinematic character reveal",
+          duration: 8,
+          aspectRatio: "16:9",
+          referenceImageUrls: ["https://media.test/character.png"],
+          modelParams: { resolution: "2K" },
+        },
+      },
+    }]);
+    expect(new TextDecoder().decode(result.bytes)).toBe("hilo-h3-video");
+    expect(result).toMatchObject({
+      provider: "hilo-hub",
+      modelEndpoint: "MiniMax-H3",
+      requestId: "hub-task-1",
+      pluginBinding: binding,
+    });
+  });
+
+  it("inlines desktop-loopback media before invoking a provider plugin", async () => {
+    const binding = {
+      pluginId: "hilo-hub-media",
+      version: "1.1.0",
+      exportId: "hilo-hub-execute",
+      schemaHash: `sha256:${"e".repeat(64)}` as const,
+    };
+    const requests: any[] = [];
+    const service = createMockExternalAigcService({
+      modelCards: async () => [{
+        id: "hilo-loopback-contract",
+        aliases: [],
+        name: "Hilo loopback contract",
+        provider: "Hilo Hub",
+        kind: "video",
+        parameters: [],
+        defaultParams: {},
+        defaultAspectRatio: "16:9",
+        input: {
+          requiresPrompt: true,
+          inputMode: {
+            images: { max: 8 },
+            videos: { max: 4 },
+            audios: { max: 4 },
+          },
+          promptModalities: ["text", "image", "video", "audio"],
+        },
+        availableProviders: ["hilo-hub"],
+        defaultProvider: "hilo-hub",
+        providerImplementations: [{
+          providerId: "hilo-hub",
+          upstreamId: "hilo-hub",
+          upstreamModel: "seedance2.0",
+          apiShape: "hilo-hub",
+          executorPluginId: "hilo-hub-media",
+          executorExportId: "hilo-hub-execute",
+          requiredOAuth: ["hilo-hub"],
+        }],
+      }],
+      providerAccounts: async () => [{
+        id: "hilo-hub-primary",
+        providerId: "hilo-hub",
+        upstreamId: "hilo-hub",
+        apiShape: "hilo-hub",
+        enabled: true,
+        availableOAuth: ["hilo-hub"],
+      }],
+      providerPluginExecutor: async (request: unknown) => {
+        requests.push(request);
+        return {
+          binding,
+          media: {
+            url: "https://hub-cdn.test/seedance.mp4",
+            contentType: "video/mp4",
+          },
+        };
+      },
+      fetch: async (input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url === "http://127.0.0.1:49321/start.png") {
+          return new Response("start", { headers: { "content-type": "image/png" } });
+        }
+        if (url === "http://localhost:49321/end.jpeg") {
+          return new Response("end", { headers: { "content-type": "image/jpeg; charset=binary" } });
+        }
+        if (url === "http://[::1]:49321/reference.webp") {
+          return new Response("image", { headers: { "content-type": "image/webp" } });
+        }
+        if (url === "http://127.0.0.1:49321/reference.mp4") {
+          return new Response("video", { headers: { "content-type": "video/mp4" } });
+        }
+        if (url === "http://localhost:49321/reference.wav") {
+          return new Response("audio", { headers: { "content-type": "audio/wav" } });
+        }
+        if (url === "https://hub-cdn.test/seedance.mp4") {
+          return new Response("generated", { headers: { "content-type": "video/mp4" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    await service.generateVideo({
+      taskId: "task-loopback",
+      projectId: "project-loopback",
+      prompt: "animate these references",
+      model: "hilo-loopback-contract",
+      startFrameUrl: "http://127.0.0.1:49321/start.png",
+      endFrameUrl: "http://localhost:49321/end.jpeg",
+      referenceImageUrls: [
+        "http://[::1]:49321/reference.webp",
+        "https://public.test/reference.png",
+      ],
+      referenceVideoUrls: ["http://127.0.0.1:49321/reference.mp4"],
+      referenceAudioUrls: ["http://localhost:49321/reference.wav"],
+      pluginBinding: binding,
+    });
+
+    expect(requests[0].input.values).toMatchObject({
+      startFrameUrl: `data:image/png;base64,${Buffer.from("start").toString("base64")}`,
+      endFrameUrl: `data:image/jpeg;base64,${Buffer.from("end").toString("base64")}`,
+      referenceImageUrls: [
+        `data:image/webp;base64,${Buffer.from("image").toString("base64")}`,
+        "https://public.test/reference.png",
+      ],
+      referenceVideoUrls: [
+        `data:video/mp4;base64,${Buffer.from("video").toString("base64")}`,
+      ],
+      referenceAudioUrls: [
+        `data:audio/wav;base64,${Buffer.from("audio").toString("base64")}`,
+      ],
+    });
+  });
+
   it("routes a custom text model through its mounted compatible provider account", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({

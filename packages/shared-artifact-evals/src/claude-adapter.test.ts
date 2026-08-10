@@ -32,7 +32,7 @@ describe("Claude Code headless adapter", () => {
       { cwd: new URL("..", import.meta.url) },
     );
 
-    expect(stdout).toContain("--agent codex|claude|command");
+    expect(stdout).toContain("--agent codex|claude|pi|command");
     expect(stdout).toContain("Agent model override");
   });
 

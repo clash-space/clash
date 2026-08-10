@@ -359,3 +359,63 @@ describe("local metadata store", () => {
   });
 
 });
+
+describe("asset metadata index", () => {
+  it("upserts one row per attached kind and lists by asset, kind, and project", async () => {
+    const store = createLocalMetadataStore(await tempDir());
+    const identity = {
+      kind: "media.transcript",
+      schemaVersion: 1,
+      backendId: "mlx-whisper",
+      contentHash: `sha256:${"b".repeat(64)}`,
+      bodyHash: `sha256:${"c".repeat(64)}`,
+      summary: { wordCount: 17, durationMs: 4_820 },
+    };
+    await store.upsertAssetMetadataIndex({
+      assetId: "asset-speech",
+      metadataKind: "media.transcript",
+      projectId: "project-1",
+      schemaVersion: 1,
+      contentHash: identity.contentHash,
+      bodyHash: identity.bodyHash,
+      producer: "clash.local.asr",
+      summary: identity.summary,
+      identity,
+    });
+    // Re-attaching replaces the row instead of stacking a second one.
+    await store.upsertAssetMetadataIndex({
+      assetId: "asset-speech",
+      metadataKind: "media.transcript",
+      projectId: "project-1",
+      schemaVersion: 1,
+      contentHash: identity.contentHash,
+      bodyHash: `sha256:${"d".repeat(64)}`,
+      producer: "clash.local.asr",
+      summary: { wordCount: 18, durationMs: 5_000 },
+      identity: { ...identity, bodyHash: `sha256:${"d".repeat(64)}` },
+    });
+    await store.upsertAssetMetadataIndex({
+      assetId: "asset-other",
+      metadataKind: "team.shot-notes",
+      producer: "qa",
+      identity: { kind: "team.shot-notes", schemaVersion: 1, mood: "calm" },
+    });
+
+    const all = await store.listAssetMetadataIndex();
+    expect(all).toHaveLength(2);
+
+    const transcripts = await store.listAssetMetadataIndex({ metadataKind: "media.transcript" });
+    expect(transcripts).toHaveLength(1);
+    expect(transcripts[0]).toMatchObject({
+      assetId: "asset-speech",
+      projectId: "project-1",
+      bodyHash: `sha256:${"d".repeat(64)}`,
+      summary: { wordCount: 18, durationMs: 5_000 },
+    });
+
+    const byAsset = await store.listAssetMetadataIndex({ assetId: "asset-other" });
+    expect(byAsset).toHaveLength(1);
+    expect(byAsset[0].identity).toMatchObject({ mood: "calm" });
+    expect(byAsset[0].projectId).toBeUndefined();
+  });
+});

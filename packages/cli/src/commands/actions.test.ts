@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -182,11 +183,20 @@ test("agent can scaffold a contract-tested editable action plugin without hand-w
   assert.equal(created.pluginDir, pluginDir);
   assert.equal(created.contractTests.passed, 1);
   const manifest = JSON.parse(await readFile(join(pluginDir, "manifest.json"), "utf8"));
-  assert.deepEqual(manifest.runtime, {
-    kind: "local",
-    transport: "stdio",
-    entrypoint: "handler.mjs",
-  });
+  // What matters is that the draft declares how it runs and that the declaration is
+  // honoured -- `contractTests.passed` above already executed it. The entrypoint's
+  // filename is the host's business, so pinning it here would only make a change of
+  // build output look like a regression.
+  assert.equal(manifest.runtime.kind, "local");
+  assert.equal(manifest.runtime.transport, "stdio");
+  assert.ok(manifest.runtime.entrypoint, "runtime must name an entrypoint");
+  // A TypeScript draft ships source and lets the host compile it, so an edited draft
+  // is never validated against a stale bundle.
+  assert.equal(manifest.runtime.build.source, "src/stdio.ts");
+  assert.ok(
+    existsSync(join(pluginDir, "src", "stdio.ts")),
+    "scaffold must write the source it declares",
+  );
   assert.equal(manifest.exports.cards[0].kind, "action-card");
   assert.equal(manifest.exports.functions[0].kind, "action");
   assert.equal(
@@ -314,6 +324,69 @@ test("downloaded executable plugins are fully validated before any file is insta
     }),
     /does not match export id/,
   );
+});
+
+test("plugin drafts preserve independent Provider and model binding artifacts", () => {
+  const provider = {
+    apiVersion: "clash.provider/v1",
+    kind: "provider",
+    spec: {
+      id: "hilo-hub",
+      name: "MiniMax Hilo Hub",
+      upstreamId: "hilo-hub",
+      apiShape: "hilo-hub",
+      executorExportId: "hilo-hub-execute",
+      auth: [],
+    },
+  };
+  const binding = {
+    apiVersion: "clash.binding/v1",
+    kind: "model-provider-binding",
+    spec: {
+      id: "hilo-hub-minimax-h3",
+      modelId: "minimax-h3",
+      providerId: "hilo-hub",
+      upstreamId: "hilo-hub",
+      upstreamModel: "MiniMax-H3",
+      apiShape: "hilo-hub",
+      executorExportId: "hilo-hub-execute",
+    },
+  };
+  const contract = {
+    apiVersion: "clash.plugin.contract-test/v1",
+    id: "hilo-hub-basic",
+    target: { exportId: "hilo-hub-execute", kind: "provider-executor" },
+    input: { values: { prompt: "Turn around" }, references: [] },
+    expect: { status: "completed", outputs: [] },
+  };
+
+  const validated = actions.validateDownloadedActionPackage({
+    id: "hilo-hub-media",
+    manifest: {
+      apiVersion: "clash.plugin/v1",
+      id: "hilo-hub-media",
+      version: "1.0.0",
+      name: "Hilo Hub Media",
+      runtime: { kind: "local", transport: "stdio", entrypoint: "stdio.mjs" },
+      exports: {
+        cards: [],
+        providers: [{ id: "hilo-hub", kind: "provider", path: "providers/hilo-hub.json" }],
+        modelBindings: [{ id: "hilo-hub-minimax-h3", kind: "model-provider-binding", path: "bindings/minimax-h3.json" }],
+        functions: [{ id: "hilo-hub-execute", kind: "provider-executor", handler: "execute" }],
+      },
+      permissions: {},
+      contractTests: ["contract-tests/basic.json"],
+    },
+    files: {
+      "stdio.mjs": Buffer.from("export {};\n").toString("base64"),
+      "providers/hilo-hub.json": Buffer.from(JSON.stringify(provider)).toString("base64"),
+      "bindings/minimax-h3.json": Buffer.from(JSON.stringify(binding)).toString("base64"),
+      "contract-tests/basic.json": Buffer.from(JSON.stringify(contract)).toString("base64"),
+    },
+  });
+
+  assert.equal(validated.format, "executable-plugin");
+  assert.equal(validated.manifest.id, "hilo-hub-media");
 });
 
 test("plugin activation is atomic and keeps the previous version for rollback", async () => {

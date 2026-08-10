@@ -53,6 +53,25 @@ describe('inline Remotion TSX source runtime', () => {
     expect(compileInlineRemotionSource(VALID_SOURCE)).toBe(Component);
   });
 
+  it('exposes the official Remotion skill markup primitives to inline Canvas components', () => {
+    const Component = compileInlineRemotionSource(`
+      import { CanvasImage, Easing, Interactive } from 'remotion';
+
+      export default function OfficialSkillRuntime() {
+        const supported = Boolean(
+          CanvasImage
+          && Interactive?.Div
+          && typeof Easing.spring === 'function'
+        );
+        return <div data-official-skill-runtime={String(supported)} />;
+      }
+    `);
+
+    expect(renderToStaticMarkup(<Component />)).toContain(
+      'data-official-skill-runtime="true"',
+    );
+  });
+
   it('rejects source imports outside react and remotion', () => {
     expect(() => compileInlineRemotionSource(`
       import { readFile } from 'node:fs/promises';

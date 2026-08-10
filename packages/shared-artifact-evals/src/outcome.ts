@@ -1,9 +1,11 @@
+import { join } from "node:path";
+
 import type { ArtifactBenchmarkCase, OutcomeResult } from "./types";
 
 export function renderOutcomeMarkdown(
   benchmark: ArtifactBenchmarkCase,
-  _installedSkillNames: string[] = [],
-  options: { clashHost?: boolean } = {},
+  installedSkillNames: string[] = [],
+  options: { clashHost?: boolean; workspaceRoot?: string } = {},
 ): string {
   const acceptance = benchmark.outcome.acceptanceCriteria
     .map((criterion) => `- ${criterion}`)
@@ -27,6 +29,46 @@ export function renderOutcomeMarkdown(
     null,
     2,
   );
+  const requiredSkills = [...new Set(installedSkillNames)]
+    .map((name) => {
+      const relativePath = `.agents/skills/${name}/SKILL.md`;
+      const skillPath = options.workspaceRoot
+        ? join(options.workspaceRoot, relativePath)
+        : relativePath;
+      return `- \`${name}\`: read \`${skillPath}\`${skillPath === relativePath ? "" : ` (workspace-relative: \`${relativePath}\`)`}`;
+    })
+    .join("\n");
+  const requiredRemotionApis = [
+    ...new Set(
+      benchmark.rubric.flatMap((rubric) =>
+        rubric.type === "mg-character"
+          ? (rubric.requiredRemotionApis ?? [])
+          : [],
+      ),
+    ),
+  ];
+  const hasRemotionComponentRubric = benchmark.rubric.some(
+    (rubric) => rubric.type === "mg-character",
+  );
+  const authoringContractLines = [
+    ...(options.clashHost && hasRemotionComponentRubric
+      ? [
+          "Clash-hosted Remotion component authoring: this is not a standalone Remotion project. Clash supplies the Remotion dependencies and renderer; author the self-contained TSX directly without project scaffolding or local package discovery.",
+        ]
+      : []),
+    ...(requiredRemotionApis.length
+      ? [
+          `Required Remotion APIs: ${requiredRemotionApis
+            .map((api) => `\`${api}\``)
+            .join(", ")}.`,
+        ]
+      : []),
+  ];
+  const evaluatorAuthoringContract = authoringContractLines.length
+    ? `## Evaluator-enforced authoring contract
+
+${authoringContractLines.join("\n\n")}`
+    : "";
   return `# ${benchmark.title}
 
 Task ID: \`${benchmark.id}\`
@@ -38,6 +80,8 @@ ${benchmark.outcome.objective}
 ## Acceptance criteria
 
 ${acceptance}
+
+${evaluatorAuthoringContract}
 
 ## Deliverables
 
@@ -53,6 +97,22 @@ ${
 ${
   benchmark.inputFixture
     ? `\nA verified public input fixture from \`${benchmark.inputFixture.path}\` has already been copied into the workspace root. Treat those files as immutable inputs. Its public provenance receipt is \`.clash/benchmark-input-fixture.json\`.`
+    : ""
+}
+
+${
+  requiredSkills
+    ? `## Required skills
+
+Before starting, read and follow every installed workflow below. Treat their product and authoring contracts as part of this task.
+${
+  options.workspaceRoot
+    ? `\nThe workspace root is \`${options.workspaceRoot}\`. Use the exact skill paths listed below. Do not scan outside this workspace to locate skills.\n`
+    : ""
+}
+
+${requiredSkills}
+`
     : ""
 }
 

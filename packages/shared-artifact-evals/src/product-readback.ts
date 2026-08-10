@@ -105,6 +105,15 @@ function sha256Json(value: unknown): string {
   return createHash("sha256").update(stableJson(value)).digest("hex");
 }
 
+function timelineStateFromArtifact(
+  timeline: Record<string, unknown>,
+): Record<string, unknown> {
+  const state = { ...timeline };
+  delete state.id;
+  delete state.name;
+  return state;
+}
+
 function processExists(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -590,7 +599,9 @@ export async function captureRemotionProductReadback(input: {
     const parsedTimeline = TimelineDslSchema.safeParse(timelineValue);
     if (!parsedTimeline.success)
       throw new Error("Timeline artifact does not satisfy TimelineDslSchema");
-    const timelineSha256 = sha256Json(parsedTimeline.data);
+    const timelineSha256 = sha256Json(
+      timelineStateFromArtifact(parsedTimeline.data),
+    );
     const componentSha256 = sha256Source(
       componentArtifact.content.toString("utf8"),
     );
@@ -817,7 +828,9 @@ export async function captureTimelineProductReadback(input: {
     const parsedTimeline = TimelineDslSchema.safeParse(timelineValue);
     if (!parsedTimeline.success)
       throw new Error("Timeline artifact does not satisfy TimelineDslSchema");
-    const timelineSha256 = sha256Json(parsedTimeline.data);
+    const timelineSha256 = sha256Json(
+      timelineStateFromArtifact(parsedTimeline.data),
+    );
     const renderNodes = await listTimelineRenders(input.ready.socketPath);
 
     for (const timeline of parsedTimelines) {

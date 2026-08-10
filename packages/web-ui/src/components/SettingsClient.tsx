@@ -4,14 +4,22 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Key, Plus, Trash, Copy, Check, ArrowLeft, ArrowUp, ArrowDown, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, CloudArrowUp, MagnifyingGlass, CaretDown, CaretRight, Microphone, X, ImageSquare, VideoCamera, SpeakerHigh, TextT, Desktop, Moon, Sun } from '@phosphor-icons/react';
 import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, MODEL_CARDS, listModelCatalogEntries, listProviderModelSupport, normalizeActionProviderId, type ProviderCredentialRequirements, type ProviderOAuthId, type UserModelCardConfig } from '@clash/shared-types';
+import {
+    asrModelValue,
+    isLocalAsrModelEntry,
+    isLocalSpeechModelEntry,
+    isLocalTtsModelEntry,
+    localSpeechCapability,
+    type LocalSpeechCapability,
+} from '@clash/shared-types';
+import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, MODEL_CARDS, listModelCatalogEntries, resolveCredentialSources, listProviderModelSupport, normalizeActionProviderId, type ProviderCredentialRequirements, type ProviderOAuthId, type UserModelCardConfig } from '@clash/shared-types';
 import {
     createApiToken, revokeApiToken, type ApiTokenInfo,
     setVariable, deleteVariable, type VariableInfo,
     uninstallAction, type InstalledActionInfo,
     uninstallSkill, type InstalledSkillInfo,
-    updateModelProviders, deleteModelProvider, listModelProviders, listModelCatalog, saveModelCardConfig, deleteModelCardConfig, listProviderOAuth, startProviderOAuth, completeProviderOAuth, testModelProvider,
-    type ModelProviderAccountInfo, type ModelCatalogEntryInfo, type ProviderOAuthInfo, type ModelProviderTestResult,
+    updateModelProviders, deleteModelProvider, listModelProviders, listModelCatalog, saveModelCardConfig, deleteModelCardConfig, listProviderOAuth, listPluginProviders, startProviderOAuth, completeProviderOAuth, importLocalProviderToken, testModelProvider,
+    type ModelProviderAccountInfo, type ModelCatalogEntryInfo, type ProviderOAuthInfo, type PluginProviderInfo, type ModelProviderTestResult,
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import {
@@ -772,14 +780,26 @@ export default function SettingsClient({
     const [isSavingModelCard, setIsSavingModelCard] = useState(false);
     const [modelProviderError, setModelProviderError] = useState<string | null>(null);
     const [providerOAuth, setProviderOAuth] = useState<ProviderOAuthInfo[]>([]);
+    const [pluginProviders, setPluginProviders] = useState<PluginProviderInfo[]>([]);
     const feedback = useAppFeedback();
 
     const variableKeys = new Set(variables.map((v) => v.key));
     const providerPresets = Object.values(ACTION_PROVIDER_PRESETS);
-    const modelProviderRows = useMemo(() => buildModelProviderRows(modelProviders), [modelProviders]);
+    const pluginProviderById = useMemo(
+        () => new Map(pluginProviders.map((provider) => [provider.id, provider])),
+        [pluginProviders],
+    );
+    const modelProvidersWithPlugins = useMemo(() => modelProviders.map((provider) => {
+        const pluginProvider = pluginProviderById.get(provider.providerId);
+        return pluginProvider ? { ...provider, pluginProvider } : provider;
+    }), [modelProviders, pluginProviderById]);
+    const modelProviderRows = useMemo(
+        () => buildModelProviderRows(modelProvidersWithPlugins, pluginProviders),
+        [modelProvidersWithPlugins, pluginProviders],
+    );
     const modelCatalogProviderInputs = useMemo(
-        () => buildModelCatalogProviderInputs(modelProviders, modelProviderRows),
-        [modelProviderRows, modelProviders],
+        () => buildModelCatalogProviderInputs(modelProvidersWithPlugins, modelProviderRows),
+        [modelProviderRows, modelProvidersWithPlugins],
     );
     const effectiveModelCatalog = useMemo<ModelCatalogEntryInfo[]>(() => (
         modelCatalog.length > 0
@@ -954,16 +974,16 @@ export default function SettingsClient({
     }, [feedback, modelProviders]);
 
     const handlePatchModelProvider = useCallback((key: string, patch: Partial<ModelProviderAccountInfo>) => {
-        const nextProviders = patchModelProviderList(modelProviders, key, patch);
+        const nextProviders = patchModelProviderList(modelProviders, key, patch, modelProviderRows);
         if (nextProviders === modelProviders) return Promise.resolve(modelProviders);
         return saveModelProviders(nextProviders);
-    }, [modelProviders, saveModelProviders]);
+    }, [modelProviderRows, modelProviders, saveModelProviders]);
 
     const handlePatchModelProviders = useCallback((patches: ModelProviderPatch[]) => {
-        const nextProviders = patchModelProviderLists(modelProviders, patches);
+        const nextProviders = patchModelProviderLists(modelProviders, patches, modelProviderRows);
         if (nextProviders === modelProviders) return Promise.resolve(modelProviders);
         return saveModelProviders(nextProviders);
-    }, [modelProviders, saveModelProviders]);
+    }, [modelProviderRows, modelProviders, saveModelProviders]);
 
     const handleCreateModelProvider = useCallback((provider: ModelProviderAccountInfo) => (
         saveModelProviders([...modelProviders, provider])
@@ -1042,9 +1062,11 @@ export default function SettingsClient({
 
     useEffect(() => {
         let cancelled = false;
-        void listProviderOAuth()
-            .then((rows) => {
-                if (!cancelled) setProviderOAuth(rows);
+        void Promise.all([listProviderOAuth(), listPluginProviders()])
+            .then(([oauthRows, providerRows]) => {
+                if (cancelled) return;
+                setProviderOAuth(oauthRows);
+                setPluginProviders(providerRows);
             })
             .catch(() => undefined);
         return () => {
@@ -1056,6 +1078,33 @@ export default function SettingsClient({
         try {
             const row = await startProviderOAuth(providerId, accountId, accountLabel);
             setProviderOAuth((prev) => upsertProviderOAuthRow(prev, row));
+            if (row.flow === 'browser') {
+                if (!row.verificationUri || !row.callbackScheme) {
+                    throw new Error('Browser OAuth response is missing its authorization URL or callback scheme.');
+                }
+                const authorizeProvider = globalThis.__CLASH_DESKTOP__?.authorizeProvider;
+                if (!authorizeProvider) {
+                    throw new Error('Browser Provider OAuth requires the Clash desktop runtime.');
+                }
+                const authorization = await authorizeProvider({
+                    verificationUri: row.verificationUri,
+                    callbackScheme: row.callbackScheme,
+                });
+                if (authorization.cancelled || !authorization.callbackUrl) return;
+                const completed = await completeProviderOAuth(
+                    providerId,
+                    row.deviceCode,
+                    accountId,
+                    authorization.callbackUrl,
+                );
+                setProviderOAuth((prev) => upsertProviderOAuthRow(prev, completed));
+                const [providerRows, catalogRows] = await Promise.all([
+                    listModelProviders(),
+                    listModelCatalog(),
+                ]);
+                setModelProviders(providerRows);
+                setModelCatalog(catalogRows);
+            }
         } catch (err) {
             const message = displayErrorMessage(err);
             setProviderOAuth((prev) => upsertProviderOAuthRow(prev, {
@@ -1096,6 +1145,38 @@ export default function SettingsClient({
             feedback.notify({
                 variant: 'error',
                 title: `Could not complete ${providerOAuthDisplayName(providerId)} authorization`,
+                message,
+            });
+        }
+    }, [feedback]);
+
+    const handleImportLocalProviderToken = useCallback(async (providerId: string, accountId?: string, accountLabel?: string) => {
+        try {
+            const row = await importLocalProviderToken(providerId, accountId, accountLabel);
+            setProviderOAuth((prev) => upsertProviderOAuthRow(prev, row));
+            const [providerRows, catalogRows] = await Promise.all([
+                listModelProviders(),
+                listModelCatalog(),
+            ]);
+            setModelProviders(providerRows);
+            setModelCatalog(catalogRows);
+            feedback.notify({
+                variant: 'success',
+                title: row.importedFrom ? `Reused login from ${row.importedFrom}` : 'Reused local provider login',
+            });
+        } catch (err) {
+            const message = displayErrorMessage(err);
+            setProviderOAuth((prev) => upsertProviderOAuthRow(prev, {
+                providerId,
+                ...(accountId ? { accountId } : {}),
+                ...(accountLabel ? { accountLabel } : {}),
+                status: 'error',
+                error: message,
+                hasAccessToken: false,
+            }));
+            feedback.notify({
+                variant: 'error',
+                title: 'Could not reuse local provider login',
                 message,
             });
         }
@@ -1248,11 +1329,12 @@ export default function SettingsClient({
                 <ModelRoutingSection
                     mode="providers"
                     providers={modelProviderRows}
-                    providerAccounts={modelProviders}
+                    providerAccounts={modelProvidersWithPlugins}
                     catalog={effectiveModelCatalog}
                     providerOAuth={providerOAuth}
                     onStartProviderOAuth={handleStartProviderOAuth}
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
+                    onImportLocalProviderToken={handleImportLocalProviderToken}
                     onPatchProvider={handlePatchModelProvider}
                     onPatchProviders={handlePatchModelProviders}
                     onCreateProvider={handleCreateModelProvider}
@@ -1381,11 +1463,12 @@ export default function SettingsClient({
                 <ModelRoutingSection
                     mode="models"
                     providers={modelProviderRows}
-                    providerAccounts={modelProviders}
+                    providerAccounts={modelProvidersWithPlugins}
                     catalog={effectiveModelCatalog}
                     providerOAuth={providerOAuth}
                     onStartProviderOAuth={handleStartProviderOAuth}
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
+                    onImportLocalProviderToken={handleImportLocalProviderToken}
                     onPatchProvider={handlePatchModelProvider}
                     onPatchProviders={handlePatchModelProviders}
                     onCreateProvider={handleCreateModelProvider}
@@ -1653,11 +1736,19 @@ type ModelProviderSetup = {
     apiKey: string;
     credentials?: ModelProviderCredentialField[];
     oauthProviderId?: ProviderOAuthId;
+    localTokenImport?: {
+        providerId: ProviderOAuthId;
+        label: string;
+    };
     requiresAllCredentials?: boolean;
     credentialRequirements?: ProviderCredentialRequirements;
     baseUrlKey?: string;
     baseUrlPlaceholder?: string;
 };
+
+function modelProviderAccountAuthId(setup: ModelProviderSetup): ProviderOAuthId | undefined {
+    return setup.oauthProviderId ?? setup.localTokenImport?.providerId;
+}
 
 function modelProviderCredentialFields(setup: ModelProviderSetup): ModelProviderCredentialField[] {
     return setup.credentials ?? [
@@ -1718,7 +1809,36 @@ function providerCredentialRequirementState(
         : { valid: false, message: 'Complete one provider credential option before saving.' };
 }
 
-function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region' | 'label' | 'apiShape'>): ModelProviderSetup | null {
+function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region' | 'label' | 'apiShape' | 'pluginProvider'>): ModelProviderSetup | null {
+    if (provider.pluginProvider) {
+        // Read the normalized source list rather than picking entries out by type name.
+        // Three `find`s produced three differently shaped fields, so a Provider offering
+        // two sources of one kind -- two regions, two installed clients -- silently lost
+        // one, and every new kind meant another branch here.
+        const sources = resolveCredentialSources(provider.pluginProvider.auth);
+        const fields = sources.filter((source) => source.control === 'field');
+        const credentials = fields.map((source) => ({
+            key: source.credentialId,
+            label: source.label,
+            ariaLabel: `${provider.pluginProvider!.name} ${source.label}`,
+            allowMultiple: false,
+        }));
+        const windowSource = sources.find((source) => source.control === 'button-window');
+        const actionSource = sources.find((source) => source.control === 'button-action');
+        return {
+            title: provider.pluginProvider.name,
+            description: provider.pluginProvider.description ?? `Models served by the ${provider.pluginProvider.name} plugin Provider.`,
+            apiKey: fields[0]?.credentialId ?? '',
+            credentials,
+            ...(windowSource ? { oauthProviderId: windowSource.id } : {}),
+            ...(actionSource ? {
+                localTokenImport: {
+                    providerId: actionSource.id,
+                    label: actionSource.label,
+                },
+            } : {}),
+        };
+    }
     if (
         provider.providerId === 'custom' &&
         (provider.apiShape === 'openai-compatible' || provider.apiShape === 'anthropic-compatible')
@@ -1938,11 +2058,24 @@ function withCredentialAvailability(provider: ModelProviderAccountInfo): ModelPr
 
 function buildModelProviderRows(
     configured: ModelProviderAccountInfo[],
+    pluginProviders: PluginProviderInfo[] = [],
 ): ModelProviderAccountInfo[] {
     const rows = new Map<string, ModelProviderAccountInfo>();
     for (const preset of MODEL_PROVIDER_PRESETS) {
         if (!modelProviderSetup(preset)) continue;
         rows.set(modelProviderKey(preset), withCredentialAvailability(preset));
+    }
+    for (const pluginProvider of pluginProviders) {
+        const provider: ModelProviderAccountInfo = {
+            providerId: pluginProvider.id,
+            upstreamId: pluginProvider.upstreamId,
+            apiShape: pluginProvider.apiShape,
+            label: pluginProvider.name,
+            enabled: true,
+            configuredCredentials: [],
+            pluginProvider,
+        };
+        rows.set(modelProviderKey(provider), provider);
     }
     for (const provider of configured) {
         if (!modelProviderSetup(provider)) continue;
@@ -1988,10 +2121,11 @@ function patchModelProviderList(
     providers: ModelProviderAccountInfo[],
     key: string,
     patch: Partial<ModelProviderAccountInfo>,
+    fallbackRows: ModelProviderAccountInfo[] = buildModelProviderRows(providers),
 ): ModelProviderAccountInfo[] {
     const row = patch.id
-        ? providers.find((provider) => provider.id === patch.id) ?? buildModelProviderRows(providers).find((provider) => modelProviderKey(provider) === key)
-        : buildModelProviderRows(providers).find((provider) => modelProviderKey(provider) === key);
+        ? providers.find((provider) => provider.id === patch.id) ?? fallbackRows.find((provider) => modelProviderKey(provider) === key)
+        : fallbackRows.find((provider) => modelProviderKey(provider) === key);
     if (!row) return providers;
     const credentialKeys = patch.credentials
         ? Object.entries(patch.credentials)
@@ -2010,8 +2144,12 @@ function patchModelProviderList(
 function patchModelProviderLists(
     providers: ModelProviderAccountInfo[],
     patches: ModelProviderPatch[],
+    fallbackRows?: ModelProviderAccountInfo[],
 ): ModelProviderAccountInfo[] {
-    return patches.reduce((nextProviders, { key, patch }) => patchModelProviderList(nextProviders, key, patch), providers);
+    return patches.reduce(
+        (nextProviders, { key, patch }) => patchModelProviderList(nextProviders, key, patch, fallbackRows),
+        providers,
+    );
 }
 
 function upsertProviderOAuthRow(rows: ProviderOAuthInfo[], next: ProviderOAuthInfo): ProviderOAuthInfo[] {
@@ -2639,6 +2777,7 @@ interface ModelRoutingSectionProps {
     providerOAuth: ProviderOAuthInfo[];
     onStartProviderOAuth: (providerId: string, accountId?: string, accountLabel?: string) => Promise<void>;
     onCompleteProviderOAuth: (providerId: string, deviceCode?: string, accountId?: string) => Promise<void>;
+    onImportLocalProviderToken: (providerId: string, accountId?: string, accountLabel?: string) => Promise<void>;
     onPatchProvider: (key: string, patch: Partial<ModelProviderAccountInfo>) => Promise<ModelProviderAccountInfo[]>;
     onPatchProviders: (patches: ModelProviderPatch[]) => Promise<ModelProviderAccountInfo[]>;
     onCreateProvider: (provider: ModelProviderAccountInfo) => Promise<ModelProviderAccountInfo[]>;
@@ -2664,6 +2803,7 @@ function ModelRoutingSection({
     providerOAuth,
     onStartProviderOAuth,
     onCompleteProviderOAuth,
+    onImportLocalProviderToken,
     onPatchProvider,
     onPatchProviders,
     onCreateProvider,
@@ -2804,8 +2944,8 @@ function ModelRoutingSection({
         const nextSupportedModelIds = nextModelAccessMode === 'all'
             ? []
             : draft.supportedModelIds ?? options.account?.supportedModelIds ?? [];
-        const isOAuthAccountDraft = !!setup.oauthProviderId && !!options.createAccount;
-        if (credentialDrafts.length === 0 && !draft.baseUrl?.trim() && !label && !hasModelAccessDraft && !isOAuthAccountDraft) return;
+        const isAuthenticatedAccountDraft = !!modelProviderAccountAuthId(setup) && !!options.createAccount;
+        if (credentialDrafts.length === 0 && !draft.baseUrl?.trim() && !label && !hasModelAccessDraft && !isAuthenticatedAccountDraft) return;
         setSavingProviderKey(key);
         try {
             const credentials = Object.fromEntries(credentialDrafts);
@@ -2865,12 +3005,12 @@ function ModelRoutingSection({
                 ...accountRows.flatMap((account) => account.configuredCredentials ?? []),
             ])].sort();
             const hasBaseUrl = setup?.baseUrlKey ? configuredKeys.includes(setup.baseUrlKey) : false;
-            const oauthProviderId = setup?.oauthProviderId;
-            const oauth = oauthProviderId
-                ? oauthForProviderAccount(providerOAuth, oauthProviderId)
+            const accountAuthProviderId = setup ? modelProviderAccountAuthId(setup) : undefined;
+            const oauth = accountAuthProviderId
+                ? oauthForProviderAccount(providerOAuth, accountAuthProviderId)
                 : undefined;
-            const hasRequiredOAuth = oauthProviderId
-                ? accountRows.some((account) => account.availableOAuth?.includes(oauthProviderId))
+            const hasRequiredOAuth = accountAuthProviderId
+                ? accountRows.some((account) => account.availableOAuth?.includes(accountAuthProviderId))
                 : false;
             const hasRequiredCredentials = credentialFields.length === 0
                 ? accountRows.length > 0
@@ -2907,7 +3047,7 @@ function ModelRoutingSection({
                 support,
                 title,
                 searchText,
-                configured: oauthProviderId
+                configured: accountAuthProviderId
                     ? hasRequiredOAuth
                     : hasRequiredCredentials,
             };
@@ -3293,10 +3433,10 @@ function ModelRoutingSection({
     const providerStatusLabel = (row: typeof providerViewRows[number]) => {
         if (row.oauth?.status === 'pending') return 'Pending';
         if (!row.configured) return 'Not configured';
-        if (row.setup?.oauthProviderId) {
-            const oauthProviderId = row.setup.oauthProviderId;
+        const accountAuthProviderId = row.setup ? modelProviderAccountAuthId(row.setup) : undefined;
+        if (accountAuthProviderId) {
             const accountCount = row.accounts.filter((account) =>
-                account.availableOAuth?.includes(oauthProviderId),
+                account.availableOAuth?.includes(accountAuthProviderId),
             ).length || row.accounts.length || 1;
             return `${accountCount} account${accountCount === 1 ? '' : 's'}`;
         }
@@ -3332,6 +3472,8 @@ function ModelRoutingSection({
         if (!setup) return null;
         const credentialFields = modelProviderCredentialFields(setup);
         const oauthProviderId = setup.oauthProviderId;
+        const localTokenImport = setup.localTokenImport;
+        const accountAuthProviderId = modelProviderAccountAuthId(setup);
         const supportedModelsHref = row.support?.models.length
             ? providerModelsHref(row.key)
             : '/settings?section=models';
@@ -3342,7 +3484,7 @@ function ModelRoutingSection({
         const configuredAccounts = row.accounts.filter((account) =>
             (account.configuredCredentials ?? []).some((credentialKey) => setupCredentialKeys.has(credentialKey)),
         );
-        const savedAccounts = (oauthProviderId
+        const savedAccounts = (accountAuthProviderId
             ? row.accounts
             : credentialFields.length === 0
                 ? row.accounts
@@ -3385,7 +3527,7 @@ function ModelRoutingSection({
         ) || (
             draft.supportedModelIds !== undefined && !sameStringArray(draft.supportedModelIds, editingSupportedModelIds)
         );
-        const hasProviderDraft = hasCredentialDraft || (!!editingAccount && !!draft.label?.trim()) || hasModelAccessDraft || (isAddingPrioritizedKey && !!oauthProviderId);
+        const hasProviderDraft = hasCredentialDraft || (!!editingAccount && !!draft.label?.trim()) || hasModelAccessDraft || (isAddingPrioritizedKey && !!accountAuthProviderId);
         const providerTestKey = editingAccount ? modelProviderAccountIdentity(editingAccount) : `new:${row.key}`;
         const selectedSupportedModelIds = new Set(draftSupportedModelIds);
         const modelAccessInvalid = modelAccessMode === 'specific' && draftSupportedModelIds.length === 0;
@@ -3428,7 +3570,7 @@ function ModelRoutingSection({
             setEditingProviderAccountKey(null);
             setProviderDrafts((prev) => ({
                 ...prev,
-                [row.key]: oauthProviderId ? { accountId: createProviderAccountId(row.key) } : {},
+                [row.key]: accountAuthProviderId ? { accountId: createProviderAccountId(row.key) } : {},
             }));
             setAddingProviderKey(row.key);
         };
@@ -3440,7 +3582,7 @@ function ModelRoutingSection({
         const saveDraft = async () => {
             if (!setup || !hasProviderDraft) return false;
             const createAccount = isAddingPrioritizedKey;
-            if (isAddingPrioritizedKey && !hasCredentialDraft && !oauthProviderId) return false;
+            if (isAddingPrioritizedKey && !hasCredentialDraft && !accountAuthProviderId) return false;
             if (modelAccessInvalid || credentialConfigurationInvalid) return false;
             const saved = await commitProviderDraft(row.key, setup, {
                 createAccount,
@@ -3448,7 +3590,7 @@ function ModelRoutingSection({
                 account: editingAccount ?? undefined,
                 priority: createAccount ? nextProviderAccountPriority(savedAccounts) : undefined,
                 label: isAddingPrioritizedKey
-                    ? createAccount ? (draft.label?.trim() || (oauthProviderId ? `${row.title} account ${newKeyNumber}` : undefined)) : draft.label?.trim()
+                    ? createAccount ? (draft.label?.trim() || (accountAuthProviderId ? `${row.title} account ${newKeyNumber}` : undefined)) : draft.label?.trim()
                     : draft.label?.trim(),
             });
             if (saved) {
@@ -3471,8 +3613,8 @@ function ModelRoutingSection({
                 },
             })));
         };
-        const accountNoun = oauthProviderId ? 'account' : 'API key';
-        const editorTitle = editingAccountLabel ?? (oauthProviderId ? 'New account' : 'New key');
+        const accountNoun = accountAuthProviderId ? 'account' : 'API key';
+        const editorTitle = editingAccountLabel ?? (accountAuthProviderId ? 'New account' : 'New key');
         const editorNumber = editingAccount ? editingAccountIndex + 1 : newKeyNumber;
         const editorAriaLabel = editingAccountLabel
             ? `${editingAccountLabel} ${row.title} ${accountNoun}`
@@ -3514,10 +3656,10 @@ function ModelRoutingSection({
         const providerTestResult = providerTestResults[providerTestKey];
         const canRunProviderTest = !!editingAccount && providerTestOptions.length > 0;
         const providerTestDisabled = providerTestBusyKey === providerTestKey || !selectedProviderTestModelId || hasProviderDraft || saving;
-        const editingOAuth = oauthProviderId && editingAccount
-            ? oauthForProviderAccount(providerOAuth, oauthProviderId, editingAccount)
+        const editingOAuth = accountAuthProviderId && editingAccount
+            ? oauthForProviderAccount(providerOAuth, accountAuthProviderId, editingAccount)
             : undefined;
-        const editingOAuthBusyKey = oauthProviderId && editingAccount?.id ? `${oauthProviderId}:${editingAccount.id}` : null;
+        const editingOAuthBusyKey = accountAuthProviderId && editingAccount?.id ? `${accountAuthProviderId}:${editingAccount.id}` : null;
         const editingOAuthBusy = editingOAuthBusyKey ? providerOAuthBusyKey === editingOAuthBusyKey : false;
         const runProviderTest = async () => {
             if (!canRunProviderTest || providerTestDisabled || !editingAccount || !selectedProviderTestModelId) return;
@@ -3594,7 +3736,7 @@ function ModelRoutingSection({
                     <label className="block">
                         <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">Name (optional)</span>
                         <Input
-                            aria-label={`${row.title} ${oauthProviderId ? 'account' : 'key'} name`}
+                            aria-label={`${row.title} ${accountAuthProviderId ? 'account' : 'key'} name`}
                             type="text"
                             value={draft.label ?? ''}
                             onChange={(e) => updateProviderDraft({ label: e.target.value })}
@@ -3638,7 +3780,7 @@ function ModelRoutingSection({
                             {credentialRequirementState.message}
                         </p>
                     )}
-                    {oauthProviderId && editingAccount?.id && (
+                    {accountAuthProviderId && editingAccount?.id && (
                         <div className="rounded-xl border border-warm-border bg-warm-muted/20 p-3">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div className="min-w-0">
@@ -3653,26 +3795,28 @@ function ModelRoutingSection({
                                     )}
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                    <Button
-                                        disabled={editingOAuthBusy}
-                                        onClick={async () => {
-                                            if (!editingOAuthBusyKey || !editingAccount.id) return;
-                                            setProviderOAuthBusyKey(editingOAuthBusyKey);
-                                            try {
-                                                await onStartProviderOAuth(
-                                                    oauthProviderId,
-                                                    editingAccount.id,
-                                                    draft.label?.trim() || editingAccount.label,
-                                                );
-                                            } finally {
-                                                setProviderOAuthBusyKey(null);
-                                            }
-                                        }}
-                                        className={settingsCompactSecondaryButtonClass}
-                                    >
-                                        {editingOAuth?.status === 'pending' ? 'Restart authorization' : editingOAuth?.status === 'authorized' ? 'Reconnect' : 'Connect'}
-                                    </Button>
-                                    {editingOAuth?.status === 'pending' && (
+                                    {oauthProviderId && (
+                                        <Button
+                                            disabled={editingOAuthBusy}
+                                            onClick={async () => {
+                                                if (!editingOAuthBusyKey || !editingAccount.id) return;
+                                                setProviderOAuthBusyKey(editingOAuthBusyKey);
+                                                try {
+                                                    await onStartProviderOAuth(
+                                                        oauthProviderId,
+                                                        editingAccount.id,
+                                                        draft.label?.trim() || editingAccount.label,
+                                                    );
+                                                } finally {
+                                                    setProviderOAuthBusyKey(null);
+                                                }
+                                            }}
+                                            className={settingsCompactSecondaryButtonClass}
+                                        >
+                                            {editingOAuth?.status === 'pending' ? 'Restart authorization' : editingOAuth?.status === 'authorized' ? 'Reconnect' : 'Connect'}
+                                        </Button>
+                                    )}
+                                    {oauthProviderId && editingOAuth?.status === 'pending' && editingOAuth.flow !== 'browser' && (
                                         <Button
                                             disabled={editingOAuthBusy}
                                             onClick={async () => {
@@ -3689,11 +3833,32 @@ function ModelRoutingSection({
                                             Complete
                                         </Button>
                                     )}
+                                    {localTokenImport && (
+                                        <Button
+                                            disabled={editingOAuthBusy}
+                                            onClick={async () => {
+                                                if (!editingOAuthBusyKey || !editingAccount.id) return;
+                                                setProviderOAuthBusyKey(editingOAuthBusyKey);
+                                                try {
+                                                    await onImportLocalProviderToken(
+                                                        localTokenImport.providerId,
+                                                        editingAccount.id,
+                                                        draft.label?.trim() || editingAccount.label,
+                                                    );
+                                                } finally {
+                                                    setProviderOAuthBusyKey(null);
+                                                }
+                                            }}
+                                            className={settingsCompactSecondaryButtonClass}
+                                        >
+                                            {localTokenImport.label}
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     )}
-                    {oauthProviderId && !editingAccount && (
+                    {accountAuthProviderId && !editingAccount && (
                         <div className="rounded-xl border border-warm-border bg-warm-muted/20 p-3 text-xs font-medium text-stone-500 dark:text-stone-400">
                             Save this account before starting authorization.
                         </div>
@@ -3905,10 +4070,10 @@ function ModelRoutingSection({
                         <aside className="text-sm text-stone-500 dark:text-stone-400">
                             <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-50">
                                 <Key className="h-4 w-4" aria-hidden="true" />
-                                <span>{oauthProviderId ? 'Provider Accounts' : 'Provider Keys'}</span>
+                                <span>{accountAuthProviderId ? 'Provider Accounts' : 'Provider Keys'}</span>
                             </div>
                             <p className="mt-3 leading-7">
-                                {oauthProviderId
+                                {accountAuthProviderId
                                     ? 'Add and authorize provider accounts. Drag an account by its handle to reorder priority.'
                                     : 'Add and configure your API keys. Drag a key by its handle to reorder priority.'}
                             </p>
@@ -3923,13 +4088,13 @@ function ModelRoutingSection({
                                         </p>
                                     </div>
                                     <Button
-                                        aria-label={`Add prioritized ${row.title} ${oauthProviderId ? 'account' : 'key'}`}
+                                        aria-label={`Add prioritized ${row.title} ${accountAuthProviderId ? 'account' : 'key'}`}
                                         onClick={openPrioritizedKeyEditor}
                                         size="sm"
                                         leftIcon={<Plus className="h-3.5 w-3.5" />}
                                         className={`${settingsCompactSecondaryButtonClass} gap-1.5`}
                                     >
-                                        {oauthProviderId ? 'Add account' : 'Add key'}
+                                        {accountAuthProviderId ? 'Add account' : 'Add key'}
                                     </Button>
                                 </div>
                             <div className="space-y-3">
@@ -3938,14 +4103,14 @@ function ModelRoutingSection({
                                         items={savedAccounts.map(modelProviderAccountIdentity)}
                                         onReorder={(orderedAccountIds) => reorderProviderAccounts(row.key, savedAccounts, orderedAccountIds)}
                                     >
-                                        <ul aria-label={`${row.title} prioritized ${oauthProviderId ? 'accounts' : 'keys'}`} className="space-y-2">
+                                        <ul aria-label={`${row.title} prioritized ${accountAuthProviderId ? 'accounts' : 'keys'}`} className="space-y-2">
                                             {savedAccounts.map((account, index) => {
                                                 const accountKey = modelProviderAccountIdentity(account);
-                                                const accountLabel = account.label ?? `${oauthProviderId ? 'Account' : 'API key'} ${index + 1}`;
-                                                const accountOAuth = oauthProviderId
-                                                    ? oauthForProviderAccount(providerOAuth, oauthProviderId, account)
+                                                const accountLabel = account.label ?? `${accountAuthProviderId ? 'Account' : 'API key'} ${index + 1}`;
+                                                const accountOAuth = accountAuthProviderId
+                                                    ? oauthForProviderAccount(providerOAuth, accountAuthProviderId, account)
                                                     : undefined;
-                                                const accountMeta = oauthProviderId ? providerOAuthStatusText(accountOAuth) : HIDDEN_CREDENTIAL_MASK;
+                                                const accountMeta = accountAuthProviderId ? providerOAuthStatusText(accountOAuth) : HIDDEN_CREDENTIAL_MASK;
                                                 const expanded = editingAccountKey === accountKey;
                                                 return (
                                                     <SortableProviderKeyRow
@@ -3983,7 +4148,7 @@ function ModelRoutingSection({
                                 {savedAccounts.length === 0 && !isAddingPrioritizedKey && (
                                     <div className="flex min-h-20 items-center justify-center rounded-xl border border-dashed border-warm-border bg-warm-muted/20 px-4 py-5 text-sm font-medium text-stone-500 dark:text-stone-400">
                                         <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                                        Add a prioritized {oauthProviderId ? 'account' : 'key'}
+                                        Add a prioritized {accountAuthProviderId ? 'account' : 'key'}
                                     </div>
                                 )}
 
@@ -4402,12 +4567,10 @@ function ModelRoutingSection({
                                     return (
                                         <div key={account.id} className="rounded-xl border border-warm-border bg-warm-surface p-4">
                                             <label className="flex items-center gap-3 text-sm font-medium text-slate-900 dark:text-slate-50">
-                                                <input
-                                                    type="checkbox"
+                                                <Switch
                                                     aria-label={`Use ${label}`}
                                                     checked={!!binding}
-                                                    onChange={(event) => toggleModelBinding(account, event.target.checked)}
-                                                    className="h-4 w-4 rounded border-warm-border accent-[var(--brand)]"
+                                                    onCheckedChange={(checked) => toggleModelBinding(account, checked)}
                                                 />
                                                 <span className="flex-1">{label}</span>
                                                 <span className="text-xs font-normal text-stone-500 dark:text-stone-400">
@@ -5197,8 +5360,6 @@ function SyncSection() {
     );
 }
 
-type LocalSpeechCapability = 'speech-to-text' | 'text-to-speech';
-
 interface LocalSpeechSetup {
     runtime: 'builtin-rpc';
     status: 'disabled' | 'needs-install' | 'ready';
@@ -5231,22 +5392,6 @@ interface LocalAudioConfig {
     };
 }
 
-function isLocalAsrModelEntry(entry: ModelCatalogEntryInfo): boolean {
-    return (entry.model.kind as string) === 'asr' && (
-        (entry.selectedRoute?.apiShape as string | undefined) === 'local-asr' ||
-        entry.candidateProviders.map(String).includes('local')
-    );
-}
-
-function isLocalTtsModelEntry(entry: ModelCatalogEntryInfo): boolean {
-    return (entry.selectedRoute?.apiShape as string | undefined) === 'local-tts' ||
-        entry.routes.some((route) => (route.apiShape as string | undefined) === 'local-tts');
-}
-
-function isLocalSpeechModelEntry(entry: ModelCatalogEntryInfo): boolean {
-    return isLocalAsrModelEntry(entry) || isLocalTtsModelEntry(entry);
-}
-
 function isVoiceInputModelEntry(entry: ModelCatalogEntryInfo): boolean {
     if (isLocalAsrModelEntry(entry)) return true;
     return (entry.model.kind as string) === 'text' && modelAcceptsInput(entry, 'audio');
@@ -5262,21 +5407,6 @@ function isGlobalModelEnabled(
     return !!entry.selectedRoute &&
         entry.missingCredentials.length === 0 &&
         entry.tier === 'available';
-}
-
-function localSpeechCapability(entry: ModelCatalogEntryInfo): LocalSpeechCapability | null {
-    if (isLocalAsrModelEntry(entry)) return 'speech-to-text';
-    if (isLocalTtsModelEntry(entry)) return 'text-to-speech';
-    return null;
-}
-
-function asrModelValue(entry: ModelCatalogEntryInfo): string {
-    if (entry.selectedRoute?.upstreamModel) return entry.selectedRoute.upstreamModel;
-    const defaultParams = entry.model.defaultParams as Record<string, unknown> | undefined;
-    const defaultModel = defaultParams?.asr_model;
-    return typeof defaultModel === 'string' && defaultModel.trim()
-        ? defaultModel.trim()
-        : entry.model.id;
 }
 
 function ttsModelValue(entry: ModelCatalogEntryInfo): string {

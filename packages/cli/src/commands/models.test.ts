@@ -121,15 +121,24 @@ test("models local progressively discloses status, install, and remove without m
   assert.match(local.description(), /downloadable local ASR and TTS/i);
   assert.deepEqual(
     local.commands.map((command) => command.name()),
-    ["status", "install", "remove"],
+    ["catalog", "status", "install", "remove"],
   );
 
   for (const command of local.commands) {
     const help = command.helpInformation();
     assert.match(help, /--capability <text-to-speech\|speech-to-text>/);
-    assert.match(help, /--model <id>/);
     assert.match(help, /--json/);
     assert.doesNotMatch(help, /--force|--if-match|--read-token/);
+  }
+  for (const name of ["status", "install", "remove"]) {
+    const command = local.commands.find((candidate) => candidate.name() === name);
+    assert.ok(command);
+    // The model id is optional: the configured model is the default answer.
+    assert.match(command.helpInformation(), /--model <id>/);
+    assert.ok(
+      command.options.every((option) => option.long !== "--model" || !option.mandatory),
+      `${name} must not force a model id`,
+    );
   }
 });
 

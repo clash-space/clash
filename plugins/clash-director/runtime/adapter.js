@@ -11482,7 +11482,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-2B4Z6TLC.js
+// ../../packages/shared-types/dist/chunk-O4B43KB4.js
 var ModelKindSchema = z.enum(["image", "video", "audio", "text", "asr"]);
 var ModelTaskSchema = z.enum([
   "speech-to-text",
@@ -11682,7 +11682,7 @@ var GEMINI_TTS_VOICES = [
   { label: "Sulafat - Warm", value: "Sulafat" }
 ];
 var ModelParameterTypeSchema = z.enum(["select", "slider", "number", "text", "boolean"]);
-var ProviderSchema = z.enum([
+var BuiltinProviderSchema = z.enum([
   "local",
   "official",
   "fal",
@@ -11698,6 +11698,10 @@ var ProviderSchema = z.enum([
   "mock",
   "custom"
 ]);
+var ProviderSchema = z.string().trim().regex(
+  /^[a-z0-9][a-z0-9._-]*$/,
+  "Provider ids must be lowercase plugin-safe identifiers."
+);
 var ReferenceBindingSchema = z.discriminatedUnion("type", [
   z.object({
     /** Provider receives the prompt and reference collections as separate fields. */
@@ -11876,6 +11880,12 @@ var ModelProviderImplementationSchema = z.object({
   /** Plugin that owns projectorExportId. The resolver selects an installed
    * exact version and persists it on the Canvas node. */
   projectorPluginId: z.string().min(1).optional(),
+  /** Function export that owns the full submit/poll/result lifecycle for a
+   * plugin-defined provider. Built-in adapters may omit it. */
+  executorExportId: z.string().min(1).optional(),
+  /** Plugin that owns executorExportId. Package composition fills this from
+   * immutable plugin provenance when omitted in a binding document. */
+  executorPluginId: z.string().min(1).optional(),
   priority: z.number().optional(),
   weight: z.number().optional(),
   requiredCredentials: z.array(z.string()).optional(),
@@ -11892,12 +11902,20 @@ var ModelProviderImplementationSchema = z.object({
    * the effective Card instead of being rendered and silently discarded. */
   excludedParameterIds: z.array(z.string().min(1)).optional()
 }).superRefine((implementation, ctx) => {
-  if (!implementation.projectorPluginId || implementation.projectorExportId) return;
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    path: ["projectorExportId"],
-    message: "projectorExportId is required when projectorPluginId is configured."
-  });
+  if (implementation.projectorPluginId && !implementation.projectorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["projectorExportId"],
+      message: "projectorExportId is required when projectorPluginId is configured."
+    });
+  }
+  if (implementation.executorPluginId && !implementation.executorExportId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["executorExportId"],
+      message: "executorExportId is required when executorPluginId is configured."
+    });
+  }
 });
 var ModelCardSchema = z.object({
   id: z.string(),
@@ -14532,6 +14550,16 @@ var ExecutablePluginCardExportSchema = z.object({
   kind: z.enum(["model-card", "action-card"]),
   path: PluginRelativePathSchema
 });
+var ExecutablePluginProviderExportSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z.literal("provider"),
+  path: PluginRelativePathSchema
+});
+var ExecutablePluginModelBindingExportSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  kind: z.literal("model-provider-binding"),
+  path: PluginRelativePathSchema
+});
 var ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("form")
@@ -14658,9 +14686,70 @@ var ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
     spec: ExecutableActionCardSchema
   }).strict()
 ]);
+var ExecutablePluginProviderAuthSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("api-key"),
+    credentialId: z.string().trim().min(1).default("apiKey"),
+    label: z.string().trim().min(1).optional()
+  }).strict(),
+  z.object({
+    type: z.literal("oauth"),
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    flow: z.literal("browser"),
+    authorizationUrl: z.string().url(),
+    callback: z.object({
+      type: z.literal("custom-scheme"),
+      scheme: z.string().trim().regex(/^[a-z][a-z0-9+.-]*$/)
+    }).strict(),
+    accessTokenField: z.string().trim().min(1).default("accessToken")
+  }).strict(),
+  z.object({
+    type: z.literal("local-token-import"),
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    label: z.string().trim().min(1).optional(),
+    source: z.object({
+      format: z.literal("electron-store-aes-256-gcm-v2"),
+      appDataSubdirectory: PluginRelativePathSchema,
+      configFile: PluginRelativePathSchema,
+      keyFile: PluginRelativePathSchema,
+      tokenPath: z.array(
+        z.string().trim().regex(/^[A-Za-z0-9_-]+$/).refine(
+          (segment) => !["__proto__", "constructor", "prototype"].includes(segment),
+          "Token path contains a reserved property."
+        )
+      ).min(1)
+    }).strict()
+  }).strict()
+]);
+var ExecutablePluginProviderDefinitionSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  name: z.string().trim().min(1),
+  description: z.string().trim().min(1).optional(),
+  upstreamId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  apiShape: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  executorExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  auth: z.array(ExecutablePluginProviderAuthSchema).default([])
+}).strict();
+var ExecutablePluginProviderDocumentSchema = z.object({
+  apiVersion: z.literal("clash.provider/v1"),
+  kind: z.literal("provider"),
+  spec: ExecutablePluginProviderDefinitionSchema
+}).strict();
+var ExecutablePluginModelBindingSpecSchema = z.intersection(
+  z.object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    modelId: z.string().trim().min(1)
+  }),
+  ModelProviderImplementationSchema
+);
+var ExecutablePluginModelBindingDocumentSchema = z.object({
+  apiVersion: z.literal("clash.binding/v1"),
+  kind: z.literal("model-provider-binding"),
+  spec: ExecutablePluginModelBindingSpecSchema
+}).strict();
 var ExecutablePluginFunctionExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  kind: z.enum(["action", "provider-projector"]),
+  kind: z.enum(["action", "provider-projector", "provider-executor"]),
   handler: z.string().trim().min(1)
 });
 var PluginNetworkPermissionsSchema = z.object({
@@ -14692,6 +14781,19 @@ var ExecutablePluginCardRegistrationSchema = z.object({
   runtime: ExecutablePluginRuntimeSchema,
   permissions: ExecutablePluginPermissionsSchema,
   document: ExecutablePluginCardDocumentSchema
+}).strict();
+var ExecutablePluginArtifactRegistrationBaseSchema = z.object({
+  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  version: z.string().trim().regex(SEMVER_PATTERN),
+  schemaHash: z.string().regex(SHA256_PATTERN),
+  runtime: ExecutablePluginRuntimeSchema,
+  permissions: ExecutablePluginPermissionsSchema
+});
+var ExecutablePluginProviderRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
+  document: ExecutablePluginProviderDocumentSchema
+}).strict();
+var ExecutablePluginModelBindingRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
+  document: ExecutablePluginModelBindingDocumentSchema
 }).strict();
 var ExecutablePluginBindingSchema = z.object({
   pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
@@ -14737,7 +14839,7 @@ var ExecutablePluginInvocationSchema = z.object({
   projectId: z.string().trim().min(1),
   nodeId: z.string().trim().min(1).optional(),
   target: ExecutablePluginBindingSchema.extend({
-    kind: z.enum(["action", "provider-projector"])
+    kind: z.enum(["action", "provider-projector", "provider-executor"])
   }),
   input: z.object({
     values: z.record(ExecutablePluginJsonValueSchema).default({}),
@@ -14761,7 +14863,7 @@ var HostedExecutablePluginCapabilitySchema = z.object({
     projectId: z.string().trim().min(1),
     nodeId: z.string().trim().min(1).optional(),
     target: ExecutablePluginBindingSchema.extend({
-      kind: z.enum(["action", "provider-projector"])
+      kind: z.enum(["action", "provider-projector", "provider-executor"])
     }),
     actor: z.object({
       kind: z.enum(["user", "agent", "system"]),
@@ -14906,7 +15008,7 @@ var ExecutablePluginContractTestDocumentSchema = z.object({
   description: z.string().trim().min(1).optional(),
   target: z.object({
     exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    kind: z.enum(["action", "provider-projector"])
+    kind: z.enum(["action", "provider-projector", "provider-executor"])
   }).strict(),
   context: z.object({
     projectId: z.string().trim().min(1).default("contract-test-project"),
@@ -14943,6 +15045,8 @@ var ExecutablePluginManifestSchema = z.object({
   runtime: ExecutablePluginRuntimeSchema,
   exports: z.object({
     cards: z.array(ExecutablePluginCardExportSchema).default([]),
+    providers: z.array(ExecutablePluginProviderExportSchema).default([]),
+    modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
     functions: z.array(ExecutablePluginFunctionExportSchema).default([])
   }),
   permissions: ExecutablePluginPermissionsSchema,
@@ -14952,6 +15056,8 @@ var ExecutablePluginManifestSchema = z.object({
 }).superRefine((manifest, ctx) => {
   for (const [key, values] of [
     ["cards", manifest.exports.cards],
+    ["providers", manifest.exports.providers],
+    ["modelBindings", manifest.exports.modelBindings],
     ["functions", manifest.exports.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
@@ -14976,6 +15082,20 @@ var ExecutablePluginManifestSchema = z.object({
       });
     }
     cardPaths.add(card.path);
+  }
+  const artifactPaths = new Set(cardPaths);
+  for (const artifact of [
+    ...manifest.exports.providers,
+    ...manifest.exports.modelBindings
+  ]) {
+    if (artifactPaths.has(artifact.path)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["exports"],
+        message: "Plugin declarative artifact paths must be unique."
+      });
+    }
+    artifactPaths.add(artifact.path);
   }
   const contractTestPaths = /* @__PURE__ */ new Set();
   for (const path of manifest.contractTests) {
@@ -16282,7 +16402,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-PVL2FXUQ.js
+// ../../packages/shared-types/dist/chunk-XAYWVA4T.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -16749,13 +16869,39 @@ var FiniteNumberSchema = z.number().finite();
 var NonnegativeFrameSchema = z.number().int().nonnegative();
 var PositiveFrameSchema = z.number().int().positive();
 var CssColorSchema = z.string().min(1);
+var TIMELINE_ITEM_TRANSFORM_SEMANTICS = {
+  position: {
+    fields: ["properties.x", "properties.y"],
+    unit: "composition-pixels",
+    origin: "composition-center"
+  },
+  staticSize: {
+    fields: ["properties.width", "properties.height"],
+    unit: "unitless-source-size-multiplier",
+    outputPixels: false,
+    defaults: { width: 1, height: 1 },
+    oneByOneBehavior: "contain-fit-within-composition"
+  },
+  animatedScale: {
+    field: "keyframes.scale",
+    unit: "unitless-multiplier-of-static-size"
+  }
+};
 var TimelineItemPropertiesSchema = z.object({
-  x: FiniteNumberSchema,
-  y: FiniteNumberSchema,
-  width: FiniteNumberSchema,
-  height: FiniteNumberSchema,
-  rotation: FiniteNumberSchema.optional(),
-  opacity: z.number().finite().min(0).max(1).optional()
+  x: FiniteNumberSchema.describe(
+    "Horizontal center offset in composition pixels; 0 is the composition center."
+  ),
+  y: FiniteNumberSchema.describe(
+    "Vertical center offset in composition pixels; 0 is the composition center."
+  ),
+  width: FiniteNumberSchema.describe(
+    "Unitless multiplier of resolved source natural width; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+  ),
+  height: FiniteNumberSchema.describe(
+    "Unitless multiplier of resolved source natural height; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+  ),
+  rotation: FiniteNumberSchema.describe("Clockwise rotation in degrees.").optional(),
+  opacity: z.number().finite().min(0).max(1).describe("Unitless opacity from 0 through 1.").optional()
 });
 var TimelineEffectParamValueSchema = z.union([
   z.string(),
@@ -16974,7 +17120,7 @@ var itemBaseFields = {
     editor: noControl,
     runtimeConsumers: ["asset-loader", "canvas-link", "render"]
   }),
-  properties: authored(TimelineItemPropertiesSchema, "Static item transform used as fallback outside animated keyframe channels.", {
+  properties: authored(TimelineItemPropertiesSchema, "Static item transform: x/y are composition-center pixel offsets; width/height are unitless source-size multipliers, never output pixels.", {
     required: false,
     editor: propertiesControl,
     runtimeConsumers: ["editor", "preview", "render", "export"],
@@ -18186,32 +18332,171 @@ function parseFromExpression(raw) {
   return null;
 }
 var TIMELINE_DSL_GLOBAL_SEMANTIC_RULES = [
-  { id: "timeline.track.duplicate-id", kind: "unique-field", objectPath: "tracks[]", field: "id" },
-  { id: "timeline.item.duplicate-id", kind: "unique-field-global", objectPath: "tracks[].items[]", field: "id" },
-  { id: "timeline.primary-track.reference", kind: "reference", objectPath: "primaryTrackId", targetPath: "tracks[].id" },
-  { id: "timeline.primary-track.category", kind: "referenced-object-field", objectPath: "primaryTrackId", field: "category", allowedValues: ["primary"] },
-  { id: "timeline.track.category-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "category" },
-  { id: "timeline.track.role-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "role" },
-  { id: "timeline.track.role-category", kind: "owner-field-consistency", objectPath: "tracks[]", fields: ["role", "category"], mapping: TIMELINE_DSL_ROLE_CATEGORIES },
-  { id: "timeline.track.category-order", kind: "ordered-enum", objectPath: "tracks[]", field: "category", order: TIMELINE_DSL_TRACK_CATEGORIES },
-  { id: "timeline.track.mixed-categories", kind: "single-structural-category", objectPath: "tracks[]" },
-  { id: "timeline.item.from-expression", kind: "expression-grammar", objectPath: "tracks[].items[]", field: "from" },
-  { id: "timeline.item.frame-integer", kind: "integer-frame", objectPath: "tracks[].items[]", field: "from" },
-  { id: "timeline.item.from-reference", kind: "reference", objectPath: "tracks[].items[].from", targetPath: "tracks[].items[].id" },
-  { id: "timeline.item.from-cycle", kind: "acyclic-reference", objectPath: "tracks[].items[].from" },
-  { id: "timeline.item.source-required", kind: "requires-any-field", objectPath: "tracks[].items[]", fields: ["src", "assetId", "sourceNodeId"] },
-  { id: "timeline.item.animation-duration", kind: "maximum-by-owner-field", objectPath: "tracks[].items[]", fields: ["entranceAnimation.durationInFrames", "exitAnimation.durationInFrames"], maximumPath: "durationInFrames" },
-  { id: "timeline.audio.ducking-track-role", kind: "field-requires-owner-value", objectPath: "tracks[].items[]", field: "audioDucking", ownerField: "role", ownerValue: "music" },
-  { id: "timeline.composition.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["sourcePath", "renderedAssetPath"] },
-  { id: "timeline.composition.preview-contract", kind: "conditional-required", objectPath: "tracks[].items[]" },
-  { id: "timeline.caption.structured", kind: "conditional-required", objectPath: "tracks[].items[]" },
-  { id: "timeline.caption.lineage", kind: "cross-field-lineage", objectPath: "tracks[].items[]" },
-  { id: "timeline.derived-overlay.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["src"] },
-  { id: "timeline.derived-overlay.copy-on-write", kind: "distinct-fields", objectPath: "tracks[].items[]", fields: ["sourceAssetId", "derivedAssetId"] },
-  { id: "timeline.transition.reference", kind: "references", objectPath: "tracks[].items[]", fields: ["fromItemId", "toItemId"] },
-  { id: "timeline.transition.continuity", kind: "same-track-contiguous-references", objectPath: "tracks[].items[]" },
-  { id: "timeline.transition.centered-range", kind: "centered-on-reference-boundary", objectPath: "tracks[].items[]" },
-  { id: "timeline.transition.duration-handles", kind: "maximum-by-reference-handles", objectPath: "tracks[].items[]" }
+  {
+    id: "timeline.track.duplicate-id",
+    kind: "unique-field",
+    objectPath: "tracks[]",
+    field: "id"
+  },
+  {
+    id: "timeline.item.duplicate-id",
+    kind: "unique-field-global",
+    objectPath: "tracks[].items[]",
+    field: "id"
+  },
+  {
+    id: "timeline.primary-track.reference",
+    kind: "reference",
+    objectPath: "primaryTrackId",
+    targetPath: "tracks[].id"
+  },
+  {
+    id: "timeline.primary-track.category",
+    kind: "referenced-object-field",
+    objectPath: "primaryTrackId",
+    field: "category",
+    allowedValues: ["primary"]
+  },
+  {
+    id: "timeline.track.category-item-mismatch",
+    kind: "allowed-item-types",
+    objectPath: "tracks[]",
+    discriminator: "category"
+  },
+  {
+    id: "timeline.track.role-item-mismatch",
+    kind: "allowed-item-types",
+    objectPath: "tracks[]",
+    discriminator: "role"
+  },
+  {
+    id: "timeline.track.role-category",
+    kind: "owner-field-consistency",
+    objectPath: "tracks[]",
+    fields: ["role", "category"],
+    mapping: TIMELINE_DSL_ROLE_CATEGORIES
+  },
+  {
+    id: "timeline.track.category-order",
+    kind: "ordered-enum",
+    objectPath: "tracks[]",
+    field: "category",
+    order: TIMELINE_DSL_TRACK_CATEGORIES
+  },
+  {
+    id: "timeline.track.mixed-categories",
+    kind: "single-structural-category",
+    objectPath: "tracks[]"
+  },
+  {
+    id: "timeline.item.from-expression",
+    kind: "expression-grammar",
+    objectPath: "tracks[].items[]",
+    field: "from"
+  },
+  {
+    id: "timeline.item.frame-integer",
+    kind: "integer-frame",
+    objectPath: "tracks[].items[]",
+    field: "from"
+  },
+  {
+    id: "timeline.item.from-reference",
+    kind: "reference",
+    objectPath: "tracks[].items[].from",
+    targetPath: "tracks[].items[].id"
+  },
+  {
+    id: "timeline.item.from-cycle",
+    kind: "acyclic-reference",
+    objectPath: "tracks[].items[].from"
+  },
+  {
+    id: "timeline.item.source-required",
+    kind: "requires-any-field",
+    objectPath: "tracks[].items[]",
+    fields: ["src", "assetId", "sourceNodeId"]
+  },
+  {
+    id: "timeline.item.animation-duration",
+    kind: "maximum-by-owner-field",
+    objectPath: "tracks[].items[]",
+    fields: [
+      "entranceAnimation.durationInFrames",
+      "exitAnimation.durationInFrames"
+    ],
+    maximumPath: "durationInFrames"
+  },
+  {
+    id: "timeline.item.scale-unit",
+    kind: "maximum-absolute-value",
+    objectPath: "tracks[].items[]",
+    fields: ["properties.width", "properties.height"],
+    maximum: 4,
+    unit: "unitless-source-size-multiplier"
+  },
+  {
+    id: "timeline.audio.ducking-track-role",
+    kind: "field-requires-owner-value",
+    objectPath: "tracks[].items[]",
+    field: "audioDucking",
+    ownerField: "role",
+    ownerValue: "music"
+  },
+  {
+    id: "timeline.composition.local-path",
+    kind: "local-path",
+    objectPath: "tracks[].items[]",
+    fields: ["sourcePath", "renderedAssetPath"]
+  },
+  {
+    id: "timeline.composition.preview-contract",
+    kind: "conditional-required",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.caption.structured",
+    kind: "conditional-required",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.caption.lineage",
+    kind: "cross-field-lineage",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.derived-overlay.local-path",
+    kind: "local-path",
+    objectPath: "tracks[].items[]",
+    fields: ["src"]
+  },
+  {
+    id: "timeline.derived-overlay.copy-on-write",
+    kind: "distinct-fields",
+    objectPath: "tracks[].items[]",
+    fields: ["sourceAssetId", "derivedAssetId"]
+  },
+  {
+    id: "timeline.transition.reference",
+    kind: "references",
+    objectPath: "tracks[].items[]",
+    fields: ["fromItemId", "toItemId"]
+  },
+  {
+    id: "timeline.transition.continuity",
+    kind: "same-track-contiguous-references",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.transition.centered-range",
+    kind: "centered-on-reference-boundary",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.transition.duration-handles",
+    kind: "maximum-by-reference-handles",
+    objectPath: "tracks[].items[]"
+  }
 ];
 function issue(ruleId, path, message) {
   return { ruleId, path, message };
@@ -18252,11 +18537,13 @@ function pushReferenceCycleIssues(indexedItems, itemById, issues) {
         for (const cyclicId of path.slice(existing)) {
           const cyclic = itemById.get(cyclicId);
           if (!cyclic) continue;
-          issues.push(issue(
-            "timeline.item.from-cycle",
-            ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
-            `from expression for ${cyclicId} participates in a reference cycle`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.from-cycle",
+              ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
+              `from expression for ${cyclicId} participates in a reference cycle`
+            )
+          );
         }
         break;
       }
@@ -18276,31 +18563,42 @@ function validateTransition(indexed, itemById, issues) {
   const from = nonEmptyString(fromId) ? itemById.get(fromId) : void 0;
   const to = nonEmptyString(toId) ? itemById.get(toId) : void 0;
   if (!from || !to) {
-    issues.push(issue(
-      "timeline.transition.reference",
-      [...itemPath],
-      "transition must reference two existing Timeline items"
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.reference",
+        [...itemPath],
+        "transition must reference two existing Timeline items"
+      )
+    );
     return;
   }
-  const transitionClipTypes = /* @__PURE__ */ new Set(["video", "image", "solid", "text"]);
+  const transitionClipTypes = /* @__PURE__ */ new Set([
+    "video",
+    "image",
+    "solid",
+    "text"
+  ]);
   const boundary = typeof from.item.from === "number" ? from.item.from + from.item.durationInFrames : Number.NaN;
   if (from.track.id !== to.track.id || !transitionClipTypes.has(from.item.type) || !transitionClipTypes.has(to.item.type) || boundary !== to.item.from) {
-    issues.push(issue(
-      "timeline.transition.continuity",
-      [...itemPath],
-      "transition references must be contiguous visual clips on the same track"
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.continuity",
+        [...itemPath],
+        "transition references must be contiguous visual clips on the same track"
+      )
+    );
     return;
   }
   if (typeof item.from === "number") {
     const expectedFrom = boundary - Math.floor(item.durationInFrames / 2);
     if (item.from !== expectedFrom) {
-      issues.push(issue(
-        "timeline.transition.centered-range",
-        [...itemPath, "from"],
-        `transition range must be centered on frame ${boundary}`
-      ));
+      issues.push(
+        issue(
+          "timeline.transition.centered-range",
+          [...itemPath, "from"],
+          `transition range must be centered on frame ${boundary}`
+        )
+      );
     }
   }
   const maximum = Math.max(
@@ -18308,11 +18606,13 @@ function validateTransition(indexed, itemById, issues) {
     Math.min(from.item.durationInFrames, to.item.durationInFrames) * 2
   );
   if (item.durationInFrames > maximum) {
-    issues.push(issue(
-      "timeline.transition.duration-handles",
-      [...itemPath, "durationInFrames"],
-      `transition duration cannot exceed ${maximum} frames for these clips`
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.duration-handles",
+        [...itemPath, "durationInFrames"],
+        `transition duration cannot exceed ${maximum} frames for these clips`
+      )
+    );
   }
 }
 function validFrameRange(start, end) {
@@ -18320,37 +18620,44 @@ function validFrameRange(start, end) {
 }
 function validateCaption(indexed, issues) {
   const { item, track, trackIndex, itemIndex } = indexed;
-  if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues)) return;
+  if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues))
+    return;
   const itemPath = ["tracks", trackIndex, "items", itemIndex];
   const cues = Array.isArray(item.cues) ? item.cues : [];
   const wordRefs = Array.isArray(item.wordRefs) ? item.wordRefs : [];
   const mappings = Array.isArray(item.sourceToOutputMap) ? item.sourceToOutputMap : [];
   if (cues.length === 0 || wordRefs.length === 0 || mappings.length === 0) {
-    issues.push(issue(
-      "timeline.caption.structured",
-      [...itemPath],
-      "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
-    ));
+    issues.push(
+      issue(
+        "timeline.caption.structured",
+        [...itemPath],
+        "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
+      )
+    );
     return;
   }
   const wordIds = /* @__PURE__ */ new Set();
   wordRefs.forEach((word, wordIndex) => {
     if (nonEmptyString(word.id)) wordIds.add(word.id);
     if (!nonEmptyString(word.id) || !validFrameRange(word.sourceStartFrame, word.sourceEndFrame)) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "wordRefs", wordIndex],
-        "caption word reference requires an id and a valid source frame range"
-      ));
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "wordRefs", wordIndex],
+          "caption word reference requires an id and a valid source frame range"
+        )
+      );
     }
   });
   mappings.forEach((mapping, mappingIndex) => {
     if (!validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) || !validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame)) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "sourceToOutputMap", mappingIndex],
-        "caption source-to-output mapping requires valid source and output frame ranges"
-      ));
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "sourceToOutputMap", mappingIndex],
+          "caption source-to-output mapping requires valid source and output frame ranges"
+        )
+      );
     }
   });
   cues.forEach((cue, cueIndex) => {
@@ -18358,13 +18665,19 @@ function validateCaption(indexed, issues) {
     const cueDuration = cue.durationInFrames;
     const cueEnd = typeof cueStart === "number" && typeof cueDuration === "number" ? cueStart + cueDuration : Number.NaN;
     const cueWordIds = Array.isArray(cue.wordIds) ? cue.wordIds : [];
-    const covered = mappings.some((mapping) => validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame);
-    if (!nonEmptyString(cue.id) || !nonEmptyString(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some((wordId) => !nonEmptyString(wordId) || !wordIds.has(wordId)) || !covered) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "cues", cueIndex],
-        "caption cue must fit the item and be covered by valid source word and frame lineage"
-      ));
+    const covered = mappings.some(
+      (mapping) => validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame
+    );
+    if (!nonEmptyString(cue.id) || !nonEmptyString(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some(
+      (wordId) => !nonEmptyString(wordId) || !wordIds.has(wordId)
+    ) || !covered) {
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "cues", cueIndex],
+          "caption cue must fit the item and be covered by valid source word and frame lineage"
+        )
+      );
     }
   });
 }
@@ -18388,175 +18701,233 @@ function evaluateStructuralSemanticRules(context) {
   let previousCategoryRank = -1;
   timeline.tracks.forEach((track, trackIndex) => {
     if (trackIds.has(track.id)) {
-      issues.push(issue(
-        "timeline.track.duplicate-id",
-        ["tracks", trackIndex, "id"],
-        `track id ${track.id} is duplicated`
-      ));
+      issues.push(
+        issue(
+          "timeline.track.duplicate-id",
+          ["tracks", trackIndex, "id"],
+          `track id ${track.id} is duplicated`
+        )
+      );
     }
     trackIds.add(track.id);
     if (track.category) {
       const rank = TIMELINE_DSL_TRACK_CATEGORIES.indexOf(track.category);
       if (rank < previousCategoryRank) {
-        issues.push(issue(
-          "timeline.track.category-order",
-          ["tracks", trackIndex, "category"],
-          "track categories must follow effect, text, visual, primary, audio order"
-        ));
+        issues.push(
+          issue(
+            "timeline.track.category-order",
+            ["tracks", trackIndex, "category"],
+            "track categories must follow effect, text, visual, primary, audio order"
+          )
+        );
       }
       previousCategoryRank = Math.max(previousCategoryRank, rank);
     }
     if (track.role && track.category) {
       const expectedCategory = TIMELINE_DSL_ROLE_CATEGORIES[track.role];
       if (expectedCategory !== null && expectedCategory !== track.category) {
-        issues.push(issue(
-          "timeline.track.role-category",
-          ["tracks", trackIndex, "category"],
-          `track role ${track.role} requires category ${expectedCategory}`
-        ));
+        issues.push(
+          issue(
+            "timeline.track.role-category",
+            ["tracks", trackIndex, "category"],
+            `track role ${track.role} requires category ${expectedCategory}`
+          )
+        );
       }
     }
-    const structuralCategories = new Set(track.items.map((item) => structuralCategory(item.type)));
+    const structuralCategories = new Set(
+      track.items.map((item) => structuralCategory(item.type))
+    );
     const legacyPrimary = timeline.primaryTrackId === track.id || track.role === "primary-video";
     const primaryCompatible = track.items.every(
       (item) => TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES.primary.includes(item.type)
     );
     if (!track.category && structuralCategories.size > 1 && !(legacyPrimary && primaryCompatible)) {
-      issues.push(issue(
-        "timeline.track.mixed-categories",
-        ["tracks", trackIndex, "items"],
-        `track ${track.id} mixes incompatible structural item categories`
-      ));
+      issues.push(
+        issue(
+          "timeline.track.mixed-categories",
+          ["tracks", trackIndex, "items"],
+          `track ${track.id} mixes incompatible structural item categories`
+        )
+      );
     }
     track.items.forEach((item, itemIndex) => {
       const itemPath = ["tracks", trackIndex, "items", itemIndex];
       if (itemIds.has(item.id)) {
-        issues.push(issue(
-          "timeline.item.duplicate-id",
-          [...itemPath, "id"],
-          `Timeline item id ${item.id} is duplicated`
-        ));
+        issues.push(
+          issue(
+            "timeline.item.duplicate-id",
+            [...itemPath, "id"],
+            `Timeline item id ${item.id} is duplicated`
+          )
+        );
       }
       itemIds.add(item.id);
       if (track.category) {
         const allowed = TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES[track.category];
         if (!allowed.includes(item.type)) {
-          issues.push(issue(
-            "timeline.track.category-item-mismatch",
-            [...itemPath],
-            `track category ${track.category} cannot contain ${item.type} items`
-          ));
+          issues.push(
+            issue(
+              "timeline.track.category-item-mismatch",
+              [...itemPath],
+              `track category ${track.category} cannot contain ${item.type} items`
+            )
+          );
         }
       }
       if (track.role) {
         const allowed = TIMELINE_DSL_ROLE_ALLOWED_ITEM_TYPES[track.role];
         if (!allowed.includes(item.type)) {
-          issues.push(issue(
-            "timeline.track.role-item-mismatch",
-            [...itemPath],
-            `track role ${track.role} cannot contain ${item.type} items`
-          ));
+          issues.push(
+            issue(
+              "timeline.track.role-item-mismatch",
+              [...itemPath],
+              `track role ${track.role} cannot contain ${item.type} items`
+            )
+          );
         }
       }
       const expression = parseFromExpression(item.from);
       const negativeNumericString = typeof item.from === "string" && Number.isFinite(Number(item.from.trim())) && Number(item.from.trim()) < 0;
       if (!expression || negativeNumericString) {
-        issues.push(issue(
-          "timeline.item.from-expression",
-          [...itemPath, "from"],
-          "from must be a non-negative frame or a valid Timeline relative expression"
-        ));
+        issues.push(
+          issue(
+            "timeline.item.from-expression",
+            [...itemPath, "from"],
+            "from must be a non-negative frame or a valid Timeline relative expression"
+          )
+        );
       } else if (expression.kind === "reference" && expression.refId !== "prev" && !itemById.has(expression.refId)) {
-        issues.push(issue(
-          "timeline.item.from-reference",
-          [...itemPath, "from"],
-          `from expression references unknown item ${expression.refId}`
-        ));
+        issues.push(
+          issue(
+            "timeline.item.from-reference",
+            [...itemPath, "from"],
+            `from expression references unknown item ${expression.refId}`
+          )
+        );
       }
       if (expression && (expression.kind === "absolute" ? !Number.isInteger(expression.value) : !Number.isInteger(expression.offset))) {
-        issues.push(issue(
-          "timeline.item.frame-integer",
-          [...itemPath, "from"],
-          "Timeline frame positions and expression offsets must be integers"
-        ));
+        issues.push(
+          issue(
+            "timeline.item.frame-integer",
+            [...itemPath, "from"],
+            "Timeline frame positions and expression offsets must be integers"
+          )
+        );
       }
       if (["video", "audio", "image", "sticker"].includes(item.type)) {
         if (![item.src, item.assetId, item.sourceNodeId].some(nonEmptyString)) {
-          issues.push(issue(
-            "timeline.item.source-required",
-            [...itemPath],
-            `${item.type} item must provide src, assetId, or sourceNodeId`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.source-required",
+              [...itemPath],
+              `${item.type} item must provide src, assetId, or sourceNodeId`
+            )
+          );
         }
       }
-      for (const animationField of ["entranceAnimation", "exitAnimation"]) {
+      for (const animationField of [
+        "entranceAnimation",
+        "exitAnimation"
+      ]) {
         const animation = item[animationField];
         if (animation && typeof animation.durationInFrames === "number" && animation.durationInFrames > item.durationInFrames) {
-          issues.push(issue(
-            "timeline.item.animation-duration",
-            [...itemPath, animationField, "durationInFrames"],
-            `${animationField} cannot exceed the owning item duration`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.animation-duration",
+              [...itemPath, animationField, "durationInFrames"],
+              `${animationField} cannot exceed the owning item duration`
+            )
+          );
+        }
+      }
+      const properties = item.properties;
+      for (const field2 of ["width", "height"]) {
+        const value = properties?.[field2];
+        if (typeof value === "number" && Math.abs(value) > 4) {
+          issues.push(
+            issue(
+              "timeline.item.scale-unit",
+              [...itemPath, "properties", field2],
+              `properties.${field2} is a unitless source-size multiplier, not pixels, and must be at most 4`
+            )
+          );
         }
       }
       if (item.type === "audio" && item.audioDucking !== void 0 && track.role !== "music") {
-        issues.push(issue(
-          "timeline.audio.ducking-track-role",
-          [...itemPath, "audioDucking"],
-          "audioDucking is only valid for audio items on a music track"
-        ));
+        issues.push(
+          issue(
+            "timeline.audio.ducking-track-role",
+            [...itemPath, "audioDucking"],
+            "audioDucking is only valid for audio items on a music track"
+          )
+        );
       }
       if (item.type === "composition") {
         if (!isLocalProjectPath(item.sourcePath)) {
-          issues.push(issue(
-            "timeline.composition.local-path",
-            [...itemPath, "sourcePath"],
-            "composition sourcePath must be a local project path"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.local-path",
+              [...itemPath, "sourcePath"],
+              "composition sourcePath must be a local project path"
+            )
+          );
         }
         if (item.renderedAssetPath !== void 0 && !isLocalProjectPath(item.renderedAssetPath)) {
-          issues.push(issue(
-            "timeline.composition.local-path",
-            [...itemPath, "renderedAssetPath"],
-            "composition renderedAssetPath must be a local project path"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.local-path",
+              [...itemPath, "renderedAssetPath"],
+              "composition renderedAssetPath must be a local project path"
+            )
+          );
         }
         if (item.compositionKind === "motion-graphics" && item.runtime !== "remotion") {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "runtime"],
-            "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "runtime"],
+              "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
+            )
+          );
         }
         if (item.runtime === "remotion" && (typeof item.sourceNodeId !== "string" || item.sourceNodeId.length === 0)) {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "sourceNodeId"],
-            "Remotion compositions require a live Canvas sourceNodeId"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "sourceNodeId"],
+              "Remotion compositions require a live Canvas sourceNodeId"
+            )
+          );
         }
         if (item.runtime === "react" && !isLocalProjectPath(item.renderedAssetPath)) {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "renderedAssetPath"],
-            "React compositions require a local renderedAssetPath"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "renderedAssetPath"],
+              "React compositions require a local renderedAssetPath"
+            )
+          );
         }
       }
       if (item.type === "derived-overlay") {
         if (!isLocalProjectPath(item.src)) {
-          issues.push(issue(
-            "timeline.derived-overlay.local-path",
-            [...itemPath, "src"],
-            "derived overlay src must be a local project or asset path"
-          ));
+          issues.push(
+            issue(
+              "timeline.derived-overlay.local-path",
+              [...itemPath, "src"],
+              "derived overlay src must be a local project or asset path"
+            )
+          );
         }
         if (item.sourceAssetId === item.derivedAssetId || nonEmptyString(item.assetId) && item.assetId !== item.derivedAssetId) {
-          issues.push(issue(
-            "timeline.derived-overlay.copy-on-write",
-            [...itemPath],
-            "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
-          ));
+          issues.push(
+            issue(
+              "timeline.derived-overlay.copy-on-write",
+              [...itemPath],
+              "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
+            )
+          );
         }
       }
     });
@@ -18567,19 +18938,25 @@ function evaluatePrimaryTrackSemanticRules(context) {
   const { timeline } = context;
   const issues = [];
   if (nonEmptyString(timeline.primaryTrackId)) {
-    const primaryTrack = timeline.tracks.find((track) => track.id === timeline.primaryTrackId);
+    const primaryTrack = timeline.tracks.find(
+      (track) => track.id === timeline.primaryTrackId
+    );
     if (!primaryTrack) {
-      issues.push(issue(
-        "timeline.primary-track.reference",
-        ["primaryTrackId"],
-        "primaryTrackId must reference an existing track"
-      ));
+      issues.push(
+        issue(
+          "timeline.primary-track.reference",
+          ["primaryTrackId"],
+          "primaryTrackId must reference an existing track"
+        )
+      );
     } else if (primaryTrack.category && primaryTrack.category !== "primary") {
-      issues.push(issue(
-        "timeline.primary-track.category",
-        ["primaryTrackId"],
-        "primaryTrackId must reference a primary category track"
-      ));
+      issues.push(
+        issue(
+          "timeline.primary-track.category",
+          ["primaryTrackId"],
+          "primaryTrackId must reference a primary category track"
+        )
+      );
     }
   }
   return issues;
@@ -18596,7 +18973,9 @@ function evaluateCaptionSemanticRules(context) {
 }
 function evaluateTransitionSemanticRules(context) {
   const issues = [];
-  context.indexedItems.forEach((indexed) => validateTransition(indexed, context.itemById, issues));
+  context.indexedItems.forEach(
+    (indexed) => validateTransition(indexed, context.itemById, issues)
+  );
   return issues;
 }
 var TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
@@ -18615,6 +18994,7 @@ var TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
   "timeline.item.from-cycle": evaluateReferenceCycleSemanticRules,
   "timeline.item.source-required": evaluateStructuralSemanticRules,
   "timeline.item.animation-duration": evaluateStructuralSemanticRules,
+  "timeline.item.scale-unit": evaluateStructuralSemanticRules,
   "timeline.audio.ducking-track-role": evaluateStructuralSemanticRules,
   "timeline.composition.local-path": evaluateStructuralSemanticRules,
   "timeline.composition.preview-contract": evaluateStructuralSemanticRules,
@@ -18633,17 +19013,18 @@ function timelineDslSemanticIssues(input) {
   const compositeEvaluators = new Set(
     Object.values(TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS)
   );
-  for (const evaluator of compositeEvaluators) issues.push(...evaluator(context));
+  for (const evaluator of compositeEvaluators)
+    issues.push(...evaluator(context));
   return issues;
 }
 var itemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => {
   const baseShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-    { overrides: {
-      type: z.literal(type).describe(
-        TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description
-      )
-    } }
+    {
+      overrides: {
+        type: z.literal(type).describe(TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description)
+      }
+    }
   );
   const variantShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
@@ -18656,7 +19037,9 @@ var TimelineDslItemVariantSchema = z.discriminatedUnion(
 );
 var itemFieldOwners = /* @__PURE__ */ new Map();
 for (const type of TIMELINE_DSL_ITEM_TYPES) {
-  for (const fieldName of Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type])) {
+  for (const fieldName of Object.keys(
+    TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
+  )) {
     const owners = itemFieldOwners.get(fieldName) ?? /* @__PURE__ */ new Set();
     owners.add(type);
     itemFieldOwners.set(fieldName, owners);
@@ -18665,14 +19048,18 @@ for (const type of TIMELINE_DSL_ITEM_TYPES) {
 var maskKeyframeChannels = new Set(TIMELINE_MASK_KEYFRAME_CHANNELS);
 var itemBaseFieldApplicabilityRules = Object.entries(
   TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase
-).flatMap(([fieldName, annotation2]) => annotation2.appliesToItemTypes && annotation2.applicabilityRuleId ? [{
-  id: annotation2.applicabilityRuleId,
-  kind: "allowed-item-types-when-present",
-  objectPath: "tracks[].items[]",
-  field: fieldName,
-  allowedItemTypes: annotation2.appliesToItemTypes,
-  ...annotation2.applicabilityMessage ? { message: annotation2.applicabilityMessage } : {}
-}] : []);
+).flatMap(
+  ([fieldName, annotation2]) => annotation2.appliesToItemTypes && annotation2.applicabilityRuleId ? [
+    {
+      id: annotation2.applicabilityRuleId,
+      kind: "allowed-item-types-when-present",
+      objectPath: "tracks[].items[]",
+      field: fieldName,
+      allowedItemTypes: annotation2.appliesToItemTypes,
+      ...annotation2.applicabilityMessage ? { message: annotation2.applicabilityMessage } : {}
+    }
+  ] : []
+);
 var clipMaskRequiresMaskRule = {
   id: "timeline.clip-mask.requires-mask",
   kind: "requires-field-when-any-channel-present",
@@ -18718,7 +19105,9 @@ var TIMELINE_DSL_SEMANTIC_RULES = {
   ]
 };
 function hasMaskKeyframes(keyframes) {
-  return Object.keys(keyframes ?? {}).some((channel) => maskKeyframeChannels.has(channel));
+  return Object.keys(keyframes ?? {}).some(
+    (channel) => maskKeyframeChannels.has(channel)
+  );
 }
 function timelineMaskKeyframeSemanticIssues(item) {
   const issues = [];
@@ -18738,7 +19127,10 @@ function timelineMaskKeyframeSemanticIssues(item) {
       message: "mask keyframes require a mask"
     });
   }
-  for (const frameIssue of timelineKeyframeFrameIssues(item.keyframes, item.durationInFrames)) {
+  for (const frameIssue of timelineKeyframeFrameIssues(
+    item.keyframes,
+    item.durationInFrames
+  )) {
     issues.push({
       ruleId: frameIssue.reason === "duplicate" ? timelineKeyframeUniqueFrameRule.id : timelineKeyframeRangeRule.id,
       path: ["keyframes", frameIssue.channel, frameIssue.index, "frame"],
@@ -18747,45 +19139,51 @@ function timelineMaskKeyframeSemanticIssues(item) {
   }
   return issues;
 }
-var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine((item, ctx) => {
-  const typedItem = item;
-  for (const [fieldName, owners] of itemFieldOwners) {
-    if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine(
+  (item, ctx) => {
+    const typedItem = item;
+    for (const [fieldName, owners] of itemFieldOwners) {
+      if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [fieldName],
+          message: `${fieldName} is not valid on ${typedItem.type} items`,
+          params: { ruleId: timelineItemFieldApplicabilityRule.id }
+        });
+      }
+    }
+    for (const issue2 of timelineMaskKeyframeSemanticIssues(typedItem)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: [fieldName],
-        message: `${fieldName} is not valid on ${typedItem.type} items`,
-        params: { ruleId: timelineItemFieldApplicabilityRule.id }
+        path: issue2.path,
+        message: issue2.message,
+        params: { ruleId: issue2.ruleId }
       });
     }
   }
-  for (const issue2 of timelineMaskKeyframeSemanticIssues(typedItem)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: issue2.path,
-      message: issue2.message,
-      params: { ruleId: issue2.ruleId }
-    });
+).describe("TimelineDslItem");
+var TimelineDslTrackSchema = z.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.track, {
+    overrides: { items: z.array(TimelineDslItemSchema) }
+  })
+).passthrough().describe("TimelineDslTrack");
+var TimelineDslSchemaBase = z.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.root, {
+    overrides: { tracks: z.array(TimelineDslTrackSchema) }
+  })
+).passthrough();
+var TimelineDslSchema = TimelineDslSchemaBase.superRefine(
+  (timeline, context) => {
+    for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: semanticIssue.path,
+        message: semanticIssue.message,
+        params: { ruleId: semanticIssue.ruleId }
+      });
+    }
   }
-}).describe("TimelineDslItem");
-var TimelineDslTrackSchema = z.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
-  { overrides: { items: z.array(TimelineDslItemSchema) } }
-)).passthrough().describe("TimelineDslTrack");
-var TimelineDslSchemaBase = z.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.root,
-  { overrides: { tracks: z.array(TimelineDslTrackSchema) } }
-)).passthrough();
-var TimelineDslSchema = TimelineDslSchemaBase.superRefine((timeline, context) => {
-  for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: semanticIssue.path,
-      message: semanticIssue.message,
-      params: { ruleId: semanticIssue.ruleId }
-    });
-  }
-}).describe("TimelineDsl");
+).describe("TimelineDsl");
 var timelineDslJsonSchema = zodToJsonSchema(TimelineDslSchema, {
   name: "TimelineDsl",
   target: "jsonSchema7"
@@ -18794,10 +19192,13 @@ var timelineItemMaskJsonSchema = zodToJsonSchema(TimelineItemMaskSchema, {
   name: "TimelineItemMask",
   target: "jsonSchema7"
 });
-var timelineItemKeyframesJsonSchema = zodToJsonSchema(TimelineItemKeyframesSchema, {
-  name: "TimelineItemKeyframes",
-  target: "jsonSchema7"
-});
+var timelineItemKeyframesJsonSchema = zodToJsonSchema(
+  TimelineItemKeyframesSchema,
+  {
+    name: "TimelineItemKeyframes",
+    target: "jsonSchema7"
+  }
+);
 function jsonSchemaObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Timeline DSL JSON Schema is missing ${label}`);
@@ -18887,20 +19288,24 @@ var TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE = {
   compositionHeight: 1080,
   fps: 30,
   durationInFrames: 60,
-  tracks: [{
-    id: "visual-overlays",
-    name: "Visual overlays",
-    category: "visual",
-    items: [{
-      id: "masked-image",
-      type: "image",
-      from: 0,
-      durationInFrames: 60,
-      sourceNodeId: "source-image-node",
-      mask: timelineMaskExample,
-      keyframes: timelineMaskKeyframesExample
-    }]
-  }]
+  tracks: [
+    {
+      id: "visual-overlays",
+      name: "Visual overlays",
+      category: "visual",
+      items: [
+        {
+          id: "masked-image",
+          type: "image",
+          from: 0,
+          durationInFrames: 60,
+          sourceNodeId: "source-image-node",
+          mask: timelineMaskExample,
+          keyframes: timelineMaskKeyframesExample
+        }
+      ]
+    }
+  ]
 };
 var timelineMaskDslFeature = {
   yamlPath: TIMELINE_MASK_CAPABILITY_ANNOTATION.yamlPath,
@@ -18910,16 +19315,18 @@ var timelineMaskDslFeature = {
   animatedChannels: TIMELINE_MASK_CAPABILITY_ANNOTATION.animatedChannels,
   defaultMask: TIMELINE_MASK_CAPABILITY_ANNOTATION.defaultMask,
   fieldDefinitions: Object.fromEntries(
-    Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(([field2, annotation2]) => [
-      field2,
-      {
-        description: annotation2.description,
-        invalidValueDescription: annotation2.invalidValueDescription,
-        unit: annotation2.unit,
-        defaultValue: annotation2.defaultValue,
-        animatedChannel: "animation" in annotation2 ? annotation2.animation?.channel ?? null : null
-      }
-    ])
+    Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(
+      ([field2, annotation2]) => [
+        field2,
+        {
+          description: annotation2.description,
+          invalidValueDescription: annotation2.invalidValueDescription,
+          unit: annotation2.unit,
+          defaultValue: annotation2.defaultValue,
+          animatedChannel: "animation" in annotation2 ? annotation2.animation?.channel ?? null : null
+        }
+      ]
+    )
   ),
   operations: TIMELINE_MASK_CAPABILITY_ANNOTATION.operations,
   runtimeBehavior: TIMELINE_MASK_CAPABILITY_ANNOTATION.runtimeBehavior,
@@ -18930,7 +19337,9 @@ function canonicalTimelineDslContractJson(value) {
     return `[${value.map(canonicalTimelineDslContractJson).join(",")}]`;
   }
   if (value && typeof value === "object") {
-    return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`).join(",")}}`;
+    return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(
+      ([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`
+    ).join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
 }
@@ -18944,7 +19353,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -18977,11 +19386,15 @@ var timelineDslSerializableDefinition = {
   jsonSchema: {
     ...timelineDslJsonSchema,
     "x-clash-fragments": timelineDslJsonSchemaFragments,
-    "x-clash-features": { clipMask: timelineMaskDslFeature },
+    "x-clash-features": {
+      clipMask: timelineMaskDslFeature,
+      itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS
+    },
     "x-clash-semantic-rules": TIMELINE_DSL_SEMANTIC_RULES
   },
   features: {
-    clipMask: timelineMaskDslFeature
+    clipMask: timelineMaskDslFeature,
+    itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS
   },
   examples: {
     maskKeyframes: TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE
@@ -21914,7 +22327,11 @@ var DOStateSchema = z.object({
   created_at: z.number(),
   updated_at: z.number()
 });
-var ModelUpstreamIdSchema = z.enum([
+var DynamicProviderIdSchema = z.string().trim().regex(
+  /^[a-z0-9][a-z0-9._-]*$/,
+  "Provider ecosystem ids must be lowercase plugin-safe identifiers."
+);
+var BuiltinModelUpstreamIdSchema = z.enum([
   "local",
   "mock",
   "fal",
@@ -21934,7 +22351,8 @@ var ModelUpstreamIdSchema = z.enum([
   "elevenlabs",
   "suno"
 ]);
-var ModelUpstreamApiShapeSchema = z.enum([
+var ModelUpstreamIdSchema = DynamicProviderIdSchema;
+var BuiltinModelUpstreamApiShapeSchema = z.enum([
   "local-asr",
   "local-tts",
   "fal",
@@ -21956,10 +22374,12 @@ var ModelUpstreamApiShapeSchema = z.enum([
   "elevenlabs",
   "suno"
 ]);
-var ProviderOAuthIdSchema = z.enum([
+var ModelUpstreamApiShapeSchema = DynamicProviderIdSchema;
+var BuiltinProviderOAuthIdSchema = z.enum([
   "dreamina"
 ]);
-var ProviderAccountIdSchema = z.enum([
+var ProviderOAuthIdSchema = DynamicProviderIdSchema;
+var BuiltinProviderAccountIdSchema = z.enum([
   "local",
   "official",
   "fal",
@@ -22051,7 +22471,9 @@ function routesFromModelCard(model) {
     ...implementation.defaultParamOverrides ? { defaultParamOverrides: { ...implementation.defaultParamOverrides } } : {},
     ...implementation.excludedParameterIds?.length ? { excludedParameterIds: [...implementation.excludedParameterIds] } : {},
     ...implementation.projectorPluginId ? { projectorPluginId: implementation.projectorPluginId } : {},
-    ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {}
+    ...implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {},
+    ...implementation.executorPluginId ? { executorPluginId: implementation.executorPluginId } : {},
+    ...implementation.executorExportId ? { executorExportId: implementation.executorExportId } : {}
   }));
 }
 function routesFromModelCards(models) {
@@ -22072,6 +22494,62 @@ var MODEL_UPSTREAM_ROUTES = [
   ...MOCK_DECLARED_ROUTES,
   ...MOCK_ROUTES
 ];
+var MediaTranscriptMetadataSchema = z.object({
+  schemaVersion: z.literal(1),
+  kind: z.literal("media.transcript"),
+  backendId: z.string().min(1),
+  modelId: z.string().min(1),
+  language: z.string().min(1).optional(),
+  /** The media this grid was transcribed from. */
+  sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  /**
+   * The word grid itself. Downstream wordIds only mean anything against this,
+   * and it survives a reflow of `text` or `segments` unchanged.
+   */
+  contentHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  /**
+   * Where the full body is stored. Distinct from `contentHash` on purpose: this
+   * addresses the whole document, so restating the same grid moves it.
+   */
+  bodyHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  summary: z.object({
+    wordCount: z.number().int().nonnegative(),
+    durationMs: z.number().int().min(0),
+    segmentCount: z.number().int().nonnegative().optional(),
+    averageConfidence: z.number().min(0).max(1).optional()
+  })
+});
+var declaredKinds = /* @__PURE__ */ new Map();
+function registerAssetMetadataKind(declaration) {
+  const issuesFor = (probe) => {
+    const result = declaration.schema.safeParse(probe);
+    return result.success ? [] : result.error.issues;
+  };
+  const complainsAbout = (issues, field2) => issues.some((issue2) => issue2.path.length === 1 && issue2.path[0] === field2);
+  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
+    );
+  }
+  if (!complainsAbout(issuesFor({ kind: declaration.kind }), "schemaVersion")) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schemaVersion`
+    );
+  }
+  declaredKinds.set(declaration.kind, declaration);
+}
+var FillActionEnvelopeSchema = z.object({
+  actionId: z.string().min(1),
+  targetAssetId: z.string().min(1),
+  metadataKind: z.string().min(1),
+  metadata: z.object({ kind: z.string().min(1) }).passthrough(),
+  producer: z.string().min(1),
+  createdAt: z.string().optional()
+});
+registerAssetMetadataKind({
+  kind: "media.transcript",
+  schema: MediaTranscriptMetadataSchema
+});
 var CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
   Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
     category,

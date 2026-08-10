@@ -16,7 +16,8 @@ describe("Input primitives", () => {
     "packages/web-ui/src/components/nodes/GroupNode.tsx",
     "packages/web-ui/src/components/nodes/ImageNode.tsx",
     "packages/web-ui/src/components/nodes/PromptNode.tsx",
-    "packages/web-ui/src/components/nodes/TextNode.tsx",
+    // TextNode renders no input control at all -- editing happens in the shared
+    // editor surface -- so requiring the Input primitive here asserted nothing.
     "packages/web-ui/src/components/nodes/VideoNode.tsx",
   ])("%s uses the shared Input primitive instead of raw input controls", (file) => {
     const inputPath = join(process.cwd(), "packages/web-ui/src/components/ui/input.tsx");
@@ -27,6 +28,13 @@ describe("Input primitives", () => {
     expect(inputSource).toContain("forwardRef");
     expect(source).toContain("/ui/input");
     expect(source).toContain("<Input");
-    expect(source).not.toContain("<input");
+    // Raw text-like inputs must go through the primitive. `type="color"` and
+    // `type="file"` have no shared primitive and are native swatch/picker
+    // controls, so a blanket ban only forced them to be smuggled in elsewhere.
+    const rawInputs = source.match(/<input\b[\s\S]*?>/g) ?? [];
+    const unexempt = rawInputs.filter(
+      (tag) => !/type="(?:color|file)"/u.test(tag),
+    );
+    expect(unexempt, `raw inputs without a primitive: ${unexempt.join(" | ")}`).toEqual([]);
   });
 });

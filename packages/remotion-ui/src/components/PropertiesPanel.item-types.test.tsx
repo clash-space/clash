@@ -69,6 +69,24 @@ const latestItem = <T extends Item>(stateRef: { current: EditorState | null }): 
   ) as T;
 
 describe('PropertiesPanel item type coverage', () => {
+  it('labels static item size as a source multiplier instead of pixels', () => {
+    const image: ImageItem = {
+      id: 'scaled-image',
+      type: 'image',
+      src: 'image.png',
+      from: 0,
+      durationInFrames: 30,
+      properties: { x: 0, y: 0, width: 1, height: 1 },
+    };
+
+    renderInspector(image);
+
+    expect(screen.getByText('Base source scale')).toBeTruthy();
+    expect(screen.getByText(/Unitless multipliers, not pixels/i)).toBeTruthy();
+    expect(screen.getByRole('spinbutton', { name: 'Width source scale multiplier' })).toBeTruthy();
+    expect(screen.getByRole('spinbutton', { name: 'Height source scale multiplier' })).toBeTruthy();
+  });
+
   it('adds a real clip mask and authors mask motion at the item-local playhead', () => {
     const video: VideoItem = {
       id: 'masked-video',

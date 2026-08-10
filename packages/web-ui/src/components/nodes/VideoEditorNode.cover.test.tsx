@@ -89,7 +89,10 @@ vi.mock('../LoroSyncContext', () => ({
     }),
 }));
 
-vi.mock('@clash/shared-types', () => ({
+// Replacing the whole module dropped every other export the component tree reads,
+// so keep the real module and override only the lookup this test controls.
+vi.mock('@clash/shared-types', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@clash/shared-types')>()),
     listProjectTimelines: () => [
         {
             id: 'timeline-1',

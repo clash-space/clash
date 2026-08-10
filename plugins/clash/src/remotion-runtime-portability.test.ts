@@ -45,3 +45,19 @@ test("the packaged Remotion bundle is portable and ships without source maps", a
   const indexHtml = await readFile(join(bundleRoot, "index.html"), "utf8");
   assert.match(indexHtml, /window\.remotion_cwd = "\.";/);
 });
+
+test("the packaged Remotion bundle matches the renderer version", async () => {
+  const packageJson = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { dependencies?: Record<string, string> };
+  const rendererVersion = packageJson.dependencies?.["@remotion/renderer"];
+  assert.ok(rendererVersion, "plugin must declare @remotion/renderer");
+
+  const indexHtml = await readFile(join(bundleRoot, "index.html"), "utf8");
+  const bundledVersion = indexHtml.match(/window\.remotion_version = ['"]([^'"]+)['"]/u)?.[1];
+  assert.equal(
+    bundledVersion,
+    rendererVersion,
+    "the browser bundle and Node renderer must use the same exact Remotion version",
+  );
+});

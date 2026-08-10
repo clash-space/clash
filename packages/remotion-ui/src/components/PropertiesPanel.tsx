@@ -23,7 +23,6 @@ import {
 import type {
   AudioItem,
   ClipAnimationType,
-  CompositionItem,
   DerivedOverlayItem,
   EffectParamValue,
   Item,
@@ -141,21 +140,6 @@ const InspectorIdentityRow: React.FC<{
     <label className={labelClassName}>{label}</label>
     <div className={`${readOnlyFieldClassName} min-w-0 break-all`}>{value}</div>
   </div>
-);
-
-const InspectorCompactNumberField: React.FC<
-  Omit<React.InputHTMLAttributes<HTMLInputElement>, 'className' | 'type'> & {
-    prefix: string;
-  }
-> = ({ prefix, ...inputProps }) => (
-  <label className={`grid grid-cols-[42px_minmax(0,1fr)] items-center ${controlRadiusClassName} border border-warm-border bg-warm-page/40 pl-2 text-stone-400`}>
-    <span className={editorTypeClassName.caption}>{prefix}</span>
-    <RemotionInput
-      {...inputProps}
-      type="number"
-      className={`${fieldClassName} border-0 bg-transparent pl-0 focus:ring-0`}
-    />
-  </label>
 );
 
 const effectDisplayName = (effectId: string): string => effectId
@@ -1272,12 +1256,15 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           <div className="space-y-3">
             <PositionKeyframeControl trackId={trackId} item={item} />
             <div>
-              <span className={labelClassName}>Size</span>
+              <span className={labelClassName}>Base source scale</span>
+              <p className={`mb-1 text-stone-400 ${editorTypeClassName.caption}`}>
+                Unitless multipliers, not pixels. 1 × 1 uses contain fit.
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 <label className={`grid grid-cols-[18px_minmax(0,1fr)] items-center ${controlRadiusClassName} border border-warm-border bg-warm-page/40 pl-2 text-stone-400`}>
-                  <span className={editorTypeClassName.caption}>W</span>
+                  <span className={editorTypeClassName.caption}>W×</span>
                   <RemotionInput
-                    aria-label="Width scale"
+                    aria-label="Width source scale multiplier"
                     type="number"
                     step="0.01"
                     min="0"
@@ -1295,9 +1282,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   />
                 </label>
                 <label className={`grid grid-cols-[18px_minmax(0,1fr)] items-center ${controlRadiusClassName} border border-warm-border bg-warm-page/40 pl-2 text-stone-400`}>
-                  <span className={editorTypeClassName.caption}>H</span>
+                  <span className={editorTypeClassName.caption}>H×</span>
                   <RemotionInput
-                    aria-label="Height scale"
+                    aria-label="Height source scale multiplier"
                     type="number"
                     step="0.01"
                     min="0"

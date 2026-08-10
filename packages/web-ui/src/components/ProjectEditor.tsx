@@ -5563,9 +5563,12 @@ export default function ProjectEditor({
           model: modelId,
           modelParams: {
             ...(directorPanoramaModel?.defaultParams ?? {}),
+            // A 360x180 degree equirectangular panorama is exactly 2:1, and the
+            // model card declares that ratio, so the request names the ratio and a
+            // resolution tier instead of hardcoding pixel dimensions. The tier
+            // resolves to 2048x1024, which is what the client normalizes to.
             aspect_ratio: "2:1",
-            width: 2048,
-            height: 1024,
+            resolution: "2K",
             quality: "high",
             output_format: "webp",
             count: 1,
@@ -6807,9 +6810,9 @@ export default function ProjectEditor({
                                                 style={{
                                                   bottom: minimapControlOffset,
                                                 }}
-                                                size="md"
+                                                size="sm"
                                                 shape="rounded"
-                                                className="clash-canvas-minimap-control absolute left-[var(--clash-project-control-rail-left)] z-10 rounded-lg transition-[bottom] duration-200 ease-out"
+                                                className="clash-canvas-minimap-control absolute left-[var(--clash-project-control-rail-left)] z-10 h-9 min-h-9 w-9 min-w-9 rounded-lg transition-[bottom] duration-200 ease-out"
                                               />
                                             </Tooltip>
                                           ) : null}

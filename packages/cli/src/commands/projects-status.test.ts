@@ -148,6 +148,7 @@ test("project status exposes agent-readable project roots and protected local fi
   const localApiDataDir = join(homeDir, ".clash", "local-api");
   const assetBlobRoot = join(homeDir, ".clash", "assets", "blobs");
   const textRevisionBlobRoot = join(localApiDataDir, "text-revision-blobs");
+  const metadataBodyBlobRoot = join(localApiDataDir, "metadata-blobs");
   const loroRoot = join(
     localApiDataDir,
     "projects",
@@ -239,6 +240,7 @@ test("project status exposes agent-readable project roots and protected local fi
     join(loroRoot, "updates.log"),
     assetBlobRoot,
     textRevisionBlobRoot,
+    metadataBodyBlobRoot,
     status.roots.runtime,
   ]);
   assert.deepEqual(status.storage, {
@@ -324,6 +326,13 @@ test("project status exposes agent-readable project roots and protected local fi
           kind: "content-addressed-files",
           path: textRevisionBlobRoot,
           mediaType: "text/markdown",
+          immutable: true,
+          agentWritable: false,
+        },
+        assetMetadataBodies: {
+          kind: "content-addressed-files",
+          path: metadataBodyBlobRoot,
+          mediaType: "application/json",
           immutable: true,
           agentWritable: false,
         },

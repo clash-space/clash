@@ -281,7 +281,7 @@ async function withProductDaemon<T>(
 }
 
 describe("trusted Remotion product readback", () => {
-  it("matches source, fixed node id, Timeline revision, and completed product render", async () => {
+  it("matches a product-exported Timeline envelope to its live state and render", async () => {
     await withProductDaemon(
       [timeline],
       async ({ socketPath, projectId, apiUrl, requestedActions }) => {
@@ -301,7 +301,7 @@ describe("trusted Remotion product readback", () => {
         );
         await writeFile(
           join(workspace, "timeline.yaml"),
-          `${JSON.stringify(timeline.state, null, 2)}\n`,
+          `${JSON.stringify({ id: timeline.id, name: timeline.name, ...timeline.state }, null, 2)}\n`,
           "utf8",
         );
         await writeFile(join(workspace, "render.mp4"), "video", "utf8");

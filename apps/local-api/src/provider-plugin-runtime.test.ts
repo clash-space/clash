@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,18 +37,21 @@ it("executes the fal H3 projection through the installed agent-editable stdio pl
     ipc = await startPluginHostIpcServer({ host, socketPath });
     const pluginHostClient = new PluginHostClient({ socketPath });
     const discoveredCards = await pluginHostClient.listCards();
-    expect(discoveredCards.map((registration) => registration.document.spec.id)).toEqual([
-      "minimax-h3",
-      "minimax-h3-startend",
-      "minimax-music-3",
-      "seedance-2-ref",
-      "seedance-2-startend",
-      "seedance-2.5-ref",
-      "seedance-2.5-startend",
-    ]);
+    const discoveredIds = discoveredCards.map((registration) => registration.document.spec.id);
+
+    // This suite is about executing one projection, not about the plugin's
+    // catalogue. Pinning the full card list here made an unrelated test fail
+    // every time a card shipped, so assert the invariants instead: the card
+    // under test is present, ids are unique, and every registration is properly
+    // attributed to the installed plugin at the version on disk.
+    expect(discoveredIds).toContain("minimax-h3");
+    expect(new Set(discoveredIds).size).toBe(discoveredIds.length);
+    const manifestVersion = JSON.parse(
+      await readFile(join(pluginSource, "manifest.json"), "utf8"),
+    ).version as string;
     expect(discoveredCards.every((registration) =>
       registration.pluginId === "clash-first-party-media"
-      && registration.version === "0.3.0"
+      && registration.version === manifestVersion
       && /^sha256:/.test(registration.schemaHash)
     )).toBe(true);
     const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -96,7 +99,9 @@ it("executes the fal H3 projection through the installed agent-editable stdio pl
     });
     expect(result.pluginBinding).toMatchObject({
       pluginId: "clash-first-party-media",
-      version: "0.3.0",
+      // Read from disk, not pinned: the binding must report the installed
+      // version, and this suite must not fail on every plugin release.
+      version: manifestVersion,
       exportId: "fal-h3",
       schemaHash: expect.stringMatching(/^sha256:/),
     });

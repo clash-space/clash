@@ -77,7 +77,10 @@ describe("declarative model-card configuration constraints", () => {
   });
 
   it("coerces external values to the exact candidate type declared by each Card", () => {
-    expect(coerceModelParameterInput(card("kling-3"), "duration", 10)).toBe("10");
+    // Both directions matter. `safety_tolerance` genuinely declares string
+    // candidates, while durations are numeric seconds in every card.
+    expect(coerceModelParameterInput(card("flux-2-pro"), "safety_tolerance", 3)).toBe("3");
+    expect(coerceModelParameterInput(card("kling-3"), "duration", "10")).toBe(10);
     expect(coerceModelParameterInput(card("veo-3.1-fast"), "duration", "6")).toBe(6);
     expect(coerceModelParameterInput(card("veo-3.1-fast"), "generate_audio", "false")).toBe(false);
   });

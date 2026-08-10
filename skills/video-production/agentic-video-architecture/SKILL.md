@@ -52,8 +52,7 @@ Each stage writes a clear artifact. Avoid invisible agent memory.
 - Public reference video ingestion needs a rights/source ledger.
 - Expensive generation and final export should pass stage gates.
 - In Clash-managed local runs, represent those gates with
-  `clash production plan-review-gate` and explicit
-  `clash production approve-review-gate`; the approval command must use the
+  an explicit review-gate artifact plus an explicit approval step; the approval must use the
   path-bound CAS lock generated for the same gate file. Agents should not
   silently treat missing QA artifacts as approved.
 - Black-box E2E should verify artifacts from outside the implementation path.

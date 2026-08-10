@@ -5,7 +5,10 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 test("built standalone runtime serves its schema without a global Clash CLI", async () => {
   const { CLASH_CLI_BIN: _ignoredCliOverride, ...isolatedEnv } = process.env;
-  const client = new Client({ name: "clash-timeline-isolation-test", version: "1.0.0" });
+  const client = new Client({
+    name: "clash-timeline-isolation-test",
+    version: "1.0.0",
+  });
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ["runtime/index.js"],
@@ -23,14 +26,18 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
   try {
     await client.connect(transport);
     const rootTools = await client.listTools();
-    assert.deepEqual(rootTools.tools.map((tool) => tool.name), ["clash"]);
+    assert.deepEqual(
+      rootTools.tools.map((tool) => tool.name),
+      ["clash"],
+    );
     const menu = await client.callTool({
       name: "clash",
       arguments: { command: "timeline" },
     });
     assert.notEqual(menu.isError, true, JSON.stringify(menu));
     assert.equal(
-      (menu.structuredContent as { selectedCommand?: unknown })?.selectedCommand,
+      (menu.structuredContent as { selectedCommand?: unknown })
+        ?.selectedCommand,
       "timeline",
     );
     const tools = await client.listTools();
@@ -38,7 +45,10 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     assert.equal(timelineTools.length, 10);
     for (const tool of timelineTools) {
       const operationId = (tool._meta as any)?.["clash/timelineOperation"]?.id;
-      assert.ok(operationId, `${tool.name} must publish shared operation metadata`);
+      assert.ok(
+        operationId,
+        `${tool.name} must publish shared operation metadata`,
+      );
       assert.equal(
         (tool.outputSchema as any)?.["x-clash-operation-id"],
         operationId,
@@ -46,30 +56,42 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       );
       assert.ok((tool.outputSchema as any)?.properties?.error, tool.name);
     }
-    const validateTool = tools.tools.find((tool) => tool.name === "clash_timeline_validate");
+    const validateTool = tools.tools.find(
+      (tool) => tool.name === "clash_timeline_validate",
+    );
     const validateSchema = validateTool?.inputSchema as any;
-    assert.ok(validateSchema?.properties?.document?.anyOf?.some(
-      (variant: any) => variant.type === "object"
-        && variant["x-clash-schema-tool"] === "clash_timeline_schema",
-    ));
+    assert.ok(
+      validateSchema?.properties?.document?.anyOf?.some(
+        (variant: any) =>
+          variant.type === "object" &&
+          variant["x-clash-schema-tool"] === "clash_timeline_schema",
+      ),
+    );
     assert.equal(validateSchema?.definitions, undefined);
     assert.equal(
       (validateTool?._meta as any)?.["clash/timelineOperation"]?.id,
       "timeline.validate",
     );
-    const saveTool = tools.tools.find((tool) => tool.name === "clash_timeline_save");
+    const saveTool = tools.tools.find(
+      (tool) => tool.name === "clash_timeline_save",
+    );
     assert.equal(
       (saveTool?._meta as any)?.["clash/timelineOperation"]?.id,
       "timeline.save",
     );
     assert.equal(
-      (saveTool?.inputSchema as any)?.properties?.state?.["x-clash-contract-ref"],
+      (saveTool?.inputSchema as any)?.properties?.state?.[
+        "x-clash-contract-ref"
+      ],
       "TimelineDsl",
     );
-    const getTool = tools.tools.find((tool) => tool.name === "clash_timeline_get");
+    const getTool = tools.tools.find(
+      (tool) => tool.name === "clash_timeline_get",
+    );
     assert.equal(
-      (getTool?.outputSchema as any)?.properties?.timeline?.properties?.state
-        ?.["x-clash-contract-ref"],
+      (getTool?.outputSchema as any)?.properties?.timeline?.properties?.state?.[
+        "x-clash-contract-ref"
+      ],
       "TimelineDsl",
     );
     const result = await client.callTool({
@@ -79,60 +101,87 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     const structured = result.structuredContent as any;
 
     assert.notEqual(result.isError, true, JSON.stringify(result));
-    assert.equal(structured?.schemaVersion, 5);
+    assert.equal(structured?.schemaVersion, 6);
     assert.equal(
       validateSchema?.["x-clash-contract-fingerprint"],
       structured?.contractFingerprint,
     );
     assert.equal(
-      structured?.operationCatalog?.agent?.["timeline.save"]?.surfaceBindings?.[0],
+      structured?.operationCatalog?.agent?.["timeline.save"]
+        ?.surfaceBindings?.[0],
       "mcp:clash_timeline_save",
     );
     assert.ok(structured?.fieldCatalog?.root?.fields?.assetTranscripts);
-    assert.ok(structured?.fieldCatalog?.itemTypes?.transition?.fields?.fromItemId);
-    assert.ok(structured?.jsonSchema?.definitions?.TimelineDsl?.properties?.assetTranscripts);
-    assert.ok(structured?.jsonSchema?.definitions?.TimelineDsl?.properties?.mediaAssetRefs);
-    const authoritativeItemVariants = structured?.jsonSchema?.definitions?.TimelineDsl
-      ?.properties?.tracks?.items?.properties?.items?.items?.anyOf ?? [];
+    assert.ok(
+      structured?.fieldCatalog?.itemTypes?.transition?.fields?.fromItemId,
+    );
+    assert.ok(
+      structured?.jsonSchema?.definitions?.TimelineDsl?.properties
+        ?.assetTranscripts,
+    );
+    assert.ok(
+      structured?.jsonSchema?.definitions?.TimelineDsl?.properties
+        ?.mediaAssetRefs,
+    );
+    const authoritativeItemVariants =
+      structured?.jsonSchema?.definitions?.TimelineDsl?.properties?.tracks
+        ?.items?.properties?.items?.items?.anyOf ?? [];
     assert.deepEqual(
-      new Set(authoritativeItemVariants.map((variant: any) => variant.properties.type.const)),
+      new Set(
+        authoritativeItemVariants.map(
+          (variant: any) => variant.properties.type.const,
+        ),
+      ),
       new Set([
-        "video", "audio", "image", "solid", "text", "sticker",
-        "composition", "derived-overlay", "transition",
+        "video",
+        "audio",
+        "image",
+        "solid",
+        "text",
+        "sticker",
+        "composition",
+        "derived-overlay",
+        "transition",
       ]),
     );
-    assert.deepEqual(
-      structured?.features?.clipMask?.animatedChannels,
-      ["maskPosition", "maskSize", "maskRotation", "maskFeather"],
-    );
+    assert.deepEqual(structured?.features?.clipMask?.animatedChannels, [
+      "maskPosition",
+      "maskSize",
+      "maskRotation",
+      "maskFeather",
+    ]);
     const validation = await client.callTool({
       name: "clash_timeline_validate",
       arguments: {
         document: {
-          tracks: [{
-            id: "visual",
-            items: [{
-              id: "masked-image",
-              type: "image",
-              from: 0,
-              durationInFrames: 10,
-              sourceNodeId: "asset-node",
-              mask: {
-                shape: "ellipse",
-                position: [50, 50],
-                size: [70, 70],
-                rotation: 0,
-                feather: 0,
-                inverted: false,
-              },
-              keyframes: {
-                maskFeather: [
-                  { frame: 0, value: 0, interpolation: "linear" },
-                  { frame: 9, value: 20, interpolation: "linear" },
-                ],
-              },
-            }],
-          }],
+          tracks: [
+            {
+              id: "visual",
+              items: [
+                {
+                  id: "masked-image",
+                  type: "image",
+                  from: 0,
+                  durationInFrames: 10,
+                  sourceNodeId: "asset-node",
+                  mask: {
+                    shape: "ellipse",
+                    position: [50, 50],
+                    size: [70, 70],
+                    rotation: 0,
+                    feather: 0,
+                    inverted: false,
+                  },
+                  keyframes: {
+                    maskFeather: [
+                      { frame: 0, value: 0, interpolation: "linear" },
+                      { frame: 9, value: 20, interpolation: "linear" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
         },
       },
     });
@@ -143,28 +192,34 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       name: "clash_timeline_validate",
       arguments: {
         document: {
-          tracks: [{
-            id: "visual",
-            items: [{
-              id: "orphan-mask-keyframe",
-              type: "image",
-              from: 0,
-              durationInFrames: 10,
-              sourceNodeId: "asset-node",
-              keyframes: { maskPosition: [] },
-            }],
-          }],
+          tracks: [
+            {
+              id: "visual",
+              items: [
+                {
+                  id: "orphan-mask-keyframe",
+                  type: "image",
+                  from: 0,
+                  durationInFrames: 10,
+                  sourceNodeId: "asset-node",
+                  keyframes: { maskPosition: [] },
+                },
+              ],
+            },
+          ],
         },
       },
     });
     assert.equal(invalidValidation.isError, true);
-    const invalidError = (invalidValidation.structuredContent as {
-      error?: {
-        code?: unknown;
-        retryTool?: unknown;
-        issues?: Array<{ ruleId?: unknown }>;
-      };
-    })?.error;
+    const invalidError = (
+      invalidValidation.structuredContent as {
+        error?: {
+          code?: unknown;
+          retryTool?: unknown;
+          issues?: Array<{ ruleId?: unknown }>;
+        };
+      }
+    )?.error;
     assert.equal(invalidError?.code, "TIMELINE_DSL_INVALID");
     assert.equal(invalidError?.retryTool, "clash_timeline_schema");
     assert.equal(
@@ -176,29 +231,37 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       name: "clash_timeline_validate",
       arguments: {
         document: {
-          tracks: [{
-            id: "visual",
-            items: [{
-              id: "unknown-item",
-              type: "mystery",
-              from: 0,
-              durationInFrames: 10,
-            }],
-          }],
+          tracks: [
+            {
+              id: "visual",
+              items: [
+                {
+                  id: "unknown-item",
+                  type: "mystery",
+                  from: 0,
+                  durationInFrames: 10,
+                },
+              ],
+            },
+          ],
         },
       },
     });
     assert.equal(invalidStructuralValidation.isError, true);
     assert.equal(
-      (invalidStructuralValidation.structuredContent as {
-        error?: { code?: unknown; retryTool?: unknown };
-      })?.error?.code,
+      (
+        invalidStructuralValidation.structuredContent as {
+          error?: { code?: unknown; retryTool?: unknown };
+        }
+      )?.error?.code,
       "TIMELINE_DSL_INVALID",
     );
     assert.equal(
-      (invalidStructuralValidation.structuredContent as {
-        error?: { code?: unknown; retryTool?: unknown };
-      })?.error?.retryTool,
+      (
+        invalidStructuralValidation.structuredContent as {
+          error?: { code?: unknown; retryTool?: unknown };
+        }
+      )?.error?.retryTool,
       "clash_timeline_schema",
     );
   } finally {

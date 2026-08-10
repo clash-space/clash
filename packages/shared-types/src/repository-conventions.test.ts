@@ -26,6 +26,7 @@ const ignoredDirectories = new Set([
   ".turbo",
   ".vercel",
   ".venv",
+  ".vitepress",
   ".wrangler",
   "build",
   "coverage",

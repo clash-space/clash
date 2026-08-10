@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExecutablePluginBinding } from "@clash/shared-types";
-import { resolveModelProjectorBinding } from "./modelPluginBinding";
+import { preferredModelRoutePluginBinding, resolveModelProjectorBinding } from "./modelPluginBinding";
 
 const oldBinding: ExecutablePluginBinding = {
   pluginId: "first-party-fal-media",
@@ -16,6 +16,21 @@ const currentBinding: ExecutablePluginBinding = {
 };
 
 describe("resolveModelProjectorBinding", () => {
+  it("pins a Provider executor ahead of a request projector when both are present", () => {
+    const executorBinding: ExecutablePluginBinding = {
+      pluginId: "hilo-hub-media",
+      version: "1.0.0",
+      exportId: "hilo-hub-execute",
+      schemaHash: `sha256:${"4".repeat(64)}`,
+    };
+
+    expect(preferredModelRoutePluginBinding({
+      projectorBinding: currentBinding,
+      executorBinding,
+    })).toBe(executorBinding);
+    expect(preferredModelRoutePluginBinding({ projectorBinding: currentBinding })).toBe(currentBinding);
+  });
+
   it("preserves the exact historical version for the same projector export", () => {
     expect(resolveModelProjectorBinding(oldBinding, currentBinding)).toEqual({
       binding: oldBinding,

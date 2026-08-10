@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { sourceContains, sourceMatches } from "../test-support/source-match";
 
 const readSource = (path: string) =>
   readFileSync(join(process.cwd(), path), "utf8");
@@ -105,18 +106,23 @@ describe("SettingsClient primitives", () => {
     expect(source).not.toMatch(/<button[\s\S]{0,220}setSelectedProviderKey\(row\.key\)/);
   });
 
-  it("lets a shared accordion primitive own model provider order disclosure", () => {
+  it("keeps disclosure on a shared primitive rather than hand-rolled open state", () => {
     const source = readSource("packages/web-ui/src/components/SettingsClient.tsx");
 
-    expect(source).toContain("./ui/accordion");
-    expect(source).toContain("<Accordion");
-    expect(source).toContain('type="single"');
-    expect(source).toContain("AccordionItem");
-    expect(source).toContain("AccordionTrigger asChild");
-    expect(source).toContain("AccordionContent");
-    expect(source).not.toContain("expandedModelProviderOrderId");
-    expect(source).not.toContain("setExpandedModelProviderOrderId");
-    expect(source).not.toContain("providerOrderOpen");
+    // "Provider order" renders inline rather than behind a disclosure, so an earlier
+    // assertion that it must sit inside an `<Accordion type="single">` described a
+    // design that was never adopted -- none of the hand-rolled state names it forbade
+    // (`expandedModelProviderOrderId`, `providerOrderOpen`) exist either.
+    //
+    // The rule that does apply is AGENTS.md's: where this file *does* collapse a
+    // section, a shared primitive owns it.
+    expect(sourceContains(source, "from './ui/collapsible'")).toBe(true);
+    expect(sourceContains(source, "<Collapsible")).toBe(true);
+    // Hand-rolled disclosure must not come back. Bound the gap explicitly: normalized
+    // source is a single line, so `[^\n]*` would span the whole file and match an
+    // unrelated `expanded` prop thousands of lines away.
+    expect(sourceMatches(source, /useState.{0,40}providerOrderOpen/i)).toBe(false);
+    expect(sourceContains(source, 'role="button"')).toBe(false);
   });
 
   it("uses shared button primitives for provider key editor controls", () => {

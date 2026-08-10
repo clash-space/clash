@@ -1,11 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  chmod,
-  mkdtemp,
-  mkdir,
-  readFile,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -71,10 +65,10 @@ function agent(counterPath: string): BenchmarkAgent {
       [
         'const fs = require("node:fs")',
         'const path = require("node:path")',
-        'const workspace = process.env.CLASH_BENCH_WORKSPACE',
-        'const counterPath = process.env.COUNTER_PATH',
+        "const workspace = process.env.CLASH_BENCH_WORKSPACE",
+        "const counterPath = process.env.COUNTER_PATH",
         'const count = Number(fs.existsSync(counterPath) ? fs.readFileSync(counterPath, "utf8") : "0")',
-        'fs.writeFileSync(counterPath, String(count + 1))',
+        "fs.writeFileSync(counterPath, String(count + 1))",
         'fs.writeFileSync(path.join(workspace, "result.txt"), "artifact")',
         'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:"reevaluate-case",artifacts:[{id:"result",kind:"report",path:"result.txt"}]}))',
       ].join(";"),
@@ -84,7 +78,9 @@ function agent(counterPath: string): BenchmarkAgent {
 }
 
 async function sha256(path: string): Promise<string> {
-  return createHash("sha256").update(await readFile(path)).digest("hex");
+  return createHash("sha256")
+    .update(await readFile(path))
+    .digest("hex");
 }
 
 const directorStage = DirectorStageStateSchema.parse({
@@ -150,16 +146,16 @@ async function createFakeClashRuntime(root: string): Promise<{
       'const http = require("node:http")',
       'const net = require("node:net")',
       'const path = require("node:path")',
-      'const runDir = process.env.CLASH_HOST_RUN_DIR',
+      "const runDir = process.env.CLASH_HOST_RUN_DIR",
       'const discovery = path.join(runDir, "host.json")',
       'const starts = path.join(process.env.CLASH_HOME, "host-start-count.txt")',
-      'fs.mkdirSync(runDir, {recursive:true})',
+      "fs.mkdirSync(runDir, {recursive:true})",
       'fs.writeFileSync(starts, String(Number(fs.existsSync(starts) ? fs.readFileSync(starts, "utf8") : "0") + 1))',
       'const pluginSocket = path.join(process.env.CLASH_HOME, "sockets", "plugin-host.sock")',
-      'fs.mkdirSync(path.dirname(pluginSocket), {recursive:true})',
-      'fs.rmSync(pluginSocket, {force:true})',
-      'const ipc = net.createServer((socket) => socket.end())',
-      'ipc.listen(pluginSocket)',
+      "fs.mkdirSync(path.dirname(pluginSocket), {recursive:true})",
+      "fs.rmSync(pluginSocket, {force:true})",
+      "const ipc = net.createServer((socket) => socket.end())",
+      "ipc.listen(pluginSocket)",
       'const server = http.createServer((_request, response) => { response.setHeader("content-type", "application/json"); response.end("{}") })',
       'server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(discovery, JSON.stringify({endpoint:"http://127.0.0.1:" + port,pid:process.pid,profile:process.env.CLASH_PROFILE,launchMode:"user-service",startedBy:"plugin",agentCliPath:process.env.CLASH_CLI_ENTRY_PATH})) })',
       'process.on("SIGTERM", () => { server.close(); ipc.close(); fs.rmSync(discovery, {force:true}); fs.rmSync(pluginSocket, {force:true}); process.exit(0) })',
@@ -176,7 +172,7 @@ async function createFakeClashRuntime(root: string): Promise<{
       'const http = require("node:http")',
       'const net = require("node:net")',
       'const path = require("node:path")',
-      'const argv = process.argv.slice(2)',
+      "const argv = process.argv.slice(2)",
       'const command = argv.join(" ")',
       'const marker = path.join(process.cwd(), ".clash", "project.toml")',
       'if (argv[0] === "init") { const requested = argv.includes("--project") ? argv[argv.indexOf("--project") + 1] : undefined; let reused = false; let projectId = requested; if (fs.existsSync(marker)) { const source = fs.readFileSync(marker, "utf8"); projectId = /project_id\\s*=\\s*"([^"]+)"/.exec(source)?.[1]; reused = true } else { fs.mkdirSync(path.dirname(marker), {recursive:true}); fs.writeFileSync(marker, "schema_version = 1\\nproject_id = " + JSON.stringify(projectId) + "\\nworkspace_id = \\"managed:test\\"\\nstore = \\"managed\\"\\n") } process.stdout.write(JSON.stringify({projectId,workspaceId:"managed:test",reused}) + "\\n"); process.exit(0) }',
@@ -188,16 +184,16 @@ async function createFakeClashRuntime(root: string): Promise<{
       'const socketPath = path.join(socketRoot, key + ".sock")',
       'if (command === "canvas disconnect") { const pid = Number(fs.readFileSync(pidPath, "utf8")); process.kill(pid, "SIGTERM"); process.exit(0) }',
       'if (command !== "canvas connect") process.exit(2)',
-      'fs.mkdirSync(socketRoot, {recursive:true})',
-      'fs.rmSync(socketPath, {force:true})',
+      "fs.mkdirSync(socketRoot, {recursive:true})",
+      "fs.rmSync(socketPath, {force:true})",
       `const stage = ${JSON.stringify(productStage)}`,
       `const receipt = ${JSON.stringify(receipt)}`,
       'const server = net.createServer((connection) => { let data = ""; connection.on("data", (chunk) => { data += chunk.toString(); if (!data.includes("\\n")) return; const request = JSON.parse(data.slice(0, data.indexOf("\\n"))); if (request.action === "ping") return connection.end(JSON.stringify({pong:true}) + "\\n"); if (request.action === "list_director_stages") return connection.end(JSON.stringify({stages:[stage],versions:{[stage.id]:receipt}}) + "\\n"); connection.end(JSON.stringify({error:"unsupported"}) + "\\n") }) })',
       'const mcpServer = http.createServer((request, response) => { if (request.url !== "/health") { response.statusCode = 404; return response.end() } response.setHeader("content-type", "application/json"); response.end(JSON.stringify({status:"ok",transport:"streamable-http",endpoint:"/mcp"})) })',
       'mcpServer.listen(0, "127.0.0.1", () => { const port = mcpServer.address().port; server.listen(socketPath, () => { fs.writeFileSync(pidPath, String(process.pid)); fs.writeFileSync(mcpPath, JSON.stringify({url:"http://127.0.0.1:" + port + "/mcp"})) }) })',
-      'const cleanup = () => { server.close(); mcpServer.close(); fs.rmSync(pidPath, {force:true}); fs.rmSync(mcpPath, {force:true}); fs.rmSync(socketPath, {force:true}); process.exit(0) }',
+      "const cleanup = () => { server.close(); mcpServer.close(); fs.rmSync(pidPath, {force:true}); fs.rmSync(mcpPath, {force:true}); fs.rmSync(socketPath, {force:true}); process.exit(0) }",
       'process.on("SIGTERM", cleanup)',
-      'setInterval(() => {}, 1000)',
+      "setInterval(() => {}, 1000)",
     ].join("\n"),
     "utf8",
   );
@@ -208,8 +204,8 @@ async function createFakeClashRuntime(root: string): Promise<{
       `#!${process.execPath}`,
       'const fs = require("node:fs")',
       'const path = require("node:path")',
-      'const workspace = process.env.CLASH_BENCH_WORKSPACE',
-      'const counter = process.env.AGENT_COUNTER_PATH',
+      "const workspace = process.env.CLASH_BENCH_WORKSPACE",
+      "const counter = process.env.AGENT_COUNTER_PATH",
       'fs.writeFileSync(counter, String(Number(fs.existsSync(counter) ? fs.readFileSync(counter, "utf8") : "0") + 1))',
       `fs.writeFileSync(path.join(workspace, "stage.json"), ${JSON.stringify(JSON.stringify(directorStage))})`,
       'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:"host-reevaluate-case",artifacts:[{id:"stage",kind:"director-stage",path:"stage.json"}]}))',
@@ -223,8 +219,9 @@ async function createFakeClashRuntime(root: string): Promise<{
 
 describe("benchmark reevaluation", () => {
   it("reevaluates a persisted case without launching the agent or changing its trajectory and workspace", async () => {
-    expect(typeof (runner as Record<string, unknown>).reevaluateBenchmarkRun)
-      .toBe("function");
+    expect(
+      typeof (runner as Record<string, unknown>).reevaluateBenchmarkRun,
+    ).toBe("function");
 
     const root = await mkdtemp(join(tmpdir(), "clash-bench-reevaluate-"));
     const suiteRoot = join(root, "suite");
@@ -242,11 +239,13 @@ describe("benchmark reevaluation", () => {
     const initialCase = initial.cases[0]!;
     const originalAgent = structuredClone(initialCase.agent);
     const originalWorkspace = initialCase.workspace;
-    const originalArtifactSha = await sha256(join(originalWorkspace, "result.txt"));
+    const originalArtifactSha = await sha256(
+      join(originalWorkspace, "result.txt"),
+    );
     const originalStdoutSha = await sha256(initialCase.agent.stdoutPath);
     const originalStderrSha = await sha256(initialCase.agent.stderrPath);
-    const attemptsBefore = await readFile(
-      join(outputRoot, "persisted-run", "attempts.jsonl"),
+    const runManifestBefore = await readFile(
+      join(outputRoot, "persisted-run", "run-manifest.json"),
       "utf8",
     );
 
@@ -283,8 +282,11 @@ describe("benchmark reevaluation", () => {
     expect(await sha256(report.agent.stdoutPath)).toBe(originalStdoutSha);
     expect(await sha256(report.agent.stderrPath)).toBe(originalStderrSha);
     expect(
-      await readFile(join(outputRoot, "persisted-run", "attempts.jsonl"), "utf8"),
-    ).toBe(attemptsBefore);
+      await readFile(
+        join(outputRoot, "persisted-run", "run-manifest.json"),
+        "utf8",
+      ),
+    ).toBe(runManifestBefore);
   });
 
   it("reuses the persisted Clash home for trusted product readback without rerunning Codex", async () => {
@@ -368,7 +370,10 @@ describe("benchmark reevaluation", () => {
     const originalAgent = structuredClone(initial.cases[0]!.agent);
     const caseRoot = join(outputRoot, "host-run", "host-reevaluate-case");
     expect(
-      await readFile(join(caseRoot, "clash-home", "host-start-count.txt"), "utf8"),
+      await readFile(
+        join(caseRoot, "clash-home", "host-start-count.txt"),
+        "utf8",
+      ),
     ).toBe("1");
 
     const report = await runner.reevaluateBenchmarkRun({
@@ -392,7 +397,10 @@ describe("benchmark reevaluation", () => {
     });
     expect(await readFile(agentCounterPath, "utf8")).toBe("1");
     expect(
-      await readFile(join(caseRoot, "clash-home", "host-start-count.txt"), "utf8"),
+      await readFile(
+        join(caseRoot, "clash-home", "host-start-count.txt"),
+        "utf8",
+      ),
     ).toBe("2");
   });
 });

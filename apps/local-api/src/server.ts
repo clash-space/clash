@@ -22,6 +22,7 @@ import {
   composeExecutablePluginModelCards,
   MODEL_CARDS,
   type ExecutablePluginCardRegistration,
+  type ExecutablePluginModelBindingRegistration,
 } from "@clash/shared-types";
 import {
   createLocalApiApp,
@@ -32,13 +33,17 @@ import {
   removeHostDiscovery,
   writeHostDiscovery,
 } from "./host-discovery.js";
+import { resolveMediaBaseUrl } from "./media-base-url.js";
 import { createMockExternalAigcService } from "./local-aigc.js";
 import {
   createJsonlProviderTestRecorder,
+  createProviderTestRecordingFetch,
   createProviderTestReplayFixtures,
   readJsonlProviderTestRecording,
+  type ProviderTestRecorder,
 } from "./provider-test-recorder.js";
 import { createBridgeProviderPluginProjector } from "./provider-plugin-projector.js";
+import { createBridgeProviderPluginExecutor } from "./provider-plugin-executor.js";
 import { createBridgeExecutablePluginActionInvoker } from "./plugin-action-runtime.js";
 import {
   createCodexImagegenMarketplace,
@@ -69,7 +74,10 @@ import {
 import { createLocalProviderStore } from "./local-provider-store.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import { assetPathForRead, assetPathForWrite } from "./local-asset-paths.js";
-import { createLocalExecutablePluginBroker } from "./local-plugin-broker.js";
+import {
+  createLocalExecutablePluginBroker,
+  type LocalPluginBrokerTrafficContext,
+} from "./local-plugin-broker.js";
 import {
   attachLocalSync,
   type RemoteLoroPersistenceSource,
@@ -554,6 +562,7 @@ async function loadLocalModelCards(
   dataDir: string,
   userId = "local-user",
   pluginCards: readonly ExecutablePluginCardRegistration[] = [],
+  pluginModelBindings: readonly ExecutablePluginModelBindingRegistration[] = [],
 ) {
   const store = createLocalProviderStore(dataDir);
   const [providerAccounts, providerOAuth, modelCardConfigs] = await Promise.all([
@@ -567,20 +576,70 @@ async function loadLocalModelCards(
       .filter((config) => (config.userId ?? userId) === userId)
       .map(({ userId: _userId, ...config }) => config),
     providers,
-    baseModels: composeExecutablePluginModelCards(MODEL_CARDS, pluginCards),
+    baseModels: composeExecutablePluginModelCards(MODEL_CARDS, pluginCards, pluginModelBindings),
   });
+}
+
+/**
+ * Records outbound executable-plugin provider traffic into the same JSONL
+ * replay format used by the built-in provider routes, so plugin-backed
+ * generations can be replayed offline without re-billing the upstream.
+ */
+function createPluginBrokerTrafficFetch(options: {
+  recordingPath: string;
+  fetch: typeof fetch;
+}): (context: LocalPluginBrokerTrafficContext) => typeof fetch {
+  let recorder: Promise<ProviderTestRecorder> | undefined;
+  return (context) => (async (input: RequestInfo | URL, init?: RequestInit) => {
+    recorder ??= createJsonlProviderTestRecorder(options.recordingPath);
+    const providerId = context.providerId ?? context.pluginId;
+    const recording = createProviderTestRecordingFetch({
+      fetch: options.fetch,
+      recorder: await recorder,
+      stub: {
+        id: [context.pluginId, context.pluginVersion, providerId, context.accountId ?? ""].join(":"),
+        providerId,
+        upstreamId: providerId,
+        modelId: context.pluginId,
+        modelName: context.pluginId,
+        shape: "image",
+        apiShape: providerId,
+        requiredCredentials: [],
+        requiredOAuth: [],
+        input: { shape: "image", model: context.pluginId, prompt: "" },
+      },
+    });
+    return recording(input, init);
+  }) as typeof fetch;
 }
 
 export function createLocalPluginBrokerServices(options: {
   dataDir: string;
   fetch?: typeof fetch;
+  providerTrafficRecordingPath?: string;
+  credentialHandleTtlMs?: number;
 }) {
   const providerStore = createLocalProviderStore(options.dataDir);
   const metadataStore = createLocalMetadataStore(options.dataDir);
   const clashRoot = clashHomeForLocalDataDir(options.dataDir);
   return createLocalExecutablePluginBroker({
-    loadProviderAccounts: () => providerStore.loadProviderAccounts(),
+    ...(options.credentialHandleTtlMs !== undefined
+      ? { credentialHandleTtlMs: options.credentialHandleTtlMs }
+      : {}),
+    loadProviderAccounts: async () => {
+      const [accounts, oauthRecords] = await Promise.all([
+        providerStore.loadProviderAccounts(),
+        providerStore.loadProviderOAuth(),
+      ]);
+      return providerAccountsForRuntime(accounts, "local-user", oauthRecords);
+    },
     ...(options.fetch ? { fetch: options.fetch } : {}),
+    ...(options.providerTrafficRecordingPath ? {
+      providerTrafficFetch: createPluginBrokerTrafficFetch({
+        recordingPath: options.providerTrafficRecordingPath,
+        fetch: options.fetch ?? fetch,
+      }),
+    } : {}),
     generateCodexImage: createCodexImageGenerator(),
     readAsset: async ({ assetId, projectId }) => {
       const metadata = await metadataStore.load();
@@ -694,7 +753,19 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     actionsRoot: join(clashHome, "actions"),
   });
   const providerStore = createLocalProviderStore(options.dataDir);
-  const pluginBroker = createLocalPluginBrokerServices({ dataDir: options.dataDir });
+  const pluginBrokerRecordingPath = process.env.CLASH_PROVIDER_TRAFFIC_RECORDING_PATH?.trim();
+  const configuredCredentialTtlMinutes = Number(
+    process.env.CLASH_PLUGIN_CREDENTIAL_TTL_MINUTES?.trim(),
+  );
+  const pluginBroker = createLocalPluginBrokerServices({
+    dataDir: options.dataDir,
+    ...(pluginBrokerRecordingPath
+      ? { providerTrafficRecordingPath: pluginBrokerRecordingPath }
+      : {}),
+    ...(Number.isFinite(configuredCredentialTtlMinutes) && configuredCredentialTtlMinutes > 0
+      ? { credentialHandleTtlMs: configuredCredentialTtlMinutes * 60_000 }
+      : {}),
+  });
   const pluginBrokerToken = `${randomUUID()}${randomUUID()}`;
   let bundledPluginError: unknown;
   const bundledPluginsReady = ensureBundledFirstPartyMediaPlugin({
@@ -710,6 +781,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     socketPath: pluginHostSocketPath(process.env, clashHome),
   });
   const bridgeProjector = createBridgeProviderPluginProjector({ client: pluginHostClient });
+  const bridgeProviderExecutor = createBridgeProviderPluginExecutor({ client: pluginHostClient });
   const bridgeExecutablePluginAction = createBridgeExecutablePluginActionInvoker({
     client: pluginHostClient,
   });
@@ -746,6 +818,10 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     await ensurePluginRuntime();
     return bridgeProjector(request);
   }) satisfies import("./local-aigc.js").ProviderPluginProjector;
+  const providerPluginExecutor = (async (request) => {
+    await ensurePluginRuntime();
+    return bridgeProviderExecutor(request);
+  }) satisfies import("./local-aigc.js").ProviderPluginExecutor;
   const executablePluginAction = (async (request) => {
     await ensurePluginRuntime();
     return bridgeExecutablePluginAction(request);
@@ -753,6 +829,14 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   const listPluginCards = async () => {
     await ensurePluginRuntime();
     return pluginHostClient.listCards();
+  };
+  const listPluginProviders = async () => {
+    await ensurePluginRuntime();
+    return pluginHostClient.listProviders();
+  };
+  const listPluginModelBindings = async () => {
+    await ensurePluginRuntime();
+    return pluginHostClient.listModelBindings();
   };
   const discoveryRunDir =
     options.discovery?.runDir ?? join(clashHome, "run");
@@ -873,14 +957,21 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     },
     listPluginCards,
     directorStageRenderer: options.directorStageRenderer,
+    listPluginModelBindings,
+    listPluginProviders,
   });
+  // Set once the socket is bound. `options.port` is normally 0, so anything that captured
+  // it produced an unroutable `http://127.0.0.1:0` -- reads of a generated asset then
+  // failed with a bare `fetch failed`.
+  let boundPort: number | undefined = options.port || undefined;
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
-    mediaBaseUrl: `http://127.0.0.1:${options.port}`,
+    mediaBaseUrl: resolveMediaBaseUrl(() => boundPort),
     modelCards: async () => loadLocalModelCards(
       options.dataDir,
       "local-user",
       await listPluginCards(),
+      await listPluginModelBindings(),
     ),
     executablePluginAction,
     timelineRenderer: options.timelineRenderer,
@@ -914,6 +1005,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         options.dataDir,
         "local-user",
         await listPluginCards(),
+        await listPluginModelBindings(),
       ),
       openAiBaseUrl: process.env.OPENAI_BASE_URL,
       anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
@@ -925,6 +1017,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       providerUsageAudit: (event) => providerStore.appendProviderUsageEvent(event),
       providerTraffic,
       providerPluginProjector,
+      providerPluginExecutor,
       dreaminaRun,
       localTts,
     }),
@@ -942,6 +1035,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   let publishedDiscoveryHostId: string | undefined;
   const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: options.port }, (info) => {
     settled = true;
+    boundPort = info.port;
     localAcp.updateSpawnEnv(createLocalAgentToolEnv({
       dataDir: options.dataDir,
       apiBaseUrl: `http://127.0.0.1:${info.port}`,

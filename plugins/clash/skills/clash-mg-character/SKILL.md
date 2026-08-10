@@ -125,6 +125,14 @@ tracks or items. Its essential live-source shape is:
 `sourcePath` is a safe project-local authoring path; `sourceNodeId` is the live
 product identity. The Timeline must not contain a duplicate of the TSX.
 
+Do not copy output pixel dimensions into an item's `properties.width` or
+`properties.height`. Those two fields are scale multipliers, and both default
+to `1`; `720` by `1280` belongs only in the Timeline's root
+`compositionWidth` and `compositionHeight`. For a full-frame Remotion
+composition, omit `properties` entirely unless an intentional transform is
+needed. Pixel-sized item properties create an enormous off-screen layer and
+can produce a valid but visually black render.
+
 For MCP work, reveal `canvas` through the root `clash` menu, then use
 `clash_canvas_add` with `type: "remotion"`, followed by `clash_canvas_get`.
 Before a revision, get the node again, update only its `content` through

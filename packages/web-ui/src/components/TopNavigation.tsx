@@ -38,6 +38,10 @@ declare global {
     | {
         isDesktop: true;
         newWindow: () => Promise<{ windowId: number; windowCount: number }>;
+        authorizeProvider?: (request: {
+          verificationUri: string;
+          callbackScheme: string;
+        }) => Promise<{ cancelled: boolean; callbackUrl?: string }>;
         getNleAvailability?: () => Promise<NleAvailability[]>;
         exportDirectorVideo?: (request: unknown) => Promise<{ canceled: boolean; outputPath?: string }>;
         openInNle?: (request: unknown) => Promise<{ documentPath: string }>;

@@ -7,10 +7,14 @@ import { dirname, join } from "node:path";
 import {
   ExecutablePluginBindingSchema,
   ExecutablePluginCardRegistrationSchema,
+  ExecutablePluginModelBindingRegistrationSchema,
+  ExecutablePluginProviderRegistrationSchema,
   ExecutablePluginInvocationSchema,
   ExecutablePluginResultSchema,
   type ExecutablePluginBinding,
   type ExecutablePluginCardRegistration,
+  type ExecutablePluginModelBindingRegistration,
+  type ExecutablePluginProviderRegistration,
   type ExecutablePluginInvocation,
   type ExecutablePluginResult,
 } from "@clash/shared-types";
@@ -21,6 +25,8 @@ type PluginFunctionKind = "action" | "provider-projector";
 
 export interface PluginInvocationHost {
   listCards(): ExecutablePluginCardRegistration[];
+  listProviders?(): ExecutablePluginProviderRegistration[];
+  listModelBindings?(): ExecutablePluginModelBindingRegistration[];
   resolveBinding(
     pluginId: string,
     exportId: string,
@@ -40,6 +46,10 @@ interface PluginHostRequestBase {
 
 type PluginHostRequest = PluginHostRequestBase & ({
   operation: "list-cards";
+} | {
+  operation: "list-providers";
+} | {
+  operation: "list-model-bindings";
 } | {
   operation: "resolve";
   pluginId: string;
@@ -64,7 +74,28 @@ type PluginHostResponse = {
   error: { code: string; message: string };
 };
 
-const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
+/**
+ * The largest IPC frame the plugin host will accept.
+ *
+ * A frame carries control information, not media. References travel as `clash-asset://` handles the
+ * plugin resolves through the broker, so the size of a generation does not grow with its inputs.
+ *
+ * Inlining media here does not scale: a Card may accept a 30 MB reference image and several of them,
+ * so the frame would have to be ~100 MB and every byte would be base64-expanded and copied on both
+ * sides -- to move a file between two processes on the same machine. Two ordinary generated PNGs
+ * (2.26 MB and 2.64 MB encoded) overflowed the previous 4 MB limit and, because the guard answered
+ * with `requestId: "unknown"`, the failure surfaced as "mismatched response".
+ */
+/**
+ * Every plugin function kind, mirroring the shared schema.
+ *
+ * `provider-executor` was absent from the `resolve` check even though the schema has listed it all
+ * along, so a generation served by a plugin provider failed with "Invalid plugin function kind" --
+ * the protocol rejecting the only kind that does the work.
+ */
+export const PLUGIN_FUNCTION_KINDS = ["action", "provider-projector", "provider-executor"] as const;
+
+const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 // macOS permits at most 103 address bytes for a Unix-domain socket (Linux
 // permits 107). Keep a little headroom so the same path is portable and Node
 // never silently binds a truncated address that cannot subsequently be chmod'd.
@@ -130,6 +161,9 @@ function parseRequest(value: unknown): PluginHostRequest {
   const request = value as Record<string, unknown>;
   if (request.protocol !== "clash.plugin-host/v1") throw new Error("Unsupported plugin host protocol.");
   const requestId = nonEmptyString(request.requestId, "requestId");
+  if (request.operation === "list-providers" || request.operation === "list-model-bindings") {
+    return { protocol: "clash.plugin-host/v1", requestId, operation: request.operation };
+  }
   if (request.operation === "list-cards") {
     return {
       protocol: "clash.plugin-host/v1",
@@ -139,8 +173,10 @@ function parseRequest(value: unknown): PluginHostRequest {
   }
   const pluginId = nonEmptyString(request.pluginId, "pluginId");
   if (request.operation === "resolve") {
-    if (request.kind !== "action" && request.kind !== "provider-projector") {
-      throw new Error("Invalid plugin function kind.");
+    if (!PLUGIN_FUNCTION_KINDS.includes(request.kind as PluginFunctionKind)) {
+      throw new Error(
+        `Invalid plugin function kind ${JSON.stringify(request.kind)}; expected one of ${PLUGIN_FUNCTION_KINDS.join(", ")}.`,
+      );
     }
     return {
       protocol: "clash.plugin-host/v1",
@@ -170,8 +206,33 @@ function parseRequest(value: unknown): PluginHostRequest {
   throw new Error("Unknown plugin host operation.");
 }
 
-function writeResponse(socket: Socket, response: PluginHostResponse): void {
-  socket.end(`${JSON.stringify(response)}\n`);
+/**
+ * Reads `requestId` out of a frame that has not finished arriving.
+ *
+ * The size guard fires before the frame can be parsed, and answering with `"unknown"` made the
+ * client report a mismatched response rather than an oversize request. The id sits near the front of
+ * every frame, so a narrow scan recovers it.
+ */
+export function requestIdFromPartialFrame(partial: string): string {
+  const match = /"requestId"\s*:\s*"([^"]+)"/.exec(partial);
+  return match?.[1] ?? "unknown";
+}
+
+/**
+ * Sends one response and closes the socket, tolerating a peer that is already gone.
+ *
+ * A reply ends the connection, so a second reply on the same socket used to write after end. The
+ * rejection escaped an unguarded `.then()` and killed the host process, abandoning whatever
+ * generations were queued. An undeliverable response is the client's problem: the host logs it and
+ * stays up.
+ */
+export function writePluginHostResponse(socket: Socket, response: PluginHostResponse): void {
+  if (socket.writableEnded || socket.destroyed) return;
+  try {
+    socket.end(`${JSON.stringify(response)}\n`);
+  } catch (error) {
+    console.warn(`[plugin-host] dropping response ${response.requestId}: ${(error as Error).message}`);
+  }
 }
 
 async function handleRequest(host: PluginInvocationHost, input: unknown): Promise<PluginHostResponse> {
@@ -182,6 +243,26 @@ async function handleRequest(host: PluginInvocationHost, input: unknown): Promis
     }
     const request = parseRequest(input);
     requestId = request.requestId;
+    if (request.operation === "list-providers") {
+      return {
+        protocol: "clash.plugin-host/v1",
+        requestId,
+        status: "ok",
+        result: ExecutablePluginProviderRegistrationSchema.array().parse(
+          host.listProviders?.() ?? [],
+        ),
+      };
+    }
+    if (request.operation === "list-model-bindings") {
+      return {
+        protocol: "clash.plugin-host/v1",
+        requestId,
+        status: "ok",
+        result: ExecutablePluginModelBindingRegistrationSchema.array().parse(
+          host.listModelBindings?.() ?? [],
+        ),
+      };
+    }
     if (request.operation === "list-cards") {
       return {
         protocol: "clash.plugin-host/v1",
@@ -266,26 +347,35 @@ export async function startPluginHostIpcServer(options: {
     }
     const server: Server = createServer((socket) => {
       let buffer = "";
+      // One request, one response, one socket: the reply ends the connection, so anything arriving
+      // afterwards must not produce a second write.
+      let answered = false;
       socket.on("data", (chunk) => {
+        if (answered) return;
         buffer += chunk.toString("utf8");
         if (Buffer.byteLength(buffer) > MAX_MESSAGE_BYTES) {
-          writeResponse(socket, {
+          writePluginHostResponse(socket, {
             protocol: "clash.plugin-host/v1",
-            requestId: "unknown",
+            requestId: requestIdFromPartialFrame(buffer),
             status: "error",
-            error: { code: "message_too_large", message: "Plugin host request is too large." },
+            error: {
+              code: "message_too_large",
+              message: `Plugin host request is too large (over ${Math.floor(MAX_MESSAGE_BYTES / (1024 * 1024))} MB).`,
+            },
           });
+          answered = true;
           return;
         }
         const newline = buffer.indexOf("\n");
         if (newline < 0) return;
         const line = buffer.slice(0, newline);
         buffer = "";
+        answered = true;
         let message: unknown;
         try {
           message = JSON.parse(line);
         } catch (error) {
-          writeResponse(socket, {
+          writePluginHostResponse(socket, {
             protocol: "clash.plugin-host/v1",
             requestId: "unknown",
             status: "error",
@@ -293,7 +383,11 @@ export async function startPluginHostIpcServer(options: {
           });
           return;
         }
-        void handleRequest(options.host, message).then((response) => writeResponse(socket, response));
+        void handleRequest(options.host, message)
+          .then((response) => writePluginHostResponse(socket, response))
+          .catch((error: unknown) => {
+            console.warn(`[plugin-host] request failed after reply: ${(error as Error).message}`);
+          });
       });
     });
     await new Promise<void>((resolve, reject) => {
@@ -335,6 +429,29 @@ export class PluginHostClient {
       protocol: "clash.plugin-host/v1",
       requestId: randomUUID(),
       operation: "list-cards",
+    }));
+  }
+
+  /**
+   * Providers and model bindings the loaded plugins export.
+   *
+   * `local-api` has always called both; they existed only inside a committed host bundle under this
+   * package's `dist`, so rebuilding from source removed them and the host died on its first model
+   * listing. Declared here so the source is the definition.
+   */
+  async listProviders(): Promise<ExecutablePluginProviderRegistration[]> {
+    return ExecutablePluginProviderRegistrationSchema.array().parse(await this.request({
+      protocol: "clash.plugin-host/v1",
+      requestId: randomUUID(),
+      operation: "list-providers",
+    }));
+  }
+
+  async listModelBindings(): Promise<ExecutablePluginModelBindingRegistration[]> {
+    return ExecutablePluginModelBindingRegistrationSchema.array().parse(await this.request({
+      protocol: "clash.plugin-host/v1",
+      requestId: randomUUID(),
+      operation: "list-model-bindings",
     }));
   }
 

@@ -79,17 +79,10 @@ atomically advances the Loro Timeline revision. There are no public Timeline
 history/content/restore commands because Loro owns its history and the product
 owns visual recovery.
 
-Exports that claim applied provenance accept the Project Timeline identity:
-
-```bash
-clash production export-captions --timeline <file> --timeline-id <id> ...
-clash production export-timeline-handoff --timeline <file> --timeline-id <id> ...
-clash production export-caption-burn --timeline <file> --timeline-id <id> ...
-```
-
-The CLI verifies that the YAML semantic hash matches the current Project
-Timeline state before recording `sourceTimelineRevisionId`. Without
-`--timeline-id`, non-rendering exports are explicitly marked `draft-file`.
+Any export that claims applied provenance must verify that the YAML semantic
+hash matches the current Project Timeline state before recording
+`sourceTimelineRevisionId`. An export without a Timeline identity is explicitly
+marked `draft-file`.
 
 ## Text Projections
 

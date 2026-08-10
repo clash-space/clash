@@ -28,6 +28,8 @@ import {
   validateExecutablePluginPackage,
 } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
+import { assertDraftOutsideManagedStorage } from "../lib/plugin-draft-location";
+import { buildPluginEntrypointIfDeclared } from "../lib/plugin-build";
 import { resolveClashRoot } from "../lib/clash-home";
 import { isJsonMode, printJson } from "../lib/output";
 
@@ -147,6 +149,30 @@ export function validateDownloadedActionPackage(input: unknown): ValidatedDownlo
         throw new Error(`Invalid Card JSON at ${card.path}: ${(error as Error).message}`);
       }
     }
+    const providerDocuments: Record<string, unknown> = {};
+    for (const provider of parsedManifest.exports.providers) {
+      const encoded = files[provider.path];
+      if (typeof encoded !== "string") {
+        throw new Error(`Missing declared Provider document: ${provider.path}`);
+      }
+      try {
+        providerDocuments[provider.path] = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+      } catch (error) {
+        throw new Error(`Invalid Provider JSON at ${provider.path}: ${(error as Error).message}`);
+      }
+    }
+    const modelBindingDocuments: Record<string, unknown> = {};
+    for (const binding of parsedManifest.exports.modelBindings) {
+      const encoded = files[binding.path];
+      if (typeof encoded !== "string") {
+        throw new Error(`Missing declared model Provider binding: ${binding.path}`);
+      }
+      try {
+        modelBindingDocuments[binding.path] = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+      } catch (error) {
+        throw new Error(`Invalid model Provider binding JSON at ${binding.path}: ${(error as Error).message}`);
+      }
+    }
     const contractTestDocuments: Record<string, unknown> = {};
     for (const path of parsedManifest.contractTests) {
       const encoded = files[path];
@@ -163,6 +189,10 @@ export function validateDownloadedActionPackage(input: unknown): ValidatedDownlo
       parsedManifest,
       cardDocuments,
       contractTestDocuments,
+      {
+        providers: providerDocuments,
+        modelBindings: modelBindingDocuments,
+      },
     );
     return {
       id,
@@ -239,7 +269,12 @@ export interface ScaffoldExecutablePluginDraftOptions {
   pluginDir: string;
   id: string;
   name?: string;
-  kind?: "action" | "provider-projector";
+  kind?: "action" | "provider-projector" | "provider-executor";
+  /**
+   * Implementation language. TypeScript drafts carry source only and the host
+   * compiles them; Python runs its source directly and declares no build.
+   */
+  language?: "ts" | "python";
 }
 
 export interface ScaffoldedExecutablePluginDraft {
@@ -338,12 +373,19 @@ export async function scaffoldExecutablePluginDraft(
   const id = options.id.trim();
   const name = options.name?.trim() || defaultPluginName(id);
   const kind = options.kind ?? "action";
-  if (kind !== "action" && kind !== "provider-projector") {
+  if (kind !== "action" && kind !== "provider-projector" && kind !== "provider-executor") {
     throw new Error(`Unsupported plugin kind ${String(kind)}.`);
+  }
+  const language = options.language ?? "ts";
+  if (language !== "ts" && language !== "python") {
+    throw new Error(`Unsupported plugin language ${String(language)}; use ts or python.`);
   }
 
   const functionKind = kind;
   const cardKind = kind === "action" ? "action-card" : "model-card";
+  const outputSlot = kind === "action" ? "result" : "request";
+  // An action returns rendered text; a projector returns the prompt it composed.
+  const valueKey = kind === "action" ? "text" : "prompt";
   const cardPath = `cards/${id}.json`;
   const contractTestPath = `contract-tests/${id}.json`;
   const manifest = {
@@ -352,7 +394,18 @@ export async function scaffoldExecutablePluginDraft(
     version: "0.1.0",
     name,
     description: `Agent-editable ${kind} plugin.`,
-    runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
+    runtime: language === "python"
+      // Python runs its source directly, so there is nothing to build.
+      ? { kind: "local", transport: "stdio", language: "python", entrypoint: "handler.py" }
+      // TypeScript is compiled by the host before validation, contract tests, and
+      // activation, so the draft carries source only and never a stale bundle.
+      : {
+        kind: "local",
+        transport: "stdio",
+        language: "node",
+        entrypoint: "dist/stdio.mjs",
+        build: { source: "src/stdio.ts" },
+      },
     exports: {
       cards: [{ id, kind: cardKind, path: cardPath }],
       functions: [{ id, kind: functionKind, handler: "run" }],
@@ -434,37 +487,72 @@ export async function scaffoldExecutablePluginDraft(
     await writeFileAsync(join(pluginDir, "manifest.json"), jsonDocument(manifest));
     await writeFileAsync(join(pluginDir, cardPath), jsonDocument(card));
     await writeFileAsync(join(pluginDir, contractTestPath), jsonDocument(contractTest));
-    await writeFileAsync(join(pluginDir, "handler.mjs"), [
-      'import { createInterface } from "node:readline";',
-      "",
-      `const exportId = ${JSON.stringify(id)};`,
-      `const pluginKind = ${JSON.stringify(kind)};`,
-      "",
-      "createInterface({ input: process.stdin }).on(\"line\", (line) => {",
-      "  const invocation = JSON.parse(line);",
-      "  if (invocation.protocol !== \"clash.plugin.invoke/v1\") return;",
-      "  const prompt = typeof invocation.input?.values?.prompt === \"string\"",
-      "    ? invocation.input.values.prompt",
-      "    : \"\";",
-      "  const value = pluginKind === \"action\" ? { text: prompt } : { prompt };",
-      "  const slot = pluginKind === \"action\" ? \"result\" : \"request\";",
-      "  const result = invocation.target?.exportId === exportId",
-      "    ? {",
-      "        protocol: \"clash.plugin.result/v1\",",
-      "        invocationId: invocation.invocationId,",
-      "        status: \"completed\",",
-      "        outputs: [{ slot, kind: \"value\", value }],",
-      "      }",
-      "    : {",
-      "        protocol: \"clash.plugin.result/v1\",",
-      "        invocationId: invocation.invocationId,",
-      "        status: \"failed\",",
-      "        error: { code: \"UNKNOWN_EXPORT\", message: \"Unknown export\", retryable: false },",
-      "      };",
-      "  process.stdout.write(`${JSON.stringify(result)}\\n`);",
-      "});",
-      "",
-    ].join("\n"));
+    if (language === "python") {
+      // Python is the case with nothing to build, so the draft ships the program the
+      // sandbox runs.
+      await writeFileAsync(join(pluginDir, "handler.py"), [
+        "import json",
+        "import sys",
+        "",
+        `EXPORT_ID = ${JSON.stringify(id)}`,
+        "",
+        "for line in sys.stdin:",
+        "    invocation = json.loads(line)",
+        '    if invocation.get("protocol") != "clash.plugin.invoke/v1":',
+        "        continue",
+        '    prompt = (invocation.get("input") or {}).get("values", {}).get("prompt") or ""',
+        '    if (invocation.get("target") or {}).get("exportId") == EXPORT_ID:',
+        "        result = {",
+        '            "protocol": "clash.plugin.result/v1",',
+        '            "invocationId": invocation["invocationId"],',
+        '            "status": "completed",',
+        `            "outputs": [{"slot": ${JSON.stringify(outputSlot)}, "kind": "value", "value": {${JSON.stringify(valueKey)}: prompt}}],`,
+        "        }",
+        "    else:",
+        "        result = {",
+        '            "protocol": "clash.plugin.result/v1",',
+        '            "invocationId": invocation["invocationId"],',
+        '            "status": "failed",',
+        '            "error": {"code": "UNKNOWN_EXPORT", "message": "Unknown export", "retryable": False},',
+        "        }",
+        '    sys.stdout.write(json.dumps(result) + "\\n")',
+        "    sys.stdout.flush()",
+        "",
+      ].join("\n"));
+    } else {
+      // TypeScript drafts carry source only. The host compiles it before validation,
+      // contract tests, and activation, so an edited draft can never be checked
+      // against a stale bundle.
+      await mkdirAsync(join(pluginDir, "src"), { recursive: true });
+      await writeFileAsync(join(pluginDir, "src", "stdio.ts"), [
+        'import { createInterface } from "node:readline";',
+        "",
+        `const exportId = ${JSON.stringify(id)};`,
+        "",
+        'createInterface({ input: process.stdin }).on("line", (line) => {',
+        "  const invocation = JSON.parse(line);",
+        '  if (invocation.protocol !== "clash.plugin.invoke/v1") return;',
+        '  const prompt = typeof invocation.input?.values?.prompt === "string"',
+        "    ? invocation.input.values.prompt",
+        '    : "";',
+        "  const result = invocation.target?.exportId === exportId",
+        "    ? {",
+        '        protocol: "clash.plugin.result/v1",',
+        "        invocationId: invocation.invocationId,",
+        '        status: "completed",',
+        `        outputs: [{ slot: ${JSON.stringify(outputSlot)}, kind: "value", value: { ${valueKey}: prompt } }],`,
+        "      }",
+        "    : {",
+        '        protocol: "clash.plugin.result/v1",',
+        "        invocationId: invocation.invocationId,",
+        '        status: "failed",',
+        '        error: { code: "UNKNOWN_EXPORT", message: "Unknown export", retryable: false },',
+        "      };",
+        "  process.stdout.write(`${JSON.stringify(result)}\\n`);",
+        "});",
+        "",
+      ].join("\n"));
+    }
     await writeFileAsync(join(pluginDir, "AGENTS.md"), [
       "# Executable Plugin Authoring",
       "",
@@ -541,9 +629,31 @@ export async function packageExecutablePluginDraft(
 export async function validateExecutablePluginDraft(
   pluginDir: string,
 ): Promise<ValidatedExecutablePluginDraft> {
+  // Compile before packaging, so the manifest, the content hash, and the contract
+  // tests all describe the source that is actually present. Leaving this to the
+  // author meant an edited `src/` could report `valid: true` while every check ran
+  // against the previous bundle.
+  await buildDeclaredPluginEntrypoint(pluginDir);
   const pkg = await packageExecutablePluginDraft(pluginDir);
   const contractTests = await runExecutablePluginContractTests(pluginDir);
   return { package: pkg, contractTests };
+}
+
+/** Read the draft manifest and compile its entrypoint when one is declared derived. */
+async function buildDeclaredPluginEntrypoint(pluginDir: string): Promise<void> {
+  let runtime: unknown;
+  try {
+    const manifest = JSON.parse(
+      await readFileAsync(join(pluginDir, "manifest.json"), "utf8"),
+    ) as { runtime?: unknown; spec?: { runtime?: unknown } };
+    runtime = manifest.runtime ?? manifest.spec?.runtime;
+  } catch {
+    // A malformed or missing manifest is reported by validation itself, with a much
+    // better message than anything this step could produce.
+    return;
+  }
+  if (!runtime || typeof runtime !== "object") return;
+  await buildPluginEntrypointIfDeclared(pluginDir, runtime as { kind?: string });
 }
 
 export interface ActivateExecutablePluginDraftOptions {
@@ -733,15 +843,21 @@ actionsCommand
   .argument("<directory>", "New plugin draft directory (must not already exist)")
   .requiredOption("--id <id>", "Stable plugin and export id")
   .option("--name <name>", "User-facing plugin and Card name")
-  .option("--kind <kind>", "action or provider-projector", "action")
+  .option("--kind <kind>", "action, provider-projector, or provider-executor", "action")
+  .option("--lang <language>", "ts or python", "ts")
   .option("--json", "Output as JSON")
   .action(async (directory: string, options) => {
     try {
+      assertDraftOutsideManagedStorage(directory);
+      if (options.lang !== "ts" && options.lang !== "python") {
+        throw new Error(`Unsupported --lang ${String(options.lang)}; expected ts or python.`);
+      }
       const created = await scaffoldExecutablePluginDraft({
         pluginDir: resolve(directory),
         id: options.id,
         name: options.name,
         kind: options.kind,
+        language: options.lang,
       });
       const result = {
         created: true,
@@ -773,6 +889,7 @@ actionsCommand
   .option("--json", "Output as JSON")
   .action(async (id: string, directory: string, options) => {
     try {
+      assertDraftOutsideManagedStorage(directory);
       const checkedOut = await checkoutExecutablePluginDraft({
         id,
         pluginDir: resolve(directory),
@@ -797,6 +914,7 @@ actionsCommand
   .action(async (directory: string, options) => {
     const pluginDir = resolve(directory);
     try {
+      assertDraftOutsideManagedStorage(pluginDir);
       const validated = await validateExecutablePluginDraft(pluginDir);
       const result = {
         valid: true,
@@ -827,6 +945,7 @@ actionsCommand
   .action(async (directory: string, options) => {
     const pluginDir = resolve(directory);
     try {
+      assertDraftOutsideManagedStorage(pluginDir);
       const activated = await activateExecutablePluginDraft({
         pluginDir,
         approvePermissionIncrease: options.yes

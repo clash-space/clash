@@ -137,6 +137,183 @@ describe("agent-editable executable plugin contract", () => {
     ])).toThrow(/both export model Card minimax-h3/);
   });
 
+  it("parses Provider definitions and external model implementation bindings as independent plugin exports", () => {
+    const manifestSchema = (sharedTypes as Record<string, unknown>).ExecutablePluginManifestSchema as
+      | { parse(value: unknown): any }
+      | undefined;
+    const validatePackage = (sharedTypes as Record<string, unknown>).validateExecutablePluginPackage as
+      | ((manifest: unknown, cards: Record<string, unknown>, tests: Record<string, unknown>, artifacts: {
+        providers: Record<string, unknown>;
+        modelBindings: Record<string, unknown>;
+      }) => any)
+      | undefined;
+    expect(manifestSchema).toBeDefined();
+    expect(validatePackage).toBeDefined();
+    if (!manifestSchema || !validatePackage) return;
+
+    const manifest = manifestSchema.parse({
+      apiVersion: "clash.plugin/v1",
+      id: "hilo-hub-media",
+      version: "1.0.0",
+      name: "Hilo Hub Media",
+      runtime: { kind: "local", transport: "stdio", entrypoint: "dist/stdio.mjs" },
+      exports: {
+        cards: [],
+        providers: [{ id: "hilo-hub", kind: "provider", path: "providers/hilo-hub.json" }],
+        modelBindings: [{
+          id: "hilo-hub-minimax-h3",
+          kind: "model-provider-binding",
+          path: "bindings/minimax-h3.json",
+        }],
+        functions: [{ id: "hilo-hub-execute", kind: "provider-executor", handler: "executeHubModel" }],
+      },
+      permissions: {},
+    });
+    const validated = validatePackage(manifest, {}, {}, {
+      providers: {
+        "providers/hilo-hub.json": {
+          apiVersion: "clash.provider/v1",
+          kind: "provider",
+          spec: {
+            id: "hilo-hub",
+            name: "MiniMax Hilo Hub",
+            upstreamId: "hilo-hub",
+            apiShape: "hilo-hub",
+            executorExportId: "hilo-hub-execute",
+            auth: [{
+              type: "oauth",
+              id: "hilo-hub",
+              flow: "browser",
+              authorizationUrl: "https://hub.minimax.io/login",
+              callback: { type: "custom-scheme", scheme: "minimax-hub" },
+              accessTokenField: "accessToken",
+            }],
+          },
+        },
+      },
+      modelBindings: {
+        "bindings/minimax-h3.json": {
+          apiVersion: "clash.binding/v1",
+          kind: "model-provider-binding",
+          spec: {
+            id: "hilo-hub-minimax-h3",
+            modelId: "minimax-h3",
+            providerId: "hilo-hub",
+            upstreamId: "hilo-hub",
+            upstreamModel: "MiniMax-H3",
+            apiShape: "hilo-hub",
+            executorExportId: "hilo-hub-execute",
+            requiredOAuth: ["hilo-hub"],
+          },
+        },
+      },
+    });
+
+    expect(validated.providers["providers/hilo-hub.json"].spec.id).toBe("hilo-hub");
+    expect(validated.modelBindings["bindings/minimax-h3.json"].spec.modelId).toBe("minimax-h3");
+  });
+
+  it("accepts an explicit local app token import source and rejects path traversal", () => {
+    const schema = (sharedTypes as Record<string, unknown>).ExecutablePluginProviderAuthSchema as
+      | { parse(value: unknown): any; safeParse(value: unknown): { success: boolean } }
+      | undefined;
+    expect(schema).toBeDefined();
+    if (!schema) return;
+
+    const auth = {
+      type: "local-token-import",
+      id: "hilo-hub",
+      label: "Reuse MiniMax Hub login",
+      source: {
+        format: "electron-store-aes-256-gcm-v2",
+        appDataSubdirectory: "@hilo/MiniMax Hub Global",
+        configFile: "hub-config-global.json",
+        keyFile: ".token-key",
+        tokenPath: ["tokens", "accessToken"],
+      },
+    };
+
+    expect(schema.parse(auth)).toEqual(auth);
+    expect(schema.safeParse({
+      ...auth,
+      source: { ...auth.source, appDataSubdirectory: "../../.ssh" },
+    }).success).toBe(false);
+    expect(schema.safeParse({
+      ...auth,
+      source: { ...auth.source, configFile: "../hub-config-global.json" },
+    }).success).toBe(false);
+  });
+
+  it("resolves provider-first and Card-first installation to the same effective model", () => {
+    const compose = (sharedTypes as Record<string, unknown>).composeExecutablePluginModelCards as
+      | ((base: any[], cards: any[], bindings: any[]) => any[])
+      | undefined;
+    expect(compose).toBeDefined();
+    if (!compose) return;
+
+    const modelCard = {
+      id: "portable-image-model",
+      aliases: [],
+      name: "Portable Image Model",
+      provider: "Portable",
+      kind: "image",
+      parameters: [],
+      defaultParams: {},
+      defaultAspectRatio: "1:1",
+      input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+      constraints: [],
+    };
+    const cardRegistration = {
+      pluginId: "portable-card-pack",
+      version: "1.0.0",
+      schemaHash: `sha256:${"c".repeat(64)}`,
+      runtime: { kind: "local", transport: "stdio", entrypoint: "stdio.mjs" },
+      permissions: {},
+      document: { apiVersion: "clash.card/v1", kind: "model-card", spec: modelCard },
+    };
+    const bindingRegistration = {
+      pluginId: "hilo-hub-media",
+      version: "1.0.0",
+      schemaHash: `sha256:${"d".repeat(64)}`,
+      runtime: { kind: "local", transport: "stdio", entrypoint: "stdio.mjs" },
+      permissions: {},
+      document: {
+        apiVersion: "clash.binding/v1",
+        kind: "model-provider-binding",
+        spec: {
+          id: "hilo-hub-portable-image-model",
+          modelId: "portable-image-model",
+          providerId: "hilo-hub",
+          upstreamId: "hilo-hub",
+          upstreamModel: "portable-image-v1",
+          apiShape: "hilo-hub",
+          executorExportId: "hilo-hub-execute",
+          requiredOAuth: ["hilo-hub"],
+          priority: 10,
+        },
+      },
+    };
+
+    const providerFirst = compose([modelCard], [], [bindingRegistration]);
+    const cardFirst = compose([], [cardRegistration], [bindingRegistration]);
+
+    expect(providerFirst).toEqual(cardFirst);
+    expect(providerFirst[0]).toMatchObject({
+      id: "portable-image-model",
+      availableProviders: ["hilo-hub"],
+      defaultProvider: "hilo-hub",
+      providerImplementations: [{
+        providerId: "hilo-hub",
+        upstreamId: "hilo-hub",
+        upstreamModel: "portable-image-v1",
+        apiShape: "hilo-hub",
+        executorPluginId: "hilo-hub-media",
+        executorExportId: "hilo-hub-execute",
+        requiredOAuth: ["hilo-hub"],
+      }],
+    });
+  });
+
   it("parses a local stdio plugin that exports declarative cards and functions", () => {
     const schema = (sharedTypes as Record<string, unknown>).ExecutablePluginManifestSchema as
       | { parse(value: unknown): any; safeParse(value: unknown): { success: boolean } }

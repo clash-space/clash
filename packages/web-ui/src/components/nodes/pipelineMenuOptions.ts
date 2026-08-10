@@ -1,6 +1,7 @@
 import { Image as ImageIcon, VideoCamera, FilmSlate, SpeakerHigh, TextT, PencilSimple, FilmStrip } from '@phosphor-icons/react';
 import {
     listCompatibleModelCatalogEntries,
+    pickDefaultModel,
     type ModelCatalogEntry,
     type Modality,
 } from '@clash/shared-types';
@@ -32,11 +33,15 @@ function buildGenNodeData(
     sourceKind?: Modality,
     catalog: ReadonlyArray<ModelCatalogEntry> = [],
 ): Record<string, unknown> {
-    const card = listCompatibleModelCatalogEntries({
+    // `pickDefaultModel` owns the per-kind default, not catalog array order.
+    // Taking `[0]` of the compatible list made the default depend on where a
+    // card happens to sit in the catalog: adding a music model above the TTS
+    // models silently turned "Audio Prompt" into music generation.
+    const card = pickDefaultModel({
         outputKind,
-        sourceKind,
-        models: catalog.map((entry) => entry.model),
-    })[0]?.model;
+        ...(sourceKind ? { sourceKind } : {}),
+        cards: catalog.map((entry) => entry.model),
+    });
     const modelId = card?.id ?? '';
     const labelByAction = {
         'image-gen': 'Image Prompt',

@@ -51,6 +51,10 @@ import {
   safeDirectorVideoExportName,
   type DesktopDirectorVideoExportRequest,
 } from "./director-video-export";
+import {
+  authorizeProviderInWindow,
+  type ProviderOAuthAuthorizationRequest,
+} from "./provider-oauth-window";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const remoteDebuggingPort = process.env.CLASH_DESKTOP_REMOTE_DEBUGGING_PORT;
@@ -388,6 +392,27 @@ function registerWindowIpc(dataDir: string): void {
     return { windowId: window.id, windowCount: windowRegistry.count() };
   });
   ipcMain.handle("clash:get-nle-availability", async () => detectNleAvailability());
+  ipcMain.handle("clash:authorize-provider", async (event, request: ProviderOAuthAuthorizationRequest) => {
+    const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const authorizationWindow = new BrowserWindow({
+      width: 520,
+      height: 760,
+      minWidth: 420,
+      minHeight: 600,
+      title: "Connect provider",
+      show: false,
+      ...(parent ? { parent, modal: true } : {}),
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    authorizationWindow.once("ready-to-show", () => {
+      if (!authorizationWindow.isDestroyed()) authorizationWindow.show();
+    });
+    return authorizeProviderInWindow(authorizationWindow, request);
+  });
   ipcMain.handle("clash:export-director-video", async (_event, request: DesktopDirectorVideoExportRequest) => {
     const forcedPath = process.env.CLASH_DIRECTOR_E2E_VIDEO_EXPORT_PATH;
     const save = forcedPath

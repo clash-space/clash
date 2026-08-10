@@ -156,6 +156,10 @@ export type VisualFramesRubric = RubricBase<"visual-frames"> & {
   height: number;
   minDistinctPairs: number;
   minMeanAbsoluteDifference: number;
+  foregroundCoverage?: {
+    backgroundTolerance: number;
+    minRatio: number;
+  };
   safeArea?: {
     marginPercent: number;
     backgroundTolerance: number;
@@ -269,7 +273,22 @@ export type ClaudeAgent = {
   };
 };
 
-export type BenchmarkAgent = CommandAgent | CodexAgent | ClaudeAgent;
+export type PiAgent = {
+  adapter: "pi";
+  command?: string;
+  args?: string[];
+  /** Additional Pi skill directories to load alongside case-scoped skills. */
+  skills?: string[];
+  env?: Record<string, string>;
+  inheritEnv?: boolean;
+  model?: string;
+  clashHost?: {
+    pluginRoot: string;
+    profile: "dev" | "prod";
+  };
+};
+
+export type BenchmarkAgent = CommandAgent | CodexAgent | ClaudeAgent | PiAgent;
 
 export type OutcomeResult = {
   schemaVersion: 1;
@@ -348,6 +367,8 @@ export type BenchmarkCaseReport = {
   inputFixture?: BenchmarkInputFixtureProvenance;
   status: "pass" | "fail" | "blocked";
   attempt?: number;
+  /** A failed forced attempt is waiting for another explicit --force. */
+  forcePending?: boolean;
   failure?: BenchmarkCaseFailure;
   agent: AgentRunReport;
   execution: ProductExecutionReport;
@@ -382,9 +403,11 @@ export type BenchmarkAttemptLedgerEntry = {
   runId: string;
   caseId: string;
   attempt: number;
-  event: "started" | "completed" | "abandoned";
+  event: "started" | "completed" | "abandoned" | "force-pending";
   at: string;
   caseRoot: string;
+  /** This ledger transition belongs to an explicitly forced benchmark retry. */
+  forced?: boolean;
   status?: BenchmarkCaseReport["status"];
   failure?: BenchmarkCaseFailure;
   reportPath?: string;
@@ -403,6 +426,8 @@ export type RunBenchmarkSuiteInput = {
   agent: BenchmarkAgent;
   /** Continue a compatible existing run directory instead of replacing it. */
   resume?: boolean;
+  /** Run one explicit retry for eligible failed cases in a resumed run. */
+  force?: boolean;
   /** Total tries allowed for infrastructure failures only. Defaults to 2. */
   maxInfrastructureAttempts?: number;
 };

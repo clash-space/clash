@@ -56,8 +56,10 @@ vi.mock("@clash/web-ui/lib/clientActions", () => ({
   deleteModelCardConfig: vi.fn(),
   testModelProvider: vi.fn(),
   listProviderOAuth: vi.fn(async () => []),
+  listPluginProviders: vi.fn(async () => []),
   startProviderOAuth: vi.fn(),
   completeProviderOAuth: vi.fn(),
+  importLocalProviderToken: vi.fn(),
 }));
 
 vi.mock("framer-motion", async () => {
@@ -3648,6 +3650,7 @@ describe("SettingsClient model routing", () => {
     vi.useRealTimers();
     cleanup();
     vi.restoreAllMocks();
+    delete globalThis.__CLASH_DESKTOP__;
   });
 
   it("does not expose legacy fallback or advanced routing controls in BYOK provider details", () => {
@@ -4573,6 +4576,182 @@ describe("SettingsClient model routing", () => {
     expect(within(editor).getByRole("combobox", { name: /Choose test model/i })).toBeTruthy();
     expect(within(editor).getByRole("button", { name: "Run provider test" })).toBeTruthy();
     expect(within(editor).queryByLabelText("Dreamina API key")).toBeNull();
+  });
+
+  it("discovers a plugin Provider and completes its browser OAuth callback in the desktop window", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked((actions as any).listPluginProviders).mockResolvedValue([{
+      pluginId: "hilo-hub-media",
+      pluginVersion: "1.0.0",
+      schemaHash: `sha256:${"e".repeat(64)}`,
+      id: "hilo-hub",
+      name: "MiniMax Hilo Hub",
+      description: "Hub OAuth media provider",
+      upstreamId: "hilo-hub",
+      apiShape: "hilo-hub",
+      executorExportId: "hilo-hub-execute",
+      auth: [{
+        type: "oauth",
+        id: "hilo-hub",
+        flow: "browser",
+        authorizationUrl: "https://hub.minimax.io/login",
+        callback: { type: "custom-scheme", scheme: "minimax-hub" },
+        accessTokenField: "accessToken",
+      }],
+    }]);
+    vi.mocked(actions.listProviderOAuth).mockResolvedValue([]);
+    vi.mocked(actions.startProviderOAuth).mockResolvedValue({
+      providerId: "hilo-hub",
+      accountId: "hilo-primary",
+      status: "pending",
+      flow: "browser",
+      verificationUri: "https://hub.minimax.io/login",
+      callbackScheme: "minimax-hub",
+      deviceCode: "browser-flow",
+      hasAccessToken: false,
+    } as any);
+    vi.mocked(actions.completeProviderOAuth).mockResolvedValue({
+      providerId: "hilo-hub",
+      accountId: "hilo-primary",
+      status: "authorized",
+      accountLabel: "Primary Hilo",
+      hasAccessToken: true,
+    });
+    vi.mocked(actions.listModelProviders).mockResolvedValue([]);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+    const authorizeProvider = vi.fn(async () => ({
+      cancelled: false,
+      callbackUrl: "minimax-hub://auth-callback?accessToken=hub-access-token",
+    }));
+    globalThis.__CLASH_DESKTOP__ = {
+      isDesktop: true,
+      newWindow: vi.fn(),
+      authorizeProvider,
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[{
+            id: "hilo-primary",
+            label: "Primary Hilo",
+            providerId: "hilo-hub",
+            upstreamId: "hilo-hub",
+            apiShape: "hilo-hub",
+            enabled: true,
+          }]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open MiniMax Hilo Hub BYOK settings" }));
+    const accounts = screen.getByRole("list", { name: "MiniMax Hilo Hub prioritized accounts" });
+    const accountRow = within(accounts).getByText("Primary Hilo").closest("li") as HTMLElement;
+    fireEvent.click(within(accountRow).getByText("Primary Hilo"));
+    fireEvent.click(within(accountRow).getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => {
+      expect(authorizeProvider).toHaveBeenCalledWith({
+        verificationUri: "https://hub.minimax.io/login",
+        callbackScheme: "minimax-hub",
+      });
+      expect(actions.completeProviderOAuth).toHaveBeenCalledWith(
+        "hilo-hub",
+        "browser-flow",
+        "hilo-primary",
+        "minimax-hub://auth-callback?accessToken=hub-access-token",
+      );
+    });
+  });
+
+  it("explicitly reuses a plugin Provider token from its declared local app source", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked((actions as any).listPluginProviders).mockResolvedValue([{
+      pluginId: "hilo-hub-media",
+      pluginVersion: "1.1.0",
+      schemaHash: `sha256:${"e".repeat(64)}`,
+      id: "hilo-hub",
+      name: "MiniMax Hilo Hub",
+      description: "Hub OAuth media provider",
+      upstreamId: "hilo-hub",
+      apiShape: "hilo-hub",
+      executorExportId: "hilo-hub-execute",
+      auth: [{
+        type: "local-token-import",
+        id: "hilo-hub",
+        label: "Reuse MiniMax Hub login",
+        source: {
+          format: "electron-store-aes-256-gcm-v2",
+          appDataSubdirectory: "@hilo/MiniMax Hub Global",
+          configFile: "hub-config-global.json",
+          keyFile: ".token-key",
+          tokenPath: ["tokens", "accessToken"],
+        },
+      }],
+    }]);
+    vi.mocked(actions.listProviderOAuth).mockResolvedValue([]);
+    vi.mocked(actions.importLocalProviderToken).mockResolvedValue({
+      providerId: "hilo-hub",
+      accountId: "hilo-primary",
+      accountLabel: "Primary Hilo",
+      status: "authorized",
+      hasAccessToken: true,
+      importedFrom: "MiniMax Hub Global",
+    });
+    vi.mocked(actions.listModelProviders).mockResolvedValue([{
+      id: "hilo-primary",
+      label: "Primary Hilo",
+      providerId: "hilo-hub",
+      upstreamId: "hilo-hub",
+      apiShape: "hilo-hub",
+      enabled: true,
+      availableOAuth: ["hilo-hub"],
+    }]);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[{
+            id: "hilo-primary",
+            label: "Primary Hilo",
+            providerId: "hilo-hub",
+            upstreamId: "hilo-hub",
+            apiShape: "hilo-hub",
+            enabled: true,
+          }]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open MiniMax Hilo Hub BYOK settings" }));
+    const accounts = screen.getByRole("list", { name: "MiniMax Hilo Hub prioritized accounts" });
+    const accountRow = within(accounts).getByText("Primary Hilo").closest("li") as HTMLElement;
+    fireEvent.click(within(accountRow).getByText("Primary Hilo"));
+    fireEvent.click(within(accountRow).getByRole("button", { name: "Reuse MiniMax Hub login" }));
+
+    await waitFor(() => {
+      expect(actions.importLocalProviderToken).toHaveBeenCalledWith(
+        "hilo-hub",
+        "hilo-primary",
+        "Primary Hilo",
+      );
+      expect(within(accountRow).getAllByText("Connected: Primary Hilo").length).toBeGreaterThan(0);
+    });
   });
 
   it("creates a Dreamina account before starting OAuth for that account", async () => {
@@ -5911,7 +6090,9 @@ describe("SettingsClient model routing", () => {
 
     fireEvent.change(screen.getByLabelText("Model ID"), { target: { value: "editorial-pro" } });
     fireEvent.change(screen.getByLabelText("Model name"), { target: { value: "Editorial Pro" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Use Editorial proxy" }));
+    // The binding toggle is the shared Switch primitive, so its accessible role
+    // is "switch" -- a raw checkbox here would be the project-rule violation.
+    fireEvent.click(screen.getByRole("switch", { name: "Use Editorial proxy" }));
     fireEvent.change(screen.getByLabelText("Editorial proxy upstream model"), {
       target: { value: "editorial/pro-v2" },
     });

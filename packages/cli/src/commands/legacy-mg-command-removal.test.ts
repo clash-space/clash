@@ -4,7 +4,6 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canvasCommand } from "./canvas";
-import { productionCommand } from "./production";
 import { timelineCommand } from "./timeline";
 
 test("removes legacy first-party MG production commands in favor of the Remotion Canvas and Timeline route", () => {
@@ -16,12 +15,13 @@ test("removes legacy first-party MG production commands in favor of the Remotion
     "project-composition-timeline",
   ]);
 
-  assert.deepEqual(
-    productionCommand.commands
-      .map((command) => command.name())
-      .filter((commandName) => legacyCommands.has(commandName)),
-    [],
+  // The whole production command family is retired with the workflow kinds.
+  assert.equal(
+    existsSync(new URL("./production.ts", import.meta.url)),
+    false,
+    "commands/production.ts must stay deleted",
   );
+  void legacyCommands;
 
   const canvasAdd = canvasCommand.commands.find((command) => command.name() === "add");
   assert.ok(canvasAdd, "canvas add must remain the Remotion authoring route");

@@ -7,8 +7,10 @@ import type {
 export type ItemProperties = {
   x: number; // X position in pixels from canvas center
   y: number; // Y position in pixels from canvas center
-  width: number; // Width scale (1 = 100% natural width)
-  height: number; // Height scale (1 = 100% natural height)
+  // Unitless source-size multipliers, never output pixels. The renderer treats
+  // the default pair (1, 1) as contain-fit within the composition.
+  width: number;
+  height: number;
   rotation?: number; // Rotation in degrees
   opacity?: number; // Opacity (0-1)
   // Note: zIndex is determined by track order, not stored in properties

@@ -1,0 +1,78 @@
+# Authoring Workflow
+
+## 1. Scaffold or check out
+
+```sh
+clash action init-plugin ~/.clash/drafts/my-gateway
+# or copy an attested active plugin into an editable draft:
+clash action checkout my-gateway ~/.clash/drafts/my-gateway
+```
+
+## 2. Study the official upstream docs first
+
+Before writing any request builder, collect for **every model you bind**:
+
+- the exact parameter enums (resolution, duration, ratio, …)
+- conditional constraints (e.g. MiniMax-H3: text-to-video requires a concrete
+  ratio, `adaptive` is only valid with references; image-to-video ignores the
+  ratio entirely)
+- reference-media limits (formats, sizes, counts, per-clip durations)
+- mutual exclusions (e.g. H3 first/last-frame vs reference-* roles)
+
+Encode value domains in **binding `parameterOverrides`**, not in executor code.
+Do not discover parameter domains by firing paid requests.
+
+## 3. Write the executor against broker fixtures
+
+The handler is a pure function from invocation + broker to result. Unit-test it
+with an in-memory broker: assert the exact submit URL and body per model
+family, poll transitions, and failure mapping.
+
+Non-obvious executor duties, all learned from production traffic:
+
+- **Failure reasons**: gateway envelopes may keep `message: "success"` while
+  the task fails; read the task-level status message
+  (e.g. `data.task_status_msg`) before any envelope message, and never
+  surface a literal `"success"` as an error.
+- **Poll retries**: one transient network error during polling must not
+  discard an already-billed upstream task. Retry polls a bounded number of
+  times. Do **not** auto-retry submits — a submit may have been received, and
+  retrying can double-bill; leave submit retries to the caller.
+- **Unit normalization**: convert upstream units to card units explicitly
+  (e.g. duration seconds → milliseconds) and lock it with a test.
+- **Conditional rules** that static defaults can't express stay in the
+  executor, with the official rule cited in a comment and a test.
+
+## 4. Add contract tests
+
+One JSON per representative flow (see
+[Contract Tests](/plugins/contract-tests)). Cover each API family you
+implement — submit/poll/file for video, direct-result for images, TTS, music —
+not just one happy path.
+
+## 5. Validate, activate, verify composition
+
+```sh
+clash action validate ~/.clash/drafts/my-gateway
+clash action activate ~/.clash/drafts/my-gateway   # requires version bump
+curl "$HOST/api/v1/models/catalog"                  # bindings merged? overrides live?
+```
+
+## 6. Verify against the real upstream once
+
+Contract tests are self-consistent by construction — they prove your request
+shape matches your own fixtures, **not** that the upstream accepts it. Run one
+real, minimal-cost generation per API family with
+[traffic recording](/plugins/traffic-replay) enabled, and keep the recordings
+as regression fixtures. Budget for it; announce billing before you spend.
+
+## Checklist
+
+- [ ] Bindings reference existing cards by official model id
+- [ ] No provider-flavoured card ids; no invented tiers
+- [ ] Value domains live in `parameterOverrides`, defaults in
+      `defaultParamOverrides`, dead controls in `excludedParameterIds`
+- [ ] Executor: real failure reasons, bounded poll retries, no submit retries
+- [ ] Contract tests per API family, strict URL + body deep-equal
+- [ ] One recorded real run per family; fixtures checked in
+- [ ] Version bumped; `clash action activate` green

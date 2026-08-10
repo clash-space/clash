@@ -39,7 +39,7 @@ import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
 import { getModelDropdownSecondaryText } from './modelDisplay';
-import { resolveModelProjectorBinding } from './modelPluginBinding';
+import { preferredModelRoutePluginBinding, resolveModelProjectorBinding } from './modelPluginBinding';
 import { NodeModalDialog } from './NodeModalDialog';
 import { useCanvasTransientUiOwner } from '../CanvasTransientUiContext';
 import { generationChoiceDefaults, listGenerationActionChoices } from './generationActionChoices';
@@ -226,7 +226,8 @@ function FrameReferenceSlot({
     timeLabel?: string;
 }) {
     return (
-        <div className="group/thumb relative w-10 flex-shrink-0" title={label}>
+        <Tooltip label={label}>
+            <div className="group/thumb relative w-10 flex-shrink-0">
             {filled ? (
                 <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-warm-border bg-warm-muted shadow-sm">
                     {thumb ? (
@@ -258,6 +259,7 @@ function FrameReferenceSlot({
                 />
             )}
         </div>
+        </Tooltip>
     );
 }
 
@@ -297,7 +299,7 @@ function KeyframeTimeInput({
             title={`${label} · exact position at ${frameRate} fps`}
         >
             <span className="sr-only">{label}</span>
-            <input
+            <Input
                 aria-label={label}
                 type="number"
                 inputMode="decimal"
@@ -770,7 +772,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     }, [selectedModel]);
     const isMusicModel = selectedModel?.task === 'music-generation';
     const storedPluginBinding = data.pluginBinding as ExecutablePluginBinding | undefined;
-    const routePluginBinding = selectedCatalogEntry?.selectedRoute?.projectorBinding;
+    const routePluginBinding = preferredModelRoutePluginBinding(selectedCatalogEntry?.selectedRoute);
     const resolvedPluginBinding = resolveModelProjectorBinding(
         storedPluginBinding,
         routePluginBinding,
@@ -1476,8 +1478,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         }
         const nextParams = { ...(nextModel?.defaultParams ?? {}) } as ModelParams;
         const resolvedId = nextModel?.id ?? nextId;
-        const nextPluginBinding = enabledModelCatalog.find((entry) => entry.model.id === resolvedId)
-            ?.selectedRoute?.projectorBinding;
+        const nextPluginBinding = preferredModelRoutePluginBinding(
+            enabledModelCatalog.find((entry) => entry.model.id === resolvedId)?.selectedRoute,
+        );
         setModelId(resolvedId);
         setModelParams(nextParams);
         syncModelState(resolvedId, nextParams, nextPluginBinding);
@@ -2263,9 +2266,8 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         });
         return chips;
     }, [isCustom, customActionParams, customDef, selectedModel, modelParams]);
-    const aspectRatioParamId = isCustom
-        ? 'aspect_ratio'
-        : (selectedModel?.aspectRatioParam ?? 'aspect_ratio');
+    // Every card and custom action names the ratio parameter `aspect_ratio`.
+    const aspectRatioParamId = 'aspect_ratio';
     const activeParameters = (isCustom ? customDef?.parameters : selectedModel?.parameters) ?? [];
     const aspectRatioParameter = activeParameters.find((parameter) => (
         parameter.type === 'select'

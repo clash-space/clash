@@ -16,6 +16,13 @@ import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type 
 import { validateModelCardConfiguration } from "./model-constraints";
 
 describe("model upstream routing", () => {
+  it("accepts plugin-defined Provider, upstream, API shape, and OAuth ids", () => {
+    expect(modelRouting.ProviderAccountIdSchema.parse("hilo-hub")).toBe("hilo-hub");
+    expect(modelRouting.ModelUpstreamIdSchema.parse("hilo-hub")).toBe("hilo-hub");
+    expect(modelRouting.ModelUpstreamApiShapeSchema.parse("hilo-hub")).toBe("hilo-hub");
+    expect(modelRouting.ProviderOAuthIdSchema.parse("hilo-hub")).toBe("hilo-hub");
+  });
+
   it("exposes Pika API Club as a configured media provider", () => {
     const configuredProviders: ProviderAccountAvailability[] = [{
       id: "pika-primary",

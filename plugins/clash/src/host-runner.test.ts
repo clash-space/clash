@@ -16,7 +16,7 @@ async function makeCli(root: string): Promise<string> {
   const cliPath = join(root, "clash-client-cli");
   await writeFile(cliPath, [
     "#!/usr/bin/env node",
-    "console.log(JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), apiUrl: process.env.CLASH_API_URL }));",
+    "console.log(JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), apiUrl: process.env.CLASH_API_URL, traceOrigin: process.env.CLASH_CLI_TRACE_ORIGIN }));",
     "",
   ].join("\n"), "utf8");
   await chmod(cliPath, 0o755);
@@ -63,6 +63,7 @@ test("host runner executes its bundled CLI against the ensured daemon endpoint",
     args: ["projects", "list", "--json"],
     cwd: await realpath(workspace),
     apiUrl: "http://127.0.0.1:49321",
+    traceOrigin: "mcp-transport",
   });
   assert.equal(ensures, 1);
 });
@@ -89,6 +90,7 @@ test("an explicit API URL bypasses local daemon startup", async () => {
     args: ["projects", "list", "--json"],
     cwd: process.cwd(),
     apiUrl: "https://clash.example.test",
+    traceOrigin: "mcp-transport",
   });
   assert.equal(ensures, 0);
 });
@@ -111,6 +113,7 @@ test("runner-provided CLI entry is the MCP peer executable", async () => {
     args: ["timeline", "list", "--json"],
     cwd: process.cwd(),
     apiUrl: "http://127.0.0.1:49321",
+    traceOrigin: "mcp-transport",
   });
 });
 
@@ -119,7 +122,7 @@ test("a non-executable bundled CLI is launched through Node", async () => {
   const root = await mkdtemp(join(tmpdir(), "clash-runner-node-cli-"));
   const bundledCliPath = join(root, "clash-cli.cjs");
   await writeFile(bundledCliPath, [
-    "console.log(JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), apiUrl: process.env.CLASH_API_URL }));",
+    "console.log(JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), apiUrl: process.env.CLASH_API_URL, traceOrigin: process.env.CLASH_CLI_TRACE_ORIGIN }));",
     "",
   ].join("\n"), "utf8");
   const runner = (module.createHostCliRunner as (options: Record<string, unknown>) => (
@@ -133,6 +136,7 @@ test("a non-executable bundled CLI is launched through Node", async () => {
     args: ["canvas", "list", "--json"],
     cwd: process.cwd(),
     apiUrl: "http://127.0.0.1:49321",
+    traceOrigin: "mcp-transport",
   });
 });
 
@@ -163,5 +167,6 @@ test("host runner defaults every product tool to the ACP session workspace", asy
     args: ["canvas", "list", "--json"],
     cwd: await realpath(workspace),
     apiUrl: "http://127.0.0.1:49321",
+    traceOrigin: "mcp-transport",
   });
 });

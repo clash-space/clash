@@ -7,27 +7,32 @@ import { validateTimelineDsl } from "./timeline-dsl-schema";
 
 const repositoryPath = (path: string) => resolve(process.cwd(), "../..", path);
 
-function resolveLocalJsonPointer(document: unknown, reference: string): unknown {
+function resolveLocalJsonPointer(
+  document: unknown,
+  reference: string,
+): unknown {
   if (!reference.startsWith("#/")) return undefined;
   return reference
     .slice(2)
     .split("/")
     .map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~"))
-    .reduce<unknown>((current, part) => (
-      current && typeof current === "object"
-        ? (current as Record<string, unknown>)[part]
-        : undefined
-    ), document);
+    .reduce<unknown>(
+      (current, part) =>
+        current && typeof current === "object"
+          ? (current as Record<string, unknown>)[part]
+          : undefined,
+      document,
+    );
 }
 
 function localJsonSchemaReferences(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(localJsonSchemaReferences);
   if (!value || typeof value !== "object") return [];
-  return Object.entries(value).flatMap(([key, entry]) => (
+  return Object.entries(value).flatMap(([key, entry]) =>
     key === "$ref" && typeof entry === "string"
       ? [entry]
-      : localJsonSchemaReferences(entry)
-  ));
+      : localJsonSchemaReferences(entry),
+  );
 }
 
 function canonicalJson(value: unknown): string {
@@ -35,7 +40,7 @@ function canonicalJson(value: unknown): string {
   if (value && typeof value === "object") {
     return `{${Object.entries(value as Record<string, unknown>)
       .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
       .join(",")}}`;
   }
@@ -53,10 +58,11 @@ function fnv1a32(value: string): string {
 
 describe("agent-facing Timeline DSL schema", () => {
   it("publishes every clip-mask field and animated channel", () => {
-    const definition = (shared as Record<string, unknown>).TIMELINE_DSL_DEFINITION as any;
+    const definition = (shared as Record<string, unknown>)
+      .TIMELINE_DSL_DEFINITION as any;
 
     expect(definition).toBeDefined();
-    expect(definition.schemaVersion).toBe(5);
+    expect(definition.schemaVersion).toBe(6);
     expect(definition.format).toBe("clash.timeline.yaml");
     expect(definition.features.clipMask).toMatchObject({
       yamlPath: "tracks[].items[]",
@@ -69,8 +75,20 @@ describe("agent-facing Timeline DSL schema", () => {
         "composition",
         "derived-overlay",
       ],
-      staticFields: ["shape", "position", "size", "rotation", "feather", "inverted"],
-      animatedChannels: ["maskPosition", "maskSize", "maskRotation", "maskFeather"],
+      staticFields: [
+        "shape",
+        "position",
+        "size",
+        "rotation",
+        "feather",
+        "inverted",
+      ],
+      animatedChannels: [
+        "maskPosition",
+        "maskSize",
+        "maskRotation",
+        "maskFeather",
+      ],
       defaultMask: {
         shape: "rectangle",
         position: [50, 50],
@@ -92,7 +110,8 @@ describe("agent-facing Timeline DSL schema", () => {
       emptyChannelFallback: "matching-item.mask-field",
       duplicateFrames: "rejected-per-channel",
       positiveRotation: "clockwise",
-      featherModel: "blur-stddev=min(rendered-mask-width,rendered-mask-height)*feather/600",
+      featherModel:
+        "blur-stddev=min(rendered-mask-width,rendered-mask-height)*feather/600",
       staticOnlyFields: ["shape", "inverted"],
       requiresStaticMask: true,
     });
@@ -100,23 +119,28 @@ describe("agent-facing Timeline DSL schema", () => {
       addOrReplaceMask: `write all ${shared.TIMELINE_MASK_FIELDS.length} item.mask fields`,
       updateStaticFallback: "edit the matching item.mask field",
       removeMask: "omit item.mask and remove every mask* keyframe channel",
-      upsertKeyframe: "replace the entry at the same item-local frame or insert a sorted entry",
-      setKeyframeInterpolation: "replace the current keyframe interpolation with hold or linear",
-      removeKeyframe: "remove the entry and omit the channel when it becomes empty",
+      upsertKeyframe:
+        "replace the entry at the same item-local frame or insert a sorted entry",
+      setKeyframeInterpolation:
+        "replace the current keyframe interpolation with hold or linear",
+      removeKeyframe:
+        "remove the entry and omit the channel when it becomes empty",
     });
     expect(definition.features.clipMask.runtimeBehavior).toEqual({
       previewExportParity: true,
       timelineMarkers: "derived-from-mask-keyframe-channels",
       undoRedoPersistence: "editor-history-not-a-dsl-field",
       moveKeyframePolicy: "preserve-item-local-frames",
-      trimSplitRippleKeyframePolicy: "sample-new-boundaries-then-slice-and-shift-item-local-keys",
+      trimSplitRippleKeyframePolicy:
+        "sample-new-boundaries-then-slice-and-shift-item-local-keys",
       transitionSampling: "referenced-item-local",
       maskedClipMergePolicy: "never-merge-contiguous-items",
     });
   });
 
   it("exports a machine-readable JSON Schema with field descriptions", () => {
-    const definition = (shared as Record<string, unknown>).TIMELINE_DSL_DEFINITION as any;
+    const definition = (shared as Record<string, unknown>)
+      .TIMELINE_DSL_DEFINITION as any;
     const schemaText = JSON.stringify(definition.jsonSchema);
 
     expect(definition.jsonSchema.$schema).toContain("json-schema");
@@ -130,33 +154,44 @@ describe("agent-facing Timeline DSL schema", () => {
   });
 
   it("keeps standard JSON Schema mask applicability aligned with apply validation", () => {
-    const definition = (shared as Record<string, unknown>).TIMELINE_DSL_DEFINITION as any;
+    const definition = (shared as Record<string, unknown>)
+      .TIMELINE_DSL_DEFINITION as any;
     const validate = new Ajv({ strict: false }).compile(definition.jsonSchema);
     const orphanMaskChannel = {
-      tracks: [{
-        id: "visual",
-        items: [{
-          id: "orphan-mask-channel",
-          type: "image",
-          from: 0,
-          durationInFrames: 10,
-          keyframes: {
-            maskPosition: [{ frame: 0, value: [50, 50], interpolation: "linear" }],
-          },
-        }],
-      }],
+      tracks: [
+        {
+          id: "visual",
+          items: [
+            {
+              id: "orphan-mask-channel",
+              type: "image",
+              from: 0,
+              durationInFrames: 10,
+              keyframes: {
+                maskPosition: [
+                  { frame: 0, value: [50, 50], interpolation: "linear" },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     };
     const audioMask = {
-      tracks: [{
-        id: "audio",
-        items: [{
-          id: "audio-mask",
-          type: "audio",
-          from: 0,
-          durationInFrames: 10,
-          mask: shared.DEFAULT_TIMELINE_ITEM_MASK,
-        }],
-      }],
+      tracks: [
+        {
+          id: "audio",
+          items: [
+            {
+              id: "audio-mask",
+              type: "audio",
+              from: 0,
+              durationInFrames: 10,
+              mask: shared.DEFAULT_TIMELINE_ITEM_MASK,
+            },
+          ],
+        },
+      ],
     };
 
     expect(validate(orphanMaskChannel)).toBe(false);
@@ -164,9 +199,11 @@ describe("agent-facing Timeline DSL schema", () => {
   });
 
   it("does not publish dangling local references in the root schema fragments", () => {
-    const definition = (shared as Record<string, unknown>).TIMELINE_DSL_DEFINITION as any;
-    const references = localJsonSchemaReferences(definition.jsonSchema)
-      .filter((reference) => reference.startsWith("#/"));
+    const definition = (shared as Record<string, unknown>)
+      .TIMELINE_DSL_DEFINITION as any;
+    const references = localJsonSchemaReferences(definition.jsonSchema).filter(
+      (reference) => reference.startsWith("#/"),
+    );
 
     expect(references.length).toBeGreaterThan(0);
     for (const reference of references) {
@@ -185,16 +222,21 @@ describe("agent-facing Timeline DSL schema", () => {
       definitions: { TimelineItemKeyframes: expect.any(Object) },
     });
     const ajv = new Ajv({ strict: false });
-    expect(ajv.compile(fragments.TimelineItemMask)(
-      shared.DEFAULT_TIMELINE_ITEM_MASK,
-    )).toBe(true);
-    expect(ajv.compile(fragments.TimelineItemKeyframes)({
-      maskFeather: [{ frame: 0, value: 10, interpolation: "linear" }],
-    })).toBe(true);
+    expect(
+      ajv.compile(fragments.TimelineItemMask)(
+        shared.DEFAULT_TIMELINE_ITEM_MASK,
+      ),
+    ).toBe(true);
+    expect(
+      ajv.compile(fragments.TimelineItemKeyframes)({
+        maskFeather: [{ frame: 0, value: 10, interpolation: "linear" }],
+      }),
+    ).toBe(true);
   });
 
   it("publishes structured semantic rules and executes the same four apply constraints", () => {
-    const definition = (shared as Record<string, unknown>).TIMELINE_DSL_DEFINITION as any;
+    const definition = (shared as Record<string, unknown>)
+      .TIMELINE_DSL_DEFINITION as any;
     const semanticRules = definition.jsonSchema["x-clash-semantic-rules"];
     expect(semanticRules).toMatchObject({
       version: 2,
@@ -227,72 +269,92 @@ describe("agent-facing Timeline DSL schema", () => {
       {
         expectedRule: "timeline.clip-mask.requires-mask",
         state: {
-          tracks: [{
-            id: "visual",
-            items: [{
-              id: "orphan-mask-channel",
-              type: "image",
-              from: 0,
-              durationInFrames: 10,
-              keyframes: {
-                maskPosition: [{ frame: 0, value: [50, 50], interpolation: "linear" }],
-              },
-            }],
-          }],
+          tracks: [
+            {
+              id: "visual",
+              items: [
+                {
+                  id: "orphan-mask-channel",
+                  type: "image",
+                  from: 0,
+                  durationInFrames: 10,
+                  keyframes: {
+                    maskPosition: [
+                      { frame: 0, value: [50, 50], interpolation: "linear" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
         },
       },
       {
         expectedRule: "timeline.clip-mask.item-type",
         state: {
-          tracks: [{
-            id: "audio",
-            items: [{
-              id: "audio-mask",
-              type: "audio",
-              from: 0,
-              durationInFrames: 10,
-              mask: shared.DEFAULT_TIMELINE_ITEM_MASK,
-            }],
-          }],
+          tracks: [
+            {
+              id: "audio",
+              items: [
+                {
+                  id: "audio-mask",
+                  type: "audio",
+                  from: 0,
+                  durationInFrames: 10,
+                  mask: shared.DEFAULT_TIMELINE_ITEM_MASK,
+                },
+              ],
+            },
+          ],
         },
       },
       {
         expectedRule: "timeline.keyframes.frame-range",
         state: {
-          tracks: [{
-            id: "visual",
-            items: [{
-              id: "out-of-range",
-              type: "image",
-              from: 0,
-              durationInFrames: 10,
-              mask: shared.DEFAULT_TIMELINE_ITEM_MASK,
-              keyframes: {
-                maskFeather: [{ frame: 10, value: 20, interpolation: "linear" }],
-              },
-            }],
-          }],
+          tracks: [
+            {
+              id: "visual",
+              items: [
+                {
+                  id: "out-of-range",
+                  type: "image",
+                  from: 0,
+                  durationInFrames: 10,
+                  mask: shared.DEFAULT_TIMELINE_ITEM_MASK,
+                  keyframes: {
+                    maskFeather: [
+                      { frame: 10, value: 20, interpolation: "linear" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
         },
       },
       {
         expectedRule: "timeline.keyframes.unique-frame",
         state: {
-          tracks: [{
-            id: "visual",
-            items: [{
-              id: "duplicate-frame",
-              type: "image",
-              from: 0,
-              durationInFrames: 10,
-              mask: shared.DEFAULT_TIMELINE_ITEM_MASK,
-              keyframes: {
-                maskFeather: [
-                  { frame: 1, value: 10, interpolation: "linear" },
-                  { frame: 1, value: 20, interpolation: "linear" },
-                ],
-              },
-            }],
-          }],
+          tracks: [
+            {
+              id: "visual",
+              items: [
+                {
+                  id: "duplicate-frame",
+                  type: "image",
+                  from: 0,
+                  durationInFrames: 10,
+                  mask: shared.DEFAULT_TIMELINE_ITEM_MASK,
+                  keyframes: {
+                    maskFeather: [
+                      { frame: 1, value: 10, interpolation: "linear" },
+                      { frame: 1, value: 20, interpolation: "linear" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
         },
       },
     ] as const;
@@ -308,7 +370,8 @@ describe("agent-facing Timeline DSL schema", () => {
   });
 
   it("derives a stable contract fingerprint and gates each released schema version", () => {
-    const definition = (shared as Record<string, unknown>).TIMELINE_DSL_DEFINITION as any;
+    const definition = (shared as Record<string, unknown>)
+      .TIMELINE_DSL_DEFINITION as any;
     const { contractFingerprint, ...serializableDefinition } = definition;
 
     expect(contractFingerprint).toBe(
@@ -320,6 +383,7 @@ describe("agent-facing Timeline DSL schema", () => {
       3: "fnv1a32:e3826b91",
       4: "fnv1a32:877b6827",
       5: "fnv1a32:9cd7e84a",
+      6: "fnv1a32:cefec01e",
     };
     expect(contractFingerprint).toBe(
       releasedContractFingerprints[definition.schemaVersion],
@@ -327,7 +391,8 @@ describe("agent-facing Timeline DSL schema", () => {
   });
 
   it("ships a complete mask-keyframe example accepted by the real YAML parser", () => {
-    const definition = (shared as Record<string, unknown>).TIMELINE_DSL_DEFINITION as any;
+    const definition = (shared as Record<string, unknown>)
+      .TIMELINE_DSL_DEFINITION as any;
     const example = definition.examples.maskKeyframes;
     const yaml = shared.timelineDslToYaml(example);
     const parsed = shared.timelineDslFromYaml(yaml);
@@ -354,8 +419,12 @@ describe("agent-facing Timeline DSL schema", () => {
     expect(yaml).toBe(shared.renderTimelineMaskKeyframesExampleYaml());
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect((parsed.dsl.tracks[0]?.items[0] as any)?.mask?.shape).toBe("ellipse");
-    expect(Object.keys((parsed.dsl.tracks[0]?.items[0] as any)?.keyframes ?? {})).toHaveLength(4);
+    expect((parsed.dsl.tracks[0]?.items[0] as any)?.mask?.shape).toBe(
+      "ellipse",
+    );
+    expect(
+      Object.keys((parsed.dsl.tracks[0]?.items[0] as any)?.keyframes ?? {}),
+    ).toHaveLength(4);
   });
 
   it("keeps generated JavaDoc-style reference output synchronized", () => {
@@ -374,11 +443,18 @@ describe("agent-facing Timeline DSL schema", () => {
     const generatedSkillSection = skill.match(
       /<!-- BEGIN GENERATED TIMELINE MASK CONTRACT -->[\s\S]*?<!-- END GENERATED TIMELINE MASK CONTRACT -->/,
     )?.[0];
-    expect(generatedSkillSection).toBe(shared.renderTimelineMaskSkillReference());
+    expect(generatedSkillSection).toBe(
+      shared.renderTimelineMaskSkillReference(),
+    );
 
     for (const creativeGuidanceUrl of ["plugins/clash/skills/clash/SKILL.md"]) {
-      const creativeGuidance = readFileSync(repositoryPath(creativeGuidanceUrl), "utf8");
-      expect(creativeGuidance).not.toContain("BEGIN GENERATED TIMELINE DSL WORKFLOW");
+      const creativeGuidance = readFileSync(
+        repositoryPath(creativeGuidanceUrl),
+        "utf8",
+      );
+      expect(creativeGuidance).not.toContain(
+        "BEGIN GENERATED TIMELINE DSL WORKFLOW",
+      );
       expect(creativeGuidance).not.toContain("contract fingerprint");
     }
   });
@@ -392,7 +468,9 @@ describe("agent-facing Timeline DSL schema", () => {
         from: 0,
         durationInFrames: 10,
         keyframes: {
-          maskPosition: [{ frame: 0, value: [50, 50], interpolation: "linear" }],
+          maskPosition: [
+            { frame: 0, value: [50, 50], interpolation: "linear" },
+          ],
         },
       },
     },
@@ -434,7 +512,9 @@ describe("agent-facing Timeline DSL schema", () => {
   ])("keeps Zod and YAML apply rejection aligned for $name", ({ item }) => {
     const dsl = { tracks: [{ id: "visual", items: [item] }] };
     const zod = shared.TimelineDslSchema.safeParse(dsl);
-    const yaml = shared.timelineDslFromYaml(shared.timelineDslToYaml(dsl as any));
+    const yaml = shared.timelineDslFromYaml(
+      shared.timelineDslToYaml(dsl as any),
+    );
 
     expect(zod.success).toBe(false);
     expect(yaml.ok).toBe(false);

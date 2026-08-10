@@ -194,3 +194,34 @@ function stableJsonForHash(value: unknown): string {
   }
   return JSON.stringify(value);
 }
+
+/**
+ * Compare a caller's proof-of-read against the entity's current version.
+ *
+ * The daemon performs this check server-side. The direct-replica path has to do
+ * it here too, otherwise a caller that did supply proof of read has that proof
+ * silently discarded whenever no daemon is running.
+ */
+export function requireCurrentTextVersion(options: {
+  observedVersion?: string;
+  projectId: string;
+  nodeId: string;
+  currentContent: string;
+  currentReadToken?: string;
+}): void {
+  // Compare only. Whether proof of read is mandatory is the caller's policy:
+  // the agent gate and the projection loop require it; a direct small write
+  // through `canvas update`/`text apply` does not.
+  if (!options.observedVersion) return;
+  const current = options.currentReadToken
+    ?? textReadToken({
+      projectId: options.projectId,
+      nodeId: options.nodeId,
+      content: options.currentContent,
+    });
+  if (current !== options.observedVersion) {
+    throw new Error(
+      "STALE_READ: This text changed after it was read. Pull it again, reconcile, then apply.",
+    );
+  }
+}

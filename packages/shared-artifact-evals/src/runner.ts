@@ -1,7 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
-  appendFile,
   chmod,
   cp,
   mkdir,
@@ -28,6 +27,7 @@ import {
   sep,
 } from "node:path";
 import { createConnection } from "node:net";
+import { fileURLToPath } from "node:url";
 import {
   DirectorStageStateSchema,
   projectDirectorStageReadToken,
@@ -47,6 +47,7 @@ import {
 import { createOutcomeResult, renderOutcomeMarkdown } from "./outcome";
 import {
   effectiveMcpToolName,
+  formatCliInvocation,
   matchRequiredProductOperations,
 } from "./product-operations";
 import { writeSuiteGallery } from "./report";
@@ -71,6 +72,7 @@ import type {
   ClaudeAgent,
   CodexAgent,
   OutcomeResult,
+  PiAgent,
   ProductExecutionReport,
   RunBenchmarkSuiteInput,
   ReevaluateBenchmarkRunInput,
@@ -209,7 +211,10 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-async function writeJsonAtomically(path: string, value: unknown): Promise<void> {
+async function writeJsonAtomically(
+  path: string,
+  value: unknown,
+): Promise<void> {
   const temporaryPath = join(
     dirname(path),
     `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`,
@@ -454,9 +459,7 @@ function resolveAgentCommand(
                 CLASH_AGENT_NAME: clashHost.agentName,
                 CLASH_API_URL: clashHost.endpoint,
                 CLASH_CLI_ENTRY_PATH: clashHost.agentCliPath,
-                ...(cliTracePath
-                  ? { CLASH_CLI_TRACE_PATH: cliTracePath }
-                  : {}),
+                ...(cliTracePath ? { CLASH_CLI_TRACE_PATH: cliTracePath } : {}),
               },
             },
           },
@@ -491,6 +494,35 @@ function resolveAgentCommand(
       prompt,
     ];
     return { command: agent.command ?? "claude", args };
+  }
+  if (agent.adapter === "pi") {
+    const currentModulePath = fileURLToPath(import.meta.url);
+    const extensionPath = join(
+      dirname(currentModulePath),
+      currentModulePath.endsWith(".ts")
+        ? "pi-clash-extension.ts"
+        : "pi-clash-extension.js",
+    );
+    const args = [
+      "--print",
+      "--mode",
+      "json",
+      "--no-session",
+      "--no-extensions",
+      ...(clashHost ? ["--extension", extensionPath] : []),
+      "--no-skills",
+      "--skill",
+      join(workspace, ".agents", "skills"),
+      "--no-prompt-templates",
+      "--no-context-files",
+      "--approve",
+      "--thinking",
+      "medium",
+      ...(agent.model ? ["--model", agent.model] : []),
+      ...(agent.args ?? []),
+      prompt,
+    ];
+    return { command: agent.command ?? "pi", args };
   }
   return { command: agent.command, args: agent.args ?? [] };
 }
@@ -537,11 +569,12 @@ function claudeResultError(eventsText: string): string | undefined {
       ) {
         continue;
       }
-      resultError = typeof result.error === "string" && result.error.trim()
-        ? result.error.trim()
-        : typeof result.result === "string" && result.result.trim()
-          ? result.result.trim()
-          : "Claude Code reported an unsuccessful result";
+      resultError =
+        typeof result.error === "string" && result.error.trim()
+          ? result.error.trim()
+          : typeof result.result === "string" && result.result.trim()
+            ? result.result.trim()
+            : "Claude Code reported an unsuccessful result";
     } catch {
       // Raw output stays authoritative; malformed lines are covered by the
       // normalized trajectory and do not mask a later valid result event.
@@ -564,7 +597,9 @@ async function runAgent(input: {
   await mkdir(input.logsRoot, { recursive: true });
   const stdoutPath = join(
     input.logsRoot,
-    input.agent.adapter === "codex" || input.agent.adapter === "claude"
+    input.agent.adapter === "codex" ||
+      input.agent.adapter === "claude" ||
+      input.agent.adapter === "pi"
       ? "events.jsonl"
       : "stdout.log",
   );
@@ -619,6 +654,11 @@ async function runAgent(input: {
     env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = "1";
     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
     env.CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL = "1";
+  }
+  if (input.agent.adapter === "pi") env.PI_TELEMETRY = "0";
+  if (input.agent.adapter === "pi" && input.clashHost) {
+    env.CLASH_PI_MCP_RUNTIME_PATH = input.clashHost.runtimePath;
+    env.CLASH_PI_MCP_PLUGIN_ROOT = input.clashHost.pluginRoot;
   }
 
   let child: ChildProcess;
@@ -790,7 +830,6 @@ async function installCaseSkills(
   suiteRoot: string,
   workspace: string,
 ): Promise<string[]> {
-  if (skillPaths.length === 0) return [];
   const destinationRoots = [
     join(workspace, ".agents", "skills"),
     join(workspace, ".claude", "skills"),
@@ -800,6 +839,7 @@ async function installCaseSkills(
       mkdir(destinationRoot, { recursive: true }),
     ),
   );
+  if (skillPaths.length === 0) return [];
   const installedNames = new Set<string>();
   for (const configuredPath of skillPaths) {
     const candidate = isAbsolute(configuredPath)
@@ -844,7 +884,9 @@ async function resolveClashHost(
   workspace: string,
 ): Promise<ResolvedClashHost | undefined> {
   if (
-    (agent.adapter !== "codex" && agent.adapter !== "claude") ||
+    (agent.adapter !== "codex" &&
+      agent.adapter !== "claude" &&
+      agent.adapter !== "pi") ||
     !agent.clashHost
   ) {
     return undefined;
@@ -870,8 +912,14 @@ async function resolveClashHost(
   }
 
   const persistedClashHome = join(caseRoot, "clash-home");
-  await mkdir(persistedClashHome);
-  const runtimeRoot = await mkdtemp(join(tmpdir(), "clash-eval-"));
+  await mkdir(persistedClashHome, { recursive: true });
+  // macOS limits Unix-domain socket paths to roughly 104 bytes. Its default
+  // per-user temp directory is already long enough that the project daemon's
+  // hashed socket name can exceed that limit, so keep the runtime-only home
+  // under the short /tmp alias there. Durable case data still lives in the
+  // configured benchmark output root.
+  const runtimeTempRoot = process.platform === "darwin" ? "/tmp" : tmpdir();
+  const runtimeRoot = await mkdtemp(join(runtimeTempRoot, "clash-eval-"));
   try {
     const clashHome = join(runtimeRoot, "home");
     await symlink(persistedClashHome, clashHome, "dir");
@@ -2151,6 +2199,80 @@ async function combineProductReadbacks(
   return report;
 }
 
+async function captureRequiredProductReadback(input: {
+  benchmark: ArtifactBenchmarkCase;
+  workspace: string;
+  caseRoot: string;
+  ready?: ProjectDaemonReady;
+}): Promise<TrustedProductReadback | undefined> {
+  const readbackMechanism =
+    input.benchmark.execution?.productReadback?.mechanism;
+  const requiresDirectorReadback = input.benchmark.rubric.some(
+    (rubric) => rubric.type === "director-stage",
+  );
+  const requiresRemotionReadback =
+    readbackMechanism === "remotion-component-and-render-receipt" ||
+    readbackMechanism === "mixed-remotion-lineage-and-render-receipt";
+  const requiresTimelineReadback =
+    readbackMechanism === "timeline-state-and-render-receipt";
+  if (
+    !requiresDirectorReadback &&
+    !requiresRemotionReadback &&
+    !requiresTimelineReadback
+  ) {
+    return undefined;
+  }
+
+  const readbacks: Array<
+    | DirectorReadbackReport
+    | RemotionProductReadbackReport
+    | TimelineProductReadbackReport
+  > = [];
+  if (requiresDirectorReadback) {
+    readbacks.push(
+      await captureDirectorReadback({
+        benchmark: input.benchmark,
+        workspace: input.workspace,
+        caseRoot: input.caseRoot,
+        ready: input.ready,
+      }),
+    );
+  }
+  if (requiresRemotionReadback) {
+    readbacks.push(
+      await captureRemotionProductReadback({
+        benchmark: input.benchmark,
+        workspace: input.workspace,
+        caseRoot: input.caseRoot,
+        ready: input.ready,
+      }),
+    );
+  } else if (requiresTimelineReadback) {
+    readbacks.push(
+      await captureTimelineProductReadback({
+        benchmark: input.benchmark,
+        workspace: input.workspace,
+        caseRoot: input.caseRoot,
+        ready: input.ready,
+      }),
+    );
+  }
+  if (readbacks.length === 1) {
+    return {
+      report: readbacks[0]!,
+      receiptPath: requiresDirectorReadback
+        ? "director-readback.json"
+        : requiresRemotionReadback
+          ? "remotion-readback.json"
+          : "timeline-readback.json",
+    };
+  }
+  return {
+    receiptPath: "product-readback.json",
+    report: await combineProductReadbacks(input.caseRoot, readbacks),
+  };
+}
+
 async function evaluateProductExecution(
   benchmark: ArtifactBenchmarkCase,
   agent: AgentRunReport,
@@ -2205,6 +2327,7 @@ async function evaluateProductExecution(
     string,
     { tool: string; arguments: unknown }
   >();
+  const piMcpToolUses = new Map<string, { tool: string; arguments: unknown }>();
   for (const line of text.split(/\r?\n/u)) {
     if (!line.trim()) continue;
     let event: unknown;
@@ -2218,7 +2341,44 @@ async function evaluateProductExecution(
       type?: unknown;
       item?: unknown;
       message?: unknown;
+      toolCallId?: unknown;
+      toolName?: unknown;
+      args?: unknown;
+      isError?: unknown;
     };
+    if (
+      envelope.type === "tool_execution_start" &&
+      typeof envelope.toolCallId === "string" &&
+      typeof envelope.toolName === "string"
+    ) {
+      const mcpName =
+        /^mcp__clash__(.+)$/u.exec(envelope.toolName)?.[1] ??
+        (envelope.toolName.startsWith("clash") ? envelope.toolName : undefined);
+      if (mcpName) {
+        piMcpToolUses.set(envelope.toolCallId, {
+          tool: mcpName,
+          arguments: envelope.args,
+        });
+      }
+      continue;
+    }
+    if (
+      envelope.type === "tool_execution_end" &&
+      typeof envelope.toolCallId === "string"
+    ) {
+      const toolUse = piMcpToolUses.get(envelope.toolCallId);
+      if (toolUse) {
+        if (envelope.isError !== true) {
+          const effectiveTool = effectiveMcpToolName(toolUse);
+          if (effectiveTool && !observed.has(effectiveTool)) {
+            observed.add(effectiveTool);
+            observedMcpTools.push(effectiveTool);
+          }
+        }
+        piMcpToolUses.delete(envelope.toolCallId);
+      }
+      continue;
+    }
     if (
       (envelope.type === "assistant" || envelope.type === "user") &&
       envelope.message &&
@@ -2234,9 +2394,10 @@ async function evaluateProductExecution(
             name?: unknown;
             input?: unknown;
           };
-          const mcpName = typeof toolUse.name === "string"
-            ? /^mcp__clash__(.+)$/u.exec(toolUse.name)
-            : null;
+          const mcpName =
+            typeof toolUse.name === "string"
+              ? /^mcp__clash__(.+)$/u.exec(toolUse.name)
+              : null;
           if (
             toolUse.type === "tool_use" &&
             typeof toolUse.id === "string" &&
@@ -2327,15 +2488,17 @@ async function evaluateProductExecution(
         type?: unknown;
         argv?: unknown;
         exitCode?: unknown;
+        origin?: unknown;
       };
       if (
         value.type !== "clash.cli.completed" ||
         value.exitCode !== 0 ||
+        value.origin === "mcp-transport" ||
         !Array.isArray(value.argv) ||
         !value.argv.every((arg) => typeof arg === "string")
       )
         continue;
-      const command = value.argv.join(" ");
+      const command = formatCliInvocation(value.argv);
       successfulCliArgv.push(value.argv);
       if (!seenCliCommands.has(command)) {
         seenCliCommands.add(command);
@@ -2391,15 +2554,27 @@ async function evaluateProductExecution(
     observedCliCommands,
     missingCliCommands,
     detail: [
-      missingProductOperations.length === 0
-        ? `Observed all ${requiredProductOperations.length} required product operations through successful Clash CLI or MCP calls.`
-        : `Missing successful Clash product operations: ${missingProductOperations.join(", ")}.`,
-      missingMcpTools.length === 0
-        ? `Observed all ${requiredMcpTools.length} required successful Clash MCP calls in agent JSONL.`
-        : `Missing successful Clash MCP calls: ${missingMcpTools.join(", ")}.`,
-      missingCliCommands.length === 0
-        ? `Observed all ${requiredCliCommands.length} required successful Clash CLI calls in the runner trace.`
-        : `Missing successful Clash CLI calls: ${missingCliCommands.join(", ")}.`,
+      ...(requiredProductOperations.length > 0
+        ? [
+            missingProductOperations.length === 0
+              ? `Observed all ${requiredProductOperations.length} required product operations through successful Clash CLI or MCP calls.`
+              : `Missing successful Clash product operations: ${missingProductOperations.join(", ")}.`,
+          ]
+        : []),
+      ...(requiredMcpTools.length > 0
+        ? [
+            missingMcpTools.length === 0
+              ? `Observed all ${requiredMcpTools.length} required successful Clash MCP calls in agent JSONL.`
+              : `Missing successful Clash MCP calls: ${missingMcpTools.join(", ")}.`,
+          ]
+        : []),
+      ...(requiredCliCommands.length > 0
+        ? [
+            missingCliCommands.length === 0
+              ? `Observed all ${requiredCliCommands.length} required successful Clash CLI calls in the runner trace.`
+              : `Missing successful Clash CLI calls: ${missingCliCommands.join(", ")}.`,
+          ]
+        : []),
       ...(productReadback ? [productReadback.report.detail] : []),
       ...(missingReadbackArtifactIds.length > 0
         ? [
@@ -2480,7 +2655,10 @@ async function runCase(input: {
     await writeJson(join(workspace, "outcome.json"), input.benchmark.outcome);
     clashHostConfig = await resolveClashHost(input.agent, caseRoot, workspace);
     const installedSkillNames = await installCaseSkills(
-      input.benchmark.skills,
+      [
+        ...input.benchmark.skills,
+        ...(input.agent.adapter === "pi" ? (input.agent.skills ?? []) : []),
+      ],
       input.suiteRoot,
       workspace,
     );
@@ -2491,6 +2669,7 @@ async function runCase(input: {
     );
     const prompt = renderOutcomeMarkdown(input.benchmark, installedSkillNames, {
       clashHost: Boolean(clashHostConfig),
+      workspaceRoot: workspace,
     });
     const promptPath = join(workspace, "OUTCOME.md");
     const setupWrites: Promise<void>[] = [
@@ -2611,73 +2790,12 @@ async function runCase(input: {
       }
       await publishWorkspaceSnapshot(workspace, finalWorkspace);
       snapshotPublished = true;
-      const readbackMechanism =
-        input.benchmark.execution?.productReadback?.mechanism;
-      const requiresDirectorReadback = input.benchmark.rubric.some(
-        (rubric) => rubric.type === "director-stage",
-      );
-      const requiresRemotionReadback =
-        readbackMechanism === "remotion-component-and-render-receipt" ||
-        readbackMechanism === "mixed-remotion-lineage-and-render-receipt";
-      const requiresTimelineReadback =
-        readbackMechanism === "timeline-state-and-render-receipt";
-      if (
-        requiresDirectorReadback ||
-        requiresRemotionReadback ||
-        requiresTimelineReadback
-      ) {
-        const ready = projectReady;
-        const readbacks: Array<
-          | DirectorReadbackReport
-          | RemotionProductReadbackReport
-          | TimelineProductReadbackReport
-        > = [];
-        if (requiresDirectorReadback) {
-          readbacks.push(
-            await captureDirectorReadback({
-              benchmark: input.benchmark,
-              workspace: finalWorkspace,
-              caseRoot,
-              ready,
-            }),
-          );
-        }
-        if (requiresRemotionReadback) {
-          readbacks.push(
-            await captureRemotionProductReadback({
-              benchmark: input.benchmark,
-              workspace: finalWorkspace,
-              caseRoot,
-              ready,
-            }),
-          );
-        } else if (requiresTimelineReadback) {
-          readbacks.push(
-            await captureTimelineProductReadback({
-              benchmark: input.benchmark,
-              workspace: finalWorkspace,
-              caseRoot,
-              ready,
-            }),
-          );
-        }
-        if (readbacks.length === 1) {
-          const report = readbacks[0]!;
-          productReadback = {
-            report,
-            receiptPath: requiresDirectorReadback
-              ? "director-readback.json"
-              : requiresRemotionReadback
-                ? "remotion-readback.json"
-                : "timeline-readback.json",
-          };
-        } else {
-          productReadback = {
-            receiptPath: "product-readback.json",
-            report: await combineProductReadbacks(caseRoot, readbacks),
-          };
-        }
-      }
+      productReadback = await captureRequiredProductReadback({
+        benchmark: input.benchmark,
+        workspace: finalWorkspace,
+        caseRoot,
+        ready: projectReady,
+      });
     } finally {
       try {
         if (projectDaemon) await projectDaemon.stop();
@@ -2747,6 +2865,38 @@ type RunManifest = {
   suiteSha256: string;
   startedAt: string;
 };
+
+type RunProgressCase = {
+  id: string;
+  status: BenchmarkCaseReport["status"];
+  attempt?: number;
+  failure?: BenchmarkCaseFailure;
+};
+
+type LegacyRunProgress = {
+  schemaVersion: 1;
+  suiteId: string;
+  runId: string;
+  status: "in-progress";
+  startedAt: string;
+  updatedAt: string;
+  resumed: boolean;
+  completedCases: RunProgressCase[];
+};
+
+type RunProgress = {
+  schemaVersion: 2;
+  suiteId: string;
+  runId: string;
+  status: "in-progress";
+  startedAt: string;
+  updatedAt: string;
+  resumed: boolean;
+  completedCases: RunProgressCase[];
+  attempts: BenchmarkAttemptLedgerEntry[];
+};
+
+type StoredRunProgress = LegacyRunProgress | RunProgress;
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -2824,7 +2974,9 @@ async function createNonRunAgentReport(input: {
   await mkdir(input.logsRoot, { recursive: true });
   const stdoutPath = join(
     input.logsRoot,
-    input.agent.adapter === "codex" || input.agent.adapter === "claude"
+    input.agent.adapter === "codex" ||
+      input.agent.adapter === "claude" ||
+      input.agent.adapter === "pi"
       ? "events.jsonl"
       : "stdout.log",
   );
@@ -3083,11 +3235,16 @@ function relativeRunPath(runRoot: string, path: string): string {
   return local;
 }
 
-async function appendAttemptEntry(
-  ledgerPath: string,
+async function recordAttemptEntry(
+  progressPath: string,
+  progress: RunProgress,
   entry: BenchmarkAttemptLedgerEntry,
 ): Promise<void> {
-  await appendFile(ledgerPath, `${JSON.stringify(entry)}\n`, "utf8");
+  const attempts = [...progress.attempts, entry];
+  const updatedAt = new Date().toISOString();
+  await writeJsonAtomically(progressPath, { ...progress, updatedAt, attempts });
+  progress.updatedAt = updatedAt;
+  progress.attempts.push(entry);
 }
 
 async function loadAttemptLedger(
@@ -3118,6 +3275,51 @@ async function loadAttemptLedger(
   return entries;
 }
 
+async function loadRunProgress(input: {
+  progressPath: string;
+  manifest: RunManifest;
+  resumed: boolean;
+}): Promise<RunProgress> {
+  let stored: StoredRunProgress | undefined;
+  if (await pathExists(input.progressPath)) {
+    try {
+      stored = JSON.parse(
+        await readFile(input.progressPath, "utf8"),
+      ) as StoredRunProgress;
+    } catch (error) {
+      throw new Error(
+        `Cannot resume without readable run progress: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (
+      (stored.schemaVersion !== 1 && stored.schemaVersion !== 2) ||
+      stored.suiteId !== input.manifest.suiteId ||
+      stored.runId !== input.manifest.runId ||
+      stored.startedAt !== input.manifest.startedAt
+    ) {
+      throw new Error(
+        "Cannot resume: run progress does not match the existing run manifest",
+      );
+    }
+    if (stored.schemaVersion === 2) return stored;
+  }
+  const legacyLedgerPath = join(dirname(input.progressPath), "attempts.jsonl");
+  const progress: RunProgress = {
+    schemaVersion: 2,
+    suiteId: input.manifest.suiteId,
+    runId: input.manifest.runId,
+    status: "in-progress",
+    startedAt: input.manifest.startedAt,
+    updatedAt: new Date().toISOString(),
+    resumed: input.resumed,
+    completedCases: stored?.completedCases ?? [],
+    attempts: await loadAttemptLedger(legacyLedgerPath),
+  };
+  await writeJsonAtomically(input.progressPath, progress);
+  await rm(legacyLedgerPath, { force: true });
+  return progress;
+}
+
 function attemptRoot(runRoot: string, caseId: string, attempt: number): string {
   return attempt === 1
     ? join(runRoot, caseId)
@@ -3133,28 +3335,29 @@ function suiteStatus(
 }
 
 async function writeSuiteProgress(input: {
-  runRoot: string;
-  suiteId: string;
-  runId: string;
-  startedAt: string;
+  progressPath: string;
+  progress: RunProgress;
   resumed: boolean;
   cases: BenchmarkCaseReport[];
 }): Promise<void> {
-  await writeJson(join(input.runRoot, "suite-progress.json"), {
-    schemaVersion: 1,
-    suiteId: input.suiteId,
-    runId: input.runId,
-    status: "in-progress",
-    startedAt: input.startedAt,
-    updatedAt: new Date().toISOString(),
-    resumed: input.resumed,
-    completedCases: input.cases.map(({ id, status, attempt, failure }) => ({
+  const completedCases = input.cases.map(
+    ({ id, status, attempt, failure }): RunProgressCase => ({
       id,
       status,
       attempt,
       ...(failure ? { failure } : {}),
-    })),
+    }),
+  );
+  const updatedAt = new Date().toISOString();
+  await writeJsonAtomically(input.progressPath, {
+    ...input.progress,
+    updatedAt,
+    resumed: input.resumed,
+    completedCases,
   });
+  input.progress.updatedAt = updatedAt;
+  input.progress.resumed = input.resumed;
+  input.progress.completedCases = completedCases;
 }
 
 export type CodexAgentAdapterOptions = Omit<CodexAgent, "adapter">;
@@ -3173,10 +3376,21 @@ export function createClaudeAgentAdapter(
   return { adapter: "claude", ...options };
 }
 
+export type PiAgentAdapterOptions = Omit<PiAgent, "adapter">;
+
+export function createPiAgentAdapter(
+  options: PiAgentAdapterOptions = {},
+): PiAgent {
+  return { adapter: "pi", ...options };
+}
+
 async function runBenchmarkSuiteInProcessScope(
   input: RunBenchmarkSuiteInput,
   processScope: BenchmarkProcessScope,
 ): Promise<BenchmarkSuiteReport> {
+  if (input.force && !input.resume) {
+    throw new Error("--force requires --resume");
+  }
   const parsedSuite = ArtifactBenchmarkSuiteSchema.safeParse(input.suite);
   if (!parsedSuite.success) {
     const detail = parsedSuite.error.issues
@@ -3248,7 +3462,7 @@ async function runBenchmarkSuiteInProcessScope(
       suiteSha256,
       startedAt: new Date().toISOString(),
     };
-    await writeJson(join(runRoot, "run-manifest.json"), manifest);
+    await writeJsonAtomically(join(runRoot, "run-manifest.json"), manifest);
   }
 
   const maxInfrastructureAttempts = input.maxInfrastructureAttempts ?? 2;
@@ -3258,8 +3472,13 @@ async function runBenchmarkSuiteInProcessScope(
   ) {
     throw new Error("maxInfrastructureAttempts must be a positive integer");
   }
-  const ledgerPath = join(runRoot, "attempts.jsonl");
-  const ledger = await loadAttemptLedger(ledgerPath);
+  const progressPath = join(runRoot, "suite-progress.json");
+  const progress = await loadRunProgress({
+    progressPath,
+    manifest,
+    resumed: Boolean(input.resume),
+  });
+  const ledger = progress.attempts;
   const startedAt = manifest.startedAt;
   const cases: BenchmarkCaseReport[] = [];
   for (const benchmark of parsedSuite.data.cases) {
@@ -3294,8 +3513,7 @@ async function runBenchmarkSuiteInProcessScope(
         caseRoot: entry.caseRoot,
         failure,
       };
-      await appendAttemptEntry(ledgerPath, abandoned);
-      ledger.push(abandoned);
+      await recordAttemptEntry(progressPath, progress, abandoned);
       existingEntries.push(abandoned);
     }
 
@@ -3325,9 +3543,44 @@ async function runBenchmarkSuiteInProcessScope(
       ({ failure }) =>
         failure?.classification === "infrastructure" && failure.retryable,
     ).length;
+    const completedForcedEntries = completedEntries.filter(
+      ({ forced }) => forced === true,
+    );
+    const latestForcedCompleted = completedForcedEntries.at(-1);
+    const latestAttemptWasForced = latestCompleted?.forced === true;
+    let forcedRetryRequested = false;
+    if (
+      input.force &&
+      latestReport?.status === "fail" &&
+      (latestAttemptWasForced ||
+        latestReport.failure?.classification !== "infrastructure")
+    ) {
+      if (latestAttemptWasForced && latestForcedCompleted) {
+        const hasForcePending = existingEntries.some(
+          ({ event, attempt, forced }) =>
+            event === "force-pending" &&
+            attempt === latestForcedCompleted.attempt &&
+            forced === true,
+        );
+        const pendingWasConsumed = existingEntries.some(
+          ({ event, attempt, forced }) =>
+            event === "started" &&
+            forced === true &&
+            attempt > latestForcedCompleted.attempt,
+        );
+        if (!hasForcePending || pendingWasConsumed) {
+          throw new Error(
+            `A force-pending record is required before another forced retry of case '${benchmark.id}'`,
+          );
+        }
+      }
+      forcedRetryRequested = true;
+    }
     if (
       latestReport &&
-      (latestReport.status === "pass" ||
+      !forcedRetryRequested &&
+      (latestAttemptWasForced ||
+        latestReport.status === "pass" ||
         latestReport.status === "blocked" ||
         latestReport.failure?.classification !== "infrastructure" ||
         !latestReport.failure.retryable ||
@@ -3335,10 +3588,8 @@ async function runBenchmarkSuiteInProcessScope(
     ) {
       cases.push(latestReport);
       await writeSuiteProgress({
-        runRoot,
-        suiteId: parsedSuite.data.id,
-        runId: input.runId,
-        startedAt,
+        progressPath,
+        progress,
         resumed: Boolean(input.resume),
         cases,
       });
@@ -3360,9 +3611,9 @@ async function runBenchmarkSuiteInProcessScope(
         event: "started",
         at: new Date().toISOString(),
         caseRoot: relativeRunPath(runRoot, caseRoot),
+        ...(forcedRetryRequested ? { forced: true } : {}),
       };
-      await appendAttemptEntry(ledgerPath, startedEntry);
-      ledger.push(startedEntry);
+      await recordAttemptEntry(progressPath, progress, startedEntry);
 
       let report: BenchmarkCaseReport;
       try {
@@ -3392,6 +3643,9 @@ async function runBenchmarkSuiteInProcessScope(
       }
       report.attempt = nextAttempt;
       report.failure = classifyCaseFailure(report);
+      if (forcedRetryRequested && report.status !== "pass") {
+        report.forcePending = true;
+      }
       await writeJson(join(caseRoot, "case-report.json"), report);
 
       const completedEntry: BenchmarkAttemptLedgerEntry = {
@@ -3404,22 +3658,41 @@ async function runBenchmarkSuiteInProcessScope(
         at: new Date().toISOString(),
         caseRoot: relativeRunPath(runRoot, caseRoot),
         status: report.status,
+        ...(forcedRetryRequested ? { forced: true } : {}),
         ...(report.failure ? { failure: report.failure } : {}),
         reportPath: relativeRunPath(
           runRoot,
           join(caseRoot, "case-report.json"),
         ),
       };
-      await appendAttemptEntry(ledgerPath, completedEntry);
-      ledger.push(completedEntry);
+      await recordAttemptEntry(progressPath, progress, completedEntry);
+
+      if (forcedRetryRequested && report.status !== "pass") {
+        const forcePendingEntry: BenchmarkAttemptLedgerEntry = {
+          schemaVersion: 1,
+          suiteId: parsedSuite.data.id,
+          runId: input.runId,
+          caseId: benchmark.id,
+          attempt: nextAttempt,
+          event: "force-pending",
+          at: new Date().toISOString(),
+          caseRoot: relativeRunPath(runRoot, caseRoot),
+          forced: true,
+          status: report.status,
+          ...(report.failure ? { failure: report.failure } : {}),
+          reportPath: relativeRunPath(
+            runRoot,
+            join(caseRoot, "case-report.json"),
+          ),
+        };
+        await recordAttemptEntry(progressPath, progress, forcePendingEntry);
+      }
 
       if (processScope.interruptedSignal) {
         cases.push(report);
         await writeSuiteProgress({
-          runRoot,
-          suiteId: parsedSuite.data.id,
-          runId: input.runId,
-          startedAt,
+          progressPath,
+          progress,
           resumed: Boolean(input.resume),
           cases,
         });
@@ -3427,6 +3700,7 @@ async function runBenchmarkSuiteInProcessScope(
       }
 
       if (
+        !forcedRetryRequested &&
         report.failure?.classification === "infrastructure" &&
         report.failure.retryable
       ) {
@@ -3438,10 +3712,8 @@ async function runBenchmarkSuiteInProcessScope(
       }
       cases.push(report);
       await writeSuiteProgress({
-        runRoot,
-        suiteId: parsedSuite.data.id,
-        runId: input.runId,
-        startedAt,
+        progressPath,
+        progress,
         resumed: Boolean(input.resume),
         cases,
       });
@@ -3515,6 +3787,113 @@ async function assertPersistedAgentEvidence(
   }
 }
 
+async function loadPersistedWorkspaceBinding(
+  caseRoot: string,
+  workspace: string,
+): Promise<BenchmarkWorkspaceBinding> {
+  const receipt = JSON.parse(
+    await readFile(join(caseRoot, "clash-workspace-init.json"), "utf8"),
+  ) as Record<string, unknown>;
+  const markerPath = join(workspace, ".clash", "project.toml");
+  const marker = await readFile(markerPath, "utf8");
+  const projectId = /^project_id\s*=\s*"([^"]+)"/mu.exec(marker)?.[1];
+  const workspaceId = /^workspace_id\s*=\s*"([^"]+)"/mu.exec(marker)?.[1];
+  const markerSha256 = sha256Bytes(marker);
+  if (
+    receipt.status !== "initialized" ||
+    typeof receipt.projectId !== "string" ||
+    typeof receipt.workspaceId !== "string" ||
+    (receipt.initDisposition !== "created" &&
+      receipt.initDisposition !== "reused") ||
+    receipt.markerSha256 !== markerSha256 ||
+    receipt.projectId !== projectId ||
+    receipt.workspaceId !== workspaceId
+  ) {
+    throw new Error(
+      "Cannot reevaluate because the persisted Clash workspace binding is invalid",
+    );
+  }
+  return {
+    projectId: receipt.projectId,
+    workspaceId: receipt.workspaceId,
+    markerPath,
+    markerSha256,
+    initDisposition: receipt.initDisposition,
+  };
+}
+
+async function recapturePersistedProductReadback(input: {
+  benchmark: ArtifactBenchmarkCase;
+  caseRoot: string;
+  workspace: string;
+}): Promise<TrustedProductReadback | undefined> {
+  const storedHost = JSON.parse(
+    await readFile(join(input.caseRoot, "clash-host.json"), "utf8"),
+  ) as Record<string, unknown>;
+  if (
+    typeof storedHost.pluginRoot !== "string" ||
+    (storedHost.profile !== "dev" && storedHost.profile !== "prod")
+  ) {
+    throw new Error(
+      "Cannot reevaluate because the persisted Clash host receipt is invalid",
+    );
+  }
+  const resolvedHost = await resolveClashHost(
+    {
+      adapter: "codex",
+      clashHost: {
+        pluginRoot: storedHost.pluginRoot,
+        profile: storedHost.profile,
+      },
+    },
+    input.caseRoot,
+    input.workspace,
+  );
+  if (!resolvedHost) {
+    throw new Error("Cannot reevaluate without a persisted Clash host");
+  }
+
+  const processScope = new BenchmarkProcessScope();
+  const logsRoot = join(resolvedHost.runtimeRoot, "reevaluate-logs");
+  const agentReadyPath = join(
+    resolvedHost.runtimeRoot,
+    "headless-host-ready.json",
+  );
+  let runningHost: RunningClashHost | undefined;
+  let projectDaemon: ProjectDaemonController | undefined;
+  try {
+    runningHost = await startClashHost(resolvedHost, logsRoot, processScope);
+    const binding = await loadPersistedWorkspaceBinding(
+      input.caseRoot,
+      input.workspace,
+    );
+    projectDaemon = startProjectDaemonController({
+      host: runningHost,
+      binding,
+      workspace: input.workspace,
+      caseRoot: input.caseRoot,
+      logsRoot,
+      agentReadyPath,
+      processScope,
+    });
+    const ready = await projectDaemon.ready;
+    return await captureRequiredProductReadback({
+      benchmark: input.benchmark,
+      workspace: input.workspace,
+      caseRoot: input.caseRoot,
+      ready,
+    });
+  } finally {
+    try {
+      if (projectDaemon) await projectDaemon.stop();
+    } finally {
+      if (runningHost) await stopClashHost(runningHost);
+      await processScope.dispose();
+      await rm(resolvedHost.runtimeRoot, { recursive: true, force: true });
+    }
+  }
+}
+
 export async function reevaluateBenchmarkRun(
   input: ReevaluateBenchmarkRunInput,
 ): Promise<BenchmarkCaseReport> {
@@ -3574,9 +3953,12 @@ export async function reevaluateBenchmarkRun(
       "Cannot reevaluate: the benchmark suite does not match the existing run manifest",
     );
   }
-
-  const ledgerPath = join(runRoot, "attempts.jsonl");
-  const ledger = await loadAttemptLedger(ledgerPath);
+  const progress = await loadRunProgress({
+    progressPath: join(runRoot, "suite-progress.json"),
+    manifest,
+    resumed: true,
+  });
+  const ledger = progress.attempts;
   const completed = ledger.filter(
     (entry): entry is BenchmarkAttemptLedgerEntry & { reportPath: string } =>
       entry.caseId === benchmark.id &&
@@ -3597,7 +3979,9 @@ export async function reevaluateBenchmarkRun(
   const reportPath = resolve(runRoot, latest.reportPath);
   relativeRunPath(runRoot, reportPath);
   if (dirname(reportPath) !== caseRoot) {
-    throw new Error("Completed attempt report does not belong to its case root");
+    throw new Error(
+      "Completed attempt report does not belong to its case root",
+    );
   }
   let previous: BenchmarkCaseReport;
   try {
@@ -3610,11 +3994,15 @@ export async function reevaluateBenchmarkRun(
     );
   }
   if (previous.id !== benchmark.id) {
-    throw new Error("Completed attempt report does not match the benchmark case");
+    throw new Error(
+      "Completed attempt report does not match the benchmark case",
+    );
   }
   const workspace = await realpath(join(caseRoot, "workspace"));
   if (previous.workspace !== workspace) {
-    throw new Error("Completed attempt report does not match its persisted workspace");
+    throw new Error(
+      "Completed attempt report does not match its persisted workspace",
+    );
   }
   await assertPersistedAgentEvidence(caseRoot, previous.agent);
   const submission = await loadSubmission(workspace);
@@ -3636,15 +4024,17 @@ export async function reevaluateBenchmarkRun(
       "Cannot reevaluate because the persisted workspace artifacts changed after the original evaluation",
     );
   }
-  if (benchmark.execution) {
-    throw new Error(
-      "Clash-host reevaluation is not available for this benchmark yet",
-    );
-  }
-
+  const productReadback = benchmark.execution
+    ? await recapturePersistedProductReadback({
+        benchmark,
+        caseRoot,
+        workspace,
+      })
+    : undefined;
   const execution = await evaluateProductExecution(
     benchmark,
     previous.agent,
+    productReadback,
   );
   const evaluation = await evaluateSubmission({ benchmark, workspace });
   const outcome = createOutcomeResult({
@@ -3684,7 +4074,9 @@ export async function reevaluateBenchmarkRun(
     suiteReport.runId !== manifest.runId ||
     !suiteReport.cases.some(({ id }) => id === benchmark.id)
   ) {
-    throw new Error("Cannot reevaluate: suite report does not match the run manifest");
+    throw new Error(
+      "Cannot reevaluate: suite report does not match the run manifest",
+    );
   }
   const cases = suiteReport.cases.map((candidate) =>
     candidate.id === benchmark.id ? report : candidate,

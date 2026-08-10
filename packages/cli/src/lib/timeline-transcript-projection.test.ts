@@ -1,15 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { TimelineTranscriptProjectionSchema } from "@clash/shared-types";
 import { writeTimelineTranscriptProjection } from "./timeline-transcript-projection";
 
-test("materializes the primary Timeline word map next to the editable DSL", () => {
+test("materializes the primary Timeline word map next to the editable DSL", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "clash-timeline-transcript-"));
   const timelineFilePath = join(cwd, "timelines", "talk.timeline.yaml");
-  const result = writeTimelineTranscriptProjection({
+  const result = await writeTimelineTranscriptProjection({
     cwd,
     timelineFilePath,
     timelineId: "talk",
@@ -69,9 +70,9 @@ test("materializes the primary Timeline word map next to the editable DSL", () =
   assert.match(projection.sources[0].transcriptSourceHash, /^sha256:[a-f0-9]{64}$/);
 });
 
-test("does not invent a transcript projection for a Timeline without primary spoken media", () => {
+test("does not invent a transcript projection for a Timeline without primary spoken media", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "clash-timeline-transcript-empty-"));
-  const result = writeTimelineTranscriptProjection({
+  const result = await writeTimelineTranscriptProjection({
     cwd,
     timelineFilePath: join(cwd, "timelines", "still.timeline.yaml"),
     timelineId: "still",
@@ -91,10 +92,10 @@ test("does not invent a transcript projection for a Timeline without primary spo
   assert.equal(result, null);
 });
 
-test("projects narration when the primary visual track is b-roll and excludes music and sfx", () => {
+test("projects narration when the primary visual track is b-roll and excludes music and sfx", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "clash-timeline-transcript-narration-"));
   const timelineFilePath = join(cwd, "timelines", "promo.timeline.yaml");
-  const result = writeTimelineTranscriptProjection({
+  const result = await writeTimelineTranscriptProjection({
     cwd,
     timelineFilePath,
     timelineId: "promo",
@@ -189,10 +190,10 @@ test("projects narration when the primary visual track is b-roll and excludes mu
   );
 });
 
-test("reconstructs the Agent transcript table from persisted Text lineage after reload", () => {
+test("reconstructs the Agent transcript table from persisted Text lineage after reload", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "clash-timeline-transcript-text-lineage-"));
   const timelineFilePath = join(cwd, "timelines", "reloaded.timeline.yaml");
-  const result = writeTimelineTranscriptProjection({
+  const result = await writeTimelineTranscriptProjection({
     cwd,
     timelineFilePath,
     timelineId: "reloaded",
@@ -281,4 +282,92 @@ test("reconstructs the Agent transcript table from persisted Text lineage after 
     { text: "world", source: [30, 42], timeline: [18, 30] },
   ]);
   assert.match(projection.sources[0].transcriptSourcePath, /reloaded\.transcripts/);
+});
+
+test("prefers the asset's media.transcript over editor caches and text lineage", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-timeline-media-transcript-"));
+  const dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-media-transcript-data-"));
+  await mkdir(join(cwd, "assets"), { recursive: true });
+  await mkdir(join(cwd, "timelines"), { recursive: true });
+  const assetsPath = join(cwd, "assets", "manifest.json");
+  await writeFile(
+    assetsPath,
+    JSON.stringify({ assets: [{ id: "asset-talk", type: "video", metadata: {} }] }),
+    "utf8",
+  );
+  const { attachTranscript } = await import("./attach-transcript");
+  await attachTranscript({
+    cwd,
+    dataDir,
+    assetsPath,
+    assetId: "asset-talk",
+    sourceHash: `sha256:${"a".repeat(64)}`,
+    transcript: {
+      schemaVersion: 1,
+      kind: "clash.asr.timed-transcript",
+      timebase: "milliseconds",
+      alignment: "word",
+      text: "hello canonical world",
+      backendId: "mlx-whisper",
+      modelId: "mlx-community/whisper-small-mlx",
+      language: "en",
+      durationMs: 3_000,
+      words: [
+        { id: "w1", text: "hello", startMs: 0, endMs: 800 },
+        { id: "w2", text: "canonical", startMs: 900, endMs: 1_700 },
+        { id: "w3", text: "world", startMs: 1_800, endMs: 2_600 },
+      ],
+      segments: [],
+    },
+  });
+  process.env.CLASH_LOCAL_DATA_DIR = dataDir;
+  try {
+    const result = await writeTimelineTranscriptProjection({
+      cwd,
+      timelineFilePath: join(cwd, "timelines", "main.timeline.yaml"),
+      timelineId: "timeline-main",
+      timelineRevision: "rev-1",
+      state: {
+        fps: 30,
+        durationInFrames: 90,
+        tracks: [
+          {
+            id: "track-a",
+            role: "narration",
+            items: [
+              {
+                id: "clip-1",
+                type: "video",
+                assetId: "asset-talk",
+                durationInFrames: 90,
+                sourceStartInFrames: 0,
+              },
+            ],
+          },
+        ],
+        // A stale editor cache must lose to the canonical asset metadata.
+        assetTranscripts: {
+          "asset-talk": {
+            assetId: "asset-talk",
+            words: [{ id: "stale", text: "stale", startMs: 0, endMs: 100 }],
+            backendId: "editor-cache",
+          },
+        },
+      },
+    });
+
+    assert.ok(result);
+    const projection = JSON.parse(await readFile(result.filePath, "utf8"));
+    assert.deepEqual(
+      projection.words.map((word: { text: string }) => word.text),
+      ["hello", "canonical", "world"],
+    );
+    const sourceFile = JSON.parse(
+      await readFile(join(cwd, projection.sources[0].transcriptSourcePath), "utf8"),
+    );
+    assert.equal(sourceFile.backendId, "mlx-whisper");
+    assert.equal(sourceFile.modelId, "mlx-community/whisper-small-mlx");
+  } finally {
+    delete process.env.CLASH_LOCAL_DATA_DIR;
+  }
 });

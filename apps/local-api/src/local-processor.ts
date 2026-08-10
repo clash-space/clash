@@ -38,7 +38,7 @@ export interface LocalWorkflowProcessor {
 export interface LocalWorkflowProcessorOptions {
   dataDir: string;
   userId?: string;
-  mediaBaseUrl?: string;
+  mediaBaseUrl?: string | (() => string);
   timelineRenderer?: LocalTimelineRenderer;
   aigc?: ExternalAigcService;
   modelCards?: () => Promise<ModelCard[]>;
@@ -112,9 +112,10 @@ function providerPromptFromData(data: Record<string, unknown>, fallback: string)
   return extractPromptText(parsePromptParts(authoredPrompt));
 }
 
-function localAssetReferenceUrl(baseUrl: string, storageKey: string): string {
+function localAssetReferenceUrl(baseUrl: string | (() => string), storageKey: string): string {
+  const base = typeof baseUrl === "function" ? baseUrl() : baseUrl;
   const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
-  return `${baseUrl.replace(/\/+$/, "")}/assets/${encodedKey}`;
+  return `${base.replace(/\/+$/, "")}/assets/${encodedKey}`;
 }
 
 function modelFromData(data: Record<string, unknown>, fallback: string): string {
@@ -129,8 +130,31 @@ function aspectRatioFromData(data: Record<string, unknown>): string | undefined 
   return stringParam(data, "aspectRatio") ?? stringParam(data, "aspect_ratio");
 }
 
-function durationFromData(data: Record<string, unknown>, fallback: number): number {
-  return Math.max(1, Math.min(30, numberParam(data, "duration") ?? fallback));
+/**
+ * The duration to use when nothing asked for one.
+ *
+ * Reads the Card rather than naming a number: `defaultParams` first, then the parameter's
+ * own `defaultValue`, then the first candidate on the menu. A house constant looks safe
+ * because most models accept it, but any model whose menu omits it fails validation before
+ * a request is ever made -- `seedance-2-fast-startend` offers [auto, 4, 6, 8, 10, 15] and
+ * was handed 5.
+ */
+export function cardDurationFallback(card: ModelCard): number | string | undefined {
+  const declared = card.defaultParams?.duration;
+  if (declared !== undefined) return declared as number | string;
+  const parameter = card.parameters.find((candidate) => candidate.id === "duration");
+  if (!parameter) return undefined;
+  if (parameter.defaultValue !== undefined) return parameter.defaultValue as number | string;
+  return parameter.options?.[0]?.value as number | string | undefined;
+}
+
+export function durationFromData(
+  data: Record<string, unknown>,
+  card: ModelCard | undefined,
+): number | string | undefined {
+  const requested = numberParam(data, "duration");
+  if (requested !== undefined) return Math.max(1, Math.min(30, requested));
+  return card ? cardDurationFallback(card) : undefined;
 }
 
 function stringList(value: unknown): string[] {
@@ -353,16 +377,17 @@ async function saveAsset(
   return asset;
 }
 
-function localAssetHttpUrl(mediaBaseUrl: string, storageKey: string): string {
+function localAssetHttpUrl(mediaBaseUrl: string | (() => string), storageKey: string): string {
+  const base = typeof mediaBaseUrl === "function" ? mediaBaseUrl() : mediaBaseUrl;
   const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
-  return `${mediaBaseUrl.replace(/\/+$/, "")}/assets/${encodedKey}`;
+  return `${base.replace(/\/+$/, "")}/assets/${encodedKey}`;
 }
 
 export async function resolveLocalTimelineDslReferences(options: {
   dataDir: string;
   doc: LoroDoc;
   projectId: string;
-  mediaBaseUrl?: string;
+  mediaBaseUrl?: string | (() => string);
   timelineDsl: Record<string, any>;
 }): Promise<Record<string, any>> {
   const resolved = structuredClone(options.timelineDsl);
@@ -919,11 +944,11 @@ export function createLocalWorkflowProcessor(
               ? await aigc.generateVideo({
                   ...common,
                   aspectRatio: aspectRatioFromData(data),
-                  duration: durationFromData(data, 4),
+                  duration: durationFromData(data, modelCard),
                 })
               : await aigc.generateAudio({
                   ...common,
-                  duration: durationFromData(data, 5),
+                  duration: durationFromData(data, modelCard),
                 });
           const asset = await saveAsset({
             dataDir: options.dataDir,

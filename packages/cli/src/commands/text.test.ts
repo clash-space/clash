@@ -42,7 +42,10 @@ test("registers a top-level text command for agent-editable text files", () => {
   assert.match(textSource, /requireWorktreeObservation/);
   assert.match(textSource, /observedVersion/);
   assert.match(textSource, /assertAgentHostWritePath/);
-  assert.doesNotMatch(textSource, /TextLock|createTextLock|parseTextLock|resolveTextLockPath|assertTextCas|expectedContentHash|expectedTextFilePath|expectedReadToken/);
+  assert.doesNotMatch(textSource, /TextLock|createTextLock|parseTextLock|resolveTextLockPath|expectedContentHash|expectedTextFilePath|expectedReadToken/);
+  // The direct-replica path must verify the observed version itself; forwarding
+  // it only to the daemon meant a daemonless apply landed unconditionally.
+  assert.match(textSource, /requireCurrentTextVersion/);
   assert.doesNotMatch(daemonSource, /TextLock|createTextLockFromHash|expectedContentHash|expectedTextFilePath/);
   for (const commandName of ["apply", "replace", "restore"]) {
     const command = textCommand.commands.find((candidate) => candidate.name() === commandName);

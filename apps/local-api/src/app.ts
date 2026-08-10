@@ -18,6 +18,10 @@ import { cors } from "hono/cors";
 import type { LoroDoc } from "loro-crdt";
 import { clashHomeForLocalDataDir } from "./local-paths.js";
 import {
+  importLocalProviderToken,
+  type LocalTokenImportAuth,
+} from "./local-token-import.js";
+import {
   buildProjectRecoveryPolicy,
   buildProjectStatus,
   defaultRuntimeCapabilities,
@@ -97,6 +101,9 @@ import {
   type UserModelCardConfig,
   type ExecutablePluginBinding,
   type ExecutablePluginCardRegistration,
+  type ExecutablePluginModelBindingRegistration,
+  type ExecutablePluginProviderAuth,
+  type ExecutablePluginProviderRegistration,
   type ExecutablePluginBrokerRequest,
   type ExecutablePluginInvocation,
   type ExecutablePluginJsonValue,
@@ -290,9 +297,13 @@ export interface LocalApiOptions {
   resolvePluginBinding?: (
     pluginId: string,
     exportId: string,
-    kind: "action" | "provider-projector",
+    kind: "action" | "provider-projector" | "provider-executor",
   ) => Promise<ExecutablePluginBinding>;
   listPluginCards?: () => Promise<ExecutablePluginCardRegistration[]>;
+  listPluginModelBindings?: () => Promise<ExecutablePluginModelBindingRegistration[]>;
+  listPluginProviders?: () => Promise<ExecutablePluginProviderRegistration[]>;
+  /** Test/embedding override for the OS application-support directory. */
+  localTokenImportAppDataRoot?: string;
   pluginBrokerToken?: string;
   executablePluginBroker?: (
     request: ExecutablePluginBrokerRequest,
@@ -1155,6 +1166,26 @@ function createDb(dataDir: string) {
     return metadataStore.getTextRevision(projectId, revisionId);
   }
 
+  async function upsertAssetMetadataIndex(
+    record: Parameters<typeof metadataStore.upsertAssetMetadataIndex>[0],
+  ): Promise<void> {
+    const task = writeQueue
+      .catch(() => undefined)
+      .then(() => metadataStore.upsertAssetMetadataIndex(record));
+    writeQueue = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    return task;
+  }
+
+  async function listAssetMetadataIndex(
+    filter: Parameters<typeof metadataStore.listAssetMetadataIndex>[0],
+  ) {
+    await writeQueue.catch(() => undefined);
+    return metadataStore.listAssetMetadataIndex(filter);
+  }
+
   async function listProviderUsageEvents(userId: string, limit?: number) {
     await writeQueue.catch(() => undefined);
     return providerStore.listProviderUsageEvents(userId, limit);
@@ -1168,6 +1199,8 @@ function createDb(dataDir: string) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
+    upsertAssetMetadataIndex,
+    listAssetMetadataIndex,
     listProviderUsageEvents,
   };
 }
@@ -3011,7 +3044,7 @@ function validateProviderAccountReadMutation(options: {
 
 function validateProviderOAuthReadMutation(options: {
   record: LocalProviderOAuthRecord;
-  operation: "start" | "complete" | "delete";
+  operation: "start" | "complete" | "import" | "delete";
   preconditions: ProjectWritePreconditions;
 }) {
   const entityId = providerOAuthEntityId(
@@ -3059,7 +3092,76 @@ function parseProviderOAuthId(value: unknown): ProviderOAuthId | null {
   return parsed.success ? parsed.data : null;
 }
 
+type BrowserProviderOAuth = Extract<ExecutablePluginProviderAuth, { type: "oauth" }>;
+
+interface BrowserProviderOAuthState {
+  protocol: "clash.provider-oauth.browser/v1";
+  auth: BrowserProviderOAuth;
+}
+
+function parseBrowserProviderOAuthState(value: string | undefined): BrowserProviderOAuthState | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<BrowserProviderOAuthState>;
+    if (parsed.protocol !== "clash.provider-oauth.browser/v1" || parsed.auth?.type !== "oauth") {
+      return null;
+    }
+    return parsed as BrowserProviderOAuthState;
+  } catch {
+    return null;
+  }
+}
+
+async function pluginBrowserOAuth(
+  options: Pick<LocalApiOptions, "listPluginProviders">,
+  oauthId: ProviderOAuthId,
+): Promise<BrowserProviderOAuth | null> {
+  const registrations = options.listPluginProviders
+    ? await options.listPluginProviders()
+    : [];
+  for (const registration of registrations) {
+    const auth = registration.document.spec.auth.find(
+      (candidate): candidate is BrowserProviderOAuth =>
+        candidate.type === "oauth" && candidate.id === oauthId,
+    );
+    if (auth) return auth;
+  }
+  return null;
+}
+
+async function pluginLocalTokenImport(
+  options: Pick<LocalApiOptions, "listPluginProviders">,
+  oauthId: ProviderOAuthId,
+): Promise<LocalTokenImportAuth | null> {
+  const registrations = options.listPluginProviders
+    ? await options.listPluginProviders()
+    : [];
+  for (const registration of registrations) {
+    const auth = registration.document.spec.auth.find(
+      (candidate): candidate is LocalTokenImportAuth =>
+        candidate.type === "local-token-import" && candidate.id === oauthId,
+    );
+    if (auth) return auth;
+  }
+  return null;
+}
+
+function browserOAuthToken(callbackUrl: string, auth: BrowserProviderOAuth): string {
+  const callback = new URL(callbackUrl);
+  if (callback.protocol !== `${auth.callback.scheme}:`) {
+    throw new Error(`OAuth callback must use the ${auth.callback.scheme}: scheme.`);
+  }
+  const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
+  const accessToken = callback.searchParams.get(auth.accessTokenField)
+    ?? fragment.get(auth.accessTokenField);
+  if (!accessToken?.trim()) {
+    throw new Error(`OAuth callback is missing ${auth.accessTokenField}.`);
+  }
+  return accessToken.trim();
+}
+
 function publicProviderOAuth(record: LocalProviderOAuthRecord) {
+  const browserState = parseBrowserProviderOAuthState(record.oauthState);
   return {
     providerId: record.providerId,
     ...(record.accountId ? { accountId: record.accountId } : {}),
@@ -3075,6 +3177,10 @@ function publicProviderOAuth(record: LocalProviderOAuthRecord) {
       : {}),
     ...(record.accountLabel ? { accountLabel: record.accountLabel } : {}),
     ...(record.error ? { error: record.error } : {}),
+    ...(browserState ? {
+      flow: "browser" as const,
+      callbackScheme: browserState.auth.callback.scheme,
+    } : {}),
     hasAccessToken:
       typeof record.accessToken === "string" &&
       record.accessToken.trim().length > 0,
@@ -3323,17 +3429,25 @@ async function effectiveModelCards(
   state: Pick<LocalDb, "modelCardConfigs" | "providerAccounts" | "providerOAuth">,
   userId: string,
   listPluginCards?: () => Promise<ExecutablePluginCardRegistration[]>,
+  listPluginModelBindings?: () => Promise<ExecutablePluginModelBindingRegistration[]>,
 ): Promise<ModelCard[]> {
   const providers = publicProviderAccounts(
     state.providerAccounts,
     userId,
     state.providerOAuth,
   );
-  const pluginCards = listPluginCards ? await listPluginCards() : [];
+  const [pluginCards, pluginModelBindings] = await Promise.all([
+    listPluginCards ? listPluginCards() : [],
+    listPluginModelBindings ? listPluginModelBindings() : [],
+  ]);
   return buildEffectiveModelCards({
     configs: userModelCardConfigs(state, userId),
     providers,
-    baseModels: localExecutableModelCards(composeExecutablePluginModelCards(MODEL_CARDS, pluginCards)),
+    baseModels: localExecutableModelCards(composeExecutablePluginModelCards(
+      MODEL_CARDS,
+      pluginCards,
+      pluginModelBindings,
+    )),
   });
 }
 
@@ -3568,7 +3682,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     },
     modelCards: async () => {
       const state = await db.load();
-      return effectiveModelCards(state, userId, options.listPluginCards);
+      return effectiveModelCards(
+        state,
+        userId,
+        options.listPluginCards,
+        options.listPluginModelBindings,
+      );
     },
     fetch: options.voiceInputFetch,
     googleAiStudioBaseUrl: options.voiceInputGoogleAiStudioBaseUrl,
@@ -4015,7 +4134,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       },
       userId,
     };
-    const effectiveModels = await effectiveModelCards(state, userId, options.listPluginCards);
+    const effectiveModels = await effectiveModelCards(
+      state,
+      userId,
+      options.listPluginCards,
+      options.listPluginModelBindings,
+    );
     const providerTestModels = account.providerId === "mock"
       ? [...effectiveModels, ...MOCK_MODEL_CARDS]
       : effectiveModels;
@@ -4351,6 +4475,118 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         .map(publicProviderOAuthWithReadReceipt),
     });
   });
+  app.post("/api/v1/provider-oauth/:providerId/import-local", async (c) => {
+    const rawProviderId = c.req.param("providerId");
+    const providerId = parseProviderOAuthId(rawProviderId);
+    const envelope = {
+      operation: "provider_oauth_import",
+      entity: {
+        kind: "provider-oauth",
+        id: providerOAuthEntityId(rawProviderId),
+      },
+    };
+    if (!providerId) {
+      return c.json({
+        error: "Unsupported OAuth provider",
+        mutation: hostMutationRejected(envelope, "Unsupported OAuth provider"),
+      }, 404);
+    }
+    const auth = await pluginLocalTokenImport(options, providerId);
+    if (!auth) {
+      return c.json({
+        error: "Local token import is not configured for this provider",
+        mutation: hostMutationRejected(envelope, "Local token import is not configured for this provider"),
+      }, 404);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as {
+      accountId?: unknown;
+      accountLabel?: unknown;
+    } & ProjectWriteBody;
+    const accountId = stringBodyField(body.accountId);
+    const accountLabel = stringBodyField(body.accountLabel);
+    const entityId = providerOAuthEntityId(providerId, accountId);
+    const preconditions = requestProjectWritePreconditions(c, body);
+    const beforeState = await db.load();
+    const beforeRecord = beforeState.providerOAuth.find((record) =>
+      providerOAuthMatches(record, userId, providerId, accountId),
+    );
+    const needsReadProof =
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const hostMutation = beforeRecord && needsReadProof
+      ? validateProviderOAuthReadMutation({
+          record: beforeRecord,
+          operation: "import",
+          preconditions,
+        })
+      : null;
+    if (hostMutation && !hostMutation.ok) {
+      return c.json({ error: hostMutation.error, mutation: hostMutation.mutation }, 409);
+    }
+    if (!beforeRecord && preconditions.expectedReadToken) {
+      const message = "Provider OAuth record not found. Read /api/v1/provider-oauth first, then retry.";
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected({
+          operation: "provider_oauth_import",
+          entity: { kind: "provider-oauth", id: entityId },
+          expectedReadToken: preconditions.expectedReadToken,
+        }, message),
+      }, 409);
+    }
+    let imported: { accessToken: string; importedFrom: string };
+    try {
+      imported = await importLocalProviderToken({
+        auth,
+        applicationSupportRoot: options.localTokenImportAppDataRoot,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected({
+          operation: "provider_oauth_import",
+          entity: { kind: "provider-oauth", id: entityId },
+        }, message),
+      }, 422);
+    }
+    const record = await db.update((state) => upsertProviderOAuth(state, userId, providerId, {
+      ...(accountId ? { accountId } : {}),
+      status: "authorized",
+      accessToken: imported.accessToken,
+      tokenType: "Bearer",
+      accountLabel,
+      refreshToken: undefined,
+      verificationUri: undefined,
+      userCode: undefined,
+      deviceCode: undefined,
+      oauthState: undefined,
+      intervalSeconds: undefined,
+      expiresAt: undefined,
+      error: undefined,
+    }));
+    const readToken = providerOAuthReceiptReadToken(record);
+    const mutation = hostMutationSucceeded(
+      hostMutation?.envelope ?? {
+        operation: "provider_oauth_import",
+        entity: { kind: "provider-oauth", id: entityId },
+      },
+      {
+        resultEntityId: entityId,
+        ...(hostMutation ? { afterReadToken: readToken } : {}),
+      },
+    );
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "provider OAuth local token import",
+    }));
+    return c.json({
+      ...publicProviderOAuth(record),
+      importedFrom: imported.importedFrom,
+      ...(hostMutation ? { readToken } : {}),
+      mutation,
+    });
+  });
   app.post("/api/v1/provider-oauth/:providerId/start", async (c) => {
     const rawProviderId = c.req.param("providerId");
     const providerId = parseProviderOAuthId(rawProviderId);
@@ -4373,10 +4609,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       );
     }
     const driver = options.providerOAuth?.[providerId];
-    if (!driver) {
+    const browserAuth = driver ? null : await pluginBrowserOAuth(options, providerId);
+    if (!driver && !browserAuth) {
+      const configuredBuiltin = providerId === "dreamina";
       return c.json(
         {
-          error: "OAuth provider is not configured",
+          error: configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
           mutation: hostMutationRejected(
             {
               operation: "provider_oauth_start",
@@ -4385,10 +4623,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                 id: providerOAuthEntityId(providerId),
               },
             },
-            "OAuth provider is not configured",
+            configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
           ),
         },
-        501,
+        configuredBuiltin ? 501 : 404,
       );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
@@ -4442,7 +4680,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         409,
       );
     }
-    const started = await driver.start();
+    const started = driver
+      ? await driver.start()
+      : {
+          verificationUri: browserAuth!.authorizationUrl,
+          userCode: "",
+          deviceCode: randomUUID(),
+          oauthState: JSON.stringify({
+            protocol: "clash.provider-oauth.browser/v1",
+            auth: browserAuth!,
+          } satisfies BrowserProviderOAuthState),
+        };
     const record = await db.update((state) => {
       return upsertProviderOAuth(state, userId, providerId, {
         ...(accountId ? { accountId } : {}),
@@ -4483,6 +4731,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     );
     return c.json({
       ...publicProviderOAuth(record),
+      ...(browserAuth ? {
+        flow: "browser",
+        callbackScheme: browserAuth.callback.scheme,
+      } : {}),
       ...(hostMutation ? { readToken } : {}),
       mutation,
     });
@@ -4509,10 +4761,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       );
     }
     const driver = options.providerOAuth?.[providerId];
-    if (!driver) {
+    const browserAuth = driver ? null : await pluginBrowserOAuth(options, providerId);
+    if (!driver && !browserAuth) {
+      const configuredBuiltin = providerId === "dreamina";
       return c.json(
         {
-          error: "OAuth provider is not configured",
+          error: configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
           mutation: hostMutationRejected(
             {
               operation: "provider_oauth_complete",
@@ -4521,15 +4775,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                 id: providerOAuthEntityId(providerId),
               },
             },
-            "OAuth provider is not configured",
+            configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
           ),
         },
-        501,
+        configuredBuiltin ? 501 : 404,
       );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
       accountId?: unknown;
       deviceCode?: unknown;
+      callbackUrl?: unknown;
     } & ProjectWriteBody;
     const accountId = stringBodyField(body.accountId);
     const preconditions = requestProjectWritePreconditions(c, body);
@@ -4581,7 +4836,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       typeof body.deviceCode === "string" && body.deviceCode.trim()
         ? body.deviceCode.trim()
         : existing?.deviceCode;
-    if (!deviceCode) {
+    const callbackUrl = stringBodyField(body.callbackUrl);
+    if (!deviceCode && !browserAuth) {
       return c.json(
         {
           error: "deviceCode is required",
@@ -4601,10 +4857,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     let completed: ProviderOAuthTokenResult;
     try {
-      completed = await driver.complete({
-        deviceCode,
-        ...(existing?.oauthState ? { oauthState: existing.oauthState } : {}),
-      });
+      completed = driver
+        ? await driver.complete({
+            deviceCode: deviceCode!,
+            ...(existing?.oauthState ? { oauthState: existing.oauthState } : {}),
+          })
+        : {
+            accessToken: browserOAuthToken(
+              callbackUrl ?? "",
+              parseBrowserProviderOAuthState(existing?.oauthState)?.auth ?? browserAuth!,
+            ),
+            tokenType: "Bearer",
+            accountLabel: existing?.accountLabel,
+          };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const record = await db.update((state) => {
@@ -4792,6 +5057,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const registrations = options.listPluginCards ? await options.listPluginCards() : [];
     return c.json({ actions: executablePluginActionDefinitions(registrations) });
   });
+  app.get("/api/v1/plugin-providers", async (c) => {
+    const registrations = options.listPluginProviders ? await options.listPluginProviders() : [];
+    return c.json({
+      providers: registrations.map((registration) => ({
+        pluginId: registration.pluginId,
+        pluginVersion: registration.version,
+        schemaHash: registration.schemaHash,
+        ...registration.document.spec,
+      })),
+    });
+  });
   app.get("/api/v1/models/catalog", async (c) => {
     const state = await db.load();
     const configuredProviders = publicProviderAccounts(
@@ -4800,7 +5076,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       state.providerOAuth,
     );
     const entries = listModelCatalogEntries({
-      models: await effectiveModelCards(state, userId, options.listPluginCards),
+      models: await effectiveModelCards(
+        state,
+        userId,
+        options.listPluginCards,
+        options.listPluginModelBindings,
+      ),
       configuredProviders,
     });
     const models = await Promise.all(entries.map(async (entry) => {
@@ -4828,22 +5109,45 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             },
           }
         : entry;
-      if (!route?.projectorPluginId || !route.projectorExportId || !options.resolvePluginBinding) {
+      if (!route || !options.resolvePluginBinding) {
         return entryWithReadiness;
       }
-      const projectorBinding = await options.resolvePluginBinding(
-        route.projectorPluginId,
-        route.projectorExportId,
-        "provider-projector",
-      );
+      const projectorBinding = route.projectorPluginId && route.projectorExportId
+        ? await options.resolvePluginBinding(
+            route.projectorPluginId,
+            route.projectorExportId,
+            "provider-projector",
+          )
+        : undefined;
+      const executorBinding = route.executorPluginId && route.executorExportId
+        ? await options.resolvePluginBinding(
+            route.executorPluginId,
+            route.executorExportId,
+            "provider-executor",
+          )
+        : undefined;
+      if (!projectorBinding && !executorBinding) return entryWithReadiness;
       return {
         ...entryWithReadiness,
-        selectedRoute: { ...route, projectorBinding },
+        selectedRoute: {
+          ...route,
+          ...(projectorBinding ? { projectorBinding } : {}),
+          ...(executorBinding ? { executorBinding } : {}),
+        },
         routes: entry.routes.map((candidate) =>
-          candidate.projectorPluginId === route.projectorPluginId
-            && candidate.projectorExportId === route.projectorExportId
-            ? { ...candidate, projectorBinding }
-            : candidate
+          ({
+            ...candidate,
+            ...(projectorBinding
+              && candidate.projectorPluginId === route.projectorPluginId
+              && candidate.projectorExportId === route.projectorExportId
+              ? { projectorBinding }
+              : {}),
+            ...(executorBinding
+              && candidate.executorPluginId === route.executorPluginId
+              && candidate.executorExportId === route.executorExportId
+              ? { executorBinding }
+              : {}),
+          })
         ),
       };
     }));
@@ -4854,7 +5158,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const body = await c.req.json().catch(() => null);
     const state = await db.load();
     const builtInModelIds = new Set(
-      (await effectiveModelCards(state, userId, options.listPluginCards))
+      (await effectiveModelCards(
+        state,
+        userId,
+        options.listPluginCards,
+        options.listPluginModelBindings,
+      ))
         .map((model) => model.id),
     );
     const config = normalizeModelCardConfigInput(
@@ -5010,6 +5319,56 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/v1/local/audio", async (c) =>
     c.json(publicLocalAudioConfig(await localAudioReadState(audioConfig))),
   );
+
+  // The queryable index over attached asset metadata identities. Rows mirror
+  // what workspace manifests already carry; bodies stay in the blob store.
+  app.put("/api/v1/local/asset-metadata", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as {
+      assetId?: unknown;
+      metadataKind?: unknown;
+      projectId?: unknown;
+      producer?: unknown;
+      identity?: unknown;
+    } | null;
+    if (
+      !body ||
+      typeof body.assetId !== "string" || !body.assetId.trim() ||
+      typeof body.metadataKind !== "string" || !body.metadataKind.trim() ||
+      typeof body.producer !== "string" || !body.producer.trim() ||
+      !body.identity || typeof body.identity !== "object" || Array.isArray(body.identity)
+    ) {
+      return c.json({ error: "assetId, metadataKind, producer, and an identity object are required" }, 400);
+    }
+    const identity = body.identity as Record<string, unknown>;
+    if (identity.kind !== body.metadataKind) {
+      return c.json({ error: `identity.kind must equal metadataKind ${body.metadataKind}` }, 400);
+    }
+    await db.upsertAssetMetadataIndex({
+      assetId: body.assetId,
+      metadataKind: body.metadataKind,
+      ...(typeof body.projectId === "string" && body.projectId.trim()
+        ? { projectId: body.projectId }
+        : {}),
+      ...(typeof identity.schemaVersion === "number"
+        ? { schemaVersion: identity.schemaVersion }
+        : {}),
+      ...(typeof identity.contentHash === "string" ? { contentHash: identity.contentHash } : {}),
+      ...(typeof identity.bodyHash === "string" ? { bodyHash: identity.bodyHash } : {}),
+      producer: body.producer,
+      ...(identity.summary === undefined ? {} : { summary: identity.summary }),
+      identity,
+    });
+    return c.json({ recorded: true, assetId: body.assetId, metadataKind: body.metadataKind });
+  });
+
+  app.get("/api/v1/local/asset-metadata", async (c) => {
+    const rows = await db.listAssetMetadataIndex({
+      ...(c.req.query("assetId") ? { assetId: c.req.query("assetId") } : {}),
+      ...(c.req.query("kind") ? { metadataKind: c.req.query("kind") } : {}),
+      ...(c.req.query("projectId") ? { projectId: c.req.query("projectId") } : {}),
+    });
+    return c.json({ metadata: rows });
+  });
   const resolveVoiceInputRoute = async () => {
     const resolvedSelection = audioConfig.getVoiceInputSelection
       ? await audioConfig.getVoiceInputSelection()
@@ -5025,7 +5384,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       state.providerOAuth,
     );
     const entry = listModelCatalogEntries({
-      models: await effectiveModelCards(state, userId, options.listPluginCards),
+      models: await effectiveModelCards(
+        state,
+        userId,
+        options.listPluginCards,
+        options.listPluginModelBindings,
+      ),
       configuredProviders,
     }).find((candidate) => candidate.model.id === resolvedSelection.model);
     const route = entry?.selectedRoute ?? entry?.routes.find((candidate) => candidate.apiShape === "local-asr");
@@ -5379,7 +5743,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }
       const state = await db.load();
       const catalog = listModelCatalogEntries({
-        models: await effectiveModelCards(state, userId, options.listPluginCards),
+        models: await effectiveModelCards(
+          state,
+          userId,
+          options.listPluginCards,
+          options.listPluginModelBindings,
+        ),
         configuredProviders: publicProviderAccounts(
           state.providerAccounts,
           userId,

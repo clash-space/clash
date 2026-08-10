@@ -6,7 +6,9 @@ describe("CLI entrypoint argv contract", () => {
     "%s forces Node argv semantics under ELECTRON_RUN_AS_NODE",
     (file) => {
       const source = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
-      expect(source).toContain('program.parse(process.argv, { from: "node" })');
+      // Either parse form satisfies the contract; what matters is that argv is
+      // read with Node semantics rather than Electron's.
+      expect(source).toMatch(/program\.parse(Async)?\(process\.argv, \{ from: "node" \}\)/);
     },
   );
 });

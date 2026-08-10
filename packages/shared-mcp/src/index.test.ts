@@ -346,6 +346,24 @@ test("the root Clash tool reveals live leaf contracts and dispatches them withou
     initialTools.tools.find(({ name }) => name === "clash_canvas")?.description ?? "",
     /operation.*arguments/i,
   );
+  const canvasInputSchema = initialTools.tools.find(
+    ({ name }) => name === "clash_canvas",
+  )?.inputSchema as {
+    properties?: Record<string, { description?: unknown }>;
+  };
+  const compositionInputSchema = initialTools.tools.find(
+    ({ name }) => name === "clash_composition",
+  )?.inputSchema as {
+    properties?: Record<string, { description?: unknown }>;
+  };
+  assert.match(
+    String(canvasInputSchema.properties?.operation?.description ?? ""),
+    /omit.*entirely.*live contracts.*empty string.*list_operations.*contracts/i,
+  );
+  assert.match(
+    String(compositionInputSchema.properties?.operation?.description ?? ""),
+    /omit.*entirely.*live contracts.*empty string.*list_operations.*contracts/i,
+  );
 
   const rootNavigation = await client.callTool({
     name: "clash",

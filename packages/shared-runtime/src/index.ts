@@ -1,6 +1,16 @@
 export type RuntimeMode = "hosted" | "local" | "desktop";
 
 export {
+  METADATA_BODY_BLOB_DIRNAME,
+  canonicalMetadataBody,
+  metadataBodyBlobPath,
+  metadataBodyContentHash,
+  readMetadataBody,
+  storeMetadataBody,
+  type StoredMetadataBody,
+} from "./metadata-body-blobs.js";
+
+export {
   planCascadeTick,
   type CascadeAdoptDecision,
   type CascadeClearDecision,
@@ -401,3 +411,10 @@ export function webSocketUrl(
   const normalizedPath = withLeadingSlash(path);
   return cfg.wsBaseUrl ? `${cfg.wsBaseUrl}${normalizedPath}` : normalizedPath;
 }
+
+export {
+  resolveDaemonNodeRuntime,
+  defaultDaemonNodeCandidates,
+  type DaemonNodeRuntime,
+  type DaemonNodeRuntimeSource,
+} from "./local-daemon-runtime.js";

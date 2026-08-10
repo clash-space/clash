@@ -8,11 +8,13 @@ export function validateAgentObservation(options: {
   observedVersion?: string;
   currentVersion: string;
 }): AgentObservationResult {
-  if (options.actorClientType !== "agent") return { ok: true };
-
   const operation = options.operation.trim() || "writing";
   const observedVersion = options.observedVersion?.trim();
   if (!observedVersion) {
+    // Proof of read is mandatory for agents. A human-driven CLI write may skip
+    // it -- payload size and client label pick the transport, never the CAS
+    // contract -- but a supplied version is always compared below.
+    if (options.actorClientType !== "agent") return { ok: true };
     return {
       ok: false,
       code: "READ_REQUIRED",

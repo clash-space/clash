@@ -88,9 +88,9 @@ clash projects get
 clash asset get
 clash asset ref get
 clash models providers
-clash production project-storyboard-prompt-pack
-clash production plan-review-gate
-clash production apply-metadata
+clash assets metadata kinds
+clash assets metadata list
+clash assets metadata get
 ```
 
 Reads expose semantic state needed to choose an operation. Canvas node reads
@@ -169,14 +169,16 @@ clash text apply --node <text-node-id> --json
 
 ### Asset metadata
 
-`clash production apply-metadata` applies an explicit metadata-fill action,
-materializes the editable primary metadata JSON, writes a source-provenance
-manifest, and records `asset-metadata:<projection-path>`. After native editing,
-`apply-metadata-projection` consumes the observation and updates the asset row.
+`clash assets metadata set` attaches a declared kind, stores any body as an
+immutable content-addressed blob, materializes the editable metadata JSON,
+writes a source-provenance manifest, and records
+`asset-metadata:<projection-path>`. After native editing,
+`clash assets metadata apply` consumes that observation -- or an explicit
+`--expect-version` token outside a linked worktree -- and updates the asset row.
+The fill envelope is synthesized internally; there is no action file to author.
 
-Derived beat, transcript, storyboard, rights, QA, and provenance files are
-outputs unless a command explicitly declares them editable and provides an
-apply action.
+A metadata body is an output, not editable state: it is addressed by hash and
+rewritten only by attaching a new one.
 
 ### Storyboard prompt packs and review gates
 

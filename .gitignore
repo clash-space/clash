@@ -115,3 +115,10 @@ packages/remotion-components/build
 # React Router 7 framework-mode typegen output (no longer used; kept ignored
 # in case `react-router build` is ever run by mistake)
 .react-router/
+
+# VitePress local build cache
+apps/docs/.vitepress/cache/
+apps/docs/.vitepress/dist/
+
+# Agent tooling scratch (missions, artifacts) -- never part of the product.
+.pi-subagents/

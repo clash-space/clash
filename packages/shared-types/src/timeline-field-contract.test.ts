@@ -3,7 +3,9 @@ import {
   TIMELINE_DSL_DEFINITION,
   TIMELINE_DSL_FIELD_ANNOTATIONS,
   TIMELINE_DSL_FIELD_CATALOG,
+  TIMELINE_ITEM_TRANSFORM_SEMANTICS,
   TIMELINE_OPERATION_CATALOG,
+  TimelineItemPropertiesSchema,
   TimelineDslItemSchema,
   TimelineDslSchema,
   TimelineDerivedAssetSchema,
@@ -25,6 +27,33 @@ function item(
 }
 
 describe("Timeline field descriptor consumers", () => {
+  it("publishes item transform units and the contain-fit exception to every agent schema consumer", () => {
+    expect(TIMELINE_ITEM_TRANSFORM_SEMANTICS).toEqual({
+      position: {
+        fields: ["properties.x", "properties.y"],
+        unit: "composition-pixels",
+        origin: "composition-center",
+      },
+      staticSize: {
+        fields: ["properties.width", "properties.height"],
+        unit: "unitless-source-size-multiplier",
+        outputPixels: false,
+        defaults: { width: 1, height: 1 },
+        oneByOneBehavior: "contain-fit-within-composition",
+      },
+      animatedScale: {
+        field: "keyframes.scale",
+        unit: "unitless-multiplier-of-static-size",
+      },
+    });
+    expect((TIMELINE_DSL_DEFINITION.features as any).itemTransform).toEqual(
+      TIMELINE_ITEM_TRANSFORM_SEMANTICS,
+    );
+    expect(TimelineItemPropertiesSchema.shape.width.description).toMatch(/unitless/i);
+    expect(TimelineItemPropertiesSchema.shape.width.description).toMatch(/not output pixels/i);
+    expect(TimelineItemPropertiesSchema.shape.height.description).toMatch(/contain-fit/i);
+  });
+
   it("publishes the complete serializable field catalog with the contract", () => {
     expect((TIMELINE_DSL_DEFINITION as any).fieldCatalog).toEqual(
       TIMELINE_DSL_FIELD_CATALOG,

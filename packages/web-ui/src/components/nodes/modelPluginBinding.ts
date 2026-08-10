@@ -5,6 +5,13 @@ export interface ResolvedModelProjectorBinding {
     persistRouteBinding: boolean;
 }
 
+export function preferredModelRoutePluginBinding(route: {
+    executorBinding?: ExecutablePluginBinding;
+    projectorBinding?: ExecutablePluginBinding;
+} | null | undefined): ExecutablePluginBinding | undefined {
+    return route?.executorBinding ?? route?.projectorBinding;
+}
+
 /**
  * Preserve an immutable historical pin when the route still names the same
  * projector. A route change is a semantic model change, so its current exact

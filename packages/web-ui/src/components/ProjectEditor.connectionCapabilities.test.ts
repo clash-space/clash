@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { sourceContains, sourceMatches } from "../test-support/source-match";
 
 describe("ProjectEditor generation connection guard", () => {
     it("checks the selected model capability before adding a generation edge", () => {
@@ -9,7 +10,7 @@ describe("ProjectEditor generation connection guard", () => {
             "utf8",
         );
 
-        expect(source).toContain("generationConnectionAcceptsSource");
-        expect(source).toMatch(/tgt\?\.type === 'action-badge' && !generationConnectionAcceptsSource\(\{/);
+        expect(sourceContains(source, "generationConnectionAcceptsSource"), "mechanism missing").toBe(true);
+        expect(sourceMatches(source, /tgt\?\.type === 'action-badge' && !generationConnectionAcceptsSource\(\{/), "mechanism missing").toBe(true);
     });
 });

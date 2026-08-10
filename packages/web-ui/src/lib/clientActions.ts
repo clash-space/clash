@@ -10,6 +10,7 @@
  */
 import { runtimeApiUrl } from "./runtimeConfig";
 import type {
+  ExecutablePluginProviderDefinition,
   ModelCatalogEntry,
   ProviderAccountAvailability,
   UserModelCardConfig,
@@ -75,6 +76,7 @@ export type ModelProviderAccountInfo = ProviderAccountAvailability & {
   credentials?: Record<string, string>;
   createdAt?: number | string | null;
   updatedAt?: number | string | null;
+  pluginProvider?: PluginProviderInfo;
 };
 export type ModelCatalogEntryInfo = ModelCatalogEntry;
 export type ModelCardConfigInfo = UserModelCardConfig;
@@ -90,8 +92,17 @@ export interface ProviderOAuthInfo {
   intervalSeconds?: number;
   accountLabel?: string;
   error?: string;
+  flow?: "browser";
+  callbackScheme?: string;
+  importedFrom?: string;
   hasAccessToken: boolean;
 }
+
+export type PluginProviderInfo = ExecutablePluginProviderDefinition & {
+  pluginId: string;
+  pluginVersion: string;
+  schemaHash: `sha256:${string}`;
+};
 
 export interface RegistryItem {
   id: string;
@@ -311,6 +322,11 @@ export async function listProviderOAuth(): Promise<ProviderOAuthInfo[]> {
   return data.providers;
 }
 
+export async function listPluginProviders(): Promise<PluginProviderInfo[]> {
+  const data = await jsonFetch<{ providers: PluginProviderInfo[] }>("/api/v1/plugin-providers");
+  return data.providers;
+}
+
 export async function startProviderOAuth(providerId: string, accountId?: string, accountLabel?: string): Promise<ProviderOAuthInfo> {
   return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/start`, {
     method: "POST",
@@ -318,10 +334,26 @@ export async function startProviderOAuth(providerId: string, accountId?: string,
   });
 }
 
-export async function completeProviderOAuth(providerId: string, deviceCode?: string, accountId?: string): Promise<ProviderOAuthInfo> {
+export async function completeProviderOAuth(
+  providerId: string,
+  deviceCode?: string,
+  accountId?: string,
+  callbackUrl?: string,
+): Promise<ProviderOAuthInfo> {
   return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/complete`, {
     method: "POST",
-    body: JSON.stringify({ accountId, deviceCode }),
+    body: JSON.stringify({ accountId, deviceCode, callbackUrl }),
+  });
+}
+
+export async function importLocalProviderToken(
+  providerId: string,
+  accountId?: string,
+  accountLabel?: string,
+): Promise<ProviderOAuthInfo> {
+  return jsonFetch(`/api/v1/provider-oauth/${encodeURIComponent(providerId)}/import-local`, {
+    method: "POST",
+    body: JSON.stringify({ accountId, accountLabel }),
   });
 }
 

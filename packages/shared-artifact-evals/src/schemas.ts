@@ -154,6 +154,13 @@ const VisualFramesRubricSchema = RubricBaseSchema.extend({
   height: z.number().int().positive(),
   minDistinctPairs: z.number().int().positive(),
   minMeanAbsoluteDifference: z.number().min(0).max(1),
+  foregroundCoverage: z
+    .object({
+      backgroundTolerance: z.number().nonnegative().max(255),
+      minRatio: z.number().positive().max(1),
+    })
+    .strict()
+    .optional(),
   safeArea: z
     .object({
       marginPercent: z.number().positive().max(0.25),

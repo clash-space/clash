@@ -157,47 +157,41 @@ updates the projection without running asset GC deletion.
 `ref get` records the project membership relation version in cwd state;
 `ref delete` consumes it implicitly and still requires `--yes`.
 
-## production storyboard prompt packs
+## asset metadata
 
 ```bash
-clash production project-storyboard-prompt-pack --action actions/storyboard-review.json --out plans/prompt-pack.json --json
-clash production apply-storyboard-prompt-pack --file plans/prompt-pack.json --json
-clash production replace-storyboard-prompt-pack --file plans/prompt-pack.json --json
+clash assets metadata kinds --json
+clash assets metadata list --asset <asset-id> --json
+clash assets metadata get --asset <asset-id> --kind media.transcript --json
+clash assets metadata get --asset <asset-id> --kind media.transcript --body --json
+clash assets metadata set --asset <asset-id> --kind media.transcript --metadata meta.json --body words.json --json
+clash assets metadata apply --file projections/metadata/<asset>.<kind>.json --expect-version <token> --json
+clash assets metadata validate --kind <kind> --metadata meta.json --json
 ```
 
-`project-storyboard-prompt-pack` is the read step: it writes the editable
-prompt-pack JSON and records its version in `.clash/observed.json`.
-`apply-storyboard-prompt-pack` writes the managed storyboard projection only
-if the observed version still matches. `replace-storyboard-prompt-pack` uses
-the same implicit observation but creates a copy-on-write projection under
-`projections/storyboards/<asset>.prompt-pack.<hash>.cow.json`; it does not
-mutate the existing managed projection or existing downstream references in
-place.
+`--kind` is a parameter, never a command: declaring a new kind adds no CLI
+surface. `kinds` lists what this build accepts — the product-declared kinds plus
+any workspace kind declared under `.clash/metadata-kinds/*.json`. An undeclared
+kind is refused everywhere.
 
-## production metadata projections
+`set` attaches the identity to the asset and stores any `--body` as an immutable
+content-addressed blob, deduplicated by hash; it also materializes an editable
+projection under `projections/metadata/` and returns its CAS token.
 
-```bash
-clash production apply-metadata --action actions/metadata-fill.json --assets assets/manifest.json --json
-clash production apply-metadata-projection --file projections/metadata/<asset>.<kind>.json --assets assets/manifest.json --json
-```
+After editing that JSON, `apply` refuses to write unless it can prove you edited
+what you read. Inside a cwd linked through `.clash/project.toml` the read is
+recorded implicitly and no token is needed. Anywhere else, spend the token from
+`set` with `--expect-version`; the option is not spelled `--version`, which the
+global version flag would swallow. A token is single-use: replaying a spent one
+is rejected as stale, and an apply with no token at all fails `READ_REQUIRED`
+rather than forcing the write.
 
-`apply-metadata` applies the explicit metadata-fill action, materializes an
-editable metadata projection, and records its version. After editing that JSON,
-`apply-metadata-projection` performs the read-presence and stale-version checks
-implicitly before updating the asset metadata. The sibling manifest records
-projection provenance; it is not a write token and should not be edited.
+`get --body` returns the stored blob
+verbatim and fails loudly if the blob no longer hashes to its recorded address.
 
-## production review gates
-
-```bash
-clash production plan-review-gate --pipeline pipeline.manifest.json --stage export --artifact projections/timelines/main.timeline.yaml --out reviews/gates/export.review-gate.json --json
-clash production approve-review-gate --gate reviews/gates/export.review-gate.json --reviewer qa-agent --decision approve --json
-```
-
-`plan-review-gate` writes the gate JSON and records its path-bound version in
-`.clash/observed.json`. `approve-review-gate` consumes that observation
-implicitly. A copied, unread, or stale gate is rejected even when its current
-contents happen to match another gate.
+Attaching does not require an action file — the fill envelope is synthesized
+internally, and every attach appends to the asset's `metadataFills` provenance
+ledger.
 
 ## tasks
 
@@ -208,12 +202,37 @@ clash tasks wait --task-id <id> --timeout 120 --json
 
 ## actions
 
+An executable plugin is written as ordinary source in your own working directory,
+then registered. Registration is what hands it to Clash: `activate` validates the
+draft, runs its declared contracts, asks for approval if it wants new capabilities,
+and atomically stores the result. From that point Clash owns the stored copy --
+content-hashed, recorded as an activation, and rollback-protected -- so the draft is
+the input and the stored copy is the output.
+
+For that reason a draft directory must live outside Clash's own storage. Pointing
+one inside it is refused, because freely editable source has no place among attested
+state.
+
 ```bash
-clash action list --json           # List installed actions
-clash action search --query "..." --json
-clash action install --id <id>
-clash action uninstall --id <id>
+# Author a plugin
+clash action init-plugin ./my-plugin --id my-plugin --name "My Plugin"
+clash action validate ./my-plugin            # schema + declared contract tests
+clash action activate ./my-plugin            # register; Clash stores and owns it
+
+# Edit one that is already active
+clash action checkout <id> ./my-plugin       # copy it out to a draft
+clash action validate ./my-plugin
+clash action activate ./my-plugin
+
+# Manage what is registered
+clash action list --local --json
+clash action search <query> --json
+clash action install <id>                    # fetch from the server registry
+clash action uninstall <id>
+clash action rollback <id>                   # restore the retained prior version
 ```
+
+The bridge hot-reloads an activated plugin, so no daemon restart is needed.
 
 ## remote worker secrets
 

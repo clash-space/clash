@@ -1,6 +1,20 @@
+import { createHash } from "node:crypto";
+
 import type { ProductOperationObservation } from "./types";
 
 const DISCOVERY_FLAGS = new Set(["--help", "-h", "--version", "-V"]);
+const MAX_REPORTED_CLI_ARGUMENT_BYTES = 512;
+
+export function formatCliInvocation(argv: string[]): string {
+  return argv
+    .map((argument) => {
+      const bytes = Buffer.byteLength(argument);
+      if (bytes <= MAX_REPORTED_CLI_ARGUMENT_BYTES) return argument;
+      const sha256 = createHash("sha256").update(argument).digest("hex");
+      return `<arg:${bytes}B sha256:${sha256}>`;
+    })
+    .join(" ");
+}
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (typeof value === "string") {
@@ -154,8 +168,11 @@ const PRODUCT_OPERATION_RULES: Record<ProductOperationId, ProductOperationRule> 
     cliPrefixes: [["timeline", "render"]],
   },
   "timeline.save": {
-    mcpTools: ["clash_timeline_save"],
-    cliPrefixes: [["timeline", "apply"]],
+    mcpTools: ["clash_timeline_save", "clash_timeline_create"],
+    cliPrefixes: [
+      ["timeline", "apply"],
+      ["timeline", "create"],
+    ],
   },
   "timeline.validate": {
     mcpTools: ["clash_timeline_validate"],
@@ -220,7 +237,7 @@ export function matchRequiredProductOperations(input: {
       observedProductOperations.push({
         operation,
         transport: "cli",
-        invocation: cliArgv.join(" "),
+        invocation: formatCliInvocation(cliArgv),
       });
     }
   }

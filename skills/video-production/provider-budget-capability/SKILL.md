@@ -48,16 +48,7 @@ For managed local execution, write a readable request file:
 }
 ```
 
-Then ask Clash to write the gate artifact:
-
-```bash
-clash production plan-dry-run-cost-gate \
-  --request plans/generate.dry-run-request.json \
-  --out reviews/gates/generate.dry-run-cost-gate.json \
-  --json
-```
-
-The result uses `kind: "clash.workflow.dry-run-cost-gate"` and records
+Then write the gate artifact yourself. It uses `kind: "clash.workflow.dry-run-cost-gate"` and records
 availability, estimated cost/time, max-cost blocking, rejected fallback options,
 `fallbackUsed: false`, and `executionAllowed`. This command must not execute
 generation, download, render, or provider calls.

@@ -129,6 +129,14 @@ export interface ProjectStatusStorage {
         immutable: true;
         agentWritable: false;
       };
+      /** Bodies of attached asset metadata, kept out of any rewritten manifest. */
+      assetMetadataBodies: {
+        kind: "content-addressed-files";
+        path: string;
+        mediaType: "application/json";
+        immutable: true;
+        agentWritable: false;
+      };
     };
   };
   contentModel: {
@@ -456,6 +464,7 @@ export function buildProjectStatus(
   const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
   const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
   const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
+  const metadataBodyBlobRoot = joinPath(localApiDataDir, "metadata-blobs");
   const loroReplicaRoot = joinPath(localApiProjectRoot, "loro");
   const loroSnapshotPath = joinPath(loroReplicaRoot, "snapshot.bin");
   const loroUpdatesLogPath = joinPath(loroReplicaRoot, "updates.log");
@@ -476,6 +485,7 @@ export function buildProjectStatus(
     loroUpdatesLogPath,
     mediaAssetBlobRoot,
     textRevisionBlobRoot,
+    metadataBodyBlobRoot,
     runtimeRoot,
   ];
   const currentWorkspace: ProjectStatusCurrentWorkspace = {
@@ -614,6 +624,13 @@ export function buildProjectStatus(
             kind: "content-addressed-files",
             path: textRevisionBlobRoot,
             mediaType: "text/markdown",
+            immutable: true,
+            agentWritable: false,
+          },
+          assetMetadataBodies: {
+            kind: "content-addressed-files",
+            path: metadataBodyBlobRoot,
+            mediaType: "application/json",
             immutable: true,
             agentWritable: false,
           },

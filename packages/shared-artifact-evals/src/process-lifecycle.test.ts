@@ -56,14 +56,6 @@ async function waitForGone(pid: number): Promise<boolean> {
   return !processExists(pid);
 }
 
-async function jsonLines(path: string): Promise<Array<Record<string, unknown>>> {
-  return (await readFile(path, "utf8"))
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
-}
-
 afterEach(() => {
   for (const pid of cleanupPids) {
     if (!processExists(pid)) continue;
@@ -94,42 +86,46 @@ describe.each([
     await mkdir(suiteRoot);
     await writeFile(
       suitePath,
-      `${JSON.stringify({
-        schemaVersion: 1,
-        id: "signal-suite",
-        title: "Signal suite",
-        cases: [
-          {
-            id: "interrupted-case",
-            title: "Interrupted case",
-            category: "timeline",
-            outcome: {
-              objective: "Leave recoverable partial evidence.",
-              acceptanceCriteria: ["partial.txt exists"],
-              deliverables: [
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          id: "signal-suite",
+          title: "Signal suite",
+          cases: [
+            {
+              id: "interrupted-case",
+              title: "Interrupted case",
+              category: "timeline",
+              outcome: {
+                objective: "Leave recoverable partial evidence.",
+                acceptanceCriteria: ["partial.txt exists"],
+                deliverables: [
+                  {
+                    artifactId: "result",
+                    kind: "report",
+                    description: "Result",
+                  },
+                ],
+              },
+              passScore: 100,
+              timeoutMs: 60_000,
+              skills: [],
+              rubric: [
                 {
+                  id: "result-exists",
+                  type: "artifact-exists",
                   artifactId: "result",
                   kind: "report",
-                  description: "Result",
+                  weight: 1,
+                  required: true,
                 },
               ],
             },
-            passScore: 100,
-            timeoutMs: 60_000,
-            skills: [],
-            rubric: [
-              {
-                id: "result-exists",
-                type: "artifact-exists",
-                artifactId: "result",
-                kind: "report",
-                weight: 1,
-                required: true,
-              },
-            ],
-          },
-        ],
-      }, null, 2)}\n`,
+          ],
+        },
+        null,
+        2,
+      )}\n`,
       "utf8",
     );
     await writeFile(
@@ -140,10 +136,10 @@ describe.each([
         'const fs = require("node:fs")',
         'const path = require("node:path")',
         'const grandchild = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {stdio:"ignore"})',
-        'fs.writeFileSync(process.env.BENCH_SIGNAL_PID_PATH, JSON.stringify({agentPid:process.pid,grandchildPid:grandchild.pid}))',
+        "fs.writeFileSync(process.env.BENCH_SIGNAL_PID_PATH, JSON.stringify({agentPid:process.pid,grandchildPid:grandchild.pid}))",
         'fs.writeFileSync(path.join(process.env.CLASH_BENCH_WORKSPACE, "partial.txt"), "checkpoint")',
         'process.stdout.write("agent-ready\\n")',
-        'setInterval(() => {}, 1000)',
+        "setInterval(() => {}, 1000)",
       ].join("\n"),
       "utf8",
     );
@@ -204,18 +200,16 @@ describe.each([
         "utf8",
       ),
     ).resolves.toBe("checkpoint");
-    const ledger = await jsonLines(
-      join(outputRoot, "signal-run", "attempts.jsonl"),
-    );
+    const { attempts: ledger } = JSON.parse(
+      await readFile(
+        join(outputRoot, "signal-run", "suite-progress.json"),
+        "utf8",
+      ),
+    ) as { attempts: Array<Record<string, unknown>> };
     expect(ledger.map(({ event }) => event)).toEqual(["started", "completed"]);
     await expect(
       readFile(
-        join(
-          outputRoot,
-          "signal-run",
-          "interrupted-case",
-          "case-report.json",
-        ),
+        join(outputRoot, "signal-run", "interrupted-case", "case-report.json"),
         "utf8",
       ),
     ).resolves.toContain('"signal": "SIGTERM"');

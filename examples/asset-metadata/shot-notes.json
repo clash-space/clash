@@ -1,0 +1,8 @@
+{
+  "kind": "team.shot-notes",
+  "schemaVersion": 1,
+  "notes": [
+    { "shot": "A1", "note": "usable, slight boom shadow at 00:04", "keep": true },
+    { "shot": "A2", "note": "subject looks off-camera", "keep": false }
+  ]
+}

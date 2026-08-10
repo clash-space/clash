@@ -17,7 +17,9 @@
     "./lib/utils/*": "./src/lib/utils/*.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.140",
@@ -48,7 +50,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
-    "@remotion/player": "4.0.370",
+    "@remotion/player": "4.0.507",
     "@uiw/react-md-editor": "^4.0.8",
     "@use-gesture/react": "^10.3.1",
     "@xyflow/react": "^12.10.2",
@@ -70,7 +72,7 @@
     "react-i18next": "^17.0.8",
     "react-markdown": "^10.1.0",
     "react-moveable": "^0.56.0",
-    "remotion": "4.0.370",
+    "remotion": "4.0.507",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.6.0",
     "wavesurfer.js": "^7.12.11",

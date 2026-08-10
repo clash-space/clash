@@ -80,7 +80,9 @@ export function localExecutableModelCards(models: readonly ModelCard[]): ModelCa
   return models.map((model) => ({
     ...model,
     providerImplementations: (model.providerImplementations ?? [])
-      .filter((implementation) => LOCAL_EXECUTABLE_MODEL_API_SHAPES.has(implementation.apiShape)),
+      .filter((implementation) =>
+        LOCAL_EXECUTABLE_MODEL_API_SHAPES.has(implementation.apiShape)
+        || !!implementation.executorExportId),
   }));
 }
 
@@ -94,7 +96,15 @@ export interface MockMediaGenerationInput {
   prompt: string;
   model: string;
   aspectRatio?: string;
-  duration?: number;
+  /**
+   * Seconds, or a sentinel the Card offers.
+   *
+   * Several models let the provider choose the length, and they spell that `auto` on the
+   * menu next to the numbers. Typing this as `number` forced a number to be invented for
+   * them, and a model whose menu omitted it -- `seedance-2-fast-startend` offers
+   * [auto, 4, 6, 8, 10, 15] -- failed validation on a value no one had asked for.
+   */
+  duration?: number | string;
   modelParams?: Record<string, unknown>;
   startFrameUrl?: string;
   endFrameUrl?: string;
@@ -124,6 +134,43 @@ function promptForRoute(input: MockMediaGenerationInput, route: ModelUpstreamRou
     },
     tokens: binding.tokens ?? {},
   });
+}
+
+/**
+ * Spell a reference's media type the way upstreams that derive a filename accept.
+ *
+ * MiniMax reads the mime out of a data URL and turns it into an extension, then checks
+ * that extension against its own allow-list. `audio/mpeg` becomes `.mpeg`, which is not
+ * on it, so an MP3 our own TTS had just produced was rejected with
+ * `audio format ".mpeg" not allowed` -- after the video task had been submitted and
+ * queued. The card already knows the answer: MINIMAX_H3_AUDIO_CONSTRAINTS lists
+ * `fileExtensions: ['wav', 'mp3']` next to a mimeTypes list that includes `audio/mpeg`.
+ */
+const REFERENCE_MIME_ALIASES: Readonly<Record<string, string>> = {
+  // Same bytes, and the spelling whose derived extension is allowed.
+  "audio/mpeg": "audio/mp3",
+  "audio/x-wav": "audio/wav",
+  "image/jpg": "image/jpeg",
+};
+
+/**
+ * The duration in seconds, or undefined when the Card left the choice to the provider.
+ *
+ * A Card may offer `auto` alongside the numbers, and some providers take only a number.
+ * Dropping the sentinel is the right translation for those: omitting the field is exactly
+ * how their API expresses "you decide".
+ */
+function durationSecondsOrUndefined(duration: number | string | undefined): number | undefined {
+  if (typeof duration === "number") return duration;
+  if (typeof duration === "string") {
+    const parsed = Number(duration);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+export function referenceDataUrlMimeType(contentType: string): string {
+  return REFERENCE_MIME_ALIASES[contentType] ?? contentType;
 }
 
 async function loadReferenceData(fetchImpl: typeof fetch, mediaUrl: string): Promise<{ data: Uint8Array; mediaType: string }> {
@@ -219,6 +266,8 @@ export interface MockFalExternalAigcServiceOptions {
   localTts?: (input: MockMediaGenerationInput) => Promise<MockMediaGenerationResult>;
   /** Kernel-owned adapter for the Bridge executable-plugin host. */
   providerPluginProjector?: ProviderPluginProjector;
+  /** Kernel-owned adapter for a plugin-defined provider's full lifecycle. */
+  providerPluginExecutor?: ProviderPluginExecutor;
 }
 
 export interface ProviderPluginProjectorRequest {
@@ -248,6 +297,40 @@ export interface ProviderPluginProjectorResponse {
 export type ProviderPluginProjector = (
   request: ProviderPluginProjectorRequest,
 ) => Promise<ProviderPluginProjectorResponse>;
+
+export interface ProviderPluginExecutorRequest {
+  pluginId: string;
+  exportId: string;
+  kind: ModelKind;
+  taskId: string;
+  projectId: string;
+  nodeId?: string;
+  binding?: ExecutablePluginBinding;
+  input: {
+    values: Record<string, unknown>;
+    references: ExecutablePluginReference[];
+  };
+}
+
+export interface ProviderPluginExecutorMedia {
+  url: string;
+  contentType?: string;
+  requestId?: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  waveform?: number[];
+  transcript?: string;
+}
+
+export interface ProviderPluginExecutorResponse {
+  binding: ExecutablePluginBinding;
+  media: ProviderPluginExecutorMedia;
+}
+
+export type ProviderPluginExecutor = (
+  request: ProviderPluginExecutorRequest,
+) => Promise<ProviderPluginExecutorResponse>;
 
 /** Only transport/host absence may use the temporary built-in compatibility projector. */
 export class ProviderPluginHostUnavailableError extends Error {
@@ -626,7 +709,7 @@ async function generateGeminiOmniVideo(
     model: route.upstreamModel,
     input: await geminiOmniInput(input, options.fetch),
     aspectRatio: input.aspectRatio === "9:16" ? "9:16" : "16:9",
-    duration: input.duration ?? numberParam(input.modelParams, "duration", 5),
+    duration: durationSecondsOrUndefined(input.duration) ?? numberParam(input.modelParams, "duration", 5),
     fetch: providerFetch,
   });
   const interactionId = geminiOmniInteractionId(interaction);
@@ -841,7 +924,7 @@ function googleAgentPlatformVideoBody(input: MockMediaGenerationInput): Record<s
     sampleCount: Math.max(1, Math.min(4, numberParam(params, "count", 1))),
     personGeneration: stringParam(params, "person_generation") || "allow_adult",
   };
-  const durationSeconds = input.duration ?? numberParam(params, "duration", 0);
+  const durationSeconds = durationSecondsOrUndefined(input.duration) ?? numberParam(params, "duration", 0);
   if (durationSeconds > 0) parameters.durationSeconds = durationSeconds;
   const negativePrompt = stringParam(params, "negative_prompt") || stringParam(params, "negativePrompt");
   if (negativePrompt) parameters.negativePrompt = negativePrompt;
@@ -1338,6 +1421,112 @@ function materializeProviderPluginAssets(value: unknown, assetUrls: ReadonlyMap<
   return value;
 }
 
+function providerPluginExecutorRequest(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+): ProviderPluginExecutorRequest {
+  if (!route.executorPluginId || !route.executorExportId) {
+    throw new Error(`Route ${route.modelCode} has no executable provider executor.`);
+  }
+  if (input.pluginBinding && (
+    input.pluginBinding.pluginId !== route.executorPluginId
+    || input.pluginBinding.exportId !== route.executorExportId
+  )) {
+    throw new Error(
+      `Pinned plugin ${input.pluginBinding.pluginId}/${input.pluginBinding.exportId} does not match `
+        + `route executor ${route.executorPluginId}/${route.executorExportId}.`,
+    );
+  }
+  return {
+    pluginId: route.executorPluginId,
+    exportId: route.executorExportId,
+    kind,
+    taskId: input.taskId,
+    projectId: input.projectId ?? "local",
+    ...(input.nodeId ? { nodeId: input.nodeId } : {}),
+    ...(input.pluginBinding ? { binding: input.pluginBinding } : {}),
+    input: {
+      values: {
+        modelId: route.modelCode,
+        upstreamModel: route.upstreamModel,
+        prompt: promptForRoute(input, route),
+        ...(input.aspectRatio !== undefined ? { aspectRatio: input.aspectRatio } : {}),
+        ...(input.duration !== undefined ? { duration: input.duration } : {}),
+        modelParams: input.modelParams ?? {},
+        ...(input.startFrameUrl ? { startFrameUrl: input.startFrameUrl } : {}),
+        ...(input.endFrameUrl ? { endFrameUrl: input.endFrameUrl } : {}),
+        ...(input.referenceImageUrls?.length ? { referenceImageUrls: input.referenceImageUrls } : {}),
+        ...(input.referenceVideoUrls?.length ? { referenceVideoUrls: input.referenceVideoUrls } : {}),
+        ...(input.referenceAudioUrls?.length ? { referenceAudioUrls: input.referenceAudioUrls } : {}),
+      },
+      references: [],
+    },
+  };
+}
+
+async function generatePluginProviderMedia(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch" | "providerPluginExecutor">>,
+): Promise<MockMediaGenerationResult> {
+  const [startFrameUrl, endFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls] =
+    await Promise.all([
+      input.startFrameUrl
+        ? inlineLoopbackReference(options.fetch, input.startFrameUrl)
+        : Promise.resolve(undefined),
+      input.endFrameUrl
+        ? inlineLoopbackReference(options.fetch, input.endFrameUrl)
+        : Promise.resolve(undefined),
+      Promise.all((input.referenceImageUrls ?? []).map((url) =>
+        inlineLoopbackReference(options.fetch, url))),
+      Promise.all((input.referenceVideoUrls ?? []).map((url) =>
+        inlineLoopbackReference(options.fetch, url))),
+      Promise.all((input.referenceAudioUrls ?? []).map((url) =>
+        inlineLoopbackReference(options.fetch, url))),
+    ]);
+  const response = await options.providerPluginExecutor(
+    providerPluginExecutorRequest({
+      ...input,
+      ...(startFrameUrl ? { startFrameUrl } : {}),
+      ...(endFrameUrl ? { endFrameUrl } : {}),
+      ...(referenceImageUrls.length ? { referenceImageUrls } : {}),
+      ...(referenceVideoUrls.length ? { referenceVideoUrls } : {}),
+      ...(referenceAudioUrls.length ? { referenceAudioUrls } : {}),
+    }, kind, route),
+  );
+  if (response.binding.pluginId !== route.executorPluginId
+    || response.binding.exportId !== route.executorExportId) {
+    throw new Error(
+      `Provider plugin resolved ${response.binding.pluginId}/${response.binding.exportId}, expected `
+        + `${route.executorPluginId}/${route.executorExportId}.`,
+    );
+  }
+  if (input.pluginBinding && (
+    response.binding.version !== input.pluginBinding.version
+    || response.binding.schemaHash !== input.pluginBinding.schemaHash
+  )) {
+    throw new Error(
+      `Provider plugin binding drifted from ${input.pluginBinding.version}/${input.pluginBinding.schemaHash}.`,
+    );
+  }
+  const downloaded = await downloadProviderMedia(options.fetch, response.media.url, kind);
+  return {
+    ...downloaded,
+    ...(response.media.contentType ? { contentType: response.media.contentType } : {}),
+    ...(response.media.width !== undefined ? { width: response.media.width } : {}),
+    ...(response.media.height !== undefined ? { height: response.media.height } : {}),
+    ...(response.media.durationMs !== undefined ? { durationMs: response.media.durationMs } : {}),
+    ...(response.media.waveform ? { waveform: response.media.waveform } : {}),
+    ...(response.media.transcript ? { transcript: response.media.transcript } : {}),
+    requestId: response.media.requestId ?? input.taskId,
+    provider: route.providerId ?? route.upstreamId,
+    modelEndpoint: route.upstreamModel,
+    pluginBinding: response.binding,
+  };
+}
+
 async function generateFalMedia(
   input: MockMediaGenerationInput,
   kind: ModelKind,
@@ -1537,7 +1726,12 @@ async function inlineLoopbackReference(fetchImpl: typeof fetch, mediaUrl: string
   } catch {
     return mediaUrl;
   }
-  if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost" && url.hostname !== "::1") {
+  if (
+    url.hostname !== "127.0.0.1"
+    && url.hostname !== "localhost"
+    && url.hostname !== "::1"
+    && url.hostname !== "[::1]"
+  ) {
     return mediaUrl;
   }
   const response = await fetchImpl(mediaUrl);
@@ -1548,7 +1742,7 @@ async function inlineLoopbackReference(fetchImpl: typeof fetch, mediaUrl: string
     .split(";", 1)[0]
     .toLowerCase();
   const bytes = Buffer.from(await response.arrayBuffer());
-  return `data:${contentType};base64,${bytes.toString("base64")}`;
+  return `data:${referenceDataUrlMimeType(contentType)};base64,${bytes.toString("base64")}`;
 }
 
 async function generateBflVideoMedia(
@@ -1757,8 +1951,16 @@ async function generateMiniMaxMedia(
   };
 
   if (kind === "audio") {
-    const format = stringParam(input.modelParams, "format") || "mp3";
     const isMusic = route.upstreamModel.startsWith("music-");
+    // Speech defaults to WAV, music to MP3.
+    //
+    // Both carry the same audio, but the media type decides what downstreams that derive
+    // a filename from it will call the file: `audio/wav` yields `.wav`, while MP3's
+    // registered `audio/mpeg` yields `.mpeg`, which one upstream rejects outright. Speech
+    // clips are short and routinely fed back in as references to this product's own video
+    // models, so the unambiguous type is worth the size. A music track is minutes long and
+    // is the finished artefact rather than an input, so it stays compressed.
+    const format = stringParam(input.modelParams, "format") || (isMusic ? "mp3" : "wav");
     const body = isMusic
       ? {
           model: route.upstreamModel,
@@ -2468,7 +2670,13 @@ export function createMockExternalAigcService(
     if (baseCard) {
       const effectiveCard = applyModelProviderImplementation(baseCard, route);
       const lyricsParam = effectiveCard.musicInput?.lyricsParam;
-      const durationParam = input.duration !== undefined
+      // Only forward a duration the Card actually declares. Speech models take a
+      // voice and a script; their length follows from the text, so a `duration` on the
+      // request is not a shorter clip but an undeclared parameter, and the validator
+      // rejected the whole generation for it.
+      const cardTakesDuration = effectiveCard.parameters.some((parameter) => parameter.id === "duration")
+        || effectiveCard.defaultParams.duration !== undefined;
+      const durationParam = input.duration !== undefined && cardTakesDuration
         ? coerceModelParameterInput(effectiveCard, "duration", input.duration)
         : undefined;
       const effectiveModelParams: Record<string, string | number | boolean | undefined> = {
@@ -2497,6 +2705,18 @@ export function createMockExternalAigcService(
         ],
       });
       if (validationError) throw new Error(validationError);
+    }
+
+    if (route.executorPluginId && route.executorExportId) {
+      if (!options.providerPluginExecutor) {
+        throw new ProviderPluginHostUnavailableError(
+          `Provider executor ${route.executorPluginId}/${route.executorExportId} is unavailable.`,
+        );
+      }
+      return generatePluginProviderMedia(input, kind, route, {
+        fetch: fetchImpl,
+        providerPluginExecutor: options.providerPluginExecutor,
+      });
     }
 
     if (route.apiShape === "openai-images") {

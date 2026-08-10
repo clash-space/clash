@@ -1398,7 +1398,7 @@
       "outcome": {
         "objective": "Create a flat-geometric cosmic-question host using Kurzgesagt only as editorial-format shorthand, as an editable Remotion TSX component in a 4-second 720x1280 composition at 24fps. Animate one character from thought to a clearly posed question, then use its gesture to launch orbiting science icons with a limited palette, readable silhouette, anticipation, overshoot, and settle. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. Do not imitate any existing mascot, illustration, voice, logo, or proprietary brand package; evaluation concerns only the stated geometric science-explainer and motion traits.",
         "acceptanceCriteria": [
-          "The editable source is a self-contained Remotion TSX component at components/remotion-character-cosmic-question-host-v2.tsx, uses deterministic frame-driven animation, and contains semantically named head, torso, left/right arms, and left/right legs.",
+          "The editable source is a self-contained Remotion TSX component at components/remotion-character-cosmic-question-host-v2.tsx, uses deterministic frame-driven animation, and exposes head, torso, left arm, right arm, left leg, and right leg as literal-named Remotion Interactive layers (for example, <Interactive.Div name=\"Left arm\">).",
           "clash_canvas_add persists the exact TSX as a remotion-component node; the stable node ID returned by Clash is reused verbatim as sourceNodeId on a Timeline composition item with compositionKind custom, runtime remotion, and the local TSX sourcePath.",
           "The visible action progresses from thought to question to a gesture-launched orbit and settle, with a limited palette, readable silhouette, and materially distinct anticipation, overshoot, and settle poses.",
           "The canonical Timeline is valid at 720x1280, 24fps, and 96 frames, and clash_timeline_render completes with a decodable product-owned video.",
@@ -1446,10 +1446,7 @@
       },
       "passScore": 82,
       "timeoutMs": 1200000,
-      "skills": [
-        "../../../plugins/clash/skills/clash",
-        "../../../plugins/clash/skills/clash-mg-character"
-      ],
+      "skills": ["../../../plugins/clash/skills/clash"],
       "execution": {
         "profile": "clash-host",
         "requiredCapabilities": [
@@ -1568,6 +1565,10 @@
           "height": 1280,
           "minDistinctPairs": 2,
           "minMeanAbsoluteDifference": 0.005,
+          "foregroundCoverage": {
+            "backgroundTolerance": 24,
+            "minRatio": 0.05
+          },
           "safeArea": {
             "marginPercent": 0.03,
             "backgroundTolerance": 24,
@@ -1763,6 +1764,10 @@
           "height": 1080,
           "minDistinctPairs": 2,
           "minMeanAbsoluteDifference": 0.005,
+          "foregroundCoverage": {
+            "backgroundTolerance": 24,
+            "minRatio": 0.05
+          },
           "safeArea": {
             "marginPercent": 0.03,
             "backgroundTolerance": 24,
@@ -1963,6 +1968,10 @@
           "height": 1920,
           "minDistinctPairs": 2,
           "minMeanAbsoluteDifference": 0.005,
+          "foregroundCoverage": {
+            "backgroundTolerance": 24,
+            "minRatio": 0.05
+          },
           "safeArea": {
             "marginPercent": 0.03,
             "backgroundTolerance": 24,
@@ -2163,6 +2172,10 @@
           "height": 1080,
           "minDistinctPairs": 2,
           "minMeanAbsoluteDifference": 0.005,
+          "foregroundCoverage": {
+            "backgroundTolerance": 24,
+            "minRatio": 0.05
+          },
           "safeArea": {
             "marginPercent": 0.03,
             "backgroundTolerance": 24,
@@ -2363,6 +2376,10 @@
           "height": 1080,
           "minDistinctPairs": 2,
           "minMeanAbsoluteDifference": 0.005,
+          "foregroundCoverage": {
+            "backgroundTolerance": 24,
+            "minRatio": 0.05
+          },
           "safeArea": {
             "marginPercent": 0.03,
             "backgroundTolerance": 24,

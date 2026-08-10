@@ -980,9 +980,19 @@ export type ProductionAsset = {
   metadata?: Record<string, unknown>;
 };
 
+/** The generic fill trunk only needs the envelope, never a specific kind's shape. */
+export type AssetMetadataFillEnvelope = {
+  actionId: string;
+  targetAssetId: string;
+  metadataKind: string;
+  metadata: { kind: string };
+  producer: string;
+  createdAt?: string;
+};
+
 export function applyAssetMetadataFill<TAsset extends ProductionAsset>(
   asset: TAsset,
-  action: AssetMetadataFillAction,
+  action: AssetMetadataFillEnvelope,
 ): TAsset & { metadata: Record<string, unknown> } {
   if (asset.id !== action.targetAssetId) {
     throw new Error(`metadata fill target mismatch: ${action.targetAssetId} does not match ${asset.id}`);

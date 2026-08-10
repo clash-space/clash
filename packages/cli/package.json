@@ -1,7 +1,7 @@
 {
   "name": "@clash-space/cli",
   "version": "0.1.0-beta.3",
-  "description": "Clash CLI — manage projects and canvas from your terminal",
+  "description": "Clash CLI \u2014 manage projects and canvas from your terminal",
   "bin": {
     "clash": "./dist/index.js"
   },
@@ -29,10 +29,12 @@
     "@clash-space/mcp-server": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
     "@master-clash/remotion-effects": "workspace:*",
+    "ajv": "^8.20.0",
     "commander": "^13.0.0",
+    "esbuild": "^0.25.0",
     "loro-crdt": "^1.10.3",
-    "yaml": "^2.6.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "yaml": "^2.6.0"
   },
   "devDependencies": {
     "@clash/shared-layout": "workspace:^",

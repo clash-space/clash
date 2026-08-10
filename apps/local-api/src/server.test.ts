@@ -143,6 +143,177 @@ describe("local API server configuration", () => {
     expect(JSON.stringify(audit)).not.toContain("fal-encrypted-key");
   });
 
+  it("redeems an authorized plugin OAuth token through the local broker without a stored account", async () => {
+    const createBroker = (serverModule as Record<string, unknown>)
+      .createLocalPluginBrokerServices as
+      | ((options: { dataDir: string; fetch: typeof fetch }) => any)
+      | undefined;
+    expect(createBroker).toBeDefined();
+    if (!createBroker) return;
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-plugin-oauth-broker-"));
+    await createLocalProviderStore(dataDir).saveProviderOAuth([{
+      userId: "local-user",
+      providerId: "hilo-hub",
+      accountId: "hilo-hub-primary",
+      status: "authorized",
+      accessToken: "hub-oauth-token",
+    }]);
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe("Bearer hub-oauth-token");
+      expect(headers.get("token")).toBe("hub-oauth-token");
+      return Response.json({ ok: true });
+    });
+    const broker = createBroker({ dataDir, fetch });
+    const context = {
+      manifest: {
+        apiVersion: "clash.plugin/v1",
+        id: "hilo-hub-media",
+        version: "1.0.0",
+        name: "Hilo Hub Media",
+        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
+        exports: { cards: [], functions: [] },
+        permissions: {
+          secrets: ["provider:hilo-hub"],
+          network: { domains: ["hub.minimax.io"] },
+        },
+      },
+      invocation: {
+        protocol: "clash.plugin.invoke/v1",
+        invocationId: "invocation-hilo-oauth",
+        taskId: "task-hilo-oauth",
+        projectId: "project-hilo-oauth",
+        target: {
+          pluginId: "hilo-hub-media",
+          version: "1.0.0",
+          exportId: "execute",
+          schemaHash: `sha256:${"d".repeat(64)}`,
+          kind: "provider-executor",
+        },
+        input: { values: {}, references: [] },
+        actor: { kind: "system", id: "local-aigc" },
+      },
+    };
+    const credential = await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "credential-hilo-oauth",
+      invocationId: "invocation-hilo-oauth",
+      operation: { kind: "credential.handle", secretId: "provider:hilo-hub" },
+    }, context) as { handle: string };
+
+    await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "network-hilo-oauth",
+      invocationId: "invocation-hilo-oauth",
+      operation: {
+        kind: "network.fetch",
+        url: "https://hub.minimax.io/api/v1/video/minimax-v3/tasks/hub-task-1",
+        method: "GET",
+        headers: {},
+        credentialHandle: credential.handle,
+      },
+    }, context);
+  });
+
+  it("records plugin broker provider traffic into the replay recording", async () => {
+    const createBroker = (serverModule as Record<string, unknown>)
+      .createLocalPluginBrokerServices as
+      | ((options: {
+        dataDir: string;
+        fetch: typeof fetch;
+        providerTrafficRecordingPath: string;
+      }) => any)
+      | undefined;
+    expect(createBroker).toBeDefined();
+    if (!createBroker) return;
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-plugin-record-broker-"));
+    const recordingPath = join(dataDir, "provider-run.jsonl");
+    await createLocalProviderStore(dataDir).saveProviderOAuth([{
+      userId: "local-user",
+      providerId: "hilo-hub",
+      accountId: "hilo-hub-primary",
+      status: "authorized",
+      accessToken: "hub-oauth-token",
+    }]);
+    const fetch = vi.fn(async (_url: string, _init?: RequestInit) =>
+      Response.json({ taskId: "hub-task-record" }, { status: 201 }));
+    const broker = createBroker({
+      dataDir,
+      fetch,
+      providerTrafficRecordingPath: recordingPath,
+    });
+    const context = {
+      manifest: {
+        apiVersion: "clash.plugin/v1",
+        id: "hilo-hub-media",
+        version: "1.1.1",
+        name: "Hilo Hub Media",
+        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
+        exports: { cards: [], functions: [] },
+        permissions: {
+          secrets: ["provider:hilo-hub"],
+          network: { domains: ["hub.minimax.io"] },
+          externalWrites: true,
+        },
+      },
+      invocation: {
+        protocol: "clash.plugin.invoke/v1",
+        invocationId: "invocation-hilo-record",
+        taskId: "task-hilo-record",
+        projectId: "project-hilo-record",
+        target: {
+          pluginId: "hilo-hub-media",
+          version: "1.1.1",
+          exportId: "execute",
+          schemaHash: `sha256:${"e".repeat(64)}`,
+          kind: "provider-executor",
+        },
+        input: { values: {}, references: [] },
+        actor: { kind: "system", id: "local-aigc" },
+      },
+    };
+    const credential = await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "credential-hilo-record",
+      invocationId: "invocation-hilo-record",
+      operation: { kind: "credential.handle", secretId: "provider:hilo-hub" },
+    }, context) as { handle: string };
+
+    await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "network-hilo-record",
+      invocationId: "invocation-hilo-record",
+      operation: {
+        kind: "network.fetch",
+        url: "https://hub.minimax.io/api/v2/image/nano_banana/generate",
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: { prompt: "A lighthouse", aspect_ratio: "1:1" },
+        credentialHandle: credential.handle,
+      },
+    }, context);
+
+    const events = (await readFile(recordingPath, "utf8"))
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, any>);
+    const request = events.find((event) => event.type === "request");
+    const response = events.find((event) => event.type === "response");
+
+    expect(request).toBeDefined();
+    expect(response).toBeDefined();
+    expect(request?.request.url).toBe("https://hub.minimax.io/api/v2/image/nano_banana/generate");
+    expect(request?.request.method).toBe("POST");
+    expect(request?.request.body).toEqual({ prompt: "A lighthouse", aspect_ratio: "1:1" });
+    expect(request?.stub.providerId).toBe("hilo-hub");
+    expect(response?.response.status).toBe(201);
+    expect(response?.response.body).toEqual({ taskId: "hub-task-record" });
+    // The Hub token must never reach the recording.
+    expect(request?.request.headers.authorization).toBe("[redacted]");
+    expect(request?.request.headers.token).toBe("[redacted]");
+    expect(await readFile(recordingPath, "utf8")).not.toContain("hub-oauth-token");
+  });
+
   it("persists plugin asset writes as immutable project-scoped Clash assets", async () => {
     const createBroker = (serverModule as Record<string, unknown>)
       .createLocalPluginBrokerServices as

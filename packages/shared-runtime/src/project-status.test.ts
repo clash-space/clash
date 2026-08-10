@@ -199,6 +199,7 @@ describe("project status path builder", () => {
     expect(status.protectedPaths).toContain(status.loro.snapshotPath);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.mediaAssets.path);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
+    expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.assetMetadataBodies.path);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.metadata.localConfig.path);
     expect(status.protectedPaths).toContain(status.storage.localSecrets.files.bridgeCredentials.path);
     expect(status.protectedPaths).toContain(status.roots.runtime);
@@ -328,6 +329,13 @@ describe("project status path builder", () => {
             kind: "content-addressed-files",
             path: "/tmp/clash-home/local-api/text-revision-blobs",
             mediaType: "text/markdown",
+            immutable: true,
+            agentWritable: false,
+          },
+          assetMetadataBodies: {
+            kind: "content-addressed-files",
+            path: "/tmp/clash-home/local-api/metadata-blobs",
+            mediaType: "application/json",
             immutable: true,
             agentWritable: false,
           },

@@ -7,6 +7,13 @@ import {
   recordAgentObservation,
   requireAgentObservation,
 } from "../lib/agent-worktree-observation";
+import {
+  listLocalSpeechModelCards,
+  listModelCatalogEntries,
+  resolveLocalSpeechModelId,
+  type LocalSpeechCatalogEntry,
+  type LocalSpeechModelCard,
+} from "@clash/shared-types";
 
 interface ProviderAccountPayload {
   providerId: string;
@@ -94,6 +101,78 @@ function normalizeLocalModelId(value: unknown): string {
   throw new Error("model must be a non-empty model id");
 }
 
+export type ConfiguredLocalAudioModel = {
+  capability: LocalSpeechCapability;
+  model: string;
+  ready: boolean;
+  setupStatus: string;
+  /** The command that would make this capability usable, when it is not yet. */
+  nextStep?: string;
+};
+
+/**
+ * Answer "what local ASR do I have, and is it usable" without the caller having
+ * to already know a model id. Knowing the id is the thing you do not have when
+ * you are asking the question.
+ */
+export async function resolveConfiguredLocalAudioModel(
+  capability: LocalSpeechCapability,
+  dependencies: LocalAudioModelCommandDependencies = defaultLocalAudioModelDependencies,
+): Promise<ConfiguredLocalAudioModel> {
+  const normalized = normalizeLocalSpeechCapability(capability);
+  const config = await dependencies.apiJson("/api/v1/local/audio");
+  const section = (normalized === "speech-to-text" ? config.asr : config.tts) as
+    | { model?: unknown; ready?: unknown; setup?: { status?: unknown } }
+    | undefined;
+  const model = normalizeLocalModelId(section?.model);
+  const ready = section?.ready === true;
+  const setupStatus = typeof section?.setup?.status === "string"
+    ? section.setup.status
+    : ready ? "ready" : "unknown";
+  return {
+    capability: normalized,
+    model,
+    ready,
+    setupStatus,
+    ...(ready
+      ? {}
+      : {
+          nextStep: `clash models local install --capability ${normalized} --model ${model}`,
+        }),
+  };
+}
+
+async function resolveLocalAudioModelId(
+  input: { capability: LocalSpeechCapability; model?: string },
+  dependencies: LocalAudioModelCommandDependencies,
+): Promise<string> {
+  if (input.model === undefined) {
+    const configured = await resolveConfiguredLocalAudioModel(input.capability, dependencies);
+    return configured.model;
+  }
+  const requested = normalizeLocalModelId(input.model);
+  // Accept a catalog card id (`whisper-small-asr`) as readily as the runtime id,
+  // resolved through the same selectors the GUI uses.
+  return (
+    resolveLocalSpeechModelId(localSpeechCatalogEntries(), input.capability, requested)
+    ?? requested
+  );
+}
+
+function localSpeechCatalogEntries() {
+  return listModelCatalogEntries({}) as unknown as LocalSpeechCatalogEntry[];
+}
+
+/** Every local speech model this build ships, with the provider info to choose by. */
+export function listLocalAudioModelCatalog(
+  capability?: LocalSpeechCapability,
+): LocalSpeechModelCard[] {
+  return listLocalSpeechModelCards(
+    localSpeechCatalogEntries(),
+    capability === undefined ? undefined : normalizeLocalSpeechCapability(capability),
+  );
+}
+
 export function publicLocalAudioModelResult<T extends Record<string, unknown>>(
   result: T,
 ): Record<string, unknown> {
@@ -101,11 +180,11 @@ export function publicLocalAudioModelResult<T extends Record<string, unknown>>(
 }
 
 export async function getLocalAudioModelStatus(
-  input: { capability: LocalSpeechCapability; model: string },
+  input: { capability: LocalSpeechCapability; model?: string },
   dependencies: LocalAudioModelCommandDependencies = defaultLocalAudioModelDependencies,
 ): Promise<Omit<LocalAudioModelStatusResponse, "readToken">> {
   const capability = normalizeLocalSpeechCapability(input.capability);
-  const model = normalizeLocalModelId(input.model);
+  const model = await resolveLocalAudioModelId({ capability, model: input.model }, dependencies);
   const query = new URLSearchParams({ capability, model });
   const data = (await dependencies.apiJson(
     `/api/v1/local/audio/models/status?${query.toString()}`,
@@ -123,11 +202,11 @@ export async function getLocalAudioModelStatus(
 
 export async function mutateLocalAudioModel(
   operation: "install" | "remove",
-  input: { capability: LocalSpeechCapability; model: string },
+  input: { capability: LocalSpeechCapability; model?: string },
   dependencies: LocalAudioModelCommandDependencies = defaultLocalAudioModelDependencies,
 ): Promise<Record<string, unknown>> {
   const capability = normalizeLocalSpeechCapability(input.capability);
-  const model = normalizeLocalModelId(input.model);
+  const model = await resolveLocalAudioModelId({ capability, model: input.model }, dependencies);
   const observedVersion = await dependencies.requireObservation({
     entityKind: "local-config",
     entityId: "audio",
@@ -305,18 +384,37 @@ const localModelsCommand = modelsCommand
   .description("Inspect and manage downloadable local ASR and TTS models");
 
 localModelsCommand
+  .command("catalog")
+  .description("List the local ASR and TTS models this build can download")
+  .option("--capability <text-to-speech|speech-to-text>", "Filter by capability")
+  .option("--json", "Output as JSON")
+  .action(async (options) => {
+    const cards = listLocalAudioModelCatalog(options.capability);
+    if (isJsonMode(options)) {
+      printJson(cards);
+      return;
+    }
+    for (const card of cards) {
+      console.log(`${card.cardId}  ${card.name ?? ""}${card.provider ? ` (${card.provider})` : ""}`);
+      console.log(`  model: ${card.model}`);
+      if (card.description) console.log(`  ${card.description}`);
+    }
+    if (cards.length === 0) console.log("No local speech models in this build.");
+  });
+
+localModelsCommand
   .command("status")
   .description("Read whether one local audio model is installed and executable")
   .requiredOption(
     "--capability <text-to-speech|speech-to-text>",
     "Capability: speech-to-text or text-to-speech",
   )
-  .requiredOption("--model <id>", "Local runtime model id")
+  .option("--model <id>", "Catalog card id or runtime model id; defaults to the configured model")
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const result = await getLocalAudioModelStatus({
       capability: options.capability,
-      model: options.model,
+      ...(options.model === undefined ? {} : { model: options.model }),
     });
     if (isJsonMode(options)) {
       printJson(result);
@@ -338,12 +436,12 @@ for (const operation of ["install", "remove"] as const) {
       "--capability <text-to-speech|speech-to-text>",
       "Capability: speech-to-text or text-to-speech",
     )
-    .requiredOption("--model <id>", "Local runtime model id")
+    .option("--model <id>", "Catalog card id or runtime model id; defaults to the configured model")
     .option("--json", "Output as JSON")
     .action(async (options) => {
       const result = await mutateLocalAudioModel(operation, {
         capability: options.capability,
-        model: options.model,
+        ...(options.model === undefined ? {} : { model: options.model }),
       });
       if (isJsonMode(options)) {
         printJson(result);
