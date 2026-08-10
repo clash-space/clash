@@ -82,7 +82,10 @@ test("action CLI exposes agent-facing validate and activate draft commands", () 
 
 test("registry install can fall back to the local marketplace package endpoint", async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
-  const request = async (url: string, init?: RequestInit) => {
+  // Match fetch's own first-parameter type: the caller passes this straight through, and narrowing it
+  // to `string` made the assignment fail even though every call site does pass a string.
+  const request = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = String(input);
     calls.push({ url, init });
     return new Response(JSON.stringify({
       actionId: "codex-imagegen",

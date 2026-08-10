@@ -40,6 +40,7 @@ test("CLI actively starts a missing daemon and binds subsequent commands to it",
   });
 
   assert.equal(launches, 1);
+  assert.ok(record, "bootstrap must return the discovery record it settled on");
   assert.equal(record.hostId, active.hostId);
   assert.equal(env.CLASH_API_URL, active.endpoint);
 });

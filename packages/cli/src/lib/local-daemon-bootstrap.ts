@@ -29,7 +29,7 @@ export async function ensureCliLocalDaemon(options: {
     runDir,
     profile: resolveClashProfile(env),
     probe: options.probeHost,
-    launch: options.launch ?? (() => launchDetachedLocalDaemon({
+    launch: options.launch ?? (async () => launchDetachedLocalDaemon({
       entryPath: options.daemonEntryPath,
       cliEntryPath: options.cliEntryPath,
       dataDir,

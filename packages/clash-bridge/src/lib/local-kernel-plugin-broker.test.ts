@@ -33,7 +33,10 @@ describe("Bridge local Kernel plugin broker transport", () => {
       startedAt: "2026-08-04T00:00:00.000Z",
       updatedAt: "2026-08-04T00:00:00.000Z",
     }));
-    const fetchMock = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+    // `RequestInfo` is a DOM name and this package compiles with lib ES2022 plus @types/node, where
+    // fetch exists but the DOM aliases do not. `Parameters<typeof fetch>[0]` is the same type without
+    // depending on which lib happens to be loaded.
+    const fetchMock = vi.fn(async (_url: Parameters<typeof fetch>[0], init?: RequestInit) => {
       expect(new Headers(init?.headers).get("x-clash-local-plugin-broker-token")).toBe("b".repeat(64));
       const envelope = JSON.parse(String(init?.body));
       return Response.json({

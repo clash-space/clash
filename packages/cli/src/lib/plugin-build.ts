@@ -28,10 +28,17 @@ export interface PluginBuildPlan {
   entrypoint: string;
 }
 
+/**
+ * The parts of a runtime declaration this module reads.
+ *
+ * Structural rather than the full schema type so a caller can pass a parsed manifest, a fixture, or a
+ * partially-filled draft. Unknown keys are accepted because they belong to the runtime, not here.
+ */
 interface RuntimeLike {
   kind?: string;
   entrypoint?: string;
   build?: { source?: string };
+  [key: string]: unknown;
 }
 
 /** The declared build for a runtime, or undefined when the entrypoint is authored. */

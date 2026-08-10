@@ -184,7 +184,7 @@ function parseRequest(value: unknown): PluginHostRequest {
       operation: "resolve",
       pluginId,
       exportId: nonEmptyString(request.exportId, "exportId"),
-      kind: request.kind,
+      kind: request.kind as PluginFunctionKind,
     };
   }
   if (request.operation === "invoke") {

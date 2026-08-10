@@ -79,29 +79,23 @@ describe("marketplace registry", () => {
           outputType: "image",
           packageId: "clash-codex-imagegen",
         }),
-        expect.objectContaining({
-          id: "clash.action.production.render-mg",
-        }),
-        expect.objectContaining({
-          id: "clash.action.production.plan-text-cut",
-        }),
       ]),
     );
+    // The ten `clash.action.production.*` entries were removed with the `clash production` command
+    // family they invoked; every one of them resolved to nothing. Asserted absent so the registry is
+    // never repopulated with ids that have no implementation -- a listing that cannot run is worse
+    // than a missing one, because it fails only after a user picks it.
+    expect(body.actions.filter((item) => item.id.startsWith("clash.action.production."))).toEqual([]);
     expect(body.skills.some((item) => item.id === "community.caption-polish")).toBe(true);
     expect(body.skills).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          id: "clash.video.short-drama-production",
-          source: "first-party",
-          kind: "detail",
-        }),
         expect.objectContaining({
           id: "clash.video.agentic-video-architecture",
           source: "first-party",
           kind: "architecture",
         }),
         expect.objectContaining({
-          id: "clash.image.storyboard-consistency",
+          id: "clash.video.agentic-video-creator",
           source: "first-party",
           kind: "detail",
         }),
@@ -129,18 +123,13 @@ describe("marketplace registry", () => {
           id: "codex-imagegen",
           packageId: "clash-codex-imagegen",
         }),
-        expect.objectContaining({
-          id: "clash.action.production.analyze-audio-beats",
-        }),
-        expect.objectContaining({
-          id: "clash.action.production.project-storyboard-timeline",
-        }),
       ]),
     );
+    expect(body.actions.filter((item) => item.id.startsWith("clash.action.production."))).toEqual([]);
     expect(body.skills).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "clash.audio.beat-analysis",
+          id: "clash.media.asset-metadata-architecture",
           source: "first-party",
         }),
         expect.objectContaining({

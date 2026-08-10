@@ -21,7 +21,7 @@
     "dev": "tsup --watch",
     "typecheck": "npm --prefix ../shared-runtime run build && tsc --noEmit",
     "clean": "rm -rf dist",
-    "test": "npm --prefix ../shared-runtime run build && node scripts/run-tests.mjs",
+    "test": "npm --prefix ../shared-runtime run build && node scripts/run-tests.mjs && vitest run",
     "test:e2e": "node --test e2e/canvas-add-refs.test.mjs"
   },
   "dependencies": {

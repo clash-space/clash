@@ -8,7 +8,13 @@ const REGISTRY_URL =
 interface RegistryData {
   version: number;
   marketplaceSemantics?: Record<string, unknown>;
-  actions: Array<Record<string, unknown>>;
+  /**
+   * Retired with the skill marketplace, so absent from `registry.json`.
+   *
+   * Optional rather than removed because the remote community registry still publishes it, and the
+   * merge below has to keep passing those entries through.
+   */
+  actions?: Array<Record<string, unknown>>;
   skills: Array<Record<string, unknown> & { id?: unknown }>;
   systemCapabilities?: Array<Record<string, unknown>>;
   thirdPartyReferences?: Array<Record<string, unknown>>;
@@ -34,7 +40,7 @@ const CODEX_IMAGEGEN_MARKETPLACE_ITEM = {
 } as const;
 
 function firstPartyActions(): Array<Record<string, unknown>> {
-  return [CODEX_IMAGEGEN_MARKETPLACE_ITEM, ...FIRST_PARTY.actions];
+  return [CODEX_IMAGEGEN_MARKETPLACE_ITEM, ...(FIRST_PARTY.actions ?? [])];
 }
 
 function isRegistryData(value: unknown): value is RegistryData {
