@@ -37,6 +37,9 @@ describe("Bridge provider plugin executor", () => {
       binding,
       input: { values: { modelId: "minimax-h3" }, references: [] },
     })).resolves.toEqual({
+      // A completed response now says so: the same call may instead come back accepted, and a
+      // caller that cannot tell them apart would read media that is not there.
+      status: "completed",
       binding,
       media: {
         url: "https://hub-cdn.test/h3.mp4",

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { writeFile } from "node:fs/promises";
 
-import { createMockExternalAigcService, localExecutableModelCards } from "./local-aigc";
+import {
+  createMockExternalAigcService,
+  localExecutableModelCards,
+  type MockMediaGenerationCompleted,
+  type MockMediaGenerationResult,
+} from "./local-aigc";
 import { MODEL_CARDS, type ProviderUsageAuditEvent } from "@clash/shared-types";
 import {
   createProviderConformanceStubs,
@@ -9,6 +14,24 @@ import {
   createProviderTestReplayFixtures,
   type ProviderTestRecordingEvent,
 } from "./provider-test-recorder";
+
+/**
+ * Narrows a generation to the finished shape these tests assert against.
+ *
+ * A generation can also come back accepted, meaning the provider took the work and will answer
+ * later. None of the cases below exercise that path, so an acceptance here is a test that stopped
+ * testing what it claims to -- worth failing loudly rather than reading fields off a result that
+ * does not have them.
+ */
+function assertCompleted(
+  result: MockMediaGenerationResult,
+): asserts result is MockMediaGenerationCompleted {
+  if (result.status === "accepted") {
+    throw new Error(
+      "Expected a completed generation, but the provider only accepted the work.",
+    );
+  }
+}
 
 async function createTestPrivateKeyPem(): Promise<string> {
   const keyPair = await crypto.subtle.generateKey(
@@ -102,6 +125,7 @@ describe("local mock AIGC", () => {
       modelParams: { resolution: "2K" },
       pluginBinding: binding,
     });
+    assertCompleted(result);
 
     expect(requests).toMatchObject([{
       pluginId: "hilo-hub-media",
@@ -341,6 +365,7 @@ describe("local mock AIGC", () => {
       model: "piper-huayan-tts",
       modelParams: { voice_name: "huayan", speed: 1.1 },
     });
+    assertCompleted(result);
 
     expect(calls).toEqual([{
       taskId: "task-local-tts",
@@ -366,6 +391,7 @@ describe("local mock AIGC", () => {
       model: "gpt-image-2",
       aspectRatio: "1:1",
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("fal-mock");
     expect(result.modelEndpoint).toBe("openai/gpt-image-2");
@@ -384,6 +410,7 @@ describe("local mock AIGC", () => {
       model: "nano-banana-2",
       aspectRatio: "2:1",
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("fal-mock");
     expect(result.width).toBe(1024);
@@ -400,6 +427,7 @@ describe("local mock AIGC", () => {
       aspectRatio: "9:16",
       duration: 6,
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("fal-mock");
     expect(result.modelEndpoint).toBe("bytedance/seedance-2.0/reference-to-video");
@@ -430,6 +458,7 @@ describe("local mock AIGC", () => {
       model: "gpt-image-2",
       aspectRatio: "1:1",
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("openai");
     expect(result.modelEndpoint).toBe("gpt-image-2");
@@ -588,6 +617,7 @@ describe("local mock AIGC", () => {
       aspectRatio: "16:9",
       modelParams: { resolution: "1K" },
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("google");
     expect(result.modelEndpoint).toBe("gemini-3.1-flash-image");
@@ -655,6 +685,7 @@ describe("local mock AIGC", () => {
       ],
       referenceImageUrls: [jacket, mood],
     });
+    assertCompleted(result);
 
     expect(calls.map((call) => call.url)).toEqual([
       "https://generativelanguage.googleapis.com/v1beta/interactions",
@@ -733,6 +764,7 @@ describe("local mock AIGC", () => {
       aspectRatio: "16:9",
       duration: 3,
     });
+    assertCompleted(result);
 
     expect(calls.map((call) => call.url)).toEqual([
       `${gateway}/v1beta/interactions`,
@@ -852,6 +884,7 @@ describe("local mock AIGC", () => {
     } as never);
 
     const liveResult = await liveService.generateVideo(input);
+    assertCompleted(liveResult);
     expect(liveResult.bytes).toEqual(videoBytes);
     const creation = events.find((event) => event.type === "request" && event.request.url.endsWith("/interactions"));
     expect(creation).toMatchObject({
@@ -881,6 +914,7 @@ describe("local mock AIGC", () => {
       },
     } as never);
     const replayResult = await replayService.generateVideo(input);
+    assertCompleted(replayResult);
 
     expect(replayResult.bytes).toEqual(videoBytes);
     expect(replayResult.requestId).toBe("interactions/recorded-omni");
@@ -930,6 +964,7 @@ describe("local mock AIGC", () => {
       model: "gemini-3.1-flash-tts",
       modelParams: { voice_name: "Kore" },
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("google");
     expect(result.modelEndpoint).toBe("gemini-3.1-flash-tts-preview");
@@ -1093,6 +1128,7 @@ describe("local mock AIGC", () => {
       model: "nano-banana-2",
       aspectRatio: "16:9",
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("google-agent-platform");
     expect(result.modelEndpoint).toBe("gemini-3.1-flash-image");
@@ -1166,6 +1202,7 @@ describe("local mock AIGC", () => {
       aspectRatio: "16:9",
       duration: 4,
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("google-agent-platform");
     expect(result.modelEndpoint).toBe("veo-3.1-fast-generate-001");
@@ -1223,6 +1260,7 @@ describe("local mock AIGC", () => {
       duration: 6,
       modelParams: { resolution: "720p", generate_audio: true },
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("fal");
     expect(result.modelEndpoint).toBe("bytedance/seedance-2.0/text-to-video");
@@ -1320,6 +1358,7 @@ describe("local mock AIGC", () => {
       ],
       modelParams: { resolution: "2K" },
     });
+    assertCompleted(result);
 
     expect(result).toMatchObject({ provider: "fal", modelEndpoint: "minimax/h3/reference-to-video" });
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
@@ -1391,6 +1430,7 @@ describe("local mock AIGC", () => {
       referenceImageUrls: ["https://media.test/character.png"],
       modelParams: { resolution: "2K" },
     });
+    assertCompleted(result);
 
     expect(projectorCalls).toHaveLength(1);
     expect(projectorCalls[0]).toMatchObject({
@@ -1560,6 +1600,7 @@ describe("local mock AIGC", () => {
       modelParams: { resolution: "720p" },
       referenceImageUrls: ["https://media.test/image.png"],
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("dreamina-cli");
     expect(calls[0]?.[0]).toBe("multimodal2video");
@@ -1629,6 +1670,7 @@ describe("local mock AIGC", () => {
         require_real_provider: true,
       },
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("fal");
     expect(result.modelEndpoint).toBe("openai/gpt-image-2");
@@ -1755,6 +1797,7 @@ describe("local mock AIGC", () => {
       aspectRatio: "16:9",
       modelParams: { resolution: "1K", count: 1 },
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("kie");
     expect(result.modelEndpoint).toBe("nano-banana-2");
@@ -1815,6 +1858,7 @@ describe("local mock AIGC", () => {
       aspectRatio: "3:4",
       modelParams: { resolution: "2K", count: 1 },
     });
+    assertCompleted(result);
 
     expect(result).toMatchObject({
       provider: "pika",
@@ -1936,6 +1980,7 @@ describe("local mock AIGC", () => {
       aspectRatio: "1:1",
       modelParams: { size: "1024x1024", quality: "high" },
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("replicate");
     expect(result.modelEndpoint).toBe("openai/gpt-image-2");
@@ -2093,6 +2138,7 @@ describe("local mock AIGC", () => {
       model: "gpt-image-2",
       aspectRatio: "1:1",
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("replicate");
     expect(result.requestId).toBe("replicate-priority-1");
@@ -2158,6 +2204,7 @@ describe("local mock AIGC", () => {
       model: "gpt-image-2",
       aspectRatio: "1:1",
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("replicate");
     expect(result.requestId).toBe("replicate-model-filter-1");
@@ -2223,6 +2270,7 @@ describe("local mock AIGC", () => {
       model: "gpt-image-2",
       aspectRatio: "1:1",
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("replicate");
     expect(result.requestId).toBe("replicate-model-priority-1");
@@ -2303,6 +2351,7 @@ describe("local mock AIGC", () => {
       prompt: "dreamy synth pop",
       model: "suno-v5.5",
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("suno");
     expect(result.modelEndpoint).toBe("V5_5");
@@ -2345,6 +2394,7 @@ describe("local mock AIGC", () => {
       model: "minimax-music-3",
       modelParams: { lyrics_optimizer: true, is_instrumental: false },
     });
+    assertCompleted(result);
 
     expect(calls[0]?.url).toBe("https://api.minimax.io/v1/music_generation");
     expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({
@@ -2397,6 +2447,7 @@ describe("local mock AIGC", () => {
         format: "mp3",
       },
     });
+    assertCompleted(result);
 
     expect(result).toMatchObject({
       provider: "fal",
@@ -2453,6 +2504,7 @@ describe("local mock AIGC", () => {
       duration: 6,
       modelParams: { resolution: "2K" },
     });
+    assertCompleted(result);
 
     expect(calls[0]?.url).toBe("https://api.minimax.io/v2/video_generation");
     expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({
@@ -2704,6 +2756,7 @@ describe("local mock AIGC", () => {
       referenceImageUrls: ["http://127.0.0.1:4312/assets/projects/p/source.png"],
       modelParams: { image_size: "auto_4K" },
     });
+    assertCompleted(result);
 
     expect(result.modelEndpoint).toBe("fal-ai/bytedance/seedream/v4.5/edit");
     expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
@@ -2749,6 +2802,7 @@ describe("local mock AIGC", () => {
       aspectRatio: "16:9",
       modelParams: { resolution: "1080p", generate_audio: true, safety_tolerance: 2 },
     });
+    assertCompleted(result);
 
     expect(result.provider).toBe("bfl");
     expect(result.requestId).toBe("bfl-flux3-1");

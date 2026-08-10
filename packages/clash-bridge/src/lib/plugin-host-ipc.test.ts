@@ -194,7 +194,13 @@ describe("Bridge plugin host IPC", () => {
         invocationId: "invocation-ipc-1",
         status: "completed",
       });
-      expect(invoke).toHaveBeenCalledWith("first-party-media", invocation, {});
+      // The host sees the parsed invocation, so schema defaults are present by the time it arrives.
+      // `operation` defaults to submit: an entry that declares nothing gets the simplest contract.
+      expect(invoke).toHaveBeenCalledWith(
+        "first-party-media",
+        { ...invocation, operation: "submit" },
+        {},
+      );
       if (process.platform !== "win32") {
         expect((await stat(socketPath)).mode & 0o777).toBe(0o600);
       }

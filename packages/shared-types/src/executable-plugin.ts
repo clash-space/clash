@@ -390,10 +390,46 @@ export const ExecutablePluginModelBindingDocumentSchema = z.object({
   spec: ExecutablePluginModelBindingSpecSchema,
 }).strict();
 
+/**
+ * The operations an entry point answers.
+ *
+ * Declared rather than discovered. The alternative is to find out by sending a poll and seeing
+ * whether the plugin understands it -- after the work was submitted and billed, which is the worst
+ * moment to learn that nobody can collect the result.
+ *
+ * It also governs what the host offers. A callback address goes only to an entry that says it
+ * handles callbacks; handing one to a plugin that ignores it leaves a provider calling an address
+ * nobody translates, while the node waits for an answer that already arrived.
+ */
+export const PLUGIN_ENTRY_OPERATIONS = ["submit", "poll", "callback"] as const;
+
+export const PluginEntryOperationSchema = z.enum(PLUGIN_ENTRY_OPERATIONS);
+export type PluginEntryOperation = z.infer<typeof PluginEntryOperationSchema>;
+
 export const ExecutablePluginFunctionExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.enum(["action", "provider-projector", "provider-executor"]),
   handler: z.string().trim().min(1),
+  /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
+  operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"]),
+}).superRefine((entry, ctx) => {
+  if (!entry.operations.includes("submit")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["operations"],
+      message: "An entry must handle submit; nothing can be polled that was never started.",
+    });
+  }
+  if (entry.operations.includes("callback") && !entry.operations.includes("poll")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["operations"],
+      message:
+        "An entry handling callbacks must also handle poll. A callback that never arrives is an "
+        + "ordinary event -- providers drop them and networks partition -- and without a poll to "
+        + "fall back on the work is lost.",
+    });
+  }
 });
 
 const PluginNetworkPermissionsSchema = z.object({
@@ -710,7 +746,100 @@ export const ExecutablePluginInvocationSchema = z.object({
     kind: z.enum(["user", "agent", "system"]),
     id: z.string().trim().min(1).optional(),
   }).strict(),
-}).strict();
+  /**
+   * Which translation the host wants: start the work, or report on work already started.
+   *
+   * A plugin at this level only converts shapes. `submit` turns Clash's request into the provider's
+   * request and reads back an id; `poll` turns that id into the provider's status request and reads
+   * back a verdict. Neither waits. The loop, the interval, the retry budget, and the durability are
+   * the host's, because none of them differ by provider -- and because only the host survives its
+   * own restart.
+   *
+   * Stated as a field rather than inferred from an absent one: a plugin that mistakes a status
+   * query for a submission bills the user twice.
+   */
+  operation: z.enum(["submit", "poll", "callback"]).default("submit"),
+  /**
+   * Where the provider should report completion, issued by the host at submit time.
+   *
+   * The plugin cannot supply this. It has no address: a `local` plugin listens on nothing, and a
+   * short-lived translator has nowhere to keep a listener even if it did. The same reasoning already
+   * governs upload targets -- the host issues the address, so reachability holds by construction
+   * rather than by a plugin's claim about itself.
+   *
+   * Absent when the host cannot receive callbacks, which is the local single-user case today. A
+   * plugin that sees no callback URL submits for polling instead; both paths end in `accepted`.
+   */
+  callbackUrl: z.string().url().optional(),
+  /** The opaque state the plugin returned when it accepted the work. Required by `poll`. */
+  pollState: ExecutablePluginJsonValueSchema.optional(),
+  /**
+   * The provider's own callback body, verbatim, for the plugin to translate.
+   *
+   * The host receives this on the address it issued and cannot read it: the payload is in the
+   * provider's shape, which is exactly the thing this plugin exists to translate. So the host routes
+   * it back rather than parsing it, and the plugin answers with the same `completed` or `failed` it
+   * would have returned from a poll.
+   */
+  callbackPayload: ExecutablePluginJsonValueSchema.optional(),
+  /**
+   * The callback request's headers, so the plugin can decide whether to believe it.
+   *
+   * Providers sign callbacks, and they sign them in headers -- an HMAC over the raw body, a
+   * timestamp, a key id. Only the plugin knows which scheme this provider uses, so only the plugin
+   * can verify, and it cannot verify from a body alone. Withholding these would leave one defence
+   * standing: that the address is hard to guess. An address travels through the provider's logs,
+   * any proxy in between, and a referrer header, so it is a weak thing to rest on by itself.
+   *
+   * A plugin that cannot verify a callback returns `failed`, and the work stays pending until a poll
+   * settles it. Refusing to believe an unverified message is not a failure to make progress -- the
+   * poll path is still there, and it authenticates in the other direction.
+   */
+  callbackHeaders: z.record(z.string()).optional(),
+}).strict().superRefine((invocation, ctx) => {
+  if (invocation.operation === "poll" && invocation.pollState === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["pollState"],
+      message: "A poll must carry the state the plugin returned when it accepted the work.",
+    });
+  }
+  if (invocation.operation === "submit" && invocation.pollState !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["pollState"],
+      message: "A submit starts new work and cannot carry poll state.",
+    });
+  }
+  if (invocation.operation === "callback" && invocation.callbackPayload === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["callbackPayload"],
+      message: "A callback must carry the body the provider sent.",
+    });
+  }
+  if (invocation.operation !== "callback" && invocation.callbackHeaders !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["callbackHeaders"],
+      message: "callbackHeaders belongs to a callback.",
+    });
+  }
+  if (invocation.operation !== "callback" && invocation.callbackPayload !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["callbackPayload"],
+      message: "callbackPayload belongs to a callback.",
+    });
+  }
+  if (invocation.operation !== "submit" && invocation.callbackUrl !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["callbackUrl"],
+      message: "A callback address is issued when the work is submitted, not afterwards.",
+    });
+  }
+});
 
 /** Signed, short-lived authorization context passed to hosted functions in headers. */
 export const HostedExecutablePluginCapabilitySchema = z.object({
@@ -770,6 +899,33 @@ export const ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     invocationId: z.string().trim().min(1),
     status: z.literal("completed"),
     outputs: z.array(ExecutablePluginOutputSchema).default([]),
+  }).strict(),
+  /**
+   * The provider took the work and has not finished it.
+   *
+   * A blocking call keeps the upstream's task id in its own stack, so a host that stops mid-flight
+   * cannot find the work again -- the node stays pending forever and the generation is already
+   * billed. Naming the task hands the host something durable to resume from, and moves the retry
+   * loop out of every plugin that currently rewrites it.
+   *
+   * How the host learns the answer is deliberately unspecified here. Polling and a cloud callback
+   * differ only in what wakes the host; the plugin's shape is the same either way.
+   */
+  z.object({
+    protocol: z.literal("clash.plugin.result/v1"),
+    invocationId: z.string().trim().min(1),
+    status: z.literal("accepted"),
+    /**
+     * Whatever this plugin needs to ask about the work again, stored verbatim and handed back.
+     *
+     * Not an id, because plenty of providers have no id: one returns a status URL, another needs a
+     * region alongside a job name, a third hands back a cursor. Any of those fits here, and the host
+     * reads none of it -- it persists the value and returns it on the next poll. Naming a field
+     * `taskId` would have forced every provider without one to fake it.
+     */
+    pollState: ExecutablePluginJsonValueSchema,
+    /** How long to wait before asking again, when the provider says. */
+    retryAfterMs: z.number().int().positive().optional(),
   }).strict(),
   z.object({
     protocol: z.literal("clash.plugin.result/v1"),

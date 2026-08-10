@@ -127,7 +127,8 @@ it("runs an agent-created action Card through activation, hot host discovery, an
       actor: { kind: "agent", id: "agent-e2e" },
     });
     expect(v2Result.status).toBe("completed");
-    if (v2Result.status !== "completed") throw new Error(v2Result.error.message);
+    if (v2Result.status === "failed") throw new Error(v2Result.error.message);
+    if (v2Result.status !== "completed") throw new Error(`Unexpected status ${v2Result.status}`);
     expect(v2Result.outputs).toEqual([
       { slot: "result", kind: "value", value: { text: "v2:Caption this" } },
     ]);
@@ -144,7 +145,8 @@ it("runs an agent-created action Card through activation, hot host discovery, an
       actor: { kind: "agent", id: "agent-e2e" },
     });
     expect(restoredResult.status).toBe("completed");
-    if (restoredResult.status !== "completed") throw new Error(restoredResult.error.message);
+    if (restoredResult.status === "failed") throw new Error(restoredResult.error.message);
+    if (restoredResult.status !== "completed") throw new Error(`Unexpected status ${restoredResult.status}`);
     expect(restoredResult.outputs).toEqual([
       { slot: "result", kind: "value", value: { text: "Caption this" } },
     ]);

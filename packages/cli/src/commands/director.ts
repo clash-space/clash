@@ -38,6 +38,8 @@ import {
   recoverStaleProjection,
   staleProjectionRecoveryError,
 } from "../lib/stale-projection-recovery";
+import { importAssetFile } from "./assets";
+import { attachAssetMetadata } from "../lib/attach-asset-metadata";
 
 type DirectorStageWorkspaceResult = {
   stages?: ProjectDirectorStage[];
@@ -248,6 +250,54 @@ function captureArtifactId(label: string): string {
   return value;
 }
 
+/**
+ * Attaches provenance to each captured frame.
+ *
+ * A generated asset carries its origin as canvas edges to the nodes it referenced. A capture is
+ * written as a file, so without this the only record of where it came from is the directory it
+ * landed in -- and re-capturing after an edit leaves two images that cannot be told apart. Every
+ * fact here was already computed for `capture.json`; attaching it puts provenance where the rest of
+ * the product looks for it.
+ *
+ * Failures are reported, not thrown: the frames are on disk and verified by then, and losing them
+ * because bookkeeping failed would be the worse outcome.
+ */
+async function recordCaptureLineage(options: {
+  cwd: string;
+  stageId: string;
+  sourceStageRevisionId: string;
+  renderer: string;
+  frames: ReadonlyArray<{ artifactId: string; path: string; sha256: string; timeSeconds: number }>;
+}): Promise<{ attached: number; failed: string[] }> {
+  const failed: string[] = [];
+  let attached = 0;
+  for (const frame of options.frames) {
+    try {
+      const imported = await importAssetFile({ cwd: options.cwd, filePath: frame.path, kind: "image" });
+      await attachAssetMetadata({
+        cwd: options.cwd,
+        assetId: imported.assetId,
+        metadataKind: "media.render-lineage",
+        producer: "clash:director capture",
+        metadata: {
+          schemaVersion: 1,
+          kind: "media.render-lineage",
+          sourceEntityKind: "director-stage",
+          sourceEntityId: options.stageId,
+          sourceRevisionId: options.sourceStageRevisionId,
+          timeSeconds: frame.timeSeconds,
+          renderer: options.renderer,
+          sourceHash: `sha256:${frame.sha256}`,
+        },
+      });
+      attached += 1;
+    } catch (error) {
+      failed.push(`${frame.artifactId}: ${(error as Error).message}`);
+    }
+  }
+  return { attached, failed };
+}
+
 function resolveCaptureOutputDir(cwd: string, stageId: string, outputDir?: string): string {
   const root = resolve(cwd);
   const target = outputDir?.trim()
@@ -407,6 +457,19 @@ export async function captureDirectorStageWithReadback(options: {
       path,
     };
   });
+  const lineage = await recordCaptureLineage({
+    cwd: options.cwd,
+    stageId: options.stageId,
+    sourceStageRevisionId: before.revisionId,
+    renderer: rendered.renderer.id,
+    frames,
+  });
+  if (lineage.failed.length > 0) {
+    process.stderr.write(
+      `warning: ${lineage.failed.length} capture(s) written without lineage: ${lineage.failed.join("; ")}\n`,
+    );
+  }
+
   const receiptPath = join(outputDir, "capture.json");
   const receipt: DirectorCaptureReceipt = {
     captured: true,

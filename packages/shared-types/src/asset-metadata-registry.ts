@@ -38,6 +38,33 @@ export const MediaTranscriptMetadataSchema = z.object({
 export type MediaTranscriptMetadata = z.infer<typeof MediaTranscriptMetadataSchema>;
 
 /**
+ * What produced a rendered frame, and from which revision of it.
+ *
+ * A generated asset carries its provenance as canvas edges to the nodes it referenced. A frame
+ * rendered off an entity has no such edge -- it is written as a file -- so without this the only
+ * record of its origin is the directory it landed in, and re-rendering after an edit leaves two
+ * images that cannot be told apart. The renderer already knows every fact here; they were simply
+ * never attached to the asset.
+ */
+export const MediaRenderLineageMetadataSchema = z.object({
+  schemaVersion: z.literal(1),
+  kind: z.literal("media.render-lineage"),
+  /** The entity rendered, e.g. a Director Stage or a Timeline. */
+  sourceEntityKind: z.string().min(1),
+  sourceEntityId: z.string().min(1),
+  /** The exact revision rendered, so a later edit cannot be mistaken for this one. */
+  sourceRevisionId: z.string().min(1),
+  /** Where in the entity's own time this frame was taken, when it has time. */
+  timeSeconds: z.number().nonnegative().optional(),
+  /** Which renderer produced it. */
+  renderer: z.string().min(1).optional(),
+  /** The media file this describes. */
+  sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+});
+
+export type MediaRenderLineageMetadata = z.infer<typeof MediaRenderLineageMetadataSchema>;
+
+/**
  * A short producer-attributed description of what the media shows or says.
  * Small enough to live inline as its own identity: no body, no blob.
  */
@@ -208,4 +235,9 @@ registerAssetMetadataKind({
 registerAssetMetadataKind({
   kind: "media.description",
   schema: MediaDescriptionMetadataSchema,
+});
+
+registerAssetMetadataKind({
+  kind: "media.render-lineage",
+  schema: MediaRenderLineageMetadataSchema,
 });

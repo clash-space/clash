@@ -1568,7 +1568,9 @@ export async function runExecutablePluginContractTests(
       }
       const actual: unknown = result.status === "completed"
         ? { status: result.status, outputs: result.outputs }
-        : { status: result.status, error: result.error };
+        : result.status === "accepted"
+          ? { status: result.status, pollState: result.pollState }
+          : { status: result.status, error: result.error };
       try {
         deepStrictEqual(actual, contractTest.expect);
       } catch {

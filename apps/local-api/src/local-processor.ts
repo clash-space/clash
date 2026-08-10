@@ -546,6 +546,14 @@ export function createLocalWorkflowProcessor(
               if (result.status === "failed") {
                 throw new Error(`Plugin action failed (${result.error.code}): ${result.error.message}`);
               }
+              if (result.status === "accepted") {
+                // This path has no poll loop yet, so accepting work here would strand it: the node
+                // would report success while nothing ever collects the result. Refusing is the
+                // honest answer until the loop below owns every kind of task.
+                throw new Error(
+                  "Plugin action returned accepted, which this path cannot resume yet.",
+                );
+              }
               const assetOutput = result.outputs.find((output) => output.kind === "asset");
               const valueOutput = result.outputs.find((output) => output.kind === "value");
               const nextData: Record<string, unknown> = { ...data, status: "completed" };
@@ -877,7 +885,7 @@ export function createLocalWorkflowProcessor(
               orderedContentParts.unshift({ type: "text", text: prompt });
             }
           }
-          const common = {
+          const commonInput = {
             taskId,
             projectId,
             nodeId,
@@ -908,9 +916,9 @@ export function createLocalWorkflowProcessor(
                     modelParams: modelParams(data),
                     actorAgentId: typeof data.actorAgentId === "string" ? data.actorAgentId : undefined,
                   })
-                : await aigc.generateText(common);
+                : await aigc.generateText(commonInput);
             } catch {
-              generated = await aigc.generateText(common);
+              generated = await aigc.generateText(commonInput);
             }
             await recordGeneratedTextRevision({
               dataDir: options.dataDir,
@@ -935,6 +943,18 @@ export function createLocalWorkflowProcessor(
             continue;
           }
 
+          // Work the provider already accepted is asked about, never sent again. `generating` looks
+          // identical on the tick that submitted it and on every tick after, so without this the
+          // loop rebuys the same generation forever.
+          const providerPollState = data.providerPollState;
+          const resuming = providerPollState !== undefined;
+          if (resuming) {
+            const dueAt = typeof data.providerPollAt === "number" ? data.providerPollAt : 0;
+            // Asking sooner than the provider allowed gets the host rate-limited, and a provider
+            // that throttles status checks throttles submissions on the same credential.
+            if (Date.now() < dueAt) continue;
+          }
+          const common = resuming ? { ...commonInput, pollState: providerPollState } : commonInput;
           const generated = kind === "image"
             ? await aigc.generateImage({
                 ...common,
@@ -950,6 +970,25 @@ export function createLocalWorkflowProcessor(
                   ...common,
                   duration: durationFromData(data, modelCard),
                 });
+          if (generated.status === "accepted") {
+            // The provider holds the work. Record how to ask again on the node itself -- the same
+            // document that holds the canvas, so it is already durable and already replicated. A
+            // restart then resumes by reading the node it would have read anyway, rather than
+            // through a separate recovery path that only runs after a crash and is therefore only
+            // tested by one.
+            nodes.set(nodeId, {
+              ...node,
+              data: {
+                ...data,
+                status: "generating",
+                providerPollState: generated.pollState,
+                providerPollAt: Date.now() + Math.max(1000, generated.retryAfterMs ?? 5000),
+                ...(generated.pluginBinding ? { pluginBinding: generated.pluginBinding } : {}),
+              },
+            });
+            changed = true;
+            continue;
+          }
           const asset = await saveAsset({
             dataDir: options.dataDir,
             userId,

@@ -32,6 +32,12 @@ function projectionFromResult(resultInput: unknown): ProviderPluginProjection {
   if (result.status === "failed") {
     throw new Error(`Provider plugin failed (${result.error.code}): ${result.error.message}`);
   }
+  if (result.status === "accepted") {
+    // A projection maps a card's parameters onto a provider's request shape. It is pure translation
+    // with nothing to wait for, so an acceptance here means the plugin answered a different
+    // question than the one asked.
+    throw new Error("A provider projection cannot be accepted for later; it must answer now.");
+  }
   const output = result.outputs.find((entry) => entry.slot === "projection");
   if (!output || output.kind !== "value" || !output.value || typeof output.value !== "object" || Array.isArray(output.value)) {
     throw new Error("Provider plugin returned no projection value output.");

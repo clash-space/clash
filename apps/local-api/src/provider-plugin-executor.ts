@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  type ExecutablePluginFunctionExport,
   ExecutablePluginBindingSchema,
   ExecutablePluginInvocationSchema,
   ExecutablePluginResultSchema,
@@ -16,6 +17,8 @@ import type {
 import { ProviderPluginHostUnavailableError } from "./local-aigc.js";
 
 export interface BridgeProviderExecutorClient {
+  /** Declared entry points, used to check an acceptance against what the plugin says it supports. */
+  listFunctionExports?(pluginId: string): Promise<ExecutablePluginFunctionExport[]>;
   resolveBinding(
     pluginId: string,
     exportId: string,
@@ -34,6 +37,11 @@ export function mediaFromResult(input: unknown): ProviderPluginExecutorMedia {
   const result = ExecutablePluginResultSchema.parse(input);
   if (result.status === "failed") {
     throw new Error(`Provider plugin failed (${result.error.code}): ${result.error.message}`);
+  }
+  if (result.status === "accepted") {
+    // Reading media off an accepted result would invent an answer the provider has not given yet.
+    // The caller decides what to do with an acceptance; this function only reads finished work.
+    throw new Error("Provider plugin accepted the work; no media is available yet.");
   }
   const output = result.outputs.find((entry) => entry.slot === "media");
   if (!output) throw new Error("Provider plugin returned no media output.");
@@ -85,6 +93,27 @@ export function mediaFromResult(input: unknown): ProviderPluginExecutorMedia {
   };
 }
 
+/**
+ * Whether this entry says it can be asked about work it accepted.
+ *
+ * Read from the manifest rather than carried on the binding: a binding is an identity -- four
+ * fields that hash into a contract check -- and adding capability to it would make two plugins with
+ * identical contracts hash differently.
+ *
+ * Fails closed. If the declaration cannot be read, the answer is no, because the cost of being
+ * wrong runs one way: accepting work nobody can collect loses money, while refusing an acceptance
+ * costs a round trip on the path that already worked.
+ */
+async function declaresPoll(
+  client: BridgeProviderExecutorClient,
+  pluginId: string,
+  exportId: string,
+): Promise<boolean> {
+  const entries = await client.listFunctionExports?.(pluginId).catch(() => undefined);
+  const entry = entries?.find((candidate) => candidate.id === exportId);
+  return entry?.operations?.includes("poll") ?? false;
+}
+
 export function createBridgeProviderPluginExecutor(options: {
   client: BridgeProviderExecutorClient;
 }): ProviderPluginExecutor {
@@ -119,6 +148,12 @@ export function createBridgeProviderPluginExecutor(options: {
       target: { ...binding, kind: "provider-executor" },
       input: request.input,
       actor: { kind: "system", id: "local-aigc" },
+      // Passed through untouched. The host stores whatever the plugin handed back and returns it
+      // verbatim, so a provider identified by a URL, a region pair, or nothing resembling an id at
+      // all needs no accommodation here.
+      ...(request.pollState === undefined
+        ? {}
+        : { operation: "poll" as const, pollState: request.pollState }),
     });
     let result: ExecutablePluginResult;
     try {
@@ -131,7 +166,24 @@ export function createBridgeProviderPluginExecutor(options: {
       }
       throw error;
     }
-    return { binding, media: mediaFromResult(result) };
+    if (result.status === "accepted") {
+      // A plugin that never said it could be polled has just taken money for work nobody can
+      // collect. Refusing here turns a silent loss into a loud one, at the only moment it is still
+      // cheap to notice.
+      if (!(await declaresPoll(options.client, request.pluginId, request.exportId))) {
+        throw new Error(
+          `Provider plugin ${request.pluginId}/${request.exportId} accepted work but does not `
+            + "declare the poll operation, so its result could never be collected.",
+        );
+      }
+      return {
+        status: "accepted",
+        binding,
+        pollState: result.pollState,
+        ...(result.retryAfterMs === undefined ? {} : { retryAfterMs: result.retryAfterMs }),
+      };
+    }
+    return { status: "completed", binding, media: mediaFromResult(result) };
   };
 }
 

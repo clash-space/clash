@@ -34,6 +34,8 @@ export default defineConfig({
             { text: "Overview", link: "/plugins/overview" },
             { text: "Authoring Workflow", link: "/plugins/authoring" },
             { text: "Manifest & Artifacts", link: "/plugins/manifest" },
+            { text: "Choosing a Strategy", link: "/plugins/strategies" },
+            { text: "Waiting for a Provider", link: "/plugins/waiting" },
             { text: "Capability Broker & Security", link: "/plugins/broker" },
             { text: "Contract Tests", link: "/plugins/contract-tests" },
             { text: "Traffic Record & Replay", link: "/plugins/traffic-replay" },

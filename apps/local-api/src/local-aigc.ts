@@ -87,6 +87,8 @@ export function localExecutableModelCards(models: readonly ModelCard[]): ModelCa
 }
 
 export interface MockMediaGenerationInput {
+  /** Set when asking about work already accepted; forwarded to the plugin untouched. */
+  pollState?: unknown;
   taskId: string;
   projectId?: string;
   nodeId?: string;
@@ -206,7 +208,25 @@ async function orderedTextCompletionContent(
   return content;
 }
 
-export interface MockMediaGenerationResult {
+/**
+ * A generation that has not finished yet.
+ *
+ * The provider holds the work and the host holds the way back to it. Kept beside the completed
+ * shape rather than signalled by an exception, because a caller that catches an acceptance treats
+ * it as a failure -- and a failure is retried, which buys the same generation twice.
+ */
+export interface MediaGenerationAccepted {
+  status: "accepted";
+  /** Opaque to the host; persisted on the node and returned to the plugin on the next poll. */
+  pollState: unknown;
+  retryAfterMs?: number;
+  provider?: string;
+  modelEndpoint?: string;
+  pluginBinding?: ExecutablePluginBinding;
+}
+
+export interface MockMediaGenerationCompleted {
+  status?: "completed";
   bytes: Uint8Array;
   contentType: string;
   width?: number;
@@ -220,6 +240,8 @@ export interface MockMediaGenerationResult {
   remoteUrl?: string;
   pluginBinding?: ExecutablePluginBinding;
 }
+
+export type MockMediaGenerationResult = MockMediaGenerationCompleted | MediaGenerationAccepted;
 
 export interface MockTextGenerationResult {
   text: string;
@@ -310,6 +332,14 @@ export interface ProviderPluginExecutorRequest {
     values: Record<string, unknown>;
     references: ExecutablePluginReference[];
   };
+  /**
+   * Set when asking about work already accepted, carrying exactly what the plugin returned.
+   *
+   * Opaque on purpose: an id, a status URL, a job name with its region, or anything else a provider
+   * needs. The host persists it and hands it back without reading it, so a provider that has no
+   * task id is not forced to invent one.
+   */
+  pollState?: unknown;
 }
 
 export interface ProviderPluginExecutorMedia {
@@ -323,10 +353,26 @@ export interface ProviderPluginExecutorMedia {
   transcript?: string;
 }
 
-export interface ProviderPluginExecutorResponse {
-  binding: ExecutablePluginBinding;
-  media: ProviderPluginExecutorMedia;
-}
+/**
+ * Either the provider finished, or it took the work and told us how to ask again.
+ *
+ * Typed as a union rather than as media-with-exceptions, because an acceptance thrown as an error
+ * cannot be told apart from a failure by the code that catches it -- and the difference is that one
+ * of them has already been paid for.
+ */
+export type ProviderPluginExecutorResponse =
+  | {
+      status: "completed";
+      binding: ExecutablePluginBinding;
+      media: ProviderPluginExecutorMedia;
+    }
+  | {
+      status: "accepted";
+      binding: ExecutablePluginBinding;
+      /** Opaque; stored on the node and handed back verbatim on the next poll. */
+      pollState: unknown;
+      retryAfterMs?: number;
+    };
 
 export type ProviderPluginExecutor = (
   request: ProviderPluginExecutorRequest,
@@ -507,7 +553,7 @@ async function generateOpenAiImage(
   options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
     Pick<MockFalExternalAigcServiceOptions, "openAiBaseUrl">,
   apiKey: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const format = outputFormat(input.modelParams);
   const body: Record<string, unknown> = {
     model: route.upstreamModel,
@@ -612,7 +658,7 @@ async function generateGoogleAiStudioMedia(
   options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
     Pick<MockFalExternalAigcServiceOptions, "googleAiStudioBaseUrl">,
   apiKey: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   if (kind !== "image" && kind !== "audio" && kind !== "text") throw missingAdapter(route);
   const baseUrl = normalizeBaseUrl(options.googleAiStudioBaseUrl, "https://generativelanguage.googleapis.com/v1beta");
   const response = await options.fetch(`${baseUrl}/models/${route.upstreamModel}:generateContent`, {
@@ -699,7 +745,7 @@ async function generateGeminiOmniVideo(
       providerFetch?: typeof fetch;
     },
   auth: { apiKey?: string; gatewayToken?: string },
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const baseUrl = normalizeBaseUrl(options.googleAiStudioBaseUrl, "https://generativelanguage.googleapis.com/v1beta");
   const providerFetch = options.providerFetch ?? options.fetch;
   let interaction = await createGeminiOmniInteraction({
@@ -972,7 +1018,7 @@ async function generateGoogleAgentPlatformText(
   route: ModelUpstreamRoute,
   fetchImpl: typeof fetch,
   rawCredentials: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const credentials = parseGoogleAgentPlatformCredentials(rawCredentials);
   const location = credentials.location || route.region || "global";
   const token = await googleVertexAccessToken(credentials, fetchImpl);
@@ -1006,7 +1052,7 @@ async function generateGoogleAgentPlatformImage(
   route: ModelUpstreamRoute,
   fetchImpl: typeof fetch,
   rawCredentials: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const credentials = parseGoogleAgentPlatformCredentials(rawCredentials);
   const location = credentials.location || route.region || "global";
   const token = await googleVertexAccessToken(credentials, fetchImpl);
@@ -1040,7 +1086,7 @@ async function generateGoogleAgentPlatformVideo(
   route: ModelUpstreamRoute,
   fetchImpl: typeof fetch,
   rawCredentials: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const credentials = parseGoogleAgentPlatformCredentials(rawCredentials);
   const location = credentials.location || route.region || "global";
   const token = await googleVertexAccessToken(credentials, fetchImpl);
@@ -1465,11 +1511,42 @@ function providerPluginExecutorRequest(
   };
 }
 
+/**
+ * Polls an accepted generation until it finishes.
+ *
+ * For a caller with a client waiting on an open socket and nowhere to put an acceptance. The canvas
+ * processor does not use this -- it stores the poll state on the node, which is what survives a
+ * restart.
+ */
+export async function settleAcceptedGeneration(
+  first: MockMediaGenerationResult,
+  poll: (pollState: unknown) => Promise<MockMediaGenerationResult>,
+  options: { now?: () => number; sleep?: (ms: number) => Promise<void>; budgetMs?: number } = {},
+): Promise<MockMediaGenerationCompleted> {
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const budgetMs = options.budgetMs ?? 15 * 60 * 1000;
+  const deadline = now() + budgetMs;
+  let current = first;
+  while (current.status === "accepted") {
+    if (now() >= deadline) {
+      throw new Error(
+        "Provider did not finish within the request budget. The work may still be running upstream.",
+      );
+    }
+    await sleep(Math.max(1000, current.retryAfterMs ?? 5000));
+    current = await poll(current.pollState);
+  }
+  return current;
+}
+
 async function generatePluginProviderMedia(
   input: MockMediaGenerationInput,
   kind: ModelKind,
   route: ModelUpstreamRoute,
   options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch" | "providerPluginExecutor">>,
+  // The one path that can come back unfinished: a plugin may hand the work to a provider that
+  // takes minutes, and say so instead of holding the call open.
 ): Promise<MockMediaGenerationResult> {
   const [startFrameUrl, endFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls] =
     await Promise.all([
@@ -1511,6 +1588,19 @@ async function generatePluginProviderMedia(
       `Provider plugin binding drifted from ${input.pluginBinding.version}/${input.pluginBinding.schemaHash}.`,
     );
   }
+  if (response.status === "accepted") {
+    // Not an error and not a result: the provider holds the work. Carrying it out as a value lets
+    // the caller persist the poll state; throwing here would make an acceptance look like a failure
+    // to every catch on the way up, and this one has already been billed.
+    return {
+      status: "accepted",
+      pollState: response.pollState,
+      ...(response.retryAfterMs === undefined ? {} : { retryAfterMs: response.retryAfterMs }),
+      pluginBinding: response.binding,
+      provider: route.providerId ?? route.upstreamId,
+      modelEndpoint: route.upstreamModel,
+    };
+  }
   const downloaded = await downloadProviderMedia(options.fetch, response.media.url, kind);
   return {
     ...downloaded,
@@ -1520,6 +1610,7 @@ async function generatePluginProviderMedia(
     ...(response.media.durationMs !== undefined ? { durationMs: response.media.durationMs } : {}),
     ...(response.media.waveform ? { waveform: response.media.waveform } : {}),
     ...(response.media.transcript ? { transcript: response.media.transcript } : {}),
+    status: "completed" as const,
     requestId: response.media.requestId ?? input.taskId,
     provider: route.providerId ?? route.upstreamId,
     modelEndpoint: route.upstreamModel,
@@ -1534,7 +1625,7 @@ async function generateFalMedia(
   options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
     Pick<MockFalExternalAigcServiceOptions, "falQueueBaseUrl" | "providerPluginProjector">,
   apiKey: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const queueBaseUrl = normalizeBaseUrl(options.falQueueBaseUrl, "https://queue.fal.run");
   let pluginBinding: ExecutablePluginBinding | undefined;
   let endpoint = "";
@@ -1709,7 +1800,7 @@ async function downloadProviderMedia(
   fetchImpl: typeof fetch,
   mediaUrl: string,
   kind: ModelKind,
-): Promise<Pick<MockMediaGenerationResult, "bytes" | "contentType" | "remoteUrl">> {
+): Promise<Pick<MockMediaGenerationCompleted, "bytes" | "contentType" | "remoteUrl">> {
   const mediaResponse = await fetchImpl(mediaUrl);
   if (!mediaResponse.ok) throw new Error(`provider media download failed: ${mediaResponse.status}`);
   return {
@@ -1752,7 +1843,7 @@ async function generateBflVideoMedia(
     Pick<MockFalExternalAigcServiceOptions, "bflBaseUrl">,
   apiKey: string,
   accountBaseUrl?: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const [referenceImageUrls, referenceVideoUrls] = await Promise.all([
     Promise.all((input.referenceImageUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
     Promise.all((input.referenceVideoUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
@@ -1800,7 +1891,7 @@ async function generateKieMedia(
   options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
     Pick<MockFalExternalAigcServiceOptions, "kieBaseUrl">,
   apiKey: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const baseUrl = normalizeBaseUrl(options.kieBaseUrl, "https://api.kie.ai");
   const headers = {
     authorization: `Bearer ${apiKey}`,
@@ -1860,7 +1951,7 @@ async function generateSunoMedia(
     Pick<MockFalExternalAigcServiceOptions, "sunoBaseUrl">,
   apiKey: string,
   callbackUrl: string | undefined,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   if (!callbackUrl || !/^https:\/\//.test(callbackUrl)) {
     throw new Error("Suno provider account requires a public HTTPS callbackUrl.");
   }
@@ -1943,7 +2034,7 @@ async function generateMiniMaxMedia(
     Pick<MockFalExternalAigcServiceOptions, "minimaxBaseUrl">,
   apiKey: string,
   accountBaseUrl?: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const baseUrl = normalizeBaseUrl(accountBaseUrl || options.minimaxBaseUrl, "https://api.minimax.io");
   const headers = {
     authorization: `Bearer ${apiKey}`,
@@ -2134,7 +2225,7 @@ async function generateReplicateMedia(
   options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
     Pick<MockFalExternalAigcServiceOptions, "replicateBaseUrl">,
   apiKey: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const baseUrl = normalizeBaseUrl(options.replicateBaseUrl, "https://api.replicate.com/v1");
   const headers = {
     authorization: `Bearer ${apiKey}`,
@@ -2367,7 +2458,7 @@ async function generatePikaMedia(
   route: ModelUpstreamRoute,
   options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> & Pick<MockFalExternalAigcServiceOptions, "pikaBaseUrl" | "providerUsageAudit">,
   apiKey: string,
-): Promise<MockMediaGenerationResult> {
+): Promise<MockMediaGenerationCompleted> {
   const [start, end, images, videos, audios] = await Promise.all([
     pikaReferenceUrl(input.startFrameUrl, options, apiKey),
     pikaReferenceUrl(input.endFrameUrl, options, apiKey),
@@ -2640,6 +2731,8 @@ export function createMockExternalAigcService(
     input: MockMediaGenerationInput,
     kind: ModelKind,
     fallback: () => Promise<MockMediaGenerationResult>,
+    // Unfinished when a plugin hands the work to a provider that takes minutes and says so rather
+    // than holding the call open.
   ): Promise<MockMediaGenerationResult> {
     const loadedProviderAccounts = loadProviderAccounts ? await loadProviderAccounts() : undefined;
     const environmentGoogleAccount = cloudflareGoogleEnvironmentAccount(options);
@@ -3041,13 +3134,19 @@ export function createMockExternalAigcService(
     },
 
     async generateText(input) {
-      const result = await generateWithRoute(input, "text", async () => ({
+      const textFallback = async () => ({
         bytes: new TextEncoder().encode(`Generated text (${input.model})\n\n${input.prompt || "Mock text"}`),
         contentType: "text/plain; charset=utf-8",
         requestId: input.taskId,
         provider: "mock",
         modelEndpoint: resolveMockFalModelId(input.model, "text", "mock-text"),
-      }));
+      });
+      // `MockTextGenerationResult` has no unfinished arm -- a caller asking for text has nowhere to
+      // put an acceptance -- so poll it out here.
+      const result = await settleAcceptedGeneration(
+        await generateWithRoute(input, "text", textFallback),
+        (pollState) => generateWithRoute({ ...input, pollState }, "text", textFallback),
+      );
       return {
         text: new TextDecoder().decode(result.bytes),
         provider: result.provider,

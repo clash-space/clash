@@ -174,6 +174,8 @@ import {
 import {
   createMockExternalAigcService,
   localExecutableModelCards,
+  settleAcceptedGeneration,
+  type MockMediaGenerationCompleted,
   type MockMediaGenerationInput,
   type MockMediaGenerationResult,
 } from "./local-aigc.js";
@@ -3387,11 +3389,7 @@ function providerTestInputSummary(
 
 function providerTestMediaOutput(
   shape: "image" | "video" | "audio",
-  result: Awaited<
-    ReturnType<
-      ReturnType<typeof createMockExternalAigcService>["generateImage"]
-    >
-  >,
+  result: MockMediaGenerationCompleted,
 ): ModelProviderTestOutputSummary {
   return {
     shape,
@@ -4402,28 +4400,37 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
         const mediaShape =
           shape === "video" || shape === "audio" ? shape : "image";
-        const result =
-          mediaShape === "video"
-            ? await testAigc.generateVideo({
-                taskId,
-                prompt,
-                model: modelId,
+        const generateMedia = (
+          pollState?: unknown,
+        ): Promise<MockMediaGenerationResult> => {
+          const common = {
+            taskId,
+            prompt,
+            model: modelId,
+            ...(pollState === undefined ? {} : { pollState }),
+          };
+          return mediaShape === "video"
+            ? testAigc.generateVideo({
+                ...common,
                 aspectRatio: testInput.aspectRatio,
                 duration: testInput.duration,
               })
             : mediaShape === "audio"
-              ? await testAigc.generateAudio({
-                  taskId,
-                  prompt,
-                  model: modelId,
+              ? testAigc.generateAudio({
+                  ...common,
                   duration: testInput.duration,
                 })
-              : await testAigc.generateImage({
-                  taskId,
-                  prompt,
-                  model: modelId,
+              : testAigc.generateImage({
+                  ...common,
                   aspectRatio: testInput.aspectRatio,
                 });
+        };
+        // A provider test answers over an open socket, so there is nowhere to put an acceptance and
+        // nobody to come back to it later. Poll it out before reading the result.
+        const result = await settleAcceptedGeneration(
+          await generateMedia(),
+          (pollState) => generateMedia(pollState),
+        );
         const output = providerTestMediaOutput(mediaShape, result);
         return providerTestResponse({
           ok: true,
