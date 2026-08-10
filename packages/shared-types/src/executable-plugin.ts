@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { ProviderStatusMappingSchema } from "./provider-status-vocabulary";
+
 import { AssetKindSchema } from "./assets";
 import {
   ModelCardSchema,
@@ -447,7 +449,34 @@ export const ExecutablePluginFunctionExportSchema = z.object({
   handler: z.string().trim().min(1),
   /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
   operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"]),
+  /**
+   * Which of this provider's words mean running, completed and failed.
+   *
+   * Declared rather than coded, because deciding a generation's lifecycle is not shape translation.
+   * The plugin reports the word its provider used; the host reads it against this table and decides.
+   */
+  statusMapping: ProviderStatusMappingSchema.optional(),
 }).superRefine((entry, ctx) => {
+  const polls = entry.operations.includes("poll");
+  if (polls && !entry.statusMapping) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["statusMapping"],
+      message:
+        "An entry that handles poll must declare statusMapping. Polling without one means reading "
+        + "the provider's answer against nothing, and the safe-looking default -- treat what I do "
+        + "not recognise as still-running -- waits forever on work that already died.",
+    });
+  }
+  if (!polls && entry.statusMapping) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["statusMapping"],
+      message:
+        "Only an entry that handles poll can declare statusMapping; nothing would ever read this "
+        + "one, and a vocabulary nobody reads looks like the question was considered.",
+    });
+  }
   if (!entry.operations.includes("submit")) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -980,6 +1009,15 @@ export const ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     pollState: ExecutablePluginJsonValueSchema,
     /** How long to wait before asking again, when the provider says. */
     retryAfterMs: z.number().int().positive().optional(),
+    /**
+     * The word the provider used, passed through untranslated.
+     *
+     * The plugin reports; the host decides, reading this against the entry's declared statusMapping.
+     * Keeping the judgement out of the plugin is what stops each one privately inventing a rule for
+     * words it does not recognise -- and the rule they all reached for, "assume it is still
+     * running", is an unbounded wait on work that may already have failed.
+     */
+    providerStatus: z.string().trim().min(1).optional(),
   }).strict(),
   z.object({
     protocol: z.literal("clash.plugin.result/v1"),

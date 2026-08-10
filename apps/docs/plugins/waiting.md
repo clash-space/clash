@@ -186,3 +186,52 @@ the forger wanted.
 Return `completed` when the provider genuinely answers within the call. Return `accepted`
 when it does not. The threshold is not a duration to tune: it is whether losing the host
 mid-call would lose the work. If it would, the work needs a name the host can keep.
+
+
+## Saying what the provider said
+
+The three states are the host's: `running`, `completed`, `failed`. A provider's own words are its
+own — `IN_QUEUE`, `PENDING`, `submitted`, `processing` and `RUNNING` all describe the first one, and
+which of them you get depends on the model family.
+
+So a pollable entry declares the translation in its manifest, and reports the provider's word
+untranslated in its result:
+
+```json
+{
+  "id": "hub-execute",
+  "kind": "provider-executor",
+  "handler": "execute",
+  "operations": ["submit", "poll"],
+  "statusMapping": {
+    "running": ["processing", "queued", "in_progress"],
+    "completed": ["success", "completed"],
+    "failed": ["failed", "canceled", "insufficient_balance"]
+  }
+}
+```
+
+```ts
+return { status: "accepted", pollState: { taskId }, providerStatus: raw.status };
+```
+
+The host reads one against the other. This is not ceremony: deciding whether a generation is alive
+is not shape translation, and a plugin left to decide reaches for the same rule every time —
+*anything I do not recognise is still running*. That rule is wrong in the one direction that costs
+money. A status introduced upstream next month, a spelling that differs by a letter, a terminal
+failure phrased in a way the list never learned: each becomes an unbounded wait for work that has
+already died, and the only symptom is that nothing ever happens.
+
+Inverting it costs a surfaced error naming the word you did not map, on a run you can fix. Those are
+not comparable, so an unmapped status is `failed`.
+
+Two rules follow, both enforced at activation rather than discovered in someone's paid generation:
+
+- an entry that declares `poll` must declare `statusMapping` — polling reads the answer against
+  something, or it reads it against nothing;
+- an entry that does not poll must not declare one — a vocabulary nothing reads looks like the
+  question was considered.
+
+Every state needs at least one word. A mapping with no failure words cannot report a failure, and a
+dead job would then sit until the host's own deadline expires. That deadline exists for silence, not
+as a substitute for reading what the provider said.

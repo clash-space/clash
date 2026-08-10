@@ -25,7 +25,12 @@ describe('declared operations', () => {
     const parsed = ExecutablePluginFunctionExportSchema.parse({
       ...base,
       operations: ['submit', 'poll'],
-    });
+    statusMapping: {
+        running: ['PROCESSING'],
+        completed: ['SUCCESS'],
+        failed: ['FAILED'],
+      },
+      });
     expect(parsed.operations).toContain('poll');
   });
 
@@ -46,7 +51,12 @@ describe('declared operations', () => {
     expect(ExecutablePluginFunctionExportSchema.safeParse({
       ...base,
       operations: ['submit', 'poll', 'callback'],
-    }).success).toBe(true);
+    statusMapping: {
+        running: ['PROCESSING'],
+        completed: ['SUCCESS'],
+        failed: ['FAILED'],
+      },
+      }).success).toBe(true);
   });
 
   it('rejects an operation the host has no meaning for', () => {
@@ -66,8 +76,13 @@ describe('declared operations', () => {
  * provider talking to nobody.
  */
 describe('the host honours the declaration', () => {
+  // A pollable entry has to bring the vocabulary its provider answers in, so the factory supplies
+  // one whenever poll is declared. Submit-only entries must not carry it: nothing would read it.
   const entry = (operations: string[]) => ExecutablePluginFunctionExportSchema.parse({
     id: 'generate', kind: 'provider-executor', handler: 'dist/index.js', operations,
+    ...(operations.includes('poll')
+      ? { statusMapping: { running: ['PROCESSING'], completed: ['SUCCESS'], failed: ['FAILED'] } }
+      : {}),
   });
 
   it('marks a submit-only entry as unable to accept work', () => {

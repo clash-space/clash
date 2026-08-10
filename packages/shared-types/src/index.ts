@@ -543,6 +543,16 @@ export {
 } from './credential-sources';
 
 export {
+  PROVIDER_LIFECYCLE_STATES,
+  ProviderLifecycleStateSchema,
+  ProviderStatusMappingSchema,
+  classifyProviderStatus,
+  type ProviderLifecycleState,
+  type ProviderStatusMapping,
+  type ProviderStatusVerdict,
+} from './provider-status-vocabulary';
+
+export {
   CANONICAL_RESOLUTION_TIERS,
   resolutionTierPixels,
   type CanonicalResolutionTier,

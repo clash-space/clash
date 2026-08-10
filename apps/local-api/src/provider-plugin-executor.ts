@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  classifyProviderStatus,
   type ExecutablePluginFunctionExport,
   ExecutablePluginBindingSchema,
   ExecutablePluginInvocationSchema,
@@ -104,14 +105,14 @@ export function mediaFromResult(input: unknown): ProviderPluginExecutorMedia {
  * wrong runs one way: accepting work nobody can collect loses money, while refusing an acceptance
  * costs a round trip on the path that already worked.
  */
-async function declaresPoll(
+async function pollableEntry(
   client: BridgeProviderExecutorClient,
   pluginId: string,
   exportId: string,
-): Promise<boolean> {
+): Promise<ExecutablePluginFunctionExport | undefined> {
   const entries = await client.listFunctionExports?.(pluginId).catch(() => undefined);
   const entry = entries?.find((candidate) => candidate.id === exportId);
-  return entry?.operations?.includes("poll") ?? false;
+  return entry?.operations?.includes("poll") ? entry : undefined;
 }
 
 export function createBridgeProviderPluginExecutor(options: {
@@ -170,11 +171,32 @@ export function createBridgeProviderPluginExecutor(options: {
       // A plugin that never said it could be polled has just taken money for work nobody can
       // collect. Refusing here turns a silent loss into a loud one, at the only moment it is still
       // cheap to notice.
-      if (!(await declaresPoll(options.client, request.pluginId, request.exportId))) {
+      const entry = await pollableEntry(options.client, request.pluginId, request.exportId);
+      if (!entry) {
         throw new Error(
           `Provider plugin ${request.pluginId}/${request.exportId} accepted work but does not `
             + "declare the poll operation, so its result could never be collected.",
         );
+      }
+      // The plugin reported the provider's word; the decision is read off the vocabulary the entry
+      // declared. Keeping it here is the point -- a plugin left to judge for itself reaches for
+      // "anything I do not recognise is still running", and waits out work that already died.
+      if (result.providerStatus && entry.statusMapping) {
+        const verdict = classifyProviderStatus(result.providerStatus, entry.statusMapping);
+        if (verdict.state === "failed") {
+          throw new Error(
+            verdict.reason
+              ?? `Provider reported "${result.providerStatus}", which ${request.pluginId} maps to `
+                + "failed.",
+          );
+        }
+        if (verdict.state === "completed") {
+          throw new Error(
+            `Provider reported "${result.providerStatus}", which ${request.pluginId} maps to `
+              + "completed, but the plugin returned an acceptance rather than the result. The work "
+              + "is finished upstream and asking again will not produce it.",
+          );
+        }
       }
       return {
         status: "accepted",

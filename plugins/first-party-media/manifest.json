@@ -1,7 +1,7 @@
 {
   "apiVersion": "clash.plugin/v1",
   "id": "clash-first-party-media",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "name": "Clash First-party Media Projectors",
   "description": "Pure provider request projectors for first-party media Model Cards.",
   "runtime": {
@@ -155,7 +155,32 @@
         "operations": [
           "submit",
           "poll"
-        ]
+        ],
+        "statusMapping": {
+          "running": [
+            "IN_QUEUE",
+            "IN_PROGRESS",
+            "starting",
+            "processing",
+            "pending",
+            "queued",
+            "submitted"
+          ],
+          "completed": [
+            "COMPLETED",
+            "succeeded",
+            "success",
+            "completed"
+          ],
+          "failed": [
+            "FAILED",
+            "ERROR",
+            "failed",
+            "error",
+            "canceled",
+            "cancelled"
+          ]
+        }
       }
     ]
   },
