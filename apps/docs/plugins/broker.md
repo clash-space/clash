@@ -42,6 +42,61 @@ plugin                       broker
   leaked handles and caps the in-memory handle map, which reclaims entries
   only on expiry.
 
+## Derived credentials
+
+Most providers store the credential they send. Some do not: a Vertex service
+account holds an RSA private key, and the credential the API accepts is a bearer
+token minted by signing a JWT with that key and exchanging it (RFC 7523). The
+token lasts about an hour; the key lasts until it is revoked.
+
+These declare `type: "derived-token"`, and `resolveCredentialSources` reports
+them with `derivesCredential: true`.
+
+```jsonc
+{
+  "type": "derived-token",
+  "id": "vertex",
+  "credentialId": "vertexCredentials",
+  "derivation": {
+    "kind": "jwt-bearer-assertion",
+    "tokenUrl": "https://oauth2.googleapis.com/token",
+    "scope": "https://www.googleapis.com/auth/cloud-platform"
+  }
+}
+```
+
+Every field is a recipe. The declaration has nowhere to write a key or a token,
+and `.strict()` rejects an attempt to add one — a manifest ships inside an
+installable package, so an inline secret would be a secret published.
+
+**Why the kind exists.** While a generation was a single call, the difference did
+not show: the host minted a token, held it across a nine-minute retry loop, and
+the loop finished long before the token expired. Submit-then-poll ended that. A
+poll can land hours after its submit, or after a restart, and a token minted at
+submit time is dead by then.
+
+**The token is never persisted.** Bridging that gap by saving it is the one thing
+that must not happen: poll state is stored beside the node in the canvas
+document, so a bearer written there is replicated, synced, and backed up with the
+project — a long-lived copy of a value meant to survive an hour. `CredentialSource`
+therefore has no field that can hold a minted credential. Code cannot persist into
+a slot that does not exist.
+
+Holding one in memory for its stated lifetime is fine and expected; writing it
+anywhere that outlives the process is not.
+
+**No declared lifetime.** The taxonomy models *that* the credential is
+short-lived, not *how long* it lives. The authoritative expiry arrives in the
+token response (`expires_in`), so a value declared in a manifest could only ever
+agree with it redundantly or disagree with it dangerously — a host trusting a
+declared hour for a token the provider issued for five minutes keeps sending a
+dead credential.
+
+**Unattended.** `derived-token` counts as an unattended source, so a provider
+offering only this one still satisfies the rule that every provider needs a path
+that works with no human present. Minting needs the stored key, not a person —
+this is the kind that exists so machines can authenticate.
+
 ## Auditing
 
 Every broker operation appends to `plugin_broker_audit` (SQLite): plugin id +

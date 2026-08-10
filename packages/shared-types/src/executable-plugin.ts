@@ -252,6 +252,41 @@ export const ExecutablePluginProviderAuthSchema = z.discriminatedUnion("type", [
     }).strict(),
     accessTokenField: z.string().trim().min(1).default("accessToken"),
   }).strict(),
+  /**
+   * The stored secret is not the credential; a short-lived one is minted from it.
+   *
+   * Vertex is the case that forced this: a service account key holds an RSA private key, and the
+   * credential the API accepts is a bearer token produced by signing a JWT with that key and
+   * exchanging it (RFC 7523). The token lasts about an hour, the key until it is revoked.
+   *
+   * Kept apart from `api-key` because the two disagree about the one thing a host most wants to do
+   * uniformly. For `api-key`, "send what is stored" is correct. Here it would put a private key on
+   * the wire as a bearer token.
+   *
+   * Every field is a recipe. A manifest is authored by a plugin and readable by anyone who installs
+   * it, so there is deliberately nowhere to write a key or a token: `.strict()` turns an attempt to
+   * smuggle one into a validation error instead of a secret shipped in a package.
+   */
+  z.object({
+    type: z.literal("derived-token"),
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    label: z.string().trim().min(1).optional(),
+    /**
+     * Field holding the durable secret. Unlike the other kinds it does not default to `apiKey`:
+     * what is stored here is a signing document, and that name would invite code to forward it.
+     */
+    credentialId: z.string().trim().min(1),
+    derivation: z.object({
+      /**
+       * Closed for the same reason acquisition is: a plugin declares this but the host executes it,
+       * holding the signing key while it does. An open field would let a plugin name a scheme
+       * nobody implements, discovered when a generation fails rather than when it is installed.
+       */
+      kind: z.literal("jwt-bearer-assertion"),
+      tokenUrl: z.string().url(),
+      scope: z.string().trim().min(1),
+    }).strict(),
+  }).strict(),
   z.object({
     type: z.literal("local-token-import"),
     id: z.string().trim().regex(PLUGIN_ID_PATTERN),
@@ -637,6 +672,18 @@ const ExecutablePluginAssetHandleObjectSchema = z.object({
   url: z.string().url().optional(),
   /** Who can fetch `url`. The host cannot retrieve an address only the plugin can see. */
   reach: z.enum(["public", "private"]).optional(),
+  /**
+   * Which credential opens `url`, when an anonymous request will not.
+   *
+   * Some providers leave a finished generation behind their own auth: Gemini's Files API wants the
+   * key that made the request, Vertex expects a bearer token. `reach` cannot express this -- it says
+   * whether an address may be handed to a third party, and these may be. What they cannot be is
+   * opened by a stranger. Fetching one bare returns 403 after the work succeeded and was billed.
+   *
+   * Absent means anonymous, which is what a published CDN link needs. The plugin still never holds
+   * the token: it names the credential and the broker injects it, exactly as on the way out.
+   */
+  credential: z.literal("provider").optional(),
 }).strict();
 
 /**
@@ -645,6 +692,13 @@ const ExecutablePluginAssetHandleObjectSchema = z.object({
  */
 export const ExecutablePluginAssetHandleSchema = ExecutablePluginAssetHandleObjectSchema
   .superRefine((handle, ctx) => {
+  if (handle.credential && !handle.url) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["credential"],
+      message: "A credential opens an address. Bytes have none.",
+    });
+  }
   if (handle.url && !handle.reach) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

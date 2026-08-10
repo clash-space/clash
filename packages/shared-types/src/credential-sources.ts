@@ -52,6 +52,8 @@ export const CredentialSourceKindSchema = z.enum([
   "login-page-capture",
   /** Vendor-specific import: read the token an installed desktop app already holds. */
   "local-app-store",
+  /** User supplies a signing secret; the wire credential is minted from it and expires. */
+  "derived-token",
 ]);
 export type CredentialSourceKind = z.infer<typeof CredentialSourceKindSchema>;
 
@@ -68,6 +70,21 @@ export interface CredentialSource {
   interactive: boolean;
   /** Credential field this source populates. */
   credentialId: string;
+  /**
+   * True when the stored secret is not the credential and cannot be sent as-is.
+   *
+   * The axis the taxonomy was missing. Four of the five kinds store the value they send, so "inject
+   * the stored credential" reads as one uniform rule -- and on the fifth that rule puts a private
+   * key on the wire. Host code branches on this rather than on the kind name, so a second
+   * derivation scheme does not mean revisiting every injection site.
+   *
+   * A derived credential is short-lived by construction, which is why nothing here holds one: this
+   * type describes how to obtain a credential and never carries the result. Code cannot persist
+   * into a slot that does not exist, and the slot is missing on purpose -- poll state lives beside
+   * the node in the canvas document, where a bearer token would be replicated and backed up with
+   * the project long after it stopped working.
+   */
+  derivesCredential: boolean;
   /** The originating wire entry, for host code that needs its kind-specific fields. */
   auth: ExecutablePluginProviderAuth;
 }
@@ -77,6 +94,8 @@ const CONTROL_BY_KIND: Readonly<Record<CredentialSourceKind, CredentialSourceCon
   oauth: "button-window",
   "login-page-capture": "button-window",
   "local-app-store": "button-action",
+  // A service account document is pasted in, the same gesture as a key.
+  "derived-token": "field",
 };
 
 const INTERACTIVE_BY_KIND: Readonly<Record<CredentialSourceKind, boolean>> = {
@@ -86,6 +105,24 @@ const INTERACTIVE_BY_KIND: Readonly<Record<CredentialSourceKind, boolean>> = {
   oauth: true,
   "login-page-capture": true,
   "local-app-store": false,
+  // The most unattended kind there is: a machine credential exists so that no human has to be
+  // present, and minting needs the stored secret rather than a person.
+  "derived-token": false,
+};
+
+/**
+ * Kinds whose stored secret is not the credential.
+ *
+ * Separated from `CONTROL_BY_KIND` and `INTERACTIVE_BY_KIND` because it answers a different
+ * question: those two decide how a credential is obtained from the user, this one decides what the
+ * host may do with it afterwards.
+ */
+const DERIVES_BY_KIND: Readonly<Record<CredentialSourceKind, boolean>> = {
+  "api-key": false,
+  oauth: false,
+  "login-page-capture": false,
+  "local-app-store": false,
+  "derived-token": true,
 };
 
 /**
@@ -100,12 +137,14 @@ const INTERACTIVE_BY_KIND: Readonly<Record<CredentialSourceKind, boolean>> = {
  */
 export function credentialSourceKind(auth: ExecutablePluginProviderAuth): CredentialSourceKind {
   if (auth.type === "api-key") return "api-key";
+  if (auth.type === "derived-token") return "derived-token";
   if (auth.type === "local-token-import") return "local-app-store";
   return auth.flow === "browser" ? "login-page-capture" : "oauth";
 }
 
 function defaultLabel(kind: CredentialSourceKind): string {
   if (kind === "api-key") return "API key";
+  if (kind === "derived-token") return "Service account key";
   if (kind === "local-app-store") return "Reuse local app login";
   return "Sign in";
 }
@@ -132,9 +171,14 @@ export function resolveCredentialSources(
       label,
       control: CONTROL_BY_KIND[kind],
       interactive: INTERACTIVE_BY_KIND[kind],
+      derivesCredential: DERIVES_BY_KIND[kind],
       // Every source populates the same credential the broker injects; they differ
-      // only in how it is obtained.
-      credentialId: entry.type === "api-key" ? entry.credentialId : "apiKey",
+      // only in how it is obtained. A derived token is the exception: its stored
+      // secret is a distinct document, and naming it `apiKey` would invite code to
+      // forward a signing key as one.
+      credentialId: entry.type === "api-key" || entry.type === "derived-token"
+        ? entry.credentialId
+        : "apiKey",
       auth: entry,
     };
   });

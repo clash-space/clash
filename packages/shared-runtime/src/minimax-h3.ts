@@ -22,8 +22,36 @@ function orderedPartToWire(part: MiniMaxH3OrderedContentPart): Record<string, un
 }
 
 /** MiniMax-H3-specific wire adapter. Selection remains the responsibility of
- * the model/provider route; hosted and desktop runtimes compose this helper. */
+ * the model/provider route; hosted and desktop runtimes compose this helper.
+ *
+ * The combination rules live here because this is the only function that turns these inputs into
+ * H3's content array, and every host calls it before posting. They were previously inline in each
+ * host, which meant two copies that could drift and, once the local host began delegating MiniMax to
+ * a plugin executor, one copy about to be deleted — the executor is handed a finished body and has
+ * no inputs left to check.
+ */
 export function buildMiniMaxH3Content(input: MiniMaxH3ContentInput): Array<Record<string, unknown>> {
+  const orderedMediaParts = (input.orderedContentParts ?? []).filter((part) => part.type !== "text");
+
+  if (input.endFrame && !input.startFrame) {
+    // H3 interpolates from first_frame to last_frame. A last_frame on its own leaves it with no
+    // starting image, and the request is billed before the API rejects it.
+    throw new Error("MiniMax H3 end frame requires a start frame.");
+  }
+
+  if (input.startFrame && (
+    input.referenceImages?.length
+    || input.referenceVideos?.length
+    || input.referenceAudios?.length
+    || orderedMediaParts.length
+  )) {
+    // Frame interpolation and reference-guided generation are separate H3 modes; a request carrying
+    // both is ambiguous. Ordered media parts matter as much as the explicit reference arrays: the
+    // branch below only reads them when there is no start frame, so without this they would be
+    // dropped silently and the user would pay for a generation that ignored their references.
+    throw new Error("MiniMax H3 start/end frames cannot be mixed with omni references.");
+  }
+
   if (input.orderedContentParts?.length && !input.startFrame) {
     return input.orderedContentParts.map(orderedPartToWire);
   }
