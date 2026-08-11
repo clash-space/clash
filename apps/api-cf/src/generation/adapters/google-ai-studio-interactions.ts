@@ -108,14 +108,11 @@ async function transportCredentials(
 
   const baseUrl = stringCredential(stored.baseUrl)
     ?? stringCredential(ctx.env.GOOGLE_AI_STUDIO_BASE_URL);
-  // When the global authenticated Gateway is available, prefer its stored
-  // provider key over forwarding a process-level Google key.
-  const apiKey = stringCredential(stored.apiKey) ?? stringCredential(ctx.env.GOOGLE_API_KEY)
-    : undefined;
+  const apiKey = stringCredential(stored.apiKey) ?? stringCredential(ctx.env.GOOGLE_API_KEY);
   if (!apiKey) {
     if (storedError) throw storedError;
     throw new Error(
-      "Google AI Studio API key or Cloudflare AI Gateway token is required for Gemini Omni.",
+      "Google AI Studio API key is required for Gemini Omni.",
     );
   }
   return {

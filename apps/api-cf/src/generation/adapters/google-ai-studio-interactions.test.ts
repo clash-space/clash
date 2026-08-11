@@ -125,40 +125,5 @@ describe("googleAiStudioInteractionsAdapter", () => {
     expect(ctx.uploadBytes).toHaveBeenCalledWith(expect.any(Uint8Array), "video/mp4");
   });
 
-  it("falls back to global Cloudflare Gateway BYOK when no provider account is stored", async () => {
-    mocks.credentialsForRoute.mockRejectedValue(new Error("Provider credentials not configured."));
-    mocks.createInteraction.mockResolvedValue({ id: "interactions/gateway-1", status: "completed" });
-    mocks.extractVideo.mockReturnValue({ data: "AQID", mimeType: "video/mp4" });
-    const ctx = makeCtx({
-      GOOGLE_API_KEY: "leaked-google-key",
-      GOOGLE_AI_STUDIO_BASE_URL:
-        "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
-      CF_AIG_TOKEN: "cloudflare-token",
-    });
-
-    await googleAiStudioInteractionsAdapter.execute(ctx as never);
-
-    expect(mocks.createInteraction).toHaveBeenCalledWith(expect.objectContaining({
-      apiKey: undefined,
-      baseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
-    }));
-    expect(ctx.notifyCompleted).toHaveBeenCalledWith({ assetId: "asset-1" });
+  
   });
-
-  it("does not forward a stored Google key when global Gateway BYOK is active", async () => {
-    mocks.credentialsForRoute.mockResolvedValue({ apiKey: "old-google-key" });
-    mocks.createInteraction.mockResolvedValue({ id: "interactions/gateway-2", status: "completed" });
-    mocks.extractVideo.mockReturnValue({ data: "AQID", mimeType: "video/mp4" });
-    const ctx = makeCtx({
-      GOOGLE_AI_STUDIO_BASE_URL:
-        "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
-      CF_AIG_TOKEN: "cloudflare-token",
-    });
-
-    await googleAiStudioInteractionsAdapter.execute(ctx as never);
-
-    expect(mocks.createInteraction).toHaveBeenCalledWith(expect.objectContaining({
-      apiKey: undefined,
-    }));
-  });
-});
