@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { readFileSync } from "node:fs";
 
 import { apiJson } from "../lib/api";
+import { getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
 
 /**
@@ -29,19 +30,33 @@ interface ProviderAccountsResponse {
 }
 
 /**
- * Choices an account must make because its credential cannot make them.
+ * Which service issued this key, where a vendor runs more than one.
  *
- * Where one vendor answers on several hosts that do not share a login, the key alone does not say
- * which one issued it, so the account does. MiniMax splits by service region; Google splits by
- * surface, now that Agent Platform takes an API key rather than a signed service-account JSON.
+ * Not a region. MiniMax's international and domestic services differ by geography, which made
+ * `region` look right, but Google's are two products — and Agent Platform has real regions of its
+ * own, which then had nowhere to go. Where the service runs is `--location`.
  */
-const REGIONS: Record<string, string[]> = {
+const SERVICES: Record<string, string[]> = {
   minimax: ["global", "cn"],
   official: ["ai-studio", "agent-platform"],
 };
 
 async function currentAccounts(): Promise<ProviderAccountsResponse> {
-  return await apiJson<ProviderAccountsResponse>("/api/v1/model-providers");
+  try {
+    return await apiJson<ProviderAccountsResponse>("/api/v1/model-providers");
+  } catch (error) {
+    // A stopped host is an ordinary situation. Unhandled, it arrives as an AggregateError of
+    // ECONNREFUSED entries and a Node stack, which reads like the CLI broke rather than like
+    // something needs starting -- and the address matters, because discovery silently falls back
+    // to the cloud gateway's port when no local daemon is found.
+    if (error instanceof Error && /fetch failed|ECONNREFUSED/.test(`${error.message}${error.cause ?? ""}`)) {
+      throw new Error(
+        `The Clash host is not running at ${getServerUrl()}. Start the host, or run any local `
+        + "command to start one automatically.",
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -78,7 +93,7 @@ function collectPairFile(value: string, previous: Record<string, string>): Recor
   return { ...previous, [key]: contents };
 }
 
-function resolveApiKey(options: { apiKey?: string; apiKeyFile?: string }): string {
+function resolveApiKey(options: { apiKey?: string; apiKeyFile?: string }): string | undefined {
   if (options.apiKeyFile) {
     const key = readFileSync(options.apiKeyFile, "utf8").trim();
     if (!key) throw new Error(`No API key found in ${options.apiKeyFile}.`);
@@ -89,20 +104,21 @@ function resolveApiKey(options: { apiKey?: string; apiKeyFile?: string }): strin
     const key = readFileSync(0, "utf8").trim();
     if (key) return key;
   }
-  throw new Error(
-    "No API key given. Pass --api-key-file <path>, pipe the key on stdin, or use --api-key.",
-  );
+  // Not every provider has one. Kling authenticates with an access/secret pair and signs its own
+  // token; demanding an apiKey there would make the generic --credential path unreachable for
+  // exactly the providers it exists to serve.
+  return undefined;
 }
 
-function assertRegion(providerId: string, region: string | undefined): void {
-  const known = REGIONS[providerId];
-  if (!region) return;
+function assertService(providerId: string, service: string | undefined): void {
+  const known = SERVICES[providerId];
+  if (!service) return;
   if (!known) {
-    throw new Error(`Provider ${providerId} answers on one host; --region does not apply to it.`);
+    throw new Error(`Provider ${providerId} runs one service; --service does not apply to it.`);
   }
-  if (!known.includes(region)) {
+  if (!known.includes(service)) {
     throw new Error(
-      `Provider ${providerId} has no region "${region}". Known regions: ${known.join(", ")}.`,
+      `Provider ${providerId} has no service "${service}". Known services: ${known.join(", ")}.`,
     );
   }
 }
@@ -167,7 +183,7 @@ export function registerProviderCommands(program: Command): void {
     .description("Connect an account for a provider")
     .option("--api-key-file <path>", "Read the key from a file (preferred)")
     .option("--api-key <key>", "The key itself; recorded by shell history and visible in ps")
-    .option("--region <region>", "Which host or surface this account belongs to, where the upstream has more than one")
+    .option("--service <service>", "Which of the vendor's services issued this key, where it runs more than one")
     .option("--upstream <upstreamId>", "Upstream service, when it differs from the provider id")
     .option("--label <label>", "A name for this account")
     .option("--id <accountId>", "Account id, for holding more than one key per provider")
@@ -187,7 +203,7 @@ export function registerProviderCommands(program: Command): void {
     .action(async (providerId: string, options: {
       apiKey?: string;
       apiKeyFile?: string;
-      region?: string;
+      service?: string;
       upstream?: string;
       label?: string;
       id?: string;
@@ -195,8 +211,15 @@ export function registerProviderCommands(program: Command): void {
       credential?: Record<string, string>;
       credentialFile?: Record<string, string>;
     }) => {
-      assertRegion(providerId, options.region);
+      assertService(providerId, options.service);
       const apiKey = resolveApiKey(options);
+      const supplied = { ...(apiKey ? { apiKey } : {}), ...(options.credential ?? {}), ...(options.credentialFile ?? {}) };
+      if (Object.keys(supplied).length === 0) {
+        throw new Error(
+          "No credentials given. Pass --api-key-file <path>, pipe a key on stdin, or use "
+          + "--credential key=value / --credential-file key=path.",
+        );
+      }
       const current = await currentAccounts();
       const accountId = options.id ?? `${providerId}-primary`;
       // Existing accounts are sent back untouched. The endpoint replaces the whole set, so leaving
@@ -215,19 +238,19 @@ export function registerProviderCommands(program: Command): void {
         id: accountId,
         providerId,
         ...(options.upstream ? { upstreamId: options.upstream } : {}),
-        ...(options.region ? { region: options.region } : {}),
+        ...(options.service ? { region: options.service } : {}),
         ...(options.label ? { label: options.label } : {}),
         enabled: true,
         // A file-sourced value wins over an inline one for the same key: whoever passed both meant
         // the safer of the two, and silently preferring the argument would put a secret in history.
-        credentials: { apiKey, ...(options.credential ?? {}), ...(options.credentialFile ?? {}) },
+        credentials: supplied,
       };
       await writeAccounts([...kept, added], current.readToken);
       if (isJsonMode(options)) {
-        printJson({ added: accountId, providerId, ...(options.region ? { region: options.region } : {}) });
+        printJson({ added: accountId, providerId, ...(options.service ? { service: options.service } : {}) });
         return;
       }
-      console.log(`Connected ${accountId} (${providerId}${options.region ? `, ${options.region}` : ""}).`);
+      console.log(`Connected ${accountId} (${providerId}${options.service ? `, ${options.service}` : ""}).`);
     });
 
   providers

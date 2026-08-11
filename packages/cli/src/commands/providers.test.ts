@@ -33,10 +33,11 @@ describe("provider account commands", () => {
     expect(source).toMatch(/--api-key-file|readFileSync|stdin/);
   });
 
-  it("offers region where an upstream answers on more than one host", () => {
+  it("asks which service issued the key, where a vendor runs more than one", () => {
     // MiniMax's international and domestic services do not share a login, so an account that does
-    // not say which one it is gets refused as though its key were wrong.
-    expect(source).toMatch(/--region/);
+    // not say which one it is gets refused as though its key were wrong. Called service rather
+    // than region because Google's two surfaces are products, not places.
+    expect(source).toMatch(/--service/);
   });
 
   it("never asks the operator for a concurrency token", () => {

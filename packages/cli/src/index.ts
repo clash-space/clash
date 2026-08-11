@@ -80,4 +80,30 @@ program.addCommand(directorCommand);
 // Commander auto-detects Electron and otherwise treats argv[1] as the first
 // user command. Clash Desktop intentionally runs this entry with
 // ELECTRON_RUN_AS_NODE, whose argv is Node-compatible, so force that contract.
-program.parse(process.argv, { from: "node" });
+/**
+ * Reports a failure the CLI understands as a sentence, not a stack.
+ *
+ * Nothing caught anything here, so a stopped host, a rejected key or a conflict the host described
+ * in words all arrived as `throw new Error(` with a caret and a dozen frames of bundled JavaScript.
+ * The message was in there, in the middle, looking like the CLI had crashed rather than like
+ * something needed doing.
+ *
+ * The stack stays one environment variable away: a message is right for a condition we understand,
+ * and an unexpected error still needs its frames.
+ */
+function reportFailure(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (process.env.CLASH_DEBUG && error instanceof Error && error.stack) {
+    console.error(error.stack);
+  } else {
+    console.error(message);
+  }
+  process.exit(1);
+}
+
+// Commander actions are async, so a rejection escapes as an unhandled rejection rather than through
+// a try around parse. Both doors need the same handler.
+process.on("unhandledRejection", reportFailure);
+process.on("uncaughtException", reportFailure);
+
+program.parseAsync(process.argv, { from: "node" }).catch(reportFailure);
