@@ -1063,10 +1063,16 @@ async function geminiAuthPreflight(env: Record<string, string | undefined>): Pro
       message: "Gemini API key configured through GEMINI_API_KEY.",
     };
   }
-  if (truthyEnvFlag(env.GOOGLE_GENAI_USE_VERTEXAI)) {
+  // Both spellings, because Google renamed the platform and kept the old flag working. The SDK
+  // accepts either and throws only when they disagree; reading just one would leave whoever
+  // followed the current docs staring at "not configured" with the variable exported.
+  if (truthyEnvFlag(env.GOOGLE_GENAI_USE_ENTERPRISE) || truthyEnvFlag(env.GOOGLE_GENAI_USE_VERTEXAI)) {
+    const flag = truthyEnvFlag(env.GOOGLE_GENAI_USE_ENTERPRISE)
+      ? "GOOGLE_GENAI_USE_ENTERPRISE"
+      : "GOOGLE_GENAI_USE_VERTEXAI";
     return {
       status: "configured",
-      message: "Vertex AI auth selected through GOOGLE_GENAI_USE_VERTEXAI.",
+      message: `Gemini Enterprise Agent Platform auth selected through ${flag}.`,
     };
   }
   if (truthyEnvFlag(env.GOOGLE_GENAI_USE_GCA)) {

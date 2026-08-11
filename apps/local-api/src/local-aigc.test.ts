@@ -799,9 +799,9 @@ describe("local mock AIGC", () => {
           upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
-          configuredCredentials: ["vertexCredentials"],
+          configuredCredentials: ["serviceAccountKey"],
           credentials: {
-            vertexCredentials: JSON.stringify({
+            serviceAccountKey: JSON.stringify({
               project_id: "vertex-project",
               client_email: "svc@vertex-project.iam.gserviceaccount.com",
               private_key: privateKey,
@@ -889,9 +889,9 @@ describe("local mock AIGC", () => {
           upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
-          configuredCredentials: ["vertexCredentials"],
+          configuredCredentials: ["serviceAccountKey"],
           credentials: {
-            vertexCredentials: JSON.stringify({
+            serviceAccountKey: JSON.stringify({
               project_id: "vertex-project",
               client_email: "svc@vertex-project.iam.gserviceaccount.com",
               private_key: privateKey,
@@ -964,9 +964,9 @@ describe("local mock AIGC", () => {
           upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
-          configuredCredentials: ["vertexCredentials"],
+          configuredCredentials: ["serviceAccountKey"],
           credentials: {
-            vertexCredentials: JSON.stringify({
+            serviceAccountKey: JSON.stringify({
               project_id: "vertex-project",
               client_email: "svc@vertex-project.iam.gserviceaccount.com",
               private_key: privateKey,

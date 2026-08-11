@@ -548,6 +548,13 @@ export {
   type MinimaxRegion,
 } from './minimax-region';
 
+export {
+  GOOGLE_PLATFORMS,
+  GooglePlatformSchema,
+  googleApiBaseUrl,
+  type GooglePlatform,
+} from './google-platform';
+
 
 export {
   CANONICAL_RESOLUTION_TIERS,

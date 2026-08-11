@@ -20,18 +20,18 @@ const parse = (value: unknown) => ExecutablePluginProviderAuthSchema.parse(value
  * signing a JWT with that key and exchanging it at Google's token endpoint (RFC 7523). The token
  * lives about an hour; the key lives until it is revoked.
  */
-const vertexAuthInput = {
+const serviceAccountAuthInput = {
   type: 'derived-token',
   id: 'vertex',
   label: 'Service account key',
-  credentialId: 'vertexCredentials',
+  credentialId: 'serviceAccountKey',
   derivation: {
     kind: 'jwt-bearer-assertion',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     scope: 'https://www.googleapis.com/auth/cloud-platform',
   },
 };
-const vertexAuth = parse(vertexAuthInput);
+const serviceAccountAuth = parse(serviceAccountAuthInput);
 
 /**
  * A credential that is derived per use rather than stored.
@@ -55,29 +55,29 @@ describe('derived-token credential source', () => {
     // Not `api-key`: that kind's stored value is the credential, so a host may forward it verbatim.
     // Reusing the name would make "forward what is stored" true for one member and catastrophic for
     // the other -- the private key would go out as a bearer token.
-    expect(credentialSourceKind(vertexAuth)).toBe('derived-token');
+    expect(credentialSourceKind(serviceAccountAuth)).toBe('derived-token');
   });
 
   it('renders as a field and needs no human at call time', () => {
-    const [source] = resolveCredentialSources([vertexAuth]);
+    const [source] = resolveCredentialSources([serviceAccountAuth]);
     expect(source.control).toBe('field');
     expect(source.interactive).toBe(false);
     // A machine credential is the most unattended kind there is: it exists precisely so no human has
     // to be present. A provider offering only this still has an unattended path.
-    expect(hasUnattendedCredentialSource([vertexAuth])).toBe(true);
+    expect(hasUnattendedCredentialSource([serviceAccountAuth])).toBe(true);
   });
 
   it('points at the durable secret the user actually fills in', () => {
     // The other kinds all converge on `apiKey`. This one does not: what is stored is a service
     // account document, and calling it `apiKey` would invite code to send it as one.
-    const [source] = resolveCredentialSources([vertexAuth]);
-    expect(source.credentialId).toBe('vertexCredentials');
+    const [source] = resolveCredentialSources([serviceAccountAuth]);
+    expect(source.credentialId).toBe('serviceAccountKey');
   });
 
   it('tells host code that the stored secret cannot be sent as-is', () => {
     // The fact everything downstream branches on. Without it, "inject the stored credential" is a
     // single uniform rule that is correct for three kinds and leaks a private key on the fourth.
-    const [derived] = resolveCredentialSources([vertexAuth]);
+    const [derived] = resolveCredentialSources([serviceAccountAuth]);
     const [pasted] = resolveCredentialSources([parse({ type: 'api-key' })]);
     expect(derived.derivesCredential).toBe(true);
     expect(pasted.derivesCredential).toBe(false);
@@ -93,7 +93,7 @@ describe('derived-token credential source', () => {
       { clientEmail: 'svc@p.iam.gserviceaccount.com', privateKey: 'k' },
     ]) {
       expect(
-        ExecutablePluginProviderAuthSchema.safeParse({ ...vertexAuth, ...smuggled }).success,
+        ExecutablePluginProviderAuthSchema.safeParse({ ...serviceAccountAuth, ...smuggled }).success,
         JSON.stringify(smuggled),
       ).toBe(false);
     }
@@ -102,7 +102,7 @@ describe('derived-token credential source', () => {
   it('offers no field a minted token could be parked in', () => {
     // The structural half of "never persist the derived credential": code cannot save what the type
     // has no slot for. A resolved source describes how to obtain a credential and never carries one.
-    const [source] = resolveCredentialSources([vertexAuth]);
+    const [source] = resolveCredentialSources([serviceAccountAuth]);
     expect(Object.keys(source).sort()).toEqual([
       'auth',
       'control',
@@ -120,8 +120,8 @@ describe('derived-token credential source', () => {
     // the host, which has to hold the signing key to run them. An open field would be a plugin
     // naming a signing scheme no one implements -- discovered when a generation fails.
     expect(ExecutablePluginProviderAuthSchema.safeParse({
-      ...vertexAuth,
-      derivation: { ...vertexAuthInput.derivation, kind: 'curl | sh' },
+      ...serviceAccountAuth,
+      derivation: { ...serviceAccountAuthInput.derivation, kind: 'curl | sh' },
     }).success).toBe(false);
   });
 
@@ -134,7 +134,7 @@ describe('derived-token credential source', () => {
       upstreamId: 'vertex',
       apiShape: 'google-agent-platform',
       executorExportId: 'vertex-generate',
-      auth: [vertexAuth],
+      auth: [serviceAccountAuth],
     });
     const binding = resolveModelBindingFromProvider(
       { modelId: 'gemini-3-flash', upstreamModel: 'gemini-3-flash-preview' },

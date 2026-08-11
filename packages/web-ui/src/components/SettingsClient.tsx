@@ -1717,8 +1717,8 @@ function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInf
     if (provider.providerId === 'official' && provider.upstreamId === 'openai') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'anthropic') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'bfl') return ['apiKey'];
-    if (isGoogleAiStudio(provider)) return ['apiKey', ];
-    if (isGoogleCloudAgentPlatform(provider)) return ['vertexCredentials'];
+    if (isGoogleAiStudio(provider)) return ['apiKey'];
+    if (isGoogleCloudAgentPlatform(provider)) return ['apiKey'];
     return [];
 }
 
@@ -2014,10 +2014,10 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
         return {
             title: 'Google Cloud Agent Platform',
             description: 'Google Cloud-hosted Gemini, Veo, image, video, and text models through service account credentials.',
-            apiKey: 'vertexCredentials',
+            apiKey: 'serviceAccountKey',
             credentials: [
                 {
-                    key: 'vertexCredentials',
+                    key: 'serviceAccountKey',
                     label: 'Service account JSON',
                     ariaLabel: 'Google Cloud service account JSON',
                     placeholder: 'Paste service account JSON',

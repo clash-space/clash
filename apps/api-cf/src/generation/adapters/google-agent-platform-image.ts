@@ -6,15 +6,15 @@
 import { log } from "../../logger";
 import {
   generateGoogleImage,
-  type VertexInlineImage,
+  type AgentPlatformInlineImage,
 } from "../../services/google-gen";
 import type { GenerationAdapter } from "../adapter";
-import { credentialsForRoute, vertexCredentialsFromProvider } from "./provider-credentials";
+import { credentialsForRoute, googleServiceAccountFromProvider } from "./provider-credentials";
 
 async function loadInlineFromR2(
   bucket: R2Bucket,
   key: string,
-): Promise<VertexInlineImage | null> {
+): Promise<AgentPlatformInlineImage | null> {
   const obj = await bucket.get(key);
   if (!obj) return null;
   const buf = await obj.arrayBuffer();
@@ -48,13 +48,13 @@ export const googleAgentPlatformImageAdapter: GenerationAdapter = {
         // Only the final R2 storage key (a short string) crosses the step
         // boundary. Same trick as veo.ts.
         const r2Keys = params.referenceImageR2Keys ?? [];
-        const referenceImages: VertexInlineImage[] = [];
+        const referenceImages: AgentPlatformInlineImage[] = [];
         for (const k of r2Keys) {
           const inline = await loadInlineFromR2(env.R2_BUCKET, k);
           if (inline) referenceImages.push(inline);
         }
 
-        const creds = vertexCredentialsFromProvider(
+        const creds = googleServiceAccountFromProvider(
           await credentialsForRoute(ctx, route),
         );
         log.info("Google image generate started", {

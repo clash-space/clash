@@ -1,6 +1,6 @@
 import type { ModelUpstreamRoute, ProviderAccountId } from "@clash/shared-types";
 import { getProviderCredentials } from "../../services/provider-accounts";
-import type { VertexCredentials } from "../../services/google-gen";
+import type { GoogleServiceAccount } from "../../services/google-gen";
 import type { GenerationContext } from "../context";
 
 export async function credentialsForRoute(
@@ -32,8 +32,8 @@ export async function credentialsForProvider(
   });
 }
 
-export function vertexCredentialsFromProvider(credentials: Record<string, string>): VertexCredentials {
-  const raw = credentials.vertexCredentials?.trim();
+export function googleServiceAccountFromProvider(credentials: Record<string, string>): GoogleServiceAccount {
+  const raw = credentials.serviceAccountKey?.trim();
   if (!raw) throw new Error("Google Cloud Agent Platform provider account is missing service account credentials.");
   let parsed: Record<string, unknown>;
   try {

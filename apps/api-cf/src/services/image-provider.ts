@@ -6,7 +6,7 @@
  */
 import type { Env } from "../config";
 import { generateImage as generateFalImage } from "./fal-image";
-import { generateGoogleImage, GOOGLE_IMAGE_MODELS, type VertexCredentials } from "./google-gen";
+import { generateGoogleImage, GOOGLE_IMAGE_MODELS, type GoogleServiceAccount } from "./google-gen";
 
 // ─── Interface ───────────────────────────────────────────
 
@@ -18,7 +18,7 @@ export interface ImageGenInput {
   modelName?: string;
   modelParams?: Record<string, unknown>;
   credentials?: Record<string, string>;
-  vertexCredentials?: VertexCredentials;
+  serviceAccountKey?: GoogleServiceAccount;
 }
 
 export interface ImageGenOutput {
@@ -55,8 +55,8 @@ const falImageAdapter: ImageProvider = {
 
 const googleAgentPlatformImageAdapter: ImageProvider = {
   async generate(_env, params) {
-    if (!params.vertexCredentials) throw new Error("Google Cloud Agent Platform provider account is missing service account credentials.");
-    const result = await generateGoogleImage(params.vertexCredentials, {
+    if (!params.serviceAccountKey) throw new Error("Google Cloud Agent Platform provider account is missing service account credentials.");
+    const result = await generateGoogleImage(params.serviceAccountKey, {
       prompt: params.prompt,
       aspectRatio: params.aspectRatio,
       modelName: params.modelName,

@@ -3826,7 +3826,7 @@ describe("SettingsClient model routing", () => {
               upstreamId: "google-agent-platform",
               region: "global",
               enabled: true,
-              configuredCredentials: ["vertexCredentials"],
+              configuredCredentials: ["serviceAccountKey"],
             },
           ]}
           initialModelCatalog={[]}
@@ -5581,7 +5581,7 @@ describe("SettingsClient model routing", () => {
               upstreamId: "google-agent-platform",
               region: "global",
               enabled: true,
-              configuredCredentials: ["vertexCredentials"],
+              configuredCredentials: ["serviceAccountKey"],
             },
           ]}
           initialModelCatalog={[]}

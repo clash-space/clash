@@ -20,11 +20,11 @@ import { log } from "../../logger";
 import {
   submitVeoOperation,
   pollVeoOperation,
-  type VertexInlineImage,
+  type AgentPlatformInlineImage,
 } from "../../services/google-gen";
 import type { GenerationContext } from "../context";
 import type { GenerationAdapter } from "../adapter";
-import { credentialsForRoute, vertexCredentialsFromProvider } from "./provider-credentials";
+import { credentialsForRoute, googleServiceAccountFromProvider } from "./provider-credentials";
 
 export const googleAgentPlatformVideoAdapter: GenerationAdapter = {
   name: "veo",
@@ -35,7 +35,7 @@ export const googleAgentPlatformVideoAdapter: GenerationAdapter = {
     if (!route || route.apiShape !== "google-agent-platform") {
       throw new Error(`Veo execution requires a selected Agent Platform route for ${params.videoModel ?? params.modelName ?? "unknown model"}`);
     }
-    const creds = vertexCredentialsFromProvider(
+    const creds = googleServiceAccountFromProvider(
       await credentialsForRoute(ctx, route),
     );
 
@@ -47,9 +47,9 @@ export const googleAgentPlatformVideoAdapter: GenerationAdapter = {
       "veo-submit",
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "2 minutes" },
       async () => {
-        const read = (k?: string): Promise<VertexInlineImage | undefined> =>
+        const read = (k?: string): Promise<AgentPlatformInlineImage | undefined> =>
           k ? ctx.readR2Base64(k) : Promise.resolve(undefined);
-        const readAll = async (keys?: string[]): Promise<VertexInlineImage[] | undefined> => {
+        const readAll = async (keys?: string[]): Promise<AgentPlatformInlineImage[] | undefined> => {
           if (!keys?.length) return undefined;
           return Promise.all(keys.map((k) => ctx.readR2Base64(k)));
         };

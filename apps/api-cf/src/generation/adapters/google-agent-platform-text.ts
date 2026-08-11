@@ -8,7 +8,7 @@ import { log } from "../../logger";
 import { generateGoogleText } from "../../services/google-gen";
 import type { GenerationAdapter } from "../adapter";
 import { buildMultimodalUserMessage } from "../multimodal";
-import { credentialsForRoute, vertexCredentialsFromProvider } from "./provider-credentials";
+import { credentialsForRoute, googleServiceAccountFromProvider } from "./provider-credentials";
 
 export const googleAgentPlatformTextAdapter: GenerationAdapter = {
   name: "google-text",
@@ -24,7 +24,7 @@ export const googleAgentPlatformTextAdapter: GenerationAdapter = {
       "google-text-generate",
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "3 minutes" },
       async () => {
-        const creds = vertexCredentialsFromProvider(
+        const creds = googleServiceAccountFromProvider(
           await credentialsForRoute(ctx, route),
         );
         const systemPrompt =

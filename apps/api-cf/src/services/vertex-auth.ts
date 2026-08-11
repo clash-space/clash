@@ -20,7 +20,7 @@ const SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const REFRESH_MARGIN_SEC = 300; // refresh 5 min before expiry
 
 type CachedToken = { accessToken: string; expiresAt: number };
-export interface VertexAuthCredentials {
+export interface ServiceAccountAuthCredentials {
   clientEmail: string;
   privateKey: string;
 }
@@ -121,7 +121,7 @@ async function exchangeJwtForToken(jwt: string): Promise<CachedToken> {
 async function getVertexAccessTokenForRawCredentials(clientEmail: string, privateKey: string): Promise<string> {
   if (!clientEmail || !privateKey) {
     throw new Error(
-      "Vertex auth requires clientEmail and privateKey provider credentials",
+      "Agent Platform auth requires clientEmail and privateKey provider credentials",
     );
   }
 
@@ -154,7 +154,7 @@ async function getVertexAccessTokenForRawCredentials(clientEmail: string, privat
   return token.accessToken;
 }
 
-export async function getVertexAccessTokenForCredentials(credentials: VertexAuthCredentials): Promise<string> {
+export async function getVertexAccessTokenForCredentials(credentials: ServiceAccountAuthCredentials): Promise<string> {
   return getVertexAccessTokenForRawCredentials(credentials.clientEmail, credentials.privateKey);
 }
 

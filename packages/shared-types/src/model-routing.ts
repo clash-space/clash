@@ -329,7 +329,7 @@ const API_KEY_CREDENTIAL = "apiKey";
 const BASE_URL_CREDENTIAL = "baseUrl";
 const ACCESS_KEY_CREDENTIAL = "accessKey";
 const SECRET_KEY_CREDENTIAL = "secretKey";
-const VERTEX_CREDENTIAL = "vertexCredentials";
+const VERTEX_CREDENTIAL = "serviceAccountKey";
 const DREAMINA_OAUTH = "dreamina";
 
 function falMock(

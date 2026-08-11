@@ -23,7 +23,7 @@ interface ProviderAccountPayload {
   weight?: number;
   priority?: number;
   credentials?: {
-    vertexCredentials?: string;
+    serviceAccountKey?: string;
   };
 }
 interface ModelProviderResponse {
@@ -252,15 +252,15 @@ export function providerPayloadFromOptions(providerId: string, options: Record<s
 export async function providerCredentialsFromOptions(
   options: Record<string, unknown>,
 ): Promise<ProviderAccountPayload["credentials"]> {
-  if (typeof options.vertexCredentialsFile !== "string" || !options.vertexCredentialsFile.trim()) {
+  if (typeof options.serviceAccountKeyFile !== "string" || !options.serviceAccountKeyFile.trim()) {
     return undefined;
   }
-  const contents = await readFile(options.vertexCredentialsFile.trim(), "utf8");
+  const contents = await readFile(options.serviceAccountKeyFile.trim(), "utf8");
   const parsed = JSON.parse(contents) as unknown;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Vertex credentials file must contain a JSON object");
+    throw new Error("Service-account key file must contain a JSON object");
   }
-  return { vertexCredentials: JSON.stringify(parsed) };
+  return { serviceAccountKey: JSON.stringify(parsed) };
 }
 
 export function providerWriteHeaders(
@@ -320,7 +320,7 @@ modelsCommand
   .option("--region <region>", "Provider region/channel, e.g. global or cn")
   .option("--weight <number>", "Higher weight wins during auto routing")
   .option("--priority <number>", "Lower priority wins within equal weights")
-  .option("--vertex-credentials-file <path>", "Read Google Vertex service-account JSON from a file")
+  .option("--vertex-credentials-file <path>", "Read a Google service-account JSON key from a file")
   .option("--disable", "Disable this provider account")
   .option("--json", "Output as JSON")
   .action(async (providerId: string, options) => {

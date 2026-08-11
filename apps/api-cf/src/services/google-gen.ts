@@ -12,14 +12,14 @@ import { getVertexAccessTokenForCredentials } from "./vertex-auth";
 
 // ─── Shared ─────────────────────────────────────────────
 
-export interface VertexCredentials {
+export interface GoogleServiceAccount {
   clientEmail: string;
   privateKey: string;
   project: string;
   location?: string;
 }
 
-function makeVertex(creds: VertexCredentials) {
+function makeVertex(creds: GoogleServiceAccount) {
   return createVertex({
     project: creds.project,
     location: creds.location ?? "global",
@@ -226,7 +226,7 @@ const GOOGLE_TEXT_MODEL_MAP: Record<string, string> = {
 };
 
 export async function generateGoogleText(
-  creds: VertexCredentials,
+  creds: GoogleServiceAccount,
   params: GoogleTextParams,
 ): Promise<GoogleTextResult> {
   const modelId =
@@ -254,7 +254,7 @@ export interface GoogleImageParams {
    *  present, generation always goes through the Gemini `:generateContent`
    *  multimodal path (image-in + image-out) regardless of which model is
    *  selected — the Imagen-style `:predict` path doesn't accept image inputs. */
-  referenceImages?: VertexInlineImage[];
+  referenceImages?: AgentPlatformInlineImage[];
 }
 
 export interface GoogleImageResult {
@@ -342,7 +342,7 @@ function buildGeminiImageConfig(params: GoogleImageParams): Record<string, unkno
 }
 
 export async function generateGoogleImage(
-  creds: VertexCredentials,
+  creds: GoogleServiceAccount,
   params: GoogleImageParams,
 ): Promise<GoogleImageResult> {
   const requestedModel = params.modelName
@@ -424,7 +424,7 @@ export async function generateGoogleImage(
 // ─── Video Generation (Veo) ─────────────────────────────
 
 /** Vertex's native image payload shape: base64 bytes + MIME type. */
-export interface VertexInlineImage {
+export interface AgentPlatformInlineImage {
   bytesBase64Encoded: string;
   mimeType: string;
 }
@@ -435,11 +435,11 @@ export interface GoogleVideoParams {
   modelName?: string;
   modelParams?: Record<string, unknown>;
   /** First-frame image for image-to-video / first-and-last-frame modes. */
-  image?: VertexInlineImage;
+  image?: AgentPlatformInlineImage;
   /** Last-frame image for first-and-last-frame interpolation. */
-  tailImage?: VertexInlineImage;
+  tailImage?: AgentPlatformInlineImage;
   /** 1–3 subject/asset reference images (Veo "ingredients to video"). */
-  referenceImages?: VertexInlineImage[];
+  referenceImages?: AgentPlatformInlineImage[];
 }
 
 export interface GoogleVideoResult {
@@ -497,7 +497,7 @@ function buildVideoProviderOptions(modelParams?: Record<string, unknown>) {
 }
 
 export async function generateGoogleVideo(
-  creds: VertexCredentials,
+  creds: GoogleServiceAccount,
   params: GoogleVideoParams,
 ): Promise<GoogleVideoResult> {
   const modelId =
@@ -563,12 +563,12 @@ export async function generateGoogleVideo(
     fetch: rewritingFetch,
   });
 
-  const vertexOpts: Record<string, unknown> = buildVideoProviderOptions(params.modelParams);
+  const agentPlatformOpts: Record<string, unknown> = buildVideoProviderOptions(params.modelParams);
   // Stubs — the fetch interceptor replaces these with the full Vertex shapes.
-  if (firstFrame) vertexOpts.image = firstFrame;
-  if (lastFrame) vertexOpts.lastFrame = lastFrame;
+  if (firstFrame) agentPlatformOpts.image = firstFrame;
+  if (lastFrame) agentPlatformOpts.lastFrame = lastFrame;
   if (fullReferenceImages?.length) {
-    vertexOpts.referenceImages = fullReferenceImages.map((r) => ({
+    agentPlatformOpts.referenceImages = fullReferenceImages.map((r) => ({
       bytesBase64Encoded: r.image.bytesBase64Encoded,
     }));
   }
@@ -578,7 +578,7 @@ export async function generateGoogleVideo(
     prompt: params.prompt,
     aspectRatio: ar,
     providerOptions: {
-      vertex: vertexOpts as Record<string, any>,
+      vertex: agentPlatformOpts as Record<string, any>,
     },
   });
 
@@ -604,15 +604,15 @@ export interface SubmitVeoOperationResult {
   modelId: string;
 }
 
-function vertexBaseHost(location: string): string {
+function agentPlatformBaseHost(location: string): string {
   return location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
 }
 
-function vertexModelUrl(creds: VertexCredentials, modelId: string, action: string): string {
+function agentPlatformModelUrl(creds: GoogleServiceAccount, modelId: string, action: string): string {
   const project = creds.project ?? "";
   const location = creds.location ?? "global";
   if (!project) throw new Error("Google Cloud Agent Platform provider account is missing project.");
-  return `https://${vertexBaseHost(location)}/v1/projects/${project}/locations/${location}/publishers/google/models/${modelId}:${action}`;
+  return `https://${agentPlatformBaseHost(location)}/v1/projects/${project}/locations/${location}/publishers/google/models/${modelId}:${action}`;
 }
 
 /**
@@ -623,14 +623,14 @@ function vertexModelUrl(creds: VertexCredentials, modelId: string, action: strin
  * instead of re-submitting (which would re-bill).
  */
 export async function submitVeoOperation(
-  creds: VertexCredentials,
+  creds: GoogleServiceAccount,
   input: GoogleVideoParams,
 ): Promise<SubmitVeoOperationResult> {
   const modelId =
     GOOGLE_VIDEO_MODEL_MAP[input.modelName ?? "veo-3.1"] ??
     input.modelName ??
     "veo-3.1-generate-001";
-  const url = vertexModelUrl(creds, modelId, "predictLongRunning");
+  const url = agentPlatformModelUrl(creds, modelId, "predictLongRunning");
   const token = await getVertexAccessTokenForCredentials(creds);
 
   const instance: Record<string, unknown> = { prompt: input.prompt };
@@ -674,11 +674,11 @@ export async function submitVeoOperation(
 
 /** One-shot poll. Returns `{ done, response?, error? }`. */
 export async function fetchVeoOperationOnce(
-  creds: VertexCredentials,
+  creds: GoogleServiceAccount,
   modelId: string,
   operationName: string,
 ): Promise<{ done?: boolean; response?: any; error?: any; name?: string }> {
-  const url = vertexModelUrl(creds, modelId, "fetchPredictOperation");
+  const url = agentPlatformModelUrl(creds, modelId, "fetchPredictOperation");
   const token = await getVertexAccessTokenForCredentials(creds);
   const resp = await fetch(url, {
     method: "POST",
@@ -704,7 +704,7 @@ export interface VeoVideoBytes {
  * a DO reset mid-poll causes a re-poll, not a re-submit.
  */
 export async function pollVeoOperation(
-  creds: VertexCredentials,
+  creds: GoogleServiceAccount,
   modelId: string,
   operationName: string,
   opts: { intervalMs?: number; maxWaitMs?: number } = {},

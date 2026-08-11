@@ -562,7 +562,7 @@ describe("modelProviderRoutes", () => {
             upstreamId: "google-agent-platform",
             region: "global",
             enabled: true,
-            credentials: { vertexCredentials: "{\"project\":\"demo\",\"clientEmail\":\"svc@example.com\",\"privateKey\":\"key\"}" },
+            credentials: { serviceAccountKey: "{\"project\":\"demo\",\"clientEmail\":\"svc@example.com\",\"privateKey\":\"key\"}" },
           },
         ],
       }),

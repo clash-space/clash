@@ -652,7 +652,7 @@ describe("model upstream routing", () => {
   it("skips configured upstreams without required variables and falls back", () => {
     const upstreams: UpstreamAvailability[] = [
       { upstreamId: "fal", enabled: true, configuredCredentials: [] },
-      { upstreamId: "google-agent-platform", enabled: true, configuredCredentials: ["vertexCredentials"] },
+      { upstreamId: "google-agent-platform", enabled: true, configuredCredentials: ["serviceAccountKey"] },
     ];
 
     const route = resolveModelUpstreamRoute({
@@ -673,7 +673,7 @@ describe("model upstream routing", () => {
       kind: "image",
       configuredUpstreams: [
         { upstreamId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
-        { upstreamId: "google-agent-platform", enabled: true, configuredCredentials: ["vertexCredentials"] },
+        { upstreamId: "google-agent-platform", enabled: true, configuredCredentials: ["serviceAccountKey"] },
       ],
     });
 
@@ -1145,11 +1145,11 @@ describe("model upstream routing", () => {
     expect(agentPlatformFlashRoutes).toEqual([
       expect.objectContaining({
         apiShape: "google-agent-platform",
-        requiredCredentials: ["vertexCredentials"],
+        requiredCredentials: ["serviceAccountKey"],
         requiredOAuth: [],
       }),
     ]);
-    expect(agentPlatform?.requiredCredentials).toEqual(["vertexCredentials"]);
+    expect(agentPlatform?.requiredCredentials).toEqual(["serviceAccountKey"]);
     expect(agentPlatform?.models.some((model) => model.apiShape === "google-ai-studio")).toBe(false);
   });
 
@@ -1183,7 +1183,7 @@ describe("model upstream routing", () => {
           upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
-          configuredCredentials: ["vertexCredentials"],
+          configuredCredentials: ["serviceAccountKey"],
           weight: 10,
         },
         {
@@ -1519,7 +1519,7 @@ describe("model upstream routing", () => {
           region: "global",
           enabled: true,
           priority: 1,
-          configuredCredentials: ["vertexCredentials"],
+          configuredCredentials: ["serviceAccountKey"],
         },
       ],
     });
@@ -1626,7 +1626,7 @@ describe("model upstream routing", () => {
           upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
-          configuredCredentials: ["vertexCredentials"],
+          configuredCredentials: ["serviceAccountKey"],
         },
       ],
     });
@@ -1639,7 +1639,7 @@ describe("model upstream routing", () => {
           upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
-          configuredCredentials: ["vertexCredentials"],
+          configuredCredentials: ["serviceAccountKey"],
         },
       ],
     });
@@ -1652,7 +1652,7 @@ describe("model upstream routing", () => {
           upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
-          configuredCredentials: ["vertexCredentials"],
+          configuredCredentials: ["serviceAccountKey"],
         },
       ],
     });
@@ -1665,7 +1665,7 @@ describe("model upstream routing", () => {
           upstreamId: "google-agent-platform",
           region: "global",
           enabled: true,
-          configuredCredentials: ["vertexCredentials"],
+          configuredCredentials: ["serviceAccountKey"],
         },
       ],
     });
@@ -1685,14 +1685,14 @@ describe("model upstream routing", () => {
     });
   });
 
-  it("routes current Google Agent Platform SOTA text models through official Vertex credentials", () => {
+  it("routes current Google Agent Platform SOTA text models through official Agent Platform service-account credentials", () => {
     const configuredProviders: ProviderAccountAvailability[] = [
       {
         providerId: "official",
         upstreamId: "google-agent-platform",
         region: "global",
         enabled: true,
-        configuredCredentials: ["vertexCredentials"],
+        configuredCredentials: ["serviceAccountKey"],
       },
     ];
 
@@ -1710,28 +1710,28 @@ describe("model upstream routing", () => {
         upstreamId: "google-agent-platform",
         upstreamModel: "gemini-3.5-flash",
         apiShape: "google-agent-platform",
-        requiredCredentials: ["vertexCredentials"],
+        requiredCredentials: ["serviceAccountKey"],
       }),
       expect.objectContaining({
         modelCode: "gemini-3.1-pro",
         upstreamId: "google-agent-platform",
         upstreamModel: "gemini-3.1-pro-preview",
         apiShape: "google-agent-platform",
-        requiredCredentials: ["vertexCredentials"],
+        requiredCredentials: ["serviceAccountKey"],
       }),
       expect.objectContaining({
         modelCode: "gemini-3-flash",
         upstreamId: "google-agent-platform",
         upstreamModel: "gemini-3-flash-preview",
         apiShape: "google-agent-platform",
-        requiredCredentials: ["vertexCredentials"],
+        requiredCredentials: ["serviceAccountKey"],
       }),
       expect.objectContaining({
         modelCode: "gemini-3.1-flash-lite",
         upstreamId: "google-agent-platform",
         upstreamModel: "gemini-3.1-flash-lite",
         apiShape: "google-agent-platform",
-        requiredCredentials: ["vertexCredentials"],
+        requiredCredentials: ["serviceAccountKey"],
       }),
     ]);
   });

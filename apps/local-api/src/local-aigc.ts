@@ -781,8 +781,8 @@ interface GoogleAgentPlatformCredentials {
   location?: string;
 }
 
-const GOOGLE_VERTEX_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const GOOGLE_VERTEX_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 
 function parseGoogleAgentPlatformCredentials(raw: string): GoogleAgentPlatformCredentials {
   let parsed: Record<string, unknown>;
@@ -827,8 +827,8 @@ async function signedGoogleJwt(credentials: GoogleAgentPlatformCredentials): Pro
   const header = { alg: "RS256", typ: "JWT" };
   const claim = {
     iss: credentials.clientEmail,
-    scope: GOOGLE_VERTEX_SCOPE,
-    aud: GOOGLE_VERTEX_TOKEN_URL,
+    scope: GOOGLE_CLOUD_PLATFORM_SCOPE,
+    aud: GOOGLE_OAUTH_TOKEN_URL,
     exp: now + 3600,
     iat: now,
   };
@@ -847,7 +847,7 @@ async function googleVertexAccessToken(
   fetchImpl: typeof fetch,
 ): Promise<string> {
   const jwt = await signedGoogleJwt(credentials);
-  const response = await fetchImpl(GOOGLE_VERTEX_TOKEN_URL, {
+  const response = await fetchImpl(GOOGLE_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -865,7 +865,7 @@ async function googleVertexAccessToken(
   return json.access_token;
 }
 
-function vertexBaseHost(location: string): string {
+function agentPlatformBaseHost(location: string): string {
   return location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
 }
 
@@ -875,7 +875,7 @@ function googleAgentPlatformModelUrl(
   route: ModelUpstreamRoute,
   action: string,
 ): string {
-  return `https://${vertexBaseHost(location)}/v1/projects/${credentials.project}/locations/${location}/publishers/google/models/${route.upstreamModel}:${action}`;
+  return `https://${agentPlatformBaseHost(location)}/v1/projects/${credentials.project}/locations/${location}/publishers/google/models/${route.upstreamModel}:${action}`;
 }
 
 async function googleAgentPlatformTextBody(input: MockMediaGenerationInput, fetchImpl: typeof fetch): Promise<Record<string, unknown>> {
@@ -2871,11 +2871,11 @@ export function createMockExternalAigcService(
     }
 
     if (route.apiShape === "google-agent-platform") {
-      const vertexCredentials = credential(route, providerAccounts, "vertexCredentials");
-      if (!vertexCredentials) return fallbackOrThrow();
-      if (kind === "text") return generateGoogleAgentPlatformText(input, route, fetchImpl, vertexCredentials);
-      if (kind === "image") return generateGoogleAgentPlatformImage(input, route, fetchImpl, vertexCredentials);
-      if (kind === "video") return generateGoogleAgentPlatformVideo(input, route, fetchImpl, vertexCredentials);
+      const serviceAccountKey = credential(route, providerAccounts, "serviceAccountKey");
+      if (!serviceAccountKey) return fallbackOrThrow();
+      if (kind === "text") return generateGoogleAgentPlatformText(input, route, fetchImpl, serviceAccountKey);
+      if (kind === "image") return generateGoogleAgentPlatformImage(input, route, fetchImpl, serviceAccountKey);
+      if (kind === "video") return generateGoogleAgentPlatformVideo(input, route, fetchImpl, serviceAccountKey);
       throw missingAdapter(route);
     }
 

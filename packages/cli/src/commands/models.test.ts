@@ -49,7 +49,7 @@ test("can disable a provider account from CLI options", () => {
   });
 });
 
-test("loads Vertex credentials from a JSON file without putting the secret on argv", async () => {
+test("loads a service-account key from a JSON file without putting the secret on argv", async () => {
   const directory = await mkdtemp(join(tmpdir(), "clash-provider-credentials-"));
   const credentialPath = join(directory, "service-account.json");
   const serviceAccount = {
@@ -62,8 +62,8 @@ test("loads Vertex credentials from a JSON file without putting the secret on ar
 
   try {
     assert.deepEqual(
-      await providerCredentialsFromOptions({ vertexCredentialsFile: credentialPath }),
-      { vertexCredentials: JSON.stringify(serviceAccount) },
+      await providerCredentialsFromOptions({ serviceAccountKeyFile: credentialPath }),
+      { serviceAccountKey: JSON.stringify(serviceAccount) },
     );
   } finally {
     await rm(directory, { recursive: true, force: true });

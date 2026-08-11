@@ -9,7 +9,7 @@ import { fal } from "@fal-ai/client";
 import { Buffer } from "node:buffer";
 import type { Env } from "../config";
 import { generateFalVideo } from "./fal-video";
-import { generateGoogleVideo, GOOGLE_VIDEO_MODELS, type VertexCredentials } from "./google-gen";
+import { generateGoogleVideo, GOOGLE_VIDEO_MODELS, type GoogleServiceAccount } from "./google-gen";
 
 // ─── Interface ───────────────────────────────────────────
 
@@ -28,7 +28,7 @@ export interface VideoGenInput {
   modelName?: string;
   modelParams?: Record<string, unknown>;
   credentials?: Record<string, string>;
-  vertexCredentials?: VertexCredentials;
+  serviceAccountKey?: GoogleServiceAccount;
 }
 
 export interface VideoGenOutput {
@@ -119,7 +119,7 @@ const falVideoAdapter: VideoProvider = {
 
 const googleVideoProvider: VideoProvider = {
   async generate(env, params) {
-    const creds = params.vertexCredentials;
+    const creds = params.serviceAccountKey;
     if (!creds) throw new Error("Google Cloud Agent Platform provider account is missing service account credentials.");
 
     // Vertex wants base64 in-body — read R2 directly, no third party.

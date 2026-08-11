@@ -28,9 +28,16 @@ interface ProviderAccountsResponse {
   readToken: string;
 }
 
-/** Hosts that answer for the same upstream under separate logins. */
+/**
+ * Choices an account must make because its credential cannot make them.
+ *
+ * Where one vendor answers on several hosts that do not share a login, the key alone does not say
+ * which one issued it, so the account does. MiniMax splits by service region; Google splits by
+ * surface, now that Agent Platform takes an API key rather than a signed service-account JSON.
+ */
 const REGIONS: Record<string, string[]> = {
   minimax: ["global", "cn"],
+  official: ["ai-studio", "agent-platform"],
 };
 
 async function currentAccounts(): Promise<ProviderAccountsResponse> {
@@ -44,6 +51,33 @@ async function currentAccounts(): Promise<ProviderAccountsResponse> {
  * it is visible in the process list to anyone who runs `ps` while the command is in flight. It
  * stays supported because scripts need it, but a file and stdin come first in the documentation.
  */
+/**
+ * Collects a repeated `key=value` flag.
+ *
+ * Which credentials a provider needs is the provider's business, and a plugin may declare its own,
+ * so a CLI with one flag per credential would be permanently one provider behind. It carries pairs
+ * and lets the host validate — which the host already does, and is the only party that can.
+ */
+function collectPair(value: string, previous: Record<string, string>): Record<string, string> {
+  const at = value.indexOf("=");
+  if (at <= 0) {
+    throw new Error(`Expected key=value, got "${value}".`);
+  }
+  return { ...previous, [value.slice(0, at)]: value.slice(at + 1) };
+}
+
+/** The same pairs, but the value is a path — for secrets that should not sit in shell history. */
+function collectPairFile(value: string, previous: Record<string, string>): Record<string, string> {
+  const at = value.indexOf("=");
+  if (at <= 0) {
+    throw new Error(`Expected key=path, got "${value}".`);
+  }
+  const key = value.slice(0, at);
+  const contents = readFileSync(value.slice(at + 1), "utf8").trim();
+  if (!contents) throw new Error(`No credential found in ${value.slice(at + 1)}.`);
+  return { ...previous, [key]: contents };
+}
+
 function resolveApiKey(options: { apiKey?: string; apiKeyFile?: string }): string {
   if (options.apiKeyFile) {
     const key = readFileSync(options.apiKeyFile, "utf8").trim();
@@ -133,10 +167,22 @@ export function registerProviderCommands(program: Command): void {
     .description("Connect an account for a provider")
     .option("--api-key-file <path>", "Read the key from a file (preferred)")
     .option("--api-key <key>", "The key itself; recorded by shell history and visible in ps")
-    .option("--region <region>", "Which host this account belongs to, where the upstream has more than one")
+    .option("--region <region>", "Which host or surface this account belongs to, where the upstream has more than one")
     .option("--upstream <upstreamId>", "Upstream service, when it differs from the provider id")
     .option("--label <label>", "A name for this account")
     .option("--id <accountId>", "Account id, for holding more than one key per provider")
+    .option(
+      "--credential <key=value>",
+      "Any other credential this provider needs, repeatable (e.g. --credential accessKey=... --credential secretKey=...)",
+      collectPair,
+      {},
+    )
+    .option(
+      "--credential-file <key=path>",
+      "Read a credential's value from a file, repeatable",
+      collectPairFile,
+      {},
+    )
     .option("--json", "Machine-readable output")
     .action(async (providerId: string, options: {
       apiKey?: string;
@@ -146,6 +192,8 @@ export function registerProviderCommands(program: Command): void {
       label?: string;
       id?: string;
       json?: boolean;
+      credential?: Record<string, string>;
+      credentialFile?: Record<string, string>;
     }) => {
       assertRegion(providerId, options.region);
       const apiKey = resolveApiKey(options);
@@ -170,7 +218,9 @@ export function registerProviderCommands(program: Command): void {
         ...(options.region ? { region: options.region } : {}),
         ...(options.label ? { label: options.label } : {}),
         enabled: true,
-        credentials: { apiKey },
+        // A file-sourced value wins over an inline one for the same key: whoever passed both meant
+        // the safer of the two, and silently preferring the argument would put a secret in history.
+        credentials: { apiKey, ...(options.credential ?? {}), ...(options.credentialFile ?? {}) },
       };
       await writeAccounts([...kept, added], current.readToken);
       if (isJsonMode(options)) {

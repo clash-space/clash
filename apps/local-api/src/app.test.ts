@@ -1255,7 +1255,7 @@ describe("local API app", () => {
           enabled: true,
           priority: 1,
           credentials: {
-            vertexCredentials: JSON.stringify({
+            serviceAccountKey: JSON.stringify({
               project_id: "vertex-project",
               client_email: "svc@vertex-project.iam.gserviceaccount.com",
               private_key: privateKey,
@@ -5631,7 +5631,7 @@ describe("local API app", () => {
             enabled: true,
             priority: 1,
             credentials: {
-              vertexCredentials: JSON.stringify({
+              serviceAccountKey: JSON.stringify({
                 project_id: "vertex-project",
                 client_email: "svc@vertex-project.iam.gserviceaccount.com",
                 private_key: privateKey,
@@ -5875,7 +5875,7 @@ describe("local API app", () => {
             region: "global",
             enabled: true,
             priority: 1,
-            credentials: { vertexCredentials: "{\"project\":\"demo\",\"clientEmail\":\"svc@example.com\",\"privateKey\":\"key\"}" },
+            credentials: { serviceAccountKey: "{\"project\":\"demo\",\"clientEmail\":\"svc@example.com\",\"privateKey\":\"key\"}" },
           },
         ],
       }),

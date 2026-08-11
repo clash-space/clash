@@ -22,7 +22,6 @@
     "@cloudflare/ai-chat": "^0.2.5",
     "@cloudflare/containers": "^0.2.0",
     "@fal-ai/client": "^1.9.5",
-    "@google/generative-ai": "^0.24.0",
     "@master-clash/remotion-core": "workspace:*",
     "agents": "^0.8.6",
     "ai": "^6.0.0",

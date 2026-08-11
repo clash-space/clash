@@ -53,7 +53,7 @@ export class WebGlEffectRuntime {
   private readonly resolveShader: (shader: string) => string;
   private readonly programs = new Map<string, WebGLProgram>();
   private readonly inputTextures = new Map<string, WebGLTexture>();
-  private readonly vertexBuffer: WebGLBuffer;
+  private readonly agentPlatformBuffer: WebGLBuffer;
   private renderTargets: RenderTarget[] = [];
   private renderTargetSize = { width: 0, height: 0 };
 
@@ -69,9 +69,9 @@ export class WebGlEffectRuntime {
       preserveDrawingBuffer: true,
     });
     if (!gl) throw new Error('WebGL2 is unavailable; use the effect fallback renderer.');
-    const vertexBuffer = gl.createBuffer();
-    if (!vertexBuffer) throw new Error('Unable to allocate the WebGL fullscreen vertex buffer.');
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    const agentPlatformBuffer = gl.createBuffer();
+    if (!agentPlatformBuffer) throw new Error('Unable to allocate the WebGL fullscreen vertex buffer.');
+    gl.bindBuffer(gl.ARRAY_BUFFER, agentPlatformBuffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
       new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
@@ -82,7 +82,7 @@ export class WebGlEffectRuntime {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
     this.gl = gl;
     this.resolveShader = options.resolveShader;
-    this.vertexBuffer = vertexBuffer;
+    this.agentPlatformBuffer = agentPlatformBuffer;
   }
 
   render(options: {
@@ -148,7 +148,7 @@ export class WebGlEffectRuntime {
       gl.deleteFramebuffer(target.framebuffer);
       gl.deleteTexture(target.texture);
     }
-    gl.deleteBuffer(this.vertexBuffer);
+    gl.deleteBuffer(this.agentPlatformBuffer);
     this.programs.clear();
     this.inputTextures.clear();
     this.renderTargets = [];
@@ -232,7 +232,7 @@ export class WebGlEffectRuntime {
     const { gl } = this;
     const location = gl.getAttribLocation(program, 'a_position');
     if (location < 0) throw new Error('Effect vertex shader does not expose a_position.');
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.agentPlatformBuffer);
     gl.enableVertexAttribArray(location);
     gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
   }

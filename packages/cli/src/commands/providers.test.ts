@@ -54,3 +54,31 @@ describe("provider account commands", () => {
     expect(source).toMatch(/\.command\("remove <accountId>"\)/);
   });
 });
+
+/**
+ * Whatever the form can hold, the terminal can hold.
+ *
+ * The form knew five credential keys — apiKey, baseUrl, accessKey, secretKey, callbackUrl — and the
+ * CLI knew one. Volcengine, Suno and custom endpoints could only be connected by opening a window,
+ * which is the wrong shape for a product whose whole premise is that an agent works the project
+ * from a terminal.
+ *
+ * The fix is not a flag per credential. Which credentials exist is the provider's business, and a
+ * plugin can declare its own, so a CLI enumerating them would be permanently one provider behind.
+ * It carries key=value pairs and lets the host validate, which it already does.
+ */
+describe("credentials the form knows, the CLI can set", () => {
+  it("takes any credential as a key=value pair", () => {
+    expect(source).toMatch(/--credential <[a-z=]+>/);
+  });
+
+  it("collects more than one", () => {
+    // accessKey and secretKey arrive together or not at all.
+    expect(source).toMatch(/collect|\[\]\)/);
+  });
+
+  it("reads a credential from a file too", () => {
+    // The same reason --api-key-file exists: an argument is in shell history and in ps.
+    expect(source).toMatch(/--credential-file/);
+  });
+});

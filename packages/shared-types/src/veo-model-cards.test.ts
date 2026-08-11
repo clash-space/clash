@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MODEL_CARDS } from "./models";
 
 describe("Veo 3.1 model cards", () => {
-  it("only offers Vertex-supported output durations", () => {
+  it("only offers Agent Platform-supported output durations", () => {
     for (const id of [
       "veo-3.1",
       "veo-3.1-startend",
