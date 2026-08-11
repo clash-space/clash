@@ -67,47 +67,53 @@ async function currentAccounts(): Promise<ProviderAccountsResponse> {
  * stays supported because scripts need it, but a file and stdin come first in the documentation.
  */
 /**
+ * Resolves one credential value, which may say where it lives.
+ *
+ * `@path` reads that file and `-` reads stdin, the convention curl settled on. The alternative was
+ * a `-file` twin for every credential flag, which had already turned two flags into four and would
+ * have grown with each new credential.
+ *
+ * Reading from a file or stdin is not a nicety: an argument is kept in shell history and is visible
+ * in `ps` to every other user on the machine for as long as the command runs.
+ */
+function resolveValue(raw: string): string {
+  if (raw === "-") {
+    const piped = readFileSync(0, "utf8").trim();
+    if (!piped) throw new Error("Nothing arrived on stdin.");
+    return piped;
+  }
+  if (raw.startsWith("@")) {
+    const path = raw.slice(1);
+    let contents: string;
+    try {
+      contents = readFileSync(path, "utf8").trim();
+    } catch {
+      // ENOENT on its own says nothing about which argument caused it, and someone who meant a
+      // literal value starting with @ needs to be told that @ is what triggered the read.
+      throw new Error(
+        `Cannot read the credential file ${path}. A value starting with @ is read from that path; `
+        + "pass the value directly if it is not a file.",
+      );
+    }
+    if (!contents) throw new Error(`The credential file ${path} is empty.`);
+    return contents;
+  }
+  return raw.trim();
+}
+
+/**
  * Collects a repeated `key=value` flag.
  *
  * Which credentials a provider needs is the provider's business, and a plugin may declare its own,
  * so a CLI with one flag per credential would be permanently one provider behind. It carries pairs
- * and lets the host validate — which the host already does, and is the only party that can.
+ * and lets the host validate -- which the host already does, and is the only party that can.
  */
 function collectPair(value: string, previous: Record<string, string>): Record<string, string> {
   const at = value.indexOf("=");
   if (at <= 0) {
     throw new Error(`Expected key=value, got "${value}".`);
   }
-  return { ...previous, [value.slice(0, at)]: value.slice(at + 1) };
-}
-
-/** The same pairs, but the value is a path — for secrets that should not sit in shell history. */
-function collectPairFile(value: string, previous: Record<string, string>): Record<string, string> {
-  const at = value.indexOf("=");
-  if (at <= 0) {
-    throw new Error(`Expected key=path, got "${value}".`);
-  }
-  const key = value.slice(0, at);
-  const contents = readFileSync(value.slice(at + 1), "utf8").trim();
-  if (!contents) throw new Error(`No credential found in ${value.slice(at + 1)}.`);
-  return { ...previous, [key]: contents };
-}
-
-function resolveApiKey(options: { apiKey?: string; apiKeyFile?: string }): string | undefined {
-  if (options.apiKeyFile) {
-    const key = readFileSync(options.apiKeyFile, "utf8").trim();
-    if (!key) throw new Error(`No API key found in ${options.apiKeyFile}.`);
-    return key;
-  }
-  if (options.apiKey) return options.apiKey.trim();
-  if (!process.stdin.isTTY) {
-    const key = readFileSync(0, "utf8").trim();
-    if (key) return key;
-  }
-  // Not every provider has one. Kling authenticates with an access/secret pair and signs its own
-  // token; demanding an apiKey there would make the generic --credential path unreachable for
-  // exactly the providers it exists to serve.
-  return undefined;
+  return { ...previous, [value.slice(0, at)]: resolveValue(value.slice(at + 1)) };
 }
 
 function assertService(providerId: string, service: string | undefined): void {
@@ -181,43 +187,38 @@ export function registerProviderCommands(program: Command): void {
   providers
     .command("add <providerId>")
     .description("Connect an account for a provider")
-    .option("--api-key-file <path>", "Read the key from a file (preferred)")
-    .option("--api-key <key>", "The key itself; recorded by shell history and visible in ps")
+    .option(
+      "--api-key <value>",
+      "The provider's API key. Use @path to read a file, or - to read stdin, so the secret stays out of shell history",
+    )
     .option("--service <service>", "Which of the vendor's services issued this key, where it runs more than one")
     .option("--upstream <upstreamId>", "Upstream service, when it differs from the provider id")
     .option("--label <label>", "A name for this account")
     .option("--id <accountId>", "Account id, for holding more than one key per provider")
     .option(
       "--credential <key=value>",
-      "Any other credential this provider needs, repeatable (e.g. --credential accessKey=... --credential secretKey=...)",
+      "Any other credential this provider needs, repeatable. Values accept @path and - as well "
+        + "(e.g. --credential accessKey=@ak.txt --credential secretKey=@sk.txt)",
       collectPair,
-      {},
-    )
-    .option(
-      "--credential-file <key=path>",
-      "Read a credential's value from a file, repeatable",
-      collectPairFile,
       {},
     )
     .option("--json", "Machine-readable output")
     .action(async (providerId: string, options: {
       apiKey?: string;
-      apiKeyFile?: string;
       service?: string;
       upstream?: string;
       label?: string;
       id?: string;
       json?: boolean;
       credential?: Record<string, string>;
-      credentialFile?: Record<string, string>;
     }) => {
       assertService(providerId, options.service);
-      const apiKey = resolveApiKey(options);
-      const supplied = { ...(apiKey ? { apiKey } : {}), ...(options.credential ?? {}), ...(options.credentialFile ?? {}) };
+      const apiKey = options.apiKey ? resolveValue(options.apiKey) : undefined;
+      const supplied = { ...(apiKey ? { apiKey } : {}), ...(options.credential ?? {}) };
       if (Object.keys(supplied).length === 0) {
         throw new Error(
-          "No credentials given. Pass --api-key-file <path>, pipe a key on stdin, or use "
-          + "--credential key=value / --credential-file key=path.",
+          "No credentials given. Pass --api-key <value|@path|->, or --credential key=value "
+          + "(also accepting @path and -).",
         );
       }
       const current = await currentAccounts();

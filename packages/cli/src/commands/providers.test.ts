@@ -29,8 +29,10 @@ describe("provider account commands", () => {
 
   it("takes the key from a file or stdin, not only an argument", () => {
     // A key pasted as an argument is recorded by the shell's history and visible in the process
-    // list to every other user on the machine.
-    expect(source).toMatch(/--api-key-file|readFileSync|stdin/);
+    // list to every other user on the machine. Where the value comes from is said by the value --
+    // @path or - -- rather than by a second flag, so no credential needs a twin.
+    expect(source).toMatch(/startsWith\("@"\)/);
+    expect(source).toMatch(/=== "-"/);
   });
 
   it("asks which service issued the key, where a vendor runs more than one", () => {
@@ -80,6 +82,6 @@ describe("credentials the form knows, the CLI can set", () => {
 
   it("reads a credential from a file too", () => {
     // The same reason --api-key-file exists: an argument is in shell history and in ps.
-    expect(source).toMatch(/--credential-file/);
+    expect(source).toMatch(/@path/);
   });
 });
