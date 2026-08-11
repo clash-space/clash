@@ -115,3 +115,20 @@ describe("fal executor", () => {
     expect(source).not.toMatch(/for \(let attempt/);
   });
 });
+
+it("names a cancellation rather than calling it an unfamiliar word", async () => {
+  // Both answers end the wait, so this is not about safety — it is about what the message sends
+  // someone to investigate. fal really does emit CANCELLED; its own client types list it beside
+  // IN_QUEUE, IN_PROGRESS and COMPLETED. Reporting it as unrecognised would point at this file when
+  // the job was called off upstream.
+  await expect(falPoll({
+    state: { requestId: "req-c", endpoint: "fal-ai/x" },
+    apiKey: "k",
+    kind: "video",
+    fetch: (async () => new Response(JSON.stringify({ status: "CANCELLED" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as never,
+    queueBaseUrl: "https://queue.fal.run",
+  })).rejects.toThrow(/cancelled upstream/);
+});

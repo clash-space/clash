@@ -140,7 +140,6 @@ describe("googleAiStudioInteractionsAdapter", () => {
 
     expect(mocks.createInteraction).toHaveBeenCalledWith(expect.objectContaining({
       apiKey: undefined,
-      gatewayToken: "cloudflare-token",
       baseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
     }));
     expect(ctx.notifyCompleted).toHaveBeenCalledWith({ assetId: "asset-1" });
@@ -160,7 +159,6 @@ describe("googleAiStudioInteractionsAdapter", () => {
 
     expect(mocks.createInteraction).toHaveBeenCalledWith(expect.objectContaining({
       apiKey: undefined,
-      gatewayToken: "cloudflare-token",
     }));
   });
 });

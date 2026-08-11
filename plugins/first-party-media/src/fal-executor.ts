@@ -121,6 +121,12 @@ export async function falPoll(options: {
   if (status === "FAILED" || status === "ERROR") {
     throw new Error(`fal request failed: ${String(statusBody.error ?? status)}`);
   }
+  // A cancelled job is not an unrecognised one. Both end the wait, but only one of them tells the
+  // reader what happened: "status CANCELLED, which this executor does not recognise" sends someone
+  // to look for a bug in this file, when the answer is that the job was called off upstream.
+  if (status === "CANCELLED" || status === "CANCELED") {
+    throw new Error(`fal request ${options.state.requestId} was cancelled upstream.`);
+  }
   if (RUNNING_STATUSES.has(status)) {
     // Unchanged state: fal identifies the job the same way for as long as it exists.
     return { status: "accepted", pollState: options.state };

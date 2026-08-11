@@ -2056,7 +2056,7 @@ describe("model upstream routing", () => {
         providerId: "official",
         upstreamId: "google-ai-studio",
         region: "global",
-        configuredCredentials: ["gatewayToken", "baseUrl"],
+        configuredCredentials: ["baseUrl"],
       }],
     });
     const incompleteGateway = resolveModelUpstreamRoute({
@@ -2067,7 +2067,7 @@ describe("model upstream routing", () => {
         providerId: "official",
         upstreamId: "google-ai-studio",
         region: "global",
-        configuredCredentials: ["gatewayToken"],
+        configuredCredentials: [],
       }],
     });
 
@@ -2075,7 +2075,7 @@ describe("model upstream routing", () => {
     expect(gateway).toMatchObject({
       accountId: "google-gateway",
       credentialRequirements: {
-        anyOf: [["apiKey"], ["gatewayToken", "baseUrl"]],
+        anyOf: [["apiKey"], ["baseUrl"]],
         exclusive: true,
       },
     });

@@ -3917,7 +3917,7 @@ describe("SettingsClient model routing", () => {
               upstreamId: "google-ai-studio",
               region: "global",
               enabled: true,
-              configuredCredentials: ["gatewayToken", "baseUrl"],
+              configuredCredentials: ["baseUrl"],
             },
           ]}
           initialModelCatalog={[]}

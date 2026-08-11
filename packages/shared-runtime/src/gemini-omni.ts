@@ -19,7 +19,6 @@ export interface GeminiOmniVideoOutput {
 
 export interface CreateGeminiOmniInteractionInput {
   apiKey?: string;
-  gatewayToken?: string;
   baseUrl?: string;
   model: string;
   input: ReadonlyArray<GeminiOmniInputPart>;
@@ -30,7 +29,6 @@ export interface CreateGeminiOmniInteractionInput {
 
 export interface GetGeminiOmniInteractionInput {
   apiKey?: string;
-  gatewayToken?: string;
   baseUrl?: string;
   interactionId: string;
   fetch?: typeof fetch;
@@ -78,38 +76,15 @@ async function parseJsonResponse(response: Response, operation: string): Promise
 }
 
 function headers(
-  input: { apiKey?: string; gatewayToken?: string; baseUrl?: string },
+  input: { apiKey?: string; baseUrl?: string },
   contentType = false,
 ): Record<string, string> {
   const apiKey = input.apiKey?.trim();
-  const gatewayToken = input.gatewayToken?.trim();
-  if (apiKey && gatewayToken) {
-    throw new Error("Choose either Google API key or Cloudflare AI Gateway token for Gemini Omni.");
-  }
-  if (gatewayToken) {
-    let validGatewayBaseUrl = false;
-    try {
-      const url = new URL(input.baseUrl ?? "");
-      validGatewayBaseUrl = url.hostname === "gateway.ai.cloudflare.com"
-        && /\/google-ai-studio(?:\/v\d+(?:beta\d*)?)?\/?$/.test(url.pathname);
-    } catch {
-      validGatewayBaseUrl = false;
-    }
-    if (!validGatewayBaseUrl) {
-      throw new Error(
-        "Cloudflare AI Gateway token requires a Cloudflare Google AI Studio Gateway base URL.",
-      );
-    }
-  }
-  if (!apiKey && !gatewayToken) {
-    throw new Error("Gemini Omni requires a Google API key or Cloudflare AI Gateway token.");
+  if (!apiKey) {
+    throw new Error("Gemini Omni requires a Google API key.");
   }
   return {
-    ...(apiKey ? { "x-goog-api-key": apiKey } : {}),
-    ...(gatewayToken ? {
-      "cf-aig-authorization": `Bearer ${gatewayToken}`,
-      "cf-aig-skip-cache": "true",
-    } : {}),
+    "x-goog-api-key": apiKey,
     ...(contentType ? { "content-type": "application/json" } : {}),
   };
 }
@@ -209,7 +184,6 @@ export function geminiOmniInteractionStatus(interaction: GeminiOmniInteraction):
 
 export async function downloadGeminiOmniVideo(input: {
   apiKey?: string;
-  gatewayToken?: string;
   uri: string;
   baseUrl?: string;
   pollIntervalMs?: number;

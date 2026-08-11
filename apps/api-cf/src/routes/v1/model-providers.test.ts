@@ -532,7 +532,6 @@ describe("modelProviderRoutes", () => {
           region: "global",
           enabled: true,
           credentials: {
-            gatewayToken: "cloudflare-token",
             baseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
           },
         },

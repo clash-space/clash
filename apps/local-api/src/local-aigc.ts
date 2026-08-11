@@ -268,7 +268,6 @@ export interface MockFalExternalAigcServiceOptions {
   falQueueBaseUrl?: string;
   googleAiStudioBaseUrl?: string;
   googleAiStudioApiKey?: string;
-  googleAiStudioGatewayToken?: string;
   providerTraffic?:
     | {
         mode: "record";
@@ -388,37 +387,18 @@ type RuntimeProviderAccountAvailability = ProviderAccountAvailability & {
   credentials?: Record<string, string>;
 };
 
-function cloudflareGoogleEnvironmentAccount(
-  options: Pick<
-    MockFalExternalAigcServiceOptions,
-    "googleAiStudioApiKey" | "googleAiStudioBaseUrl" | "googleAiStudioGatewayToken"
-  >,
+/**
+ * The Google account: a Google key, sent to Google.
+ *
+ * A base url override still belongs here, because a proxy in front of Google is still Google
+ * authenticating the request. What does not belong here is a credential issued by somebody else.
+ */
+function googleAiStudioEnvironmentAccount(
+  options: Pick<MockFalExternalAigcServiceOptions, "googleAiStudioApiKey" | "googleAiStudioBaseUrl">,
 ): RuntimeProviderAccountAvailability | undefined {
-  const baseUrl = options.googleAiStudioBaseUrl?.trim();
-  const gatewayToken = options.googleAiStudioGatewayToken?.trim();
-  let isCloudflareGateway = false;
-  try {
-    isCloudflareGateway = !!baseUrl && new URL(baseUrl).hostname === "gateway.ai.cloudflare.com";
-  } catch {
-    isCloudflareGateway = false;
-  }
   const apiKey = options.googleAiStudioApiKey?.trim();
-  if (apiKey && gatewayToken) {
-    throw new Error(
-      "Choose either Google API key or Cloudflare AI Gateway token for Gemini Omni.",
-    );
-  }
-  if (!apiKey && !gatewayToken) return undefined;
-  if (gatewayToken && !isCloudflareGateway) {
-    throw new Error(
-      "Cloudflare AI Gateway token requires a Cloudflare Google AI Studio Gateway base URL.",
-    );
-  }
-  const configuredCredentials = [
-    ...(apiKey ? ["apiKey"] : []),
-    ...(gatewayToken ? ["gatewayToken"] : []),
-    ...(baseUrl ? ["baseUrl"] : []),
-  ];
+  if (!apiKey) return undefined;
+  const baseUrl = options.googleAiStudioBaseUrl?.trim();
   return {
     id: "google-ai-studio-environment",
     providerId: "official",
@@ -426,12 +406,8 @@ function cloudflareGoogleEnvironmentAccount(
     region: "global",
     enabled: true,
     priority: 10_000,
-    configuredCredentials,
-    credentials: {
-      ...(apiKey ? { apiKey } : {}),
-      ...(baseUrl ? { baseUrl } : {}),
-      ...(gatewayToken ? { gatewayToken } : {}),
-    },
+    configuredCredentials: ["apiKey", ...(baseUrl ? ["baseUrl"] : [])],
+    credentials: { apiKey, ...(baseUrl ? { baseUrl } : {}) },
   };
 }
 
@@ -738,20 +714,19 @@ async function geminiOmniInput(
   return result;
 }
 
-async function generateGeminiOmniVideo(
+async function generateGoogleAiStudioInteractionsVideo(
   input: MockMediaGenerationInput,
   route: ModelUpstreamRoute,
   options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
     Pick<MockFalExternalAigcServiceOptions, "googleAiStudioBaseUrl"> & {
       providerFetch?: typeof fetch;
     },
-  auth: { apiKey?: string; gatewayToken?: string },
+  auth: { apiKey?: string },
 ): Promise<MockMediaGenerationCompleted> {
   const baseUrl = normalizeBaseUrl(options.googleAiStudioBaseUrl, "https://generativelanguage.googleapis.com/v1beta");
   const providerFetch = options.providerFetch ?? options.fetch;
   let interaction = await createGeminiOmniInteraction({
     apiKey: auth.apiKey,
-    gatewayToken: auth.gatewayToken,
     baseUrl,
     model: route.upstreamModel,
     input: await geminiOmniInput(input, options.fetch),
@@ -769,7 +744,6 @@ async function generateGeminiOmniVideo(
     if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 5_000));
     interaction = await getGeminiOmniInteraction({
       apiKey: auth.apiKey,
-      gatewayToken: auth.gatewayToken,
       baseUrl,
       interactionId,
       fetch: providerFetch,
@@ -785,7 +759,6 @@ async function generateGeminiOmniVideo(
     : output.uri
       ? await downloadGeminiOmniVideo({
           apiKey: auth.apiKey,
-          gatewayToken: auth.gatewayToken,
           baseUrl,
           uri: output.uri,
           fetch: providerFetch,
@@ -2746,7 +2719,7 @@ export function createMockExternalAigcService(
     // than holding the call open.
   ): Promise<MockMediaGenerationResult> {
     const loadedProviderAccounts = loadProviderAccounts ? await loadProviderAccounts() : undefined;
-    const environmentGoogleAccount = cloudflareGoogleEnvironmentAccount(options);
+    const environmentGoogleAccount = googleAiStudioEnvironmentAccount(options);
     const replayGoogleAccount = await googleAiStudioReplayAccount(input, kind);
     const additionalAccounts = [environmentGoogleAccount, replayGoogleAccount]
       .filter((account): account is RuntimeProviderAccountAvailability => !!account);
@@ -2877,19 +2850,15 @@ export function createMockExternalAigcService(
     }
 
     if (route.apiShape === "google-ai-studio-interactions") {
-      const gatewayToken = credential(route, providerAccounts, "gatewayToken")
-        || options.googleAiStudioGatewayToken;
-      const apiKey = gatewayToken
-        ? undefined
-        : credential(route, providerAccounts, "apiKey") || options.googleAiStudioApiKey;
-      if (!apiKey && !gatewayToken) return fallbackOrThrow();
+      const apiKey = credential(route, providerAccounts, "apiKey") || options.googleAiStudioApiKey;
+      if (!apiKey) return fallbackOrThrow();
       if (kind !== "video") throw missingAdapter(route);
       const providerFetch = await providerFetchForRoute(route);
-      return generateGeminiOmniVideo(input, route, {
+      return generateGoogleAiStudioInteractionsVideo(input, route, {
         fetch: fetchImpl,
         providerFetch,
         googleAiStudioBaseUrl: credential(route, providerAccounts, "baseUrl") || options.googleAiStudioBaseUrl,
-      }, { apiKey, gatewayToken });
+      }, { apiKey });
     }
 
     if (route.apiShape === "google-ai-studio") {

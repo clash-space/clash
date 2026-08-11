@@ -8,61 +8,27 @@ import {
 } from "./gemini-omni.js";
 
 describe("Gemini Omni Interactions transport", () => {
-  it("uses Cloudflare AI Gateway BYOK with the provider API prefix and native authentication", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(Response.json({
-      id: "interactions/gateway-1",
-      status: "in_progress",
-    }));
-
-    await createGeminiOmniInteraction({
-      gatewayToken: "cloudflare-token",
-      baseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio/",
+  it("takes a Google key and nothing else", async () => {
+    // Routing Gemini through Cloudflare's AI Gateway was removed. It was the only credential in the
+    // product whose validity was decided by inspecting another credential's value -- a gateway
+    // token was accepted only when the base url's hostname was literally gateway.ai.cloudflare.com,
+    // which also meant a self-hosted gateway could not be configured at all.
+    //
+    // A proxy in front of Google is still expressible: set a base url. What is gone is a second
+    // party's credential wearing Google's account.
+    await expect(createGeminiOmniInteraction({
+      apiKey: "",
+      baseUrl: "https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio",
       model: "gemini-omni-flash-preview",
-      input: [{ type: "text", text: "A paper boat." }],
+      input: [],
       aspectRatio: "16:9",
-      duration: 3,
-      fetch: fetchImpl,
-    });
-
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio/v1beta/interactions",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          "cf-aig-authorization": "Bearer cloudflare-token",
-          "cf-aig-skip-cache": "true",
-          "content-type": "application/json",
-        }),
-      }),
-    );
-    const headers = fetchImpl.mock.calls[0]![1]!.headers as Record<string, string>;
-    expect(headers["x-goog-api-key"]).toBeUndefined();
-    expect(JSON.parse(String(fetchImpl.mock.calls[0]![1]!.body))).toMatchObject({
-      input: "A paper boat.",
-    });
+      duration: 8,
+      fetch: (async () => new Response("{}", { status: 200 })) as never,
+    })).rejects.toThrow(/requires a Google API key/);
   });
 
-  it("rejects incomplete or ambiguous Cloudflare Gateway authentication", async () => {
-    const common = {
-      model: "gemini-omni-flash-preview",
-      input: [{ type: "text" as const, text: "A paper boat." }],
-      aspectRatio: "16:9" as const,
-      duration: 3,
-      fetch: vi.fn(),
-    };
-
-    await expect(createGeminiOmniInteraction({
-      ...common,
-      gatewayToken: "cloudflare-token",
-    })).rejects.toThrow("Cloudflare AI Gateway token requires a Cloudflare Google AI Studio Gateway base URL");
-    await expect(createGeminiOmniInteraction({
-      ...common,
-      apiKey: "google-key",
-      gatewayToken: "cloudflare-token",
-      baseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
-    })).rejects.toThrow("Choose either Google API key or Cloudflare AI Gateway token");
-  });
-
+  
+  
   it("preserves authored text/image order in a background video interaction", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       id: "interactions/omni-1",
@@ -180,32 +146,4 @@ describe("Gemini Omni Interactions transport", () => {
     expect(new TextDecoder().decode(result.bytes)).toBe("video-bytes");
   });
 
-  it("remaps Google file URIs through the authenticated Cloudflare gateway", async () => {
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(Response.json({ name: "files/video-2", state: "ACTIVE" }))
-      .mockResolvedValueOnce(new Response("gateway-video", {
-        headers: { "content-type": "video/mp4" },
-      }));
-
-    const result = await downloadGeminiOmniVideo({
-      gatewayToken: "cloudflare-token",
-      baseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
-      uri: "https://generativelanguage.googleapis.com/v1beta/files/video-2:download?alt=media",
-      pollIntervalMs: 0,
-      fetch: fetchImpl,
-    });
-
-    expect(fetchImpl.mock.calls.map((call) => call[0])).toEqual([
-      "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio/v1beta/files/video-2",
-      "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio/v1beta/files/video-2:download?alt=media",
-    ]);
-    for (const [, init] of fetchImpl.mock.calls) {
-      expect(init?.headers).toMatchObject({
-        "cf-aig-authorization": "Bearer cloudflare-token",
-        "cf-aig-skip-cache": "true",
-      });
-      expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBeUndefined();
-    }
-    expect(new TextDecoder().decode(result.bytes)).toBe("gateway-video");
   });
-});

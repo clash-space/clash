@@ -58,7 +58,6 @@ async function buildInput(ctx: GenerationContext): Promise<GeminiOmniInputPart[]
 
 async function pollInteraction(input: {
   apiKey?: string;
-  gatewayToken?: string;
   baseUrl?: string;
   interactionId: string;
   initial: GeminiOmniInteraction;
@@ -73,7 +72,6 @@ async function pollInteraction(input: {
     if (attempt > 0 || !status) await delay(5_000);
     interaction = await getGeminiOmniInteraction({
       apiKey: input.apiKey,
-      gatewayToken: input.gatewayToken,
       baseUrl: input.baseUrl,
       interactionId: input.interactionId,
     });
@@ -97,7 +95,7 @@ function isCloudflareGateway(value: string | undefined): boolean {
 async function transportCredentials(
   ctx: GenerationContext,
   route: NonNullable<GenerationContext["params"]["selectedRoute"]>,
-): Promise<{ apiKey?: string; gatewayToken?: string; baseUrl?: string }> {
+): Promise<{ apiKey?: string; baseUrl?: string }> {
   let stored: Record<string, string> = {};
   let storedError: unknown;
   try {
@@ -110,14 +108,11 @@ async function transportCredentials(
 
   const baseUrl = stringCredential(stored.baseUrl)
     ?? stringCredential(ctx.env.GOOGLE_AI_STUDIO_BASE_URL);
-  const gatewayToken = stringCredential(stored.gatewayToken)
-    ?? (isCloudflareGateway(baseUrl) ? stringCredential(ctx.env.CF_AIG_TOKEN) : undefined);
   // When the global authenticated Gateway is available, prefer its stored
   // provider key over forwarding a process-level Google key.
-  const apiKey = !gatewayToken
-    ? stringCredential(stored.apiKey) ?? stringCredential(ctx.env.GOOGLE_API_KEY)
+  const apiKey = stringCredential(stored.apiKey) ?? stringCredential(ctx.env.GOOGLE_API_KEY)
     : undefined;
-  if (!apiKey && !gatewayToken) {
+  if (!apiKey) {
     if (storedError) throw storedError;
     throw new Error(
       "Google AI Studio API key or Cloudflare AI Gateway token is required for Gemini Omni.",
@@ -125,7 +120,6 @@ async function transportCredentials(
   }
   return {
     ...(apiKey ? { apiKey } : {}),
-    ...(gatewayToken ? { gatewayToken } : {}),
     ...(baseUrl ? { baseUrl } : {}),
   };
 }
@@ -148,7 +142,6 @@ export const googleAiStudioInteractionsAdapter: GenerationAdapter = {
         const input = await buildInput(ctx);
         const interaction = await createGeminiOmniInteraction({
           apiKey: credentials.apiKey,
-          gatewayToken: credentials.gatewayToken,
           baseUrl: credentials.baseUrl,
           model: route.upstreamModel,
           input,
@@ -171,7 +164,6 @@ export const googleAiStudioInteractionsAdapter: GenerationAdapter = {
       async () => {
         const interaction = await pollInteraction({
           apiKey: credentials.apiKey,
-          gatewayToken: credentials.gatewayToken,
           baseUrl: credentials.baseUrl,
           interactionId: submitted.id,
           initial: submitted.interaction,
@@ -184,7 +176,6 @@ export const googleAiStudioInteractionsAdapter: GenerationAdapter = {
         if (!output.uri) throw new Error("Gemini Omni video output did not include data or a URI.");
         const downloaded = await downloadGeminiOmniVideo({
           apiKey: credentials.apiKey,
-          gatewayToken: credentials.gatewayToken,
           baseUrl: credentials.baseUrl,
           uri: output.uri,
         });

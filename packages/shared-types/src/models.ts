@@ -3650,7 +3650,7 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ['gemini-omni-flash', 'official', 'google-ai-studio', 'google-ai-studio-interactions', 'gemini-omni-flash-preview', 10, {
     region: 'global',
     credentialRequirements: {
-      anyOf: [['apiKey'], ['gatewayToken', 'baseUrl']],
+      anyOf: [['apiKey'], ['baseUrl']],
       exclusive: true,
     },
   }],

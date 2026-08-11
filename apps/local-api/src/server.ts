@@ -1012,7 +1012,6 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       falQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
       googleAiStudioApiKey: process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY,
       googleAiStudioBaseUrl: process.env.GOOGLE_AI_STUDIO_BASE_URL,
-      googleAiStudioGatewayToken: process.env.CF_AIG_TOKEN,
       pikaBaseUrl: process.env.CLASH_PIKA_URL,
       providerUsageAudit: (event) => providerStore.appendProviderUsageEvent(event),
       providerTraffic,

@@ -1717,7 +1717,7 @@ function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInf
     if (provider.providerId === 'official' && provider.upstreamId === 'openai') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'anthropic') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'bfl') return ['apiKey'];
-    if (isGoogleAiStudio(provider)) return ['apiKey', 'gatewayToken'];
+    if (isGoogleAiStudio(provider)) return ['apiKey', ];
     if (isGoogleCloudAgentPlatform(provider)) return ['vertexCredentials'];
     return [];
 }
@@ -1772,49 +1772,13 @@ function modelProviderCredentialFields(setup: ModelProviderSetup): ModelProvider
 function providerCredentialRequirementState(
     setup: ModelProviderSetup,
     configuredKeys: ReadonlySet<string>,
-    draftedBaseUrl: string | undefined,
 ): { valid: boolean; message?: string } {
     const requirements = setup.credentialRequirements;
     if (!requirements) return { valid: true };
-    const satisfied = requirements.anyOf.filter((credentials) =>
+    const satisfied = requirements.anyOf.some((credentials) =>
         credentials.every((credential) => configuredKeys.has(credential)),
     );
-    if (requirements.exclusive && satisfied.length > 1) {
-        return {
-            valid: false,
-            message: 'Choose either direct Google API key or Cloudflare Gateway for one account.',
-        };
-    }
-    if (configuredKeys.has('gatewayToken')) {
-        if (!configuredKeys.has('baseUrl')) {
-            return {
-                valid: false,
-                message: 'Gateway token requires a Cloudflare Google AI Studio Gateway Base URL.',
-            };
-        }
-        if (draftedBaseUrl) {
-            try {
-                const url = new URL(draftedBaseUrl);
-                if (
-                    url.hostname !== 'gateway.ai.cloudflare.com'
-                    || !/\/google-ai-studio(?:\/v\d+(?:beta\d*)?)?\/?$/.test(url.pathname)
-                ) {
-                    return {
-                        valid: false,
-                        message: 'Gateway Base URL must be a Cloudflare Google AI Studio provider endpoint.',
-                    };
-                }
-            } catch {
-                return {
-                    valid: false,
-                    message: 'Gateway Base URL must be a valid URL.',
-                };
-            }
-        }
-    }
-    return satisfied.length > 0
-        ? { valid: true }
-        : { valid: false, message: 'Complete one provider credential option before saving.' };
+    return satisfied ? { valid: true } : { valid: false, message: 'This account needs a credential.' };
 }
 
 function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region' | 'label' | 'apiShape' | 'pluginProvider'>): ModelProviderSetup | null {
@@ -2041,18 +2005,7 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
                     placeholder: 'Paste API key',
                     allowMultiple: false,
                 },
-                {
-                    key: 'gatewayToken',
-                    label: 'Cloudflare AI Gateway token',
-                    ariaLabel: 'Cloudflare AI Gateway token',
-                    placeholder: 'Paste authenticated Gateway token',
-                    allowMultiple: false,
-                },
             ],
-            credentialRequirements: {
-                anyOf: [['apiKey'], ['gatewayToken', 'baseUrl']],
-                exclusive: true,
-            },
             baseUrlKey: 'baseUrl',
             baseUrlPlaceholder: 'https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/google-ai-studio',
         };
@@ -3046,7 +2999,6 @@ function ModelRoutingSection({
                     ? accountRows.some((account) => providerCredentialRequirementState(
                         setup,
                         new Set(account.configuredCredentials ?? []),
-                        undefined,
                     ).valid)
                 : setup?.requiresAllCredentials
                     ? accountRows.some((account) => credentialFields.every((credential) =>
@@ -3543,7 +3495,6 @@ function ModelRoutingSection({
         const credentialRequirementState = providerCredentialRequirementState(
             setup,
             effectiveCredentialKeys,
-            draft.baseUrl?.trim(),
         );
         const credentialConfigurationInvalid = !credentialRequirementState.valid;
         const editingSupportedModelIds = editingAccount?.supportedModelIds ?? [];

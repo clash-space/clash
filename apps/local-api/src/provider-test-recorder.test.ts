@@ -54,7 +54,7 @@ describe("provider test recorder", () => {
       providerId: "official",
       upstreamId: "google-ai-studio",
       credentialRequirements: {
-        anyOf: [["apiKey"], ["gatewayToken", "baseUrl"]],
+        anyOf: [["apiKey"], ["baseUrl"]],
         exclusive: true,
       },
     });
