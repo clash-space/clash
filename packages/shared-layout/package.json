@@ -1,6 +1,10 @@
 {
   "name": "@clash/shared-layout",
   "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "description": "Shared layout algorithms for canvas node positioning (zero dependencies)",
   "type": "module",
   "main": "dist/index.js",

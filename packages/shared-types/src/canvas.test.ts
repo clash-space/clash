@@ -13,9 +13,9 @@ import {
   RF_NODE_TYPE,
   isCustomActionType,
   getCustomActionId,
-} from "./canvas";
-import { Canvas } from "./canvas-ops";
-import { MODEL_CARDS, ModelCardSchema } from "./models";
+} from "./canvas.js";
+import { Canvas } from "./canvas-ops.js";
+import { MODEL_CARDS, ModelCardSchema } from "./models.js";
 
 describe("ACTION_TYPE", () => {
   it("has Custom type", () => {
@@ -604,9 +604,9 @@ describe("NodeDataSchema", () => {
 
   it("persists an exact Executable Plugin binding", () => {
     const pluginBinding = {
-      pluginId: "first-party-media",
+      pluginId: "clash.minimax",
       version: "1.2.0",
-      exportId: "fal-h3",
+      exportId: "minimax-execute",
       schemaHash: `sha256:${"c".repeat(64)}`,
     };
     expect(NodeDataSchema.parse({ pluginBinding }).pluginBinding).toEqual(pluginBinding);
@@ -619,9 +619,9 @@ describe("NodeDataSchema", () => {
 describe("buildPendingAssetNode", () => {
   it("copies the exact plugin binding onto the pending child", () => {
     const pluginBinding = {
-      pluginId: "first-party-media",
+      pluginId: "clash.minimax",
       version: "1.2.0",
-      exportId: "fal-h3",
+      exportId: "minimax-execute",
       schemaHash: `sha256:${"c".repeat(64)}`,
     };
     const node = (buildPendingAssetNode as (input: any) => any)({
@@ -1044,7 +1044,6 @@ describe("CustomActionDefinitionSchema", () => {
     expect(normalizeActionProviderId("fal.ai")).toBe("fal");
     expect(ACTION_PROVIDER_PRESETS.fal.defaultSecretId).toBe("FAL_API_KEY");
     expect(ACTION_PROVIDER_PRESETS.replicate.defaultSecretId).toBe("REPLICATE_API_TOKEN");
-    expect(ACTION_PROVIDER_PRESETS.kie.defaultSecretId).toBe("KIE_API_KEY");
     expect(ACTION_PROVIDER_PRESETS.official.defaultSecretId).toBe("OFFICIAL_API_KEY");
     expect(normalizeActionProviderId("google")).toBeNull();
     expect(normalizeActionProviderId("google-ai-studio")).toBe("google-ai-studio");

@@ -1,51 +1,127 @@
 # Traffic Record & Replay
 
-Clash records provider HTTP traffic — built-in providers **and** executable
-plugin broker traffic — to JSONL, and replays it offline without provider
-credentials or re-billing.
+Provider regression fixtures come from real upstream runs. The same Project
+backend case is then replayed offline, byte-for-byte, without credentials or
+provider billing.
 
-## Record
+## Process-boundary instrumentation
+
+Provider plugins own HTTP directly. The test runner instruments the plugin
+process before its entrypoint starts and observes the runtime's normal HTTP
+stack. Recording and replay are runner concerns; production SDK context does
+not carry an HTTP client and plugin code does not change for tests.
+
+The Node boundary captures submit, poll, vendor upload/download, redirects, and
+final asset fetches made by the plugin. Python processes are instrumented before
+their entrypoint through `sitecustomize`; the adapter currently supports the
+standard-library `urllib.request`, `requests`, sync and async `httpx`, and
+`aiohttp`. It buffers each supported client's logical request and response;
+client-managed redirect loops may therefore be represented by their final
+logical response rather than every intermediate hop. The three optional
+libraries are patched only when installed, so their absence does not prevent a
+Python plugin from starting. Multipart bodies exposed as encoded bytes are
+stored semantically by field and file digest, so a fresh random boundary still
+matches replay.
+
+Do not assume an arbitrary Python HTTP stack is covered. A plugin using another
+client, a native extension, or its own socket/TLS transport needs a test-runner
+adapter plus the same record → offline replay → unmatched-request regression
+before its traffic fixture is accepted. An unmatched request in a supported
+client fails inside the plugin process and never falls through to real egress.
+
+## Record a real run
 
 ```sh
-CLASH_PROVIDER_TRAFFIC_RECORDING_PATH=/abs/path/provider-run.jsonl \
-  pnpm --filter @master-clash/desktop dev
+CLASH_PROVIDER_E2E=live \
+CLASH_PROVIDER_E2E_CONFIG="$PWD/.clash-provider-traffic/provider-e2e.json" \
+pnpm --filter @clash/local-api exec vitest run \
+  src/real-generation-google.test.ts src/real-generation-minimax.test.ts
 ```
 
-Run the workflow once, stop the runtime. Recording appends; use a fresh path
-for an isolated fixture.
+Keep credentials and temporary recordings under the ignored
+`.clash-provider-traffic/` directory:
 
-Each broker-originated event carries a stub identifying the plugin and
-provider (`pluginId:version:providerId:accountId`), so recordings from
-plugin-backed generations are attributable and filterable.
+```json
+{
+  "env": {
+    "CLASH_MINIMAX_API_KEY": "...",
+    "CLASH_MINIMAX_RECORDING_PATH": "/absolute/private/minimax.jsonl"
+  }
+}
+```
 
-## Replay
+Run every supported provider family at least once: text, image, video, speech,
+music, reference inputs, and queued resume paths where the catalog exposes
+them. A successful HTTP response is not enough; grade the completed backend
+result.
+
+### Third-party provider plugins
+
+Third-party plugins use the same harness. The case suite supplies a
+`preparePlugins` callback that activates the exact source or packaged plugin in
+the harness's isolated actions root; recording still happens at the spawned
+plugin process boundary. Do not add recorder branches to plugin production
+code.
+
+`hrhrng.hub` is the maintained example. Its live suite reads the selected Host
+account and scoped plugin secret, records one targeted case to a fresh file,
+and its offline suite reactivates the same plugin before replay:
 
 ```sh
-env -u GOOGLE_API_KEY -u GEMINI_API_KEY \
-  CLASH_PROVIDER_TRAFFIC_REPLAY_PATH=/abs/path/provider-run.jsonl \
-  pnpm --filter @master-clash/desktop dev
+CLASH_PROVIDER_E2E=live \
+CLASH_PROVIDER_E2E_CONFIG="$PWD/.clash-provider-traffic/provider-e2e.json" \
+CLASH_PROVIDER_E2E_TARGETS=hilo-seedance-2-audio-reference \
+pnpm --filter @clash/local-api exec vitest run \
+  src/real-generation-hilo.test.ts
 ```
 
-Requests match by provider/model, method, normalized URL, and normalized
-body; matched fixtures are consumed in order. Binary payloads restore
-byte-for-byte. A request with no matching fixture throws
-`No provider test replay fixture for <METHOD> <URL>`.
+Keep the account id, local data directory, and recording path in the ignored
+configuration file; keep its access token in the Host plugin store. A plugin
+without a repo-owned live suite should first add cases, source/package
+activation, a live recorder, and an offline backend replay test. Contract tests
+alone are not upstream acceptance.
 
-The two variables are mutually exclusive; the host refuses to start with both.
+## Replay offline
 
-## Redaction
+Checked-in fixtures run in the normal local-api test suite:
 
-Recordings redact auth headers, URL credentials, and secret-shaped fields as
-`[redacted]`. They still contain prompts, reference media, and generated
-binary data — treat recording files as **private project data**.
+```sh
+env -u GOOGLE_API_KEY -u GEMINI_API_KEY -u CLASH_MINIMAX_API_KEY \
+  pnpm --filter @clash/local-api test
+```
 
-## Operational notes
+Replay blocks real egress from the instrumented plugin process. Requests
+match by method, normalized URL, and normalized body, and matching fixtures are
+consumed in order. Binary image, video, and audio bodies are restored exactly.
+An unmatched request fails the test instead of falling through to the network.
 
-- An interrupted final line (host killed mid-write) is tolerated on read;
-  earlier corruption is not.
-- Recording large reference media inflates files fast (a single base64 audio
-  reference can be megabytes). Keep per-family fixtures in separate files.
-- Interrupted or failed calls record with `status: 0` and the error message,
-  which makes recordings useful for diagnosing flaky networks after the fact
-  (connect timeouts, sockets closed mid-request) — each failure's cause chain
-  is preserved exactly where it happened in the flow.
+## Backend grader
+
+Assert the shared product outcome:
+
+- the generated Canvas node reaches `completed`;
+- text is a non-empty canonical string with a text revision;
+- media has the expected kind and MIME type and is persisted as a project
+  asset;
+- queued work resumes from recorded poll state without resubmission;
+- reference order and media types survive projection into the vendor request.
+
+These fixtures become repair graders: reproduce a provider bug with a real
+recording, add the failing backend assertion, fix the adapter, and retain the
+case for later regression runs.
+
+## Redaction and review
+
+Recordings must redact authorization headers, URL credentials, signed query
+parameters, and secret-shaped request fields. Before committing a fixture:
+
+1. verify the real backend case completed;
+2. verify replay succeeds with provider credentials removed;
+3. search the JSONL for the original credential and local absolute paths;
+4. review prompts, references, and generated media, which are test data and
+   are not removed by secret redaction.
+
+Use a fresh recording path for each run. Interrupted final lines may be
+ignored, but earlier corruption must fail. Keep large provider families in
+separate fixtures so one audio or video payload does not make every test load
+unrelated data.

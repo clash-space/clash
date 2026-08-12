@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { EditorProvider, useEditorPlayback } from "@master-clash/remotion-core";
+import { EditorProvider, useEditorPlayback } from "@clash/remotion-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimelineTracksContainer } from "./TimelineTracksContainer";
 

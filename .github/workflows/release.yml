@@ -25,7 +25,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --concurrency=1
+      - run: pnpm build --concurrency=1
       - run: pnpm test:e2e:agent-first-local-v1
 
   release:
@@ -47,7 +47,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --filter=@clash-space/cli --filter=@clash-space/action-sdk
+      - run: pnpm build:package clash
 
       - name: Check npm publishing credentials
         id: npm
@@ -63,14 +63,6 @@ jobs:
           elif ! npm whoami --registry=https://registry.npmjs.org >/dev/null 2>&1; then
             configured=false
             reason="NPM_TOKEN is invalid"
-          else
-            for scope in @clash-space @clash @master-clash; do
-              if ! npm access list packages "$scope" --json --registry=https://registry.npmjs.org >/dev/null 2>&1; then
-                configured=false
-                reason="NPM_TOKEN cannot publish packages in ${scope}"
-                break
-              fi
-            done
           fi
 
           echo "configured=${configured}" >> "$GITHUB_OUTPUT"
@@ -83,7 +75,7 @@ jobs:
         uses: changesets/action@v1
         with:
           version: pnpm changeset version
-          publish: pnpm -r publish
+          publish: pnpm --filter clash publish --access public --no-git-checks
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
@@ -100,19 +92,19 @@ jobs:
         include:
           - os: macos-latest
             platform: macOS-arm64
-            script: pack:mac:arm64
+            script: pack:desktop:mac:arm64
             asset: apps/desktop/release/Clash-Desktop-macOS-arm64.dmg
           - os: macos-latest
             platform: macOS-x64
-            script: pack:mac:x64
+            script: pack:desktop:mac:x64
             asset: apps/desktop/release/Clash-Desktop-macOS-x64.dmg
           - os: windows-latest
             platform: Windows
-            script: pack:win
+            script: pack:desktop:win
             asset: apps/desktop/release/Clash-Desktop-Windows-x64.exe
           - os: ubuntu-latest
             platform: Linux
-            script: pack:linux
+            script: pack:desktop:linux
             asset: apps/desktop/release/Clash-Desktop-Linux-x64.AppImage
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -131,7 +123,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes ffmpeg libfuse2
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @master-clash/desktop run ${{ matrix.script }}
+      - run: pnpm run ${{ matrix.script }}
 
       - name: Upload desktop installer
         uses: actions/upload-artifact@v4

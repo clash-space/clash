@@ -1,5 +1,6 @@
 import {
   normalizeModelId,
+  activeModelParameterIds,
   applyModelProviderImplementation,
   MODEL_CARDS,
   modelRouteCredentialsSatisfied,
@@ -16,6 +17,9 @@ import {
   type ExecutablePluginBinding,
   type ExecutablePluginReference,
   minimaxBaseUrl,
+  googleApiBaseUrl,
+  resolveAccountSetting,
+  type GooglePlatform,
 } from "@clash/shared-types";
 import {
   buildMiniMaxH3Content,
@@ -47,7 +51,7 @@ import {
   type FalMockResult,
   type FalVideoResult,
 } from "./fal-mock.js";
-import { generateDreaminaCliVideoMedia, type DreaminaCliRun } from "./dreamina-cli.js";
+import { resolveStoredCredentials } from "./service-account-exchange.js";
 import {
   createProviderConformanceStubs,
   createProviderTestRecordingFetch,
@@ -60,12 +64,10 @@ import {
 const LOCAL_EXECUTABLE_MODEL_API_SHAPES = new Set([
   "anthropic-compatible",
   "bfl",
-  "dreamina-cli",
   "fal",
   "google-agent-platform",
   "google-ai-studio",
   "google-ai-studio-interactions",
-  "kie",
   "local-asr",
   "local-tts",
   "minimax",
@@ -139,20 +141,8 @@ function promptForRoute(input: MockMediaGenerationInput, route: ModelUpstreamRou
   });
 }
 
-/**
- * Spell a reference's media type the way upstreams that derive a filename accept.
- *
- * MiniMax reads the mime out of a data URL and turns it into an extension, then checks
- * that extension against its own allow-list. `audio/mpeg` becomes `.mpeg`, which is not
- * on it, so an MP3 our own TTS had just produced was rejected with
- * `audio format ".mpeg" not allowed` -- after the video task had been submitted and
- * queued. The card already knows the answer: MINIMAX_H3_AUDIO_CONSTRAINTS lists
- * `fileExtensions: ['wav', 'mp3']` next to a mimeTypes list that includes `audio/mpeg`.
- */
+/** Provider-neutral MIME normalization performed before route selection. */
 const REFERENCE_MIME_ALIASES: Readonly<Record<string, string>> = {
-  // Same bytes, and the spelling whose derived extension is allowed.
-  "audio/mpeg": "audio/mp3",
-  "audio/x-wav": "audio/wav",
   "image/jpg": "image/jpeg",
 };
 
@@ -174,6 +164,35 @@ function durationSecondsOrUndefined(duration: number | string | undefined): numb
 
 export function referenceDataUrlMimeType(contentType: string): string {
   return REFERENCE_MIME_ALIASES[contentType] ?? contentType;
+}
+
+/** Rewrite only a data URL's media-type header for the selected provider route.
+ * The Base64 payload is kept byte-for-byte; this is a dialect alias, not a transcode. */
+function adaptReferenceDataUrl(
+  url: string,
+  mimeAliases: Readonly<Record<string, string>> | undefined,
+): string {
+  if (!mimeAliases) return url;
+  const match = /^data:([^;,]+)([;,])/i.exec(url);
+  if (!match) return url;
+  const mediaType = match[1]?.toLowerCase();
+  const alias = mediaType ? mimeAliases[mediaType] : undefined;
+  if (!alias || !match[1]) return url;
+  return `data:${alias}${url.slice("data:".length + match[1].length)}`;
+}
+
+function adaptRouteAudioReference(
+  url: string,
+  route: ModelUpstreamRoute & {
+    inputAdaptation?: {
+      audio?: { mimeAliases: Readonly<Record<string, string>> };
+    };
+  },
+): string {
+  return adaptReferenceDataUrl(
+    url,
+    route.inputAdaptation?.audio?.mimeAliases,
+  );
 }
 
 async function loadReferenceData(fetchImpl: typeof fetch, mediaUrl: string): Promise<{ data: Uint8Array; mediaType: string }> {
@@ -277,16 +296,14 @@ export interface MockFalExternalAigcServiceOptions {
         mode: "replay";
         fixtures: () => Promise<readonly ProviderTestReplayFixture[]>;
       };
-  kieBaseUrl?: string;
   sunoBaseUrl?: string;
   minimaxBaseUrl?: string;
   pikaBaseUrl?: string;
   providerUsageAudit?: (event: ProviderUsageAuditEvent) => Promise<void>;
   replicateBaseUrl?: string;
   bflBaseUrl?: string;
-  dreaminaRun?: DreaminaCliRun;
   localTts?: (input: MockMediaGenerationInput) => Promise<MockMediaGenerationResult>;
-  /** Kernel-owned adapter for the Bridge executable-plugin host. */
+  /** Kernel-owned adapter for the executable-plugin host. */
   providerPluginProjector?: ProviderPluginProjector;
   /** Kernel-owned adapter for a plugin-defined provider's full lifecycle. */
   providerPluginExecutor?: ProviderPluginExecutor;
@@ -340,6 +357,8 @@ export interface ProviderPluginExecutorRequest {
    * task id is not forced to invent one.
    */
   pollState?: unknown;
+  /** The account this work is charged to; credentials stay in its Host-scoped plugin store. */
+  accountId?: string;
 }
 
 export interface ProviderPluginExecutorMedia {
@@ -351,6 +370,13 @@ export interface ProviderPluginExecutorMedia {
   durationMs?: number;
   waveform?: number[];
   transcript?: string;
+}
+
+/** The protocol's canonical synchronous text envelope. */
+export interface ProviderPluginExecutorTextOutput {
+  slot: "text";
+  kind: "value";
+  value: string;
 }
 
 /**
@@ -365,6 +391,11 @@ export type ProviderPluginExecutorResponse =
       status: "completed";
       binding: ExecutablePluginBinding;
       media: ProviderPluginExecutorMedia;
+    }
+  | {
+      status: "completed";
+      binding: ExecutablePluginBinding;
+      output: ProviderPluginExecutorTextOutput;
     }
   | {
       status: "accepted";
@@ -427,11 +458,22 @@ function resolveLocalRoute(
   providerAccounts?: RuntimeProviderAccountAvailability[],
   preferredProviderId?: string,
   models?: ModelCard[],
+  requestedParameterIds: readonly string[] = [],
 ): ModelUpstreamRoute | null {
   if (providerAccounts) {
+    // A named account or provider narrows the candidates rather than reordering them: naming one is
+    // how you find out whether that one works, and a silent fall-through to the next answers a
+    // different question while looking like success.
     const eligibleProviderAccounts = preferredProviderId
-      ? providerAccounts.filter((account) => account.providerId === preferredProviderId)
+      ? providerAccounts.filter((account) =>
+        account.providerId === preferredProviderId || account.id === preferredProviderId)
       : providerAccounts;
+    if (preferredProviderId && eligibleProviderAccounts.length === 0) {
+      throw new Error(
+        `No configured provider account matches "${preferredProviderId}". `
+        + `Configured: ${providerAccounts.map((account) => account.id ?? account.providerId).join(", ") || "none"}.`,
+      );
+    }
     return resolveModelUpstreamRoute({
       modelCode: model,
       kind,
@@ -439,6 +481,7 @@ function resolveLocalRoute(
         (account) => account.providerId === "mock" && account.enabled !== false,
       ),
       configuredProviders: eligibleProviderAccounts,
+      requestedParameterIds,
       ...(models ? { models } : {}),
     });
   }
@@ -447,6 +490,7 @@ function resolveLocalRoute(
     kind,
     allowMock: true,
     configuredUpstreams: [{ upstreamId: "mock", enabled: true }],
+    requestedParameterIds,
   });
 }
 
@@ -583,16 +627,20 @@ function googleAiStudioBody(input: MockMediaGenerationInput, kind: ModelKind): R
     });
   }
   const body: Record<string, unknown> = {
-    contents: [{ parts }],
+    // Agent Platform rejects a content without a role ("Please use a valid role: user, model"),
+    // while the Developer API defaults it. One provider now serves both, so the stricter of the two
+    // sets the shape.
+    contents: [{ role: "user", parts }],
   };
   if (kind === "image") {
     body.generationConfig = {
       responseModalities: ["TEXT", "IMAGE"],
-      responseFormat: {
-        image: {
-          aspectRatio: input.aspectRatio || stringParam(params, "aspect_ratio") || "1:1",
-          imageSize: stringParam(params, "resolution") || stringParam(params, "image_size") || "1K",
-        },
+      // `imageConfig`, not `responseFormat.image`. Both hosts reject the latter with a message
+      // naming the proto field rather than the correct one, and our ratio values -- "16:9", "1:1"
+      // -- are what the field wants verbatim, so only the envelope was ever wrong.
+      imageConfig: {
+        aspectRatio: input.aspectRatio || stringParam(params, "aspect_ratio") || "1:1",
+        imageSize: stringParam(params, "resolution") || stringParam(params, "image_size") || "1K",
       },
     };
     return body;
@@ -628,6 +676,17 @@ function googleInlineData(json: any): { data: string; mimeType: string } | null 
   return null;
 }
 
+/** Where `:generateContent` lives on this host. */
+function googleGenerateContentUrl(baseUrl: string, model: string): string {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  if (/aiplatform\.googleapis\.com/.test(trimmed)) {
+    return `${trimmed}/v1/publishers/google/models/${model}:generateContent`;
+  }
+  // A base url that already carries a version is respected, because a proxy may pin one.
+  const versioned = /\/v\d+(beta\d*)?$/.test(trimmed) ? trimmed : `${trimmed}/v1beta`;
+  return `${versioned}/models/${model}:generateContent`;
+}
+
 async function generateGoogleAiStudioMedia(
   input: MockMediaGenerationInput,
   kind: ModelKind,
@@ -637,8 +696,10 @@ async function generateGoogleAiStudioMedia(
   apiKey: string,
 ): Promise<MockMediaGenerationCompleted> {
   if (kind !== "image" && kind !== "audio" && kind !== "text") throw missingAdapter(route);
-  const baseUrl = normalizeBaseUrl(options.googleAiStudioBaseUrl, "https://generativelanguage.googleapis.com/v1beta");
-  const response = await options.fetch(`${baseUrl}/models/${route.upstreamModel}:generateContent`, {
+  const baseUrl = normalizeBaseUrl(options.googleAiStudioBaseUrl, "https://generativelanguage.googleapis.com");
+  // The two hosts spell the same call differently: `/v1beta/models/{model}` on the Developer API,
+  // `/v1/publishers/google/models/{model}` on Agent Platform. Verified against both with a real key.
+  const response = await options.fetch(googleGenerateContentUrl(baseUrl, route.upstreamModel), {
     method: "POST",
     headers: {
       "x-goog-api-key": apiKey,
@@ -1461,6 +1522,7 @@ function providerPluginExecutorRequest(
   return {
     pluginId: route.executorPluginId,
     exportId: route.executorExportId,
+    ...(route.accountId ? { accountId: route.accountId } : {}),
     kind,
     taskId: input.taskId,
     projectId: input.projectId ?? "local",
@@ -1483,6 +1545,7 @@ function providerPluginExecutorRequest(
         ...(input.referenceImageUrls?.length ? { referenceImageUrls: input.referenceImageUrls } : {}),
         ...(input.referenceVideoUrls?.length ? { referenceVideoUrls: input.referenceVideoUrls } : {}),
         ...(input.referenceAudioUrls?.length ? { referenceAudioUrls: input.referenceAudioUrls } : {}),
+        ...(input.orderedContentParts?.length ? { orderedContentParts: input.orderedContentParts } : {}),
       },
       references: [],
     },
@@ -1526,7 +1589,24 @@ async function generatePluginProviderMedia(
   // The one path that can come back unfinished: a plugin may hand the work to a provider that
   // takes minutes, and say so instead of holding the call open.
 ): Promise<MockMediaGenerationResult> {
-  const [startFrameUrl, endFrameUrl, referenceImageUrls, referenceVideoUrls, referenceAudioUrls] =
+  const referenceAudioSources = [
+    ...(input.referenceAudio
+      ? [
+          `data:${referenceDataUrlMimeType(input.referenceAudio.contentType)};base64,${
+            Buffer.from(input.referenceAudio.bytes).toString("base64")
+          }`,
+        ]
+      : []),
+    ...(input.referenceAudioUrls ?? []),
+  ];
+  const [
+    startFrameUrl,
+    endFrameUrl,
+    referenceImageUrls,
+    referenceVideoUrls,
+    referenceAudioUrls,
+    orderedContentParts,
+  ] =
     await Promise.all([
       input.startFrameUrl
         ? inlineLoopbackReference(options.fetch, input.startFrameUrl)
@@ -1538,8 +1618,23 @@ async function generatePluginProviderMedia(
         inlineLoopbackReference(options.fetch, url))),
       Promise.all((input.referenceVideoUrls ?? []).map((url) =>
         inlineLoopbackReference(options.fetch, url))),
-      Promise.all((input.referenceAudioUrls ?? []).map((url) =>
-        inlineLoopbackReference(options.fetch, url))),
+      Promise.all(referenceAudioSources.map(async (url) =>
+        adaptRouteAudioReference(
+          await inlineLoopbackReference(options.fetch, url),
+          route,
+        ))),
+      Promise.all((input.orderedContentParts ?? []).map(async (part) =>
+        part.type === "text"
+          ? part
+          : {
+              ...part,
+              url: part.type === "audio"
+                ? adaptRouteAudioReference(
+                    await inlineLoopbackReference(options.fetch, part.url),
+                    route,
+                  )
+                : await inlineLoopbackReference(options.fetch, part.url),
+            })),
     ]);
   const response = await options.providerPluginExecutor(
     providerPluginExecutorRequest({
@@ -1549,6 +1644,7 @@ async function generatePluginProviderMedia(
       ...(referenceImageUrls.length ? { referenceImageUrls } : {}),
       ...(referenceVideoUrls.length ? { referenceVideoUrls } : {}),
       ...(referenceAudioUrls.length ? { referenceAudioUrls } : {}),
+      ...(orderedContentParts.length ? { orderedContentParts } : {}),
     }, kind, route),
   );
   if (response.binding.pluginId !== route.executorPluginId
@@ -1578,6 +1674,31 @@ async function generatePluginProviderMedia(
       provider: route.providerId ?? route.upstreamId,
       modelEndpoint: route.upstreamModel,
     };
+  }
+  if ("output" in response) {
+    if (kind !== "text") {
+      throw new Error(`Provider plugin returned slot "text" for a ${kind} route.`);
+    }
+    const output = response.output as Partial<ProviderPluginExecutorTextOutput>;
+    if (output.slot !== "text" || output.kind !== "value"
+      || typeof output.value !== "string" || !output.value.trim()) {
+      throw new Error(
+        `Provider plugin ${route.executorPluginId}/${route.executorExportId} returned an invalid `
+        + 'slot "text"; expected a non-empty string value.',
+      );
+    }
+    return {
+      status: "completed",
+      bytes: new TextEncoder().encode(output.value),
+      contentType: "text/plain; charset=utf-8",
+      requestId: input.taskId,
+      provider: route.providerId ?? route.upstreamId,
+      modelEndpoint: route.upstreamModel,
+      pluginBinding: response.binding,
+    };
+  }
+  if (kind === "text") {
+    throw new Error("Provider plugin returned media for text generation; expected a text value.");
   }
   const downloaded = await downloadProviderMedia(options.fetch, response.media.url, kind);
   return {
@@ -1636,8 +1757,8 @@ async function generateFalMedia(
       ) as Record<string, unknown>;
       pluginProjected = true;
     } catch (error) {
-      // Existing unpinned nodes retain their legacy adapter while the Bridge
-      // daemon is absent. Pinned nodes must never silently change semantics.
+      // Existing unpinned nodes retain their legacy adapter while the executable
+      // plugin host is unavailable. Pinned nodes must never silently change semantics.
       if (!(error instanceof ProviderPluginHostUnavailableError) || input.pluginBinding) throw error;
     }
   }
@@ -1719,11 +1840,6 @@ function providerInput(input: MockMediaGenerationInput, kind: ModelKind, route?:
   if (input.aspectRatio) body.aspect_ratio = input.aspectRatio;
   if (kind === "video") {
     body.duration = input.duration ?? params.duration ?? 5;
-    if (route?.modelCode === "seedance-2-ref" && route.apiShape === "kie") {
-      if (input.referenceImageUrls?.length) body.reference_image_urls = input.referenceImageUrls;
-      if (input.referenceVideoUrls?.length) body.reference_video_urls = input.referenceVideoUrls;
-      if (input.referenceAudioUrls?.length) body.reference_audio_urls = input.referenceAudioUrls;
-    }
     if (route?.modelCode === "seedance-2-ref" && route.apiShape === "replicate") {
       if (input.referenceImageUrls?.length) body.reference_images = input.referenceImageUrls;
       if (input.referenceVideoUrls?.length) body.reference_videos = input.referenceVideoUrls;
@@ -1848,77 +1964,6 @@ async function generateBflVideoMedia(
     provider: "bfl",
     modelEndpoint: route.upstreamModel,
     ...(typeof duration === "number" && Number.isFinite(duration) ? { durationMs: duration * 1000 } : {}),
-  };
-}
-
-function kieTaskState(data: any): "pending" | "success" | "failed" {
-  const task = data?.data ?? data;
-  const flag = task?.successFlag;
-  if (flag === 1 || flag === "1") return "success";
-  if (flag === 2 || flag === 3 || flag === "2" || flag === "3") return "failed";
-  const state = String(task?.state ?? task?.status ?? task?.taskStatus ?? "").toLowerCase();
-  if (state === "success" || state === "succeeded" || state === "completed") return "success";
-  if (state === "fail" || state === "failed" || state === "error" || state === "canceled") return "failed";
-  return "pending";
-}
-
-async function generateKieMedia(
-  input: MockMediaGenerationInput,
-  kind: ModelKind,
-  route: ModelUpstreamRoute,
-  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
-    Pick<MockFalExternalAigcServiceOptions, "kieBaseUrl">,
-  apiKey: string,
-): Promise<MockMediaGenerationCompleted> {
-  const baseUrl = normalizeBaseUrl(options.kieBaseUrl, "https://api.kie.ai");
-  const headers = {
-    authorization: `Bearer ${apiKey}`,
-    "content-type": "application/json",
-  };
-  const createResponse = await options.fetch(`${baseUrl}/api/v1/jobs/createTask`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: route.upstreamModel,
-      input: providerInput(input, kind, route),
-    }),
-  });
-  const created = await responseJson(createResponse);
-  if (!createResponse.ok || created?.code >= 400) {
-    throw new Error(`KIE request failed: ${created?.msg ?? created?.error?.message ?? createResponse.statusText}`);
-  }
-  const taskId = created?.data?.taskId ?? created?.taskId ?? created?.id;
-  if (typeof taskId !== "string" || !taskId) {
-    throw new Error(`KIE response returned no taskId for ${route.upstreamModel}`);
-  }
-
-  let task: any = null;
-  let state: "pending" | "success" | "failed" = "pending";
-  for (let attempt = 0; attempt < 240 && state === "pending"; attempt += 1) {
-    const statusResponse = await options.fetch(`${baseUrl}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
-      headers: { authorization: `Bearer ${apiKey}` },
-    });
-    task = await responseJson(statusResponse);
-    if (!statusResponse.ok || task?.code >= 400) {
-      throw new Error(`KIE status failed: ${task?.msg ?? task?.error?.message ?? statusResponse.statusText}`);
-    }
-    state = kieTaskState(task);
-    if (state === "pending") await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  if (state === "pending") throw new Error(`KIE request timed out: ${taskId}`);
-  if (state === "failed") {
-    const detail = task?.data?.errorMessage ?? task?.data?.errorCode ?? task?.msg ?? "failed";
-    throw new Error(`KIE request failed: ${detail}`);
-  }
-
-  const mediaUrl = firstResultUrl(task);
-  if (!mediaUrl) throw new Error(`KIE response returned no media URL for ${taskId}`);
-  const media = await downloadProviderMedia(options.fetch, mediaUrl, kind);
-  return {
-    ...media,
-    requestId: taskId,
-    provider: "kie",
-    modelEndpoint: route.upstreamModel,
   };
 }
 
@@ -2097,14 +2142,26 @@ async function generateMiniMaxMedia(
   const orderedContentParts = await Promise.all((input.orderedContentParts ?? []).map(async (part) =>
     part.type === "text"
       ? part
-      : { ...part, url: await inlineLoopbackReference(options.fetch, part.url) },
+      : {
+          ...part,
+          url: part.type === "audio"
+            ? adaptRouteAudioReference(
+                await inlineLoopbackReference(options.fetch, part.url),
+                route,
+              )
+            : await inlineLoopbackReference(options.fetch, part.url),
+        },
   ));
   const [startFrame, endFrame, referenceImages, referenceVideos, referenceAudios] = await Promise.all([
     input.startFrameUrl ? inlineLoopbackReference(options.fetch, input.startFrameUrl) : Promise.resolve(undefined),
     input.endFrameUrl ? inlineLoopbackReference(options.fetch, input.endFrameUrl) : Promise.resolve(undefined),
     Promise.all((input.referenceImageUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
     Promise.all((input.referenceVideoUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
-    Promise.all((input.referenceAudioUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
+    Promise.all((input.referenceAudioUrls ?? []).map(async (url) =>
+      adaptRouteAudioReference(
+        await inlineLoopbackReference(options.fetch, url),
+        route,
+      ))),
   ]);
   if (endFrame && !startFrame) {
     throw new Error("MiniMax H3 end frame requires a start frame.");
@@ -2574,6 +2631,7 @@ export function createMockExternalAigcService(
   const fetchImpl = options.fetch ?? fetch;
   const loadProviderAccounts = options.providerAccounts;
   const loadModelCards = options.modelCards;
+  const serviceAccountTokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
 
   const providerIdForRoute = (route: ModelUpstreamRoute) => {
     if (route.providerId) return route.providerId;
@@ -2646,6 +2704,24 @@ export function createMockExternalAigcService(
     accounts: RuntimeProviderAccountAvailability[] | undefined,
     key: string,
   ) => accountForRoute(route, accounts)?.credentials?.[key]?.trim();
+
+  /**
+   * Everything the chosen account holds.
+   *
+   * A plugin knows which of these its vendor wants; the host does not, and asking it to would put a
+   * per-vendor table back in the one place that must stay generic.
+   */
+  const allCredentials = (
+    route: ModelUpstreamRoute,
+    accounts: RuntimeProviderAccountAvailability[] | undefined,
+  ): Record<string, string> => {
+    const stored = accountForRoute(route, accounts)?.credentials ?? {};
+    return Object.fromEntries(
+      Object.entries(stored)
+        .map(([key, value]) => [key, typeof value === "string" ? value.trim() : ""])
+        .filter(([, value]) => value),
+    );
+  };
 
   const providerFetchForRoute = async (route: ModelUpstreamRoute): Promise<typeof fetch> => {
     const traffic = options.providerTraffic;
@@ -2729,21 +2805,58 @@ export function createMockExternalAigcService(
     const modelCards = loadModelCards ? await loadModelCards() : undefined;
     const preferredProviderId = stringParam(input.modelParams, "provider_id");
     const requireRealProvider = input.modelParams?.require_real_provider === true;
-    const explicitMockProvider = providerAccounts?.some(
-      (account) => account.providerId === "mock" && account.enabled !== false,
-    ) === true;
-    const fallbackOrThrow = () => {
-      if (requireRealProvider || (providerAccounts !== undefined && !explicitMockProvider)) {
-        throw new Error(
-          `${input.model} requires a configured real provider` +
-          (preferredProviderId ? ` (${preferredProviderId})` : ""),
-        );
-      }
-      return fallback();
+    /**
+     * Whether the mock was chosen -- not whether one exists.
+     *
+     * Every machine that has run the mock tests has an enabled mock account, so the old presence
+     * check meant any unresolved route on any of those machines quietly produced a placeholder and
+     * reported success. Naming a provider excludes the mock outright unless the mock is what was
+     * named.
+     */
+    const explicitMockProvider = preferredProviderId
+      ? preferredProviderId === "mock"
+        || providerAccounts?.some((account) =>
+          account.id === preferredProviderId && account.providerId === "mock") === true
+      : providerAccounts?.every((account) =>
+        account.providerId === "mock" || account.enabled === false) === true
+        && providerAccounts.some((account) =>
+          account.providerId === "mock" && account.enabled !== false);
+    /**
+     * Reaching no provider is a failure.
+     *
+     * This used to return a placeholder, and the node then reported `completed` with an asset
+     * attached -- indistinguishable from a real generation until someone opened the 1278-byte SVG.
+     * The mock is still reachable by choosing it; what is gone is arriving there by accident.
+     */
+    const fallbackOrThrow = (): never => {
+      if (explicitMockProvider && !requireRealProvider) return fallback() as never;
+      throw new Error(
+        `${input.model} reached no provider`
+        + (preferredProviderId ? ` for the requested account "${preferredProviderId}"` : "")
+        + ". Connect one with `clash providers add`, or select the mock explicitly.",
+      );
     };
-    const route = resolveLocalRoute(input.model, kind, providerAccounts, preferredProviderId, modelCards);
+    const baseCard = (modelCards ?? MODEL_CARDS).find(
+      (card) => card.id === (normalizeModelId(input.model) ?? input.model),
+    );
+    const declaredParameterIds = new Set(baseCard?.parameters.map((parameter) => parameter.id) ?? []);
+    const requestedParameterIds = activeModelParameterIds({
+      ...input.modelParams,
+      ...(input.duration !== undefined ? { duration: input.duration } : {}),
+      ...(input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}),
+    }).filter((parameterId) => declaredParameterIds.has(parameterId));
+    const route = resolveLocalRoute(
+      input.model,
+      kind,
+      providerAccounts,
+      preferredProviderId,
+      modelCards,
+      requestedParameterIds,
+    );
+    if (process.env.CLASH_TRACE_ROUTE) {
+      console.log(`[route] ${input.model} -> provider=${route?.providerId} upstream=${route?.upstreamId} shape=${route?.apiShape} account=${route?.accountId}`);
+    }
     if (!route || route.upstreamId === "mock") return fallbackOrThrow();
-    const baseCard = (modelCards ?? MODEL_CARDS).find((card) => card.id === (normalizeModelId(input.model) ?? input.model));
     if (baseCard) {
       const effectiveCard = applyModelProviderImplementation(baseCard, route);
       const lyricsParam = effectiveCard.musicInput?.lyricsParam;
@@ -2863,21 +2976,43 @@ export function createMockExternalAigcService(
 
     if (route.apiShape === "google-ai-studio") {
       const apiKey = credential(route, providerAccounts, "apiKey");
-      if (!apiKey) return fallbackOrThrow();
+      if (!apiKey) {
+        // Loudly, not by handing the model to whichever other provider ranks next. A Google account
+        // was configured, nano-banana-2 was requested, and hilo-hub answered indistinguishably --
+        // same node shape, same asset, nothing recording which one had produced it.
+        throw new Error(
+          `${input.model} routes through Google, which needs an apiKey on the account. `
+          + "Connect one with: clash providers add official --api-key <value|@path|->",
+        );
+      }
+      // Both Google surfaces answer :generateContent with x-goog-api-key and differ only by host,
+      // which is why they are one provider. Which host is the account's own fact.
+      const configuredBaseUrl = credential(route, providerAccounts, "baseUrl")
+        || options.googleAiStudioBaseUrl;
+      // The account's own fact, and the default comes from the same declaration the form renders --
+      // not from a constant here, which is the one place the person choosing cannot see.
+      // Two settings, read separately: which surface issued the key, and where that surface runs
+      // the request. Reading the region as the service is what produced an account that matched no
+      // route at all.
+      const service = resolveAccountSetting(
+        "google",
+        "service",
+        credential(route, providerAccounts, "service"),
+      ) as GooglePlatform;
+      const location = resolveAccountSetting(
+        "google",
+        "region",
+        credential(route, providerAccounts, "region") || route.region,
+      );
       return generateGoogleAiStudioMedia(input, kind, route, {
         fetch: fetchImpl,
-        googleAiStudioBaseUrl: options.googleAiStudioBaseUrl,
+        googleAiStudioBaseUrl: googleApiBaseUrl(service, {
+          ...(configuredBaseUrl ? { baseUrl: configuredBaseUrl } : {}),
+          ...(location ? { location } : {}),
+        }),
       }, apiKey);
     }
 
-    if (route.apiShape === "google-agent-platform") {
-      const serviceAccountKey = credential(route, providerAccounts, "serviceAccountKey");
-      if (!serviceAccountKey) return fallbackOrThrow();
-      if (kind === "text") return generateGoogleAgentPlatformText(input, route, fetchImpl, serviceAccountKey);
-      if (kind === "image") return generateGoogleAgentPlatformImage(input, route, fetchImpl, serviceAccountKey);
-      if (kind === "video") return generateGoogleAgentPlatformVideo(input, route, fetchImpl, serviceAccountKey);
-      throw missingAdapter(route);
-    }
 
     if (route.apiShape === "fal") {
       const apiKey = credential(route, providerAccounts, "apiKey");
@@ -2897,15 +3032,6 @@ export function createMockExternalAigcService(
         fetch: fetchImpl,
         bflBaseUrl: options.bflBaseUrl,
       }, apiKey, credential(route, providerAccounts, "baseUrl"));
-    }
-
-    if (route.apiShape === "kie") {
-      const apiKey = credential(route, providerAccounts, "apiKey");
-      if (!apiKey) return fallbackOrThrow();
-      return generateKieMedia(input, kind, route, {
-        fetch: fetchImpl,
-        kieBaseUrl: options.kieBaseUrl,
-      }, apiKey);
     }
 
     if (route.apiShape === "pika") {
@@ -3004,31 +3130,6 @@ export function createMockExternalAigcService(
         ...input,
         model: route.upstreamModel,
       });
-    }
-
-    if (route.apiShape === "dreamina-cli" && kind === "video") {
-      const result = await generateDreaminaCliVideoMedia({
-        prompt: promptForRoute(input, route),
-        modelName: input.model,
-        upstreamModel: route.upstreamModel,
-        duration: input.duration,
-        aspectRatio: input.aspectRatio,
-        resolution: stringParam(input.modelParams ?? {}, "resolution"),
-        startFrameUrl: input.startFrameUrl,
-        endFrameUrl: input.endFrameUrl,
-        referenceImageUrls: input.referenceImageUrls,
-        referenceVideoUrls: input.referenceVideoUrls,
-        referenceAudioUrls: input.referenceAudioUrls,
-        fetch: fetchImpl,
-        run: options.dreaminaRun,
-      });
-      return {
-        bytes: result.bytes,
-        contentType: result.contentType,
-        requestId: result.taskId,
-        provider: "dreamina-cli",
-        modelEndpoint: result.model,
-      };
     }
 
     throw missingAdapter(route);

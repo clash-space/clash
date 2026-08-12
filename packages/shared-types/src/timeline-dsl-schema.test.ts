@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Ajv from "ajv";
 import { describe, expect, it } from "vitest";
-import * as shared from "./index";
-import { validateTimelineDsl } from "./timeline-dsl-schema";
+import * as shared from "./index.js";
+import { validateTimelineDsl } from "./timeline-dsl-schema.js";
 
 const repositoryPath = (path: string) => resolve(process.cwd(), "../..", path);
 

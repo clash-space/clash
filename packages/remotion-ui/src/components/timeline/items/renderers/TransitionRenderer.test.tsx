@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
-import type { TransitionItem } from '@master-clash/remotion-core';
+import type { TransitionItem } from '@clash/remotion-core';
 import { TransitionRenderer } from './TransitionRenderer';
 
 afterEach(() => cleanup());

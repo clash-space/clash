@@ -34,7 +34,7 @@ describe("useSessionHistory", () => {
         title: "Run pwd",
         projectId: "project-one",
         runtimeId: "desktop-local",
-        agentMemberId: "master-clash",
+        agentMemberId: "clash",
       });
       result.current.upsertSession({
         threadId: "cloud-session-one",

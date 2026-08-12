@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MINIMAX_ENDPOINTS, minimaxBaseUrl } from './minimax-region';
+import { MINIMAX_ENDPOINTS, minimaxBaseUrl } from './minimax-region.js';
 
 /**
  * MiniMax answers on two hosts, and which one works depends on where you are.

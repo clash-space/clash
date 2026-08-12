@@ -185,7 +185,7 @@ export interface ProjectStatusStorage {
     syncDefault: "local-only";
     agentWritable: false;
     files: {
-      bridgeCredentials: {
+      hostCredentials: {
         kind: "machine-credential-store";
         path: string;
         agentWritable: false;
@@ -461,7 +461,7 @@ export function buildProjectStatus(
   const collaboration = projectCollaborationStatus(mode, options.replicationState ?? undefined);
   const localSqlitePath = joinPath(localApiDataDir, "local.sqlite");
   const userConfigPath = joinPath(clashRoot, "config.yaml");
-  const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
+  const hostCredentialsPath = joinPath(clashRoot, "credentials.json");
   const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
   const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
   const metadataBodyBlobRoot = joinPath(localApiDataDir, "metadata-blobs");
@@ -479,7 +479,7 @@ export function buildProjectStatus(
     localApiDataDir,
     localSqlitePath,
     userConfigPath,
-    bridgeCredentialsPath,
+    hostCredentialsPath,
     loroReplicaRoot,
     loroSnapshotPath,
     loroUpdatesLogPath,
@@ -641,9 +641,9 @@ export function buildProjectStatus(
         syncDefault: "local-only",
         agentWritable: false,
         files: {
-          bridgeCredentials: {
+          hostCredentials: {
             kind: "machine-credential-store",
-            path: bridgeCredentialsPath,
+            path: hostCredentialsPath,
             agentWritable: false,
           },
         },

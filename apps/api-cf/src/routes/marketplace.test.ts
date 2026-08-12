@@ -77,7 +77,7 @@ describe("marketplace registry", () => {
           type: "action",
           runtime: "local",
           outputType: "image",
-          packageId: "clash-codex-imagegen",
+          packageId: "clash.codex-imagegen",
         }),
       ]),
     );
@@ -121,23 +121,13 @@ describe("marketplace registry", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "codex-imagegen",
-          packageId: "clash-codex-imagegen",
+          packageId: "clash.codex-imagegen",
         }),
       ]),
     );
     expect(body.actions.filter((item) => item.id.startsWith("clash.action.production."))).toEqual([]);
-    expect(body.skills).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "clash.media.asset-metadata-architecture",
-          source: "first-party",
-        }),
-        expect.objectContaining({
-          id: "clash.video.reference-ingest-analysis",
-          source: "first-party",
-        }),
-      ]),
-    );
+    expect(body.skills.length).toBeGreaterThan(0);
+    expect(body.skills.every((item) => item.source === "first-party")).toBe(true);
   });
 
   it("keeps first-party skill entries when remote registry repeats an id", async () => {

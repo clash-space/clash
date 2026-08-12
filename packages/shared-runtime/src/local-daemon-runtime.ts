@@ -13,9 +13,10 @@ import { basename } from "node:path";
  * feature across them.
  *
  * Resolution is explicit and verifiable instead: an operator override wins, a
- * plain supported launcher runtime is kept, an Electron binary is never used,
- * and an unsupported runtime fails loudly rather than starting a host nobody
- * can reason about.
+ * plain supported launcher runtime is kept, and an unsupported runtime fails
+ * loudly rather than starting a host nobody can reason about. Desktop may
+ * explicitly pin its Electron executable in Node mode through the detached
+ * launcher after validating the embedded Node version separately.
  */
 
 export type DaemonNodeRuntimeSource = "explicit" | "launcher" | "discovered";
@@ -79,10 +80,16 @@ function satisfies(version: string | undefined, range: string): boolean {
   return true;
 }
 
+export function isDaemonNodeVersionSupported(
+  version: string | undefined,
+  supportedRange: string,
+): boolean {
+  return satisfies(version, supportedRange);
+}
+
 /**
- * An Electron binary reports a Node version but is the GUI shell, not a Node
- * runtime the daemon may adopt: its lifetime, flags, and bundled Node all belong
- * to the app.
+ * Automatic discovery never adopts an Electron binary. Desktop's explicit,
+ * version-checked Node-mode launch is handled by the detached launcher.
  */
 function isElectronRuntime(
   execPath: string | undefined,
@@ -117,11 +124,15 @@ export function resolveDaemonNodeRuntime(
 
   const explicit = env.CLASH_DAEMON_NODE_PATH?.trim();
   if (explicit) {
-    // An operator override is authoritative: it is how a packaged app pins its
-    // own runtime, and how a broken discovery is worked around.
+    const version = probeVersion(explicit);
+    if (!satisfies(version, options.supportedRange)) {
+      throw new Error(
+        `Pinned daemon Node ${version ?? "unknown"} at ${explicit} does not satisfy ${options.supportedRange}.`,
+      );
+    }
     return {
       nodePath: explicit,
-      version: probeVersion(explicit),
+      version,
       source: "explicit",
       inheritedFromLauncher: false,
     };

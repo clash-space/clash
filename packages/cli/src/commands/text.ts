@@ -1,20 +1,15 @@
 import { Command } from "commander";
-import WebSocket from "ws";
-import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  LoroSyncClient,
   TextRevisionHistoryEntrySchema,
+  type ProjectHostCommand,
   type TextRevisionHistoryEntry,
 } from "@clash/shared-types";
-import { requireApiKey, getServerUrl } from "../lib/config";
 import { apiFetch } from "../lib/api";
 import { isJsonMode, printJson, printTable } from "../lib/output";
-import { isDaemonRunning, sendCommand } from "../lib/daemon";
-import { assertAgentHostWritePath } from "../lib/agent-host-write";
+import { sendProjectCommand } from "../lib/project-host-client";
 import { publicAgentCommandResult } from "../lib/agent-worktree-observation";
-import { isCanvasNodeImmutable } from "../lib/canvas-update-guardrails";
 import { resolveAgentFilePathInsideCwd } from "../lib/projection-cas";
 import { type ResolvedProjectContext } from "../lib/project-context";
 import {
@@ -28,10 +23,8 @@ import {
   resolveCanvasProjectId,
 } from "./canvas";
 import {
-  requireCurrentTextVersion,
   assertTextNotReferenced,
   createTextAppliedRevision,
-  createTextCowNodeData,
   resolveTextFilePath,
   textHash,
   textReadToken,
@@ -420,24 +413,8 @@ textCommand
     }
   });
 
-async function connectToProject(projectId: string): Promise<LoroSyncClient> {
-  const apiKey = requireApiKey();
-  const serverUrl = getServerUrl();
-  const wsUrl = serverUrl.replace(/^http/, "ws");
-  const client = new LoroSyncClient({
-    serverUrl: wsUrl,
-    projectId,
-    token: apiKey,
-    ...resolveCanvasPresenceOptions(),
-    WebSocket: WebSocket as any,
-  });
-  await client.connect();
-  return client;
-}
-
-async function runCommand(projectId: string, cmd: object): Promise<any> {
-  if (!isDaemonRunning(projectId)) return null;
-  return sendCommand(projectId, cmd);
+async function runCommand(projectId: string, cmd: ProjectHostCommand): Promise<any> {
+  return sendProjectCommand(projectId, cmd);
 }
 
 export type TextRevisionIndexResult =
@@ -671,33 +648,20 @@ export type TextNodeReadResult = TextNodeLike & {
 };
 
 export async function readNode(projectId: string, nodeId: string): Promise<TextNodeReadResult | null> {
-  const daemonResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId, {
     action: "get",
     projectId,
     nodeId,
     actorClientType: resolveCanvasPresenceOptions().clientType,
   });
-  if (daemonResult) {
-    if (daemonResult.error) return null;
-    return daemonResult.node
-      ? {
-          ...daemonResult.node,
-          immutable: daemonResult.immutable === true,
-          readToken: daemonResult.textReadToken,
-        }
-      : null;
-  }
-  const client = await connectToProject(projectId);
-  try {
-    const node = client.readNode(nodeId);
-    return node ? {
-      type: node.type,
-      data: node.data as Record<string, unknown>,
-      immutable: isCanvasNodeImmutable({ nodeId, edges: client.canvas.listEdges() }),
-    } : null;
-  } finally {
-    await client.disconnect();
-  }
+  if (hostResult.error) return null;
+  return hostResult.node
+    ? {
+        ...hostResult.node,
+        immutable: hostResult.immutable === true,
+        readToken: hostResult.textReadToken,
+      }
+    : null;
 }
 
 export async function applyTextContent(
@@ -714,7 +678,7 @@ export async function applyTextContent(
 ): Promise<ApplyTextContentResult> {
   resolveAgentFilePathInsideCwd({ filePath: cas.filePath, cwd: cas.cwd, writeVerb: "Text apply" });
 
-  const daemonResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId, {
     action: "text_cas_update",
     projectId,
     nodeId,
@@ -727,60 +691,14 @@ export async function applyTextContent(
     actor: cas.actor,
     actorClientType: resolveCanvasPresenceOptions().clientType,
   });
-  if (daemonResult) {
-    if (daemonResult.error) throw new Error(daemonResult.error);
-    return {
-      updated: true,
-      nodeId,
-      textRevision: daemonResult.textRevision,
-      version: daemonResult.version,
-      readToken: daemonResult.readToken,
-    };
-  }
-  const hostWrite = assertAgentHostWritePath({
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    operation: "text apply",
-    readCommand: "clash text pull --json",
-  });
-  if (!hostWrite.ok) throw new Error(hostWrite.error);
-
-  const client = await connectToProject(projectId);
-  try {
-    const current = client.readNode(nodeId);
-    if (!current) throw new Error(`Node not found: ${nodeId}`);
-    // The daemon enforces CAS server-side; without it the check has to happen
-    // here or the write lands unconditionally.
-    requireCurrentTextVersion({
-      observedVersion: cas.observedVersion,
-      projectId,
-      nodeId,
-      currentContent: textContentFromNode(current as TextNodeLike),
-    });
-    if (isCanvasNodeImmutable({ nodeId, edges: client.canvas.listEdges() })) {
-      throw new Error("IMMUTABLE_NODE");
-    }
-    const ok = client.updateNode(nodeId, { content });
-    if (!ok) throw new Error(`Node not found: ${nodeId}`);
-    const textRevision = createTextAppliedRevision({
-      projectId,
-      nodeId,
-      cwd: cas.cwd,
-      filePath: cas.filePath,
-      content,
-      parentRevisionId: cas.parentRevisionId,
-      actor: cas.actor,
-    });
-    const version = textReadToken({ projectId, nodeId, content });
-    return {
-      updated: true,
-      nodeId,
-      textRevision,
-      version,
-      readToken: version,
-    };
-  } finally {
-    await client.disconnect();
-  }
+  if (hostResult.error) throw new Error(hostResult.error);
+  return {
+    updated: true,
+    nodeId,
+    textRevision: hostResult.textRevision,
+    version: hostResult.version,
+    readToken: hostResult.readToken,
+  };
 }
 export type ApplyTextContentResult = {
   updated: true;
@@ -806,7 +724,7 @@ async function replaceTextContent(
 ): Promise<ReplaceTextContentResult> {
   resolveAgentFilePathInsideCwd({ filePath: cas.filePath, cwd: cas.cwd, writeVerb: "Text replace" });
 
-  const daemonResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId, {
     action: "text_cow_replace",
     projectId,
     nodeId,
@@ -821,81 +739,19 @@ async function replaceTextContent(
     newNodeId: cas.newNodeId,
     actorClientType: resolveCanvasPresenceOptions().clientType,
   });
-  if (daemonResult) {
-    if (daemonResult.error) throw new Error(daemonResult.error);
-    return {
-      replaced: true,
-      copyOnWrite: true,
-      sourceNodeId: daemonResult.sourceNodeId ?? nodeId,
-      newNodeId: daemonResult.newNodeId ?? daemonResult.nodeId,
-      sourceContentHash: daemonResult.sourceContentHash,
-      contentHash: daemonResult.contentHash,
-      textRevision: daemonResult.textRevision,
-      lineageEdge: daemonResult.lineageEdge,
-      version: daemonResult.version,
-      readToken: daemonResult.readToken,
-    };
-  }
-  const hostWrite = assertAgentHostWritePath({
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    operation: "text replace",
-    readCommand: "clash text pull --json",
-  });
-  if (!hostWrite.ok) throw new Error(hostWrite.error);
-
-  const client = await connectToProject(projectId);
-  try {
-    const current = client.readNode(nodeId);
-    if (!current) throw new Error(`Node not found: ${nodeId}`);
-    if (current.type !== "text") throw new Error(`Node ${nodeId} has type "${current.type}", expected "text"`);
-    const currentContent = textContentFromNode({
-      type: current.type,
-      data: current.data as Record<string, unknown>,
-    });
-    const newNodeId = cas.newNodeId?.trim() || randomUUID().slice(0, 8);
-    const textRevision = createTextAppliedRevision({
-      projectId,
-      nodeId: newNodeId,
-      cwd: cas.cwd,
-      filePath: cas.filePath,
-      content,
-      parentRevisionId: cas.parentRevisionId,
-      actor: cas.actor,
-    });
-    const data = createTextCowNodeData({
-      sourceNodeId: nodeId,
-      sourceLabel: typeof current.data?.label === "string" ? current.data.label : undefined,
-      sourceContent: currentContent,
-      content,
-      label: cas.label,
-      filePath: cas.filePath,
-      textRevision,
-    });
-    client.canvas.createLinkedNode({
-      nodeId: newNodeId,
-      nodeType: "text",
-      data,
-      parentId: current.parent_id ?? null,
-      sourceNodeId: nodeId,
-      edgeId: `${nodeId}-${newNodeId}`,
-      edgeType: "copy-on-write",
-    });
-    const version = textReadToken({ projectId, nodeId: newNodeId, content });
-    return {
-      replaced: true,
-      copyOnWrite: true,
-      sourceNodeId: nodeId,
-      newNodeId,
-      sourceContentHash: textHash(currentContent),
-      contentHash: textHash(content),
-      textRevision,
-      lineageEdge: { source: nodeId, target: newNodeId, type: "copy-on-write" },
-      version,
-      readToken: version,
-    };
-  } finally {
-    await client.disconnect();
-  }
+  if (hostResult.error) throw new Error(hostResult.error);
+  return {
+    replaced: true,
+    copyOnWrite: true,
+    sourceNodeId: hostResult.sourceNodeId ?? nodeId,
+    newNodeId: hostResult.newNodeId ?? hostResult.nodeId,
+    sourceContentHash: hostResult.sourceContentHash,
+    contentHash: hostResult.contentHash,
+    textRevision: hostResult.textRevision,
+    lineageEdge: hostResult.lineageEdge,
+    version: hostResult.version,
+    readToken: hostResult.readToken,
+  };
 }
 
 export type ReplaceTextContentResult = {

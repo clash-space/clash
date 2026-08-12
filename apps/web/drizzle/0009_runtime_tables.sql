@@ -1,5 +1,5 @@
 -- Local Runtime tables — daemon registration, machine credentials, agent
--- session catalog. See packages/clash-bridge for the daemon side.
+-- session catalog. See packages/cli/src/runtime/bridge for the hosted daemon side.
 --
 -- Design notes:
 --   * No foreign keys — D1 doesn't enforce them; matches existing convention.
@@ -10,9 +10,6 @@
 --     `sk_machine_<60-hex>` issued during `clash setup`. v1 = 1 token per
 --     runtime; created_by_user_id captures provenance now so v2 (org admin
 --     issues tokens for shared runtimes) doesn't need a migration.
---   * `connect_daemon_code` is the OAuth-style intermediary: browser POSTs
---     /connect-daemon (auth'd), gets a code, redirects to localhost callback
---     where the CLI exchanges code → token. 5-min TTL, single-use.
 --   * `runtime_session` is a metadata index for resume/history. The actual
 --     transcript stays on the user's disk (e.g. ~/.claude/projects/<hash>/
 --     <acpSessionId>.jsonl). We store enough to tell the daemon "load
@@ -44,15 +41,6 @@ CREATE TABLE `runtime_token` (
 );
 CREATE INDEX `runtime_token_runtime_idx` ON `runtime_token` (`runtime_id`);
 CREATE UNIQUE INDEX `runtime_token_hash_idx` ON `runtime_token` (`token_hash`);
-
-CREATE TABLE `connect_daemon_code` (
-    `code` TEXT PRIMARY KEY NOT NULL,
-    `user_id` TEXT NOT NULL,
-    `state` TEXT NOT NULL,
-    `expires_at` INTEGER NOT NULL,
-    `used_at` INTEGER
-);
-CREATE INDEX `connect_daemon_code_expires_idx` ON `connect_daemon_code` (`expires_at`);
 
 CREATE TABLE `runtime_session` (
     `id` TEXT PRIMARY KEY NOT NULL,

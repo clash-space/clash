@@ -43,7 +43,7 @@ export {
 export { thumbnailCache, generateVideoThumbnail, generateVideoThumbnailAtTime } from './utils/thumbnailCache';
 
 // Re-export core for convenience
-export * from '@master-clash/remotion-core';
+export * from '@clash/remotion-core';
 
 export {
   TIMELINE_EDITOR_FIELD_CONSUMERS,

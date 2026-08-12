@@ -8,7 +8,7 @@ import {
   useEditorHistory,
   useEditorPlayback,
   useEditorStaticState,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CanvasPreview } from './CanvasPreview';
 import {

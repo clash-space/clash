@@ -11,7 +11,7 @@ import {
   TimelineDerivedAssetSchema,
   TimelineSequenceSchema,
   renderTimelineDslMarkdown,
-} from "./index";
+} from "./index.js";
 
 function item(
   type: string,

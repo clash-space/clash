@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 import { readFileSync } from 'fs';
 import process3 from 'process';
-import 'crypto';
-import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
+import { CLASH_MCP_COMMAND_IDS, getClashMcpCommand, buildClashMcpCommandMenu, classifyClashMcpTool } from '@clash/shared-runtime';
+import { mkdir, writeFile } from 'fs/promises';
 import { isAbsolute, resolve, join, dirname } from 'path';
-import { execFile } from 'child_process';
-import { tmpdir } from 'os';
-import { fileURLToPath } from 'url';
-import { promisify } from 'util';
+import { parse as parse$1 } from 'yaml';
+import { createProjectHostClient } from '@clash/shared-runtime/project-host-client';
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -18058,7 +18056,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve3.call(this, root, ref);
+      let _sch = resolve2.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
         const { schemaId } = this.opts;
@@ -18085,7 +18083,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve3(root, ref) {
+    function resolve2(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -18713,7 +18711,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve3(baseURI, relativeURI, options) {
+    function resolve2(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -18971,7 +18969,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve3,
+      resolve: resolve2,
       resolveComponent,
       equal,
       serialize,
@@ -23523,12 +23521,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve3) => {
+    return new Promise((resolve2) => {
       const json2 = serializeMessage(message);
       if (this._stdout.write(json2)) {
-        resolve3();
+        resolve2();
       } else {
-        this._stdout.once("drain", resolve3);
+        this._stdout.once("drain", resolve2);
       }
     });
   }
@@ -29143,7 +29141,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
+        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error51) {
@@ -29160,7 +29158,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve2, reject) => {
       const earlyReject = (error51) => {
         reject(error51);
       };
@@ -29238,7 +29236,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve3(parseResult.data);
+            resolve2(parseResult.data);
           }
         } catch (error51) {
           reject(error51);
@@ -29499,12 +29497,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve2, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve3, interval);
+      const timeoutId = setTimeout(resolve2, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -30923,7 +30921,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
+      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -31490,73 +31488,6 @@ var EMPTY_COMPLETION_RESULT = {
     hasMore: false
   }
 };
-
-// ../../packages/shared-runtime/dist/mcp-command-menu.js
-var CLASH_MCP_COMMAND_IDS = [
-  "workspace",
-  "canvas",
-  "director",
-  "timeline"
-];
-var CLASH_MCP_COMMANDS = [
-  {
-    id: "workspace",
-    title: "Workspace",
-    useWhen: "binding or inspecting the local Clash project workspace"
-  },
-  {
-    id: "canvas",
-    title: "Canvas",
-    useWhen: "creating, finding, connecting, or executing media and generation nodes"
-  },
-  {
-    id: "director",
-    title: "Director Stage",
-    useWhen: "blocking characters, cameras, shots, performance, and spatial continuity"
-  },
-  {
-    id: "timeline",
-    title: "Timeline editor",
-    useWhen: "assembling picture, sound, captions, transitions, graphics, and editorial timing"
-  }
-];
-function classifyClashMcpTool(name) {
-  if (name.startsWith("clash_workspace_") || name.startsWith("clash_studio_"))
-    return "workspace";
-  if (name.startsWith("clash_canvas_"))
-    return "canvas";
-  if (name.startsWith("clash_director_"))
-    return "director";
-  if (name.startsWith("clash_timeline_"))
-    return "timeline";
-  return "other";
-}
-function getClashMcpCommand(id) {
-  const command = CLASH_MCP_COMMANDS.find((candidate) => candidate.id === id);
-  if (!command)
-    throw new Error(`Unknown Clash MCP command: ${id}`);
-  return command;
-}
-function buildClashMcpCommandMenu(input) {
-  const operationsFor = (command2) => input.operations.filter((operation) => input.belongsToCommand(operation, command2));
-  const root = {
-    schemaVersion: 1,
-    commands: CLASH_MCP_COMMANDS.map((command2) => ({
-      id: command2.id,
-      title: command2.title,
-      useWhen: command2.useWhen,
-      availableOperations: operationsFor(command2).length
-    }))
-  };
-  if (!input.selectedCommand)
-    return root;
-  const command = getClashMcpCommand(input.selectedCommand);
-  return {
-    ...root,
-    selectedCommand: command.id,
-    operations: operationsFor(command)
-  };
-}
 
 // ../../packages/shared-mcp/dist/tool-guidance.js
 function sentence(label, value) {
@@ -40637,84 +40568,7 @@ var TIMELINE_CONTRACT_SUMMARY = Object.freeze({
   contractFingerprint: TIMELINE_DSL_DEFINITION.contractFingerprint
 });
 
-// src/contract.ts
-function required2(input, key) {
-  const value = input[key];
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${String(key)} is required`);
-  }
-  return value.trim();
-}
-function appendProject(args, input) {
-  if (input.projectId?.trim()) args.push("--project", input.projectId.trim());
-  args.push("--json");
-}
-function appendPosition(args, input) {
-  if (!input.position) return;
-  args.push("--x", String(input.position.x), "--y", String(input.position.y));
-}
-function buildTimelineCliArgs(name, input) {
-  const args = ["timeline"];
-  switch (name) {
-    case "clash_timeline_schema":
-      return ["timeline", "schema", "--json"];
-    case "clash_timeline_list":
-      args.push("list");
-      if (input.standalone) args.push("--standalone");
-      break;
-    case "clash_timeline_create":
-      args.push(
-        "create",
-        "--id",
-        required2(input, "timelineId"),
-        "--name",
-        required2(input, "name")
-      );
-      break;
-    case "clash_timeline_attach":
-      args.push(
-        "attach",
-        "--timeline",
-        required2(input, "timelineId"),
-        "--canvas",
-        required2(input, "canvasId")
-      );
-      if (input.nodeId?.trim()) args.push("--node", input.nodeId.trim());
-      appendPosition(args, input);
-      break;
-    case "clash_timeline_detach":
-      args.push("detach", "--timeline", required2(input, "timelineId"));
-      break;
-    case "clash_timeline_copy":
-      args.push(
-        "copy",
-        "--timeline",
-        required2(input, "timelineId"),
-        "--canvas",
-        required2(input, "canvasId")
-      );
-      if (input.newTimelineId?.trim()) {
-        args.push("--new-timeline", input.newTimelineId.trim());
-      }
-      if (input.newNodeId?.trim()) args.push("--new-node", input.newNodeId.trim());
-      appendPosition(args, input);
-      break;
-    case "clash_timeline_render":
-      args.push("render", "--timeline", required2(input, "timelineId"));
-      if (input.wait === false) args.push("--no-wait");
-      if (input.timeoutMs !== void 0) {
-        args.push("--timeout-ms", String(input.timeoutMs));
-      }
-      break;
-    default:
-      throw new Error(`Timeline operation ${name} is not exposed`);
-  }
-  appendProject(args, input);
-  return args;
-}
-
 // src/adapter.ts
-var execFileAsync = promisify(execFile);
 function timelineWorkspaceCwd(input) {
   const candidate = input.cwd?.trim() || process.env.CLASH_WORKSPACE_ROOT || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
   return isAbsolute(candidate) ? candidate : resolve(candidate);
@@ -40722,124 +40576,211 @@ function timelineWorkspaceCwd(input) {
 function projectionSegment(timelineId) {
   return timelineId.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^\.+/, "") || "timeline";
 }
-function timelineList(value) {
-  const candidates = Array.isArray(value) ? value : value && typeof value === "object" && Array.isArray(value.items) ? value.items : [];
-  return candidates.filter((candidate) => Boolean(
-    candidate && typeof candidate === "object" && typeof candidate.id === "string"
-  ));
+function required2(input, key) {
+  const value = input[key];
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${String(key)} is required`);
+  return value.trim();
 }
-function objectResult(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : { value };
-}
-function createClashTimelineRunner(options = {}) {
-  const configuredCommand = (options.command ?? options.env?.CLASH_CLI_BIN ?? process.env.CLASH_CLI_BIN)?.trim();
-  const command = configuredCommand || process.execPath;
-  const prefix = options.argsPrefix ?? (configuredCommand ? [] : [fileURLToPath(new URL("../runtime/clash-cli.cjs", import.meta.url))]);
-  return async (args, cwd) => {
-    const { stdout } = await execFileAsync(command, [...prefix, ...args], {
-      cwd,
-      env: options.env ?? process.env,
-      maxBuffer: 16 * 1024 * 1024
-    });
-    const text = stdout.trim();
-    if (!text) return {};
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { stdout: text };
-    }
-  };
+function hostValue(value) {
+  if (!value.error) return value;
+  const code = typeof value.code === "string" ? `${value.code}: ` : "";
+  throw new Error(`${code}${value.error}`);
 }
 async function writeTimelineProjection(path, content) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content, "utf8");
 }
 function createTimelineAdapter(options = {}) {
-  const run = options.run ?? createClashTimelineRunner();
+  const client = options.client ?? createProjectHostClient();
   const writeProjection = options.writeProjection ?? writeTimelineProjection;
+  const observations = /* @__PURE__ */ new Map();
+  const context = (input) => client.resolveContext({
+    cwd: input.cwd,
+    projectId: input.projectId
+  });
+  const observationKey = (projectId, timelineId) => `${projectId}\0${timelineId}`;
+  const request = async (input, command) => {
+    const result = await client.request({
+      cwd: input.cwd,
+      projectId: input.projectId,
+      command
+    });
+    return { projectId: result.projectId, value: hostValue(result.value) };
+  };
+  const requireObservation = async (input, timelineId) => {
+    const resolved = await context(input);
+    const observation = observations.get(observationKey(resolved.projectId, timelineId));
+    if (!observation) {
+      throw new Error(
+        `READ_REQUIRED: Read Timeline ${timelineId} with clash_timeline_get before mutating it.`
+      );
+    }
+    return observation;
+  };
   const list = async (input) => {
-    const value = await run(
-      buildTimelineCliArgs("clash_timeline_list", input),
-      timelineWorkspaceCwd(input)
-    );
-    return timelineList(value);
+    const { projectId, value } = await request(input, { action: "list_timelines" });
+    const timelines = Array.isArray(value.timelines) ? value.timelines.filter((entry) => Boolean(
+      entry && typeof entry === "object" && typeof entry.id === "string"
+    )) : [];
+    const versions = value.versions && typeof value.versions === "object" ? value.versions : {};
+    for (const timeline of timelines) {
+      const receipt = versions[timeline.id];
+      if (typeof receipt === "string") {
+        observations.set(observationKey(projectId, timeline.id), {
+          receipt,
+          ...timeline.revisionId ? { revisionId: timeline.revisionId } : {}
+        });
+      }
+    }
+    return input.standalone ? timelines.filter((timeline) => timeline.owner?.kind === "project") : timelines;
   };
   const get = async (input) => {
-    const timelineId = input.timelineId?.trim();
-    if (!timelineId) throw new Error("timelineId is required");
+    const timelineId = required2(input, "timelineId");
     const timeline = (await list(input)).find((candidate) => candidate.id === timelineId);
     if (!timeline) throw new Error(`Timeline ${timelineId} not found`);
     return timeline;
   };
-  const invoke = async (name, input) => run(buildTimelineCliArgs(name, input), timelineWorkspaceCwd(input));
+  const mutation = async (input, timelineId, command) => {
+    const observed = await requireObservation(input, timelineId);
+    const result = await request(input, {
+      ...command,
+      actorClientType: "mcp",
+      observedVersion: observed.receipt,
+      ifMatch: observed.receipt
+    });
+    const receipt = typeof result.value.readToken === "string" ? result.value.readToken : typeof result.value.version === "string" ? result.value.version : void 0;
+    const entity = result.value.timeline && typeof result.value.timeline === "object" ? result.value.timeline : void 0;
+    if (receipt) {
+      observations.set(observationKey(result.projectId, timelineId), {
+        receipt,
+        ...typeof entity?.revisionId === "string" ? { revisionId: entity.revisionId } : {}
+      });
+    }
+    return result.value;
+  };
   return {
-    schema: async (input) => objectResult(await run(
-      buildTimelineCliArgs("clash_timeline_schema", input),
-      timelineWorkspaceCwd(input)
-    )),
+    schema: async () => structuredClone(TIMELINE_DSL_DEFINITION),
     async validate(input) {
       const document2 = input.document ?? input.state;
-      if (typeof document2 !== "string" && (!document2 || typeof document2 !== "object" || Array.isArray(document2))) {
+      let state = document2;
+      if (typeof document2 === "string") {
+        if (input.format === "json") state = JSON.parse(document2);
+        else {
+          try {
+            state = parse$1(document2);
+          } catch (error51) {
+            throw new Error(
+              `TIMELINE_DSL_INVALID: ${error51 instanceof Error ? error51.message : String(error51)}`
+            );
+          }
+        }
+      }
+      if (!state || typeof state !== "object" || Array.isArray(state)) {
         throw new Error("document must be Timeline YAML, JSON, or an object");
       }
-      if (typeof document2 !== "string") assertTimelineState(document2);
-      const cwd = timelineWorkspaceCwd(input);
-      const validationDirectory = await mkdtemp(join(tmpdir(), "clash-timeline-validate-"));
-      const filePath = join(
-        validationDirectory,
-        typeof document2 !== "string" || input.format === "json" || input.format === "object" ? "timeline.json" : "timeline.yaml"
-      );
-      try {
-        const content = typeof document2 === "string" ? document2 : JSON.stringify(document2, null, 2);
-        await writeProjection(filePath, `${content}
-`);
-        return objectResult(await run(
-          ["timeline", "validate", "--file", filePath, "--json"],
-          cwd
-        ));
-      } finally {
-        await rm(validationDirectory, { recursive: true, force: true });
+      assertTimelineState(state);
+      const validation = validateTimelineDsl(state);
+      if (!validation.ok) {
+        throw new Error(`TIMELINE_DSL_INVALID: ${validation.issues[0]?.message ?? "invalid Timeline"}`);
       }
+      return (await request(input, { action: "validate_timeline", document: state })).value;
     },
     list,
     get,
-    create: (input) => invoke("clash_timeline_create", input),
-    attach: (input) => invoke("clash_timeline_attach", input),
-    detach: (input) => invoke("clash_timeline_detach", input),
-    copy: (input) => invoke("clash_timeline_copy", input),
-    render: async (input) => objectResult(await invoke("clash_timeline_render", input)),
+    async create(input) {
+      const result = await request(input, {
+        action: "create_timeline",
+        timelineId: required2(input, "timelineId"),
+        name: required2(input, "name")
+      });
+      return result.value;
+    },
     async save(input) {
-      const timelineId = input.timelineId?.trim();
-      if (!timelineId) throw new Error("timelineId is required");
+      const timelineId = required2(input, "timelineId");
+      const baseRevisionId = required2(input, "baseRevisionId");
       if (!input.state || typeof input.state !== "object" || Array.isArray(input.state)) {
         throw new Error("state must be a Timeline object");
       }
       assertTimelineState(input.state);
-      const baseRevisionId = input.baseRevisionId?.trim();
-      if (!baseRevisionId) {
-        throw new Error("baseRevisionId is required; read the Timeline before saving");
+      const observed = await requireObservation(input, timelineId);
+      if (observed.revisionId && observed.revisionId !== baseRevisionId) {
+        throw new Error(`STALE_READ: Timeline ${timelineId} was read at ${observed.revisionId}, not ${baseRevisionId}`);
       }
-      const cwd = timelineWorkspaceCwd(input);
       const filePath = join(
-        cwd,
+        timelineWorkspaceCwd(input),
         "timelines",
         `${projectionSegment(timelineId)}.timeline.yaml`
       );
       await writeProjection(filePath, `${JSON.stringify(input.state, null, 2)}
 `);
-      const args = [
-        "timeline",
-        "apply",
-        "--timeline",
+      return mutation(input, timelineId, {
+        action: "update_timeline_state",
         timelineId,
-        "--file",
-        filePath,
-        "--base-revision",
-        baseRevisionId
-      ];
-      if (input.projectId?.trim()) args.push("--project", input.projectId.trim());
-      args.push("--json");
-      return objectResult(await run(args, cwd));
+        state: input.state
+      });
+    },
+    attach(input) {
+      const timelineId = required2(input, "timelineId");
+      return mutation(input, timelineId, {
+        action: "attach_timeline",
+        timelineId,
+        canvasId: required2(input, "canvasId"),
+        ...input.nodeId?.trim() ? { actionNodeId: input.nodeId.trim() } : {},
+        ...input.position ? { position: input.position } : {}
+      });
+    },
+    detach(input) {
+      const timelineId = required2(input, "timelineId");
+      return mutation(input, timelineId, { action: "detach_timeline", timelineId });
+    },
+    copy(input) {
+      const timelineId = required2(input, "timelineId");
+      return mutation(input, timelineId, {
+        action: "copy_timeline_action",
+        sourceTimelineId: timelineId,
+        targetCanvasId: required2(input, "canvasId"),
+        ...input.newTimelineId?.trim() ? { newTimelineId: input.newTimelineId.trim() } : {},
+        ...input.newNodeId?.trim() ? { newActionNodeId: input.newNodeId.trim() } : {},
+        ...input.position ? { position: input.position } : {}
+      });
+    },
+    async render(input) {
+      const timelineId = required2(input, "timelineId");
+      const submitted = await mutation(input, timelineId, {
+        action: "request_timeline_render",
+        timelineId
+      });
+      if (typeof submitted.renderNodeId !== "string" || typeof submitted.sourceTimelineRevisionId !== "string" || !submitted.target) throw new Error("Timeline render request failed");
+      const base = {
+        submitted: true,
+        timelineId,
+        sourceTimelineRevisionId: submitted.sourceTimelineRevisionId,
+        renderNodeId: submitted.renderNodeId,
+        target: submitted.target
+      };
+      if (input.wait === false) return { ...base, completed: false, status: "pending" };
+      const deadline = Date.now() + (input.timeoutMs ?? 6e5);
+      while (true) {
+        const polled = await request(input, {
+          action: "get",
+          canvasId: "__project_assets__",
+          nodeId: submitted.renderNodeId
+        });
+        const data = polled.value.node && typeof polled.value.node === "object" ? polled.value.node.data ?? {} : {};
+        if (data.status === "completed" && typeof data.assetId === "string") {
+          return { ...base, completed: true, status: "completed", asset: { id: data.assetId } };
+        }
+        if (data.status === "failed") {
+          return {
+            ...base,
+            completed: false,
+            status: "failed",
+            ...typeof data.error === "string" ? { error: data.error } : {}
+          };
+        }
+        if (Date.now() >= deadline) return { ...base, completed: false, status: "pending" };
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+      }
     }
   };
 }

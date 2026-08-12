@@ -4,7 +4,7 @@ import type {
   AssetScopeTarget,
   AssetSourceScope,
 } from '@clash/shared-types';
-import type { EditorAssetInput } from '@master-clash/remotion-core';
+import type { EditorAssetInput } from '@clash/remotion-core';
 import type { ProjectAsset } from '@clash/web-ui/lib/types';
 import type { AssetRelationEdge, AssetRelationNode } from '../features/assets/relations';
 import { projectAssetPlaybackUrl } from '../features/assets/media-url';

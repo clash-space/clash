@@ -318,7 +318,7 @@ describe("local metadata store", () => {
     });
   });
 
-  it("persists plugin broker capability audit without credential material", async () => {
+  it("persists typed plugin SDK audit without credential material", async () => {
     const dataDir = await tempDir();
     const store = createLocalMetadataStore(dataDir) as ReturnType<typeof createLocalMetadataStore> & {
       appendPluginBrokerAudit(record: Record<string, unknown>): Promise<void>;
@@ -331,27 +331,27 @@ describe("local metadata store", () => {
     await store.appendPluginBrokerAudit({
       id: "broker-audit-1",
       occurredAt: "2026-08-04T12:00:00.000Z",
-      pluginId: "broker-plugin",
+      pluginId: "test.broker-plugin",
       pluginVersion: "1.0.0",
       projectId: "project-1",
       invocationId: "invocation-1",
-      requestId: "network-1",
-      operation: "network.fetch",
-      target: "queue.fal.run",
+      requestId: "store-1",
+      operation: "store.get",
+      target: "apiKey",
       status: "ok",
     });
 
-    const records = await store.listPluginBrokerAudit({ pluginId: "broker-plugin", limit: 10 });
+    const records = await store.listPluginBrokerAudit({ pluginId: "test.broker-plugin", limit: 10 });
     expect(records).toEqual([{
       id: "broker-audit-1",
       occurredAt: "2026-08-04T12:00:00.000Z",
-      pluginId: "broker-plugin",
+      pluginId: "test.broker-plugin",
       pluginVersion: "1.0.0",
       projectId: "project-1",
       invocationId: "invocation-1",
-      requestId: "network-1",
-      operation: "network.fetch",
-      target: "queue.fal.run",
+      requestId: "store-1",
+      operation: "store.get",
+      target: "apiKey",
       status: "ok",
       error: null,
     }]);

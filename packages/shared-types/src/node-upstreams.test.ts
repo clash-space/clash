@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { LoroDoc } from "loro-crdt";
-import { Canvas } from "./canvas-ops";
-import * as graph from "./node-upstreams";
+import { Canvas } from "./canvas-ops.js";
+import * as graph from "./node-upstreams.js";
 
-function mergePeers(left: LoroDoc, right: LoroDoc, leftVersion: Uint8Array, rightVersion: Uint8Array): void {
+function mergePeers(
+  left: LoroDoc,
+  right: LoroDoc,
+  leftVersion: ReturnType<LoroDoc["version"]>,
+  rightVersion: ReturnType<LoroDoc["version"]>,
+): void {
   const leftUpdate = left.export({ mode: "update", from: leftVersion });
   const rightUpdate = right.export({ mode: "update", from: rightVersion });
   left.import(rightUpdate);

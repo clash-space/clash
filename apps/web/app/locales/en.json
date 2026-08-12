@@ -42,7 +42,7 @@
       "runInTerminal": "Run this in your terminal",
       "copy": "Copy",
       "copied": "Copied",
-      "footnote": "Requires Node 18+. The daemon installs as a launchd / systemd user service (auto-starts on boot). Remove anytime with"
+      "footnote": "Requires Node 24.18+ (Node 24.x). The daemon installs as a launchd / systemd user service (auto-starts on boot). Remove anytime with"
     },
     "selectedContext": {
       "count_one": "{{count}} Selected",

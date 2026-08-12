@@ -1,4 +1,4 @@
-import { MODEL_CARDS } from "./models";
+import { MODEL_CARDS } from "./models.js";
 
 export type ActionBuildModality = "image" | "video" | "audio" | "text";
 export type ActionBuildInvocationKind = "model" | "custom";

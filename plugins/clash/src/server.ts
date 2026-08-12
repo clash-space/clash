@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createClashMcpServer } from "@clash-space/mcp-server/server";
-import { createTimelineAdapter } from "@clash-space/timeline-plugin/adapter";
-import { registerTimelinePluginMcp } from "@clash-space/timeline-plugin/server";
-import { createDirectorAdapter } from "@clash-space/director-plugin/adapter";
-import { registerDirectorPluginMcp } from "@clash-space/director-plugin/server";
-import { createHostCliRunner, type HostCliRunner } from "./host-runner.js";
+import { createClashMcpServer } from "@clash/mcp-server/server";
+import { createTimelineAdapter } from "@clash/timeline-plugin/adapter";
+import { registerTimelinePluginMcp } from "@clash/timeline-plugin/server";
+import { createDirectorAdapter } from "@clash/director-plugin/adapter";
+import { registerDirectorPluginMcp } from "@clash/director-plugin/server";
+import type { ProjectHostClient } from "@clash/shared-runtime/project-host-client";
+import { createMcpProjectHostClient } from "./host-runner.js";
 import {
   createPluginHostManager,
   type PluginHostManager,
@@ -24,7 +25,7 @@ function bundledApp(name: keyof ClashPluginAppBundles): string {
 }
 
 export type ClashPluginServerOptions = {
-  runner?: HostCliRunner;
+  client?: ProjectHostClient;
   hostManager?: PluginHostManager;
   appBundles?: ClashPluginAppBundles;
 };
@@ -35,25 +36,24 @@ export type ClashPluginServerOptions = {
 const MCP_APP_SURFACES_ENABLED = false;
 
 function composeClashPluginServer(
-  runner: HostCliRunner,
+  client: ProjectHostClient,
   bundles: ClashPluginAppBundles,
 ): McpServer {
   const server = createClashMcpServer({
-    runner,
+    client,
     bundledAppJavascript: bundles.canvas,
     bundledStudioAppJavascript: bundles.studio,
     appSurfaces: MCP_APP_SURFACES_ENABLED,
   });
-  const projectionRunner = (args: string[], cwd: string) => runner(args, cwd);
   registerTimelinePluginMcp(
     server,
-    createTimelineAdapter({ run: projectionRunner }),
+    createTimelineAdapter({ client }),
     bundles.timeline,
     { appSurfaces: MCP_APP_SURFACES_ENABLED },
   );
   registerDirectorPluginMcp(
     server,
-    createDirectorAdapter({ run: projectionRunner }),
+    createDirectorAdapter({ client }),
     bundles.director,
     { appSurfaces: MCP_APP_SURFACES_ENABLED },
   );
@@ -66,15 +66,15 @@ export function createClashPluginRuntime(options: ClashPluginServerOptions = {})
   close(): Promise<void>;
   closeHost(): Promise<void>;
 } {
-  const hostManager = options.hostManager ?? (options.runner ? undefined : createPluginHostManager());
-  const runner = options.runner ?? createHostCliRunner({ hostManager });
+  const hostManager = options.hostManager ?? (options.client ? undefined : createPluginHostManager());
+  const client = options.client ?? createMcpProjectHostClient({ hostManager });
   const bundles = options.appBundles ?? {
     studio: bundledApp("studio"),
     canvas: bundledApp("canvas"),
     timeline: bundledApp("timeline"),
     director: bundledApp("director"),
   };
-  const server = composeClashPluginServer(runner, bundles);
+  const server = composeClashPluginServer(client, bundles);
   const originalClose = server.close.bind(server);
   let closingHost: Promise<void> | undefined;
   let closingRuntime: Promise<void> | undefined;

@@ -3,36 +3,22 @@ import { describe, expect, it, vi } from "vitest";
 import { defineHostedExecutablePlugin } from "./index";
 
 describe("defineHostedExecutablePlugin", () => {
-  it("adapts an HTTP function to the shared invocation ABI and capability broker", async () => {
-    const brokerFetch = vi.fn(async (_url: string, init?: RequestInit) => {
-      const request = JSON.parse(String(init?.body));
-      return Response.json({
-        protocol: "clash.plugin.broker-response/v1",
-        requestId: request.requestId,
-        status: "ok",
-        result: { handle: "clash-secret://opaque", providerId: "fal" },
-      });
-    });
+  it("adapts an HTTP function with host dependencies injected directly", async () => {
+    const get = vi.fn(async () => "fal");
     const worker = defineHostedExecutablePlugin({
       render: async (invocation, context) => {
-        const credential = await context.broker({
-          kind: "credential.handle",
-          secretId: "provider:fal",
-        });
+        expect(context).not.toHaveProperty("broker");
+        const credential = await context.store.get("provider");
         return [{
           slot: "content",
           kind: "value",
-          value: `${invocation.input.values.prompt}:${(credential as any).providerId}`,
+          value: `${invocation.input.values.prompt}:${credential}`,
         }];
       },
-    }, { fetch: brokerFetch as typeof fetch });
+    }, { context: { store: { get, put: vi.fn(), remove: vi.fn() } } as never });
     const response = await worker.fetch(new Request("https://plugin.example.com/run", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-clash-plugin-broker": "https://api.example.com/api/v1/plugin-broker",
-        "x-clash-plugin-capability": "signed-capability",
-      },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({
         protocol: "clash.plugin.invoke/v1",
         invocationId: "invocation-1",
@@ -56,11 +42,6 @@ describe("defineHostedExecutablePlugin", () => {
       status: "completed",
       outputs: [{ slot: "content", kind: "value", value: "hello:fal" }],
     });
-    expect(brokerFetch).toHaveBeenCalledWith(
-      "https://api.example.com/api/v1/plugin-broker",
-      expect.objectContaining({ method: "POST" }),
-    );
-    const [, init] = brokerFetch.mock.calls[0] as [string, RequestInit];
-    expect(new Headers(init.headers).get("x-clash-plugin-capability")).toBe("signed-capability");
+    expect(get).toHaveBeenCalledWith("provider");
   });
 });

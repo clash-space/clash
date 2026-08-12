@@ -1,6 +1,7 @@
 import { LoroDoc } from "loro-crdt";
 import { describe, expect, it } from "vitest";
-import { LoroSyncClient } from "./loro-client";
+import { LoroSyncClient } from "./loro-client.js";
+import { MODEL_CARDS } from "./models.js";
 
 class CapturingWebSocket {
   static instances: CapturingWebSocket[] = [];
@@ -40,6 +41,27 @@ function updateId(update: Uint8Array): string {
 }
 
 describe("LoroSyncClient", () => {
+  it("passes the host effective model catalogue to every Canvas scope", () => {
+    const pluginCard = {
+      ...MODEL_CARDS.find((card) => card.kind === "image")!,
+      id: "plugin-only-image",
+      aliases: [],
+      name: "Plugin Only Image",
+    };
+    const client = new LoroSyncClient({
+      serverUrl: "http://127.0.0.1",
+      projectId: "project-effective-models",
+      doc: new LoroDoc(),
+      modelCards: [pluginCard],
+    });
+    client.createNode("badge", "image_gen", {
+      content: "A lit workshop",
+      modelId: pluginCard.id,
+    });
+
+    expect(client.canvas.execute("badge", () => "asset-1").error).toBeNull();
+  });
+
   it("waits for a local server acknowledgement before flushing an update", async () => {
     CapturingWebSocket.instances = [];
     const client = new LoroSyncClient({

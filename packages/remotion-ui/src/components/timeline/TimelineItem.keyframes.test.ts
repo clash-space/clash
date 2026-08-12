@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import type { ImageItem } from '@master-clash/remotion-core';
+import type { ImageItem } from '@clash/remotion-core';
 import * as TimelineItemModule from './TimelineItem';
 
 const { getTimelineKeyframeMarkers } = TimelineItemModule;

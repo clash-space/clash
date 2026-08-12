@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
-import { LoroDoc } from "loro-crdt";
 import {
   mkdirSync,
   readFileSync,
@@ -14,7 +13,6 @@ import {
   TIMELINE_DSL_FIELD_ANNOTATIONS,
   TIMELINE_OPERATION_CATALOG,
   TIMELINE_OPERATION_REGISTRY,
-  createProjectTimeline,
   timelineDslToYaml,
 } from "@clash/shared-types";
 import {
@@ -26,16 +24,15 @@ import {
 import {
   TIMELINE_CLI_OPERATION_EXECUTORS,
   prepareTimelineApplyObservation,
-  requestTimelineRenderWithReadback,
   timelineCommand,
 } from "./timeline";
 import { canvasCommand } from "./canvas";
 
 test("registers only the Project Timeline command surface", () => {
-  const indexSource = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
+  const programSource = readFileSync(new URL("../program.ts", import.meta.url), "utf8");
   const source = readFileSync(new URL("./timeline.ts", import.meta.url), "utf8");
 
-  assert.match(indexSource, /program\.addCommand\(timelineCommand\)/);
+  assert.match(programSource, /program\.addCommand\(timelineCommand\)/);
   const annotatedCommands = Object.values(TIMELINE_OPERATION_CATALOG.agent)
     .flatMap((operation) => operation.surfaceBindings ?? [])
     .filter((binding) => binding.startsWith("cli:timeline "))
@@ -107,74 +104,6 @@ test("exposes a durable product render command with completion readback", () => 
   assert.equal(render.options.some((option) => option.long === "--no-wait"), true);
   assert.equal(render.options.some((option) => option.long === "--timeout-ms"), true);
   assert.equal(render.options.some((option) => option.long === "--json"), true);
-});
-
-test("waits for the product render node and returns immutable Asset readback", async () => {
-  const doc = new LoroDoc();
-  const created = createProjectTimeline(doc, {
-    id: "rough-cut",
-    name: "Rough Cut",
-    state: {
-      compositionWidth: 720,
-      compositionHeight: 1280,
-      fps: 24,
-      durationInFrames: 24,
-      tracks: [{
-        id: "visual",
-        items: [{
-          id: "background",
-          type: "solid",
-          from: 0,
-          durationInFrames: 24,
-          color: "#101010",
-        }],
-      }],
-    },
-  });
-  assert.equal(created.ok, true);
-  doc.commit();
-  let delayCalls = 0;
-
-  const receipt = await requestTimelineRenderWithReadback({
-    client: { doc, flush: async () => undefined },
-    timelineId: "rough-cut",
-    actor: { actorUserId: "local-user", actorAgentId: "agent-1" },
-    wait: true,
-    timeoutMs: 5_000,
-    generateId: () => "render-node-1",
-    now: () => delayCalls * 100,
-    delay: async () => {
-      delayCalls += 1;
-      const nodes = doc.getMap("nodes");
-      const node = nodes.get("render-node-1") as Record<string, any>;
-      nodes.set("render-node-1", {
-        ...node,
-        data: { ...node.data, status: "completed", assetId: "asset-1" },
-      });
-      doc.commit();
-    },
-    loadAsset: async () => ({
-      id: "asset-1",
-      srcR2Key: "projects/project-1/generated/render.mp4",
-      signedUrl: "http://127.0.0.1:49321/assets/render.mp4",
-    }),
-  });
-
-  assert.deepEqual(receipt, {
-    submitted: true,
-    completed: true,
-    timelineId: "rough-cut",
-    sourceTimelineRevisionId: created.timeline.revisionId,
-    renderNodeId: "render-node-1",
-    target: { kind: "project-assets" },
-    status: "completed",
-    asset: {
-      id: "asset-1",
-      srcR2Key: "projects/project-1/generated/render.mp4",
-      signedUrl: "http://127.0.0.1:49321/assets/render.mp4",
-    },
-  });
-  assert.equal(delayCalls, 1);
 });
 
 test("public Timeline apply validation executes the published structural contract before normalization", () => {
@@ -272,7 +201,8 @@ test("Timeline ownership mutations use concrete IDs and implicit cwd observation
   assert.match(source, /recordTimelineObservation/);
   assert.match(source, /requireTimelineObservation/);
   assert.match(source, /observedVersion/);
-  assert.match(source, /assertAgentHostWritePath/);
+  assert.match(source, /sendProjectCommand/);
+  assert.doesNotMatch(source, /LoroDoc|LoroSyncClient|WebSocket|connectToProject/);
 });
 
 test("Timeline pull and apply target Timeline entities rather than Canvas nodes", () => {
@@ -349,11 +279,11 @@ test("a stale base performs only host reads and materializes merge inputs", asyn
   );
 });
 
-test("Timeline fallback sync preserves spawned-agent presence", () => {
+test("Timeline host commands preserve spawned-agent identity", () => {
   const source = readFileSync(new URL("./timeline.ts", import.meta.url), "utf8");
 
   assert.match(source, /resolveCanvasPresenceOptions/);
-  assert.match(source, /\.\.\.resolveCanvasPresenceOptions\(\)/);
+  assert.match(source, /actorClientType: resolveCanvasPresenceOptions\(\)\.clientType/);
 });
 
 test("does not retain a hidden node-owned canvas timeline command", () => {

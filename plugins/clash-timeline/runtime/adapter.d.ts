@@ -1,1 +1,2 @@
-export { T as TimelineAdapter, a as TimelineCommandRunner, c as TimelineProjectionWriter, f as createClashTimelineRunner, g as createTimelineAdapter, t as timelineWorkspaceCwd } from './adapter-2K0QanFc.js';
+import '@clash/shared-runtime/project-host-client';
+export { T as TimelineAdapter, b as TimelineProjectionWriter, e as createTimelineAdapter, t as timelineWorkspaceCwd } from './adapter-Dl_WUYeZ.js';

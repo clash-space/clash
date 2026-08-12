@@ -128,11 +128,9 @@ function defaultUpstream(providerId: ProviderAccountId): ModelUpstreamId | undef
     providerId === "fal" ||
     providerId === "pika" ||
     providerId === "local" ||
-    providerId === "kie" ||
     providerId === "replicate" ||
     providerId === "kling" ||
     providerId === "minimax" ||
-    providerId === "jimeng" ||
     providerId === "volcengine" ||
     providerId === "elevenlabs" ||
     providerId === "suno" ||
@@ -198,14 +196,6 @@ function authorizedOAuthRecords(records: LocalProviderOAuthRecord[], userId: str
 }
 
 function oauthAccount(record: LocalProviderOAuthRecord): LocalProviderAccountConfig {
-  if (record.providerId === "dreamina") {
-    return {
-      providerId: "jimeng",
-      upstreamId: "jimeng",
-      ...(record.accountLabel ? { label: record.accountLabel } : {}),
-      enabled: true,
-    };
-  }
   return {
     ...(record.accountId ? { id: record.accountId } : {}),
     providerId: record.providerId,
@@ -218,7 +208,6 @@ function oauthAccount(record: LocalProviderOAuthRecord): LocalProviderAccountCon
 
 function oauthForAccount(account: Pick<LocalProviderAccountConfig, "id" | "providerId">, records: LocalProviderOAuthRecord[]): ProviderOAuthId[] {
   return [...new Set(records.flatMap((record) => {
-    if (account.providerId === "jimeng" && record.providerId === "dreamina") return ["dreamina"];
     const matchesAccount = !record.accountId || !account.id || record.accountId === account.id;
     if (!matchesAccount) return [];
     if (record.providerId === account.providerId) return [record.providerId];
@@ -258,7 +247,6 @@ export function providerAccountsForRuntime(
     const oauth = oauthAccount(record);
     const existingEntry = [...merged.entries()].find(([, account]) => {
       if (account.providerId !== oauth.providerId) return false;
-      if (record.providerId === "dreamina") return true;
       return record.accountId ? account.id === record.accountId : true;
     });
     if (existingEntry) {

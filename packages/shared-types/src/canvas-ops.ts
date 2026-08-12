@@ -18,17 +18,17 @@ import {
   buildPendingAssetNode,
   buildGenerationPayload,
   type UpstreamRef,
-} from "./canvas";
-import { MODEL_CARDS, normalizeModelId, type ModelCard } from "./models";
-import { ExecutablePluginBindingSchema } from "./executable-plugin";
-import { ensureProjectCanvas, readProjectTimeline } from "./project-workspace";
+} from "./canvas.js";
+import { MODEL_CARDS, normalizeModelId, type ModelCard } from "./models.js";
+import { ExecutablePluginBindingSchema } from "./executable-plugin.js";
+import { ensureProjectCanvas, readProjectTimeline } from "./project-workspace.js";
 import {
   clearNodeUpstreamRefs,
   deleteNodeUpstreamRef,
   listNodeOwnedEdges,
   readNodeUpstreamRefs,
   upsertNodeUpstreamRef,
-} from "./node-upstreams";
+} from "./node-upstreams.js";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -223,12 +223,12 @@ export class Canvas {
    *  been installed in this project. Same map NodeProcessor reads
    *  later when it dispatches the pending task — keeping the readers
    *  aligned avoids drift. */
-  getCustomAction(actionId: string): import("./canvas").CustomActionDefinition | null {
+  getCustomAction(actionId: string): import("./canvas.js").CustomActionDefinition | null {
     try {
       const map = this.doc.getMap("customActions");
       const raw = map.get(actionId);
       if (!raw || typeof raw !== "object") return null;
-      return raw as import("./canvas").CustomActionDefinition;
+      return raw as import("./canvas.js").CustomActionDefinition;
     } catch {
       return null;
     }
@@ -570,7 +570,10 @@ export class Canvas {
    * phrase its log line ("created pending asset" vs "created pending
    * render-video") without re-reading the node.
    */
-  execute(nodeId: string, generateId: () => string): ExecuteResult {
+  execute(nodeId: string, generateId: () => string,
+    /** Answer with this account and no other. */
+    providerAccountId?: string,
+  ): ExecuteResult {
     const node = this.readNode(nodeId);
     if (!node) {
       return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: `Node ${nodeId} not found` };
@@ -582,7 +585,7 @@ export class Canvas {
       }
       return { kind: "render", childNodeId: r.renderNodeId, childNodeType: "video", position: r.position, error: null };
     }
-    const r = this.executeGeneration(nodeId, generateId);
+    const r = this.executeGeneration(nodeId, generateId, providerAccountId);
     if (r.error) {
       return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: r.error };
     }
@@ -598,6 +601,13 @@ export class Canvas {
   executeGeneration(
     nodeId: string,
     generateId: () => string,
+    /**
+     * Answer with this account and no other.
+     *
+     * Recorded on the pending node rather than resolved here, because resolution happens in the
+     * host at request time and the choice has to survive the gap -- including a restart.
+     */
+    providerAccountId?: string,
   ): ExecuteGenerationResult {
     const node = this.readNode(nodeId);
     if (!node) {
@@ -633,7 +643,7 @@ export class Canvas {
     // Both surface as `GenerationConfig` so the same payload builder
     // handles them (partitionRefs / validateRefs work off the unified
     // Capability shape under the hood).
-    let config: import("./canvas").GenerationConfig;
+    let config: import("./canvas.js").GenerationConfig;
     if (isCustomGen) {
       const customActionId = (nodeData.customActionId as string) || actionType.replace("custom:", "");
       const customDef = this.getCustomAction(customActionId);
@@ -738,6 +748,11 @@ export class Canvas {
     }
 
     const pendingNode = buildPendingAssetNode({ ...pendingInput, nodeId: assetNodeId });
+    if (providerAccountId) {
+      // Carried on the node so the host honours it whenever it gets to the request -- a queued
+      // generation that resumes after a restart must still go to the account that was named.
+      (pendingNode.data as Record<string, unknown>).providerAccountId = providerAccountId;
+    }
     const pendingData: Record<string, unknown> = { ...pendingNode.data };
     if (nodeData.actorType === "user" || nodeData.actorType === "agent") {
       pendingData.actorType = nodeData.actorType;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as sharedTypes from "./index";
+import * as sharedTypes from "./index.js";
 
 const AGENT_OPERATION_KEYS = [
   "timeline.open",

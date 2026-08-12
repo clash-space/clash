@@ -381,23 +381,6 @@ export const runtimeToken = sqliteTable(
 )
 
 /**
- * Connect Daemon Code — short-lived OAuth-style code from `clash setup`.
- * Browser POSTs /connect-daemon (auth'd via session cookie), gets a code,
- * redirects to localhost callback. CLI exchanges code → runtime token.
- * 5-min TTL, single-use.
- */
-export const connectDaemonCode = sqliteTable(
-    "connect_daemon_code",
-    {
-        code: text("code").primaryKey(),
-        userId: text("user_id").notNull(),
-        state: text("state").notNull(),
-        expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
-        usedAt: integer("used_at", { mode: "timestamp" }),
-    },
-)
-
-/**
  * Runtime Session — index of agent sessions on user runtimes.
  * Powers resume / history. The actual transcript lives on the user's disk
  * (e.g. ~/.claude/projects/<hash>/<acp_session_id>.jsonl); we just store
@@ -492,7 +475,7 @@ export const roomMessage = sqliteTable(
 /**
  * Claimed agent members — concrete instances of bundled agent templates.
  *
- * Templates (Director / Canvas Editor / …) ship in the bridge daemon
+ * Templates (Director / Canvas Editor / …) ship in the local Clash runtime
  * as read-only role definitions. A user "claims" a template + runtime
  * to create one of these rows — e.g. "Alice's Director on alice-mac".
  *

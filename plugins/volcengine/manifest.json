@@ -1,0 +1,40 @@
+{
+  "apiVersion": "clash.plugin/v1",
+  "id": "clash.volcengine",
+  "version": "0.1.0",
+  "name": "Volcengine",
+  "description": "Volcengine ModelArk video and OpenSpeech audio generation.",
+  "runtime": {
+    "kind": "local",
+    "transport": "stdio",
+    "entrypoint": "dist/stdio.mjs"
+  },
+  "contributes": {
+    "cards": [],
+    "functions": [
+      {
+        "id": "volcengine-execute",
+        "kind": "provider-executor",
+        "operations": ["submit", "poll"]
+      },
+      {
+        "id": "volcengine-speech-execute",
+        "kind": "provider-executor",
+        "operations": ["submit"]
+      }
+    ],
+    "providers": [
+      {
+        "id": "volcengine",
+        "kind": "provider",
+        "path": "providers/volcengine.json"
+      },
+      {
+        "id": "volcengine-speech",
+        "kind": "provider",
+        "path": "providers/volcengine-speech.json"
+      }
+    ]
+  },
+  "contractTests": ["contract-tests/volcengine-execute.json"]
+}

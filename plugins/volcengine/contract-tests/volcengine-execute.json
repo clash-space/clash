@@ -1,0 +1,26 @@
+{
+  "apiVersion": "clash.plugin.contract-test/v1",
+  "id": "volcengine-execute-rejects-unusable-poll-state",
+  "target": {
+    "exportId": "volcengine-execute",
+    "kind": "provider-executor"
+  },
+  "operation": "poll",
+  "pollState": {
+    "upstreamModel": "doubao-seedance-2-5-260628"
+  },
+  "input": {
+    "values": {
+      "kind": "video"
+    },
+    "references": []
+  },
+  "expect": {
+    "status": "failed",
+    "error": {
+      "code": "execution_failed",
+      "message": "Volcengine poll state is missing its taskId.",
+      "retryable": false
+    }
+  }
+}

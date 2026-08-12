@@ -2,7 +2,7 @@ import {
   agentReadToken,
   type AgentReadReceiptVerifier,
   validateAgentReadProof,
-} from "./agent-read-proof";
+} from "./agent-read-proof.js";
 
 const PROJECTION_OWNED_DATA_FIELDS = new Set([
   "timelineDsl",

@@ -2,7 +2,7 @@ import {
   isSubtitleTextItem,
   type Item,
   type TextItem,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 
 export function createTimelineTextEditUpdates(
   item: TextItem,

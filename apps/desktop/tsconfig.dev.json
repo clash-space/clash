@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@clash/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@clash/shared-types/*": ["../../packages/shared-types/src/*.ts"],
+      "@clash/shared-layout": ["../../packages/shared-layout/src/index.ts"],
+      "@clash/shared-runtime": ["../../packages/shared-runtime/src/index.ts"],
+      "@clash/shared-runtime/*": ["../../packages/shared-runtime/src/*.ts"],
+      "@clash/sdk": ["../../packages/clash-sdk/js/src/index.ts"]
+    }
+  }
+}

@@ -1,55 +1,60 @@
 # Executable Plugins — Overview
 
-Executable plugins extend Clash with runnable code: canvas actions, provider
-projectors, and **provider executors** that bring third-party model gateways
-into the catalog.
+Executable plugins extend Clash with runnable actions, provider projectors,
+and provider executors. A plugin is ordinary trusted code installed by the
+user. It owns its vendor protocol and performs its own HTTP, filesystem, and
+process I/O.
 
 ## What a provider plugin ships
 
-| Artifact | apiVersion | Purpose |
-| --- | --- | --- |
-| Manifest | `clash.plugin/v1` | Identity, version, runtime, exports, permissions |
-| Provider | `clash.provider/v1` | Provider identity + auth methods (OAuth, token import) |
-| Model bindings | `clash.binding/v1` | Attach the provider to existing model cards |
-| Cards (optional) | `clash.card/v1` | New models not in the built-in registry — official names only |
-| Contract tests | `clash.plugin.contract-test/v1` | Gate every activation with strict request/response fixtures |
-| Handler | ESM bundle | The stdio executor |
+| Artifact         | apiVersion                      | Purpose                                                           |
+| ---------------- | ------------------------------- | ----------------------------------------------------------------- |
+| Manifest         | `clash.plugin/v1`               | Identity, version, runtime, and contributions                     |
+| Provider         | `clash.provider/v1`             | Provider identity and account configuration methods               |
+| Model bindings   | `clash.binding/v1`              | Attach the provider to model cards                                |
+| Cards (optional) | `clash.card/v1`                 | Add models that are not already in the catalog                    |
+| Contract tests   | `clash.plugin.contract-test/v1` | Exercise the real entrypoint with deterministic Host dependencies |
+| Handler          | ESM bundle or Python source     | Implements the stdio invocation/result ABI                        |
 
-A pure gateway plugin typically exports **zero cards** and many bindings: the
-models already exist as cards; the plugin only adds a new way to reach them.
+A gateway normally contributes zero cards and several bindings: existing
+cards describe the models, while the plugin adds another route to them.
 
 ## Lifecycle
 
+```sh
+clash plugin create <dir>
+# edit the draft
+clash plugin validate <dir>
+clash plugin activate <dir>
 ```
-clash action init-plugin <dir>     # scaffold a draft (~/.clash/drafts/…)
-  … edit …
-clash action validate <dir>        # schema check + run all contract tests
-clash action activate <dir>        # validate → approve capabilities → atomic activate
-```
 
-Activation is atomic, keeps the previous version for `clash action rollback`,
-and **refuses to replace executable code without a version bump**. Activated
-packages live under `~/.clash/actions/<id>/` with content attestation; editing
-an activated package in place makes the loader skip it until re-activated.
+Activation validates the package, runs its contracts, and atomically replaces
+the active version. The previous version remains available to `clash plugin
+rollback`. Executable changes require a version bump.
 
-## Runtime model
+## Runtime and ownership
 
-Plugins run as separate processes speaking newline-delimited JSON over stdio:
+Local plugins run as separate processes with newline-delimited JSON over
+stdio:
 
-- in: `clash.plugin.invoke/v1`
-- out: `clash.plugin.result/v1`
-- side-channel: `clash.plugin.broker-request/v1` for capabilities
+- input: `clash.plugin.invoke/v1`
+- output: `clash.plugin.result/v1`
 
-Two entrypoint languages share that ABI:
+Normal runtime APIs are available, and provider HTTP uses the language's
+normal client (`globalThis.fetch` in Node, an ordinary HTTP library in
+Python). Clash does not proxy vendor requests.
 
-- **Node (`.mjs`)** — `--permission` filesystem allowlist (read-only, own
-  package dir) plus **all network APIs replaced with throwing stubs**
-  (`fetch`, `http`, `net`, `tls`, `dgram`, `dns` →
-  `ERR_CLASH_PLUGIN_NETWORK_DENIED`)
-- **Python (`.py`)** — an injected `sitecustomize` replaces every socket
-  constructor with the same-marker stubs; interpreter comes from the
-  app-managed environments (see [Python SDK](/sdk/python-sdk)). No
-  filesystem guard yet — prefer `.mjs` when you need it.
+The Host still owns Clash-specific dependencies. Once routing selects a
+provider account, the SDK context exposes dependencies already scoped to that
+plugin and account:
 
-Everything a plugin needs from the outside world — credentials, network,
-assets — goes through the [capability broker](/plugins/broker).
+- `context.store` for credentials and settings;
+- `context.reference` for typed project references;
+- `context.upload` / typed outputs for project assets.
+
+There is no plugin id or account id argument on those APIs. The Host fixes the
+scope before invoking the plugin, so code cannot select another account by
+forging an invocation field.
+
+See [Manifest & Artifacts](/plugins/manifest) and [Host-scoped SDK
+context](/plugins/sdk-context).

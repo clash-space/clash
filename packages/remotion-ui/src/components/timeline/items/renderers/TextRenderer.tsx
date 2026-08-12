@@ -1,5 +1,5 @@
 import React from 'react';
-import type { TextItem } from '@master-clash/remotion-core';
+import type { TextItem } from '@clash/remotion-core';
 import type { ItemRenderProps } from '../registry';
 import { colors } from '../../styles';
 

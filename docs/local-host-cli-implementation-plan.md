@@ -36,7 +36,7 @@ Files/modules:
 
 - `packages/cli/src/lib/project-context.ts`
 - `packages/cli/src/lib/project-context.test.ts`
-- `packages/clash-bridge/src/lib/session-cwd.ts`
+- `packages/cli/src/runtime/bridge/lib/session-cwd.ts`
 
 Required behavior:
 
@@ -234,7 +234,9 @@ Behavior:
 - If no Local Host exists:
   - start daemon if configured, or
   - print actionable error: `Run clash host start` or open Desktop.
-- `canvas connect` / `canvas disconnect` become hidden or legacy debug commands.
+- Remove the CLI-owned `canvas connect` / `canvas disconnect` daemon. Local
+  commands discover the Local Host; optional cloud replication is owned by that
+  host rather than a second CLI Loro peer.
 
 New Local Host commands:
 

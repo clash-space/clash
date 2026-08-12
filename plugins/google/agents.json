@@ -1,0 +1,22 @@
+{
+  "summary": "First-party executable Provider plugin for Google AI Studio and Google Cloud Agent Platform generation.",
+  "context_hints": [
+    "The Provider id is clash.google; keep its declaration in providers/google.json",
+    "Plugin code performs native upstream HTTP; service-account and API-key authentication belong in this plugin, not a Host HTTP broker",
+    "Read and write only the Host-selected account state through context.store"
+  ],
+  "subdirectories": {
+    "providers": "Google Provider declaration and account authentication forms.",
+    "src": "Typed stdio entrypoint, Google adapter, authentication, and model-path logic.",
+    "contract-tests": "Declarative activation-gating ABI fixtures."
+  },
+  "key_files": {
+    "manifest.json": "Versioned executable package and contribution declarations.",
+    "providers/google.json": "Provider metadata, executor link, and supported authentication methods.",
+    "src/google-adapter.ts": "Native Google request and response translation.",
+    "src/model-path.ts": "Model path construction for the supported Google API surfaces."
+  },
+  "verification": [
+    "pnpm --filter @clash-plugin/google test"
+  ]
+}

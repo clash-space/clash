@@ -16,7 +16,14 @@
     "types": ["node", "vitest/globals", "@testing-library/jest-dom"],
     "baseUrl": "src",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@clash/gui": ["../../gui/src/index.ts"],
+      "@clash/gui/*": ["../../gui/src/*"],
+      "@clash/shared-layout": ["../../shared-layout/src/index.ts"],
+      "@clash/shared-types": ["../../shared-types/src/index.ts"],
+      "@clash/shared-types/*": ["../../shared-types/src/*.ts"],
+      "@clash/shared-runtime": ["../../shared-runtime/src/browser.ts"],
+      "@clash/shared-runtime/*": ["../../shared-runtime/src/*.ts"]
     }
   },
   "include": ["src/**/*"]

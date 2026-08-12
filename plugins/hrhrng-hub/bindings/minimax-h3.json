@@ -1,0 +1,12 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-minimax-h3",
+    "modelId": "minimax-h3",
+    "upstreamModel": "MiniMax-H3",
+    "defaultParamOverrides": {
+      "aspect_ratio": "16:9"
+    }
+  }
+}

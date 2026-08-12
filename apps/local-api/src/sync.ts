@@ -17,10 +17,16 @@ import {
 } from "@clash/shared-types";
 import { WebSocketServer, type WebSocket } from "ws";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
-import { createLocalWorkflowProcessor, type LocalWorkflowProcessor } from "./local-processor.js";
+import {
+  createLocalWorkflowProcessor,
+  type LocalWorkflowProcessor,
+} from "./local-processor.js";
 
 type UpgradeCapableServer = {
-  on(event: "upgrade", listener: (request: any, socket: any, head: any) => void): void;
+  on(
+    event: "upgrade",
+    listener: (request: any, socket: any, head: any) => void,
+  ): void;
 };
 
 export interface LocalSyncOptions {
@@ -37,7 +43,10 @@ export interface RemoteLoroPersistence {
 
 export type RemoteLoroPersistenceSource =
   | RemoteLoroPersistence
-  | (() => RemoteLoroPersistence | undefined | Promise<RemoteLoroPersistence | undefined>);
+  | (() =>
+      | RemoteLoroPersistence
+      | undefined
+      | Promise<RemoteLoroPersistence | undefined>);
 
 type PeerId = symbol;
 type SendPeerUpdate = (data: Uint8Array) => void;
@@ -72,23 +81,38 @@ function exactBytes(view: Uint8Array): Uint8Array {
 
 function exactArrayBuffer(view: Uint8Array): ArrayBuffer {
   const bytes = exactBytes(view);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 }
 
-function remoteProjectUrl(baseUrl: string, projectId: string, suffix: string): string {
+function remoteProjectUrl(
+  baseUrl: string,
+  projectId: string,
+  suffix: string,
+): string {
   return `${baseUrl.replace(/\/+$/, "")}/loro/${encodeURIComponent(projectId)}/${suffix}`;
 }
 
-function remoteHeaders(token: string | undefined, extra?: Record<string, string>) {
+function remoteHeaders(
+  token: string | undefined,
+  extra?: Record<string, string>,
+) {
   return {
     ...(token ? { authorization: `Bearer ${token}` } : {}),
     ...extra,
   };
 }
 
-async function assertRemoteOk(response: Response, operation: string): Promise<void> {
+async function assertRemoteOk(
+  response: Response,
+  operation: string,
+): Promise<void> {
   if (response.ok) return;
-  throw new Error(`Remote Loro ${operation} failed with HTTP ${response.status}`);
+  throw new Error(
+    `Remote Loro ${operation} failed with HTTP ${response.status}`,
+  );
 }
 
 async function resolveRemotePersistence(
@@ -105,22 +129,28 @@ export function createHttpRemoteLoroPersistence(
   const fetchImpl = options.fetch ?? fetch;
   return {
     async loadSnapshot(projectId) {
-      const response = await fetchImpl(remoteProjectUrl(options.baseUrl, projectId, "snapshot"), {
-        method: "GET",
-        headers: remoteHeaders(options.token),
-      });
+      const response = await fetchImpl(
+        remoteProjectUrl(options.baseUrl, projectId, "snapshot"),
+        {
+          method: "GET",
+          headers: remoteHeaders(options.token),
+        },
+      );
       if (response.status === 404 || response.status === 204) return null;
       await assertRemoteOk(response, "snapshot load");
       return new Uint8Array(await response.arrayBuffer());
     },
     async appendUpdate(projectId, update) {
-      const response = await fetchImpl(remoteProjectUrl(options.baseUrl, projectId, "updates"), {
-        method: "POST",
-        headers: remoteHeaders(options.token, {
-          "content-type": "application/octet-stream",
-        }),
-        body: exactArrayBuffer(update),
-      });
+      const response = await fetchImpl(
+        remoteProjectUrl(options.baseUrl, projectId, "updates"),
+        {
+          method: "POST",
+          headers: remoteHeaders(options.token, {
+            "content-type": "application/octet-stream",
+          }),
+          body: exactArrayBuffer(update),
+        },
+      );
       await assertRemoteOk(response, "update append");
     },
   };
@@ -155,10 +185,14 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
   }
 
   let importedRemoteSnapshot = false;
-  const remotePersistence = await resolveRemotePersistence(options.remotePersistence);
+  const remotePersistence = await resolveRemotePersistence(
+    options.remotePersistence,
+  );
   if (remotePersistence?.loadSnapshot) {
     try {
-      const remoteSnapshot = await remotePersistence.loadSnapshot(options.projectId);
+      const remoteSnapshot = await remotePersistence.loadSnapshot(
+        options.projectId,
+      );
       if (remoteSnapshot?.byteLength) {
         doc.import(remoteSnapshot);
         importedRemoteSnapshot = true;
@@ -171,7 +205,8 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
   const graphRepair = reconcileCanvasGraph(doc);
   const timelineRepair = reconcileProjectTimelineOwnership(doc);
   const directorRepair = reconcileProjectDirectorStageOwnership(doc);
-  const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
+  const workspaceRepaired =
+    canvasGraphReconciliationChanged(graphRepair) ||
     timelineRepair.removedActionNodeIds.length > 0 ||
     timelineRepair.detachedTimelineIds.length > 0 ||
     directorRepair.removedActionNodeIds.length > 0 ||
@@ -198,9 +233,10 @@ export class LocalLoroRoom {
 
   static async open(options: LocalSyncOptions): Promise<LocalLoroRoom> {
     const loaded = await loadDoc(options);
-    const workflowProcessor = options.workflowProcessor === undefined
-      ? createLocalWorkflowProcessor({ dataDir: options.dataDir })
-      : options.workflowProcessor ?? undefined;
+    const workflowProcessor =
+      options.workflowProcessor === undefined
+        ? createLocalWorkflowProcessor({ dataDir: options.dataDir })
+        : (options.workflowProcessor ?? undefined);
     const room = new LocalLoroRoom(
       options.projectId,
       loaded.doc,
@@ -208,7 +244,8 @@ export class LocalLoroRoom {
       options.remotePersistence,
       workflowProcessor,
     );
-    if (loaded.importedRemoteSnapshot || loaded.workspaceRepaired) await room.saveSnapshot();
+    if (loaded.importedRemoteSnapshot || loaded.workspaceRepaired)
+      await room.saveSnapshot();
     await room.processPendingWork();
     return room;
   }
@@ -217,7 +254,32 @@ export class LocalLoroRoom {
     return this.doc.export({ mode: "snapshot" });
   }
 
-  addPeer(send: SendPeerUpdate, options?: { sendJson?: SendPeerJson; runtimeId?: string; presence?: PresenceClient }): PeerId {
+  /**
+   * Imports a mutation committed through the local HTTP project-command surface, then runs the
+   * same pending-work queue used by WebSocket peers. GUI, CLI, and MCP therefore share one room
+   * authority even when the command did not originate on the room socket.
+   */
+  async refreshFromStore(): Promise<void> {
+    const persisted = await this.store.recover(this.projectId);
+    const versionBefore = this.doc.version();
+    this.doc.import(persisted.export({ mode: "snapshot" }));
+    const update = exactBytes(
+      this.doc.export({ mode: "update", from: versionBefore }),
+    );
+    if (update.byteLength > 0) {
+      for (const peer of this.peers.values()) peer.sendUpdate(update);
+    }
+    await this.processPendingWork();
+  }
+
+  addPeer(
+    send: SendPeerUpdate,
+    options?: {
+      sendJson?: SendPeerJson;
+      runtimeId?: string;
+      presence?: PresenceClient;
+    },
+  ): PeerId {
     const id = Symbol("peer");
     this.peers.set(id, {
       sendUpdate: send,
@@ -247,7 +309,8 @@ export class LocalLoroRoom {
     const graphRepair = reconcileCanvasGraph(this.doc);
     const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
     const directorRepair = reconcileProjectDirectorStageOwnership(this.doc);
-    const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
+    const workspaceRepaired =
+      canvasGraphReconciliationChanged(graphRepair) ||
       timelineRepair.removedActionNodeIds.length > 0 ||
       timelineRepair.detachedTimelineIds.length > 0 ||
       directorRepair.removedActionNodeIds.length > 0 ||
@@ -290,7 +353,8 @@ export class LocalLoroRoom {
       }
     }
     for (const [id, before] of nodesBefore) {
-      if (!seenIds.has(id)) this.broadcastActivity(sender, "deleted", id, before);
+      if (!seenIds.has(id))
+        this.broadcastActivity(sender, "deleted", id, before);
     }
   }
 
@@ -316,14 +380,16 @@ export class LocalLoroRoom {
       action,
       nodeId,
       nodeType: typeof node.type === "string" ? node.type : "text",
-      label: typeof node.data?.label === "string"
-        ? node.data.label
-        : typeof node.data?.name === "string"
-          ? node.data.name
-          : "",
-      canvasId: typeof node.canvasId === "string" && node.canvasId.trim()
-        ? node.canvasId
-        : DEFAULT_CANVAS_ID,
+      label:
+        typeof node.data?.label === "string"
+          ? node.data.label
+          : typeof node.data?.name === "string"
+            ? node.data.name
+            : "",
+      canvasId:
+        typeof node.canvasId === "string" && node.canvasId.trim()
+          ? node.canvasId
+          : DEFAULT_CANVAS_ID,
       timestamp: now,
     };
     for (const [peerId, peer] of this.peers) {
@@ -335,8 +401,12 @@ export class LocalLoroRoom {
     if (msg.type === "register_custom_actions") {
       const peer = this.peers.get(sender);
       const runtimeId = peer?.runtimeId;
-      const actions = Array.isArray(msg.actions) ? msg.actions as Array<Record<string, any>> : [];
-      const wantsLocalRuntime = actions.some((action) => (action?.runtime || "local") !== "worker");
+      const actions = Array.isArray(msg.actions)
+        ? (msg.actions as Array<Record<string, any>>)
+        : [];
+      const wantsLocalRuntime = actions.some(
+        (action) => (action?.runtime || "local") !== "worker",
+      );
       if (wantsLocalRuntime && !runtimeId) {
         peer?.sendJson?.({
           type: "register_custom_actions.rejected",
@@ -369,18 +439,22 @@ export class LocalLoroRoom {
         };
         const model = (def as typeof def & { model?: unknown }).model;
         if (model) storedDef.model = model;
-        if (def.runtime === "local" && runtimeId) storedDef.registeredByRuntime = runtimeId;
+        if (def.runtime === "local" && runtimeId)
+          storedDef.registeredByRuntime = runtimeId;
         actionsMap.set(def.id, storedDef);
       }
       await this.publishUpdate(versionBefore);
 
-      const registeredIds = new Set(actions.map((action) => action.id).filter(Boolean));
+      const registeredIds = new Set(
+        actions.map((action) => action.id).filter(Boolean),
+      );
       const tasksMap = this.doc.getMap("tasks");
       for (const [, raw] of tasksMap.entries()) {
         const task = raw as Record<string, any>;
         if (task?.status !== "waiting_for_agent") continue;
         if (!registeredIds.has(task.customActionId)) continue;
-        if (task.registeredByRuntime && task.registeredByRuntime !== runtimeId) continue;
+        if (task.registeredByRuntime && task.registeredByRuntime !== runtimeId)
+          continue;
         peer?.sendJson?.({ type: "custom_task_assigned", task });
       }
       return;
@@ -388,7 +462,10 @@ export class LocalLoroRoom {
 
     if (msg.type === "unregister_custom_actions") {
       const actionIds = Array.isArray(msg.actionIds)
-        ? msg.actionIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+        ? msg.actionIds.filter(
+            (id: unknown): id is string =>
+              typeof id === "string" && id.length > 0,
+          )
         : [];
       if (!actionIds.length) return;
       const versionBefore = this.doc.version();
@@ -404,7 +481,11 @@ export class LocalLoroRoom {
   }
 
   private async saveSnapshot(): Promise<void> {
-    await this.store.compactSnapshot(this.projectId, this.snapshot(), this.doc.version());
+    await this.store.compactSnapshot(
+      this.projectId,
+      this.snapshot(),
+      this.doc.version(),
+    );
     this.updatesSinceSnapshot = 0;
     this.updateBytesSinceSnapshot = 0;
   }
@@ -449,10 +530,17 @@ export class LocalLoroRoom {
     let earliest = Number.POSITIVE_INFINITY;
     const nodes = this.doc.getMap("nodes");
     for (const id of nodes.keys()) {
-      const node = nodes.get(id) as { data?: Record<string, unknown> } | undefined;
+      const node = nodes.get(id) as
+        { data?: Record<string, unknown> } | undefined;
       const data = node?.data;
-      if (!data || data.providerPollState === undefined) continue;
-      const dueAt = typeof data.providerPollAt === "number" ? data.providerPollAt : 0;
+      if (
+        !data ||
+        data.status !== "generating" ||
+        data.providerPollState === undefined
+      )
+        continue;
+      const dueAt =
+        typeof data.providerPollAt === "number" ? data.providerPollAt : 0;
       if (dueAt < earliest) earliest = dueAt;
     }
     if (!Number.isFinite(earliest)) return;
@@ -467,25 +555,33 @@ export class LocalLoroRoom {
 
   private async processPendingWorkOnce(): Promise<void> {
     if (!this.workflowProcessor) return;
-    const versionBefore = this.doc.version();
+    let versionBefore = this.doc.version();
     const sideband: Record<string, unknown>[] = [];
+    const checkpoint = async (): Promise<void> => {
+      const update = exactBytes(
+        this.doc.export({ mode: "update", from: versionBefore }),
+      );
+      if (update.byteLength === 0) return;
+      await this.persistUpdate(update);
+      versionBefore = this.doc.version();
+      for (const peer of this.peers.values()) peer.sendUpdate(update);
+      this.mirrorRemoteUpdate(update);
+    };
     const changed = await this.workflowProcessor.process({
       doc: this.doc,
       projectId: this.projectId,
       broadcastJson: (msg) => sideband.push(msg),
+      checkpoint,
     });
     if (!changed) return;
-    const update = exactBytes(this.doc.export({ mode: "update", from: versionBefore }));
-    await this.persistUpdate(update);
-    for (const peer of this.peers.values()) {
-      peer.sendUpdate(update);
-    }
-    this.mirrorRemoteUpdate(update);
+    await checkpoint();
     for (const msg of sideband) this.broadcastJson(msg);
   }
 
   private async publishUpdate(versionBefore: unknown): Promise<void> {
-    const update = exactBytes(this.doc.export({ mode: "update", from: versionBefore as never }));
+    const update = exactBytes(
+      this.doc.export({ mode: "update", from: versionBefore as never }),
+    );
     await this.persistUpdate(update);
     for (const peer of this.peers.values()) {
       peer.sendUpdate(update);
@@ -510,8 +606,11 @@ export class LocalLoroRoom {
     const nodesMap = this.doc.getMap("nodes");
     const node = nodesMap.get(nodeId) as Record<string, any> | undefined;
     const data = node?.data && typeof node.data === "object" ? node.data : {};
-    const result = msg.result && typeof msg.result === "object" ? msg.result : {};
-    const assets = Array.isArray(result.assets) ? result.assets as Array<Record<string, any>> : [];
+    const result =
+      msg.result && typeof msg.result === "object" ? msg.result : {};
+    const assets = Array.isArray(result.assets)
+      ? (result.assets as Array<Record<string, any>>)
+      : [];
     const isFailure = msg.status === "failed";
 
     if (!node) {
@@ -546,11 +645,20 @@ export class LocalLoroRoom {
 
       if (assets.length > 1) {
         const canvas = new Canvas(this.doc, () => {});
-        const incoming = canvas.listEdges().filter((edge) => edge.target === nodeId);
+        const incoming = canvas
+          .listEdges()
+          .filter((edge) => edge.target === nodeId);
         for (let i = 1; i < assets.length; i++) {
           const asset = assets[i];
           const siblingNodeId = crypto.randomUUID().slice(0, 8);
-          const siblingType = asset.type === "video" ? "video" : asset.type === "audio" ? "audio" : asset.type === "text" ? "text" : "image";
+          const siblingType =
+            asset.type === "video"
+              ? "video"
+              : asset.type === "audio"
+                ? "audio"
+                : asset.type === "text"
+                  ? "text"
+                  : "image";
           const siblingData: Record<string, unknown> = {
             status: "completed",
             label: asset.label || `Output ${i + 1}`,
@@ -569,7 +677,12 @@ export class LocalLoroRoom {
             });
             for (let k = 1; k < incoming.length; k++) {
               const extra = incoming[k];
-              canvas.insertEdge(`${extra.source}-${siblingNodeId}`, extra.source, siblingNodeId, "default");
+              canvas.insertEdge(
+                `${extra.source}-${siblingNodeId}`,
+                extra.source,
+                siblingNodeId,
+                "default",
+              );
             }
           }
         }
@@ -583,9 +696,14 @@ export class LocalLoroRoom {
   private mirrorRemoteUpdate(update: Uint8Array): void {
     if (!this.remotePersistence) return;
     void resolveRemotePersistence(this.remotePersistence)
-      .then((remotePersistence) => remotePersistence?.appendUpdate(this.projectId, update))
+      .then((remotePersistence) =>
+        remotePersistence?.appendUpdate(this.projectId, update),
+      )
       .catch((error) => {
-        console.error("[local-sync] failed to mirror update to remote persistence", error);
+        console.error(
+          "[local-sync] failed to mirror update to remote persistence",
+          error,
+        );
       });
   }
 
@@ -621,6 +739,15 @@ export class LocalLoroRoomHub {
     }
     return room;
   }
+
+  async refresh(projectId: string): Promise<void> {
+    const existing = this.rooms.get(projectId);
+    if (!existing) {
+      await this.room(projectId);
+      return;
+    }
+    await (await existing).refreshFromStore();
+  }
 }
 
 export function attachLocalSync(
@@ -629,13 +756,16 @@ export function attachLocalSync(
     dataDir: string;
     remotePersistence?: RemoteLoroPersistenceSource;
     workflowProcessor?: LocalWorkflowProcessor | null;
+    hub?: LocalLoroRoomHub;
   },
-): void {
-  const hub = new LocalLoroRoomHub(
-    options.dataDir,
-    options.remotePersistence,
-    options.workflowProcessor,
-  );
+): LocalLoroRoomHub {
+  const hub =
+    options.hub ??
+    new LocalLoroRoomHub(
+      options.dataDir,
+      options.remotePersistence,
+      options.workflowProcessor,
+    );
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (request, socket, head) => {
@@ -645,33 +775,49 @@ export function attachLocalSync(
 
     const projectId = decodeURIComponent(match[1]);
     const runtimeHeader = request.headers?.["x-runtime-id"];
-    const runtimeId = Array.isArray(runtimeHeader) ? runtimeHeader[0] : runtimeHeader;
+    const runtimeId = Array.isArray(runtimeHeader)
+      ? runtimeHeader[0]
+      : runtimeHeader;
     const presence = presenceFromHeaders(request.headers);
     wss.handleUpgrade(request, socket, head, (ws) => {
-      void bindSocket(hub, projectId, ws, typeof runtimeId === "string" ? runtimeId : undefined, presence);
+      void bindSocket(
+        hub,
+        projectId,
+        ws,
+        typeof runtimeId === "string" ? runtimeId : undefined,
+        presence,
+      );
     });
   });
+  return hub;
 }
 
-function headerString(value: string | string[] | undefined): string | undefined {
+function headerString(
+  value: string | string[] | undefined,
+): string | undefined {
   const raw = Array.isArray(value) ? value[0] : value;
   const trimmed = raw?.trim();
   return trimmed || undefined;
 }
 
-function presenceFromHeaders(headers: Record<string, string | string[] | undefined>): PresenceClient {
+function presenceFromHeaders(
+  headers: Record<string, string | string[] | undefined>,
+): PresenceClient {
   const rawClientType = headerString(headers["x-client-type"]);
   const clientType: ClientType =
-    rawClientType === "agent" || rawClientType === "cli" || rawClientType === "browser"
+    rawClientType === "agent" ||
+    rawClientType === "cli" ||
+    rawClientType === "browser"
       ? rawClientType
       : "browser";
   const userId = headerString(headers["x-user-id"]) ?? "local-user";
   const userName = headerString(headers["x-user-name"]);
-  const name = clientType === "agent"
-    ? headerString(headers["x-agent-name"]) ?? userName ?? "Local Agent"
-    : clientType === "cli"
-      ? userName ?? "Local CLI"
-      : userName ?? "Local User";
+  const name =
+    clientType === "agent"
+      ? (headerString(headers["x-agent-name"]) ?? userName ?? "Local Agent")
+      : clientType === "cli"
+        ? (userName ?? "Local CLI")
+        : (userName ?? "Local User");
 
   return {
     id: randomUUID(),
@@ -689,40 +835,48 @@ async function bindSocket(
   presence?: PresenceClient,
 ): Promise<void> {
   const room = await hub.room(projectId);
-  const peerId = room.addPeer((update) => {
-    if (ws.readyState === ws.OPEN) ws.send(update);
-  }, {
-    runtimeId,
-    presence,
-    sendJson: (msg) => {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+  const peerId = room.addPeer(
+    (update) => {
+      if (ws.readyState === ws.OPEN) ws.send(update);
     },
-  });
+    {
+      runtimeId,
+      presence,
+      sendJson: (msg) => {
+        if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+      },
+    },
+  );
 
   ws.on("message", (data, isBinary) => {
     if (!isBinary) {
       try {
-        const text = typeof data === "string"
-          ? data
-          : data instanceof Buffer
-            ? data.toString("utf8")
-            : Array.isArray(data)
-              ? Buffer.concat(data).toString("utf8")
-              : Buffer.from(data as ArrayBuffer).toString("utf8");
+        const text =
+          typeof data === "string"
+            ? data
+            : data instanceof Buffer
+              ? data.toString("utf8")
+              : Array.isArray(data)
+                ? Buffer.concat(data).toString("utf8")
+                : Buffer.from(data as ArrayBuffer).toString("utf8");
         const msg = JSON.parse(text) as Record<string, any>;
         void room.receiveJson(peerId, msg).catch((error) => {
-          console.error("[local-sync] failed to handle sideband message", error);
+          console.error(
+            "[local-sync] failed to handle sideband message",
+            error,
+          );
         });
       } catch {
         // Ignore non-JSON sideband chatter.
       }
       return;
     }
-    const bytes = data instanceof Buffer
-      ? new Uint8Array(data)
-      : Array.isArray(data)
-        ? new Uint8Array(Buffer.concat(data))
-        : new Uint8Array(data as ArrayBuffer);
+    const bytes =
+      data instanceof Buffer
+        ? new Uint8Array(data)
+        : Array.isArray(data)
+          ? new Uint8Array(Buffer.concat(data))
+          : new Uint8Array(data as ArrayBuffer);
     void room.receive(peerId, bytes).catch((error) => {
       console.error("[local-sync] failed to import update", error);
     });

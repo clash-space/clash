@@ -17,7 +17,7 @@
  * can call them without entangling lifecycles.
  */
 
-import { getItemSourceNodeId, type Track, type Item } from '@master-clash/remotion-core';
+import { getItemSourceNodeId, type Track, type Item } from '@clash/remotion-core';
 import type { Node } from '@xyflow/react';
 
 /** Known prefixes the asset routes are mounted under — used to recover a raw

@@ -1,5 +1,5 @@
-import { TIMELINE_DSL_DEFINITION } from "./timeline-dsl-schema";
-import { timelineDslToYaml, type ResolvedTimelineDsl } from "./timeline-yaml";
+import { TIMELINE_DSL_DEFINITION } from "./timeline-dsl-schema.js";
+import { timelineDslToYaml, type ResolvedTimelineDsl } from "./timeline-yaml.js";
 
 type MaskFieldDefinition = {
   description: string;

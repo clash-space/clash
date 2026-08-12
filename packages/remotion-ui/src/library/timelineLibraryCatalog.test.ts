@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { builtInEffectRegistry } from '@master-clash/remotion-effects';
+import { builtInEffectRegistry } from '@clash/remotion-effects';
 import { TimelineLibraryItemSchema } from '@clash/shared-types/timeline-library';
 import {
   TIMELINE_LIBRARY_CATALOG,

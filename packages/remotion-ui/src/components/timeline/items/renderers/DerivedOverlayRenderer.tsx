@@ -1,5 +1,5 @@
 import React from 'react';
-import type { DerivedOverlayItem } from '@master-clash/remotion-core';
+import type { DerivedOverlayItem } from '@clash/remotion-core';
 import type { ItemRenderProps } from '../registry';
 
 export const DerivedOverlayRenderer: React.FC<ItemRenderProps> = ({ item, width, height }) => {

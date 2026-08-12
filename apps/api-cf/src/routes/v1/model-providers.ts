@@ -66,11 +66,9 @@ function displayProviderName(provider: Pick<ProviderAccountInput, "providerId" |
   }
   const names: Record<string, string> = {
     fal: "fal.ai",
-    kie: "KIE",
     replicate: "Replicate",
     kling: "Kling",
     minimax: "MiniMax",
-    jimeng: "Dreamina",
     volcengine: "Volcengine",
     elevenlabs: "ElevenLabs",
     suno: "Suno API",
@@ -102,7 +100,7 @@ function routeProviderId(route: ModelUpstreamRoute): string {
   ) {
     return "official";
   }
-  if (route.upstreamId === "fal" || route.upstreamId === "pika" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
+  if (route.upstreamId === "fal" || route.upstreamId === "pika" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
     return route.upstreamId;
   }
   return "custom";

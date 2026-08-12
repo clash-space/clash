@@ -1,13 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createBridgeProviderPluginProjector } from "./provider-plugin-projector";
+import { createProviderPluginProjector } from "./provider-plugin-projector";
 
-describe("Bridge provider plugin projector", () => {
+// The fixtures here name `test.video-projector`, not a shipped plugin. This exercises the projector
+// transport itself -- resolution and invocation are both mocked -- and the ids it used, `clash.media`
+// and its `fal-h3` export, were deleted with that plugin. Naming one of the surviving plugins would
+// be worse than a synthetic id: none of them contributes a `provider-projector`, so the assertions
+// below would document an export that does not exist.
+describe("provider plugin projector", () => {
   it("resolves the active contract once and invokes the unified plugin ABI", async () => {
     const binding = {
-      pluginId: "clash-first-party-media",
+      pluginId: "test.video-projector",
       version: "0.1.0",
-      exportId: "fal-h3",
+      exportId: "project-video",
       schemaHash: `sha256:${"e".repeat(64)}`,
     } as const;
     const resolveBinding = vi.fn(async () => binding);
@@ -21,7 +26,7 @@ describe("Bridge provider plugin projector", () => {
         value: { endpoint: "minimax/h3/text-to-video", input: { prompt: "hello" } },
       }],
     }));
-    const projector = createBridgeProviderPluginProjector({ client: { resolveBinding, invoke } });
+    const projector = createProviderPluginProjector({ client: { resolveBinding, invoke } });
 
     await expect(projector({
       pluginId: binding.pluginId,
@@ -36,12 +41,12 @@ describe("Bridge provider plugin projector", () => {
       projection: { endpoint: "minimax/h3/text-to-video", input: { prompt: "hello" } },
     });
     expect(resolveBinding).toHaveBeenCalledWith(
-      "clash-first-party-media",
-      "fal-h3",
+      "test.video-projector",
+      "project-video",
       "provider-projector",
     );
     expect(invoke).toHaveBeenCalledWith(
-      "clash-first-party-media",
+      "test.video-projector",
       expect.objectContaining({
         protocol: "clash.plugin.invoke/v1",
         taskId: "task-1",
@@ -55,9 +60,9 @@ describe("Bridge provider plugin projector", () => {
 
   it("uses an authored binding without silently resolving latest", async () => {
     const binding = {
-      pluginId: "clash-first-party-media",
+      pluginId: "test.video-projector",
       version: "0.1.0",
-      exportId: "fal-h3",
+      exportId: "project-video",
       schemaHash: `sha256:${"f".repeat(64)}`,
     } as const;
     const resolveBinding = vi.fn();
@@ -71,7 +76,7 @@ describe("Bridge provider plugin projector", () => {
         value: { endpoint: "minimax/h3/text-to-video", input: {} },
       }],
     }));
-    const projector = createBridgeProviderPluginProjector({ client: { resolveBinding, invoke } });
+    const projector = createProviderPluginProjector({ client: { resolveBinding, invoke } });
 
     await projector({
       pluginId: binding.pluginId,

@@ -17,9 +17,9 @@ import {
     type NleAvailability,
     type NleTarget,
     type TimelineDsl,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import type { AgentAnnotationObjectRef } from '@clash/shared-types';
-import type { TimelineAssetInsertRequest } from '@master-clash/remotion-ui';
+import type { TimelineAssetInsertRequest } from '@clash/remotion-ui';
 import {
     AsrTimedTranscriptSchema,
     projectTimelineReadToken,
@@ -55,7 +55,7 @@ export type {
 let timelineEditorModulePromise: ReturnType<typeof loadTimelineEditorModule> | null = null;
 
 function loadTimelineEditorModule() {
-    return import('@master-clash/remotion-ui').then((module) => ({ default: module.Editor }));
+    return import('@clash/remotion-ui').then((module) => ({ default: module.Editor }));
 }
 
 export function preloadTimelineEditor() {

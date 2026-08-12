@@ -33,7 +33,7 @@ import {
   buildReferenceRightsLedger,
   assertReferenceCanBeRemixed,
   projectAsrTimedTranscriptWords,
-} from "./production-metadata";
+} from "./production-metadata.js";
 
 describe("word-aligned ASR transcript contract", () => {
   it("keeps millisecond word timing and projects it to non-zero frame ranges", () => {

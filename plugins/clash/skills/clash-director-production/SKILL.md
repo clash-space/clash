@@ -72,9 +72,10 @@ use `clash director --help` to reveal commands progressively and prefer focused
 `create`, `object`, `camera`, `scene`, `keyframe`, and `action` operations. Use
 `pull` and `apply` when full-state editing is more suitable.
 
-CLI and MCP are peer interfaces to the same product state. In an MCP session,
-start with the root `clash` tool, select the Director menu, then list or read the
-target Stage before choosing the most specific operation. Ask for the
+CLI and MCP are peer interfaces with the same capabilities over the same
+`local-api` product state. In an MCP session, start with the root `clash` tool,
+select the Director menu, then list or read the target Stage before choosing
+the most specific operation. Ask for the
 authoritative schema only when full-state authoring requires it. Follow each
 tool's description and returned next-step guidance rather than memorizing its
 full schema here.

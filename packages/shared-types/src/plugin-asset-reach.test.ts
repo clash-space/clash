@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ExecutablePluginAssetReadResultSchema } from './executable-plugin';
+import { ExecutablePluginAssetReadResultSchema } from './executable-plugin.js';
 
 /**
  * A URL must say who can fetch it.

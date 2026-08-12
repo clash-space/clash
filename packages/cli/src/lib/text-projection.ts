@@ -198,9 +198,8 @@ function stableJsonForHash(value: unknown): string {
 /**
  * Compare a caller's proof-of-read against the entity's current version.
  *
- * The daemon performs this check server-side. The direct-replica path has to do
- * it here too, otherwise a caller that did supply proof of read has that proof
- * silently discarded whenever no daemon is running.
+ * The local-api host performs the authoritative check. This helper keeps local
+ * projection preparation honest before the command crosses that boundary.
  */
 export function requireCurrentTextVersion(options: {
   observedVersion?: string;

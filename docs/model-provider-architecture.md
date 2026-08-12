@@ -149,7 +149,7 @@ Examples:
 - `kling`
 - `minimax`
 - `modelark`
-- `dreamina-cli`
+- `volcengine-speech`
 - `elevenlabs`
 
 OpenAI-compatible and Anthropic-compatible are shapes, not providers. A custom
@@ -166,10 +166,10 @@ This matters for UI naming:
 
 ## Hosting Contract
 
-Except for custom providers, built-in providers are Clash-hosted execution
-adapters. A built-in provider is not a user-hosted endpoint. Even when a user
-supplies a BYOK credential, Clash still owns the adapter and executes the
-provider-specific request path.
+Except for custom providers, first-party providers are Clash-owned execution
+adapters shipped as bundled executable plugins. A first-party provider is not
+a user-hosted endpoint. Even when a user supplies a BYOK credential, the
+bundled plugin still owns and executes the provider-specific request path.
 
 Built-in provider definitions include official and managed adapters such as:
 
@@ -177,24 +177,28 @@ Built-in provider definitions include official and managed adapters such as:
 - Anthropic
 - Google
 - fal.ai
-- KIE
 - Replicate
 - Kling official
 - MiniMax official
-- Jimeng official
 - Volcengine official
 - ElevenLabs official
 
-Current Seedance split:
+Current Volcengine execution:
 
-- Volcengine official is the hosted/cloud ModelArk adapter. It reads
-  `credentials.apiKey` and optional `credentials.baseUrl` from the user's
-  saved provider account row. It does not read Worker, desktop process, or
-  `user_variable` environment-style keys.
-- Jimeng/Dreamina official is a local desktop adapter around the official
-  Dreamina CLI. It is enabled by the `dreamina` OAuth/session record and uses
-  the `dreamina-cli` shape. Clash must only launch the official CLI for this
-  provider.
+- `clash.volcengine` is one bundled plugin package that contributes two
+  independent Providers and executors. `volcengine` owns ModelArk/Seedance;
+  `volcengine-speech` owns OpenSpeech/Seed Audio.
+- Each Provider has its own accounts and exposes only its selected account's
+  `apiKey` and optional `baseUrl` through the Host-scoped store. A ModelArk key
+  is never treated as a candidate Speech credential, or vice versa.
+- `volcengine` defaults `baseUrl` to
+  `https://ark.cn-beijing.volces.com/api/v3`; `volcengine-speech` defaults it to
+  `https://openspeech.bytedance.com/api/v3`. Both remain account-overridable.
+- Seed Audio may also route through the independently installed Hilo Provider.
+  The shared Model Card describes the capability; each provider binding owns
+  its upstream protocol and supported-parameter differences.
+- The plugin does not read Worker, desktop process, or `user_variable`
+  environment-style keys.
 
 For built-in providers, Clash owns:
 

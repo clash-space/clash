@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-music-cover",
+    "modelId": "music-cover",
+    "upstreamModel": "music-cover"
+  }
+}

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { validateExecutablePluginPackage } from "@clash/shared-types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as imagegen from "./stdio";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,14 +28,15 @@ describe("Codex ImageGen executable action package", () => {
     });
 
     expect(validated.manifest).toMatchObject({
-      id: "clash-codex-imagegen",
+      id: "clash.codex-imagegen",
       runtime: {
         kind: "local",
         transport: "stdio",
         entrypoint: "dist/stdio.mjs",
       },
-      permissions: { assets: ["read", "write"] },
+      contributes: { hostTools: ["codex.imagegen"] },
     });
+    expect(validated.manifest).not.toHaveProperty("permissions");
     expect(card).toMatchObject({
       apiVersion: "clash.card/v1",
       kind: "action-card",
@@ -48,21 +49,26 @@ describe("Codex ImageGen executable action package", () => {
     });
   });
 
-  it("reads reference assets, runs Codex ImageGen, and writes the generated image through the broker", async () => {
+  it("runs Codex ImageGen through the typed host tool", async () => {
     const run = (imagegen as Record<string, unknown>).runCodexImageGeneration as
       | ((invocation: unknown, services: Record<string, unknown>) => Promise<any>)
       | undefined;
     expect(run).toBeTypeOf("function");
     if (!run) return;
 
-    const operations: Array<Record<string, unknown>> = [];
+    const generate = vi.fn(async () => ({
+      assetId: "generated-1",
+      uri: "clash-asset://generated-1",
+      kind: "image" as const,
+      mediaType: "image/png",
+    }));
     const result = await run({
         protocol: "clash.plugin.invoke/v1",
         invocationId: "invocation-1",
         taskId: "task-1",
         projectId: "project-1",
         target: {
-          pluginId: "clash-codex-imagegen",
+          pluginId: "clash.codex-imagegen",
           version: "0.1.0",
           exportId: "generate-image",
           schemaHash: `sha256:${"a".repeat(64)}`,
@@ -83,24 +89,15 @@ describe("Codex ImageGen executable action package", () => {
         },
         actor: { kind: "user", id: "user-1" },
       }, {
-        broker: async (operation: Record<string, unknown>) => {
-          operations.push(operation);
-          return {
-            assetId: "generated-1",
-            uri: "clash-asset://generated-1",
-            kind: "image",
-            mediaType: "image/png",
-          };
-        },
+        hostTools: { codexImagegen: { generate } },
       });
 
-    expect(operations).toEqual([expect.objectContaining({
-      kind: "codex.image.generate",
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
       prompt: "A paper-cut moon",
       aspectRatio: "16:9",
       slot: "image",
       references: [expect.objectContaining({ assetId: "reference-1" })],
-    })]);
+    }));
     expect(result).toEqual({
       protocol: "clash.plugin.result/v1",
       invocationId: "invocation-1",

@@ -6,8 +6,8 @@ import type {
   Track,
   TrackCategory,
   TransitionType,
-} from '@master-clash/remotion-core';
-import { isSubtitleTextItem, resolveAudioGainDb } from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
+import { isSubtitleTextItem, resolveAudioGainDb } from '@clash/remotion-core';
 import type { TimelineLibraryCatalogRecord } from './timelineLibraryCatalog';
 
 export type TimelineLibraryApplication = {

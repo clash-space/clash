@@ -727,11 +727,11 @@ async function main() {
       localSecrets?.role === "machine-local-secret-files" &&
       localSecrets?.syncDefault === "local-only" &&
       localSecrets?.agentWritable === false &&
-      localSecrets?.files?.bridgeCredentials?.kind === "machine-credential-store" &&
-      localSecrets.files.bridgeCredentials.path === path.join(clashHome, "credentials.json") &&
-      localSecrets.files.bridgeCredentials.agentWritable === false &&
-      repairReport.status.protectedPaths.includes(localSecrets.files.bridgeCredentials.path) &&
-      !isInside(localSecrets.files.bridgeCredentials.path, status.projectWorkspaceRoot),
+      localSecrets?.files?.hostCredentials?.kind === "machine-credential-store" &&
+      localSecrets.files.hostCredentials.path === path.join(clashHome, "credentials.json") &&
+      localSecrets.files.hostCredentials.agentWritable === false &&
+      repairReport.status.protectedPaths.includes(localSecrets.files.hostCredentials.path) &&
+      !isInside(localSecrets.files.hostCredentials.path, status.projectWorkspaceRoot),
     JSON.stringify({
       localSecrets,
       projectWorkspaceRoot: status?.projectWorkspaceRoot,

@@ -12,7 +12,7 @@ import { runtimeApiUrl } from '../lib/runtimeConfig';
  * spawn sessions, so they don't want the heavier hook.
  *
  * Refresh cadence: initial fetch on mount + a 15s poll. The runtime
- * heartbeat interval is 30s (see clash-bridge daemon), so 15s gives
+ * hosted runtime heartbeat interval is 30s, so 15s gives
  * us at most one missed beat before the UI updates. Polling instead
  * of pushing because there's no project-level WS we can piggyback on
  * — running a dedicated WS for status felt heavier than warranted.
@@ -80,7 +80,7 @@ export function isCustomActionRuntimeOnline(
 ): boolean {
   if (!action) return true;
   if (action.runtime === 'worker') return true;
-  // Executable actions are discovered from the live Bridge plugin host and
+  // Executable actions are discovered from the live local-api plugin host and
   // invoked through its exact binding, not assigned to a legacy WS runtime.
   if (action.pluginBinding) return true;
   if (!action.registeredByRuntime) return false;
@@ -91,5 +91,5 @@ export function isCustomActionRuntimeOnline(
 /** Copy users see on hover when an action is offline-gated. Mirrors the
  *  server-side dispatch error so the UI and the failure are consistent. */
 export const RUNTIME_OFFLINE_TOOLTIP =
-  'Start your local Clash bridge to use this action: clash-bridge daemon';
+  'Open Clash Desktop or start the local Clash host to use this action.';
 export const RUNTIME_OFFLINE_LABEL = 'Local runtime offline';

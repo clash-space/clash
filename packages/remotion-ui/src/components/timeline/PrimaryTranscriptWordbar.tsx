@@ -7,7 +7,7 @@ import {
   useEditorDispatch,
   useEditorPlayback,
   useEditorStaticState,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import { colors, timeline, typography } from './styles';
 
 type PrimaryTranscriptWordbarProps = {

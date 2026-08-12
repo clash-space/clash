@@ -10,7 +10,7 @@ Clash is local-first. The normal command path is:
 
 ```text
 marker cwd/.clash/project.toml
--> discovered local-api or connected CLI daemon
+-> discovered local-api Local Host
 -> one machine-local Project Loro replica
 ```
 

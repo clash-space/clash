@@ -9,12 +9,12 @@ Last updated: 2026-07-11
 ```bash
 clash host status --json
 clash init --project <project-id> --json
-clash canvas connect
+clash canvas list --json
 ```
 
-`clash init` writes `.clash/project.toml` in the current directory. The local
-host and Canvas/Timeline commands require no cloud credential. `clash auth
-login` is optional cloud-sync setup.
+`clash init` writes `.clash/project.toml` in the current directory. Canvas and
+Timeline commands discover the local host automatically and require no cloud
+credential. `clash auth login` is optional cloud-sync setup.
 
 ## Project and Diagnostics
 

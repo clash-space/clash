@@ -58,9 +58,9 @@ describe("useGroupChat", () => {
     await act(async () => {
       await result.current.addAgent({
         id: "agent-1",
-        template_id: "master-clash",
+        template_id: "clash",
         runtime_id: "desktop-local",
-        display_name: "Master Clash",
+        display_name: "Clash",
       });
     });
 
@@ -123,10 +123,10 @@ describe("useGroupChat", () => {
 
     await act(async () => {
       await result.current.addAgent({
-        id: "agent-master-clash",
-        template_id: "master-clash",
+        id: "agent-clash",
+        template_id: "clash",
         runtime_id: "desktop-local",
-        display_name: "Master Clash",
+        display_name: "Clash",
       });
     });
 
@@ -143,14 +143,14 @@ describe("useGroupChat", () => {
         from_kind: "user",
         from_id: "local-user",
         from_user_id: "local-user",
-        text: "@master-clash choreograph the canvas",
+        text: "@clash choreograph the canvas",
       });
     });
 
     expect(ws.sent).toHaveLength(1);
     expect(JSON.parse(ws.sent[0])).toMatchObject({
       type: "prompt",
-      text: "[room from human] @master-clash choreograph the canvas",
+      text: "[room from human] @clash choreograph the canvas",
     });
     expect(result.current.focusedAgent?.pendingPrompts).toEqual([]);
   });

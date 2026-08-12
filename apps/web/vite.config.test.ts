@@ -21,12 +21,16 @@ describe("Vite workspace source routing", () => {
     expect(DEV_SOURCE_ALIASES).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          find: /^@clash\/gui\/(.+)$/,
+          replacement: expect.stringMatching(/\/packages\/gui\/src\/\$1$/),
+        }),
+        expect.objectContaining({
           find: /^@clash\/shared-types$/,
           replacement: expect.stringMatching(/\/packages\/shared-types\/src\/index\.ts$/),
         }),
         expect.objectContaining({
           find: /^@clash\/shared-runtime$/,
-          replacement: expect.stringMatching(/\/packages\/shared-runtime\/src\/index\.ts$/),
+          replacement: expect.stringMatching(/\/packages\/shared-runtime\/src\/browser\.ts$/),
         }),
       ]),
     );
@@ -47,6 +51,8 @@ describe("Vite workspace source routing", () => {
 
     expect(resolved.resolve?.alias).toBe(DEV_SOURCE_ALIASES);
     expect(resolved.server?.watch?.ignored).toBe(DEV_WATCH_IGNORES);
+    expect(resolved.server?.port).toBe(3000);
+    expect(resolved.preview?.port).toBe(3000);
   });
 
   it("keeps production builds on package exports", async () => {

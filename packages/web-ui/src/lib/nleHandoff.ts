@@ -1,4 +1,4 @@
-import type { Asset, Item, Track } from '@master-clash/remotion-core';
+import type { Asset, Item, Track } from '@clash/remotion-core';
 
 const nleMediaItemTypes = new Set<Item['type']>(['video', 'audio', 'image', 'sticker']);
 

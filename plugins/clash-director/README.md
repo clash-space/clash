@@ -11,7 +11,7 @@ requested at the closest native 21:9 ratio, normalized to a full-frame 2:1 WebP
 Stage by asset ID. Optional image references support scene-to-360 conversion.
 
 ```bash
-pnpm --filter @clash-space/director-plugin test
-pnpm --filter @clash-space/director-plugin typecheck
-pnpm --filter @clash-space/director-plugin build
+pnpm test:package @clash/director-plugin
+pnpm typecheck:package @clash/director-plugin
+pnpm build:package @clash/director-plugin
 ```

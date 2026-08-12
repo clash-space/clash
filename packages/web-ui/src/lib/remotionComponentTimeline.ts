@@ -1,4 +1,4 @@
-import type { CompositionItem, Track } from "@master-clash/remotion-core";
+import type { CompositionItem, Track } from "@clash/remotion-core";
 
 type TimelineStateLike = Record<string, unknown> & {
   tracks?: Track[];

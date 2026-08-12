@@ -5,7 +5,7 @@
  * always land on the same instance.
  *
  * Two kinds of WS attached here, distinguished by hibernation tag:
- *   - "daemon"           — the long-running clash-bridge process. Exactly one.
+ *   - "daemon"           — the long-running `clash bridge` process. Exactly one.
  *   - "client:<sid>"     — a browser tab subscribed to a session's events.
  *                          N-per-session (multiple tabs / re-connects).
  *

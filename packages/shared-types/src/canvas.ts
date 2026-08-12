@@ -16,11 +16,11 @@ import {
   normalizeModelId,
   resolveAspectRatio,
   type ModelCard,
-} from './models';
+} from './models.js';
 import {
   validateModelCardConfiguration,
   validateParameterContractConfiguration,
-} from './model-constraints';
+} from './model-constraints.js';
 import {
   validateRefs,
   partitionRefs,
@@ -32,23 +32,22 @@ import {
   type Capability,
   type RefNodeLike,
   type RefPartition,
-} from './model-capabilities';
+} from './model-capabilities.js';
 import {
   DirectorReferencePacketSchema,
   directorReferencePromptContext,
   type DirectorReferencePacket,
-} from './director-reference';
+} from './director-reference.js';
 import {
   composePromptWithTextRefs,
   extractPromptText,
   parsePromptParts,
-} from './prompt';
+} from './prompt.js';
 import {
   ExecutablePluginBindingSchema,
-  ExecutablePluginPermissionsSchema,
   ExecutableActionPresentationSchema,
   type ExecutablePluginBinding,
-} from './executable-plugin';
+} from './executable-plugin.js';
 
 // === Position ===
 export const PositionSchema = z.object({
@@ -100,7 +99,7 @@ export {
   type CropRect,
   type ImageEditParams,
   type VideoClipParams,
-} from './actions/asset-edit';
+} from './actions/asset-edit.js';
 
 /**
  * Map from agent-facing node type names to the ReactFlow type + actionType
@@ -284,7 +283,7 @@ export interface ValidateGenerationInput {
   /** Either supply the raw ModelCard (legacy) or a pre-derived
    *  Capability (the new unified path that covers custom actions too). */
   modelCard?: ModelCard;
-  capability?: import("./model-capabilities").Capability;
+  capability?: import("./model-capabilities.js").Capability;
 }
 
 /**
@@ -906,7 +905,6 @@ export type CustomActionSecret = z.infer<typeof CustomActionSecretSchema>;
 export const ACTION_PROVIDER_IDS = [
   'fal',
   'replicate',
-  'kie',
   'official',
   'openai',
   'google-ai-studio',
@@ -923,8 +921,6 @@ const ACTION_PROVIDER_ALIASES: Record<string, ActionProviderId> = {
   replicate: 'replicate',
   replica: 'replicate',
   'replicate.com': 'replicate',
-  kie: 'kie',
-  'kie.ai': 'kie',
   official: 'official',
   native: 'official',
   openai: 'openai',
@@ -966,13 +962,6 @@ export const ACTION_PROVIDER_PRESETS: Record<ActionProviderId, ActionProviderPre
     secretLabel: 'Replicate API token',
     secretDescription: 'API key used to call the Replicate model provider.',
     docsUrl: 'https://replicate.com/account/api-tokens',
-  },
-  kie: {
-    id: 'kie',
-    label: 'Kie.ai',
-    defaultSecretId: 'KIE_API_KEY',
-    secretLabel: 'Kie.ai API key',
-    secretDescription: 'API key used to call the Kie.ai model provider.',
   },
   official: {
     id: 'official',
@@ -1119,8 +1108,6 @@ const CustomActionDefinitionBaseSchema = z.object({
   secrets: z.array(CustomActionSecretSchema).default([]),
   /** Exact hosted/local executable plugin version represented by this action. */
   pluginBinding: ExecutablePluginBindingSchema.optional(),
-  /** Capability set approved when this exact plugin version was installed. */
-  pluginPermissions: ExecutablePluginPermissionsSchema.optional(),
   /** Provider/model binding used by MaaS-compatible actions. */
   model: CustomActionModelSchema.optional(),
   /** Discovery tags */
@@ -1131,7 +1118,7 @@ const CustomActionDefinitionBaseSchema = z.object({
    * runtime_id of the local runtime that registered this action. The server
    * stamps this from the connecting WS client's `x-runtime-id` header, which
    * the python SDK forwards from the CLASH_RUNTIME_ID env var (set by the
-   * bridge daemon when it spawns each action subprocess).
+   * local-api host when it spawns each action subprocess).
    *
    * Custom actions are a property of THE USER'S MACHINE — when the runtime
    * is offline, NodeProcessor refuses to dispatch the action and the node

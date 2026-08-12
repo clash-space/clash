@@ -8,11 +8,12 @@
  * Lifecycle: CONNECT → WAIT_SNAPSHOT → READY → OPERATE → FLUSH → DISCONNECT
  */
 import { LoroDoc } from "loro-crdt";
-import { Canvas } from "./canvas-ops";
+import { Canvas } from "./canvas-ops.js";
+import { MODEL_CARDS, type ModelCard } from "./models.js";
 import {
   canvasGraphReconciliationChanged,
   reconcileCanvasGraph,
-} from "./node-upstreams";
+} from "./node-upstreams.js";
 import {
   DEFAULT_CANVAS_ID,
   attachTimelineToCanvas,
@@ -28,7 +29,7 @@ import {
   reconcileProjectTimelineOwnership,
   renameProjectCanvas,
   updateProjectTimelineState,
-} from "./project-workspace";
+} from "./project-workspace.js";
 import {
   attachDirectorStageToCanvas,
   createProjectDirectorStage,
@@ -36,7 +37,7 @@ import {
   listProjectDirectorStages,
   reconcileProjectDirectorStageOwnership,
   updateProjectDirectorStageState,
-} from "./director-stage";
+} from "./director-stage.js";
 
 const CONNECT_TIMEOUT_MS = 10_000;
 const FLUSH_TIMEOUT_MS = 5_000;
@@ -85,6 +86,10 @@ export interface LoroSyncClientOptions {
   WebSocket?: WSConstructor;
   /** Wait for local server persistence acknowledgements before flushing. */
   requireSyncAck?: boolean;
+  /** Existing replica document for in-process hosts; no network connection is required. */
+  doc?: LoroDoc;
+  /** Host-composed model catalogue used by every Canvas operation. */
+  modelCards?: readonly ModelCard[];
 }
 
 function isLoopbackServerUrl(value: string): boolean {
@@ -106,7 +111,7 @@ export function loroSyncUpdateId(update: Uint8Array): string {
 }
 
 export class LoroSyncClient {
-  readonly doc: LoroDoc = new LoroDoc();
+  readonly doc: LoroDoc;
   private readonly canvasScopes = new Map<string, Canvas>();
   private activeCanvasId: string;
 
@@ -121,9 +126,11 @@ export class LoroSyncClient {
   private readonly agentName?: string;
   private readonly WS: WSConstructor;
   private readonly requireSyncAck: boolean;
+  private readonly modelCards: readonly ModelCard[];
   private readonly pendingSyncAcks = new Map<string, number>();
 
   constructor(options: LoroSyncClientOptions) {
+    this.doc = options.doc ?? new LoroDoc();
     this.serverUrl = options.serverUrl.replace(/\/$/, "");
     this.projectId = options.projectId;
     this.token = options.token ?? "";
@@ -133,6 +140,7 @@ export class LoroSyncClient {
     this.agentName = options.agentName;
     this.WS = (options.WebSocket ?? globalThis.WebSocket) as unknown as WSConstructor;
     this.requireSyncAck = options.requireSyncAck ?? isLoopbackServerUrl(this.serverUrl);
+    this.modelCards = options.modelCards ?? MODEL_CARDS;
     this.activeCanvasId = options.canvasId?.trim() || DEFAULT_CANVAS_ID;
   }
 
@@ -146,7 +154,7 @@ export class LoroSyncClient {
     const existing = this.canvasScopes.get(id);
     if (existing) return existing;
     // No-op broadcast: local updates are sent via subscribeLocalUpdates in connect().
-    const canvas = new Canvas(this.doc, () => {}, id);
+    const canvas = new Canvas(this.doc, () => {}, id, this.modelCards);
     this.canvasScopes.set(id, canvas);
     return canvas;
   }

@@ -20,33 +20,36 @@ import {
 const srcDir = fileURLToPath(new URL("../", import.meta.url));
 
 test("registers a top-level text command for agent-editable text files", () => {
-  const indexSource = readFileSync(join(srcDir, "index.ts"), "utf8");
-  const daemonSource = readFileSync(join(srcDir, "lib", "daemon.ts"), "utf8");
+  const programSource = readFileSync(join(srcDir, "program.ts"), "utf8");
+  const hostSource = readFileSync(
+    new URL("../../../../apps/local-api/src/project-command-host.ts", import.meta.url),
+    "utf8",
+  );
   const textSource = readFileSync(new URL("./text.ts", import.meta.url), "utf8");
 
-  assert.match(indexSource, /import \{ textCommand \} from "\.\/commands\/text"/);
-  assert.match(indexSource, /program\.addCommand\(textCommand\)/);
+  assert.match(programSource, /import \{ textCommand \} from "\.\/commands\/text"/);
+  assert.match(programSource, /program\.addCommand\(textCommand\)/);
   assert.equal(textCommand.name(), "text");
   assert.deepEqual(textCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history", "content", "restore"]);
-  assert.match(daemonSource, /case "text_cas_update"/);
-  assert.match(daemonSource, /text_cas_update requires string content/);
-  assert.match(daemonSource, /case "text_cow_replace"/);
-  assert.match(daemonSource, /text_cow_replace requires string content/);
-  assert.match(daemonSource, /isCanvasNodeImmutable/);
+  assert.match(hostSource, /case "text_cas_update"/);
+  assert.match(hostSource, /text_cas_update requires string content/);
+  assert.match(hostSource, /case "text_cow_replace"/);
+  assert.match(hostSource, /text_cow_replace requires string content/);
+  assert.match(hostSource, /isCanvasNodeImmutable/);
   assert.match(textSource, /\.command\("replace"\)/);
   assert.match(textSource, /action: "text_cow_replace"/);
   assert.match(textSource, /import \{[^}]*resolveCanvasPresenceOptions[^}]*\} from "\.\/canvas"/s);
-  assert.match(textSource, /\.\.\.resolveCanvasPresenceOptions\(\)/);
   assert.match(textSource, /actorClientType: resolveCanvasPresenceOptions\(\)\.clientType/);
   assert.match(textSource, /recordWorktreeObservation/);
   assert.match(textSource, /requireWorktreeObservation/);
   assert.match(textSource, /observedVersion/);
-  assert.match(textSource, /assertAgentHostWritePath/);
   assert.doesNotMatch(textSource, /TextLock|createTextLock|parseTextLock|resolveTextLockPath|expectedContentHash|expectedTextFilePath|expectedReadToken/);
-  // The direct-replica path must verify the observed version itself; forwarding
-  // it only to the daemon meant a daemonless apply landed unconditionally.
-  assert.match(textSource, /requireCurrentTextVersion/);
-  assert.doesNotMatch(daemonSource, /TextLock|createTextLockFromHash|expectedContentHash|expectedTextFilePath/);
+  // The host-authoritative path receives the observed version and verifies it;
+  // the CLI may never turn its local observation into an unconditional write.
+  assert.match(textSource, /action: "text_cas_update"/);
+  assert.match(textSource, /ifMatch: cas\.observedVersion/);
+  assert.match(hostSource, /validateAgentReadProof/);
+  assert.doesNotMatch(hostSource, /TextLock|createTextLockFromHash|expectedContentHash|expectedTextFilePath/);
   for (const commandName of ["apply", "replace", "restore"]) {
     const command = textCommand.commands.find((candidate) => candidate.name() === commandName);
     assert.ok(command);

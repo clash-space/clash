@@ -1,71 +1,68 @@
 # Contract Tests
 
-Contract tests gate every activation. Each is a JSON document that drives the
-**real bundled handler** over stdio against fixed broker fixtures, then
-deep-compares every request your executor makes.
+Contract tests gate every activation. Each JSON case drives the real built
+stdio entrypoint and checks the invocation/result ABI.
 
 ## Shape
 
 ```json
 {
   "apiVersion": "clash.plugin.contract-test/v1",
-  "id": "my-image-flow",
-  "target": { "exportId": "my-gateway-execute", "kind": "provider-executor" },
+  "id": "acme-submit",
+  "target": {
+    "exportId": "acme-execute",
+    "kind": "provider-executor"
+  },
+  "operation": "submit",
   "input": {
     "values": {
-      "modelId": "nano-banana-2",
-      "upstreamModel": "nano_banana_2_flash",
-      "prompt": "A paper moon",
-      "aspectRatio": "16:9",
-      "modelParams": { "resolution": "1K" }
+      "modelId": "acme-image",
+      "prompt": "A red circle"
     },
     "references": []
   },
-  "brokerFixtures": [
-    {
-      "operation": { "kind": "credential.handle", "secretId": "provider:my-gateway" },
-      "response": { "status": "ok", "result": { "handle": "clash-secret://contract", "providerId": "my-gateway" } }
-    },
-    {
-      "operation": {
-        "kind": "network.fetch",
-        "url": "https://gateway.example/api/v2/image/generate?version_code=2.0.11",
-        "method": "POST",
-        "headers": { "content-type": "application/json" },
-        "body": { "prompt": "A paper moon", "aspect_ratio": "16:9", "resolution": "1K" }
-      },
-      "response": { "status": "ok", "result": { "status": 200, "headers": {}, "body": { "task_id": "t-1", "status": "success", "image_url": "https://cdn.example/img.png" } } }
-    }
-  ]
+  "expect": {
+    "status": "accepted",
+    "pollState": { "taskId": "task-1" }
+  }
 }
 ```
 
-## Matching is strict
+The runner supplies deterministic Host-scoped store, reference, upload, and
+Host-tool dependencies. Plugin tests stub the plugin process's normal HTTP
+client; they do not call a Host network API.
 
-- URLs compare **exactly** (including query strings) — dynamic values like
-  timestamps can't be embedded in fixture URLs.
-- Bodies deep-compare. A fixture consumed out of order or left unconsumed
-  fails the run (`consumed 1 of 3 broker fixtures`).
-- The handler under test is the **built bundle**, the same artifact that
-  activation attests.
+## What to cover
 
-## What they prove — and what they can't
+1. Every operation declared by the contribution: synchronous `submit`, queued
+   `submit`, `poll`, and `callback` where applicable.
+2. Request projection: vendor model name, parameters, ordered references, and
+   auth headers derived from scoped store values.
+3. Response projection: text, each media kind, queued state, terminal vendor
+   failures, and malformed responses.
+4. Large-result upload and URL-result persistence paths.
 
-Contract tests prove your executor emits exactly the requests you declared,
-and that activation can't regress that shape. They **cannot** prove the
-upstream accepts those requests: the fixtures are written by the same person
-who wrote the executor. Every real-world break found in one production
-audit — a value-case mismatch, a conditional ratio rule, an envelope that says
-`success` while the task failed — was invisible to green contract tests.
-
-Treat contracts as the regression floor. Ground truth comes from one recorded
-real run per API family ([Traffic Record & Replay](/plugins/traffic-replay));
-after a real run, tighten fixtures to match reality (e.g. fixture bodies now
-carry `"resolution": "2k"` after the binding override, not the card's `2K`).
+Contract cases must be deterministic and credential-free. They prove the
+plugin package and SDK shape. They do not claim a vendor currently accepts the
+request.
 
 ## Running
 
 ```sh
-clash action validate <dir>    # runs all declared contract tests
-clash action activate <dir>    # re-runs them; any failure blocks activation
+clash plugin validate <dir>
+clash plugin activate <dir>
 ```
+
+Both commands build a declared TypeScript entrypoint and run every file listed
+in `manifest.json#contractTests`. Activation stops on the first failing case.
+
+## Pair contracts with traffic replay
+
+For providers, keep a second backend acceptance suite created from real,
+redacted upstream traffic. That suite runs Project/Canvas → local-api → real
+plugin process → persisted text or asset, with the plugin process's HTTP
+instrumented externally. See [Traffic Record & Replay](/plugins/traffic-replay).
+
+CLI, GUI, and MCP are peer clients of this backend. One backend acceptance per
+case covers the shared project operation; client-specific tests only need to
+cover their own command or UI projection.

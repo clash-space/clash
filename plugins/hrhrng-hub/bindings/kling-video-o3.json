@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-kling-video-o3",
+    "modelId": "kling-video-o3",
+    "upstreamModel": "kling-v3-omni"
+  }
+}

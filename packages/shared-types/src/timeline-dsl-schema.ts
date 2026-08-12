@@ -5,14 +5,14 @@ import {
   TimelineItemKeyframesSchema,
   timelineKeyframeFrameIssues,
   type TimelineItemKeyframes,
-} from "./timeline-keyframes";
+} from "./timeline-keyframes.js";
 import {
   TIMELINE_MASK_ANIMATION_BINDINGS,
   TIMELINE_MASK_CAPABILITY_ANNOTATION,
   TIMELINE_MASK_FIELD_ANNOTATIONS,
   TIMELINE_MASK_KEYFRAME_CHANNELS,
   TimelineItemMaskSchema,
-} from "./timeline-mask";
+} from "./timeline-mask.js";
 import {
   TIMELINE_DSL_FIELD_ANNOTATIONS,
   TIMELINE_DSL_FIELD_CATALOG,
@@ -35,17 +35,17 @@ import {
   TIMELINE_TRANSITION_TYPES,
   timelineDslAnnotatedObjectShape,
   type TimelineDslItemType,
-} from "./timeline-field-annotations";
+} from "./timeline-field-annotations.js";
 import {
   TIMELINE_DSL_GLOBAL_SEMANTIC_RULES,
   timelineDslSemanticIssues,
-} from "./timeline-dsl-semantics";
-import { TIMELINE_OPERATION_CATALOG } from "./timeline-operation-annotations";
+} from "./timeline-dsl-semantics.js";
+import { TIMELINE_OPERATION_CATALOG } from "./timeline-operation-annotations.js";
 
 export {
   TIMELINE_DSL_ITEM_TYPES,
   TIMELINE_DSL_TRACK_CATEGORIES,
-} from "./timeline-field-annotations";
+} from "./timeline-field-annotations.js";
 
 const itemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => {
   const baseShape = timelineDslAnnotatedObjectShape(

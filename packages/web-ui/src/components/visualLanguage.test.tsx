@@ -519,7 +519,7 @@ describe("visual language surfaces", () => {
   });
 
   it("keeps the homepage depth mask transparent enough for the canvas grid to read", () => {
-    const backgroundSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/Background.tsx"), "utf8");
+    const backgroundSource = readFileSync(join(process.cwd(), "packages/gui/src/components/Background.tsx"), "utf8");
     const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
 
     expect(sourceMatches(backgroundSource, /to-warm-page\/\[(0\.025|0\.012|0\.006|0\.003|0\.0015)\]/)).toBe(false);
@@ -847,10 +847,9 @@ describe("visual language surfaces", () => {
     expect(sourceMatches(source, /clash-auth-alert/), "mechanism missing").toBe(true);
   });
 
-  it("keeps CLI and daemon authorization routes in Clash auth surfaces instead of generic black setup chrome", () => {
+  it("keeps CLI authorization routes in Clash auth surfaces instead of generic black setup chrome", () => {
     const source = [
       "apps/web/app/routes/auth.cli.tsx",
-      "apps/web/app/routes/connect-daemon.tsx",
       "apps/web/app/globals.css",
     ]
       .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
@@ -863,10 +862,9 @@ describe("visual language surfaces", () => {
     expect(sourceMatches(source, /clash-auth-alert-error/), "mechanism missing").toBe(true);
   });
 
-  it("keeps local agent setup surfaces aligned with daemon-era Clash chrome", () => {
+  it("keeps local runtime session surfaces aligned with Clash chrome", () => {
     const source = [
       "packages/web-ui/src/components/copilot/SessionStartPicker.tsx",
-      "packages/web-ui/src/components/copilot/ByoAgentDialog.tsx",
       "packages/web-ui/src/components/ChatbotCopilot.tsx",
       "apps/web/app/globals.css",
     ]
@@ -875,8 +873,6 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(oldLocalAgentSetupTokens);
     expect(sourceMatches(source, /clash-copilot-primary/), "mechanism missing").toBe(true);
-    expect(sourceMatches(source, /clash-copilot-code/), "mechanism missing").toBe(true);
-    expect(sourceMatches(source, /clash-copilot-alert-error/), "mechanism missing").toBe(true);
   });
 
   it("keeps the cloud agent temporarily marked as coming soon", () => {

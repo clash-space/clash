@@ -161,7 +161,7 @@ describe("project status path builder", () => {
       mutationSurface: "host-api-cli-or-editor",
       sqliteConfigRows: "migration-only",
     });
-    expect(status.storage.localSecrets.files.bridgeCredentials.path).toBe("/tmp/clash-home/credentials.json");
+    expect(status.storage.localSecrets.files.hostCredentials.path).toBe("/tmp/clash-home/credentials.json");
     expect(status.loro.snapshotPath).toBe("/tmp/clash-home/local-api/projects/project%2Fone/loro/snapshot.bin");
     expect(status.storage.canonicalReplica.mediaAssets.path).toBe("/tmp/clash-home/assets/blobs");
     expect(status.storage.canonicalReplica.contentBlobs.textRevisions.path).toBe("/tmp/clash-home/local-api/text-revision-blobs");
@@ -201,7 +201,7 @@ describe("project status path builder", () => {
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.assetMetadataBodies.path);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.metadata.localConfig.path);
-    expect(status.protectedPaths).toContain(status.storage.localSecrets.files.bridgeCredentials.path);
+    expect(status.protectedPaths).toContain(status.storage.localSecrets.files.hostCredentials.path);
     expect(status.protectedPaths).toContain(status.roots.runtime);
     expect(status.collaboration).toEqual({
       schemaVersion: 1,
@@ -346,7 +346,7 @@ describe("project status path builder", () => {
         syncDefault: "local-only",
         agentWritable: false,
         files: {
-          bridgeCredentials: {
+          hostCredentials: {
             kind: "machine-credential-store",
             path: "/tmp/clash-home/credentials.json",
             agentWritable: false,

@@ -426,6 +426,39 @@
           "unblockSignal": "External tools/models/prompts cannot be integrated until scanner output, NOTICE files, and legal review receipts are present."
         }
       ]
+    },
+    {
+      "id": "clash.video.sd25-pe",
+      "name": "sd25-pe",
+      "title": "Seedance 2.5 Prompt Engineering",
+      "description": "Install Volcengine's official Seedance 2.5 prompt-engineering guide on demand so agents can compile stronger prompts for all-purpose reference, editing, and video extension workflows.",
+      "type": "skill",
+      "kind": "detail",
+      "source": "provider-official",
+      "sourceVersion": "0.1.1",
+      "install": {
+        "kind": "npx-skills",
+        "source": "https://arkdocs.tos-cn-beijing.volces.com/skills/",
+        "skill": "sd25-pe",
+        "scope": "global"
+      },
+      "tags": [
+        "seedance",
+        "prompt-engineering",
+        "video",
+        "volcengine"
+      ],
+      "inputs": [
+        "video generation brief",
+        "reference media intent"
+      ],
+      "outputs": [
+        "Seedance 2.5 prompt"
+      ],
+      "executionContract": "prompt-compiler",
+      "requiredSystemCapabilities": [],
+      "status": "ready",
+      "systemGaps": []
     }
   ],
   "systemCapabilities": [

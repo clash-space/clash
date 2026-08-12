@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assetReachForRuntime, ExecutablePluginManifestSchema, pluginRuntimeProfile } from './executable-plugin';
+import { assetReachForRuntime, ExecutablePluginManifestSchema, pluginRuntimeProfile } from './executable-plugin.js';
 
 /**
  * Run mode already states what a plugin can reach, so nothing else declares it.
@@ -32,11 +32,11 @@ describe('asset reach follows run mode', () => {
   it('needs no separate declaration in the manifest', () => {
     const manifest = ExecutablePluginManifestSchema.parse({
       apiVersion: 'clash.plugin/v1',
-      id: 'demo-plugin',
+      id: 'acme.demo-plugin',
       version: '1.0.0',
       name: 'Demo',
       runtime: { kind: 'local', transport: 'stdio', language: 'node', entrypoint: 'dist/stdio.mjs' },
-      exports: { cards: [], providers: [], modelBindings: [], functions: [] },
+      contributes: { cards: [], providers: [], modelBindings: [], functions: [] },
     });
     expect('assetForms' in manifest).toBe(false);
     expect(assetReachForRuntime(manifest.runtime.kind)).toContain('private');

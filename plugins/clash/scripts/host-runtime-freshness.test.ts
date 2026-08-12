@@ -1,10 +1,9 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const repoRoot = join(__dirname, "..", "..", "..");
+const repoRoot = join(import.meta.dirname, "..", "..", "..");
 
 /**
  * The host bundle must not be buildable from stale dependency output.
@@ -14,24 +13,29 @@ const repoRoot = join(__dirname, "..", "..", "..");
  * only symptom was the bug persisting. It cost three separate rounds of debugging in one session:
  *
  *   - `local-processor` still had the hardcoded duration
- *   - `clash-bridge` still had the 4 MB frame limit, so a generation failed as
+ *   - the CLI-owned plugin host still had the 4 MB frame limit, so a generation failed as
  *     "mismatched response" long after that had been raised to 8 MB
  *
- * `build:deps` did not list `clash-bridge` at all -- it was built only by the outer `build`, and
- * after `build:host` at that, so the ordering could not have worked.
+ * The package now declares every artifact producer it consumes. Turbo builds those dependencies
+ * before this package, once, rather than package scripts recursively rebuilding one another.
  */
 describe("host runtime build freshness", () => {
   const manifest = JSON.parse(
     readFileSync(join(repoRoot, "plugins", "clash", "package.json"), "utf8"),
-  ) as { scripts: Record<string, string> };
+  ) as {
+    scripts: Record<string, string>;
+    dependencies: Record<string, string>;
+    devDependencies: Record<string, string>;
+  };
 
-  it("builds clash-bridge before bundling the host", () => {
-    expect(manifest.scripts["build:deps"]).toContain("@clash-space/bridge");
+  it("declares the Clash CLI runtime as a private build input", () => {
+    expect(manifest.devDependencies["@clash/cli"]).toBe("workspace:*");
+    expect(manifest.dependencies).not.toHaveProperty("@clash/cli");
   });
 
-  it("orders the bridge build before build:host", () => {
-    const core = manifest.scripts["build:core"];
-    expect(core.indexOf("build:deps")).toBeLessThan(core.indexOf("build:host"));
+  it("does not recursively rebuild workspace dependencies", () => {
+    expect(manifest.scripts).not.toHaveProperty("build:deps");
+    expect(manifest.scripts.build).not.toContain("--filter");
   });
 
   it("refuses to bundle when a dependency's dist is older than its source", () => {
@@ -42,5 +46,16 @@ describe("host runtime build freshness", () => {
       "utf8",
     );
     expect(guard).toContain("assertDependencyDistIsFresh");
+  });
+
+  it("copies every official Provider into the shipped host runtime", () => {
+    const builder = readFileSync(
+      join(repoRoot, "plugins", "clash", "scripts", "build-host-runtime.ts"),
+      "utf8",
+    );
+    expect(builder).toContain("BUNDLED_PLUGINS");
+    expect(builder).toContain("bundled-plugins");
+    expect(builder).toContain("manifest.runtime?.entrypoint");
+    expect(builder).toContain("manifest.contributes?.providers");
   });
 });

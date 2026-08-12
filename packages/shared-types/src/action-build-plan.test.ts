@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { LoroDoc } from "loro-crdt";
-import { Canvas } from "./canvas-ops";
+import { Canvas } from "./canvas-ops.js";
 import {
   computeActionBuildPlan,
   computeCanvasActionBuildPlan,
   type ActionBuildGraphEdge,
   type ActionBuildGraphNode,
-} from "./action-build-plan";
+} from "./action-build-plan.js";
 
 function graphReader(
   nodes: ActionBuildGraphNode[],

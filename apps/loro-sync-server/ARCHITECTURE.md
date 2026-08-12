@@ -203,7 +203,7 @@ make dev-gateway-full
 
 ## 初衷与愿景: Sleep-time Compute
 
-Master Clash 的核心初衷是实现 **Sleep-time Compute** (闲时计算)。
+Clash 的核心初衷是实现 **Sleep-time Compute** (闲时计算)。
 
 当创作者在构思或休息（闲时）时，后台的 Multi-Agent 系统会根据当前的画布状态和历史上下文，自动进行深度思考、资产预生成、脚本优化等高能耗任务。当用户回到画布前，迎接他们的是更丰富的草案和半成品。
 

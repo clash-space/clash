@@ -14,7 +14,12 @@ export function validateAgentObservation(options: {
     // Proof of read is mandatory for agents. A human-driven CLI write may skip
     // it -- payload size and client label pick the transport, never the CAS
     // contract -- but a supplied version is always compared below.
-    if (options.actorClientType !== "agent") return { ok: true };
+    if (
+      options.actorClientType !== "agent" &&
+      options.actorClientType !== "mcp"
+    ) {
+      return { ok: true };
+    }
     return {
       ok: false,
       code: "READ_REQUIRED",

@@ -27,7 +27,7 @@ import {
   CANONICAL_RESOLUTION_TIERS,
   resolutionTierPixels,
   type CanonicalResolutionTier,
-} from './resolution-tiers';
+} from './resolution-tiers.js';
 
 export const GPT_IMAGE_MAX_EDGE = 3840;
 export const GPT_IMAGE_EDGE_MULTIPLE = 16;

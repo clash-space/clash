@@ -8,9 +8,8 @@ const cliRoot = join(__dirname, "..", "..");
 /**
  * Both test runners must be reachable from `npm test`.
  *
- * This package runs two: `node:test` files via `scripts/run-tests.mjs`, and vitest files. Running
- * `npx vitest run` here reports 21 tests and exits zero, which looks like a full pass while hiding
- * 348 -- so a change that broke only the node:test suites would appear green.
+ * This package runs two: `node:test` and Vitest. `scripts/run-tests.mjs` owns both so a second bare
+ * `vitest run` cannot accidentally load node:test-only files as empty Vitest suites.
  *
  * The guard is on the script, not the counts: a count would have to be edited with every new test and
  * would fail for the wrong reason.
@@ -20,8 +19,10 @@ test("npm test invokes both runners", () => {
     readFileSync(join(cliRoot, "package.json"), "utf8"),
   ) as { scripts: Record<string, string> };
   const script = manifest.scripts.test;
-  assert.match(script, /run-tests\.mjs/, "the node:test suites must run");
-  assert.match(script, /vitest/, "the vitest suites must run");
+  assert.equal(script, "node scripts/run-tests.mjs");
+  const runner = readFileSync(join(cliRoot, "scripts", "run-tests.mjs"), "utf8");
+  assert.match(runner, /--test/, "the node:test suites must run");
+  assert.match(runner, /vitest/, "the Vitest suites must run");
 });
 
 test("every test file belongs to a runner", () => {

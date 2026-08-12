@@ -1,4 +1,4 @@
-import type { EditorState } from "@master-clash/remotion-core";
+import type { EditorState } from "@clash/remotion-core";
 import { timelineDslHash } from "@clash/shared-types";
 
 import { calculateScaledDimensions } from "../components/nodes/assetNodeSizing";

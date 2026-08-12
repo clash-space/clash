@@ -17,7 +17,7 @@ const timelineEditorApi = vi.hoisted(() => ({
 vi.mock('@clash/web-ui/lib/hooks/useAsset', () => ({ getAsset: assetApi.getAsset }));
 vi.mock('@clash/web-ui/lib/hooks/useSignedUrl', () => ({ getSignedUrl: assetApi.getSignedUrl }));
 
-vi.mock('@master-clash/remotion-ui', () => ({
+vi.mock('@clash/remotion-ui', () => ({
     Editor: ({ initialState, initialAssets, insertAssetRequest, onInsertAssetRequestHandled, stateRef, onStateChange, onBack, onRequestAsset, onTranscribeAsset, onExport, headerLeadingAction, editorKey, layout, projectAssetDropActive }: any) => {
         timelineEditorApi.onTranscribeAsset = onTranscribeAsset;
         timelineEditorApi.onExport = onExport;

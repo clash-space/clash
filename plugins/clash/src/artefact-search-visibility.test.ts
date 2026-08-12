@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = join(dirname(fileURLToPath(new URL("../package.json", import.meta.url))), "..", "..");
+const repoRoot = join(
+  dirname(fileURLToPath(new URL("../package.json", import.meta.url))),
+  "..",
+  "..",
+);
 
 /**
  * A bundled artefact must not answer a source search.
@@ -27,7 +31,10 @@ const repoRoot = join(dirname(fileURLToPath(new URL("../package.json", import.me
  */
 
 function tracked(pattern: string): string[] {
-  return execFileSync("git", ["ls-files", pattern], { cwd: repoRoot, encoding: "utf8" })
+  return execFileSync("git", ["ls-files", pattern], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  })
     .split("\n")
     .filter(Boolean);
 }
@@ -35,7 +42,11 @@ function tracked(pattern: string): string[] {
 function searchable(): string[] {
   // `rg --files` applies the same ignore rules as a content search, so it reports exactly the set a
   // plain `rg <pattern>` would read.
-  return execFileSync("rg", ["--files"], { cwd: repoRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
+  return execFileSync("rg", ["--files"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  })
     .split("\n")
     .filter(Boolean);
 }
@@ -46,22 +57,33 @@ function gitIgnored(paths: readonly string[]): string[] {
     cwd: repoRoot,
     encoding: "utf8",
   });
-  assert.ok(result.status === 0 || result.status === 1, `git check-ignore failed: ${result.stderr}`);
+  assert.ok(
+    result.status === 0 || result.status === 1,
+    `git check-ignore failed: ${result.stderr}`,
+  );
   return result.stdout.split("\n").filter(Boolean);
 }
 
 test("committed runtime bundles stay in git", () => {
-  // They are the package payload. Removing them from the index would break `clash` and
-  // `clash-codex-plugin`, so the hazard has to be solved without deleting them.
+  // They are the package payload. Removing them from the index would break the CLI, MCP,
+  // and internal host shipped by `clash`, so the hazard has to be solved without deleting them.
   const bundles = tracked("plugins/*/runtime/**");
-  assert.ok(bundles.length > 0, "the published runtime payload must remain tracked");
+  assert.ok(
+    bundles.length > 0,
+    "the published runtime payload must remain tracked",
+  );
 
   const manifest = JSON.parse(
     readFileSync(join(repoRoot, "plugins", "clash", "package.json"), "utf8"),
   ) as { files?: string[]; bin?: Record<string, string> };
-  assert.ok(manifest.files?.includes("runtime"), "runtime is published, so it cannot be untracked");
   assert.ok(
-    Object.values(manifest.bin ?? {}).some((entry) => entry.includes("runtime/")),
+    manifest.files?.includes("runtime"),
+    "runtime is published, so it cannot be untracked",
+  );
+  assert.ok(
+    Object.values(manifest.bin ?? {}).some((entry) =>
+      entry.includes("runtime/"),
+    ),
     "an executable resolves through runtime/, so the directory has to ship",
   );
 
@@ -79,7 +101,9 @@ test("committed runtime bundles stay in git", () => {
 
 test("no committed runtime bundle is searched by default", () => {
   const visible = new Set(searchable());
-  const exposed = tracked("plugins/*/runtime/**").filter((file) => visible.has(file));
+  const exposed = tracked("plugins/*/runtime/**").filter((file) =>
+    visible.has(file),
+  );
 
   assert.deepEqual(
     exposed,
@@ -93,7 +117,12 @@ test("a bundle is still readable when a reader deliberately asks for one", () =>
   // says is exactly how the drift above was eventually found.
   const found = execFileSync(
     "rg",
-    ["--no-ignore-dot", "--files-with-matches", "durationFromData", "plugins/clash/runtime/local-api.cjs"],
+    [
+      "--no-ignore-dot",
+      "--files-with-matches",
+      "durationFromData",
+      "plugins/clash/runtime/local-api.cjs",
+    ],
     { cwd: repoRoot, encoding: "utf8" },
   ).trim();
 
@@ -102,19 +131,25 @@ test("a bundle is still readable when a reader deliberately asks for one", () =>
 
 test("source is untouched by the ignore rules", () => {
   const visible = new Set(searchable());
-  const sources = tracked("*.ts").filter((file) => !file.includes("/runtime/"));
+  const sources = tracked("*.ts").filter(
+    (file) => !file.includes("/runtime/") && existsSync(join(repoRoot, file)),
+  );
 
   const hidden = sources.filter((file) => !visible.has(file));
-  assert.deepEqual(hidden, [], "ignoring artefacts must not hide any tracked TypeScript source");
+  assert.deepEqual(
+    hidden,
+    [],
+    "ignoring artefacts must not hide any tracked TypeScript source",
+  );
 });
 
 test("the emitted agent tree cannot shadow a real source path", () => {
-  // `bundle-agents.mjs` copies the plugin into `dist/agents/master-clash/plugins/clash/`, a path that
+  // `bundle-agents.mjs` copies the plugin into `dist/agents/clash/plugins/clash/`, a path that
   // mirrors the repo's own layout closely enough that a hit there reads as a hit in `plugins/clash`.
   // `dist/` is gitignored, so it is invisible to a default search; this asserts the emitter keeps
   // writing beneath a directory that the ignore rules already cover, instead of somewhere tracked.
   const emitter = readFileSync(
-    join(repoRoot, "packages", "clash-bridge", "scripts", "bundle-agents.mjs"),
+    join(repoRoot, "packages", "cli", "scripts", "bundle-agents.mjs"),
     "utf8",
   );
   assert.match(
@@ -125,7 +160,11 @@ test("the emitted agent tree cannot shadow a real source path", () => {
 
   const visible = searchable();
   const leaked = visible.filter((file) => file.includes("dist/agents/"));
-  assert.deepEqual(leaked, [], "the emitted agent tree must never be searchable");
+  assert.deepEqual(
+    leaked,
+    [],
+    "the emitted agent tree must never be searchable",
+  );
 });
 
 test("every ignored bundle is genuinely generated", () => {
@@ -134,7 +173,11 @@ test("every ignored bundle is genuinely generated", () => {
   const scripts = JSON.parse(
     readFileSync(join(repoRoot, "plugins", "clash", "package.json"), "utf8"),
   ) as { scripts: Record<string, string> };
-  assert.match(scripts.scripts.clean, /rm -rf runtime/, "runtime/ must be disposable output");
+  assert.match(
+    scripts.scripts.clean,
+    /rm -rf runtime/,
+    "runtime/ must be disposable output",
+  );
 
   const builder = readFileSync(
     join(repoRoot, "plugins", "clash", "scripts", "build-host-runtime.ts"),
@@ -142,8 +185,13 @@ test("every ignored bundle is genuinely generated", () => {
   );
   assert.match(builder, /outfile: resolve\(runtimeDir, "local-api\.cjs"\)/);
 
-  const bundle = statSync(join(repoRoot, "plugins", "clash", "runtime", "local-api.cjs"));
-  assert.ok(bundle.size > 1024 * 1024, "a bundle this large is machine-written, not authored");
+  const bundle = statSync(
+    join(repoRoot, "plugins", "clash", "runtime", "local-api.cjs"),
+  );
+  assert.ok(
+    bundle.size > 1024 * 1024,
+    "a bundle this large is machine-written, not authored",
+  );
 });
 
 test("a bundle announces itself on its first line", () => {
@@ -162,13 +210,19 @@ test("a bundle announces itself on its first line", () => {
   );
 
   for (const bundle of ["local-api.cjs", "clash-cli.cjs"]) {
-    const head = readFileSync(join(repoRoot, "plugins", "clash", "runtime", bundle), "utf8")
-      .slice(0, 400);
+    const head = readFileSync(
+      join(repoRoot, "plugins", "clash", "runtime", bundle),
+      "utf8",
+    ).slice(0, 400);
     assert.match(
       head,
       /GENERATED FILE -- DO NOT EDIT/,
       `${bundle} must say so before its first statement`,
     );
-    assert.match(head, /build-host-runtime/, `${bundle} must name the script that wrote it`);
+    assert.match(
+      head,
+      /build-host-runtime/,
+      `${bundle} must name the script that wrote it`,
+    );
   }
 });

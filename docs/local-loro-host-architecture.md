@@ -80,12 +80,13 @@ Store in Loro:
 - Canvas nodes keyed by stable node id.
 - Canvas edges keyed by stable edge id.
 - Stable committed layout.
-- Asset references: content hash, asset id, storage key, size, mime, upload state.
+- Asset references: stable resource id, asset id, and immutable descriptive metadata.
 - Task projections that need to appear on the canvas.
 
 Do not store in Loro:
 
 - Asset blobs.
+- Local paths, object-storage keys, signed URLs, and per-device transfer state.
 - ACP transcript and raw tool logs.
 - Session history.
 - Billing, permissions, API tokens.
@@ -121,13 +122,13 @@ schema drift, duplicate command paths, and untracked mutations.
 
 ## Host Discovery and Lifecycle Ownership
 
-Desktop embedded host and headless operation are two forms of the same Local
-Host process:
+Desktop and headless operation bootstrap the same detached `local-api` host
+artifact:
 
 ```text
-Local Host Process = clashd
-Desktop = clashd + GUI shell
-Headless local host = clashd without GUI
+Local Host Process = local-api daemon
+Desktop = GUI/lifecycle client + bundled local-api artifact
+Headless Clash = CLI/MCP clients + the same bundled local-api artifact
 ```
 
 CLI, GUI, and local agents are clients/actors. They do not acquire a project
@@ -135,18 +136,17 @@ lock and they do not become direct Loro peers.
 
 Rules:
 
-- The current machine has one active Local Host discovery record.
+- Each `CLASH_HOME` and runtime profile has one active compatible Local Host
+  discovery record.
 - Clients discover the current host through `~/.clash/run/host.json`.
 - `.clash/project.toml` is only a project marker. It does not lock or own a
   local replica.
-- Desktop may start `clashd` with `launchMode=desktop`.
-- A user service may start `clashd` with `launchMode=user-service`.
-- macOS launchd may start `clashd` with `launchMode=launchd`.
-- A one-shot CLI host may use `launchMode=cli-once`.
-- Desktop close only shuts down the `launchMode=desktop` host that the same
-  Desktop owner started.
-- Desktop must not shut down `launchMode=user-service` or `launchMode=launchd`
-  hosts. It should disconnect and leave lifecycle ownership with that service.
+- Desktop, CLI, or MCP may bootstrap the detached host, but the published
+  process uses `launchMode=user-service` and is not owned by that client.
+- Closing Desktop, a CLI command, or an MCP stdio session never stops the
+  shared daemon.
+- A platform service manager may launch the same host artifact; it must use
+  the same discovery lock, data directory, and compatibility checks.
 
 Discovery record path:
 
@@ -295,6 +295,28 @@ If marker and `CLASH_PROJECT_ID` conflict, fail unless `--project` is explicit.
 - Store immutable asset refs, not mutable URLs as truth.
 - Task execution ownership must live in Runtime Plane, with only display
   projection in Loro.
+
+## Team Asset Replication (target contract)
+
+An Asset carries one stable, storage-neutral resource identifier. Local files,
+cloud objects, and their URLs are projections of that identifier, not alternate
+asset identities. The Host storage boundary supplies `read`, `write`, and
+`project`; GUI, CLI, MCP, and plugins share the same readonly Asset contract and
+must not inspect storage keys.
+
+When a device creates an asset in a shared Project, it writes an immutable local
+resource first. A background replicator uploads and verifies the blob in team
+object storage before admitting the Asset reference to shared Project state.
+Peers may apply the Loro update immediately: each peer enqueues an asynchronous
+download, verifies the resource, atomically installs it in its local store, and
+then emits a new local projection. Project sync never waits for media transfer,
+and media bytes never travel through Loro.
+
+Upload/download progress, retry state, local cache presence, loopback URLs, and
+signed cloud URLs remain per-device state. A peer that has not downloaded a
+resource reports a downloading or unavailable projection without changing the
+shared Asset identity. Local copies are disposable caches; cloud retention is
+governed by shared Asset references.
 
 ## Existing Code To Reuse
 

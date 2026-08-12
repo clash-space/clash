@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ExecutablePluginFunctionExportSchema } from './executable-plugin';
+import { ExecutablePluginFunctionExportSchema } from './executable-plugin.js';
 
 /**
  * An entry point declares which operations it answers.
@@ -14,11 +14,18 @@ import { ExecutablePluginFunctionExportSchema } from './executable-plugin';
  * address nobody translates, and work that completes upstream while the node waits forever.
  */
 describe('declared operations', () => {
-  const base = { id: 'generate', kind: 'provider-executor' as const, handler: 'dist/index.js' };
+  const base = { id: 'generate', kind: 'provider-executor' as const };
 
   it('defaults to submit-only, which is what a synchronous provider needs', () => {
     // The simplest plugin says nothing and gets the simplest contract.
     expect(ExecutablePluginFunctionExportSchema.parse(base).operations).toEqual(['submit']);
+  });
+
+  it('rejects the removed handler indirection instead of silently stripping it', () => {
+    expect(ExecutablePluginFunctionExportSchema.safeParse({
+      ...base,
+      handler: 'dist/index.js',
+    }).success).toBe(false);
   });
 
   it('lets an entry declare that it can be polled', () => {
@@ -69,7 +76,7 @@ describe('the host honours the declaration', () => {
   // A pollable entry has to bring the vocabulary its provider answers in, so the factory supplies
   // one whenever poll is declared. Submit-only entries must not carry it: nothing would read it.
   const entry = (operations: string[]) => ExecutablePluginFunctionExportSchema.parse({
-    id: 'generate', kind: 'provider-executor', handler: 'dist/index.js', operations,
+    id: 'generate', kind: 'provider-executor', operations,
   });
 
   it('marks a submit-only entry as unable to accept work', () => {

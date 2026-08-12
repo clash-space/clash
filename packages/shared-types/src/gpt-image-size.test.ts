@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CANONICAL_RESOLUTION_TIERS } from './resolution-tiers';
+import { CANONICAL_RESOLUTION_TIERS } from './resolution-tiers.js';
 
 import {
   GPT_IMAGE_ASPECT_RATIOS,
@@ -17,7 +17,7 @@ import {
   isSupportedGptImageRatio,
   parseAspectRatio,
   resolveGptImageSize,
-} from './gpt-image-size';
+} from './gpt-image-size.js';
 
 /**
  * The size table is committed data, so these tests audit the data.

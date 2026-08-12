@@ -1,172 +1,102 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, mkdir, realpath, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-async function loadRunnerModule(): Promise<Record<string, unknown>> {
-  try {
-    return await import("./host-runner.js") as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
-async function makeCli(root: string): Promise<string> {
-  const cliPath = join(root, "clash-client-cli");
-  await writeFile(cliPath, [
-    "#!/usr/bin/env node",
-    "console.log(JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), apiUrl: process.env.CLASH_API_URL, traceOrigin: process.env.CLASH_CLI_TRACE_ORIGIN }));",
-    "",
-  ].join("\n"), "utf8");
-  await chmod(cliPath, 0o755);
-  return cliPath;
-}
-
 function host(endpoint = "http://127.0.0.1:49321") {
   return {
-    schemaVersion: 1,
+    schemaVersion: 1 as const,
     protocolVersion: 1,
     dataSchemaVersion: 1,
     hostId: "daemon-test",
     endpoint,
     pid: process.pid,
-    launchMode: "user-service",
-    startedBy: "plugin",
-    profile: "prod",
-    agentCliPath: "/tmp/daemon-published-old-cli",
+    launchMode: "user-service" as const,
+    startedBy: "plugin" as const,
+    profile: "prod" as const,
     startedAt: "2026-08-07T00:00:00.000Z",
     updatedAt: "2026-08-07T00:00:00.000Z",
   };
 }
 
-test("host runner executes its bundled CLI against the ensured daemon endpoint", async () => {
-  const module = await loadRunnerModule();
-  const root = await mkdtemp(join(tmpdir(), "clash-runner-bundled-"));
-  const workspace = join(root, "workspace");
-  await mkdir(workspace);
-  const command = await makeCli(root);
+async function workspace(projectId: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "clash-mcp-host-client-"));
+  await mkdir(join(root, ".clash"), { recursive: true });
+  await writeFile(
+    join(root, ".clash", "project.toml"),
+    ["schema_version = 1", `project_id = ${JSON.stringify(projectId)}`, ""].join("\n"),
+    "utf8",
+  );
+  return root;
+}
+
+test("MCP sends a typed command directly to the ensured local-api endpoint", async () => {
+  const { createMcpProjectHostClient } = await import("./host-runner.js");
+  const cwd = await workspace("project-workspace");
+  const requests: Array<{ url: string; body: unknown }> = [];
   let ensures = 0;
-  const runner = (module.createHostCliRunner as (options: Record<string, unknown>) => (
-    args: string[], cwd?: string
-  ) => Promise<unknown>)({
-    command,
+  const client = createMcpProjectHostClient({
+    env: {
+      CLASH_WORKSPACE_ROOT: cwd,
+      // If the implementation regresses to MCP -> CLI this deliberately fails.
+      CLASH_CLI_ENTRY_PATH: join(cwd, "must-not-be-executed"),
+    },
     hostManager: {
       ensureHost: async () => {
         ensures += 1;
         return host();
       },
     },
+    fetch: async (input, init) => {
+      requests.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return new Response(JSON.stringify({ nodes: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
   });
 
-  assert.deepEqual(await runner(["projects", "list", "--json"], workspace), {
-    args: ["projects", "list", "--json"],
-    cwd: await realpath(workspace),
-    apiUrl: "http://127.0.0.1:49321",
-    traceOrigin: "mcp-transport",
+  const result = await client.request({
+    command: { action: "list", canvasId: "main" },
   });
+
   assert.equal(ensures, 1);
+  assert.deepEqual(requests, [{
+    url: "http://127.0.0.1:49321/api/v1/projects/project-workspace/host-command",
+    body: { action: "list", canvasId: "main" },
+  }]);
+  assert.deepEqual(result.value, { nodes: [] });
 });
 
-test("an explicit API URL bypasses local daemon startup", async () => {
-  const module = await loadRunnerModule();
-  const root = await mkdtemp(join(tmpdir(), "clash-runner-explicit-"));
-  const command = await makeCli(root);
+test("an explicit API URL bypasses daemon startup and forwards its API token", async () => {
+  const { createMcpProjectHostClient } = await import("./host-runner.js");
   let ensures = 0;
-  const runner = (module.createHostCliRunner as (options: Record<string, unknown>) => (
-    args: string[], cwd?: string
-  ) => Promise<unknown>)({
-    command,
-    env: { ...process.env, CLASH_API_URL: "https://clash.example.test" },
+  let authorization = "";
+  const client = createMcpProjectHostClient({
+    env: {
+      CLASH_API_URL: "https://clash.example.test",
+      CLASH_API_KEY: "clsh_direct",
+      CLASH_PROJECT_ID: "project-env",
+    },
     hostManager: {
       ensureHost: async () => {
         ensures += 1;
         return host();
       },
     },
+    fetch: async (_input, init) => {
+      authorization = new Headers(init?.headers).get("authorization") ?? "";
+      return new Response(JSON.stringify({ timelines: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
   });
 
-  assert.deepEqual(await runner(["projects", "list", "--json"]), {
-    args: ["projects", "list", "--json"],
-    cwd: process.cwd(),
-    apiUrl: "https://clash.example.test",
-    traceOrigin: "mcp-transport",
-  });
+  const result = await client.request({ command: { action: "list_timelines" } });
+
   assert.equal(ensures, 0);
-});
-
-test("runner-provided CLI entry is the MCP peer executable", async () => {
-  const module = await loadRunnerModule();
-  const root = await mkdtemp(join(tmpdir(), "clash-runner-agent-cli-"));
-  const command = await makeCli(root);
-  const runner = (module.createHostCliRunner as (options: Record<string, unknown>) => (
-    args: string[], cwd?: string
-  ) => Promise<unknown>)({
-    env: {
-      ...process.env,
-      CLASH_API_URL: "http://127.0.0.1:49321",
-      CLASH_CLI_ENTRY_PATH: command,
-    },
-  });
-
-  assert.deepEqual(await runner(["timeline", "list", "--json"]), {
-    args: ["timeline", "list", "--json"],
-    cwd: process.cwd(),
-    apiUrl: "http://127.0.0.1:49321",
-    traceOrigin: "mcp-transport",
-  });
-});
-
-test("a non-executable bundled CLI is launched through Node", async () => {
-  const module = await loadRunnerModule();
-  const root = await mkdtemp(join(tmpdir(), "clash-runner-node-cli-"));
-  const bundledCliPath = join(root, "clash-cli.cjs");
-  await writeFile(bundledCliPath, [
-    "console.log(JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), apiUrl: process.env.CLASH_API_URL, traceOrigin: process.env.CLASH_CLI_TRACE_ORIGIN }));",
-    "",
-  ].join("\n"), "utf8");
-  const runner = (module.createHostCliRunner as (options: Record<string, unknown>) => (
-    args: string[], cwd?: string
-  ) => Promise<unknown>)({
-    bundledCliPath,
-    env: { ...process.env, CLASH_API_URL: "http://127.0.0.1:49321" },
-  });
-
-  assert.deepEqual(await runner(["canvas", "list", "--json"]), {
-    args: ["canvas", "list", "--json"],
-    cwd: process.cwd(),
-    apiUrl: "http://127.0.0.1:49321",
-    traceOrigin: "mcp-transport",
-  });
-});
-
-test("host runner defaults every product tool to the ACP session workspace", async () => {
-  const module = await loadRunnerModule();
-  const root = await mkdtemp(join(tmpdir(), "clash-plugin-workspace-"));
-  const workspace = join(root, "workspace");
-  await mkdir(join(workspace, ".clash"), { recursive: true });
-  await writeFile(join(workspace, ".clash", "project.toml"), [
-    "schema_version = 1",
-    'project_id = "project-workspace"',
-    "",
-  ].join("\n"));
-  const command = await makeCli(root);
-  const runner = (module.createHostCliRunner as (options: Record<string, unknown>) => (
-    args: string[], cwd?: string
-  ) => Promise<unknown>)({
-    command,
-    env: {
-      ...process.env,
-      CLASH_WORKSPACE_ROOT: workspace,
-      CLASH_PROJECT_ID: "project-workspace",
-    },
-    hostManager: { ensureHost: async () => host() },
-  });
-
-  assert.deepEqual(await runner(["canvas", "list", "--json"]), {
-    args: ["canvas", "list", "--json"],
-    cwd: await realpath(workspace),
-    apiUrl: "http://127.0.0.1:49321",
-    traceOrigin: "mcp-transport",
-  });
+  assert.equal(authorization, "Bearer clsh_direct");
+  assert.deepEqual(result.value, { timelines: [] });
 });

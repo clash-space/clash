@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TranscriptWordSchema } from "./production-metadata";
+import { TranscriptWordSchema } from "./production-metadata.js";
 
 const SourceHashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 

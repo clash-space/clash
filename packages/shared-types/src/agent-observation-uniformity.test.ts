@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateAgentObservation } from "./agent-observation";
+import { validateAgentObservation } from "./agent-observation.js";
 
 /**
  * Concurrency evidence is not a permission, so it cannot be waived by the label

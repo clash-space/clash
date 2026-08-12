@@ -1,6 +1,7 @@
 {
-  "name": "@clash-space/cli",
+  "name": "@clash/cli",
   "version": "0.1.0-beta.3",
+  "private": true,
   "description": "Clash CLI \u2014 manage projects and canvas from your terminal",
   "bin": {
     "clash": "./dist/index.js"
@@ -8,38 +9,34 @@
   "main": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js",
-    "./actions": {
-      "types": "./dist/actions.d.ts",
-      "default": "./dist/actions.js"
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
     }
   },
-  "publishConfig": {
-    "access": "public"
+  "engines": {
+    "node": ">=24.18.0 <25"
   },
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch",
-    "typecheck": "npm --prefix ../shared-runtime run build && tsc --noEmit",
+    "bundle:agents": "node scripts/bundle-agents.mjs",
+    "dev": "tsx --tsconfig tsconfig.dev.json src/index.ts",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "test": "npm --prefix ../shared-runtime run build && node scripts/run-tests.mjs && vitest run",
+    "test": "node scripts/run-tests.mjs",
     "test:e2e": "node --test e2e/canvas-add-refs.test.mjs"
   },
   "dependencies": {
-    "@clash-space/bridge": "workspace:*",
-    "@clash-space/mcp-server": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
-    "@master-clash/remotion-effects": "workspace:*",
-    "ajv": "^8.20.0",
+    "@clash/shared-types": "workspace:*",
+    "@clash/remotion-effects": "workspace:*",
     "commander": "^13.0.0",
     "esbuild": "^0.25.0",
-    "loro-crdt": "^1.10.3",
-    "ws": "^8.18.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
     "@clash/shared-layout": "workspace:^",
-    "@clash/shared-types": "workspace:*",
-    "@types/ws": "^8.5.0",
+    "@types/node": "^24.0.0",
     "tsup": "^8.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.0.0",

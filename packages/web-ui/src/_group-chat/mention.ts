@@ -4,7 +4,7 @@
  * token at the start of the input, optionally trimmed of leading
  * whitespace.
  *
- *   "@master-clash plan a 5s clip" -> { agentMemberId: "master-clash", body: "plan a 5s clip" }
+ *   "@clash plan a 5s clip" -> { agentMemberId: "clash", body: "plan a 5s clip" }
  *   "  @canvas-editor add node" →  { agentMemberId: "canvas-editor", body: "add node" }
  *   "hi"                        →  { agentMemberId: null, body: "hi" }
  *

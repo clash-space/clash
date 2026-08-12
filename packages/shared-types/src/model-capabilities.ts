@@ -14,13 +14,14 @@
  * sprawling utils module.
  */
 
-import type { ModelCard, ModelInputMode } from "./models";
-import { normalizePromptInput } from "./prompt";
-import type { CustomActionDefinition } from "./canvas";
+import type { AigcActionKind } from "./actions.js";
+import type { ModelCard, ModelInputMode } from "./models.js";
+import { normalizePromptInput } from "./prompt.js";
+import type { CustomActionDefinition } from "./canvas.js";
 import {
   DirectorReferencePacketSchema,
   type DirectorReferencePacket,
-} from "./director-reference";
+} from "./director-reference.js";
 
 export type Modality = "text" | "image" | "video" | "audio";
 
@@ -46,7 +47,7 @@ export interface RefBound {
 
 export interface Capability {
   /** Output modality of the model itself (kind of asset it generates). */
-  outputKind: "image" | "video" | "audio" | "text";
+  outputKind: AigcActionKind;
   /** Whether a non-empty prompt is required. */
   requiresPrompt: boolean;
   /** Per-modality reference bounds. All four keys always present —
@@ -580,7 +581,7 @@ export function partitionRefs(
  * invalid or would be silently discarded.
  */
 export function findCompatibleModels(opts: {
-  outputKind: "image" | "video" | "audio" | "text";
+  outputKind: AigcActionKind;
   sourceKind?: Modality | string;
   referenceCounts?: Partial<Record<Modality, number>>;
   enforceMinimums?: boolean;
@@ -601,18 +602,19 @@ export function findCompatibleModels(opts: {
 
 /** Pick the first result from an injected, already-ordered candidate set. */
 export function pickDefaultModel(opts: {
-  outputKind: "image" | "video" | "audio" | "text";
+  outputKind: AigcActionKind;
   sourceKind?: Modality | string;
   referenceCounts?: Partial<Record<Modality, number>>;
   enforceMinimums?: boolean;
   cards: ReadonlyArray<ModelCard>;
 }): ModelCard | undefined {
   const compatible = findCompatibleModels(opts);
-  if (opts.outputKind === "audio") {
-    const textToSpeech = compatible.filter((card) => card.task === "text-to-speech");
-    return textToSpeech.find((card) => card.availableProviders?.includes("official"))
-      ?? textToSpeech[0]
-      ?? compatible[0];
-  }
-  return compatible[0];
+
+  // An official provider first, whatever the output kind. This used to be an audio-only branch that
+  // filtered on `card.task === "text-to-speech"`, from when speech and music were treated as
+  // separate actions. They are one action -- producing one class of output is one action, and the
+  // difference between speaking and composing is parameters -- so the filter went, and what it was
+  // really expressing, a preference for a provider we run ourselves, stayed and now applies
+  // everywhere rather than to audio alone.
+  return compatible.find((card) => card.availableProviders?.includes("official")) ?? compatible[0];
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateTimelineItemKeyframes } from "./timeline-keyframes";
+import { validateTimelineItemKeyframes } from "./timeline-keyframes.js";
 
 describe("Timeline item keyframe contract", () => {
   it("requires the keyframes field to be an object", () => {

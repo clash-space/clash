@@ -61,12 +61,12 @@ class ClashAgent:
         # runtime_id identifies WHICH local machine hosts this action.
         # The server uses it to gate dispatch on the runtime being online
         # (deriveRuntimeStatus). Falls back to CLASH_RUNTIME_ID env so the
-        # bridge daemon can inject it when supervising subprocess actions.
+        # local-api host can inject it when supervising subprocess actions.
         #
         # If unset, register_custom_actions on the server side will reject
         # us — bail loudly during connect() rather than after a sleep.
         # Dev path: `export CLASH_RUNTIME_ID=$(jq -r .runtimeId ~/.clash/credentials.json)`
-        # (the bridge writes credentials.json during `clash setup`).
+        # (the local host writes credentials.json during setup).
         self.runtime_id = runtime_id or os.environ.get("CLASH_RUNTIME_ID") or None
         self.active_tasks: dict[str, TaskState] = {}
         self.task_history: list[dict[str, Any]] = []

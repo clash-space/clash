@@ -160,6 +160,8 @@ async function closeServer(server: Server): Promise<void> {
 
 export function createHeadlessDirectorStageRenderer(options: {
   bundleDir: string;
+  /** Rebuilds the development browser asset when workspace source changed. */
+  prepareBundle?: () => Promise<void>;
   openBrowser: () => Promise<BrowserLike>;
 }): LocalDirectorStageRenderer {
   let browserPromise: Promise<BrowserLike> | undefined;
@@ -173,6 +175,7 @@ export function createHeadlessDirectorStageRenderer(options: {
     if (disposed) throw new Error("Director Stage renderer is disposed");
     const request = validatedRequest(unvalidated);
     const run = renderQueue.then(async () => {
+      await options.prepareBundle?.();
       const [activeBrowser, served] = await Promise.all([browser(), bundleServer()]);
       const page = await activeBrowser.newPage({
         context: () => null,

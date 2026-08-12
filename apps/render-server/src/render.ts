@@ -4,20 +4,46 @@ import os from "os";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 
-// Cache the bundle path across renders
-let bundlePath: string | null = null;
+type DevelopmentBundle = { path: string; sourceFingerprint: string };
+
+let developmentBundle: DevelopmentBundle | null = null;
+let developmentBundleInFlight: Promise<DevelopmentBundle> | null = null;
 
 // Pre-built bundle written by prebundle.ts during Docker build, copied into
 // the runtime stage at /app/.remotion-bundle. See Dockerfile.
 const PREBUILT_BUNDLE = path.resolve(import.meta.dirname, "../.remotion-bundle");
 
-async function ensureBundle(): Promise<string> {
-  if (bundlePath && fs.existsSync(bundlePath)) return bundlePath;
+const DEVELOPMENT_BUNDLE_SOURCE_ROOTS = [
+  "../../../packages/remotion-components/src",
+  "../../../packages/remotion-core/src",
+  "../../../packages/remotion-effects/src",
+  "../../../packages/shared-types/src",
+  "../../../packages/shared-layout/src",
+].map((source) => path.resolve(import.meta.dirname, source));
 
+function newestSourceMtime(directory: string): number {
+  if (!fs.existsSync(directory)) return 0;
+  let newest = fs.statSync(directory).mtimeMs;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.resolve(directory, entry.name);
+    newest = Math.max(
+      newest,
+      entry.isDirectory() ? newestSourceMtime(entryPath) : fs.statSync(entryPath).mtimeMs,
+    );
+  }
+  return newest;
+}
+
+function developmentSourceFingerprint(): string {
+  return DEVELOPMENT_BUNDLE_SOURCE_ROOTS
+    .map((root) => `${root}:${newestSourceMtime(root)}`)
+    .join("|");
+}
+
+async function ensureBundle(): Promise<string> {
   if (fs.existsSync(PREBUILT_BUNDLE)) {
-    bundlePath = PREBUILT_BUNDLE;
-    console.log("[render] Using pre-built bundle:", bundlePath);
-    return bundlePath;
+    console.log("[render] Using pre-built bundle:", PREBUILT_BUNDLE);
+    return PREBUILT_BUNDLE;
   }
 
   // Dev fallback (tsx watch on src/): compile from source. Slow first time
@@ -31,15 +57,44 @@ async function ensureBundle(): Promise<string> {
     throw new Error(`Remotion entry point not found: ${entryPoint}`);
   }
 
-  console.log("[render] Bundling Remotion components from source (dev)...");
-  bundlePath = await bundle({
-    entryPoint,
-    onProgress: (pct) => {
-      if (pct % 25 === 0) console.log(`[render] Bundle progress: ${pct}%`);
-    },
-  });
-  console.log("[render] Bundle ready:", bundlePath);
-  return bundlePath;
+  const sourceFingerprint = developmentSourceFingerprint();
+  if (
+    developmentBundle &&
+    developmentBundle.sourceFingerprint === sourceFingerprint &&
+    fs.existsSync(developmentBundle.path)
+  ) {
+    return developmentBundle.path;
+  }
+
+  if (developmentBundleInFlight) {
+    const inFlight = await developmentBundleInFlight;
+    return inFlight.sourceFingerprint === sourceFingerprint
+      ? inFlight.path
+      : ensureBundle();
+  }
+
+  console.log(
+    developmentBundle
+      ? "[render] Remotion workspace source changed; rebuilding development bundle..."
+      : "[render] Bundling Remotion components from source (dev)...",
+  );
+  const pending = (async (): Promise<DevelopmentBundle> => {
+    const bundledPath = await bundle({
+      entryPoint,
+      onProgress: (pct) => {
+        if (pct % 25 === 0) console.log(`[render] Bundle progress: ${pct}%`);
+      },
+    });
+    return { path: bundledPath, sourceFingerprint };
+  })();
+  developmentBundleInFlight = pending;
+  try {
+    developmentBundle = await pending;
+    console.log("[render] Bundle ready:", developmentBundle.path);
+    return developmentBundle.path;
+  } finally {
+    if (developmentBundleInFlight === pending) developmentBundleInFlight = null;
+  }
 }
 
 export async function renderTimeline(

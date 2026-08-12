@@ -3,7 +3,7 @@
   "version": "0.1.0+codex.20260716034048",
   "description": "Inspect and edit Clash Timelines through typed MCP tools.",
   "author": {
-    "name": "Clash Space"
+    "name": "Clash"
   },
   "license": "MIT",
   "keywords": [
@@ -17,7 +17,7 @@
     "displayName": "Clash Timeline",
     "shortDescription": "Edit project timelines through typed tools",
     "longDescription": "Inspect, create, and save Clash Project Timelines through typed MCP tools while preserving the CLI read-proof and apply contract. The embedded MCP App is temporarily unavailable.",
-    "developerName": "Clash Space",
+    "developerName": "Clash",
     "category": "Productivity",
     "capabilities": [
       "Read",

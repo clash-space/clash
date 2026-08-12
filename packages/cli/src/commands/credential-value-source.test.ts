@@ -27,9 +27,12 @@ describe("a credential value can name its source", () => {
     expect(source).not.toMatch(/\.option\("--credential-file/);
   });
 
-  it("still lets the most common credential be named directly", () => {
-    // apiKey is the only credential most providers have. Making the common case spell out
-    // `--credential apiKey=` would also require knowing the key's name, which the provider decides.
-    expect(source).toMatch(/"--api-key <value>"/);
+  it("takes every credential the same way, by the name the Provider declares", () => {
+    // The `--api-key` shortcut is gone with the rest. It existed because apiKey is the only
+    // credential most Providers have -- but "most" is what made it a special case, and a Provider
+    // wanting an access key and a secret had to wait for a flag. `--set key=value` needs the key's
+    // name, which is exactly what the declaration states and what the settings screen renders.
+    expect(source).toMatch(/"--set <key=value>"/);
+    expect(source).not.toMatch(/\.option\("--api-key/);
   });
 });

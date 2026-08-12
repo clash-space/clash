@@ -15,14 +15,12 @@ export type ProviderApiShape =
   | 'google-agent-platform'
   | 'google-ai-studio'
   | 'replicate'
-  | 'kie'
   | 'serverless-function'
   | 'http';
 
 export type ActionProvider =
   | 'fal'
   | 'replicate'
-  | 'kie'
   | 'official'
   | 'openai'
   | 'google-ai-studio'
@@ -264,7 +262,7 @@ export interface RunOptions {
    *  We convert internally for the WS handshake. */
   serverUrl: string;
   projectId: string;
-  /** Same `agentApiKey` the bridge daemon uses (or any API token
+  /** Same `agentApiKey` the local-api host uses (or any API token
    *  bound to the user). Forwarded as `Authorization: Bearer ...`
    *  on the WS upgrade. */
   apiKey: string;

@@ -19,6 +19,7 @@ export const GOOGLE_PLATFORMS = {
 
 export type GooglePlatform = keyof typeof GOOGLE_PLATFORMS;
 
+
 export const GooglePlatformSchema = z.enum(
   Object.keys(GOOGLE_PLATFORMS) as [GooglePlatform, ...GooglePlatform[]],
 );

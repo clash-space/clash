@@ -7,7 +7,7 @@ import {
   withManagedPythonAsrRuntime,
   withManagedPythonTtsRuntime,
 } from "./managed-local-model-python";
-import type { LocalAsrRuntime, LocalTtsRuntime } from "@clash-space/sdk";
+import type { LocalAsrRuntime, LocalTtsRuntime } from "@clash/sdk";
 
 let clashHome = "";
 

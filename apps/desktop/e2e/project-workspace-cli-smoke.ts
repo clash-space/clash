@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { createServer, type Server } from "node:net";
 import { randomUUID } from "node:crypto";
 import {
   chmod,
@@ -11,12 +10,6 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { LoroSyncClient } from "../../../packages/shared-types/src/loro-client";
-import {
-  daemonSocketDir,
-  getSocketPath,
-  handleCommandForTest,
-} from "../../../packages/cli/src/lib/daemon";
 
 type CommandResult = {
   command: string;
@@ -40,16 +33,16 @@ const artifactRoot = path.resolve(
 );
 const workspace = path.join(artifactRoot, "workspace");
 const reportPath = path.join(artifactRoot, "project-workspace-cli-report.json");
-const cliEntry = path.join(repoRoot, "packages", "cli", "dist", "index.js");
+const cliEntry = path.join(repoRoot, "plugins", "clash", "runtime", "dispatcher.js");
 const clashHome = process.env.CLASH_PROJECT_WORKSPACE_CLASH_HOME ??
   path.join("/tmp", `clash-pw-${randomUUID().slice(0, 8)}`);
 const projectId = "qa/project with spaces";
+const { CLASH_API_URL: _ambientApiUrl, ...baseEnv } = process.env;
 const agentEnv = {
-  ...process.env,
+  ...baseEnv,
   CLASH_AGENT_MEMBER_ID: "qa-codex-agent",
   CLASH_AGENT_NAME: "QA Codex Agent",
   CLASH_USER_ID: "qa-local-user",
-  CLASH_API_URL: "http://127.0.0.1:1",
   CLASH_HOME: clashHome,
 };
 
@@ -72,11 +65,15 @@ function parseJson<T>(result: CommandResult): T {
 
 async function runCli(
   args: string[],
-  options: { expectStatus?: number; env?: Record<string, string | undefined> } = {},
+  options: {
+    expectStatus?: number;
+    env?: Record<string, string | undefined>;
+    cwd?: string;
+  } = {},
 ): Promise<CommandResult> {
   const result = await new Promise<CommandResult>((resolve, reject) => {
     const child = spawn(process.execPath, [cliEntry, ...args], {
-      cwd: workspace,
+      cwd: options.cwd ?? workspace,
       env: { ...agentEnv, ...options.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -112,50 +109,37 @@ async function runCli(
   return result;
 }
 
-async function startDaemon(client: LoroSyncClient): Promise<{ socketPath: string; stop: () => Promise<void> }> {
-  const socketPath = getSocketPath(projectId, agentEnv);
-  const pidPath = socketPath.replace(/\.sock$/, ".pid");
-  await mkdir(path.dirname(socketPath), { recursive: true, mode: 0o700 });
-  await rm(socketPath, { force: true });
-  await writeFile(pidPath, `${process.pid}\n`, { mode: 0o600 });
+type HostRecord = {
+  endpoint: string;
+  hostId: string;
+  pid: number;
+  protocolVersion: number;
+};
 
-  const server = createServer((connection) => {
-    let buffer = "";
-    connection.on("data", (chunk) => {
-      buffer += chunk.toString();
-      const newline = buffer.indexOf("\n");
-      if (newline < 0) return;
-      try {
-        const command = JSON.parse(buffer.slice(0, newline));
-        const result = handleCommandForTest(client, command);
-        connection.end(`${JSON.stringify(result)}\n`);
-      } catch (error) {
-        connection.end(`${JSON.stringify({
-          error: error instanceof Error ? error.message : String(error),
-        })}\n`);
-      }
-    });
-  });
+const hostRecordPath = path.join(clashHome, "run", "host.json");
 
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(socketPath, resolve);
-  });
-
-  return {
-    socketPath,
-    stop: async () => {
-      await closeServer(server);
-      await rm(socketPath, { force: true });
-      await rm(pidPath, { force: true });
-    },
-  };
+async function readHostRecord(): Promise<HostRecord> {
+  return JSON.parse(await readFile(hostRecordPath, "utf8")) as HostRecord;
 }
 
-async function closeServer(server: Server): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
-  });
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function stopHost(record: HostRecord | null): Promise<void> {
+  if (!record || !processExists(record.pid)) return;
+  process.kill(record.pid, "SIGTERM");
+  for (let attempt = 0; attempt < 100 && processExists(record.pid); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  if (processExists(record.pid)) {
+    throw new Error(`local-api host ${record.pid} did not stop`);
+  }
 }
 
 function timelineYaml(sourceNodeId: string, label: string): string {
@@ -182,7 +166,7 @@ async function main(): Promise<void> {
   await mkdir(workspace, { recursive: true });
   await mkdir(clashHome, { recursive: true, mode: 0o700 });
 
-  let daemon: Awaited<ReturnType<typeof startDaemon>> | null = null;
+  let host: HostRecord | null = null;
   try {
     const rootHelp = await runCli(["--help"]);
     check(
@@ -223,17 +207,13 @@ async function main(): Promise<void> {
       projectStatus.storage.canonicalReplica.metadata.path,
     );
 
-    let client = new LoroSyncClient({
-      serverUrl: "http://127.0.0.1:0",
-      projectId,
-      token: "test",
-    });
-    client.createNode("bootstrap-main", "text", { label: "Main seed", content: "seed" });
-    daemon = await startDaemon(client);
+    host = await readHostRecord();
     check(
-      "hashed daemon socket stays inside socket directory",
-      path.dirname(daemon.socketPath) === daemonSocketDir(agentEnv) && !daemon.socketPath.includes(projectId),
-      daemon.socketPath,
+      "CLI discovers the shared local-api host",
+      host.endpoint.startsWith("http://127.0.0.1:") &&
+        host.protocolVersion > 0 &&
+        processExists(host.pid),
+      JSON.stringify(host),
     );
 
     const initialCanvases = parseJson<Array<{ id: string }>>(
@@ -241,10 +221,22 @@ async function main(): Promise<void> {
     );
     check(
       "local Project CLI works without cloud credentials",
-      !("CLASH_API_KEY" in agentEnv) && initialCanvases.length > 0,
+      !("CLASH_API_KEY" in agentEnv) && Array.isArray(initialCanvases),
       JSON.stringify({ apiKeyConfigured: "CLASH_API_KEY" in agentEnv, initialCanvases }),
     );
-    check("fresh project exposes main Canvas", initialCanvases.map((canvas) => canvas.id).join(",") === "main", JSON.stringify(initialCanvases));
+    check("fresh project has no phantom Canvas before its first write", initialCanvases.length === 0, JSON.stringify(initialCanvases));
+    await runCli([
+      "canvas", "add", "--type", "text", "--label", "Main seed",
+      "--content", "seed", "--json",
+    ]);
+    const materializedCanvases = parseJson<Array<{ id: string }>>(
+      await runCli(["canvases", "list", "--json"]),
+    );
+    check(
+      "the first default Canvas write materializes main",
+      materializedCanvases.map((canvas) => canvas.id).join(",") === "main",
+      JSON.stringify(materializedCanvases),
+    );
 
     await runCli(["canvases", "create", "--id", "shots", "--name", "Shots", "--json"]);
     const renamed = parseJson<{ id: string; name: string }>(
@@ -283,27 +275,15 @@ async function main(): Promise<void> {
     );
     check("native Timeline file edit applies through entity CAS", applied.applied && applied.timelineId === "episode-1", JSON.stringify(applied));
 
-    const handoff = parseJson<{ exported: boolean; manifestPath: string }>(
-      await runCli([
-        "production", "export-timeline-handoff",
-        "--timeline", "timelines/episode-1.timeline.yaml",
-        "--timeline-id", "episode-1",
-        "--out", "exports/episode-1.csv",
-        "--json",
-      ]),
+    const persistedTimelines = parseJson<Array<{ id: string; revisionId: string }>>(
+      await runCli(["timeline", "list", "--json"]),
     );
-    const handoffManifest = JSON.parse(await readFile(handoff.manifestPath, "utf8")) as {
-      sourceTimelineId?: string;
-      sourceTimelineRevisionId?: string;
-      sourceTimelineRevisionStatus?: string;
-    };
     check(
-      "downstream export pins the host Project Timeline revision",
-      handoff.exported === true &&
-        handoffManifest.sourceTimelineId === "episode-1" &&
-        handoffManifest.sourceTimelineRevisionId === applied.revisionId &&
-        handoffManifest.sourceTimelineRevisionStatus === "applied",
-      JSON.stringify({ applied, handoffManifest }),
+      "Project Timeline readback exposes the applied host revision",
+      persistedTimelines.some((timeline) =>
+        timeline.id === "episode-1" && timeline.revisionId === applied.revisionId
+      ),
+      JSON.stringify({ applied, persistedTimelines }),
     );
 
     const attached = parseJson<{ owner: { kind: string; canvasId?: string; actionNodeId?: string } }>(
@@ -314,10 +294,14 @@ async function main(): Promise<void> {
     );
     check("Timeline attach moves identity under one Canvas Action", attached.owner.kind === "canvas-action" && attached.owner.canvasId === "shots", JSON.stringify(attached));
 
-    const rendered = parseJson<{ kind: string; childNodeId: string }>(
-      await runCli(["canvas", "execute", "--canvas", "shots", "--node", "timeline-action-1", "--json"]),
+    const attachedAction = parseJson<{ id: string; canvas_id: string; data?: { timelineId?: string } }>(
+      await runCli(["canvas", "get", "--canvas", "shots", "--node", "timeline-action-1", "--json"]),
     );
-    check("Canvas-scoped Timeline Action renders from Project Timeline state", rendered.kind === "render" && Boolean(rendered.childNodeId), JSON.stringify(rendered));
+    check(
+      "Canvas-scoped Timeline Action resolves Project Timeline state",
+      attachedAction.canvas_id === "shots" && attachedAction.data?.timelineId === "episode-1",
+      JSON.stringify(attachedAction),
+    );
 
     const copied = parseJson<{ id: string; owner: { kind: string; canvasId?: string; actionNodeId?: string } }>(
       await runCli([
@@ -343,7 +327,24 @@ async function main(): Promise<void> {
     );
 
     await runCli(["timeline", "pull", "--timeline", "episode-1", "--json"]);
-    client.updateTimelineState("episode-1", { fps: 30, durationInFrames: 30, tracks: [] });
+    const concurrentWorkspace = path.join(artifactRoot, "concurrent-workspace");
+    await mkdir(concurrentWorkspace, { recursive: true });
+    await runCli(["init", "--project", projectId, "--json"], {
+      cwd: concurrentWorkspace,
+    });
+    const concurrentPull = parseJson<{ filePath: string }>(
+      await runCli(["timeline", "pull", "--timeline", "episode-1", "--json"], {
+        cwd: concurrentWorkspace,
+      }),
+    );
+    await writeFile(
+      concurrentPull.filePath,
+      timelineYaml(createdNode.node_id, "concurrent edit"),
+      "utf8",
+    );
+    await runCli(["timeline", "apply", "--timeline", "episode-1", "--json"], {
+      cwd: concurrentWorkspace,
+    });
     await writeFile(pulled.filePath, timelineYaml(createdNode.node_id, "stale edit"), "utf8");
     const stale = await runCli(
       ["timeline", "apply", "--timeline", "episode-1", "--json"],
@@ -374,16 +375,20 @@ async function main(): Promise<void> {
     const observationMode = (await stat(observationPath)).mode & 0o777;
     check("cwd observation is owner-only", observationMode === 0o600, observationMode.toString(8));
 
-    const snapshot = client.doc.export({ mode: "snapshot" });
-    await daemon.stop();
-    daemon = null;
-    client = new LoroSyncClient({ serverUrl: "http://127.0.0.1:0", projectId, token: "test" });
-    client.doc.import(snapshot);
-    daemon = await startDaemon(client);
+    const stoppedHost = host;
+    await stopHost(stoppedHost);
+    host = null;
     const recovered = parseJson<Array<{ id: string }>>(
       await runCli(["timeline", "list", "--json"]),
     );
-    check("daemon restart recovers all Project Timelines from one snapshot", recovered.map((timeline) => timeline.id).sort().join(",") === "episode-1,episode-1-copy", JSON.stringify(recovered));
+    host = await readHostRecord();
+    check(
+      "daemon restart recovers all Project Timelines from the local replica",
+      recovered.map((timeline) => timeline.id).sort().join(",") === "episode-1,episode-1-copy" &&
+        host.hostId !== stoppedHost.hostId &&
+        processExists(host.pid),
+      JSON.stringify({ recovered, stoppedHost, restartedHost: host }),
+    );
     const recoveredCopyNode = parseJson<{ id: string; canvas_id: string }>(
       await runCli(["canvas", "get", "--canvas", "main", "--node", "timeline-action-copy", "--json"]),
     );
@@ -407,7 +412,8 @@ async function main(): Promise<void> {
         marker: initialized.markerPath,
         observation: observationPath,
         timelineProjection: pulled.filePath,
-        socket: daemon.socketPath,
+        hostRecord: hostRecordPath,
+        endpoint: host.endpoint,
       },
       summary: {
         checks: checks.length,
@@ -440,7 +446,7 @@ async function main(): Promise<void> {
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
     throw error;
   } finally {
-    if (daemon) await daemon.stop().catch(() => undefined);
+    await stopHost(host).catch(() => undefined);
   }
 }
 

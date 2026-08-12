@@ -45,7 +45,17 @@ Clash 围绕 Agent 创作来设计，不是给传统编辑器外挂一个聊天�
 
 ## 快速开始
 
-Clash 需要 Node.js 22.22+ 与 pnpm 10+。
+Clash 需要 Node.js 24.18+（Node 24.x）与 pnpm 10+。
+
+CLI 与 MCP 统一由 `clash` 包分发：
+
+```bash
+npm install -g clash
+clash --help
+# MCP 客户端配置为：npx -y clash mcp
+```
+
+参与仓库开发：
 
 ```bash
 git clone https://github.com/clash-space/clash.git
@@ -58,7 +68,7 @@ pnpm dev
 本地开发 Electron 桌面端：
 
 ```bash
-pnpm --filter @master-clash/desktop dev
+pnpm dev:package @clash/desktop
 ```
 
 `clash.video` 用的是私有 overlay
@@ -158,11 +168,12 @@ apps/
   loro-sync-server/     遗留壳子，sync 逻辑已搬进 api-cf
 packages/
   director-{core,ui}/   3D Director Stage 状态与界面
-  mcp-server/           类型化 MCP 工具与聚焦 Clash Apps
+  mcp-server/           插件 MCP 内部使用、与 CLI 对等的类型化能力层
   clash-sdk/            JavaScript 与 Python Agent/模型 SDK
   shared-types/         Zod schema、model card、ref/capability 工具
   shared-layout/        画布自动布局
-  web-ui/               共用 React 组件（ProjectEditor、ChatbotCopilot 等）
+  gui/                  平台无关的 React 视图与类型化 UI ports
+  web-ui/               Web 产品 controller 与兼容导出
   cli/                  终端 CLI
   claude-code-plugin/   Claude Code 集成
   remotion-effects/     可复用视频特效
@@ -183,7 +194,7 @@ plugins/
 
 ### 前置条件
 
-- Node 22.22+，pnpm 10+，wrangler 4+
+- Node 24.18+（Node 24.x），pnpm 10+，wrangler 4+
 - Cloudflare Workers Paid plan（DO + Workflows + Containers 都需要）
 
 ### 一次性设置

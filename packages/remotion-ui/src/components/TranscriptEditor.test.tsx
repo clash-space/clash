@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { EditorProvider, type EditorState } from "@master-clash/remotion-core";
+import { EditorProvider, type EditorState } from "@clash/remotion-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => cleanup());

@@ -11,7 +11,7 @@ import {
   type Asset,
   type EditorAssetTranscript,
   type TimelineTranscriptWord,
-} from "@master-clash/remotion-core";
+} from "@clash/remotion-core";
 import { RemotionButton, RemotionInput } from "./ui/controls";
 
 export type TranscriptEditorProps = {

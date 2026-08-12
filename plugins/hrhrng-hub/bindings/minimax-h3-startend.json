@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-minimax-h3-startend",
+    "modelId": "minimax-h3-startend",
+    "upstreamModel": "MiniMax-H3"
+  }
+}

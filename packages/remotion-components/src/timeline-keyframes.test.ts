@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ImageItem } from "@master-clash/remotion-core";
+import type { ImageItem } from "@clash/remotion-core";
 import {
   computeTimelineItemMaskStyle,
   computeTimelineItemLocalFrame,

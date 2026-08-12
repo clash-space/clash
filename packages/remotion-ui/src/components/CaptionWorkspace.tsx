@@ -9,7 +9,7 @@ import {
   type EditorAssetTranscript,
   type SubtitleTextItem,
   type Track,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import { buildCaptionItemFromTimelineWords, parseCaptionFile } from '../captions/captionWorkflow';
 import { TimelineLibraryPanel } from './TimelineLibraryPanel';
 import { TranscriptEditor } from './TranscriptEditor';

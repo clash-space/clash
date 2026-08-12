@@ -1,8 +1,9 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { build } from "esbuild";
+import { BUNDLED_PLUGINS } from "../../../apps/local-api/src/bundled-plugins.js";
 
 const pluginRoot = resolve(import.meta.dirname, "..");
 const repoRoot = resolve(pluginRoot, "../..");
@@ -11,14 +12,17 @@ const importMetaUrlShim = "__clash_import_meta_url";
 const require = createRequire(import.meta.url);
 
 await mkdir(runtimeDir, { recursive: true });
-// A core build must never let a stale agent tree leak into the bridge bundle.
-// The fresh agent tree is installed only after the bridge has rebuilt it.
+// A core build must never let a stale agent tree leak into the host bundle.
+// Agent metadata is installed after the host runtime is fresh.
 await rm(resolve(runtimeDir, "agents"), { recursive: true, force: true });
 
 assertDependencyDistIsFresh([
-  resolve(import.meta.dirname, "../../../packages/clash-bridge"),
+  resolve(import.meta.dirname, "../../../packages/cli"),
   resolve(import.meta.dirname, "../../../packages/shared-types"),
   resolve(import.meta.dirname, "../../../apps/local-api"),
+  ...BUNDLED_PLUGINS.map((plugin) =>
+    resolve(import.meta.dirname, `../../${plugin.workspaceDir}`)
+  ),
 ]);
 
 /**
@@ -31,8 +35,8 @@ assertDependencyDistIsFresh([
  * it was inlined at some past build, not that it exists in the tree today.
  */
 const GENERATED_BANNER =
-  "// GENERATED FILE -- DO NOT EDIT. Written by plugins/clash/scripts/build-host-runtime.ts;\n"
-  + "// edit the TypeScript sources it bundles and rebuild. Identifiers here may be stale or renamed.\n";
+  "// GENERATED FILE -- DO NOT EDIT. Written by plugins/clash/scripts/build-host-runtime.ts;\n" +
+  "// edit the TypeScript sources it bundles and rebuild. Identifiers here may be stale or renamed.\n";
 
 await build({
   entryPoints: [resolve(pluginRoot, "src/local-api-entry.ts")],
@@ -40,13 +44,51 @@ await build({
   bundle: true,
   platform: "node",
   format: "cjs",
-  target: "node22",
-  external: ["@remotion/renderer"],
+  target: "node24",
+  // Development-only builders stay lazy and external. Packaged hosts always
+  // use the browser assets copied below and never load these modules.
+  external: ["@remotion/renderer", "@remotion/bundler", "esbuild"],
   define: { "import.meta.url": importMetaUrlShim },
   banner: {
     js: `${GENERATED_BANNER}const ${importMetaUrlShim} = require("node:url").pathToFileURL(__filename).href;`,
   },
 });
+
+/**
+ * Official Providers are part of the Clash distribution, not packages a user installs later.
+ *
+ * esbuild cannot inline a manifest, provider declaration, contract fixture, and subprocess
+ * entrypoint reached through dynamic `require.resolve()`. Copy those exact declared files beside
+ * local-api.cjs; the host seeds its private runtime directory from this immutable payload.
+ */
+const bundledPluginRuntimeRoot = resolve(runtimeDir, "bundled-plugins");
+await rm(bundledPluginRuntimeRoot, { recursive: true, force: true });
+for (const plugin of BUNDLED_PLUGINS) {
+  const sourceRoot = resolve(repoRoot, "plugins", plugin.workspaceDir);
+  const targetRoot = resolve(bundledPluginRuntimeRoot, plugin.workspaceDir);
+  const manifest = JSON.parse(await readFile(resolve(sourceRoot, "manifest.json"), "utf8")) as {
+    runtime?: { entrypoint?: string };
+    contributes?: {
+      cards?: Array<{ path?: string }>;
+      providers?: Array<{ path?: string }>;
+      modelBindings?: Array<{ path?: string }>;
+    };
+    contractTests?: string[];
+  };
+  const declaredFiles = new Set([
+    "manifest.json",
+    manifest.runtime?.entrypoint,
+    ...(manifest.contributes?.cards ?? []).map((entry) => entry.path),
+    ...(manifest.contributes?.providers ?? []).map((entry) => entry.path),
+    ...(manifest.contributes?.modelBindings ?? []).map((entry) => entry.path),
+    ...(manifest.contractTests ?? []),
+  ].filter((path): path is string => Boolean(path)));
+  for (const relativePath of declaredFiles) {
+    const target = resolve(targetRoot, relativePath);
+    await mkdir(dirname(target), { recursive: true });
+    await cp(resolve(sourceRoot, relativePath), target);
+  }
+}
 
 await build({
   entryPoints: [resolve(repoRoot, "packages/cli/src/plugin.ts")],
@@ -54,18 +96,30 @@ await build({
   bundle: true,
   platform: "node",
   format: "cjs",
-  target: "node22",
+  target: "node24",
   define: { "import.meta.url": importMetaUrlShim },
   banner: {
     js: `#!/usr/bin/env node\n${GENERATED_BANNER}const ${importMetaUrlShim} = require("node:url").pathToFileURL(__filename).href;`,
   },
 });
 
+// Keep tracked package artefacts diff-clean even when an inlined dependency
+// emits whitespace-only lines. This is a deterministic formatting pass over
+// generated output, not an authored-source rewrite.
+for (const filename of ["local-api.cjs", "clash-cli.cjs"]) {
+  const path = resolve(runtimeDir, filename);
+  const source = await readFile(path, "utf8");
+  const normalized = source.replace(/[ \t]+$/gm, "");
+  if (normalized !== source) await writeFile(path, normalized, "utf8");
+}
+
 const directorBundleDir = resolve(runtimeDir, "director-bundle");
 await rm(directorBundleDir, { recursive: true, force: true });
 await mkdir(directorBundleDir, { recursive: true });
 await build({
-  entryPoints: [resolve(repoRoot, "packages/director-ui/src/headless-entry.tsx")],
+  entryPoints: [
+    resolve(repoRoot, "packages/director-ui/src/headless-entry.tsx"),
+  ],
   outfile: resolve(directorBundleDir, "index.js"),
   bundle: true,
   platform: "browser",
@@ -97,14 +151,10 @@ await cp(
 
 const remotionBundleDir = resolve(runtimeDir, "remotion-bundle");
 await rm(remotionBundleDir, { recursive: true, force: true });
-await cp(
-  resolve(repoRoot, ".remotion-bundle"),
-  remotionBundleDir,
-  {
-    recursive: true,
-    filter: (source) => !source.endsWith(".map"),
-  },
-);
+await cp(resolve(repoRoot, "apps/render-server/.remotion-bundle"), remotionBundleDir, {
+  recursive: true,
+  filter: (source) => !source.endsWith(".map"),
+});
 
 const removeSourceMapReferences = async (directory: string): Promise<void> => {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -121,7 +171,8 @@ const removeSourceMapReferences = async (directory: string): Promise<void> => {
         /^\s*\/\/[#@]\s*sourceMappingURL=.*\.map\s*$/gm,
         "",
       );
-      if (portableSource !== source) await writeFile(path, portableSource, "utf8");
+      if (portableSource !== source)
+        await writeFile(path, portableSource, "utf8");
     }),
   );
 };
@@ -157,14 +208,18 @@ function assertDependencyDistIsFresh(packageDirs: readonly string[]): void {
     if (!existsSync(srcDir) || !existsSync(distDir)) continue;
     const newestSource = newestMtime(srcDir);
     const newestBuild = newestMtime(distDir);
-    if (newestSource !== undefined && newestBuild !== undefined && newestSource > newestBuild) {
+    if (
+      newestSource !== undefined &&
+      newestBuild !== undefined &&
+      newestSource > newestBuild
+    ) {
       stale.push(relative(process.cwd(), dir));
     }
   }
   if (stale.length > 0) {
     throw new Error(
-      `Refusing to bundle the host: dist is older than src in ${stale.join(", ")}. `
-      + `Run the dependency build first (pnpm build:deps), or the host will run the previous code.`,
+      `Refusing to bundle the host: dist is older than src in ${stale.join(", ")}. ` +
+        "Run `pnpm build:package clash` from the repository root so Turbo rebuilds the dependency graph.",
     );
   }
 }
@@ -174,8 +229,11 @@ function newestMtime(dir: string): number | undefined {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
     const full = join(dir, entry.name);
-    const stamp = entry.isDirectory() ? newestMtime(full) : statSync(full).mtimeMs;
-    if (stamp !== undefined && (newest === undefined || stamp > newest)) newest = stamp;
+    const stamp = entry.isDirectory()
+      ? newestMtime(full)
+      : statSync(full).mtimeMs;
+    if (stamp !== undefined && (newest === undefined || stamp > newest))
+      newest = stamp;
   }
   return newest;
 }

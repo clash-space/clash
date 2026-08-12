@@ -1142,7 +1142,7 @@ test("storage doctor fails when local secret files are agent-writable or unprote
   const corrupted = {
     ...status,
     protectedPaths: status.protectedPaths.filter(
-      (path) => path !== status.storage.localSecrets.files.bridgeCredentials.path,
+      (path) => path !== status.storage.localSecrets.files.hostCredentials.path,
     ),
     storage: {
       ...status.storage,
@@ -1151,8 +1151,8 @@ test("storage doctor fails when local secret files are agent-writable or unprote
         agentWritable: true,
         files: {
           ...status.storage.localSecrets.files,
-          bridgeCredentials: {
-            ...status.storage.localSecrets.files.bridgeCredentials,
+          hostCredentials: {
+            ...status.storage.localSecrets.files.hostCredentials,
             agentWritable: true,
           },
         },
@@ -1165,8 +1165,8 @@ test("storage doctor fails when local secret files are agent-writable or unprote
   const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
   assert.equal(contract.level, "error");
   assert.match(contract.message, /local secrets are agent-writable/);
-  assert.match(contract.message, /bridge credentials secret path is not protected/);
-  assert.match(contract.message, /bridge credentials secret is agent-writable/);
+  assert.match(contract.message, /local host credentials secret path is not protected/);
+  assert.match(contract.message, /local host credentials secret is agent-writable/);
 });
 
 test("storage doctor fails when machine-local config is not modeled as protected YAML", () => {
@@ -1775,16 +1775,16 @@ test("storage doctor repair fixes provider auth primary keys for multi-account r
       INSERT INTO provider_accounts (user_id, account_key, provider_id, enabled)
       VALUES ('local-user', 'replicate-secondary', 'replicate', 1);
       INSERT INTO provider_oauth (user_id, provider_id, account_id, status)
-      VALUES ('local-user', 'dreamina', 'jimeng-primary', 'authorized');
+      VALUES ('local-user', 'example-oauth', 'example-primary', 'authorized');
       INSERT INTO provider_oauth (user_id, provider_id, account_id, status)
-      VALUES ('local-user', 'dreamina', 'jimeng-secondary', 'pending');
+      VALUES ('local-user', 'example-oauth', 'example-secondary', 'pending');
     `);
     assert.equal(
       sqliteAfterRepair.prepare("SELECT COUNT(*) AS count FROM provider_accounts WHERE provider_id = 'replicate'").get()?.count,
       2,
     );
     assert.equal(
-      sqliteAfterRepair.prepare("SELECT COUNT(*) AS count FROM provider_oauth WHERE provider_id = 'dreamina'").get()?.count,
+      sqliteAfterRepair.prepare("SELECT COUNT(*) AS count FROM provider_oauth WHERE provider_id = 'example-oauth'").get()?.count,
       2,
     );
   } finally {
@@ -1864,7 +1864,7 @@ test("doctor command is registered with storage subcommand", async () => {
     ["list", "compare", "restore"],
   );
 
-  const indexSource = await readFile(new URL("../index.ts", import.meta.url), "utf8");
-  assert.match(indexSource, /import \{ doctorCommand \} from "\.\/commands\/doctor"/);
-  assert.match(indexSource, /program\.addCommand\(doctorCommand\)/);
+  const programSource = await readFile(new URL("../program.ts", import.meta.url), "utf8");
+  assert.match(programSource, /import \{ doctorCommand \} from "\.\/commands\/doctor"/);
+  assert.match(programSource, /program\.addCommand\(doctorCommand\)/);
 });

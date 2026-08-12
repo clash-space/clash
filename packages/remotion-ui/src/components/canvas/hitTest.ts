@@ -1,4 +1,4 @@
-import type { Item, Track } from '@master-clash/remotion-core';
+import type { Item, Track } from '@clash/remotion-core';
 
 /**
  * 测试点击点是否在元素内（支持旋转）

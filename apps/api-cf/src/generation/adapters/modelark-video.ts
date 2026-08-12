@@ -14,6 +14,9 @@ function createModelArkVideoAdapter(kind: ModelArkUpstreamKind): GenerationAdapt
     async execute(ctx) {
       const { params, env } = ctx;
       const modelName = params.videoModel ?? params.modelName ?? "seedance-2-ref";
+      const outputMediaType = params.modelParams?.output_format === "mov"
+        ? "video/quicktime"
+        : "video/mp4";
       const route = params.selectedRoute;
       if (!route || route.apiShape !== "modelark") {
         throw new Error(`ModelArk execution requires a selected ModelArk route for ${modelName}`);
@@ -37,7 +40,7 @@ function createModelArkVideoAdapter(kind: ModelArkUpstreamKind): GenerationAdapt
 
       const { storageKey, providerCoverKey, duration } = await ctx.step(
         `${kind}-generate`,
-        { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "10 minutes" },
+        { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "30 minutes" },
         async () => {
           log.info("ModelArk video generate started", { ...ctx.tag, provider: kind, model: modelName });
           const credentials = await credentialsForRoute(ctx, route);
@@ -56,7 +59,7 @@ function createModelArkVideoAdapter(kind: ModelArkUpstreamKind): GenerationAdapt
             modelParams: params.modelParams,
           });
           log.info("ModelArk video generated", { ...ctx.tag, provider: kind, taskId: result.taskId });
-          const key = await ctx.uploadFromUrl(result.url, "video/mp4");
+          const key = await ctx.uploadFromUrl(result.url, outputMediaType);
           let coverKey: string | undefined;
           if (result.coverImageUrl) {
             try {

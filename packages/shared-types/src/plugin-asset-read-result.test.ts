@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ExecutablePluginAssetReadResultSchema } from './executable-plugin';
+import { ExecutablePluginAssetReadResultSchema } from './executable-plugin.js';
 
 /**
  * Resolving a reference may answer with bytes or with a URL.

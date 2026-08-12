@@ -1,4 +1,4 @@
-import type { Track } from '@master-clash/remotion-core';
+import type { Track } from '@clash/remotion-core';
 
 type BrollTrackIdentity = Pick<Track, 'id' | 'role'>;
 

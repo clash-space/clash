@@ -6,9 +6,8 @@ export default defineConfig({
     server: "src/server.ts",
   },
   format: ["esm"],
-  target: "es2022",
+  target: "node24",
   outDir: "dist",
   clean: true,
   dts: true,
-  banner: { js: "#!/usr/bin/env node" },
 });

@@ -1,16 +1,16 @@
-# @clash-space/sdk
+# @clash/sdk
 
 Register and run local Node.js code as canvas actions, plus typed local
 ASR/TTS runtimes.
 
 ```sh
-pnpm add @clash-space/sdk
+pnpm add @clash/sdk
 ```
 
 ## Define an action
 
 ```ts
-import { defineAction, actionResult, run } from "@clash-space/sdk";
+import { defineAction, actionResult, run } from "@clash/sdk";
 
 const posterize = defineAction({
   id: "posterize",
@@ -49,7 +49,7 @@ await run({
   // WS or HTTP URL of the server — converted internally for the WS handshake.
   serverUrl: "http://127.0.0.1:<port>",   // resolve via ~/.clash/run/host.json
   projectId: "<project-id>",
-  // Any API token bound to the user (same agentApiKey the bridge daemon
+  // Any API token bound to the user (same agentApiKey the local-api host
   // uses). Sent as `Authorization: Bearer …` on the WS upgrade.
   apiKey: process.env.CLASH_API_KEY!,
   // Runtime row id from ~/.clash/credentials.json#runtimeId. Sent as the
@@ -95,7 +95,7 @@ IDE, not at runtime.
 Typed wrappers over the Python local-model runtime (RPC):
 
 ```ts
-import { createPythonLocalAsrRuntime, createPythonLocalTtsRuntime } from "@clash-space/sdk";
+import { createPythonLocalAsrRuntime, createPythonLocalTtsRuntime } from "@clash/sdk";
 
 const asr = createPythonLocalAsrRuntime({ /* PythonLocalAsrRuntimeOptions */ });
 const { words, segments } = await asr.transcribe({ assetPath, language: "zh" });

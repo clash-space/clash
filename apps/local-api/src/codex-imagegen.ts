@@ -112,7 +112,7 @@ export function createCodexImageGenerator(options: CodexImageGeneratorOptions = 
     if (!codexPath) {
       throw new Error("Codex CLI was not found. Install Codex or set CODEX_BIN, then sign in with `codex login`.");
     }
-    const workDir = await mkdtemp(join(tmpdir(), "clash-codex-imagegen-"));
+    const workDir = await mkdtemp(join(tmpdir(), "clash.codex-imagegen-"));
     const outputPath = join(workDir, "result.png");
     try {
       const referencePaths: string[] = [];

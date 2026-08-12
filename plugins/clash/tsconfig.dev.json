@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@clash/director-plugin": ["../clash-director/src/index.ts"],
+      "@clash/director-plugin/*": ["../clash-director/src/*.ts"],
+      "@clash/local-api": ["../../apps/local-api/src/server.ts"],
+      "@clash/mcp-server": ["../../packages/mcp-server/src/index.ts"],
+      "@clash/mcp-server/*": ["../../packages/mcp-server/src/*.ts"],
+      "@clash/remotion-effects": [
+        "../../packages/remotion-effects/src/index.ts"
+      ],
+      "@clash/remotion-effects/*": ["../../packages/remotion-effects/src/*.ts"],
+      "@clash/shared-layout": ["../../packages/shared-layout/src/index.ts"],
+      "@clash/shared-mcp": ["../../packages/shared-mcp/src/index.ts"],
+      "@clash/shared-mcp/*": ["../../packages/shared-mcp/src/*.ts"],
+      "@clash/shared-runtime": ["../../packages/shared-runtime/src/index.ts"],
+      "@clash/shared-runtime/*": ["../../packages/shared-runtime/src/*.ts"],
+      "@clash/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@clash/shared-types/*": ["../../packages/shared-types/src/*.ts"],
+      "@clash/sdk": ["../../packages/clash-sdk/js/src/index.ts"],
+      "@clash/timeline-plugin": ["../clash-timeline/src/index.ts"],
+      "@clash/timeline-plugin/*": ["../clash-timeline/src/*.ts"]
+    }
+  }
+}

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { createBridgeExecutablePluginActionInvoker } from "./plugin-action-runtime";
+import { createExecutablePluginActionInvoker } from "./plugin-action-runtime";
 
 describe("local executable plugin action invoker", () => {
-  it("invokes the exact Canvas-pinned action binding over the Bridge ABI", async () => {
+  it("invokes the exact Canvas-pinned action binding over the executable-plugin ABI", async () => {
     const binding = {
-      pluginId: "agent-caption-actions",
+      pluginId: "test.agent-caption-actions",
       version: "1.2.0",
       exportId: "run-caption-helper",
       schemaHash: `sha256:${"c".repeat(64)}`,
@@ -15,7 +15,7 @@ describe("local executable plugin action invoker", () => {
       status: "completed" as const,
       outputs: [{ slot: "result", kind: "value" as const, value: { text: "Done" } }],
     }));
-    const invoker = createBridgeExecutablePluginActionInvoker({
+    const invoker = createExecutablePluginActionInvoker({
       client: { invoke },
     });
 
@@ -37,7 +37,7 @@ describe("local executable plugin action invoker", () => {
 
     expect(result).toMatchObject({ status: "completed" });
     expect(invoke).toHaveBeenCalledWith(
-      "agent-caption-actions",
+      "test.agent-caption-actions",
       expect.objectContaining({
         protocol: "clash.plugin.invoke/v1",
         taskId: "task-action-1",

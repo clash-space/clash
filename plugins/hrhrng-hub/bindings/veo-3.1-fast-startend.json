@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-veo-3.1-fast-startend",
+    "modelId": "veo-3.1-fast-startend",
+    "upstreamModel": "veo-3.1-fast-generate-001"
+  }
+}

@@ -2,7 +2,7 @@
   "mcpServers": {
     "clash": {
       "command": "node",
-      "args": ["./runtime/index.js"],
+      "args": ["./runtime/dispatcher.js", "mcp"],
       "cwd": ".",
       "env": { "CLASH_PROFILE": "prod" }
     }

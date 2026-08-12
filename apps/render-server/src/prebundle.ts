@@ -6,8 +6,10 @@
  * 60-90s, which exceeds Cloudflare Containers' DO fetch cap and causes
  * spurious WorkflowInternalError retries.
  *
- * Layout assumptions: built file lands at apps/render-server/dist/prebundle.js
- * and runs from the workspace root, so paths go up four levels.
+ * The generated browser program is owned by this workspace package. Consumers
+ * such as the unified `clash` distribution and Desktop copy this declared
+ * artifact after Turbo has built `@clash/render-server`; they never invoke this
+ * package's generator themselves.
  */
 import path from "path";
 import fs from "fs";
@@ -17,7 +19,7 @@ const entryPoint = path.resolve(
   import.meta.dirname,
   "../../../packages/remotion-components/src/Root.tsx",
 );
-const outDir = path.resolve(import.meta.dirname, "../../../.remotion-bundle");
+const outDir = path.resolve(import.meta.dirname, "../.remotion-bundle");
 
 if (!fs.existsSync(entryPoint)) {
   throw new Error(`Remotion entry point not found: ${entryPoint}`);

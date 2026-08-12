@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-minimax-music-3",
+    "modelId": "minimax-music-3",
+    "upstreamModel": "music-3.0"
+  }
+}

@@ -33,12 +33,13 @@ test("ships as one installable Codex plugin package", () => {
       },
     },
   });
-  assert.equal(pkg.name, "@clash-space/timeline-plugin");
+  assert.equal(pkg.name, "@clash/timeline-plugin");
   assert.ok(pkg.files.includes("runtime"));
-  assert.equal(pkg.devDependencies?.["@clash/shared-types"], "workspace:*");
-  assert.match(pkg.scripts?.prebuild ?? "", /generate:timeline-dsl-docs/);
-  assert.equal(existsSync(join(pluginRoot, "runtime", "clash-cli.cjs")), true);
-  assert.equal(existsSync(join(pluginRoot, "runtime", "loro_wasm_bg.wasm")), true);
+  assert.equal(pkg.dependencies?.["@clash/shared-runtime"], "workspace:*");
+  assert.equal(pkg.dependencies?.["@clash/shared-types"], "workspace:*");
+  assert.doesNotMatch(pkg.scripts?.build ?? "", /build-cli-runtime|clash-cli/);
+  assert.equal(existsSync(join(pluginRoot, "runtime", "clash-cli.cjs")), false);
+  assert.equal(existsSync(join(pluginRoot, "runtime", "loro_wasm_bg.wasm")), false);
 });
 
 test("ships agent guidance for discovering the complete annotated Timeline contract", () => {
@@ -66,7 +67,7 @@ test("keeps plugin source inside the package and does not import Canvas MCP inte
   assert.doesNotMatch(source, /packages\/mcp-server|canvas-app|clash_canvas_/);
   assert.doesNotMatch(source, /from\s+["']\.\.\/\.\.\//);
   assert.match(source, /@clash\/shared-types\/timeline-contract/);
-  assert.doesNotMatch(source, /from\s+["']@clash\/shared-types["']/);
+  assert.match(source, /import type \{ ProjectHostCommand \} from ["']@clash\/shared-types["']/);
   const bundledServer = readFileSync(join(pluginRoot, "runtime", "server.js"), "utf8");
   assert.doesNotMatch(bundledServer, /loro-crdt|loro_wasm/);
 });
@@ -81,12 +82,12 @@ test("Canvas App does not embed Timeline while the shared plugin keeps a headles
   assert.match(cliEntrypoint, /program\.addCommand\(timelineCommand\)/);
 });
 
-test("built runtime preserves stale codes wrapped by CLI process errors", async () => {
+test("built runtime preserves structured host error codes", async () => {
   const runtime = await import("../runtime/index.js");
 
   assert.deepEqual(
     runtime.timelineToolErrorPayload(new Error(
-      "Command failed: clash timeline apply --json\nError: STALE_READ: Timeline rough-cut changed after it was read",
+      "STALE_READ: Timeline rough-cut changed after it was read",
     )),
     {
       code: "STALE_READ",

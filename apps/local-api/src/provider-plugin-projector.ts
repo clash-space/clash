@@ -15,7 +15,7 @@ import type {
 } from "./local-aigc.js";
 import { ProviderPluginHostUnavailableError } from "./local-aigc.js";
 
-export interface BridgePluginHostClient {
+export interface PluginHostClient {
   resolveBinding(
     pluginId: string,
     exportId: string,
@@ -55,8 +55,8 @@ function projectionFromResult(resultInput: unknown): ProviderPluginProjection {
   };
 }
 
-export function createBridgeProviderPluginProjector(options: {
-  client: BridgePluginHostClient;
+export function createProviderPluginProjector(options: {
+  client: PluginHostClient;
 }): ProviderPluginProjector {
   return async (request) => {
     let binding: ExecutablePluginBinding;
@@ -69,14 +69,14 @@ export function createBridgeProviderPluginProjector(options: {
             "provider-projector",
           );
     } catch (error) {
-      if (bridgeHostUnavailable(error)) {
+      if (pluginHostUnavailable(error)) {
         throw new ProviderPluginHostUnavailableError((error as Error).message, { cause: error });
       }
       throw error;
     }
     if (binding.pluginId !== request.pluginId || binding.exportId !== request.exportId) {
       throw new Error(
-        `Bridge resolved ${binding.pluginId}/${binding.exportId}, expected `
+        `Plugin host resolved ${binding.pluginId}/${binding.exportId}, expected `
           + `${request.pluginId}/${request.exportId}.`,
       );
     }
@@ -97,7 +97,7 @@ export function createBridgeProviderPluginProjector(options: {
     try {
       result = await options.client.invoke(request.pluginId, invocation);
     } catch (error) {
-      if (bridgeHostUnavailable(error)) {
+      if (pluginHostUnavailable(error)) {
         throw new ProviderPluginHostUnavailableError((error as Error).message, { cause: error });
       }
       throw error;
@@ -109,7 +109,7 @@ export function createBridgeProviderPluginProjector(options: {
   };
 }
 
-function bridgeHostUnavailable(error: unknown): boolean {
+function pluginHostUnavailable(error: unknown): boolean {
   const code = error && typeof error === "object" && "code" in error
     ? String((error as { code?: unknown }).code)
     : "";

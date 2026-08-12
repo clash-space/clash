@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-jimeng-motion-control-2",
+    "modelId": "jimeng-motion-control-2",
+    "upstreamModel": "jimeng_motion_control"
+  }
+}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { MODEL_CARDS } from './models';
-import { parseAspectRatio } from './gpt-image-size';
+import { MODEL_CARDS } from './models.js';
+import { parseAspectRatio } from './gpt-image-size.js';
 
 /**
  * Shared parameters have one shape.

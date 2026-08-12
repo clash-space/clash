@@ -1,8 +1,8 @@
-import type { Asset } from '@master-clash/remotion-core';
+import type { Asset } from '@clash/remotion-core';
 import {
   builtInEffectRegistry,
   type EffectDefinition,
-} from '@master-clash/remotion-effects';
+} from '@clash/remotion-effects';
 import {
   TIMELINE_LIBRARY_GROUPS,
   parseTimelineLibraryItem,

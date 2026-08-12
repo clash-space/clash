@@ -8,7 +8,7 @@
 
 ### 1. Python 后端 - 缩略图提取服务
 
-**文件：** `apps/api/src/master_clash/api/thumbnail_router.py`
+**文件：** `apps/api/src/clash/api/thumbnail_router.py`
 
 #### 功能
 - 独立的 REST API 端点：`POST /api/extract-thumbnail`
@@ -42,7 +42,7 @@ Response:
 
 ### 2. Python 后端 - 任务系统集成
 
-**文件：** `apps/api/src/master_clash/api/tasks_router.py`
+**文件：** `apps/api/src/clash/api/tasks_router.py`
 
 #### 新增任务类型
 - 添加了 `"video_thumbnail"` 任务类型
@@ -184,7 +184,7 @@ if (node.type === 'video' && node.data.coverUrl) {
 ### 测试 1：上传视频
 ```bash
 # 1. 启动服务
-cd apps/api && uv run python -m master_clash.api.main
+cd apps/api && uv run python -m clash.api.main
 cd apps/loro-sync-server && npm run dev
 cd apps/web && npm run dev
 
@@ -302,9 +302,9 @@ cd apps/web && npm run dev
 ## 📝 相关文件清单
 
 ### Backend (Python API)
-- `apps/api/src/master_clash/api/thumbnail_router.py` - 独立缩略图提取端点
-- `apps/api/src/master_clash/api/tasks_router.py` - 任务系统集成
-- `apps/api/src/master_clash/api/main.py` - 路由注册
+- `apps/api/src/clash/api/thumbnail_router.py` - 独立缩略图提取端点
+- `apps/api/src/clash/api/tasks_router.py` - 任务系统集成
+- `apps/api/src/clash/api/main.py` - 路由注册
 
 ### Sync Server (Cloudflare Worker)
 - `apps/loro-sync-server/src/processors/NodeProcessor.ts` - 触发缩略图任务

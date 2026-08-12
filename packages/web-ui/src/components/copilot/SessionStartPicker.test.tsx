@@ -10,7 +10,7 @@ describe("SessionStartPicker", () => {
   it("lets the user pick the local ACP agent without exposing role templates", () => {
     const onStart = vi.fn();
     const props = {
-      agentTemplates: [{ id: "master-clash", label: "Master Clash" }],
+      agentTemplates: [{ id: "clash", label: "Clash" }],
       sessions: [],
       agents: [
         { id: "claude-acp", binary: "claude-agent-acp" },
@@ -21,7 +21,7 @@ describe("SessionStartPicker", () => {
 
     render(<SessionStartPicker {...props} />);
 
-    expect(screen.queryByText("Master Clash")).toBeNull();
+    expect(screen.queryByText("Clash")).toBeNull();
     fireEvent.click(screen.getByRole("radio", { name: /codex-acp/i }));
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
@@ -57,7 +57,7 @@ describe("SessionStartPicker", () => {
 
     render(
       <SessionStartPicker
-        agentTemplates={[{ id: "master-clash", label: "Master Clash" }]}
+        agentTemplates={[{ id: "clash", label: "Clash" }]}
         sessions={[]}
         agents={[{
           id: "devin",

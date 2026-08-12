@@ -24,7 +24,6 @@
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CLASH_PLUGIN_CREDENTIAL_TTL_MINUTES` | `30` | Credential handle lifetime. Keep above the longest executor polling ceiling (25 min) or long video generations lose already-billed tasks mid-poll |
 
 ## Web/desktop dev
 

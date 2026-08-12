@@ -13,7 +13,7 @@ import {
   useEditorPlayback,
   useEditorPlaybackRefs,
   useEditorStaticState,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import {
   InteractiveCanvas,
   type CanvasViewportCommand,

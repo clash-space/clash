@@ -9,8 +9,8 @@ import {
   useEditorHistory,
   useEditorPlaybackRefs,
   useEditorStaticState,
-} from '@master-clash/remotion-core';
-import type { Asset, Item, Track, TrackCategory, TransitionItem } from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
+import type { Asset, Item, Track, TrackCategory, TransitionItem } from '@clash/remotion-core';
 import type { AgentAnnotationObjectRef } from '@clash/shared-types';
 import { colors, timeline, spacing, shadows, typography } from './styles';
 import { secondsToFrames } from './utils/timeFormatter';

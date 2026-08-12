@@ -1,5 +1,5 @@
 import React from 'react';
-import type { CompositionItem } from '@master-clash/remotion-core';
+import type { CompositionItem } from '@clash/remotion-core';
 import type { ItemRenderProps } from '../registry';
 
 export const CompositionRenderer: React.FC<ItemRenderProps> = ({ item, width, height }) => {

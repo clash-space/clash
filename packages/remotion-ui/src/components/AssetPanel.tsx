@@ -4,8 +4,8 @@ import {
   normalizeEditorAsset,
   useEditorDispatch,
   useEditorStaticState,
-} from '@master-clash/remotion-core';
-import type { Asset, EditorAssetInput } from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
+import type { Asset, EditorAssetInput } from '@clash/remotion-core';
 import { RemotionButton, RemotionFileInput } from './ui/controls';
 
 // Export for TimelineTracksContainer to use

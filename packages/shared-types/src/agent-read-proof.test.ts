@@ -9,8 +9,8 @@ import {
   providerOAuthReadToken,
   sessionReadToken,
   validateAgentReadProof,
-} from "./agent-read-proof";
-import { canvasNodeReadToken } from "./canvas-update-guardrails";
+} from "./agent-read-proof.js";
+import { canvasNodeReadToken } from "./canvas-update-guardrails.js";
 
 describe("agent read proof", () => {
   it("builds stable read tokens that can back canvas read-before-write CAS", () => {
@@ -28,16 +28,18 @@ describe("agent read proof", () => {
     });
 
     expect(token).toMatch(/^node-v1:[a-f0-9]{16}$/);
-    expect(agentReadToken({
-      namespace: "node",
-      subject: {
-        position: null,
-        parentId: null,
-        data: { label: "Script", content: "before" },
-        type: "text",
-        id: "text-1",
-      },
-    })).toBe(token);
+    expect(
+      agentReadToken({
+        namespace: "node",
+        subject: {
+          position: null,
+          parentId: null,
+          data: { label: "Script", content: "before" },
+          type: "text",
+          id: "text-1",
+        },
+      }),
+    ).toBe(token);
     expect(canvasNodeReadToken(subject)).toBe(token);
   });
 
@@ -51,13 +53,15 @@ describe("agent read proof", () => {
     });
 
     expect(token).toMatch(/^project-v1:[a-f0-9]{16}$/);
-    expect(projectReadToken({
-      id: "project-1",
-      name: "Cutdown",
-      description: "TVC edit",
-      updated_at: Math.floor(Date.parse("2026-07-07T01:02:03.456Z") / 1000),
-      deleted_at: null,
-    })).toBe(token);
+    expect(
+      projectReadToken({
+        id: "project-1",
+        name: "Cutdown",
+        description: "TVC edit",
+        updated_at: Math.floor(Date.parse("2026-07-07T01:02:03.456Z") / 1000),
+        deleted_at: null,
+      }),
+    ).toBe(token);
   });
 
   it("builds local config read tokens from public config plus update version", () => {
@@ -76,32 +80,36 @@ describe("agent read proof", () => {
     });
 
     expect(token).toMatch(/^local-config-v1:[a-f0-9]{16}$/);
-    expect(localConfigReadToken({
-      id: "sync",
-      updated_at: Math.floor(Date.parse("2026-07-07T02:00:00.000Z") / 1000),
-      config: {
-        remote_loro: {
-          source: "config",
-          has_token: true,
-          url: "https://cloud.example",
-          enabled: true,
+    expect(
+      localConfigReadToken({
+        id: "sync",
+        updated_at: Math.floor(Date.parse("2026-07-07T02:00:00.000Z") / 1000),
+        config: {
+          remote_loro: {
+            source: "config",
+            has_token: true,
+            url: "https://cloud.example",
+            enabled: true,
+          },
+          mode: "cloud-sync",
         },
-        mode: "cloud-sync",
-      },
-    })).toBe(token);
-    expect(localConfigReadToken({
-      id: "sync",
-      updatedAt: "2026-07-07T02:01:00.000Z",
-      config: {
-        mode: "cloud-sync",
-        remote_loro: {
-          enabled: true,
-          url: "https://cloud.example",
-          has_token: true,
-          source: "config",
+      }),
+    ).toBe(token);
+    expect(
+      localConfigReadToken({
+        id: "sync",
+        updatedAt: "2026-07-07T02:01:00.000Z",
+        config: {
+          mode: "cloud-sync",
+          remote_loro: {
+            enabled: true,
+            url: "https://cloud.example",
+            has_token: true,
+            source: "config",
+          },
         },
-      },
-    })).not.toBe(token);
+      }),
+    ).not.toBe(token);
   });
 
   it("builds provider account read tokens from public config without secret material", () => {
@@ -120,26 +128,32 @@ describe("agent read proof", () => {
     const token = providerAccountReadToken(account);
 
     expect(token).toMatch(/^provider-account-v1:[a-f0-9]{16}$/);
-    expect(providerAccountReadToken({
-      updated_at: Math.floor(Date.parse("2026-07-07T02:00:00.000Z") / 1000),
-      weight: 10,
-      model_priorities: { "nano-banana-2": 5 },
-      supported_model_ids: ["kling-video-v2", "nano-banana-2"],
-      available_oauth: [],
-      configured_credentials: ["apiKey", "webhookSecret"],
-      enabled: true,
-      upstream_id: "replicate",
-      provider_id: "replicate",
-      id: "replicate-primary",
-    })).toBe(token);
-    expect(providerAccountReadToken({
-      ...account,
-      configuredCredentials: ["apiKey"],
-    })).not.toBe(token);
-    expect(providerAccountReadToken({
-      ...account,
-      updatedAt: "2026-07-07T02:01:00.000Z",
-    })).not.toBe(token);
+    expect(
+      providerAccountReadToken({
+        updated_at: Math.floor(Date.parse("2026-07-07T02:00:00.000Z") / 1000),
+        weight: 10,
+        model_priorities: { "nano-banana-2": 5 },
+        supported_model_ids: ["kling-video-v2", "nano-banana-2"],
+        available_oauth: [],
+        configured_credentials: ["apiKey", "webhookSecret"],
+        enabled: true,
+        upstream_id: "replicate",
+        provider_id: "replicate",
+        id: "replicate-primary",
+      }),
+    ).toBe(token);
+    expect(
+      providerAccountReadToken({
+        ...account,
+        configuredCredentials: ["apiKey"],
+      }),
+    ).not.toBe(token);
+    expect(
+      providerAccountReadToken({
+        ...account,
+        updatedAt: "2026-07-07T02:01:00.000Z",
+      }),
+    ).not.toBe(token);
   });
 
   it("builds provider account collection read tokens independent of list order", () => {
@@ -169,34 +183,38 @@ describe("agent read proof", () => {
 
   it("builds provider OAuth read tokens from public OAuth state without raw secret material", () => {
     const token = providerOAuthReadToken({
-      providerId: "dreamina",
-      accountId: "jimeng-primary",
+      providerId: "example-oauth",
+      accountId: "example-primary",
       status: "authorized",
-      accountLabel: "Primary Dreamina",
+      accountLabel: "Primary Example OAuth",
       expiresAt: "2026-07-07T03:00:00.000Z",
       hasAccessToken: true,
       updatedAt: "2026-07-07T02:00:00.000Z",
     });
 
     expect(token).toMatch(/^provider-oauth-v1:[a-f0-9]{16}$/);
-    expect(providerOAuthReadToken({
-      provider_id: "dreamina",
-      account_id: "jimeng-primary",
-      status: "authorized",
-      account_label: "Primary Dreamina",
-      expires_at: Math.floor(Date.parse("2026-07-07T03:00:00.000Z") / 1000),
-      has_access_token: true,
-      updated_at: Math.floor(Date.parse("2026-07-07T02:00:00.000Z") / 1000),
-    })).toBe(token);
-    expect(providerOAuthReadToken({
-      providerId: "dreamina",
-      accountId: "jimeng-primary",
-      status: "revoked",
-      accountLabel: "Primary Dreamina",
-      expiresAt: "2026-07-07T03:00:00.000Z",
-      hasAccessToken: false,
-      updatedAt: "2026-07-07T02:01:00.000Z",
-    })).not.toBe(token);
+    expect(
+      providerOAuthReadToken({
+        provider_id: "example-oauth",
+        account_id: "example-primary",
+        status: "authorized",
+        account_label: "Primary Example OAuth",
+        expires_at: Math.floor(Date.parse("2026-07-07T03:00:00.000Z") / 1000),
+        has_access_token: true,
+        updated_at: Math.floor(Date.parse("2026-07-07T02:00:00.000Z") / 1000),
+      }),
+    ).toBe(token);
+    expect(
+      providerOAuthReadToken({
+        providerId: "example-oauth",
+        accountId: "example-primary",
+        status: "revoked",
+        accountLabel: "Primary Example OAuth",
+        expiresAt: "2026-07-07T03:00:00.000Z",
+        hasAccessToken: false,
+        updatedAt: "2026-07-07T02:01:00.000Z",
+      }),
+    ).not.toBe(token);
   });
 
   it("builds session read tokens from mutable session metadata", () => {
@@ -207,7 +225,7 @@ describe("agent read proof", () => {
       type: "runtime",
       runtimeId: "desktop-local",
       agentId: "codex",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       permissionMode: "workspace-write",
       acpSessionId: "acp-1",
       status: "active",
@@ -216,34 +234,38 @@ describe("agent read proof", () => {
     });
 
     expect(token).toMatch(/^session-v1:[a-f0-9]{16}$/);
-    expect(sessionReadToken({
-      id: "session-1",
-      project_id: "project-1",
-      title: "Cut review",
-      type: "runtime",
-      runtime_id: "desktop-local",
-      agent_id: "codex",
-      agent_template_id: "master-clash",
-      permission_mode: "workspace-write",
-      acp_session_id: "acp-1",
-      status: "active",
-      created_at: Math.floor(Date.parse("2026-07-07T01:02:03.456Z") / 1000),
-      updated_at: Math.floor(Date.parse("2026-07-07T01:03:03.456Z") / 1000),
-    })).toBe(token);
-    expect(sessionReadToken({
-      id: "session-1",
-      projectId: "project-1",
-      title: "Cut review",
-      type: "runtime",
-      runtimeId: "desktop-local",
-      agentId: "codex",
-      agentTemplateId: "master-clash",
-      permissionMode: "workspace-write",
-      acpSessionId: "acp-1",
-      status: "active",
-      createdAt: "2026-07-07T01:02:03.456Z",
-      updatedAt: "2026-07-07T01:04:03.456Z",
-    })).not.toBe(token);
+    expect(
+      sessionReadToken({
+        id: "session-1",
+        project_id: "project-1",
+        title: "Cut review",
+        type: "runtime",
+        runtime_id: "desktop-local",
+        agent_id: "codex",
+        agent_template_id: "clash",
+        permission_mode: "workspace-write",
+        acp_session_id: "acp-1",
+        status: "active",
+        created_at: Math.floor(Date.parse("2026-07-07T01:02:03.456Z") / 1000),
+        updated_at: Math.floor(Date.parse("2026-07-07T01:03:03.456Z") / 1000),
+      }),
+    ).toBe(token);
+    expect(
+      sessionReadToken({
+        id: "session-1",
+        projectId: "project-1",
+        title: "Cut review",
+        type: "runtime",
+        runtimeId: "desktop-local",
+        agentId: "codex",
+        agentTemplateId: "clash",
+        permissionMode: "workspace-write",
+        acpSessionId: "acp-1",
+        status: "active",
+        createdAt: "2026-07-07T01:02:03.456Z",
+        updatedAt: "2026-07-07T01:04:03.456Z",
+      }),
+    ).not.toBe(token);
   });
 
   it("validates missing, stale, and fresh agent read proofs without blocking non-agent callers", () => {
@@ -283,17 +305,28 @@ describe("agent read proof", () => {
       expect(stale.error).not.toContain("--if-match");
     }
 
-    expect(validateAgentReadProof({
-      actorClientType: "agent",
-      operation: "canvas update",
-      currentReadToken,
-      expectedReadToken: currentReadToken,
-    })).toEqual({ ok: true });
-    expect(validateAgentReadProof({
-      actorClientType: "user",
-      operation: "canvas update",
-      currentReadToken,
-    })).toEqual({ ok: true });
+    expect(
+      validateAgentReadProof({
+        actorClientType: "agent",
+        operation: "canvas update",
+        currentReadToken,
+        expectedReadToken: currentReadToken,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateAgentReadProof({
+        actorClientType: "mcp",
+        operation: "canvas update",
+        currentReadToken,
+      }),
+    ).toMatchObject({ ok: false, code: "READ_REQUIRED" });
+    expect(
+      validateAgentReadProof({
+        actorClientType: "user",
+        operation: "canvas update",
+        currentReadToken,
+      }),
+    ).toEqual({ ok: true });
   });
 
   it("honors supplied CAS tokens for non-agent callers without requiring receipts", () => {
@@ -322,21 +355,25 @@ describe("agent read proof", () => {
       expect(stale.error).not.toContain(currentReadToken);
       expect(stale.error).not.toContain(staleReadToken);
     }
-    expect(validateAgentReadProof({
-      actorClientType: "cli",
-      operation: "project update",
-      currentReadToken,
-      expectedReadToken: currentReadToken,
-      requireReceipt: true,
-      readReceiptVerifier: () => false,
-    })).toEqual({ ok: true });
-    expect(validateAgentReadProof({
-      actorClientType: "cli",
-      operation: "project update",
-      currentReadToken,
-      requireReceipt: true,
-      readReceiptVerifier: () => false,
-    })).toEqual({ ok: true });
+    expect(
+      validateAgentReadProof({
+        actorClientType: "cli",
+        operation: "project update",
+        currentReadToken,
+        expectedReadToken: currentReadToken,
+        requireReceipt: true,
+        readReceiptVerifier: () => false,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateAgentReadProof({
+        actorClientType: "cli",
+        operation: "project update",
+        currentReadToken,
+        requireReceipt: true,
+        readReceiptVerifier: () => false,
+      }),
+    ).toEqual({ ok: true });
   });
 
   it("can combine CAS with a host-issued read receipt", () => {

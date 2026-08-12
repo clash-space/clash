@@ -192,7 +192,7 @@ app.post("/render", async (c) => {
     const buffer = await renderTimeline(timelineDsl, taskId);
     console.log(`[render-server] Render complete: task=${taskId} size=${buffer.byteLength} bytes`);
 
-    return new Response(buffer, {
+    return new Response(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "video/mp4",
         "Content-Length": buffer.byteLength.toString(),

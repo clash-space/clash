@@ -328,8 +328,8 @@ Minimum regression coverage:
 - `apps/local-api/src/local-acp.ts`
 - `apps/local-api/src/local-acp.test.ts`
 - `apps/local-api/src/app.ts`
-- `packages/clash-bridge/src/_acp-runtime/probe.ts`
-- `packages/clash-bridge/src/_acp-runtime/probe.test.ts`
+- `packages/cli/src/runtime/bridge/_acp-runtime/probe.ts`
+- `packages/cli/src/runtime/bridge/_acp-runtime/probe.test.ts`
 - `packages/web-ui/src/components/SettingsClient.tsx`
 - `packages/web-ui/src/components/SettingsClient.sync.test.tsx`
 - `packages/web-ui/src/hooks/useClashRuntime.ts`

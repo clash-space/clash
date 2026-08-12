@@ -4,7 +4,7 @@ export default defineConfig({
   entry: ["src/stdio.ts"],
   format: ["esm"],
   clean: true,
-  target: "node20",
+  target: "node24",
   noExternal: ["@clash/shared-types/executable-plugin"],
   outExtension: () => ({ js: ".mjs" }),
 });

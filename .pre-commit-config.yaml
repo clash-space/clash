@@ -1,4 +1,4 @@
-# Pre-commit hooks for Master Clash
+# Pre-commit hooks for Clash
 # Install: pip install pre-commit
 # Activate: pre-commit install
 # Update: pre-commit autoupdate

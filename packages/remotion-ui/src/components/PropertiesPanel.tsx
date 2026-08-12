@@ -19,7 +19,7 @@ import {
   useEditorDispatch,
   useEditorPlayback,
   useEditorStaticState,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import type {
   AudioItem,
   ClipAnimationType,
@@ -33,11 +33,11 @@ import type {
   TransitionItem,
   TransitionType,
   VideoItem,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import {
   builtInEffectRegistry,
   type EffectParamDefinition,
-} from '@master-clash/remotion-effects';
+} from '@clash/remotion-effects';
 import {
   DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
   createDefaultTimelineItemMask,

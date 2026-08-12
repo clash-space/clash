@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-midjourney-niji-7",
+    "modelId": "midjourney-niji-7",
+    "upstreamModel": "midjourney-niji7"
+  }
+}

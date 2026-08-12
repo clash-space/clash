@@ -7,8 +7,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
-import { EditorProvider } from '@master-clash/remotion-core';
-import type { EditorState, TransitionItem, VideoItem } from '@master-clash/remotion-core';
+import { EditorProvider } from '@clash/remotion-core';
+import type { EditorState, TransitionItem, VideoItem } from '@clash/remotion-core';
 import { PropertiesPanel } from './PropertiesPanel';
 
 afterEach(() => cleanup());

@@ -4,7 +4,7 @@ import {
   applyTimelineCommand,
   type TimelineCommand,
   type TimelineDsl,
-} from "@master-clash/remotion-core/timelineSemantics";
+} from "@clash/remotion-core/timelineSemantics";
 
 export type TimelineStateAdapter = {
   getTimelineDsl: () => TimelineDsl | null | undefined | Promise<TimelineDsl | null | undefined>;

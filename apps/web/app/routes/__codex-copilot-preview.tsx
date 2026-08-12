@@ -1,9 +1,9 @@
 import type { ByoMessage } from "@clash/web-ui/lib/acpEvents";
 import { AcpMessageList, AcpProgressPanel, getAcpGlobalState } from "@clash/web-ui/components/copilot/AcpMessageList";
-import { AcpAgentLogo } from "@clash/web-ui/components/copilot/AcpAgentLogo";
-import { Button } from "@clash/web-ui/components/ui/button";
-import { IconButton } from "@clash/web-ui/components/ui/icon-button";
-import { SelectMenu, type SelectSection } from "@clash/web-ui/components/ui/select";
+import { AcpAgentLogo } from "@clash/gui/components/copilot/AcpAgentLogo";
+import { Button } from "@clash/gui/components/ui/button";
+import { IconButton } from "@clash/gui/components/ui/icon-button";
+import { SelectMenu, type SelectSection } from "@clash/gui/components/ui/select";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ArrowUp, CaretDown, Microphone, Plus, ShieldWarning } from "@phosphor-icons/react";

@@ -27,7 +27,7 @@ vi.mock("@remotion/player", () => ({
   ),
 }));
 
-vi.mock("@master-clash/remotion-components", () => ({
+vi.mock("@clash/remotion-components", () => ({
   RemotionSourceComposition: () => null,
 }));
 

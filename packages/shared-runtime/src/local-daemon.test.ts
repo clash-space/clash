@@ -16,7 +16,9 @@ import {
   type LocalHostDiscoveryRecord,
 } from "./index.js";
 
-function record(overrides: Partial<LocalHostDiscoveryRecord> = {}): LocalHostDiscoveryRecord {
+function record(
+  overrides: Partial<LocalHostDiscoveryRecord> = {},
+): LocalHostDiscoveryRecord {
   return {
     schemaVersion: LOCAL_HOST_RECORD_SCHEMA_VERSION,
     protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
@@ -33,7 +35,10 @@ function record(overrides: Partial<LocalHostDiscoveryRecord> = {}): LocalHostDis
   };
 }
 
-async function publish(runDir: string, value: LocalHostDiscoveryRecord): Promise<void> {
+async function publish(
+  runDir: string,
+  value: LocalHostDiscoveryRecord,
+): Promise<void> {
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, "host.json"), JSON.stringify(value), "utf8");
 }
@@ -52,7 +57,9 @@ describe("local daemon bootstrap", () => {
         spawnOptions = options as Record<string, unknown>;
         return {
           pid: 4242,
-          unref: () => { unrefs += 1; },
+          unref: () => {
+            unrefs += 1;
+          },
         } as never;
       },
     });
@@ -71,6 +78,54 @@ describe("local daemon bootstrap", () => {
       },
     });
     expect(unrefs).toBe(1);
+  });
+
+  it("can run a validated Electron executable as a detached Node host", () => {
+    let command = "";
+    let args: readonly string[] = [];
+    let spawnOptions: import("node:child_process").SpawnOptions | undefined;
+    launchDetachedLocalDaemon({
+      entryPath:
+        "/Applications/Clash.app/Contents/Resources/clash-runtime/local-api.cjs",
+      dataDir: "/tmp/clash/local-api",
+      runDir: "/tmp/clash/run",
+      cliEntryPath:
+        "/Applications/Clash.app/Contents/Resources/clash-runtime/dispatcher.js",
+      nodePath: "/Applications/Clash.app/Contents/MacOS/Clash",
+      nodeVersion: "24.18.0",
+      electronRunAsNode: true,
+      nodeArgs: ["--import", "/workspace/node_modules/tsx/dist/loader.mjs"],
+      spawnProcess: (nextCommand, nextArgs, options) => {
+        command = nextCommand;
+        args = nextArgs;
+        spawnOptions = options;
+        return { pid: 4243, unref() {} } as never;
+      },
+    });
+
+    expect(command).toBe("/Applications/Clash.app/Contents/MacOS/Clash");
+    expect(args).toEqual([
+      "--import",
+      "/workspace/node_modules/tsx/dist/loader.mjs",
+      "/Applications/Clash.app/Contents/Resources/clash-runtime/local-api.cjs",
+    ]);
+    expect(spawnOptions?.env).toMatchObject({ ELECTRON_RUN_AS_NODE: "1" });
+    expect(spawnOptions?.detached).toBe(true);
+  });
+
+  it("rejects Electron Node mode outside the verified Node 24 range", () => {
+    expect(() =>
+      launchDetachedLocalDaemon({
+        entryPath: "/app/local-api.cjs",
+        dataDir: "/tmp/clash/local-api",
+        runDir: "/tmp/clash/run",
+        cliEntryPath: "/app/dispatcher.js",
+        nodePath: "/Applications/Clash.app/Contents/MacOS/Clash",
+        nodeVersion: "26.0.0",
+        electronRunAsNode: true,
+        spawnProcess: () => ({ pid: 4244, unref() {} }) as never,
+      }),
+    ).toThrow(/does not satisfy >=24\.18\.0 <25/);
   });
 
   it("reuses a healthy daemon without launching another process", async () => {
@@ -132,31 +187,40 @@ describe("local daemon bootstrap", () => {
       },
     });
 
-    await expect(bootstrap.ensureDaemon()).rejects.toThrow(/alive but unhealthy/i);
+    await expect(bootstrap.ensureDaemon()).rejects.toThrow(
+      /alive but unhealthy/i,
+    );
     expect(launches).toBe(0);
   });
 
   it("rejects a healthy-looking endpoint owned by a different daemon identity", async () => {
     const server = createServer((_request, response) => {
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({
-        ok: true,
-        mode: "local",
-        host: {
-          hostId: "different-daemon",
-          pid: process.pid,
-          profile: "prod",
-          protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
-        },
-      }));
+      response.end(
+        JSON.stringify({
+          ok: true,
+          mode: "local",
+          host: {
+            hostId: "different-daemon",
+            pid: process.pid,
+            profile: "prod",
+            protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
+          },
+        }),
+      );
     });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
     const address = server.address() as AddressInfo;
     const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-identity-"));
-    await publish(runDir, record({
-      hostId: "expected-daemon",
-      endpoint: `http://127.0.0.1:${address.port}`,
-    }));
+    await publish(
+      runDir,
+      record({
+        hostId: "expected-daemon",
+        endpoint: `http://127.0.0.1:${address.port}`,
+      }),
+    );
     let launches = 0;
     const bootstrap = createLocalDaemonBootstrap({
       runDir,
@@ -168,11 +232,13 @@ describe("local daemon bootstrap", () => {
     });
 
     try {
-      await expect(bootstrap.ensureDaemon()).rejects.toThrow(/alive but unhealthy/i);
+      await expect(bootstrap.ensureDaemon()).rejects.toThrow(
+        /alive but unhealthy/i,
+      );
       expect(launches).toBe(0);
     } finally {
       await new Promise<void>((resolve, reject) => {
-        server.close((error) => error ? reject(error) : resolve());
+        server.close((error) => (error ? reject(error) : resolve()));
       });
     }
   });
@@ -216,7 +282,12 @@ describe("local daemon bootstrap", () => {
       probe: async () => true,
       launch: async () => {
         await publish(runDir, started);
-        return { pid: started.pid, stop: async () => { stops += 1; } };
+        return {
+          pid: started.pid,
+          stop: async () => {
+            stops += 1;
+          },
+        };
       },
     });
 
@@ -224,8 +295,9 @@ describe("local daemon bootstrap", () => {
     await bootstrap.close();
 
     expect(stops).toBe(0);
-    expect(JSON.parse(await readFile(join(runDir, "host.json"), "utf8")).hostId)
-      .toBe(started.hostId);
+    expect(
+      JSON.parse(await readFile(join(runDir, "host.json"), "utf8")).hostId,
+    ).toBe(started.hostId);
   });
 
   it("re-probes after an earlier ensure call instead of caching a stale endpoint forever", async () => {

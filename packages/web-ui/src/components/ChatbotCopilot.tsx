@@ -690,7 +690,6 @@ function ChatbotCopilot({
     const [sessionHarnessId, setSessionHarnessId] = useState<string | null>(null);
     const [sessionPermissionModeByAgentId, setSessionPermissionModeByAgentId] = useState<Record<string, string>>({});
     const [authenticatingHarnessId, setAuthenticatingHarnessId] = useState<string | null>(null);
-    const [addMachineOpen, setAddMachineOpen] = useState(false);
     /** When set, the runtime picker dialog is open for this runtime. */
     const [runtimePicker, setRuntimePicker] = useState<Runtime | null>(null);
     const clashRt = useClashRuntime();
@@ -2302,14 +2301,6 @@ function ChatbotCopilot({
                                                                 />
                                                             );
                                                         })}
-                                                        <div role="separator" className="my-1.5 border-t border-warm-border/80 dark:border-warm-border" />
-                                                        <RuntimeMenuRow
-                                                            label={t('copilot.runtime.addMachine.label')}
-                                                            sub={t('copilot.runtime.addMachine.sub')}
-                                                            onSelect={() => {
-                                                                setAddMachineOpen(true);
-                                                            }}
-                                                        />
                                                     </div>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -2619,7 +2610,6 @@ function ChatbotCopilot({
                 </SheetContent>
             </Sheet>
 
-            <AddMachineDialog open={addMachineOpen} onClose={() => setAddMachineOpen(false)} />
             <RuntimePickerDialog
                 open={!!runtimePicker}
                 runtime={runtimePicker}
@@ -2768,60 +2758,6 @@ function AcpPermissionComposer({
                 </div>
             </div>
         </div>
-    );
-}
-
-/**
- * AddMachineDialog — shows the npx setup command. The actual OAuth
- * exchange happens when the user runs that command in their terminal —
- * the CLI binds a localhost callback and opens /connect-daemon with
- * cb + state params (which is why opening /connect-daemon directly is
- * useless; this dialog is the right entry point).
- */
-function AddMachineDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-    const { t } = useTranslation();
-    const cmd = 'npx @clash-space/bridge@beta setup';
-    const [copied, setCopied] = useState(false);
-
-    const onCopy = async () => {
-        try {
-            await navigator.clipboard.writeText(cmd);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-        } catch { /* no clipboard access; user can select-all */ }
-    };
-
-    return (
-        <Dialog
-            open={open}
-            onClose={onClose}
-            title={t('copilot.addMachine.title')}
-            description={t('copilot.addMachine.intro')}
-            size="lg"
-        >
-            <div className="text-xs uppercase tracking-wider text-stone-600 mb-2 dark:text-stone-400">
-                {t('copilot.addMachine.runInTerminal')}
-            </div>
-            <div className="flex items-stretch gap-2 mb-3">
-                <code className="clash-copilot-code flex-1 min-w-0 overflow-x-auto whitespace-nowrap rounded-xl px-3 py-2.5 font-mono text-sm select-all">
-                    {cmd}
-                </code>
-                <Button
-                    onClick={onCopy}
-                    aria-label={t('copilot.addMachine.copy')}
-                    className="min-h-[44px] rounded-lg border-transparent bg-warm-muted px-3 text-sm font-medium text-slate-800 shadow-none hover:bg-warm-hover dark:text-slate-100"
-                >
-                    {copied ? t('copilot.addMachine.copied') : t('copilot.addMachine.copy')}
-                </Button>
-            </div>
-            <p className="text-xs text-stone-600 leading-relaxed dark:text-stone-400">
-                {t('copilot.addMachine.footnote')}{' '}
-                <code className="font-mono text-[11px] bg-warm-muted px-1.5 py-0.5 rounded">
-                    npx @clash-space/bridge@beta uninstall
-                </code>
-                .
-            </p>
-        </Dialog>
     );
 }
 

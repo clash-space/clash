@@ -31,6 +31,12 @@ function makeCtx() {
   const createAsset = vi.fn().mockResolvedValue("asset-1");
   const notifyCompleted = vi.fn();
 
+  const step = vi.fn(async (_name: string, optsOrFn: unknown, maybeFn?: () => Promise<unknown>) => {
+    const fn = typeof optsOrFn === "function" ? optsOrFn : maybeFn;
+    if (!fn) throw new Error("missing step fn");
+    return fn();
+  });
+
   return {
     params: {
       taskId: "task-1",
@@ -53,14 +59,14 @@ function makeCtx() {
         providerId: "volcengine",
         accountId: "volcengine-primary",
         upstreamId: "volcengine",
-        upstreamModel: "doubao-seedance-2-0-pro",
+        upstreamModel: "doubao-seedance-2-0-260128",
         apiShape: "modelark",
         priority: 9,
         requiredCredentials: ["apiKey"],
         referenceBinding: {
           type: "positional-tokens",
           modalityScopedIndexes: true,
-          tokens: { image: "[Image {n}]", video: "[Video {n}]", audio: "[Audio {n}]" },
+          tokens: { image: "@图像{n}", video: "@视频{n}", audio: "@音频{n}" },
         },
       },
     },
@@ -70,11 +76,7 @@ function makeCtx() {
       R2_PUBLIC_URL: "https://cdn.example",
     },
     tag: { taskId: "task-1", nodeId: "node-1" },
-    step: async (_name: string, optsOrFn: unknown, maybeFn?: () => Promise<unknown>) => {
-      const fn = typeof optsOrFn === "function" ? optsOrFn : maybeFn;
-      if (!fn) throw new Error("missing step fn");
-      return fn();
-    },
+    step,
     uploadFromUrl,
     probe,
     createAsset,
@@ -110,10 +112,37 @@ describe("volcengineVideoAdapter", () => {
       "ark-provider-key",
       expect.objectContaining({
         baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-        upstreamModel: "doubao-seedance-2-0-pro",
-        prompt: "Use [Image 1] as the opening",
+        upstreamModel: "doubao-seedance-2-0-260128",
+        prompt: "Use @图像1 as the opening",
       }),
     );
     expect(ctx.notifyCompleted).toHaveBeenCalledWith({ assetId: "asset-1" });
+  });
+
+  it("keeps the provider task alive for 30 minutes and stores MOV output with its real MIME", async () => {
+    mocks.credentialsForRoute.mockResolvedValue({ apiKey: "ark-provider-key" });
+    mocks.signedMediaUrl.mockResolvedValue(undefined);
+    mocks.signedMediaUrls.mockResolvedValue([]);
+    mocks.generateModelArkVideo.mockResolvedValue({
+      url: "https://video.example/out.mov",
+      taskId: "ark-task-mov",
+    });
+    const ctx = makeCtx();
+    (ctx.params as typeof ctx.params & { modelParams: Record<string, unknown> }).modelParams = {
+      output_format: "mov",
+    };
+
+    await volcengineVideoAdapter.execute(ctx as never);
+
+    expect(ctx.step).toHaveBeenCalledWith(
+      "volcengine-generate",
+      expect.objectContaining({ timeout: "30 minutes" }),
+      expect.any(Function),
+    );
+    expect(ctx.uploadFromUrl).toHaveBeenNthCalledWith(
+      1,
+      "https://video.example/out.mov",
+      "video/quicktime",
+    );
   });
 });

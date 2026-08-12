@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-elevenlabs-music-v2",
+    "modelId": "elevenlabs-music-v2",
+    "upstreamModel": "elevenlabs-music-v2"
+  }
+}

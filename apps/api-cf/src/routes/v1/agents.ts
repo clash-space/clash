@@ -14,7 +14,7 @@
  *   POST   /api/v1/agents               → { id, … }
  *     { template_id, runtime_id, display_name? }
  *     - template_id must be one of the bundled (BUILTIN_TEMPLATES below).
- *       The actual role definition lives in the bridge daemon's dist/
+ *       The actual role definition lives in the local host's packaged runtime/
  *       agents/<id>/, so the server can't introspect it; allow-list is the
  *       backstop. Bundled set rarely changes — when it does, bump this
  *       array and ship a new beta.
@@ -36,9 +36,9 @@ import { deriveRuntimeStatus } from "../../lib/runtime-status";
 export const agentRoutes = new Hono<{ Bindings: Env }>();
 
 /**
- * Bundled agent templates the bridge ships in dist/agents/. Server-side
- * allow-list — kept in lockstep with packages/clash-bridge/assets/agents/.
- * Adding a new template = ship a new bridge beta + update this array +
+ * Bundled agent templates the Clash runtime ships in runtime/agents/. Server-side
+ * allow-list — kept in lockstep with packages/cli/assets/agents/.
+ * Adding a new template = ship a new Clash runtime + update this array +
  * the BUILTIN_AGENT lists in the web UI (RuntimePickerDialog,
  * GroupChatPanel). Three places, but each is a one-liner.
  */

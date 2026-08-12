@@ -215,21 +215,21 @@ state.
 
 ```bash
 # Author a plugin
-clash action init-plugin ./my-plugin --id my-plugin --name "My Plugin"
-clash action validate ./my-plugin            # schema + declared contract tests
-clash action activate ./my-plugin            # register; Clash stores and owns it
+clash plugin create ./my-plugin --id acme.my-plugin --name "My Plugin"
+clash plugin validate ./my-plugin            # schema + declared contract tests
+clash plugin activate ./my-plugin            # register; Clash stores and owns it
 
 # Edit one that is already active
-clash action checkout <id> ./my-plugin       # copy it out to a draft
-clash action validate ./my-plugin
-clash action activate ./my-plugin
+clash plugin checkout <id> ./my-plugin       # copy it out to a draft
+clash plugin validate ./my-plugin
+clash plugin activate ./my-plugin
 
 # Manage what is registered
-clash action list --local --json
-clash action search <query> --json
-clash action install <id>                    # fetch from the server registry
-clash action uninstall <id>
-clash action rollback <id>                   # restore the retained prior version
+clash plugin list --local --json
+clash plugin search <query> --json
+clash plugin install <id>                    # fetch from the server registry
+clash plugin uninstall <id>
+clash plugin rollback <id>                   # restore the retained prior version
 ```
 
 The bridge hot-reloads an activated plugin, so no daemon restart is needed.

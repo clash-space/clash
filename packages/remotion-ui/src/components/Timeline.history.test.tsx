@@ -5,7 +5,7 @@ import {
   EditorProvider,
   useEditorDispatch,
   useEditorStaticState,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Timeline } from './Timeline';
 

@@ -2,7 +2,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { EditorProvider, useEditor, type EditorState } from '@master-clash/remotion-core';
+import { EditorProvider, useEditor, type EditorState } from '@clash/remotion-core';
 import { TimelineLibraryPanel } from './TimelineLibraryPanel';
 import { TIMELINE_NOTICE_EVENT } from './timeline/timelineNotice';
 import { Timeline } from './Timeline';

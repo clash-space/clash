@@ -517,8 +517,8 @@ The new service now supports all three completion mechanisms automatically:
 ### Install Client
 
 ```python
-# apps/api/src/master_clash/tools/sync_server_client.py
-from master_clash.tools.sync_server_client import submit_kling_video_task
+# apps/api/src/clash/tools/sync_server_client.py
+from clash.tools.sync_server_client import submit_kling_video_task
 
 # Submit task
 task_id = submit_kling_video_task(

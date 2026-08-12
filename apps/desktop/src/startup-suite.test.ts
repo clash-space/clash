@@ -22,29 +22,30 @@ describe("desktop startup test suite", () => {
     };
 
     expect(rootPkg.scripts["test:startup"]).toBe(
-      "pnpm --filter @master-clash/desktop test:startup",
+      "turbo run build --filter=@clash/web --filter=@clash/desktop && pnpm test:startup:api && pnpm --filter @clash/desktop test:startup",
     );
     expect(rootPkg.scripts["test:agent:real-codex"]).toBe(
-      "pnpm --filter @master-clash/desktop test:agent:real-codex",
+      "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop test:agent:real-codex",
     );
     expect(rootPkg.scripts["test:startup:real-codex"]).toBe(
-      "pnpm --filter @master-clash/desktop test:startup:real-codex",
+      "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop test:startup:real-codex",
     );
     expect(rootPkg.scripts["test:startup:real-codex-resume"]).toBe(
-      "pnpm --filter @master-clash/desktop test:startup:real-codex-resume",
+      "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop test:startup:real-codex-resume",
     );
     expect(rootPkg.scripts["test:startup:real-codex-cold"]).toBe(
-      "pnpm --filter @master-clash/desktop test:startup:real-codex-cold",
+      "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop test:startup:real-codex-cold",
     );
     expect(rootPkg.scripts["test:e2e:qa-agent"]).toBe(
-      "pnpm --filter @master-clash/desktop test:e2e:qa-agent",
+      "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop test:e2e:qa-agent",
     );
     expect(rootPkg.scripts["test:e2e:agent-first-local-v1"]).toBe(
-      "pnpm --filter @master-clash/desktop test:e2e:agent-first-local-v1",
+      "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop test:e2e:agent-first-local-v1",
     );
     expect(rootPkg.scripts["test:e2e:agent-first-cas"]).toBe(
-      "pnpm --filter @master-clash/desktop test:e2e:agent-first-cas",
+      "pnpm build:package @clash/desktop && pnpm --filter @clash/desktop test:e2e:agent-first-cas",
     );
+    expect(rootPkg.scripts["build:package"]).toBe("turbo run build --filter");
   });
 
   it("exposes layered startup scripts", () => {
@@ -53,20 +54,18 @@ describe("desktop startup test suite", () => {
     };
 
     expect(pkg.scripts["test:startup"]).toBe(
-      "pnpm test:startup:static && pnpm test:startup:api && pnpm test:startup:ui",
+      "pnpm test:startup:static && pnpm test:startup:ui",
     );
     expect(pkg.scripts["test:startup:static"]).toBe(
       "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && node e2e/startup-static.mjs",
     );
-    expect(pkg.scripts["test:startup:api"]).toBe(
-      "pnpm --filter @master-clash/local-api test:e2e",
-    );
+    expect(pkg.scripts["test:startup:api"]).toBeUndefined();
     expect(pkg.scripts["test:startup:ui"]).toContain("startup-ui-smoke.mjs");
     expect(pkg.scripts["test:agent:real-codex"]).toContain(
       "real-codex-acp-backend.mjs",
     );
-    expect(pkg.scripts["test:startup:real-codex"]).toContain(
-      "pnpm --filter @clash-space/bridge build",
+    expect(pkg.scripts["test:startup:real-codex"]).not.toMatch(
+      /pnpm --filter .* build/,
     );
     expect(pkg.scripts["test:startup:real-codex"]).toContain(
       "node scripts/prepare-clash-cli.mjs",
@@ -77,8 +76,8 @@ describe("desktop startup test suite", () => {
     expect(pkg.scripts["test:startup:real-codex"]).toContain(
       "real-codex-agent-browser.mjs",
     );
-    expect(pkg.scripts["test:startup:real-codex-resume"]).toContain(
-      "pnpm --filter @clash-space/bridge build",
+    expect(pkg.scripts["test:startup:real-codex-resume"]).not.toMatch(
+      /pnpm --filter .* build/,
     );
     expect(pkg.scripts["test:startup:real-codex-resume"]).toContain(
       "real-codex-resume-agent-browser.mjs",
@@ -95,16 +94,17 @@ describe("desktop startup test suite", () => {
     expect(pkg.scripts["test:e2e:agent-first-local-v1"]).toContain(
       "agent-first-local-v1-gate.mjs",
     );
-    expect(pkg.scripts["test:e2e:qa-agent"]).toContain(
-      "qa-agent-codex.mjs",
-    );
+    expect(pkg.scripts["test:e2e:qa-agent"]).toContain("qa-agent-codex.mjs");
   });
 
-  it("prepares the packaged CLI through the active pnpm runtime on Windows", () => {
+  it("stages the root-built unified Clash runtime without nested workspace builds", () => {
     const source = readText("scripts/prepare-clash-cli.mjs");
 
-    expect(source).toContain("npm_execpath");
-    expect(source).toContain('platform !== "win32"');
+    expect(source).not.toContain("build:package");
+    expect(source).not.toContain("pnpm deploy");
+    expect(source).toContain('"--omit=dev"');
+    expect(source).toContain("staging the prebuilt unified Clash runtime");
+    expect(source).toContain('"clash-runtime"');
     expect(source).toContain("[prepare-clash-cli] failed");
   });
 
@@ -116,6 +116,7 @@ describe("desktop startup test suite", () => {
       ? readText("src/dev.ts")
       : "";
     const main = readText("src/main.ts");
+    const hostController = readText("src/controller/host.ts");
 
     expect(pkg.scripts.dev).toBe("tsx src/dev.ts");
     expect(source).toContain('"--strictPort"');
@@ -124,40 +125,66 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("CLASH_WEB_URL: rendererUrl");
     expect(source).toContain('CLASH_PROFILE: "dev"');
     expect(source).toContain('CLASH_APP_NAME: "Clash Dev"');
-    expect(main).toContain("app.setName(runtimeAppName)");
-    expect(source).toContain('"@clash/shared-runtime", "build"');
-    expect(source).toContain('"@clash-space/cli", "build"');
+    expect(hostController).toContain("app.setName(runtimeAppName)");
+    expect(main).toContain("createDesktopRuntimeController");
+    expect(main).toContain("createDesktopWindowController");
+    expect(source).toContain('"tsup.dev.config.ts"');
+    const devBuildConfig = readText("tsup.dev.config.ts");
+    expect(devBuildConfig).toContain("watch: [");
+    expect(devBuildConfig).not.toContain('"../local-api/src"');
+    expect(devBuildConfig).toContain('"../../packages/shared-runtime/src"');
+    expect(devBuildConfig).toContain('onSuccess: "electron ."');
+    expect(source).not.toMatch(/"@clash\/shared-runtime",\s*"build"/);
+    expect(source).not.toMatch(/"@clash\/cli",\s*"build"/);
     expect(source).toContain('CLASH_WEB_E2E_NO_CLOUDFLARE: "1"');
     expect(source).toContain("shutdownProcessTree");
     expect(source).not.toContain("shell: true");
   });
 
   it("keeps Director and Timeline rendering active while the desktop window is occluded", () => {
-    const source = readText("src/main.ts");
+    const source = readText("src/controller/windows.ts");
     expect(source).toContain("backgroundThrottling: false");
   });
 
-  it("waits for the embedded local API lifecycle during app shutdown", () => {
+  it("leaves the detached shared daemon running when the desktop exits", () => {
     const source = readText("src/main.ts");
+    const runtimeController = readText("src/controller/runtime.ts");
 
-    expect(source).toContain('app.on("before-quit"');
-    expect(source).toContain("event.preventDefault()");
-    expect(source).toContain("shutdownBarrierStarted");
-    expect(source).toContain("localApiServer.close");
+    expect(source).not.toContain('app.on("before-quit"');
+    expect(runtimeController).not.toContain("startLocalApiServer");
+    expect(runtimeController).not.toContain("closeLocalApiServer");
+    expect(runtimeController).toContain("launchDetachedLocalDaemon");
+    expect(runtimeController).toContain("electronRunAsNode: true");
   });
 
   it("joins the shared local daemon or starts it once instead of creating a second writer", () => {
-    const source = readText("src/main.ts");
+    const source = readText("src/controller/runtime.ts");
 
     expect(source).toContain("createLocalDaemonBootstrap");
     expect(source).toContain("ensureDaemon()");
-    expect(source).toContain('launchMode: "desktop"');
-    expect(source).toContain('startedBy: "desktop"');
+    expect(source).toContain('CLASH_DAEMON_STARTED_BY: "desktop"');
     expect(source).toContain("clashHomeForLocalDataDir(dataDir)");
   });
 
+  it("runs the development host and CLI from watched TypeScript sources", () => {
+    const paths = readText("src/paths.ts");
+    const runtime = readText("src/controller/runtime.ts");
+
+    expect(paths).toContain('"../../../plugins/clash/src/local-api-entry.ts"');
+    expect(paths).toContain('"../../../packages/cli/src/index.ts"');
+    expect(paths).not.toContain(
+      '"../../../plugins/clash/runtime/local-api.cjs"',
+    );
+    expect(paths).not.toContain(
+      '"../../../plugins/clash/runtime/dispatcher.js"',
+    );
+    expect(runtime).toContain('require.resolve("tsx/cli")');
+    expect(runtime).toContain('"watch"');
+    expect(runtime).toContain("resolveClashDevTsconfigPath(moduleDir)");
+  });
+
   it("injects the packaged Python SDK into local-model subprocess discovery", () => {
-    const source = readText("src/main.ts");
+    const source = readText("src/controller/runtime.ts");
 
     expect(source).toContain("resolveClashSdkPythonPath");
     expect(source).toContain("prependPythonPath");
@@ -165,31 +192,41 @@ describe("desktop startup test suite", () => {
   });
 
   it("exposes read-only NLE availability detection through the desktop bridge", () => {
-    const main = readText("src/main.ts");
+    const main = readText("src/controller/windows.ts");
     const preload = readText("src/preload.ts");
 
     expect(main).toContain('ipcMain.handle("clash:get-nle-availability"');
     expect(main).toContain("detectNleAvailability()");
-    expect(preload).toContain('getNleAvailability: () => ipcRenderer.invoke("clash:get-nle-availability")');
+    expect(preload).toContain(
+      'getNleAvailability: () => ipcRenderer.invoke("clash:get-nle-availability")',
+    );
   });
 
-  it("provides the Timeline renderer to the local backend without a renderer IPC", () => {
-    const main = readText("src/main.ts");
+  it("provides the Timeline renderer through the unified local host without a renderer IPC", () => {
+    const hostEntry = readRootText("plugins/clash/src/local-api-entry.ts");
+    const windows = readText("src/controller/windows.ts");
     const preload = readText("src/preload.ts");
 
-    expect(main).toContain("timelineRenderer: createDesktopTimelineRenderer");
-    expect(main).not.toContain('ipcMain.handle("clash:export-timeline-video"');
+    expect(hostEntry).toContain("createRemotionTimelineRenderer");
+    expect(hostEntry).toContain("timelineRenderer,");
+    expect(windows).not.toContain(
+      'ipcMain.handle("clash:export-timeline-video"',
+    );
     expect(preload).not.toContain("exportTimelineVideo");
   });
 
   it("exports a recorded Director camera video through the desktop bridge", () => {
-    const main = readText("src/main.ts");
+    const main = readText("src/controller/windows.ts");
     const preload = readText("src/preload.ts");
 
     expect(main).toContain('ipcMain.handle("clash:export-director-video"');
     expect(main).toContain("safeDirectorVideoExportName");
-    expect(main).toContain('filters: [{ name: "WebM video", extensions: ["webm"] }]');
-    expect(preload).toContain('exportDirectorVideo: (request: unknown) => ipcRenderer.invoke("clash:export-director-video", request)');
+    expect(main).toContain(
+      'filters: [{ name: "WebM video", extensions: ["webm"] }]',
+    );
+    expect(preload).toContain(
+      'exportDirectorVideo: (request: unknown) => ipcRenderer.invoke("clash:export-director-video", request)',
+    );
   });
 
   it("selects a Node runtime with the capabilities required by the renderer", () => {
@@ -198,8 +235,8 @@ describe("desktop startup test suite", () => {
       engines?: { node?: string };
     };
 
-    expect(readRootText(".nvmrc").trim()).toBe("22.22.0");
-    expect(rootPkg.engines?.node).toBe(">=22.22.0");
+    expect(readRootText(".nvmrc").trim()).toBe("24.18.0");
+    expect(rootPkg.engines?.node).toBe(">=24.18.0 <25");
     expect(source).toContain("registerHooks");
     expect(source).toContain("nvm install && nvm use");
     expect(source).toContain("process.execPath");
@@ -218,7 +255,7 @@ describe("desktop startup test suite", () => {
       "e2e/qa-agent-codex.mjs",
       "e2e/qa-agent-report.schema.json",
     ]) {
-    expect(statSync(join(desktopPath, relativePath)).isFile()).toBe(true);
+      expect(statSync(join(desktopPath, relativePath)).isFile()).toBe(true);
     }
   });
 
@@ -267,31 +304,71 @@ describe("desktop startup test suite", () => {
     expect(casSmokeSource).toContain("runDirectCanvasCliImplicitCas");
     expect(casSmokeSource).toContain("runCanvas([");
     expect(casSmokeSource).toContain("CLASH_AGENT_MEMBER_ID");
-    expect(casSmokeSource).toContain("direct canvas CLI fresh implicit observation accepted");
-    expect(casSmokeSource).toContain("legacy daemon receipt mutation envelope recorded");
-    expect(casSmokeSource).toContain("direct canvas CLI mutation envelope recorded");
+    expect(casSmokeSource).toContain(
+      "direct canvas CLI fresh implicit observation accepted",
+    );
+    expect(casSmokeSource).toContain(
+      "local-api receipt mutation envelope recorded",
+    );
+    expect(casSmokeSource).toContain(
+      "direct canvas CLI mutation envelope recorded",
+    );
 
     expect(schema.required).toContain("cas");
     expect(schema.required).toContain("workspaceCli");
     expect(schema.properties.cas).toBeTruthy();
     expect(schema.properties.workspaceCli).toBeTruthy();
-    expect(JSON.stringify(schema.properties.cas)).toContain("missingReadProofRejected");
-    expect(JSON.stringify(schema.properties.cas)).toContain("staleReadProofRejected");
-    expect(JSON.stringify(schema.properties.cas)).toContain("copyOnWritePreservedSource");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliWriteBeforeReadRejected");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliStaleObservationRejected");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliFreshObservationAccepted");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliMutationEnvelopeRecorded");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliDeleteReadRequired");
-    expect(JSON.stringify(schema.properties.cas)).toContain("textProjectionNoLockSidecar");
-    expect(JSON.stringify(schema.properties.cas)).toContain("timelineProjectionNoLockSidecar");
-    expect(JSON.stringify(schema.properties.cas)).toContain("timelineEntityApplyAdvancesRevision");
-    expect(JSON.stringify(schema.properties.cas)).toContain("textHistoryReadsHostRevisionIndex");
-    expect(JSON.stringify(schema.properties.cas)).toContain("textContentRestoresHostRevisionBody");
-    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("canvasScopesStayIsolated");
-    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("nativeTimelineApplyUsesEntityCas");
-    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("daemonRestartRecoversProjectState");
-    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("canonicalSqliteStore");
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "missingReadProofRejected",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "staleReadProofRejected",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "copyOnWritePreservedSource",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "directCanvasCliWriteBeforeReadRejected",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "directCanvasCliStaleObservationRejected",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "directCanvasCliFreshObservationAccepted",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "directCanvasCliMutationEnvelopeRecorded",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "directCanvasCliDeleteReadRequired",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "textProjectionNoLockSidecar",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "timelineProjectionNoLockSidecar",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "timelineEntityApplyAdvancesRevision",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "textHistoryReadsHostRevisionIndex",
+    );
+    expect(JSON.stringify(schema.properties.cas)).toContain(
+      "textContentRestoresHostRevisionBody",
+    );
+    expect(JSON.stringify(schema.properties.workspaceCli)).toContain(
+      "canvasScopesStayIsolated",
+    );
+    expect(JSON.stringify(schema.properties.workspaceCli)).toContain(
+      "nativeTimelineApplyUsesEntityCas",
+    );
+    expect(JSON.stringify(schema.properties.workspaceCli)).toContain(
+      "daemonRestartRecoversProjectState",
+    );
+    expect(JSON.stringify(schema.properties.workspaceCli)).toContain(
+      "canonicalSqliteStore",
+    );
 
     expect(schema.properties.paths.required).toEqual(
       expect.arrayContaining([
@@ -331,7 +408,9 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("requiredChecks");
     expect(source).toContain("requiredBooleans");
     expect(source).toContain("directCanvasCliFreshObservationAccepted");
-    expect(source).toContain("textRestoreCreatesCopyOnWriteRevisionFromHostContent");
+    expect(source).toContain(
+      "textRestoreCreatesCopyOnWriteRevisionFromHostContent",
+    );
     expect(source).toContain("timelineEntityApplyAdvancesRevision");
     expect(source).toContain("project-workspace-cli");
     expect(source).toContain("localObsoleteProjectEndpointsRejected");
@@ -344,9 +423,15 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("legacyLocalRoomWriteRemoved");
     expect(source).toContain("legacyLocalRoomSyncRemoved");
     expect(source).not.toContain("roomSyncConflictResolutionAuditRecorded");
-    expect(source).toContain("doctor before repair does not expose obsolete marker compatibility");
-    expect(source).not.toContain("doctor repair removes old broad app-state file");
-    expect(source).toContain("cloud-sync pending action gates block web and sharing until required mirrors are ready");
+    expect(source).toContain(
+      "doctor before repair does not expose obsolete marker compatibility",
+    );
+    expect(source).not.toContain(
+      "doctor repair removes old broad app-state file",
+    );
+    expect(source).toContain(
+      "cloud-sync pending action gates block web and sharing until required mirrors are ready",
+    );
     expect(source).toContain("CLASH_AGENT_FIRST_LOCAL_V1_SUITES");
     expect(source).toContain("agent-first-local-v1-gate-report.json");
   });
@@ -421,12 +506,14 @@ describe("desktop startup test suite", () => {
 
     expect(helpers.terminalOutputsFromEvents(events)).toEqual([`${cwd}\n`]);
     expect(helpers.finalAnswerTextFromEvents(events)).toBe(cwd);
-    expect(helpers.terminalOutputsFromEvents([{ rawOutput: "/legacy/cwd\n" }])).toEqual([
-      "/legacy/cwd\n",
-    ]);
-    expect(helpers.finalAnswerTextFromEvents([{ type: "text", text: "/legacy/cwd" }])).toBe(
-      "/legacy/cwd",
-    );
+    expect(
+      helpers.terminalOutputsFromEvents([{ rawOutput: "/legacy/cwd\n" }]),
+    ).toEqual(["/legacy/cwd\n"]);
+    expect(
+      helpers.finalAnswerTextFromEvents([
+        { type: "text", text: "/legacy/cwd" },
+      ]),
+    ).toBe("/legacy/cwd");
   });
 
   it("keeps the real Codex E2E out of stub mode", () => {
@@ -478,56 +565,61 @@ describe("desktop startup test suite", () => {
   });
 
   it("derives selections from live harness values and ignores removed cached choices", async () => {
-    const {
-      chooseAlternateRunPreferences,
-      resolveHarnessProductProfile,
-    } = (await import(
-      new URL("../e2e/product-cold-start-contract.mjs", import.meta.url).href
-    )) as {
-      chooseAlternateRunPreferences: (
-        profile: unknown,
-      ) => {
-        configValues: Record<string, string | boolean>;
-        selections: { model: { name: string; value: string } };
+    const { chooseAlternateRunPreferences, resolveHarnessProductProfile } =
+      (await import(
+        new URL("../e2e/product-cold-start-contract.mjs", import.meta.url).href
+      )) as {
+        chooseAlternateRunPreferences: (profile: unknown) => {
+          configValues: Record<string, string | boolean>;
+          selections: { model: { name: string; value: string } };
+        };
+        resolveHarnessProductProfile: (
+          snapshot: unknown,
+          options: { runtimeId: string; harnessId: string },
+        ) => {
+          selections: { model: { name: string; value: string } };
+          configOptions: unknown[];
+        };
       };
-      resolveHarnessProductProfile: (
-        snapshot: unknown,
-        options: { runtimeId: string; harnessId: string },
-      ) => {
-        selections: { model: { name: string; value: string } };
-        configOptions: unknown[];
-      };
-    };
 
-    const profile = resolveHarnessProductProfile({
-      runtimes: [{
-        id: "desktop-local",
-        preferences: {
-          config_by_agent: {
-            "future-harness": {
-              model: "removed-model",
+    const profile = resolveHarnessProductProfile(
+      {
+        runtimes: [
+          {
+            id: "desktop-local",
+            preferences: {
+              config_by_agent: {
+                "future-harness": {
+                  model: "removed-model",
+                },
+              },
+              mode_by_agent: {},
             },
-          },
-          mode_by_agent: {},
-        },
-        agents: [{
-          id: "future-harness",
-          config_options: [{
-            id: "model",
-            type: "select",
-            category: "model",
-            currentValue: "future-model",
-            options: [
-              { value: "previous-model", name: "Previous Model" },
-              { value: "future-model", name: "Future Model" },
+            agents: [
+              {
+                id: "future-harness",
+                config_options: [
+                  {
+                    id: "model",
+                    type: "select",
+                    category: "model",
+                    currentValue: "future-model",
+                    options: [
+                      { value: "previous-model", name: "Previous Model" },
+                      { value: "future-model", name: "Future Model" },
+                    ],
+                  },
+                ],
+              },
             ],
-          }],
-        }],
-      }],
-    }, {
-      runtimeId: "desktop-local",
-      harnessId: "future-harness",
-    });
+          },
+        ],
+      },
+      {
+        runtimeId: "desktop-local",
+        harnessId: "future-harness",
+      },
+    );
 
     expect(profile.selections.model).toEqual({
       value: "future-model",
@@ -543,58 +635,65 @@ describe("desktop startup test suite", () => {
       },
     });
 
-    const restoredProfile = resolveHarnessProductProfile({
-      runtimes: [{
-        id: "desktop-local",
-        preferences: {
-          config_by_agent: {
-            "future-harness": {
-              model: "previous-model",
+    const restoredProfile = resolveHarnessProductProfile(
+      {
+        runtimes: [
+          {
+            id: "desktop-local",
+            preferences: {
+              config_by_agent: {
+                "future-harness": {
+                  model: "previous-model",
+                },
+              },
+              mode_by_agent: {},
             },
-          },
-          mode_by_agent: {},
-        },
-        agents: [{
-          id: "future-harness",
-          config_options: [{
-            id: "model",
-            type: "select",
-            category: "model",
-            currentValue: "future-model",
-            options: [
-              { value: "previous-model", name: "Previous Model" },
-              { value: "future-model", name: "Future Model" },
+            agents: [
+              {
+                id: "future-harness",
+                config_options: [
+                  {
+                    id: "model",
+                    type: "select",
+                    category: "model",
+                    currentValue: "future-model",
+                    options: [
+                      { value: "previous-model", name: "Previous Model" },
+                      { value: "future-model", name: "Future Model" },
+                    ],
+                  },
+                ],
+              },
             ],
-          }],
-        }],
-      }],
-    }, {
-      runtimeId: "desktop-local",
-      harnessId: "future-harness",
-    });
+          },
+        ],
+      },
+      {
+        runtimeId: "desktop-local",
+        harnessId: "future-harness",
+      },
+    );
     expect(restoredProfile.selections.model).toEqual({
       value: "previous-model",
       name: "Previous Model",
     });
   });
 
-  it("does not hide a Codex-first provider priority in the generic selectors or CLI", () => {
+  it("does not hide a Codex-first provider priority in the generic selectors or local host", () => {
     const pickerSource = readRootText(
       "packages/web-ui/src/components/copilot/SessionStartPicker.tsx",
     );
-    const cliSource = readRootText("packages/clash-bridge/src/cli.ts");
+    const hostSource = readRootText(
+      "apps/local-api/src/runtime/host/lib/session-manager.ts",
+    );
 
     expect(pickerSource).toContain("preferredAgentId");
     expect(pickerSource).not.toContain('["codex-acp"');
-    expect(cliSource).toContain(
-      "candidates.find((a) => a.id === startMsg.agent_id)",
+    expect(hostSource).toContain(
+      "const resolvedAgentId = p.agent_id ?? tpl!.agent_id",
     );
-    expect(cliSource).toContain(
-      "candidates.find((a) => a.id === agentRuntime?.agent_id)",
-    );
-    expect(cliSource).not.toContain(
-      'candidates.find((a) => a.id === "codex-acp")',
-    );
+    expect(hostSource).toContain("await detect(resolvedAgentId");
+    expect(hostSource).not.toContain('resolvedAgentId = "codex-acp"');
   });
 
   it("cold-restarts the product and restores only the latest recorded run choices", () => {
@@ -643,10 +742,16 @@ describe("desktop startup test suite", () => {
     const helperSource = readText("e2e/startup-shared.mjs");
 
     expect(source).toContain("startVite({ webPort, logs: webLogs })");
-    expect(source).not.toContain('spawn("pnpm", ["--dir", webDir, "exec", "vite"');
+    expect(source).not.toContain(
+      'spawn("pnpm", ["--dir", webDir, "exec", "vite"',
+    );
     expect(helperSource).toContain('CLASH_WEB_E2E_NO_CLOUDFLARE: "1"');
-    expect(helperSource).toContain("CLASH_WEB_E2E_PERSIST_STATE: persistStateDir");
-    expect(helperSource).toContain('rm(persistStateDir, { recursive: true, force: true })');
+    expect(helperSource).toContain(
+      "CLASH_WEB_E2E_PERSIST_STATE: persistStateDir",
+    );
+    expect(helperSource).toContain(
+      "rm(persistStateDir, { recursive: true, force: true })",
+    );
   });
 
   it("can freeze the web UI to a static build snapshot for long real-agent E2E runs", () => {
@@ -667,9 +772,15 @@ describe("desktop startup test suite", () => {
     expect(source).toContain('"04-restart-queued.png"');
     expect(source).toContain('"05-session-restarted-fading.png"');
     expect(source).toContain('"06-update-notice-self-destructed.png"');
-    expect(source).toContain('clickButtonByLabel(agentBrowser, "1 ACP update available")');
-    expect(source).toContain('clickButtonByLabel(agentBrowser, "Update Mock ACP")');
-    expect(source).toContain('clickButtonByLabel(agentBrowser, "Restart after this turn")');
+    expect(source).toContain(
+      'clickButtonByLabel(agentBrowser, "1 ACP update available")',
+    );
+    expect(source).toContain(
+      'clickButtonByLabel(agentBrowser, "Update Mock ACP")',
+    );
+    expect(source).toContain(
+      'clickButtonByLabel(agentBrowser, "Restart after this turn")',
+    );
   });
 
   it("keeps a permanent narrow-window project chrome check", () => {
@@ -688,7 +799,9 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("narrowComposerScreenshot");
     expect(source).toContain("assertComposerToolbarLayout");
     expect(source).toContain("observeComposerToolbarLayout");
-    expect(helperSource).toContain("controls overlap or escape the input surface");
+    expect(helperSource).toContain(
+      "controls overlap or escape the input surface",
+    );
     expect(helperSource).toContain("toolbarOverflow");
     expect(helperSource).toContain("laneOverlap");
   });
@@ -696,8 +809,12 @@ describe("desktop startup test suite", () => {
   it("accepts any configured Codex auth method declared by the runtime", () => {
     const source = readText("e2e/real-codex-agent-browser.mjs");
 
-    expect(source).toContain("supportedAuthMethods.includes(configuredAuthMethod)");
-    expect(source).not.toContain("must use the configured ChatGPT subscription");
+    expect(source).toContain(
+      "supportedAuthMethods.includes(configuredAuthMethod)",
+    );
+    expect(source).not.toContain(
+      "must use the configured ChatGPT subscription",
+    );
   });
 
   it("exercises /plan as a closable tag in the real narrow composer", () => {
@@ -707,7 +824,9 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("active Plan tag after /plan");
     expect(source).toContain("narrow-plan-composer.png");
     expect(source).toContain("assertComposerToolbarLayout");
-    expect(source).toContain('clickButtonByLabel(agentBrowser, "Exit Plan mode")');
+    expect(source).toContain(
+      'clickButtonByLabel(agentBrowser, "Exit Plan mode")',
+    );
   });
 
   it("submits the real Codex prompt with a scoped composer submit helper", () => {
@@ -721,9 +840,17 @@ describe("desktop startup test suite", () => {
 
   it("recovers the real Codex Electron target before post-turn session controls", () => {
     const source = readText("e2e/real-codex-agent-browser.mjs");
-    const finalCapture = source.indexOf('agentBrowser(["screenshot", finalScreenshot])');
-    const recovery = source.indexOf("recoverAgentBrowserTarget(agentBrowser", finalCapture);
-    const newSession = source.indexOf('clickButtonByLabel(agentBrowser, "New session")', recovery);
+    const finalCapture = source.indexOf(
+      'agentBrowser(["screenshot", finalScreenshot])',
+    );
+    const recovery = source.indexOf(
+      "recoverAgentBrowserTarget(agentBrowser",
+      finalCapture,
+    );
+    const newSession = source.indexOf(
+      'clickButtonByLabel(agentBrowser, "New session")',
+      recovery,
+    );
 
     expect(finalCapture).toBeGreaterThanOrEqual(0);
     expect(recovery).toBeGreaterThan(finalCapture);
@@ -781,7 +908,10 @@ describe("desktop startup test suite", () => {
       new URL("../e2e/startup-shared.mjs", import.meta.url).href
     )) as {
       recoverAgentBrowserTarget: (
-        agentBrowser: (args: string[], options?: { allowFailure?: boolean }) => string,
+        agentBrowser: (
+          args: string[],
+          options?: { allowFailure?: boolean },
+        ) => string,
         options: {
           cdpPort: number;
           expectedUrlPrefix: string;
@@ -802,11 +932,13 @@ describe("desktop startup test suite", () => {
       throw new Error(`Unexpected agent-browser command: ${args.join(" ")}`);
     };
 
-    expect(recoverAgentBrowserTarget(agentBrowser, {
-      cdpPort: 49970,
-      expectedUrlPrefix: "http://127.0.0.1:49870/",
-      maxAttempts: 2,
-    })).toBe("http://127.0.0.1:49870/projects/project-one");
+    expect(
+      recoverAgentBrowserTarget(agentBrowser, {
+        cdpPort: 49970,
+        expectedUrlPrefix: "http://127.0.0.1:49870/",
+        maxAttempts: 2,
+      }),
+    ).toBe("http://127.0.0.1:49870/projects/project-one");
     expect(calls).toEqual([
       ["close"],
       ["connect", "49970"],
@@ -820,8 +952,12 @@ describe("desktop startup test suite", () => {
       source.indexOf("async function sendPrompt"),
       source.indexOf("async function fetchJson"),
     );
-    const submitIndex = sendPromptSource.indexOf("clickComposerSubmitButton(agentBrowser)");
-    const recoverIndex = sendPromptSource.indexOf("recoverAgentBrowserTarget(agentBrowser");
+    const submitIndex = sendPromptSource.indexOf(
+      "clickComposerSubmitButton(agentBrowser)",
+    );
+    const recoverIndex = sendPromptSource.indexOf(
+      "recoverAgentBrowserTarget(agentBrowser",
+    );
     const assertionIndex = sendPromptSource.indexOf("await waitForEval(");
 
     expect(submitIndex).toBeGreaterThanOrEqual(0);
@@ -834,7 +970,12 @@ describe("desktop startup test suite", () => {
       new URL("../e2e/startup-shared.mjs", import.meta.url).href
     )) as {
       runtimeSessionPathObservation: (input: {
-        session: { id: string; threadId?: string; title?: string; projectId?: string };
+        session: {
+          id: string;
+          threadId?: string;
+          title?: string;
+          projectId?: string;
+        };
         projectId: string;
         apiOrigin: string;
         dataDir: string;
@@ -842,23 +983,26 @@ describe("desktop startup test suite", () => {
       }) => Record<string, unknown>;
     };
 
-    expect(runtimeSessionPathObservation({
-      session: {
-        id: "session-row-one",
-        threadId: "thread-one",
-        title: "Storyboard pass",
+    expect(
+      runtimeSessionPathObservation({
+        session: {
+          id: "session-row-one",
+          threadId: "thread-one",
+          title: "Storyboard pass",
+          projectId: "project-one",
+        },
         projectId: "project-one",
-      },
-      projectId: "project-one",
-      apiOrigin: "http://127.0.0.1:49920",
-      dataDir: "/tmp/clash-e2e-data",
-      messageCount: 2,
-    })).toEqual({
+        apiOrigin: "http://127.0.0.1:49920",
+        dataDir: "/tmp/clash-e2e-data",
+        messageCount: 2,
+      }),
+    ).toEqual({
       id: "thread-one",
       projectId: "project-one",
       title: "Storyboard pass",
       messageCount: 2,
-      apiPath: "http://127.0.0.1:49920/api/v1/local-sessions/thread-one/messages",
+      apiPath:
+        "http://127.0.0.1:49920/api/v1/local-sessions/thread-one/messages",
       storagePath: "/tmp/clash-e2e-data/local.sqlite",
       cwdPath: null,
     });
@@ -885,30 +1029,36 @@ describe("desktop startup test suite", () => {
           validSession("session-two", "created"),
         ],
         restoredSessions: [validSession("session-one", "history")],
-        projectStatuses: [{
-          runtimeRoot: "/tmp/clash-e2e-data/projects/project-one/runtime",
-          protectedPaths: ["/tmp/clash-e2e-data/projects/project-one/runtime"],
-        }],
+        projectStatuses: [
+          {
+            runtimeRoot: "/tmp/clash-e2e-data/projects/project-one/runtime",
+            protectedPaths: [
+              "/tmp/clash-e2e-data/projects/project-one/runtime",
+            ],
+          },
+        ],
       },
     };
 
     expect(() => validateStubRuntimeReport(baseReport)).not.toThrow();
-    expect(() => validateStubRuntimeReport({
-      paths: {
-        ...baseReport.paths,
-        createdSessions: [
-          validSession("stub-acp-session-1", "created"),
-          validSession("stub-acp-session-2", "created"),
-        ],
-      },
-    })).toThrow(/placeholder session id/i);
+    expect(() =>
+      validateStubRuntimeReport({
+        paths: {
+          ...baseReport.paths,
+          createdSessions: [
+            validSession("stub-acp-session-1", "created"),
+            validSession("stub-acp-session-2", "created"),
+          ],
+        },
+      }),
+    ).toThrow(/placeholder session id/i);
   });
 
   it("opens stub session history with the shared visible-menu helper", () => {
     const source = readText("e2e/agent-browser-smoke.mjs");
 
     expect(source).toContain("openSessionHistoryMenu(agentBrowser)");
-    expect(source).toContain("[role=\"menu\"][aria-label=\"Session history\"]");
+    expect(source).toContain('[role="menu"][aria-label="Session history"]');
     expect(source).toContain("clickHistoryMenuItemByText(firstPrompt)");
     expect(source).toContain("restored first session transcript");
     expect(source).not.toContain("document.querySelector(\"[role='dialog']\")");
@@ -918,7 +1068,9 @@ describe("desktop startup test suite", () => {
     const source = readText("e2e/real-codex-agent-browser.mjs");
 
     expect(source).toContain("Codex turn idle after final answer");
-    expect(source.indexOf("Codex turn idle after final answer")).toBeLessThan(source.indexOf("Could not create a fresh session"));
+    expect(source.indexOf("Codex turn idle after final answer")).toBeLessThan(
+      source.indexOf("Could not create a fresh session"),
+    );
   });
 
   it("accepts the current project-root cwd in the real Codex E2E", () => {

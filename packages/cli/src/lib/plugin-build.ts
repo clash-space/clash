@@ -5,16 +5,10 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 /**
  * Compiling a plugin entrypoint.
  *
- * The host owns this step rather than the plugin author, for the same reason it owns
- * the launch argv: the sandbox imposes requirements the author would otherwise have
- * to remember. A plugin runs as
- *
- *     node --permission --allow-fs-read=<pluginDir> --import=<network-guard> <entrypoint>
- *
- * so there is no module resolution and no loader hook available. The artifact must
- * therefore be one self-contained ESM file with only `node:` builtins left external.
- * Those are not stylistic choices, and putting them in a per-plugin bundler config
- * means a mistake surfaces as an opaque failure inside the sandbox.
+ * The host owns this convenience step so every TypeScript draft is built the same
+ * way before validation and activation. The artifact is one self-contained ESM file
+ * with only `node:` builtins left external, so an activated package does not depend
+ * on a source tree or a sibling `node_modules` directory being present.
  *
  * Which entrypoints are derived is declared by `runtime.build.source`. When it is
  * absent the entrypoint was authored directly -- the ordinary case for Python, where
@@ -42,7 +36,9 @@ interface RuntimeLike {
 }
 
 /** The declared build for a runtime, or undefined when the entrypoint is authored. */
-export function pluginBuildPlan(runtime: RuntimeLike): PluginBuildPlan | undefined {
+export function pluginBuildPlan(
+  runtime: RuntimeLike,
+): PluginBuildPlan | undefined {
   if (runtime.kind !== "local") return undefined;
   const source = runtime.build?.source;
   const entrypoint = runtime.entrypoint;
@@ -50,11 +46,17 @@ export function pluginBuildPlan(runtime: RuntimeLike): PluginBuildPlan | undefin
   return { source, entrypoint };
 }
 
-function assertInsidePlugin(pluginDir: string, candidate: string, label: string): string {
+function assertInsidePlugin(
+  pluginDir: string,
+  candidate: string,
+  label: string,
+): string {
   const absolute = resolve(pluginDir, candidate);
   const rel = relative(pluginDir, absolute);
   if (rel.startsWith("..") || isAbsolute(rel)) {
-    throw new Error(`Plugin ${label} must stay inside the plugin directory: ${candidate}`);
+    throw new Error(
+      `Plugin ${label} must stay inside the plugin directory: ${candidate}`,
+    );
   }
   return absolute;
 }
@@ -75,7 +77,7 @@ function formatMessages(messages: readonly Message[]): string {
  *
  * Returns the absolute artifact path. Throws with the offending file when the source
  * is missing or does not compile, and writes nothing in that case, so a failed build
- * can never leave a half-written bundle for the sandbox to load.
+ * can never leave a half-written bundle for the plugin runtime to load.
  */
 export async function buildPluginEntrypoint(
   pluginDirInput: string,
@@ -84,11 +86,17 @@ export async function buildPluginEntrypoint(
   const pluginDir = resolve(pluginDirInput);
   const plan = pluginBuildPlan(runtime);
   if (!plan) {
-    throw new Error("This runtime declares no build; its entrypoint is authored directly.");
+    throw new Error(
+      "This runtime declares no build; its entrypoint is authored directly.",
+    );
   }
 
   const sourcePath = assertInsidePlugin(pluginDir, plan.source, "build source");
-  const outputPath = assertInsidePlugin(pluginDir, plan.entrypoint, "entrypoint");
+  const outputPath = assertInsidePlugin(
+    pluginDir,
+    plan.entrypoint,
+    "entrypoint",
+  );
 
   try {
     await access(sourcePath);
@@ -104,7 +112,7 @@ export async function buildPluginEntrypoint(
     bundle: true,
     format: "esm",
     platform: "node",
-    target: "node22",
+    target: "node24",
     // Only builtins may stay external; nothing else is resolvable at runtime.
     packages: "bundle",
     external: [],
@@ -114,7 +122,8 @@ export async function buildPluginEntrypoint(
     write: true,
   }).catch((error: unknown) => {
     const errors = (error as { errors?: Message[] }).errors ?? [];
-    const detail = errors.length > 0 ? formatMessages(errors) : (error as Error).message;
+    const detail =
+      errors.length > 0 ? formatMessages(errors) : (error as Error).message;
     throw new Error(`Plugin build failed:\n${detail}`);
   });
 

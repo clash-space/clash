@@ -1,0 +1,25 @@
+{
+  "apiVersion": "clash.plugin.contract-test/v1",
+  "id": "hilo-hub-execute-refuses-an-unusable-poll-state",
+  "description": "A poll whose state lost its task id cannot be answered, and says so rather than waiting.",
+  "target": {
+    "exportId": "hilo-hub-execute",
+    "kind": "provider-executor"
+  },
+  "operation": "poll",
+  "pollState": {
+    "upstreamModel": "MiniMax-H3"
+  },
+  "input": {
+    "values": {},
+    "references": []
+  },
+  "expect": {
+    "status": "failed",
+    "error": {
+      "code": "execution_failed",
+      "message": "Hilo Hub poll state is missing its task id or model.",
+      "retryable": false
+    }
+  }
+}

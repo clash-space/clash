@@ -3,9 +3,9 @@
 ## 1. Scaffold or check out
 
 ```sh
-clash action init-plugin ~/.clash/drafts/my-gateway
+clash plugin create ~/plugins/my-gateway
 # or copy an attested active plugin into an editable draft:
-clash action checkout my-gateway ~/.clash/drafts/my-gateway
+clash plugin checkout my-gateway ~/plugins/my-gateway
 ```
 
 ## 2. Study the official upstream docs first
@@ -22,11 +22,13 @@ Before writing any request builder, collect for **every model you bind**:
 Encode value domains in **binding `parameterOverrides`**, not in executor code.
 Do not discover parameter domains by firing paid requests.
 
-## 3. Write the executor against broker fixtures
+## 3. Write the executor against scoped SDK fixtures
 
-The handler is a pure function from invocation + broker to result. Unit-test it
-with an in-memory broker: assert the exact submit URL and body per model
-family, poll transitions, and failure mapping.
+The handler receives an invocation plus Host-scoped Clash services. Unit-test
+account-store, reference, upload, and Host-tool dependencies with in-memory SDK
+implementations; instrument external HTTP at the process boundary. Assert the
+exact submit URL and body per model family, poll transitions, and failure
+mapping.
 
 Non-obvious executor duties, all learned from production traffic:
 
@@ -53,9 +55,9 @@ not just one happy path.
 ## 5. Validate, activate, verify composition
 
 ```sh
-clash action validate ~/.clash/drafts/my-gateway
-clash action activate ~/.clash/drafts/my-gateway   # requires version bump
-curl "$HOST/api/v1/models/catalog"                  # bindings merged? overrides live?
+clash plugin validate ~/plugins/my-gateway
+clash plugin activate ~/plugins/my-gateway   # requires version bump
+curl "$HOST/api/v1/models/catalog"           # bindings merged? overrides live?
 ```
 
 ## 6. Verify against the real upstream once
@@ -66,6 +68,11 @@ real, minimal-cost generation per API family with
 [traffic recording](/plugins/traffic-replay) enabled, and keep the recordings
 as regression fixtures. Budget for it; announce billing before you spend.
 
+Replay that capture through the shared local-api backend and assert the final
+Canvas node plus persisted text revision or media asset. This is the reusable
+backend E2E for GUI, CLI, and MCP; do not maintain one vendor generation test
+per client.
+
 ## Checklist
 
 - [ ] Bindings reference existing cards by official model id
@@ -75,4 +82,5 @@ as regression fixtures. Budget for it; announce billing before you spend.
 - [ ] Executor: real failure reasons, bounded poll retries, no submit retries
 - [ ] Contract tests per API family, strict URL + body deep-equal
 - [ ] One recorded real run per family; fixtures checked in
-- [ ] Version bumped; `clash action activate` green
+- [ ] Recorded traffic replays through local-api to the final Canvas entity
+- [ ] Version bumped; `clash plugin activate` green

@@ -1,24 +1,27 @@
-import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import { promisify } from "node:util";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   DirectorStageStateSchema,
   applyDirectorStageCommand,
   type DirectorStageCommand,
   type DirectorStageState,
+  type ProjectHostCommand,
 } from "@clash/shared-types";
 import {
-  buildDirectorCliArgs,
-  type DirectorEntity,
-  type DirectorPluginToolName,
-  type DirectorToolInput,
+  createProjectHostClient,
+  type ProjectHostClient,
+  type ProjectHostResponse,
+} from "@clash/shared-runtime/project-host-client";
+import type {
+  DirectorEntity,
+  DirectorPluginToolName,
+  DirectorToolInput,
 } from "./contract.js";
 
-const execFileAsync = promisify(execFile);
-
-export type DirectorCommandRunner = (args: string[], cwd: string) => Promise<unknown>;
-export type DirectorProjectionWriter = (path: string, content: string) => Promise<void>;
+export type DirectorProjectionWriter = (
+  path: string,
+  content: string | Uint8Array,
+) => Promise<void>;
 
 export type DirectorAdapter = {
   list(input: DirectorToolInput): Promise<DirectorEntity[]>;
@@ -32,36 +35,15 @@ export type DirectorAdapter = {
 };
 
 export function directorWorkspaceCwd(input: DirectorToolInput): string {
-  const candidate =
-    input.cwd?.trim() ||
-    process.env.CLASH_WORKSPACE_ROOT ||
-    process.env.CODEX_WORKSPACE_ROOT ||
-    process.cwd();
+  const candidate = input.cwd?.trim()
+    || process.env.CLASH_WORKSPACE_ROOT
+    || process.env.CODEX_WORKSPACE_ROOT
+    || process.cwd();
   return isAbsolute(candidate) ? candidate : resolve(candidate);
 }
 
 function projectionSegment(stageId: string): string {
   return stageId.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^\.+/, "") || "stage";
-}
-
-function stageList(value: unknown): DirectorEntity[] {
-  const candidates = Array.isArray(value)
-    ? value
-    : value && typeof value === "object" && Array.isArray((value as { items?: unknown[] }).items)
-      ? (value as { items: unknown[] }).items
-      : [];
-  return candidates.filter((candidate): candidate is DirectorEntity => Boolean(
-    candidate && typeof candidate === "object" &&
-    typeof (candidate as { id?: unknown }).id === "string" &&
-    (candidate as { state?: unknown }).state &&
-    typeof (candidate as { state?: unknown }).state === "object",
-  ));
-}
-
-function objectResult(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : { value };
 }
 
 function requiredInputString(input: DirectorToolInput, key: keyof DirectorToolInput): string {
@@ -93,37 +75,22 @@ function requiredRecordNumber(value: Record<string, unknown>, key: string, label
   return field;
 }
 
-function directorCommand(
-  name: DirectorPluginToolName,
-  input: DirectorToolInput,
-): DirectorStageCommand {
+function directorCommand(name: DirectorPluginToolName, input: DirectorToolInput): DirectorStageCommand {
   switch (name) {
     case "clash_director_object_add":
       return { op: "object.add", object: requiredInputRecord(input, "object") } as DirectorStageCommand;
     case "clash_director_object_update":
-      return {
-        op: "object.update",
-        objectId: requiredInputString(input, "objectId"),
-        patch: requiredInputRecord(input, "patch"),
-      } as DirectorStageCommand;
+      return { op: "object.update", objectId: requiredInputString(input, "objectId"), patch: requiredInputRecord(input, "patch") } as DirectorStageCommand;
     case "clash_director_object_remove":
       return { op: "object.remove", objectId: requiredInputString(input, "objectId") };
     case "clash_director_object_group":
-      return {
-        op: "object.group",
-        groupId: requiredInputString(input, "groupId"),
-        objectIds: input.objectIds ?? [],
-      };
+      return { op: "object.group", groupId: requiredInputString(input, "groupId"), objectIds: input.objectIds ?? [] };
     case "clash_director_object_ungroup":
       return { op: "object.ungroup", groupId: requiredInputString(input, "groupId") };
     case "clash_director_camera_add":
       return { op: "camera.add", camera: requiredInputRecord(input, "camera") } as DirectorStageCommand;
     case "clash_director_camera_update":
-      return {
-        op: "camera.update",
-        cameraId: requiredInputString(input, "cameraId"),
-        patch: requiredInputRecord(input, "patch"),
-      } as DirectorStageCommand;
+      return { op: "camera.update", cameraId: requiredInputString(input, "cameraId"), patch: requiredInputRecord(input, "patch") } as DirectorStageCommand;
     case "clash_director_camera_remove":
       return { op: "camera.remove", cameraId: requiredInputString(input, "cameraId") };
     case "clash_director_scene_update":
@@ -143,9 +110,7 @@ function directorCommand(
           id: requiredRecordString(keyframe, "id", "keyframe.id"),
           time: requiredRecordNumber(keyframe, "time", "keyframe.time"),
           value: keyframe.value,
-          ...(keyframe.interpolation !== undefined
-            ? { interpolation: keyframe.interpolation }
-            : {}),
+          ...(keyframe.interpolation !== undefined ? { interpolation: keyframe.interpolation } : {}),
         },
       } as DirectorStageCommand;
     }
@@ -174,103 +139,197 @@ function directorCommand(
   }
 }
 
-export function createClashDirectorRunner(options: {
-  command?: string;
-  argsPrefix?: string[];
-  env?: NodeJS.ProcessEnv;
-} = {}): DirectorCommandRunner {
-  const command = options.command ?? process.env.CLASH_CLI_BIN ?? "clash";
-  const prefix = options.argsPrefix ?? [];
-  return async (args, cwd) => {
-    const { stdout } = await execFileAsync(command, [...prefix, ...args], {
-      cwd,
-      env: options.env ?? process.env,
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    const text = stdout.trim();
-    if (!text) return {};
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      return { stdout: text };
-    }
-  };
+function hostValue(value: ProjectHostResponse): ProjectHostResponse {
+  if (!value.error) return value;
+  const code = typeof value.code === "string" ? `${value.code}: ` : "";
+  throw new Error(`${code}${value.error}`);
 }
 
-async function writeDirectorProjection(path: string, content: string): Promise<void> {
+async function writeDirectorProjection(path: string, content: string | Uint8Array): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, content, "utf8");
+  await writeFile(path, content);
 }
 
+function captureOutputDirectory(input: DirectorToolInput, stageId: string): string {
+  const cwd = directorWorkspaceCwd(input);
+  const output = input.outputDir?.trim()
+    ? resolve(cwd, input.outputDir)
+    : join(cwd, "director-stages", projectionSegment(stageId), "captures");
+  const path = relative(cwd, output);
+  if (path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) {
+    throw new Error("Director capture output directory must stay inside the project cwd");
+  }
+  return output;
+}
+
+/** Director MCP adapter backed directly by local-api with host-issued CAS receipts. */
 export function createDirectorAdapter(options: {
-  run?: DirectorCommandRunner;
+  client?: ProjectHostClient;
   writeProjection?: DirectorProjectionWriter;
 } = {}): DirectorAdapter {
-  const run = options.run ?? createClashDirectorRunner();
+  const client = options.client ?? createProjectHostClient();
   const writeProjection = options.writeProjection ?? writeDirectorProjection;
-  const list = async (input: DirectorToolInput): Promise<DirectorEntity[]> => stageList(
-    await run(buildDirectorCliArgs("clash_director_list", input), directorWorkspaceCwd(input)),
-  );
+  const observations = new Map<string, { receipt: string; revisionId?: string }>();
+  const key = (projectId: string, stageId: string) => `${projectId}\0${stageId}`;
+  const context = (input: DirectorToolInput) => client.resolveContext({ cwd: input.cwd, projectId: input.projectId });
+  const request = async (input: DirectorToolInput, command: ProjectHostCommand) => {
+    const result = await client.request({ cwd: input.cwd, projectId: input.projectId, command });
+    return { projectId: result.projectId, value: hostValue(result.value) };
+  };
+  const requireObservation = async (input: DirectorToolInput, stageId: string) => {
+    const resolved = await context(input);
+    const observation = observations.get(key(resolved.projectId, stageId));
+    if (!observation) {
+      throw new Error(`READ_REQUIRED: Read Director Stage ${stageId} with clash_director_get before mutating it.`);
+    }
+    return observation;
+  };
+
+  const list = async (input: DirectorToolInput): Promise<DirectorEntity[]> => {
+    const result = await request(input, { action: "list_director_stages" });
+    const stages = Array.isArray(result.value.stages)
+      ? result.value.stages.filter((entry): entry is DirectorEntity => Boolean(
+          entry && typeof entry === "object" && typeof (entry as { id?: unknown }).id === "string",
+        ))
+      : [];
+    const versions = result.value.versions && typeof result.value.versions === "object"
+      ? result.value.versions as Record<string, unknown>
+      : {};
+    for (const stage of stages) {
+      const receipt = versions[stage.id];
+      if (typeof receipt === "string") {
+        observations.set(key(result.projectId, stage.id), {
+          receipt,
+          ...(stage.revisionId ? { revisionId: stage.revisionId } : {}),
+        });
+      }
+    }
+    return stages;
+  };
+
   const get = async (input: DirectorToolInput): Promise<DirectorEntity> => {
-    const stageId = input.stageId?.trim();
-    if (!stageId) throw new Error("stageId is required");
+    const stageId = requiredInputString(input, "stageId");
     const stage = (await list(input)).find((candidate) => candidate.id === stageId);
     if (!stage) throw new Error(`Director Stage ${stageId} not found`);
     return stage;
   };
-  const invoke = (name: DirectorPluginToolName, input: DirectorToolInput) =>
-    run(buildDirectorCliArgs(name, input), directorWorkspaceCwd(input));
 
   const save = async (input: DirectorToolInput): Promise<Record<string, unknown>> => {
-    const stageId = input.stageId?.trim();
-    if (!stageId) throw new Error("stageId is required");
-    const baseRevisionId = input.baseRevisionId?.trim();
-    if (!baseRevisionId) {
-      throw new Error("baseRevisionId is required; read the Director Stage before saving");
+    const stageId = requiredInputString(input, "stageId");
+    const baseRevisionId = requiredInputString(input, "baseRevisionId");
+    const parsed = DirectorStageStateSchema.safeParse(input.state);
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid Director Stage state");
+    const observed = await requireObservation(input, stageId);
+    if (observed.revisionId && observed.revisionId !== baseRevisionId) {
+      throw new Error(`STALE_READ: Director Stage ${stageId} was read at ${observed.revisionId}, not ${baseRevisionId}`);
     }
-    const parsedState = DirectorStageStateSchema.safeParse(input.state);
-    if (!parsedState.success) {
-      throw new Error(
-        parsedState.error.issues[0]?.message ?? "state must match the authoritative Director Stage schema",
-      );
-    }
-    const cwd = directorWorkspaceCwd(input);
-    const filePath = join(cwd, "director-stages", `${projectionSegment(stageId)}.director-stage.json`);
-    await writeProjection(filePath, `${JSON.stringify(parsedState.data, null, 2)}\n`);
-    const args = [
-      "director", "apply", "--stage", stageId, "--file", filePath,
-      "--base-revision", baseRevisionId,
-    ];
-    if (input.projectId?.trim()) args.push("--project", input.projectId.trim());
-    args.push("--json");
-    return objectResult(await run(args, cwd));
-  };
-
-  const mutate = async (
-    name: DirectorPluginToolName,
-    input: DirectorToolInput,
-  ): Promise<Record<string, unknown>> => {
-    const stage = await get(input);
-    if (!stage.revisionId) {
-      throw new Error(`Director Stage ${stage.id} did not expose a revisionId; read it again before saving`);
-    }
-    const result = applyDirectorStageCommand(stage.state, directorCommand(name, input));
-    if (!result.ok) throw new Error(result.error);
-    return save({
-      ...input,
-      baseRevisionId: stage.revisionId,
-      state: result.state as DirectorStageState,
+    const filePath = join(
+      directorWorkspaceCwd(input),
+      "director-stages",
+      `${projectionSegment(stageId)}.director-stage.json`,
+    );
+    await writeProjection(filePath, `${JSON.stringify(parsed.data, null, 2)}\n`);
+    const result = await request(input, {
+      action: "update_director_stage_state",
+      stageId,
+      state: parsed.data,
+      actorClientType: "mcp",
+      observedVersion: observed.receipt,
+      ifMatch: observed.receipt,
     });
+    const receipt = typeof result.value.readToken === "string"
+      ? result.value.readToken
+      : typeof result.value.version === "string" ? result.value.version : undefined;
+    const nextStage = result.value.stage && typeof result.value.stage === "object"
+      ? result.value.stage as { revisionId?: unknown }
+      : undefined;
+    if (receipt) observations.set(key(result.projectId, stageId), {
+      receipt,
+      ...(typeof nextStage?.revisionId === "string" ? { revisionId: nextStage.revisionId } : {}),
+    });
+    return result.value;
   };
 
   return {
     list,
     get,
-    capture: (input) => invoke("clash_director_capture", input),
-    create: (input) => invoke("clash_director_create", input),
-    attach: (input) => invoke("clash_director_attach", input),
-    detach: (input) => invoke("clash_director_detach", input),
-    mutate,
+    async create(input) {
+      return (await request(input, {
+        action: "create_director_stage",
+        stageId: requiredInputString(input, "stageId"),
+        name: requiredInputString(input, "name"),
+      })).value;
+    },
     save,
+    async attach(input) {
+      const stageId = requiredInputString(input, "stageId");
+      const observed = await requireObservation(input, stageId);
+      return (await request(input, {
+        action: "attach_director_stage",
+        stageId,
+        canvasId: requiredInputString(input, "canvasId"),
+        ...(input.nodeId?.trim() ? { actionNodeId: input.nodeId.trim() } : {}),
+        actorClientType: "mcp",
+        observedVersion: observed.receipt,
+        ifMatch: observed.receipt,
+      })).value;
+    },
+    async detach(input) {
+      const stageId = requiredInputString(input, "stageId");
+      const observed = await requireObservation(input, stageId);
+      return (await request(input, {
+        action: "detach_director_stage",
+        stageId,
+        actorClientType: "mcp",
+        observedVersion: observed.receipt,
+        ifMatch: observed.receipt,
+      })).value;
+    },
+    async mutate(name, input) {
+      const stage = await get(input);
+      if (!stage.revisionId) throw new Error(`Director Stage ${stage.id} did not expose a revisionId`);
+      const applied = applyDirectorStageCommand(stage.state, directorCommand(name, input));
+      if (!applied.ok) throw new Error(applied.error);
+      return save({ ...input, baseRevisionId: stage.revisionId, state: applied.state as DirectorStageState });
+    },
+    async capture(input) {
+      const stageId = requiredInputString(input, "stageId");
+      if (!Array.isArray(input.times) || input.times.length === 0) throw new Error("times is required");
+      const labels = input.labels?.length
+        ? input.labels
+        : input.times.map((_, index) => `frame-${String(index + 1).padStart(3, "0")}`);
+      if (labels.length !== input.times.length) throw new Error("labels count must match times");
+      const observed = await requireObservation(input, stageId);
+      const frames = input.times.map((timeSeconds, index) => ({
+        label: labels[index]!,
+        timeSeconds,
+        aspectRatio: input.aspectRatio ?? "16:9" as const,
+      }));
+      const result = await request(input, {
+        action: "capture_director_stage",
+        stageId,
+        frames,
+        longEdge: input.longEdge ?? 1920,
+        actorClientType: "mcp",
+        observedVersion: observed.receipt,
+        ifMatch: observed.receipt,
+      });
+      const outputDir = captureOutputDirectory(input, stageId);
+      const capturedFrames = Array.isArray(result.value.frames) ? result.value.frames : [];
+      const persistedFrames: Array<Record<string, unknown>> = [];
+      for (const raw of capturedFrames) {
+        if (!raw || typeof raw !== "object") continue;
+        const frame = raw as Record<string, unknown>;
+        if (typeof frame.label !== "string" || typeof frame.dataBase64 !== "string") continue;
+        const path = join(outputDir, `${projectionSegment(frame.label)}.png`);
+        await writeProjection(path, Buffer.from(frame.dataBase64, "base64"));
+        const { dataBase64: _data, ...publicFrame } = frame;
+        persistedFrames.push({ ...publicFrame, path });
+      }
+      const receiptPath = join(outputDir, "capture.json");
+      const receipt = { ...result.value, frames: persistedFrames, receiptPath };
+      await writeProjection(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+      return receipt;
+    },
   };
 }

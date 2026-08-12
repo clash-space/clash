@@ -1,6 +1,10 @@
 {
-  "name": "@master-clash/remotion-ui",
+  "name": "@clash/remotion-ui",
   "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "description": "UI components for Remotion Fast video editor",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
@@ -15,7 +19,6 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "type-check": "pnpm typecheck",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "test": "vitest run --passWithNoTests",
@@ -42,9 +45,9 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@master-clash/remotion-components": "workspace:*",
-    "@master-clash/remotion-core": "workspace:*",
-    "@master-clash/remotion-effects": "workspace:*",
+    "@clash/remotion-components": "workspace:*",
+    "@clash/remotion-core": "workspace:*",
+    "@clash/remotion-effects": "workspace:*",
     "@use-gesture/react": "^10.3.1",
     "react-moveable": "^0.56.0"
   },

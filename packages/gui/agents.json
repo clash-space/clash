@@ -1,0 +1,8 @@
+{
+  "summary": "Platform-neutral Clash GUI components and injectable platform port contracts.",
+  "architecture_notes": [
+    "Components are pure React views driven by props or ports.",
+    "Runtime source must not call fetch, WebSocket, browser storage, Electron, local-api, filesystem APIs, or node:* modules.",
+    "Platform behavior belongs in apps/web adapters or apps/desktop controllers."
+  ]
+}

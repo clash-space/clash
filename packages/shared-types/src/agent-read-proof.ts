@@ -15,7 +15,9 @@ export type AgentReadReceiptProof = {
   receipt: string;
 };
 
-export type AgentReadReceiptVerifier = (proof: AgentReadReceiptProof) => boolean;
+export type AgentReadReceiptVerifier = (
+  proof: AgentReadReceiptProof,
+) => boolean;
 
 export type ProjectReadProofLike = {
   id: string;
@@ -136,8 +138,12 @@ export function projectReadToken(project: ProjectReadProofLike): string {
       id: project.id,
       name: normalizeProjectText(project.name),
       description: normalizeProjectText(project.description),
-      updatedAt: normalizeProjectTimestamp(project.updatedAt ?? project.updated_at),
-      deletedAt: normalizeProjectTimestamp(project.deletedAt ?? project.deleted_at),
+      updatedAt: normalizeProjectTimestamp(
+        project.updatedAt ?? project.updated_at,
+      ),
+      deletedAt: normalizeProjectTimestamp(
+        project.deletedAt ?? project.deleted_at,
+      ),
     },
   });
 }
@@ -152,12 +158,22 @@ export function sessionReadToken(session: SessionReadProofLike): string {
       type: normalizeProjectText(session.type),
       runtimeId: normalizeProjectText(session.runtimeId ?? session.runtime_id),
       agentId: normalizeProjectText(session.agentId ?? session.agent_id),
-      agentTemplateId: normalizeProjectText(session.agentTemplateId ?? session.agent_template_id),
-      permissionMode: normalizeProjectText(session.permissionMode ?? session.permission_mode),
-      acpSessionId: normalizeProjectText(session.acpSessionId ?? session.acp_session_id),
+      agentTemplateId: normalizeProjectText(
+        session.agentTemplateId ?? session.agent_template_id,
+      ),
+      permissionMode: normalizeProjectText(
+        session.permissionMode ?? session.permission_mode,
+      ),
+      acpSessionId: normalizeProjectText(
+        session.acpSessionId ?? session.acp_session_id,
+      ),
       status: normalizeProjectText(session.status),
-      createdAt: normalizeProjectTimestamp(session.createdAt ?? session.created_at),
-      updatedAt: normalizeProjectTimestamp(session.updatedAt ?? session.updated_at),
+      createdAt: normalizeProjectTimestamp(
+        session.createdAt ?? session.created_at,
+      ),
+      updatedAt: normalizeProjectTimestamp(
+        session.updatedAt ?? session.updated_at,
+      ),
     },
   });
 }
@@ -168,46 +184,67 @@ export function localConfigReadToken(config: LocalConfigReadProofLike): string {
     subject: {
       id: config.id,
       config: config.config ?? null,
-      updatedAt: normalizeProjectTimestamp(config.updatedAt ?? config.updated_at),
+      updatedAt: normalizeProjectTimestamp(
+        config.updatedAt ?? config.updated_at,
+      ),
     },
   });
 }
 
-export function providerAccountReadToken(account: ProviderAccountReadProofLike): string {
+export function providerAccountReadToken(
+  account: ProviderAccountReadProofLike,
+): string {
   return agentReadToken({
     namespace: "provider-account",
     subject: normalizeProviderAccount(account),
   });
 }
 
-export function providerAccountsReadToken(accounts: ProviderAccountReadProofLike[]): string {
+export function providerAccountsReadToken(
+  accounts: ProviderAccountReadProofLike[],
+): string {
   const providers = accounts
     .map(normalizeProviderAccount)
-    .sort((left, right) => providerAccountSortKey(left).localeCompare(providerAccountSortKey(right)));
+    .sort((left, right) =>
+      providerAccountSortKey(left).localeCompare(providerAccountSortKey(right)),
+    );
   return agentReadToken({
     namespace: "provider-accounts",
     subject: { providers },
   });
 }
 
-export function providerOAuthReadToken(record: ProviderOAuthReadProofLike): string {
+export function providerOAuthReadToken(
+  record: ProviderOAuthReadProofLike,
+): string {
   return agentReadToken({
     namespace: "provider-oauth",
     subject: {
       providerId: normalizeProjectText(record.providerId ?? record.provider_id),
       accountId: normalizeProjectText(record.accountId ?? record.account_id),
       status: normalizeProjectText(record.status),
-      verificationUri: normalizeProjectText(record.verificationUri ?? record.verification_uri),
+      verificationUri: normalizeProjectText(
+        record.verificationUri ?? record.verification_uri,
+      ),
       userCode: normalizeProjectText(record.userCode ?? record.user_code),
       deviceCode: normalizeProjectText(record.deviceCode ?? record.device_code),
-      intervalSeconds: normalizeFiniteNumber(record.intervalSeconds ?? record.interval_seconds),
-      accountLabel: normalizeProjectText(record.accountLabel ?? record.account_label),
-      expiresAt: normalizeProjectTimestamp(record.expiresAt ?? record.expires_at),
+      intervalSeconds: normalizeFiniteNumber(
+        record.intervalSeconds ?? record.interval_seconds,
+      ),
+      accountLabel: normalizeProjectText(
+        record.accountLabel ?? record.account_label,
+      ),
+      expiresAt: normalizeProjectTimestamp(
+        record.expiresAt ?? record.expires_at,
+      ),
       error: normalizeProjectText(record.error),
-      hasAccessToken: typeof (record.hasAccessToken ?? record.has_access_token) === "boolean"
-        ? record.hasAccessToken ?? record.has_access_token
-        : null,
-      updatedAt: normalizeProjectTimestamp(record.updatedAt ?? record.updated_at),
+      hasAccessToken:
+        typeof (record.hasAccessToken ?? record.has_access_token) === "boolean"
+          ? (record.hasAccessToken ?? record.has_access_token)
+          : null,
+      updatedAt: normalizeProjectTimestamp(
+        record.updatedAt ?? record.updated_at,
+      ),
     },
   });
 }
@@ -221,11 +258,15 @@ export function validateAgentReadProof(options: {
   readReceiptVerifier?: AgentReadReceiptVerifier;
   readCommandHint?: string;
 }): AgentReadProofResult {
-  const isAgent = options.actorClientType === "agent";
+  const isAgent =
+    options.actorClientType === "agent" || options.actorClientType === "mcp";
   const operation = options.operation.trim() || "write";
-  const hint = options.readCommandHint?.trim() ||
-    "re-read the target before writing.";
-  if (typeof options.expectedReadToken !== "string" || options.expectedReadToken.trim().length === 0) {
+  const hint =
+    options.readCommandHint?.trim() || "re-read the target before writing.";
+  if (
+    typeof options.expectedReadToken !== "string" ||
+    options.expectedReadToken.trim().length === 0
+  ) {
     if (!isAgent) return { ok: true };
     return {
       ok: false,
@@ -286,7 +327,8 @@ function normalizeProjectText(value: unknown): string | null {
 }
 
 function normalizeProjectTimestamp(value: unknown): number | string | null {
-  if (typeof value === "number" && Number.isFinite(value)) return Math.floor(value);
+  if (typeof value === "number" && Number.isFinite(value))
+    return Math.floor(value);
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
@@ -304,33 +346,47 @@ function normalizeProviderAccount(account: ProviderAccountReadProofLike) {
     region: normalizeProjectText(account.region),
     label: normalizeProjectText(account.label),
     enabled: typeof account.enabled === "boolean" ? account.enabled : null,
-    configuredCredentials: normalizeStringList(account.configuredCredentials ?? account.configured_credentials),
-    availableOAuth: normalizeStringList(account.availableOAuth ?? account.available_oauth),
-    supportedModelIds: normalizeStringList(account.supportedModelIds ?? account.supported_model_ids),
-    modelPriorities: normalizeNumberRecord(account.modelPriorities ?? account.model_priorities),
+    configuredCredentials: normalizeStringList(
+      account.configuredCredentials ?? account.configured_credentials,
+    ),
+    availableOAuth: normalizeStringList(
+      account.availableOAuth ?? account.available_oauth,
+    ),
+    supportedModelIds: normalizeStringList(
+      account.supportedModelIds ?? account.supported_model_ids,
+    ),
+    modelPriorities: normalizeNumberRecord(
+      account.modelPriorities ?? account.model_priorities,
+    ),
     priority: normalizeFiniteNumber(account.priority),
     weight: normalizeFiniteNumber(account.weight),
-    createdAt: normalizeProjectTimestamp(account.createdAt ?? account.created_at),
-    updatedAt: normalizeProjectTimestamp(account.updatedAt ?? account.updated_at),
+    createdAt: normalizeProjectTimestamp(
+      account.createdAt ?? account.created_at,
+    ),
+    updatedAt: normalizeProjectTimestamp(
+      account.updatedAt ?? account.updated_at,
+    ),
   };
 }
 
-function providerAccountSortKey(account: ReturnType<typeof normalizeProviderAccount>): string {
-  return [
-    account.id,
-    account.providerId,
-    account.upstreamId,
-    account.region,
-  ].map((part) => part ?? "").join("\u0000");
+function providerAccountSortKey(
+  account: ReturnType<typeof normalizeProviderAccount>,
+): string {
+  return [account.id, account.providerId, account.upstreamId, account.region]
+    .map((part) => part ?? "")
+    .join("\u0000");
 }
 
 function normalizeStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0))]
-    .sort();
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0),
+    ),
+  ].sort();
 }
 
 function normalizeFiniteNumber(value: unknown): number | null {
@@ -340,11 +396,12 @@ function normalizeFiniteNumber(value: unknown): number | null {
 function normalizeNumberRecord(value: unknown): Record<string, number> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const entries = Object.entries(value as Record<string, unknown>)
-    .filter((entry): entry is [string, number] =>
-      typeof entry[0] === "string" &&
-      entry[0].trim().length > 0 &&
-      typeof entry[1] === "number" &&
-      Number.isFinite(entry[1])
+    .filter(
+      (entry): entry is [string, number] =>
+        typeof entry[0] === "string" &&
+        entry[0].trim().length > 0 &&
+        typeof entry[1] === "number" &&
+        Number.isFinite(entry[1]),
     )
     .map(([key, number]) => [key.trim(), number] as const)
     .sort(([left], [right]) => left.localeCompare(right));
@@ -374,7 +431,10 @@ function parseAgentReadToken(token: string): {
   hash: string;
   receipt?: string;
 } | null {
-  const match = /^([a-z0-9][a-z0-9-]*)-([a-z0-9][a-z0-9-]*):([a-f0-9]{16})(?::receipt:([A-Za-z0-9._~-]+))?$/i.exec(token);
+  const match =
+    /^([a-z0-9][a-z0-9-]*)-([a-z0-9][a-z0-9-]*):([a-f0-9]{16})(?::receipt:([A-Za-z0-9._~-]+))?$/i.exec(
+      token,
+    );
   if (!match) return null;
   const [, namespace, version, hash, receipt] = match;
   return {
@@ -389,8 +449,10 @@ function parseAgentReadToken(token: string): {
 function stableJson(value: unknown): string {
   if (value === null) return "null";
   if (typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "number" || typeof value === "boolean") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item ?? null)).join(",")}]`;
+  if (typeof value === "number" || typeof value === "boolean")
+    return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map((item) => stableJson(item ?? null)).join(",")}]`;
   if (typeof value === "object") {
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record)

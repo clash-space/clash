@@ -1,7 +1,7 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 9138
+/***/ 3668
 (__unused_webpack_module, __unused_webpack___webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -4423,7 +4423,7 @@ var z = /*#__PURE__*/Object.freeze({
 
 
 
-;// ../shared-types/dist/chunk-QT2SHN5K.js
+;// ../shared-types/dist/chunk-M2EI3OAT.js
 
 
 function agentReadToken(options) {
@@ -4446,8 +4446,12 @@ function projectReadToken(project) {
       id: project.id,
       name: normalizeProjectText(project.name),
       description: normalizeProjectText(project.description),
-      updatedAt: normalizeProjectTimestamp(project.updatedAt ?? project.updated_at),
-      deletedAt: normalizeProjectTimestamp(project.deletedAt ?? project.deleted_at)
+      updatedAt: normalizeProjectTimestamp(
+        project.updatedAt ?? project.updated_at
+      ),
+      deletedAt: normalizeProjectTimestamp(
+        project.deletedAt ?? project.deleted_at
+      )
     }
   });
 }
@@ -4461,12 +4465,22 @@ function sessionReadToken(session) {
       type: normalizeProjectText(session.type),
       runtimeId: normalizeProjectText(session.runtimeId ?? session.runtime_id),
       agentId: normalizeProjectText(session.agentId ?? session.agent_id),
-      agentTemplateId: normalizeProjectText(session.agentTemplateId ?? session.agent_template_id),
-      permissionMode: normalizeProjectText(session.permissionMode ?? session.permission_mode),
-      acpSessionId: normalizeProjectText(session.acpSessionId ?? session.acp_session_id),
+      agentTemplateId: normalizeProjectText(
+        session.agentTemplateId ?? session.agent_template_id
+      ),
+      permissionMode: normalizeProjectText(
+        session.permissionMode ?? session.permission_mode
+      ),
+      acpSessionId: normalizeProjectText(
+        session.acpSessionId ?? session.acp_session_id
+      ),
       status: normalizeProjectText(session.status),
-      createdAt: normalizeProjectTimestamp(session.createdAt ?? session.created_at),
-      updatedAt: normalizeProjectTimestamp(session.updatedAt ?? session.updated_at)
+      createdAt: normalizeProjectTimestamp(
+        session.createdAt ?? session.created_at
+      ),
+      updatedAt: normalizeProjectTimestamp(
+        session.updatedAt ?? session.updated_at
+      )
     }
   });
 }
@@ -4476,7 +4490,9 @@ function localConfigReadToken(config) {
     subject: {
       id: config.id,
       config: config.config ?? null,
-      updatedAt: normalizeProjectTimestamp(config.updatedAt ?? config.updated_at)
+      updatedAt: normalizeProjectTimestamp(
+        config.updatedAt ?? config.updated_at
+      )
     }
   });
 }
@@ -4487,7 +4503,9 @@ function providerAccountReadToken(account) {
   });
 }
 function providerAccountsReadToken(accounts) {
-  const providers = accounts.map(normalizeProviderAccount).sort((left, right) => providerAccountSortKey(left).localeCompare(providerAccountSortKey(right)));
+  const providers = accounts.map(normalizeProviderAccount).sort(
+    (left, right) => providerAccountSortKey(left).localeCompare(providerAccountSortKey(right))
+  );
   return agentReadToken({
     namespace: "provider-accounts",
     subject: { providers }
@@ -4500,21 +4518,31 @@ function providerOAuthReadToken(record) {
       providerId: normalizeProjectText(record.providerId ?? record.provider_id),
       accountId: normalizeProjectText(record.accountId ?? record.account_id),
       status: normalizeProjectText(record.status),
-      verificationUri: normalizeProjectText(record.verificationUri ?? record.verification_uri),
+      verificationUri: normalizeProjectText(
+        record.verificationUri ?? record.verification_uri
+      ),
       userCode: normalizeProjectText(record.userCode ?? record.user_code),
       deviceCode: normalizeProjectText(record.deviceCode ?? record.device_code),
-      intervalSeconds: normalizeFiniteNumber(record.intervalSeconds ?? record.interval_seconds),
-      accountLabel: normalizeProjectText(record.accountLabel ?? record.account_label),
-      expiresAt: normalizeProjectTimestamp(record.expiresAt ?? record.expires_at),
+      intervalSeconds: normalizeFiniteNumber(
+        record.intervalSeconds ?? record.interval_seconds
+      ),
+      accountLabel: normalizeProjectText(
+        record.accountLabel ?? record.account_label
+      ),
+      expiresAt: normalizeProjectTimestamp(
+        record.expiresAt ?? record.expires_at
+      ),
       error: normalizeProjectText(record.error),
       hasAccessToken: typeof (record.hasAccessToken ?? record.has_access_token) === "boolean" ? record.hasAccessToken ?? record.has_access_token : null,
-      updatedAt: normalizeProjectTimestamp(record.updatedAt ?? record.updated_at)
+      updatedAt: normalizeProjectTimestamp(
+        record.updatedAt ?? record.updated_at
+      )
     }
   });
 }
 function validateAgentReadProof(options) {
   var _a, _b;
-  const isAgent = options.actorClientType === "agent";
+  const isAgent = options.actorClientType === "agent" || options.actorClientType === "mcp";
   const operation = options.operation.trim() || "write";
   const hint = ((_a = options.readCommandHint) == null ? void 0 : _a.trim()) || "re-read the target before writing.";
   if (typeof options.expectedReadToken !== "string" || options.expectedReadToken.trim().length === 0) {
@@ -4572,7 +4600,8 @@ function normalizeProjectText(value) {
   return typeof value === "string" ? value : null;
 }
 function normalizeProjectTimestamp(value) {
-  if (typeof value === "number" && Number.isFinite(value)) return Math.floor(value);
+  if (typeof value === "number" && Number.isFinite(value))
+    return Math.floor(value);
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return null;
@@ -4589,27 +4618,38 @@ function normalizeProviderAccount(account) {
     region: normalizeProjectText(account.region),
     label: normalizeProjectText(account.label),
     enabled: typeof account.enabled === "boolean" ? account.enabled : null,
-    configuredCredentials: normalizeStringList(account.configuredCredentials ?? account.configured_credentials),
-    availableOAuth: normalizeStringList(account.availableOAuth ?? account.available_oauth),
-    supportedModelIds: normalizeStringList(account.supportedModelIds ?? account.supported_model_ids),
-    modelPriorities: normalizeNumberRecord(account.modelPriorities ?? account.model_priorities),
+    configuredCredentials: normalizeStringList(
+      account.configuredCredentials ?? account.configured_credentials
+    ),
+    availableOAuth: normalizeStringList(
+      account.availableOAuth ?? account.available_oauth
+    ),
+    supportedModelIds: normalizeStringList(
+      account.supportedModelIds ?? account.supported_model_ids
+    ),
+    modelPriorities: normalizeNumberRecord(
+      account.modelPriorities ?? account.model_priorities
+    ),
     priority: normalizeFiniteNumber(account.priority),
     weight: normalizeFiniteNumber(account.weight),
-    createdAt: normalizeProjectTimestamp(account.createdAt ?? account.created_at),
-    updatedAt: normalizeProjectTimestamp(account.updatedAt ?? account.updated_at)
+    createdAt: normalizeProjectTimestamp(
+      account.createdAt ?? account.created_at
+    ),
+    updatedAt: normalizeProjectTimestamp(
+      account.updatedAt ?? account.updated_at
+    )
   };
 }
 function providerAccountSortKey(account) {
-  return [
-    account.id,
-    account.providerId,
-    account.upstreamId,
-    account.region
-  ].map((part) => part ?? "").join("\0");
+  return [account.id, account.providerId, account.upstreamId, account.region].map((part) => part ?? "").join("\0");
 }
 function normalizeStringList(value) {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.filter((item) => typeof item === "string").map((item) => item.trim()).filter((item) => item.length > 0))].sort();
+  return [
+    ...new Set(
+      value.filter((item) => typeof item === "string").map((item) => item.trim()).filter((item) => item.length > 0)
+    )
+  ].sort();
 }
 function normalizeFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -4636,7 +4676,9 @@ function normalizeReceipt(value) {
   return normalized;
 }
 function parseAgentReadToken(token) {
-  const match = /^([a-z0-9][a-z0-9-]*)-([a-z0-9][a-z0-9-]*):([a-f0-9]{16})(?::receipt:([A-Za-z0-9._~-]+))?$/i.exec(token);
+  const match = /^([a-z0-9][a-z0-9-]*)-([a-z0-9][a-z0-9-]*):([a-f0-9]{16})(?::receipt:([A-Za-z0-9._~-]+))?$/i.exec(
+    token
+  );
   if (!match) return null;
   const [, namespace, version, hash, receipt] = match;
   return {
@@ -4650,8 +4692,10 @@ function parseAgentReadToken(token) {
 function stableJson(value) {
   if (value === null) return "null";
   if (typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "number" || typeof value === "boolean") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item ?? null)).join(",")}]`;
+  if (typeof value === "number" || typeof value === "boolean")
+    return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map((item) => stableJson(item ?? null)).join(",")}]`;
   if (typeof value === "object") {
     const record = value;
     const keys = Object.keys(record).filter((key) => record[key] !== void 0).sort();
@@ -4753,18 +4797,428 @@ function assetRefReadToken(ref) {
 }
 
 
-;// ../shared-types/dist/chunk-O4B43KB4.js
-/* unused harmony import specifier */ var z2;
+;// ../shared-types/dist/chunk-ZDCOV6OE.js
+/* unused harmony import specifier */ var z6;
 
 
+var NONE = { network: false, store: false, assets: false, hostTools: [] };
+var BY_KIND = {
+  // Talks to a vendor: needs the socket, the credential, and somewhere to put what comes back.
+  "provider-executor": { network: true, store: true, assets: true, hostTools: [] },
+  // Pure arithmetic on an invocation. A projector that opens a socket is doing something its kind
+  // does not describe, and the kind is what the host dispatches on.
+  "provider-projector": NONE,
+  // Performs something the plugin brought itself. It produces a file; it does not necessarily call
+  // anyone, but it has to be able to hand the result back.
+  action: { network: true, store: true, assets: true, hostTools: [] }
+};
+function pluginCapabilities(contributions) {
+  const derived = (contributions.functions ?? []).reduce((capabilities, entry) => {
+    const granted = BY_KIND[entry.kind] ?? NONE;
+    return {
+      network: capabilities.network || granted.network,
+      store: capabilities.store || granted.store,
+      assets: capabilities.assets || granted.assets,
+      hostTools: []
+    };
+  }, NONE);
+  return {
+    ...derived,
+    hostTools: contributions.hostTools ?? []
+  };
+}
 
 
-var ModelKindSchema = z.enum(["image", "video", "audio", "text", "asr"]);
-var ModelTaskSchema = z.enum([
-  "speech-to-text",
-  "text-to-speech",
-  "music-generation"
+var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
+function parsePluginId(id) {
+  const parsed = pluginIdSchema.parse(id);
+  const [publisher, name] = parsed.split(".");
+  return { publisher, name };
+}
+var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
+  const segments = value.split(".");
+  if (segments.length !== 2) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: segments.length < 2 ? `Plugin id ${value} needs a publisher: write it as publisher.name, like clash.google.` : `Plugin id ${value} has ${segments.length} segments; a plugin id is publisher.name.`
+    });
+    return;
+  }
+  for (const segment of segments) {
+    if (!SEGMENT.test(segment)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Plugin id segment ${JSON.stringify(segment)} must be lowercase letters, digits and hyphens, starting with a letter or digit.`
+      });
+    }
+  }
+});
+
+var DurationSchema = z.string().trim().regex(
+  /^\d+(?:s|m|h|d)$/,
+  "Write a duration like 60s, 15m, 12h or 7d."
+);
+var StorageKeySchema = z.string().trim().min(1);
+var PluginAuthFormItemSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("field"),
+    key: StorageKeySchema,
+    label: z.string().trim().min(1),
+    secret: z.boolean().optional(),
+    placeholder: z.string().optional(),
+    /** Unset with no default means the account does not work until the user fills it in. */
+    default: z.string().optional()
+  }).strict(),
+  z.object({
+    kind: z.literal("choice"),
+    key: StorageKeySchema,
+    label: z.string().trim().min(1),
+    // A menu with nothing on it renders as a control the user cannot satisfy.
+    options: z.array(z.object({
+      value: z.string().trim().min(1),
+      label: z.string().trim().min(1)
+    })).nonempty(),
+    default: z.string().optional()
+  }).strict(),
+  z.object({
+    kind: z.literal("button"),
+    key: StorageKeySchema,
+    label: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    kind: z.literal("notice"),
+    text: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    kind: z.literal("display-code"),
+    key: StorageKeySchema,
+    label: z.string().trim().min(1)
+  }).strict()
 ]);
+var HOST_OWNED_PARAMS = [
+  "state",
+  "code_challenge",
+  "code_challenge_method",
+  "redirect_uri",
+  // Declared as `clientId`, not smuggled through here, so one spelling reaches the request.
+  "client_id",
+  "client_secret"
+];
+var PluginAuthFlowCredentialSchema = z.object({
+  /**
+   * Where the vendor left the credential once the flow finished.
+   *
+   * Without this the host gets as far as knowing the sign-in completed and then a person reads the
+   * token out with devtools, which is not a product. A fragment never reaches a server, so that
+   * case is only readable from a browser the host is driving -- which is also why a `scheme`
+   * callback needs no OS-level protocol registration: watching the navigation is enough.
+   */
+  from: z.enum(["cookie", "query", "fragment", "localStorage"]),
+  /** Its name there: a cookie name, a parameter name, a storage key. */
+  name: z.string().trim().min(1),
+  /** The store key to write it under. */
+  storeAs: z.string().trim().min(1)
+}).strict();
+var PluginAuthFlowSchema = z.object({
+  // Opened in the user's browser. A plaintext address would carry the request, and anything echoed
+  // back to it, in the clear.
+  open: z.string().trim().url().refine(
+    (value) => value.startsWith("https://"),
+    "A browser flow must open an https address."
+  ),
+  // The exchange carries the code, the verifier and the client secret. A plaintext endpoint puts
+  // all three on the wire.
+  tokenUrl: z.string().trim().url().refine(
+    (value) => value.startsWith("https://"),
+    "A token endpoint must be https."
+  ).optional(),
+  /**
+   * The OAuth client, declared by whoever registered it with the vendor.
+   *
+   * This identifies the *application* asking for authorization, not the user granting it. The token
+   * it obtains represents the user's own access to their own resources -- which is why quota and
+   * billing land on the user's project, not on this client, and why there is no reason for a user to
+   * bring their own. What is shared is only the application's consent screen and its verification
+   * status.
+   *
+   * It lives in the declaration because a client belongs to the party that registered it: Clash
+   * registered the Google one, and an author writing a Notion Provider registers theirs with Notion.
+   * First-party Providers are plugins we ship, so they take the same path as any other.
+   *
+   * Declaring it is not a privilege. A plugin runs unsandboxed with network access, so one intent on
+   * sending a user somewhere could open a browser itself. What stays with the host is the part that
+   * must not vary: PKCE, `state`, the loopback port, the timeout, and the exchange. The plugin never
+   * handles the code or the token; it reads the token back from its store like any other value.
+   */
+  clientId: z.string().trim().min(1).optional(),
+  /**
+   * Present because vendors ask for it, not because it is secret.
+   *
+   * RFC 8252 states plainly that an installed application cannot keep one, which is why PKCE exists
+   * and why it is the actual protection here.
+   */
+  clientSecret: z.string().trim().min(1).optional(),
+  /** Vendor-specific: scope, access_type, prompt, audience. */
+  params: z.record(z.string()).optional(),
+  callback: z.discriminatedUnion("type", [
+    /** Binds 127.0.0.1 on a random port. Google requires this for desktop clients; the
+     * out-of-band flow was withdrawn in 2022. */
+    z.object({ type: z.literal("loopback") }).strict(),
+    /** A custom URL scheme, where that is the platform convention. */
+    z.object({ type: z.literal("scheme"), scheme: z.string().trim().min(1) }).strict(),
+    /** Device-code: show a code, poll until the user finishes elsewhere. */
+    z.object({
+      type: z.literal("poll-until"),
+      url: z.string().trim().url(),
+      intervalMs: z.number().int().positive().optional()
+    }).strict()
+  ]),
+  credential: PluginAuthFlowCredentialSchema.optional()
+}).strict().superRefine((flow, ctx) => {
+  if (flow.clientId && !flow.tokenUrl) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A flow declaring a clientId must declare the tokenUrl that exchanges the code."
+    });
+  }
+  for (const key of Object.keys(flow.params ?? {})) {
+    if (HOST_OWNED_PARAMS.includes(key)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${key} is set by the host and must not be declared.`,
+        path: ["params", key]
+      });
+    }
+  }
+});
+var PluginAuthRenewSchema = z.union([
+  z.object({ before: DurationSchema }).strict(),
+  z.object({ every: DurationSchema }).strict()
+]);
+var PluginAuthImportSchema = z.object({
+  format: z.literal("electron-store-aes-256-gcm-v2"),
+  /** A subdirectory of the user's application data, not an arbitrary path. */
+  appDataSubdirectory: z.string().trim().min(1).refine((value) => !value.startsWith("/") && !value.startsWith("~") && !value.includes(".."), {
+    message: "appDataSubdirectory must sit inside the application data directory."
+  }),
+  configFile: z.string().trim().min(1),
+  keyFile: z.string().trim().min(1),
+  /** Where the value sits inside the config. Empty would read the whole object, which is not a
+   * credential and would be stored as one. */
+  tokenPath: z.array(z.string().trim().min(1)).min(1),
+  /** The store key to write it under. */
+  storeAs: z.string().trim().min(1)
+}).strict();
+var PluginAuthMethodSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().min(1),
+  form: z.array(PluginAuthFormItemSchema).optional(),
+  flow: PluginAuthFlowSchema.optional(),
+  import: PluginAuthImportSchema.optional(),
+  renew: PluginAuthRenewSchema.optional()
+}).strict().refine(
+  (method) => {
+    var _a;
+    return (((_a = method.form) == null ? void 0 : _a.length) ?? 0) > 0 || method.flow !== void 0 || method.import !== void 0;
+  },
+  // A method with none of the three offers the user a name and nothing to do with it.
+  { message: "An auth method must collect something, start a flow, or import a credential." }
+);
+var PluginAuthDeclarationSchema = z.object({
+  methods: z.array(PluginAuthMethodSchema).min(1)
+}).strict().superRefine((declaration, ctx) => {
+  const seen = /* @__PURE__ */ new Set();
+  for (const method of declaration.methods) {
+    if (seen.has(method.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["methods"],
+        message: `Two auth methods share the id ${method.id}.`
+      });
+    }
+    seen.add(method.id);
+  }
+});
+
+var AspectRatioSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
+}).strict();
+function greatestCommonDivisor(a, b) {
+  return b === 0 ? a : greatestCommonDivisor(b, a % b);
+}
+function reduceAspectRatio(ratio) {
+  const divisor = greatestCommonDivisor(ratio.width, ratio.height);
+  return { width: ratio.width / divisor, height: ratio.height / divisor };
+}
+function aspectRatioLabel(ratio) {
+  const reduced = reduceAspectRatio(ratio);
+  return `${reduced.width}:${reduced.height}`;
+}
+function aspectRatioEquals(a, b) {
+  return a.width * b.height === b.width * a.height;
+}
+function parseAspectRatio(text) {
+  const match = /^\s*(\d+)\s*[:x×]\s*(\d+)\s*$/i.exec(text);
+  if (!match) return void 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    return void 0;
+  }
+  return { width, height };
+}
+function supportsAspectRatio(supported, requested) {
+  return supported.some((candidate) => aspectRatioEquals(candidate, requested));
+}
+
+
+var AIGC_ACTION_KINDS = ["image", "video", "audio", "text"];
+var AigcActionKindSchema = z.enum(AIGC_ACTION_KINDS);
+var CANONICAL_RESOLUTION_TIERS = [
+  { label: "0.5K (Draft)", value: "0.5K", pixels: 262144 },
+  { label: "1K (Fast)", value: "1K", pixels: 1048576 },
+  { label: "2K (Balanced)", value: "2K", pixels: 4194304 },
+  { label: "4K (High Quality)", value: "4K", pixels: 8294400 }
+];
+function resolutionTierPixels(tier) {
+  var _a;
+  return ((_a = CANONICAL_RESOLUTION_TIERS.find((entry) => entry.value === tier)) == null ? void 0 : _a.pixels) ?? 4194304;
+}
+var GPT_IMAGE_MAX_EDGE = 3840;
+var GPT_IMAGE_EDGE_MULTIPLE = 16;
+var GPT_IMAGE_MAX_RATIO = 3;
+var GPT_IMAGE_MIN_PIXELS = 655360;
+var GPT_IMAGE_MAX_PIXELS = 8294400;
+var GPT_IMAGE_RESOLUTION_TIERS = CANONICAL_RESOLUTION_TIERS.filter(
+  (tier) => tier.value === "1K" || tier.value === "2K" || tier.value === "4K"
+);
+var GPT_IMAGE_ASPECT_RATIOS = [
+  { label: "1:1", value: "1:1" },
+  { label: "16:9", value: "16:9" },
+  { label: "9:16", value: "9:16" },
+  { label: "3:4", value: "3:4" },
+  { label: "4:3", value: "4:3" },
+  { label: "3:2", value: "3:2" },
+  { label: "2:3", value: "2:3" },
+  { label: "5:4", value: "5:4" },
+  { label: "4:5", value: "4:5" },
+  { label: "21:9", value: "21:9" },
+  { label: "2:1", value: "2:1" },
+  { label: "1:2", value: "1:2" },
+  { label: "3:1", value: "3:1" },
+  { label: "1:3", value: "1:3" }
+];
+var GPT_IMAGE_SIZES = {
+  "1K": {
+    "1:1": { width: 1024, height: 1024 },
+    "16:9": { width: 1280, height: 720 },
+    "9:16": { width: 720, height: 1280 },
+    "3:4": { width: 864, height: 1152 },
+    "4:3": { width: 1152, height: 864 },
+    "3:2": { width: 1248, height: 832 },
+    "2:3": { width: 832, height: 1248 },
+    "5:4": { width: 1120, height: 896 },
+    "4:5": { width: 896, height: 1120 },
+    "21:9": { width: 1344, height: 576 },
+    "2:1": { width: 1440, height: 720 },
+    "1:2": { width: 720, height: 1440 },
+    "3:1": { width: 1728, height: 576 },
+    "1:3": { width: 576, height: 1728 }
+  },
+  "2K": {
+    "1:1": { width: 2048, height: 2048 },
+    "16:9": { width: 2560, height: 1440 },
+    "9:16": { width: 1440, height: 2560 },
+    "3:4": { width: 1728, height: 2304 },
+    "4:3": { width: 2304, height: 1728 },
+    "3:2": { width: 2496, height: 1664 },
+    "2:3": { width: 1664, height: 2496 },
+    "5:4": { width: 2240, height: 1792 },
+    "4:5": { width: 1792, height: 2240 },
+    "21:9": { width: 3024, height: 1296 },
+    "2:1": { width: 2880, height: 1440 },
+    "1:2": { width: 1440, height: 2880 },
+    "3:1": { width: 3552, height: 1184 },
+    "1:3": { width: 1184, height: 3552 }
+  },
+  "4K": {
+    "1:1": { width: 2880, height: 2880 },
+    "16:9": { width: 3840, height: 2160 },
+    "9:16": { width: 2160, height: 3840 },
+    "3:4": { width: 2448, height: 3264 },
+    "4:3": { width: 3264, height: 2448 },
+    "3:2": { width: 3504, height: 2336 },
+    "2:3": { width: 2336, height: 3504 },
+    "5:4": { width: 3200, height: 2560 },
+    "4:5": { width: 2560, height: 3200 },
+    "21:9": { width: 3696, height: 1584 },
+    "2:1": { width: 3840, height: 1920 },
+    "1:2": { width: 1920, height: 3840 },
+    "3:1": { width: 3840, height: 1280 },
+    "1:3": { width: 1280, height: 3840 }
+  }
+};
+function parseAspectRatio2(ratio) {
+  const match = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(ratio.trim());
+  if (!match) return void 0;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!(width > 0) || !(height > 0)) return void 0;
+  return width / height;
+}
+function isSupportedGptImageRatio(ratio) {
+  const value = parseAspectRatio2(ratio);
+  if (value === void 0) return false;
+  const longOverShort = value >= 1 ? value : 1 / value;
+  return longOverShort <= GPT_IMAGE_MAX_RATIO + 1e-9;
+}
+function quantize(value) {
+  return Math.round(value / GPT_IMAGE_EDGE_MULTIPLE) * GPT_IMAGE_EDGE_MULTIPLE;
+}
+var tierPixels = (/* unused pure expression or super */ null && (resolutionTierPixels));
+function computeGptImageSize(ratio, tier) {
+  const parsed = parseAspectRatio2(ratio);
+  const value = parsed !== void 0 && isSupportedGptImageRatio(ratio) ? parsed : 1;
+  const longOverShort = value >= 1 ? value : 1 / value;
+  let long = quantize(Math.sqrt(tierPixels(tier) * longOverShort));
+  long = Math.min(long, GPT_IMAGE_MAX_EDGE);
+  let short = quantize(long / longOverShort);
+  if (long / short > GPT_IMAGE_MAX_RATIO) short += GPT_IMAGE_EDGE_MULTIPLE;
+  while (long * short > GPT_IMAGE_MAX_PIXELS && short > GPT_IMAGE_EDGE_MULTIPLE * 16) {
+    long = Math.max(GPT_IMAGE_EDGE_MULTIPLE, long - GPT_IMAGE_EDGE_MULTIPLE * 2);
+    short = Math.max(GPT_IMAGE_EDGE_MULTIPLE, quantize(long / longOverShort));
+    if (long / short > GPT_IMAGE_MAX_RATIO) short += GPT_IMAGE_EDGE_MULTIPLE;
+  }
+  while (long * short < GPT_IMAGE_MIN_PIXELS && long < GPT_IMAGE_MAX_EDGE) {
+    long = Math.min(GPT_IMAGE_MAX_EDGE, long + GPT_IMAGE_EDGE_MULTIPLE * 2);
+    short = quantize(long / longOverShort);
+    if (long / short > GPT_IMAGE_MAX_RATIO) short += GPT_IMAGE_EDGE_MULTIPLE;
+  }
+  return value >= 1 ? { width: long, height: short } : { width: short, height: long };
+}
+function gptImageSizeForRatio(ratio, tier) {
+  var _a;
+  return ((_a = GPT_IMAGE_SIZES[tier]) == null ? void 0 : _a[ratio.trim()]) ?? computeGptImageSize(ratio, tier);
+}
+function formatGptImageSize(size) {
+  return `${size.width}x${size.height}`;
+}
+function resolveGptImageSize(params, aspectRatio) {
+  const width = Number(params.width);
+  const height = Number(params.height);
+  if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+    return { width, height };
+  }
+  const size = typeof params.size === "string" ? params.size : void 0;
+  const explicit = size ? /^(\d+)x(\d+)$/.exec(size) : null;
+  if (explicit) return { width: Number(explicit[1]), height: Number(explicit[2]) };
+  const declaredRatio = typeof params.aspect_ratio === "string" ? params.aspect_ratio : aspectRatio;
+  if (!declaredRatio || declaredRatio === "auto") return "auto";
+  const tier = typeof params.resolution === "string" && GPT_IMAGE_RESOLUTION_TIERS.some((entry) => entry.value === params.resolution) ? params.resolution : "2K";
+  return gptImageSizeForRatio(declaredRatio, tier);
+}
+var ModelKindSchema = AigcActionKindSchema;
 var NANO_BANANA_ASPECT_RATIOS = [
   { label: "1:1", value: "1:1" },
   { label: "2:3", value: "2:3" },
@@ -4793,22 +5247,57 @@ var NANO_BANANA_LITE_ASPECT_RATIOS = [
   { label: "16:9", value: "16:9" },
   { label: "21:9", value: "21:9" }
 ];
-var NANO_BANANA_RESOLUTIONS = [
-  { label: "0.5K (Draft)", value: "0.5K" },
-  { label: "1K (Fast)", value: "1K" },
-  { label: "2K (Balanced)", value: "2K" },
-  { label: "4K (High Quality)", value: "4K" }
-];
+var NANO_BANANA_RESOLUTIONS = CANONICAL_RESOLUTION_TIERS;
 var SORA_ASPECT_RATIOS = [
   { label: "16:9", value: "16:9" },
   { label: "9:16", value: "9:16" }
 ];
-var FLUX_ASPECT_RATIOS = [
-  { label: "16:9", value: "landscape_16_9" },
-  { label: "9:16", value: "portrait_16_9" },
-  { label: "1:1", value: "square_hd" },
-  { label: "4:3", value: "landscape_4_3" },
-  { label: "3:4", value: "portrait_4_3" }
+var CANONICAL_IMAGE_ASPECT_RATIOS = [
+  { label: "1:1", value: "1:1" },
+  { label: "4:3", value: "4:3" },
+  { label: "16:9", value: "16:9" },
+  { label: "3:4", value: "3:4" },
+  { label: "9:16", value: "9:16" }
+];
+function aspectRatioParameter(spec) {
+  return {
+    id: "aspect_ratio",
+    label: "Aspect Ratio",
+    type: "select",
+    ...spec.description ? { description: spec.description } : {},
+    ...spec.required === void 0 ? {} : { required: spec.required },
+    options: [
+      ...spec.auto ? [{ label: spec.auto.label, value: "auto" }] : [],
+      ...spec.ratios.map((value) => ({ label: value, value }))
+    ],
+    defaultValue: spec.defaultValue
+  };
+}
+function durationParameter(spec) {
+  return {
+    id: "duration",
+    label: "Duration",
+    type: "select",
+    options: [
+      ...spec.auto ? [{ label: spec.auto.label, value: "auto" }] : [],
+      ...spec.seconds.map((value) => ({ label: `${value}s`, value }))
+    ],
+    defaultValue: spec.defaultValue
+  };
+}
+function resolutionParameter(spec) {
+  return {
+    id: "resolution",
+    label: "Resolution",
+    type: "select",
+    options: spec.tiers.map((tier) => ({ label: tier.label, value: tier.value })),
+    defaultValue: spec.defaultValue
+  };
+}
+var KLING_ASPECT_RATIOS = [
+  { label: "16:9", value: "16:9" },
+  { label: "9:16", value: "9:16" },
+  { label: "1:1", value: "1:1" }
 ];
 var VEO3_ASPECT_RATIOS = [
   { label: "16:9", value: "16:9" },
@@ -4827,22 +5316,6 @@ var IMAGEN_ASPECT_RATIOS = [
   { label: "1:1", value: "1:1" },
   { label: "4:3", value: "4:3" },
   { label: "3:4", value: "3:4" }
-];
-var RECRAFT_ASPECT_RATIOS = [
-  { label: "1:1 HD", value: "square_hd" },
-  { label: "1:1", value: "square" },
-  { label: "4:3", value: "landscape_4_3" },
-  { label: "16:9", value: "landscape_16_9" },
-  { label: "3:4", value: "portrait_4_3" },
-  { label: "9:16", value: "portrait_16_9" }
-];
-var FLUX2_ASPECT_RATIOS = [
-  { label: "1:1 HD", value: "square_hd" },
-  { label: "1:1", value: "square" },
-  { label: "4:3", value: "landscape_4_3" },
-  { label: "16:9", value: "landscape_16_9" },
-  { label: "3:4", value: "portrait_4_3" },
-  { label: "9:16", value: "portrait_16_9" }
 ];
 var FLUX3_VIDEO_ASPECT_RATIOS = [
   { label: "Auto", value: "auto" },
@@ -4910,12 +5383,6 @@ var FLUX3_KEYFRAME_VIDEO_DEFAULT_PARAMS = {
   ...FLUX3_VIDEO_DEFAULT_PARAMS,
   duration: 5
 };
-var GPT_IMAGE_SIZES = [
-  { label: "Auto", value: "auto" },
-  { label: "1:1", value: "1024x1024" },
-  { label: "2:3", value: "1024x1536" },
-  { label: "3:2", value: "1536x1024" }
-];
 var SEEDANCE_ASPECT_RATIOS = [
   { label: "Auto", value: "auto" },
   { label: "21:9", value: "21:9" },
@@ -4963,11 +5430,9 @@ var BuiltinProviderSchema = z.enum([
   "official",
   "fal",
   "pika",
-  "kie",
   "replicate",
   "kling",
   "minimax",
-  "jimeng",
   "volcengine",
   "elevenlabs",
   "suno",
@@ -5142,6 +5607,11 @@ var ProviderCredentialRequirementsSchema = z.object({
   /** When true, one account must not configure more than one alternative set. */
   exclusive: z.boolean().optional()
 });
+var ProviderInputAdaptationSchema = z.object({
+  audio: z.object({
+    mimeAliases: z.record(z.string().min(1), z.string().min(1))
+  }).optional()
+});
 var ModelProviderImplementationSchema = z.object({
   providerId: ProviderSchema,
   accountId: z.string().optional(),
@@ -5169,6 +5639,8 @@ var ModelProviderImplementationSchema = z.object({
   requiredOAuth: z.array(z.string()).optional(),
   /** Provider-specific override for how inline references bind to prompt text. */
   referenceBinding: ReferenceBindingSchema.optional(),
+  /** Provider-specific wire spellings applied after this route is selected. */
+  inputAdaptation: ProviderInputAdaptationSchema.optional(),
   /** Full replacements for parameters whose candidates or ranges differ on this provider.
    * Parameters absent from this list are reused from the base model card. */
   parameterOverrides: z.array(ModelParameterSchema).optional(),
@@ -5199,7 +5671,6 @@ var ModelCardSchema = z.object({
   name: z.string(),
   provider: z.string(),
   kind: ModelKindSchema,
-  task: ModelTaskSchema.optional(),
   custom: z.boolean().optional(),
   description: z.string().optional(),
   promptGuidance: z.string().optional(),
@@ -5211,12 +5682,6 @@ var ModelCardSchema = z.object({
    * This is OUR representation — provider-specific values live in parameters/defaultParams.
    */
   defaultAspectRatio: z.string().default("16:9"),
-  /**
-   * Maps our canonical aspect ratio ("4:3") → provider-specific param value ("landscape_4_3").
-   * The key of the provider param in defaultParams (e.g. "aspect_ratio" or "image_size").
-   * If the provider uses the same format as ours, the mapping is identity.
-   */
-  aspectRatioParam: z.string().optional(),
   input: ModelInputRuleSchema.default({ requiresPrompt: true, inputMode: {}, promptModalities: ["text"] }),
   musicInput: MusicInputMappingSchema.optional(),
   /** Shared UI/runtime constraints. Providers may still translate the final
@@ -5346,7 +5811,7 @@ function resolveAspectRatio(modelId, modelParams) {
   var _a;
   const card = MODEL_CARDS.find((c) => c.id === modelId);
   if (!card) return "16:9";
-  const paramId = card.aspectRatioParam || "aspect_ratio";
+  const paramId = "aspect_ratio";
   const arParam = card.parameters.find((p) => p.id === paramId);
   if (!arParam) return card.defaultAspectRatio;
   const value = modelParams[paramId];
@@ -5360,7 +5825,7 @@ function snapAspectRatio(modelId, width, height) {
   if (!width || !height) return null;
   const card = MODEL_CARDS.find((c) => c.id === modelId);
   if (!card) return null;
-  const paramId = card.aspectRatioParam || "aspect_ratio";
+  const paramId = "aspect_ratio";
   const arParam = card.parameters.find((p) => p.id === paramId);
   if (!((_a = arParam == null ? void 0 : arParam.options) == null ? void 0 : _a.length)) return null;
   const ratio = width / height;
@@ -5426,6 +5891,10 @@ var MINIMAX_H3_VIDEO_CONSTRAINTS = {
   audioCodecs: ["aac", "mp3"]
 };
 var MINIMAX_H3_AUDIO_CONSTRAINTS = {
+  // The model accepts WAV and MP3, so `audio/mpeg` belongs here: it is MP3's registered
+  // media type and rejecting it would refuse a file the model can read. MiniMax derives a
+  // filename from the mime and will not take the `.mpeg` that `audio/mpeg` yields, so the
+  // transport spells it `audio/mp3` on the wire -- a provider dialect, like `adaptive`.
   mimeTypes: ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3"],
   fileExtensions: ["wav", "mp3"],
   maxBytes: 15 * 1024 * 1024,
@@ -5522,7 +5991,6 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["pika"],
     defaultProvider: "pika",
     kind: "audio",
-    task: "music-generation",
     defaultAspectRatio: "1:1",
     description: "Google Lyria 3 Pro music generation from the current Pika catalog.",
     parameters: [{ id: "duration", label: "Duration", type: "number", min: 10, max: 180, step: 1, defaultValue: 30 }],
@@ -5536,7 +6004,6 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["pika"],
     defaultProvider: "pika",
     kind: "audio",
-    task: "text-to-speech",
     defaultAspectRatio: "1:1",
     description: "MiniMax Speech 2.8 HD text-to-speech from the current Pika catalog.",
     parameters: [{ id: "voice_id", label: "Voice ID", type: "text", defaultValue: "English_Graceful_Lady" }],
@@ -5549,7 +6016,7 @@ var MODEL_CARD_DEFINITIONS = [
     name: "Nano Banana 2",
     aliases: ["gemini-3.1-flash-image"],
     provider: "Google",
-    availableProviders: ["official", "fal", "pika", "kie", "replicate"],
+    availableProviders: ["official", "fal", "pika", "replicate"],
     defaultProvider: "official",
     kind: "image",
     defaultAspectRatio: "16:9",
@@ -5597,7 +6064,6 @@ var MODEL_CARD_DEFINITIONS = [
     defaultProvider: "official",
     kind: "image",
     defaultAspectRatio: "16:9",
-    aspectRatioParam: "aspect_ratio",
     description: "Fast Gemini 3.1 Flash-Lite image generation.",
     parameters: [
       {
@@ -5618,19 +6084,25 @@ var MODEL_CARD_DEFINITIONS = [
     id: "gpt-image-2",
     name: "GPT Image 2",
     provider: "OpenAI",
-    availableProviders: ["official", "fal", "pika", "kie", "replicate"],
+    availableProviders: ["official", "fal", "pika", "replicate"],
     defaultProvider: "official",
     kind: "image",
     defaultAspectRatio: "1:1",
-    aspectRatioParam: "size",
     description: "OpenAI GPT Image 2 \u2014 high-quality image generation and editing.",
     parameters: [
       {
-        id: "size",
-        label: "Size",
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
         type: "select",
-        options: GPT_IMAGE_SIZES.map((s) => ({ label: s.label, value: s.value })),
-        defaultValue: "auto"
+        options: GPT_IMAGE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        defaultValue: "1:1"
+      },
+      {
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: GPT_IMAGE_RESOLUTION_TIERS.map((t) => ({ label: t.label, value: t.value })),
+        defaultValue: "2K"
       },
       {
         id: "quality",
@@ -5656,13 +6128,13 @@ var MODEL_CARD_DEFINITIONS = [
         defaultValue: "png"
       },
       {
+        // gpt-image-2 does not support transparent backgrounds.
         id: "background",
         label: "Background",
         type: "select",
         options: [
           { label: "Auto", value: "auto" },
-          { label: "Opaque", value: "opaque" },
-          { label: "Transparent", value: "transparent" }
+          { label: "Opaque", value: "opaque" }
         ],
         defaultValue: "auto"
       },
@@ -5706,23 +6178,25 @@ var MODEL_CARD_DEFINITIONS = [
     defaultProvider: "fal",
     kind: "image",
     defaultAspectRatio: "1:1",
-    aspectRatioParam: "image_size",
     description: "ByteDance Seedream 4.5 image generation and editing through fal.ai.",
     parameters: [
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
       {
-        id: "image_size",
-        label: "Size",
+        // Seedream's own tier, kept separate from the ratio the way minimax-h3
+        // already separates them. Folding both into one `image_size` enum made
+        // "Auto 2K" look like an aspect ratio.
+        id: "resolution",
+        label: "Resolution",
         type: "select",
         options: [
-          { label: "Auto 2K", value: "auto_2K" },
-          { label: "Auto 4K", value: "auto_4K" },
-          { label: "1:1", value: "square_hd" },
-          { label: "4:3", value: "landscape_4_3" },
-          { label: "16:9", value: "landscape_16_9" },
-          { label: "3:4", value: "portrait_4_3" },
-          { label: "9:16", value: "portrait_16_9" }
+          { label: "2K", value: "2K" },
+          { label: "4K", value: "4K" }
         ],
-        defaultValue: "auto_2K"
+        defaultValue: "2K"
       },
       {
         id: "count",
@@ -5756,20 +6230,16 @@ var MODEL_CARD_DEFINITIONS = [
     id: "flux-schnell",
     name: "FLUX Schnell",
     provider: "fal.ai",
-    availableProviders: ["fal", "kie", "replicate"],
+    availableProviders: ["fal", "replicate"],
     defaultProvider: "fal",
     kind: "image",
     defaultAspectRatio: "16:9",
-    aspectRatioParam: "image_size",
     description: "Ultra-fast image generation, ~1s per image.",
     parameters: [
-      {
-        id: "image_size",
-        label: "Aspect Ratio",
-        type: "select",
-        options: FLUX_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-        defaultValue: "landscape_16_9"
-      },
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "16:9"
+      }),
       {
         id: "num_inference_steps",
         label: "Steps",
@@ -5802,20 +6272,16 @@ var MODEL_CARD_DEFINITIONS = [
     id: "flux-dev",
     name: "FLUX Dev",
     provider: "fal.ai",
-    availableProviders: ["fal", "kie"],
+    availableProviders: ["fal"],
     defaultProvider: "fal",
     kind: "image",
     defaultAspectRatio: "16:9",
-    aspectRatioParam: "image_size",
     description: "High-quality image generation with great prompt following.",
     parameters: [
-      {
-        id: "image_size",
-        label: "Aspect Ratio",
-        type: "select",
-        options: FLUX_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-        defaultValue: "landscape_16_9"
-      },
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "16:9"
+      }),
       {
         id: "num_inference_steps",
         label: "Steps",
@@ -5876,10 +6342,7 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [
-          { label: "720p", value: "720p" },
-          { label: "1080p", value: "1080p" }
-        ],
+        options: [{ label: "720p", value: "720p" }, { label: "1080p", value: "1080p" }],
         defaultValue: "720p"
       },
       {
@@ -5937,10 +6400,7 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [
-          { label: "720p", value: "720p" },
-          { label: "1080p", value: "1080p" }
-        ],
+        options: [{ label: "720p", value: "720p" }, { label: "1080p", value: "1080p" }],
         defaultValue: "720p"
       }
     ],
@@ -5959,8 +6419,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2-startend",
     name: "Seedance 2.0 (Start/End)",
     provider: "fal.ai",
-    availableProviders: ["jimeng", "volcengine", "fal", "pika", "kie", "replicate"],
-    defaultProvider: "jimeng",
+    availableProviders: ["volcengine", "fal", "pika", "replicate"],
+    defaultProvider: "volcengine",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 \u2014 animate from a start frame, optionally constrained to a target end frame.",
@@ -5983,10 +6443,7 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [
-          { label: "480p", value: "480p" },
-          { label: "720p", value: "720p" }
-        ],
+        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
         defaultValue: "720p"
       },
       {
@@ -6004,7 +6461,7 @@ var MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: { startEnd: {} } }
   },
   // ─── Video: Seedance 2.0 reference-to-video ────────────────
-  // Separate endpoint with multi-modal refs. Up to 12 total files across
+  // Separate endpoint with multi-modal refs. Up to 15 total files across
   // images (≤9), videos (≤3), audios (≤3). Positional prompt references
   // (@Image1, @Video2, @Audio1).
   {
@@ -6012,8 +6469,8 @@ var MODEL_CARD_DEFINITIONS = [
     aliases: ["seedance-2-text"],
     name: "Seedance 2.0 (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["jimeng", "volcengine", "fal", "pika", "kie", "replicate"],
-    defaultProvider: "jimeng",
+    availableProviders: ["volcengine", "fal", "pika", "replicate"],
+    defaultProvider: "volcengine",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.0 all-purpose generation with optional image, video, and audio references.",
@@ -6043,10 +6500,7 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [
-          { label: "480p", value: "480p" },
-          { label: "720p", value: "720p" }
-        ],
+        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
         defaultValue: "720p"
       },
       {
@@ -6068,11 +6522,59 @@ var MODEL_CARD_DEFINITIONS = [
       inputMode: {
         images: { max: 9 },
         videos: { max: 3 },
-        audios: { max: 3 },
-        maxTotalReferences: 12
+        audios: { max: 3, requiresAnyOf: ["image", "video"] },
+        maxTotalReferences: 15
       },
       promptModalities: ["text", "image", "video", "audio"]
     }
+  },
+  // ─── Video: Seedance 2.0 continuation ─────────────────────
+  {
+    id: "seedance-2-extend",
+    name: "Seedance 2.0 (Video Extension)",
+    provider: "ByteDance",
+    availableProviders: ["volcengine"],
+    defaultProvider: "volcengine",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Continue one to three ordered source videos with Seedance 2.0.",
+    parameters: [
+      {
+        id: "duration",
+        label: "Duration",
+        type: "select",
+        options: [
+          { label: "Auto", value: -1 },
+          ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+        ],
+        defaultValue: -1
+      },
+      {
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: ["480p", "720p", "1080p", "4k"].map((value) => ({ label: value, value })),
+        defaultValue: "720p"
+      },
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: true
+      }
+    ],
+    defaultParams: { duration: -1, resolution: "720p", generate_audio: true },
+    input: {
+      requiresPrompt: true,
+      inputMode: {
+        videos: { min: 1, max: 3, maxTotalDurationMs: 15e3 },
+        maxTotalReferences: 3
+      },
+      promptModalities: ["text", "video"],
+      referenceBinding: POSITIONAL_REFERENCE_BINDING,
+      presentation: { type: "video-continuation" }
+    },
+    maxRuntimeMs: 30 * 60 * 1e3
   },
   // ─── Video: Seedance 2.5 all-purpose reference ─────────────
   {
@@ -6080,8 +6582,8 @@ var MODEL_CARD_DEFINITIONS = [
     aliases: ["seedance-2.5-text"],
     name: "Seedance 2.5 (\u5168\u80FD\u53C2\u8003)",
     provider: "ByteDance",
-    availableProviders: ["jimeng", "volcengine"],
-    defaultProvider: "jimeng",
+    availableProviders: ["volcengine"],
+    defaultProvider: "volcengine",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Seedance 2.5 all-purpose generation with optional image, video, and audio references.",
@@ -6107,10 +6609,7 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [
-          { label: "480p", value: "480p" },
-          { label: "720p", value: "720p" }
-        ],
+        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
         defaultValue: "720p"
       }
     ],
@@ -6145,8 +6644,8 @@ var MODEL_CARD_DEFINITIONS = [
     id: "seedance-2.5-startend",
     name: "Seedance 2.5 (Start / End Frame)",
     provider: "ByteDance",
-    availableProviders: ["jimeng", "volcengine"],
-    defaultProvider: "jimeng",
+    availableProviders: ["volcengine"],
+    defaultProvider: "volcengine",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Animate from a required start frame toward an optional end frame with Seedance 2.5.",
@@ -6165,10 +6664,7 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [
-          { label: "480p", value: "480p" },
-          { label: "720p", value: "720p" }
-        ],
+        options: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
         defaultValue: "720p"
       }
     ],
@@ -6177,6 +6673,66 @@ var MODEL_CARD_DEFINITIONS = [
       requiresPrompt: true,
       inputMode: { startEnd: {} },
       promptModalities: ["text"]
+    },
+    maxRuntimeMs: 30 * 60 * 1e3
+  },
+  // ─── Video: Seedance 2.5 continuation ─────────────────────
+  {
+    id: "seedance-2.5-extend",
+    name: "Seedance 2.5 (Video Extension)",
+    provider: "ByteDance",
+    availableProviders: ["volcengine"],
+    defaultProvider: "volcengine",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Continue one to ten ordered source videos with Seedance 2.5.",
+    parameters: [
+      {
+        id: "duration",
+        label: "Duration",
+        type: "select",
+        options: [
+          { label: "Auto", value: -1 },
+          ...Array.from({ length: 27 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+        ],
+        defaultValue: -1
+      },
+      {
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: ["480p", "720p"].map((value) => ({ label: value, value })),
+        defaultValue: "720p"
+      },
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: true
+      },
+      {
+        id: "output_format",
+        label: "Output format",
+        type: "select",
+        options: ["mp4", "mov"].map((value) => ({ label: value.toUpperCase(), value })),
+        defaultValue: "mp4"
+      }
+    ],
+    defaultParams: {
+      duration: -1,
+      resolution: "720p",
+      generate_audio: true,
+      output_format: "mp4"
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: {
+        videos: { min: 1, max: 10, maxTotalDurationMs: 3e4 },
+        maxTotalReferences: 10
+      },
+      promptModalities: ["text", "video"],
+      referenceBinding: POSITIONAL_REFERENCE_BINDING,
+      presentation: { type: "video-continuation" }
     },
     maxRuntimeMs: 30 * 60 * 1e3
   },
@@ -6216,10 +6772,7 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [
-          { label: "768p", value: "768P" },
-          { label: "2K", value: "2K" }
-        ],
+        options: [{ label: "768P", value: "768P" }, { label: "2K", value: "2K" }],
         defaultValue: "2K"
       }
     ],
@@ -6273,10 +6826,7 @@ var MODEL_CARD_DEFINITIONS = [
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [
-          { label: "768p", value: "768P" },
-          { label: "2K", value: "2K" }
-        ],
+        options: [{ label: "768P", value: "768P" }, { label: "2K", value: "2K" }],
         defaultValue: "2K"
       }
     ],
@@ -6299,22 +6849,16 @@ var MODEL_CARD_DEFINITIONS = [
     id: "kling-3",
     name: "Kling 3 Pro",
     provider: "fal.ai",
-    availableProviders: ["kling", "fal", "pika", "kie"],
+    availableProviders: ["kling", "fal", "pika"],
     defaultProvider: "kling",
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Kling 3 Pro \u2014 first + optional end frame, with native audio.",
     parameters: [
-      {
-        id: "duration",
-        label: "Duration",
-        type: "select",
-        options: Array.from({ length: 13 }, (_, index) => ({
-          label: `${index + 3}s`,
-          value: String(index + 3)
-        })),
-        defaultValue: "5"
-      },
+      durationParameter({
+        seconds: Array.from({ length: 13 }, (_, index) => index + 3),
+        defaultValue: 5
+      }),
       {
         id: "generate_audio",
         label: "Native audio",
@@ -6323,7 +6867,7 @@ var MODEL_CARD_DEFINITIONS = [
       }
     ],
     defaultParams: {
-      duration: "5",
+      duration: 5,
       generate_audio: true
     },
     input: { requiresPrompt: true, inputMode: { startEnd: {} } }
@@ -6407,16 +6951,12 @@ var MODEL_CARD_DEFINITIONS = [
     defaultProvider: "fal",
     kind: "image",
     defaultAspectRatio: "16:9",
-    aspectRatioParam: "image_size",
     description: "Designer-grade image generation with color control and text rendering.",
     parameters: [
-      {
-        id: "image_size",
-        label: "Aspect Ratio",
-        type: "select",
-        options: RECRAFT_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-        defaultValue: "square_hd"
-      }
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "16:9"
+      })
     ],
     defaultParams: {
       image_size: "square_hd"
@@ -6428,20 +6968,16 @@ var MODEL_CARD_DEFINITIONS = [
     id: "flux-2-pro",
     name: "FLUX 2 Pro",
     provider: "fal.ai",
-    availableProviders: ["fal", "kie"],
+    availableProviders: ["fal"],
     defaultProvider: "fal",
     kind: "image",
     defaultAspectRatio: "4:3",
-    aspectRatioParam: "image_size",
     description: "Latest FLUX flagship \u2014 high-quality image generation.",
     parameters: [
-      {
-        id: "image_size",
-        label: "Aspect Ratio",
-        type: "select",
-        options: FLUX2_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-        defaultValue: "landscape_4_3"
-      },
+      aspectRatioParameter({
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "16:9"
+      }),
       {
         id: "safety_tolerance",
         label: "Safety Tolerance",
@@ -6671,8 +7207,7 @@ var MODEL_CARD_DEFINITIONS = [
         type: "select",
         readOnly: true,
         options: [{ label: "720p", value: "720p" }],
-        defaultValue: "720p",
-        description: "Gemini Omni Flash currently produces 720p video."
+        defaultValue: "720p"
       },
       {
         id: "frame_rate",
@@ -6718,6 +7253,33 @@ var MODEL_CARD_DEFINITIONS = [
     maxRuntimeMs: 15 * 60 * 1e3
   },
   // ─── Text ────────────────────────────────────────────────────
+  {
+    id: "minimax-m3",
+    aliases: ["MiniMax-M3"],
+    name: "MiniMax M3",
+    provider: "MiniMax",
+    availableProviders: ["minimax"],
+    defaultProvider: "minimax",
+    kind: "text",
+    defaultAspectRatio: "1:1",
+    description: "General-purpose text generation with MiniMax M3.",
+    parameters: [
+      {
+        id: "system_prompt",
+        label: "System prompt",
+        type: "text",
+        placeholder: "Optional instructions for tone, format, or role",
+        defaultValue: ""
+      }
+    ],
+    defaultParams: { system_prompt: "" },
+    input: {
+      requiresPrompt: true,
+      inputMode: {},
+      promptModalities: ["text"]
+    },
+    maxRuntimeMs: 5 * 60 * 1e3
+  },
   {
     id: "gpt-5.4",
     name: "GPT-5.4 Text",
@@ -6966,13 +7528,12 @@ var MODEL_CARD_DEFINITIONS = [
     },
     maxRuntimeMs: 5 * 60 * 1e3
   },
-  // ─── ASR ─────────────────────────────────────────────────────
+  // ─── Transcription: audio in, text out ───────────────────────
   {
     id: "sensevoice-small-asr",
     name: "SenseVoice Small",
     provider: "Local",
-    kind: "asr",
-    task: "speech-to-text",
+    kind: "text",
     defaultAspectRatio: "1:1",
     description: "Fast local transcription optimized for Mandarin and Chinese-English speech, with Cantonese, Japanese, and Korean support.",
     promptGuidance: "Recommended for Chinese voice input and mixed Chinese-English recordings. Use Whisper Large v3 Turbo when broader multilingual coverage matters more.",
@@ -6991,8 +7552,7 @@ var MODEL_CARD_DEFINITIONS = [
     id: "whisper-large-v3-turbo-asr",
     name: "Whisper Large v3 Turbo",
     provider: "OpenAI",
-    kind: "asr",
-    task: "speech-to-text",
+    kind: "text",
     defaultAspectRatio: "1:1",
     description: "High-accuracy multilingual transcription optimized for Apple Silicon with MLX and word-level timestamps.",
     promptGuidance: "Best for multilingual interviews, dialogue, and production audio where accurate word timing matters.",
@@ -7011,8 +7571,7 @@ var MODEL_CARD_DEFINITIONS = [
     id: "whisper-small-asr",
     name: "Whisper Small",
     provider: "OpenAI",
-    kind: "asr",
-    task: "speech-to-text",
+    kind: "text",
     defaultAspectRatio: "1:1",
     description: "A lighter multilingual Whisper model for lower-memory Macs, with real word-level timestamps.",
     promptGuidance: "Choose this on 8 GB Macs or for faster drafts; use Whisper Large v3 Turbo when accuracy matters more.",
@@ -7031,8 +7590,7 @@ var MODEL_CARD_DEFINITIONS = [
     id: "parakeet-tdt-0.6b-v3-asr",
     name: "Parakeet TDT 0.6B v3",
     provider: "NVIDIA",
-    kind: "asr",
-    task: "speech-to-text",
+    kind: "text",
     defaultAspectRatio: "1:1",
     description: "Fast local transcription for 25 European languages with real word-level timestamps. Approx. 2.5 GB download; does not support Chinese.",
     promptGuidance: "Use for supported European-language audio on Apple Silicon. It does not support Chinese; choose SenseVoice or Whisper for Chinese recordings.",
@@ -7051,8 +7609,7 @@ var MODEL_CARD_DEFINITIONS = [
     id: "vibevoice-asr",
     name: "VibeVoice ASR",
     provider: "Microsoft",
-    kind: "asr",
-    task: "speech-to-text",
+    kind: "text",
     defaultAspectRatio: "1:1",
     description: "Advanced long-form transcription with speaker diarization, segment timestamps, and Whisper word alignment.",
     promptGuidance: "Use for meetings, podcasts, and long multi-speaker recordings. This is a large download and also requires Whisper Small for word alignment.",
@@ -7076,7 +7633,6 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "audio",
-    task: "text-to-speech",
     defaultAspectRatio: "1:1",
     description: "Google Gemini TTS preview for low-latency controllable single-speaker audio.",
     parameters: GEMINI_TTS_PARAMETERS,
@@ -7091,7 +7647,6 @@ var MODEL_CARD_DEFINITIONS = [
     name: "Kokoro 82M",
     provider: "Hexgrad",
     kind: "audio",
-    task: "text-to-speech",
     defaultAspectRatio: "1:1",
     description: "High-quality lightweight local speech with multilingual voices, accelerated by MLX on Apple Silicon.",
     promptGuidance: "Choose a voice whose language prefix matches the script: a/b for English, z for Mandarin, and j for Japanese.",
@@ -7134,7 +7689,6 @@ var MODEL_CARD_DEFINITIONS = [
     name: "Piper Huayan",
     provider: "Local",
     kind: "audio",
-    task: "text-to-speech",
     defaultAspectRatio: "1:1",
     description: "Downloadable Mandarin voice running fully on-device with Piper ONNX.",
     parameters: [
@@ -7161,7 +7715,6 @@ var MODEL_CARD_DEFINITIONS = [
     name: "Piper Lessac",
     provider: "Local",
     kind: "audio",
-    task: "text-to-speech",
     defaultAspectRatio: "1:1",
     description: "Downloadable English voice running fully on-device with Piper ONNX.",
     parameters: [
@@ -7190,7 +7743,6 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["official"],
     defaultProvider: "official",
     kind: "audio",
-    task: "text-to-speech",
     defaultAspectRatio: "1:1",
     description: "Google Gemini TTS with higher control for scripts, narration, and structured speech.",
     parameters: GEMINI_TTS_PARAMETERS,
@@ -7207,7 +7759,6 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["minimax", "fal"],
     defaultProvider: "minimax",
     kind: "audio",
-    task: "text-to-speech",
     defaultAspectRatio: "1:1",
     description: "High-quality Chinese and English text-to-speech.",
     parameters: [
@@ -7259,7 +7810,6 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["minimax", "fal", "pika"],
     defaultProvider: "minimax",
     kind: "audio",
-    task: "music-generation",
     defaultAspectRatio: "1:1",
     description: "Generate complete songs or instrumentals with MiniMax Music 3.0.",
     promptGuidance: "Describe the music in Prompt. Enter lyrics directly in Lyrics, or leave it empty to use automatic lyrics or instrumental mode.",
@@ -7376,7 +7926,6 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["suno"],
     defaultProvider: "suno",
     kind: "audio",
-    task: "music-generation",
     defaultAspectRatio: "1:1",
     description: "Generate complete songs with Suno V5.5 through SunoAPI.org.",
     promptGuidance: "Describe the musical style in Prompt. Enter lyrics directly in Lyrics; the action label is used as the song title.",
@@ -7422,7 +7971,6 @@ var MODEL_CARD_DEFINITIONS = [
     availableProviders: ["elevenlabs"],
     defaultProvider: "elevenlabs",
     kind: "audio",
-    task: "text-to-speech",
     defaultAspectRatio: "1:1",
     description: "Ultra-realistic voice synthesis with emotional range.",
     parameters: [
@@ -7477,6 +8025,498 @@ var MODEL_CARD_DEFINITIONS = [
       similarity_boost: 0.75
     },
     input: { requiresPrompt: true, inputMode: {} }
+  },
+  // ─── Image: Kling Omni ─────────────────────────────────────
+  // Kling's omni image models take a prompt plus up to ten reference images and
+  // render at a named resolution tier rather than explicit dimensions.
+  {
+    id: "kling-image-o1",
+    name: "Kling Image O1",
+    provider: "Kuaishou",
+    availableProviders: ["kling"],
+    defaultProvider: "kling",
+    kind: "image",
+    defaultAspectRatio: "1:1",
+    description: "Kling O1 image generation with optional reference images.",
+    parameters: [
+      aspectRatioParameter({
+        ratios: ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
+      resolutionParameter({
+        tiers: [{ label: "1K", value: "1K" }, { label: "2K", value: "2K" }],
+        defaultValue: "1K"
+      })
+    ],
+    defaultParams: { aspect_ratio: "auto", resolution: "1K" },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 10 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  {
+    id: "kling-image-o3",
+    name: "Kling Image O3",
+    provider: "Kuaishou",
+    availableProviders: ["kling"],
+    defaultProvider: "kling",
+    kind: "image",
+    defaultAspectRatio: "1:1",
+    description: "Kling O3 omni image generation with optional reference images.",
+    parameters: [
+      aspectRatioParameter({
+        ratios: ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16"],
+        defaultValue: "auto",
+        auto: { label: "Auto" }
+      }),
+      resolutionParameter({
+        tiers: [{ label: "1K", value: "1K" }, { label: "2K", value: "2K" }],
+        defaultValue: "1K"
+      })
+    ],
+    defaultParams: { aspect_ratio: "auto", resolution: "1K" },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 10 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  // ─── Image: Midjourney ─────────────────────────────────────
+  // Midjourney is prompt-driven: aspect ratio and the styling knobs below are
+  // expressed as `--ar`, `--stylize`, `--chaos`, and `--weird` flags appended to the
+  // prompt, so the Card declares them as parameters and the transport renders the
+  // flags. `stylize` spans 0-1000 and `chaos`/`weird` 0-100 in Midjourney's own docs.
+  {
+    id: "midjourney-7",
+    name: "Midjourney 7",
+    provider: "Midjourney",
+    kind: "image",
+    defaultAspectRatio: "1:1",
+    description: "Midjourney v7 image generation with optional image prompts.",
+    parameters: [
+      aspectRatioParameter({
+        ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+        defaultValue: "1:1"
+      }),
+      { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
+      { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
+      { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+    ],
+    defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 5 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  {
+    id: "midjourney-8.1",
+    name: "Midjourney 8.1",
+    provider: "Midjourney",
+    kind: "image",
+    defaultAspectRatio: "1:1",
+    description: "Midjourney v8.1 image generation with optional image prompts.",
+    parameters: [
+      aspectRatioParameter({
+        ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+        defaultValue: "1:1"
+      }),
+      { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
+      { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
+      { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+    ],
+    defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 5 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  {
+    id: "midjourney-niji-7",
+    name: "Midjourney Niji 7",
+    provider: "Midjourney",
+    kind: "image",
+    defaultAspectRatio: "1:1",
+    description: "Midjourney Niji 7, the anime-oriented model, with optional image prompts.",
+    parameters: [
+      aspectRatioParameter({
+        ratios: ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+        defaultValue: "1:1"
+      }),
+      { id: "stylize", label: "Stylize", type: "number", min: 0, max: 1e3, step: 1, defaultValue: 100 },
+      { id: "chaos", label: "Chaos", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 },
+      { id: "weird", label: "Weird", type: "number", min: 0, max: 100, step: 1, defaultValue: 0 }
+    ],
+    defaultParams: { aspect_ratio: "1:1", stylize: 100, chaos: 0, weird: 0 },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 5 } },
+      promptModalities: ["text", "image"]
+    }
+  },
+  // ─── Video: Seedance 2.0 speed tiers ───────────────────────
+  // Fast and mini are the same generation contract as Seedance 2.0 at lower cost, so
+  // they mirror its parameters and reference limits.
+  {
+    id: "seedance-2-fast-ref",
+    name: "Seedance 2.0 Fast (\u5168\u80FD\u53C2\u8003)",
+    provider: "ByteDance",
+    availableProviders: ["volcengine"],
+    defaultProvider: "volcengine",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Seedance 2.0 Fast all-purpose generation with optional image, video, and audio references.",
+    parameters: [
+      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      {
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        defaultValue: "auto"
+      },
+      resolutionParameter({
+        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        defaultValue: "720p"
+      }),
+      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+    ],
+    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: POSITIONAL_REFERENCE_BINDING,
+      inputMode: {
+        images: { max: 9 },
+        videos: { max: 3 },
+        audios: { max: 3 },
+        maxTotalReferences: 12
+      },
+      promptModalities: ["text", "image", "video", "audio"]
+    }
+  },
+  {
+    id: "seedance-2-fast-startend",
+    name: "Seedance 2.0 Fast (\u9996\u5C3E\u5E27)",
+    provider: "ByteDance",
+    availableProviders: ["volcengine"],
+    defaultProvider: "volcengine",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Seedance 2.0 Fast animation between a first and an optional last frame.",
+    parameters: [
+      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      {
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        defaultValue: "auto"
+      },
+      resolutionParameter({
+        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        defaultValue: "720p"
+      }),
+      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+    ],
+    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    input: { requiresPrompt: true, inputMode: { startEnd: {} } }
+  },
+  {
+    id: "seedance-2-mini-ref",
+    name: "Seedance 2.0 Mini (\u5168\u80FD\u53C2\u8003)",
+    provider: "ByteDance",
+    availableProviders: ["volcengine"],
+    defaultProvider: "volcengine",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Seedance 2.0 Mini all-purpose generation with optional image, video, and audio references.",
+    parameters: [
+      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      {
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        defaultValue: "auto"
+      },
+      resolutionParameter({
+        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        defaultValue: "720p"
+      }),
+      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+    ],
+    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: POSITIONAL_REFERENCE_BINDING,
+      inputMode: {
+        images: { max: 9 },
+        videos: { max: 3 },
+        audios: { max: 3 },
+        maxTotalReferences: 12
+      },
+      promptModalities: ["text", "image", "video", "audio"]
+    }
+  },
+  {
+    id: "seedance-2-mini-startend",
+    name: "Seedance 2.0 Mini (\u9996\u5C3E\u5E27)",
+    provider: "ByteDance",
+    availableProviders: ["volcengine"],
+    defaultProvider: "volcengine",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Seedance 2.0 Mini animation between a first and an optional last frame.",
+    parameters: [
+      durationParameter({ seconds: [4, 6, 8, 10, 15], defaultValue: "auto", auto: { label: "Auto" } }),
+      {
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        defaultValue: "auto"
+      },
+      resolutionParameter({
+        tiers: [{ label: "480p", value: "480p" }, { label: "720p", value: "720p" }],
+        defaultValue: "720p"
+      }),
+      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false }
+    ],
+    defaultParams: { duration: "auto", aspect_ratio: "auto", resolution: "720p", generate_audio: false },
+    input: { requiresPrompt: true, inputMode: { startEnd: {} } }
+  },
+  // ─── Video: Kling Omni ─────────────────────────────────────
+  // Kling's omni video models accept image and video references, render in a `std` or
+  // `pro` mode, and can stitch several shots from one prompt.
+  {
+    id: "kling-video-o1",
+    name: "Kling Video O1",
+    provider: "Kuaishou",
+    availableProviders: ["kling"],
+    defaultProvider: "kling",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Kling O1 video generation with optional image and video references.",
+    parameters: [
+      durationParameter({ seconds: [5, 10], defaultValue: 5 }),
+      {
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: KLING_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        defaultValue: "16:9"
+      },
+      {
+        id: "mode",
+        label: "Mode",
+        type: "select",
+        options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+        defaultValue: "pro"
+      },
+      { id: "multi_shot", label: "Multi-shot", type: "boolean", defaultValue: false }
+    ],
+    defaultParams: { duration: 5, aspect_ratio: "16:9", mode: "pro", multi_shot: false },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 4 }, videos: { max: 1 } },
+      promptModalities: ["text", "image", "video"]
+    }
+  },
+  {
+    id: "kling-video-o3",
+    name: "Kling Video O3",
+    provider: "Kuaishou",
+    availableProviders: ["kling"],
+    defaultProvider: "kling",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Kling O3 omni video generation with optional image and video references and native audio.",
+    parameters: [
+      durationParameter({ seconds: [5, 10], defaultValue: 5 }),
+      {
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: KLING_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        defaultValue: "16:9"
+      },
+      {
+        id: "mode",
+        label: "Mode",
+        type: "select",
+        options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+        defaultValue: "pro"
+      },
+      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false },
+      { id: "multi_shot", label: "Multi-shot", type: "boolean", defaultValue: false }
+    ],
+    defaultParams: { duration: 5, aspect_ratio: "16:9", mode: "pro", generate_audio: false, multi_shot: false },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 4 }, videos: { max: 1 } },
+      promptModalities: ["text", "image", "video"]
+    }
+  },
+  // ─── Video: driven performance ─────────────────────────────
+  // These take a subject and a driver rather than a prompt alone: Avatar animates one
+  // portrait from a speech clip, and the motion-control models transfer the motion of
+  // a source video onto a still.
+  {
+    id: "kling-avatar",
+    name: "Kling Avatar",
+    provider: "Kuaishou",
+    availableProviders: ["kling"],
+    defaultProvider: "kling",
+    kind: "video",
+    defaultAspectRatio: "9:16",
+    description: "Animate one portrait image so it speaks a supplied audio clip.",
+    parameters: [
+      {
+        id: "mode",
+        label: "Mode",
+        type: "select",
+        options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+        defaultValue: "std"
+      }
+    ],
+    defaultParams: { mode: "std" },
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 1 }, audios: { max: 1 } },
+      promptModalities: ["text", "image", "audio"]
+    }
+  },
+  {
+    id: "kling-motion-control",
+    name: "Kling Motion Control",
+    provider: "Kuaishou",
+    availableProviders: ["kling"],
+    defaultProvider: "kling",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Transfer the motion of a source video onto a still character image.",
+    parameters: [
+      {
+        id: "mode",
+        label: "Mode",
+        type: "select",
+        options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+        defaultValue: "std"
+      },
+      {
+        id: "keep_original_sound",
+        label: "Keep original sound",
+        type: "select",
+        options: [{ label: "Yes", value: "yes" }, { label: "No", value: "no" }],
+        defaultValue: "yes"
+      },
+      {
+        id: "character_orientation",
+        label: "Character orientation",
+        type: "select",
+        options: [
+          { label: "Follow video", value: "video" },
+          { label: "Follow image", value: "image" }
+        ],
+        defaultValue: "video"
+      }
+    ],
+    defaultParams: { mode: "std", keep_original_sound: "yes", character_orientation: "video" },
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 1 }, videos: { max: 1 } },
+      promptModalities: ["text", "image", "video"]
+    }
+  },
+  {
+    id: "jimeng-motion-control-2",
+    name: "Jimeng Motion Control 2.0",
+    provider: "ByteDance",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description: "Transfer the motion of a source video onto a still image with Jimeng 2.0.",
+    parameters: [],
+    defaultParams: {},
+    input: {
+      requiresPrompt: false,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { images: { max: 1 }, videos: { max: 1 } },
+      promptModalities: ["text", "image", "video"]
+    }
+  },
+  // ─── Audio: Seed Audio ─────────────────────────────────────
+  // Seed Audio clones a voice from a reference rather than selecting a preset one, so
+  // it takes an audio or image reference instead of a voice id.
+  {
+    id: "seed-audio-1",
+    name: "Seed Audio 1.0",
+    provider: "ByteDance",
+    availableProviders: ["volcengine"],
+    defaultProvider: "volcengine",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description: "Speech synthesis that reproduces the voice in a reference clip.",
+    parameters: [
+      { id: "speed", label: "Speed", type: "number", min: 0.5, max: 2, step: 0.1, defaultValue: 1 }
+    ],
+    defaultParams: { speed: 1 },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { audios: { max: 1 }, images: { max: 1 } },
+      promptModalities: ["text", "audio", "image"]
+    }
+  },
+  // ─── Audio: music ──────────────────────────────────────────
+  // Music generation is length-driven rather than duration-per-shot: the request names
+  // how long the finished track should be.
+  {
+    id: "elevenlabs-music-v2",
+    name: "ElevenLabs Music v2",
+    provider: "ElevenLabs",
+    availableProviders: ["elevenlabs"],
+    defaultProvider: "elevenlabs",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description: "Generate a music track from a text description, optionally instrumental.",
+    parameters: [
+      durationParameter({ seconds: [30, 60, 90, 120, 180, 240, 300], defaultValue: 60 }),
+      { id: "is_instrumental", label: "Instrumental only", type: "boolean", defaultValue: false }
+    ],
+    defaultParams: { duration: 60, is_instrumental: false },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] }
+  },
+  {
+    id: "music-cover",
+    name: "Music Cover",
+    provider: "MiniMax",
+    availableProviders: ["minimax"],
+    defaultProvider: "minimax",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description: "Re-perform a supplied track, optionally with new lyrics.",
+    parameters: [
+      { id: "lyrics", label: "Lyrics", type: "text", defaultValue: "" }
+    ],
+    defaultParams: { lyrics: "" },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: { type: "grouped-references" },
+      inputMode: { audios: { max: 1 } },
+      promptModalities: ["text", "audio"]
+    }
   }
 ];
 var SEEDANCE_2_FAL_PARAMETER_OVERRIDES = [
@@ -7531,16 +8571,74 @@ var SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES = [
     label: "Duration",
     type: "select",
     required: false,
-    options: Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 })),
-    defaultValue: 5
+    options: [
+      { label: "Auto", value: -1 },
+      ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+    ],
+    defaultValue: -1
   },
   {
     id: "resolution",
     label: "Resolution",
     type: "select",
     required: false,
-    options: ["480p", "720p", "1080p"].map((value) => ({ label: value, value })),
+    options: ["480p", "720p", "1080p", "4k"].map((value) => ({ label: value, value })),
     defaultValue: "720p"
+  }
+];
+var SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER = {
+  id: "aspect_ratio",
+  label: "Aspect Ratio",
+  type: "select",
+  required: false,
+  options: [
+    ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({ label: value, value })),
+    { label: "Adaptive", value: "adaptive" }
+  ],
+  defaultValue: "adaptive"
+};
+var SEEDANCE_VOLCENGINE_EDIT_PARAMETER = {
+  id: "edit_mode",
+  label: "Edit referenced video",
+  type: "boolean",
+  required: false,
+  description: "Edit the attached video instead of generating a new clip from references.",
+  defaultValue: false
+};
+var SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES = [
+  {
+    id: "duration",
+    label: "Duration",
+    type: "select",
+    required: false,
+    options: [
+      { label: "Auto", value: -1 },
+      ...Array.from({ length: 27 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 }))
+    ],
+    defaultValue: -1
+  },
+  {
+    id: "resolution",
+    label: "Resolution",
+    type: "select",
+    required: false,
+    options: ["480p", "720p"].map((value) => ({ label: value, value })),
+    defaultValue: "720p"
+  },
+  {
+    id: "generate_audio",
+    label: "Native audio",
+    type: "boolean",
+    required: false,
+    defaultValue: true
+  },
+  {
+    id: "output_format",
+    label: "Output format",
+    type: "select",
+    required: false,
+    options: ["mp4", "mov"].map((value) => ({ label: value.toUpperCase(), value })),
+    defaultValue: "mp4"
   }
 ];
 var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
@@ -7566,15 +8664,11 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["flux-3-video-continue", "fal", "fal", "fal", "blackforestlabs/flux-3/extend-video", 20, { credentials: ["apiKey"] }],
   ["seedance-2-startend", "fal", "fal", "fal", "bytedance/seedance-2.0/image-to-video", 20, {
     credentials: ["apiKey"],
-    projectorExportId: "fal-seedance-2",
-    projectorPluginId: "clash-first-party-media",
     parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
     defaultParamOverrides: { duration: "auto" }
   }],
   ["seedance-2-ref", "fal", "fal", "fal", "bytedance/seedance-2.0/reference-to-video", 20, {
     credentials: ["apiKey"],
-    projectorExportId: "fal-seedance-2",
-    projectorPluginId: "clash-first-party-media",
     parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
     defaultParamOverrides: { duration: "auto" },
     referenceBinding: {
@@ -7623,21 +8717,6 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["recraft-v4", "pika", "pika", "pika", "recraft/recraft-4.1/text-to-image", 22, { credentials: ["apiKey"] }],
   ["lyria-3-pro", "pika", "pika", "pika", "google/lyria-3-pro/text-to-audio", 18, { credentials: ["apiKey"] }],
   ["minimax-speech-2.8-hd", "pika", "pika", "pika", "minimax/minimax-speech-2.8-hd/text-to-speech", 18, { credentials: ["apiKey"] }],
-  ["nano-banana-2", "kie", "kie", "kie", "nano-banana-2", 25, { credentials: ["apiKey"] }],
-  ["gpt-image-2", "kie", "kie", "kie", "gpt-image-2-text-to-image", 25, { credentials: ["apiKey"] }],
-  ["flux-schnell", "kie", "kie", "kie", "flux-2/flex-text-to-image", 25, { credentials: ["apiKey"] }],
-  ["flux-dev", "kie", "kie", "kie", "flux-2/flex-text-to-image", 25, { credentials: ["apiKey"] }],
-  ["flux-2-pro", "kie", "kie", "kie", "flux-2/pro-text-to-image", 25, { credentials: ["apiKey"] }],
-  ["seedance-2-startend", "kie", "kie", "kie", "bytedance/seedance-2", 25, { credentials: ["apiKey"] }],
-  ["seedance-2-ref", "kie", "kie", "kie", "bytedance/seedance-2", 25, {
-    credentials: ["apiKey"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "[Image{n}]", video: "[Video{n}]", audio: "[Audio{n}]" }
-    }
-  }],
-  ["kling-3", "kie", "kie", "kie", "kling-3.0/video", 25, { credentials: ["apiKey"] }],
   ["nano-banana-2", "replicate", "replicate", "replicate", "google/nano-banana-2", 25, { credentials: ["apiKey"] }],
   ["gpt-image-2", "replicate", "replicate", "replicate", "openai/gpt-image-2", 25, { credentials: ["apiKey"] }],
   ["flux-schnell", "replicate", "replicate", "replicate", "black-forest-labs/flux-schnell", 25, { credentials: ["apiKey"] }],
@@ -7650,85 +8729,142 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
       tokens: { image: "[Image{n}]", video: "[Video{n}]", audio: "[Audio{n}]" }
     }
   }],
-  ["nano-banana-2", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-image", 12, { region: "global", credentials: ["apiKey"] }],
+  // `anyOf`, because Google accepts either credential and an account holds one or the other. A plain
+  // `credentials` list means all of them, and duplicating the route per credential makes one model
+  // match two conformance targets -- the ambiguity check is right to refuse that.
+  //
+  // The eleven `google-agent-platform` routes this replaces expressed the same thing by inventing a
+  // second upstream, and carried no executor: a request that matched one found nothing to run, our
+  // own gate demanded a service account, found none, and hilo-hub answered instead. The asset looked
+  // exactly like a successful Google generation.
+  ["nano-banana-2", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-image", 12, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
   ["flux-3-video", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
   ["flux-3-video-keyframes", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
   ["flux-3-video-continue", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
-  ["nano-banana-pro", "official", "google-ai-studio", "google-ai-studio", "gemini-3-pro-image", 12, { region: "global", credentials: ["apiKey"] }],
-  ["gemini-3.1-flash-tts", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-tts-preview", 10, { region: "global", credentials: ["apiKey"] }],
-  ["gemini-2.5-pro-tts", "official", "google-ai-studio", "google-ai-studio", "gemini-2.5-pro-tts", 10, { region: "global", credentials: ["apiKey"] }],
-  ["nano-banana-2", "official", "google-agent-platform", "google-agent-platform", "gemini-3.1-flash-image", 10, { region: "global", credentials: ["vertexCredentials"] }],
-  ["nano-banana-2-lite", "official", "google-agent-platform", "google-agent-platform", "gemini-3.1-flash-lite-image", 10, { region: "global", credentials: ["vertexCredentials"] }],
-  ["nano-banana-pro", "official", "google-agent-platform", "google-agent-platform", "gemini-3-pro-image", 10, { region: "global", credentials: ["vertexCredentials"] }],
-  ["veo-3.1", "official", "google-agent-platform", "google-agent-platform", "veo-3.1-generate-001", 10, { region: "global", credentials: ["vertexCredentials"] }],
-  ["veo-3.1-startend", "official", "google-agent-platform", "google-agent-platform", "veo-3.1-generate-001", 10, { region: "global", credentials: ["vertexCredentials"] }],
-  ["veo-3.1-fast", "official", "google-agent-platform", "google-agent-platform", "veo-3.1-fast-generate-001", 10, { region: "global", credentials: ["vertexCredentials"] }],
-  ["veo-3.1-fast-startend", "official", "google-agent-platform", "google-agent-platform", "veo-3.1-fast-generate-001", 10, { region: "global", credentials: ["vertexCredentials"] }],
+  ["nano-banana-pro", "official", "google-ai-studio", "google-ai-studio", "gemini-3-pro-image", 12, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ["gemini-3.1-flash-tts", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-tts-preview", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ["gemini-2.5-pro-tts", "official", "google-ai-studio", "google-ai-studio", "gemini-2.5-pro-tts", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ["nano-banana-2-lite", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-lite-image", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ["veo-3.1", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ["veo-3.1-startend", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ["veo-3.1-fast", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-fast-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ["veo-3.1-fast-startend", "official", "google-ai-studio", "google-ai-studio", "veo-3.1-fast-generate-001", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  // Two surfaces serve this model and they take different credentials, both measured:
+  //   aiplatform  /v1beta1/projects/{p}/locations/global/interactions -> 401, wants a Bearer token
+  //   generativelanguage /v1beta/interactions                         -> 403, routed, wants the
+  //                                                                      project's Gemini API on
+  // A service account is the unattended way to hold a token; the Developer API takes a key directly.
+  // generateContent refuses the model on either host: 400 "only supported in the Interactions API".
   ["gemini-omni-flash", "official", "google-ai-studio", "google-ai-studio-interactions", "gemini-omni-flash-preview", 10, {
     region: "global",
+    executorPluginId: "clash.google",
+    executorExportId: "google-execute",
     credentialRequirements: {
-      anyOf: [["apiKey"], ["gatewayToken", "baseUrl"]],
+      anyOf: [["serviceAccountKey"], ["apiKey"], ["baseUrl"]],
       exclusive: true
     }
   }],
-  ["gemini-3.5-flash", "official", "google-agent-platform", "google-agent-platform", "gemini-3.5-flash", 10, { region: "global", credentials: ["vertexCredentials"] }],
-  ["gemini-3.1-pro", "official", "google-agent-platform", "google-agent-platform", "gemini-3.1-pro-preview", 10, { region: "global", credentials: ["vertexCredentials"] }],
-  ["gemini-3-flash", "official", "google-agent-platform", "google-agent-platform", "gemini-3-flash-preview", 10, { region: "global", credentials: ["vertexCredentials"] }],
-  ["gemini-3.1-flash-lite", "official", "google-agent-platform", "google-agent-platform", "gemini-3.1-flash-lite", 10, { region: "global", credentials: ["vertexCredentials"] }],
+  ["gemini-3.5-flash", "official", "google-ai-studio", "google-ai-studio", "gemini-3.5-flash", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ["gemini-3.1-pro", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-pro-preview", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  ["gemini-3-flash", "official", "google-ai-studio", "google-ai-studio", "gemini-3-flash-preview", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
+  // The eleven `google-agent-platform` routes that followed are gone. Google is one Provider:
+  // the same key, the same SDK, and a surface the account picks with its `service` field. They
+  // also carried no executor binding, so the split was not merely redundant -- a request that
+  // matched one found no executor, our own gate demanded a service account, and hilo-hub answered
+  // instead. The asset looked exactly like a successful Google generation.
+  ["gemini-3.1-flash-lite", "official", "google-ai-studio", "google-ai-studio", "gemini-3.1-flash-lite", 10, { executorPluginId: "clash.google", executorExportId: "google-execute", region: "global", credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] } }],
   ["gpt-image-2", "official", "openai", "openai-images", "gpt-image-2", 10, { region: "global", credentials: ["apiKey"] }],
   ["gpt-5.4", "official", "openai", "openai-compatible", "gpt-5.4", 10, { region: "global", credentials: ["apiKey"] }],
   ["openai-compatible-text", "official", "openai", "openai-compatible", "gpt-5.4", 15, { region: "global", credentials: ["apiKey"] }],
   ["claude-sonnet-4", "official", "anthropic", "anthropic-compatible", "claude-sonnet-4-20250514", 10, { region: "global", credentials: ["apiKey"] }],
   ["anthropic-compatible-text", "official", "anthropic", "anthropic-compatible", "claude-sonnet-4-20250514", 15, { region: "global", credentials: ["apiKey"] }],
   ["kling-3", "kling", "kling", "kling", "kling-v3", 8, { credentials: ["accessKey", "secretKey"] }],
-  ["seedance-2-startend", "jimeng", "jimeng", "dreamina-cli", "seedance2.0fast", 8, { oauth: ["dreamina"] }],
-  ["seedance-2-ref", "jimeng", "jimeng", "dreamina-cli", "seedance2.0fast", 8, {
-    oauth: ["dreamina"],
-    referenceBinding: { type: "grouped-references" }
-  }],
-  ["seedance-2-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-pro", 9, {
+  ["seedance-2-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-260128", 9, {
     credentials: ["apiKey"],
     parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: 5, resolution: "720p" }
+    defaultParamOverrides: { duration: -1, resolution: "720p" }
   }],
-  ["seedance-2-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-pro", 9, {
+  ["seedance-2-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-260128", 9, {
     credentials: ["apiKey"],
-    parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
-    defaultParamOverrides: { duration: 5, resolution: "720p" },
+    parameterOverrides: [
+      ...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
+      SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER,
+      SEEDANCE_VOLCENGINE_EDIT_PARAMETER
+    ],
+    defaultParamOverrides: {
+      duration: -1,
+      aspect_ratio: "adaptive",
+      resolution: "720p",
+      edit_mode: false
+    },
     referenceBinding: {
       type: "positional-tokens",
       modalityScopedIndexes: true,
-      tokens: { image: "[Image {n}]", video: "[Video {n}]", audio: "[Audio {n}]" }
+      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
     }
   }],
-  ["seedance-2.5-ref", "jimeng", "jimeng", "dreamina-cli", "seedance2.5", 8, {
-    oauth: ["dreamina"],
-    referenceBinding: { type: "grouped-references" }
-  }],
-  ["seedance-2.5-startend", "jimeng", "jimeng", "dreamina-cli", "seedance2.5", 8, { oauth: ["dreamina"] }],
-  ["seedance-2.5-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5", 9, {
+  ["seedance-2-extend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-260128", 9, {
     credentials: ["apiKey"],
     referenceBinding: {
       type: "positional-tokens",
       modalityScopedIndexes: true,
-      tokens: { image: "[Image {n}]", video: "[Video {n}]", audio: "[Audio {n}]" }
+      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
     }
   }],
-  ["seedance-2.5-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5", 9, { credentials: ["apiKey"] }],
-  ["minimax-tts", "minimax", "minimax", "minimax", "speech-02-hd", 8, { credentials: ["apiKey"] }],
-  ["minimax-music-3", "minimax", "minimax", "minimax", "music-3.0", 8, { credentials: ["apiKey"] }],
-  ["minimax-h3", "minimax", "minimax", "minimax", "MiniMax-H3", 8, { credentials: ["apiKey"] }],
-  ["minimax-h3-startend", "minimax", "minimax", "minimax", "MiniMax-H3", 8, { credentials: ["apiKey"] }],
+  ["seedance-2.5-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5-260628", 9, {
+    credentials: ["apiKey"],
+    parameterOverrides: [
+      ...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
+      SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER,
+      SEEDANCE_VOLCENGINE_EDIT_PARAMETER
+    ],
+    defaultParamOverrides: {
+      duration: -1,
+      aspect_ratio: "adaptive",
+      resolution: "720p",
+      generate_audio: true,
+      output_format: "mp4",
+      edit_mode: false
+    },
+    referenceBinding: {
+      type: "positional-tokens",
+      modalityScopedIndexes: true,
+      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+    }
+  }],
+  ["seedance-2.5-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5-260628", 9, {
+    credentials: ["apiKey"],
+    parameterOverrides: SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
+    defaultParamOverrides: {
+      duration: -1,
+      resolution: "720p",
+      generate_audio: true,
+      output_format: "mp4"
+    }
+  }],
+  ["seedance-2.5-extend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-5-260628", 9, {
+    credentials: ["apiKey"],
+    referenceBinding: {
+      type: "positional-tokens",
+      modalityScopedIndexes: true,
+      tokens: { image: "@\u56FE\u50CF{n}", video: "@\u89C6\u9891{n}", audio: "@\u97F3\u9891{n}" }
+    }
+  }],
+  ["minimax-m3", "minimax", "minimax", "minimax", "MiniMax-M3", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
+  ["minimax-tts", "minimax", "minimax", "minimax", "speech-02-hd", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
+  ["minimax-music-3", "minimax", "minimax", "minimax", "music-3.0", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
+  ["minimax-h3", "minimax", "minimax", "minimax", "MiniMax-H3", 8, {
+    credentials: ["apiKey"],
+    executorPluginId: "clash.minimax",
+    executorExportId: "minimax-execute"
+  }],
+  ["minimax-h3-startend", "minimax", "minimax", "minimax", "MiniMax-H3", 8, { credentials: ["apiKey"], executorPluginId: "clash.minimax", executorExportId: "minimax-execute" }],
   ["minimax-music-3", "fal", "fal", "fal", "fal-ai/minimax-music/v3", 9, {
     credentials: ["apiKey"],
-    projectorExportId: "fal-minimax-music-3",
-    projectorPluginId: "clash-first-party-media",
     excludedParameterIds: ["aigc_watermark"]
   }],
   ["minimax-h3", "fal", "fal", "fal", "minimax/h3/reference-to-video", 9, {
     credentials: ["apiKey"],
-    projectorExportId: "fal-h3",
-    projectorPluginId: "clash-first-party-media",
     referenceBinding: {
       type: "positional-tokens",
       modalityScopedIndexes: true,
@@ -7739,8 +8875,6 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   }],
   ["minimax-h3-startend", "fal", "fal", "fal", "minimax/h3/image-to-video", 9, {
     credentials: ["apiKey"],
-    projectorExportId: "fal-h3",
-    projectorPluginId: "clash-first-party-media",
     parameterOverrides: MINIMAX_H3_FAL_PARAMETER_OVERRIDES,
     defaultParamOverrides: { duration: 5 }
   }],
@@ -7766,6 +8900,19 @@ function implementationFromRow(row) {
     } : {},
     ...((_b = options == null ? void 0 : options.oauth) == null ? void 0 : _b.length) ? { requiredOAuth: [...options.oauth] } : {},
     ...(options == null ? void 0 : options.referenceBinding) ? { referenceBinding: options.referenceBinding } : {},
+    ...(options == null ? void 0 : options.inputAdaptation) ? {
+      inputAdaptation: {
+        ...options.inputAdaptation.audio ? {
+          audio: {
+            mimeAliases: { ...options.inputAdaptation.audio.mimeAliases }
+          }
+        } : {}
+      }
+    } : {},
+    // Which plugin executor owns this route's submit/poll lifecycle. Without this the executors are
+    // built, tested and unreachable, and the host answers from its own path instead.
+    ...(options == null ? void 0 : options.executorExportId) ? { executorExportId: options.executorExportId } : {},
+    ...(options == null ? void 0 : options.executorPluginId) ? { executorPluginId: options.executorPluginId } : {},
     ...((_c = options == null ? void 0 : options.parameterOverrides) == null ? void 0 : _c.length) ? { parameterOverrides: options.parameterOverrides } : {},
     ...(options == null ? void 0 : options.defaultParamOverrides) ? { defaultParamOverrides: options.defaultParamOverrides } : {},
     ...((_d = options == null ? void 0 : options.excludedParameterIds) == null ? void 0 : _d.length) ? { excludedParameterIds: [...options.excludedParameterIds] } : {},
@@ -7864,8 +9011,31 @@ var ExecutablePluginRuntimeSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("local"),
     transport: z.literal("stdio"),
+    /**
+     * Which interpreter the host launches.
+     *
+     * A closed enum rather than a command line: the host owns the launch protocol,
+     * stdio framing, and process lifecycle for each supported runtime. A plugin that
+     * could name an arbitrary command would no longer have a predictable adapter.
+     *
+     * Optional only so the two manifests written before this field existed keep
+     * loading; `resolvePluginLanguage` falls back to the entrypoint extension.
+     * New drafts always declare it.
+     */
+    language: z.enum(["node", "python"]).optional(),
     entrypoint: PluginRelativePathSchema,
-    args: z.array(z.string()).default([])
+    args: z.array(z.string()).default([]),
+    /**
+     * Declares that the entrypoint is derived from source.
+     *
+     * Present means the host compiles `source` into `entrypoint` before validating,
+     * contract-testing, or activating, so a stale bundle cannot be packaged. Absent
+     * means the entrypoint is authored directly and the host never overwrites it --
+     * which is the normal case for Python, and for a hand-written `.mjs`.
+     */
+    build: z.object({
+      source: PluginRelativePathSchema
+    }).strict().optional()
   }),
   z.object({
     kind: z.literal("hosted"),
@@ -7873,21 +9043,27 @@ var ExecutablePluginRuntimeSchema = z.discriminatedUnion("kind", [
     endpoint: z.string().url()
   })
 ]);
+function resolvePluginLanguage(runtime) {
+  if (runtime.kind !== "local") return void 0;
+  if (runtime.language) return runtime.language;
+  const entrypoint = runtime.entrypoint ?? "";
+  return entrypoint.toLowerCase().endsWith(".py") ? "python" : "node";
+}
 var ExecutablePluginCardExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.enum(["model-card", "action-card"]),
   path: PluginRelativePathSchema
-});
+}).strict();
 var ExecutablePluginProviderExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.literal("provider"),
   path: PluginRelativePathSchema
-});
+}).strict();
 var ExecutablePluginModelBindingExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.literal("model-provider-binding"),
   path: PluginRelativePathSchema
-});
+}).strict();
 var ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("form")
@@ -8015,49 +9191,36 @@ var ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
     spec: ExecutableActionCardSchema
   }).strict()
 ]);
-var ExecutablePluginProviderAuthSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("api-key"),
-    credentialId: z.string().trim().min(1).default("apiKey"),
-    label: z.string().trim().min(1).optional()
-  }).strict(),
-  z.object({
-    type: z.literal("oauth"),
-    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    flow: z.literal("browser"),
-    authorizationUrl: z.string().url(),
-    callback: z.object({
-      type: z.literal("custom-scheme"),
-      scheme: z.string().trim().regex(/^[a-z][a-z0-9+.-]*$/)
-    }).strict(),
-    accessTokenField: z.string().trim().min(1).default("accessToken")
-  }).strict(),
-  z.object({
-    type: z.literal("local-token-import"),
-    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    label: z.string().trim().min(1).optional(),
-    source: z.object({
-      format: z.literal("electron-store-aes-256-gcm-v2"),
-      appDataSubdirectory: PluginRelativePathSchema,
-      configFile: PluginRelativePathSchema,
-      keyFile: PluginRelativePathSchema,
-      tokenPath: z.array(
-        z.string().trim().regex(/^[A-Za-z0-9_-]+$/).refine(
-          (segment) => !["__proto__", "constructor", "prototype"].includes(segment),
-          "Token path contains a reserved property."
-        )
-      ).min(1)
-    }).strict()
-  }).strict()
-]);
 var ExecutablePluginProviderDefinitionSchema = z.object({
+  /**
+   * What this provider needs to authenticate, and how to draw it.
+   *
+   * Optional because a provider may need nothing -- a local model has no credential. Present, it is
+   * the whole of what the host knows: it renders the form, stores the answers opaquely, wakes the
+   * plugin on the declared schedule, and never learns what any of the values mean.
+   */
+  auth: PluginAuthDeclarationSchema.optional(),
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   name: z.string().trim().min(1),
   description: z.string().trim().min(1).optional(),
   upstreamId: z.string().trim().regex(PLUGIN_ID_PATTERN),
   apiShape: z.string().trim().regex(PLUGIN_ID_PATTERN),
   executorExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  auth: z.array(ExecutablePluginProviderAuthSchema).default([])
+  /**
+   * Route values every binding of this provider inherits.
+   *
+   * A binding carries two facts: which catalogue model it routes, and the name that
+   * model has upstream. The rest of the route -- provider id, upstream, api shape,
+   * executor, credentials, priority -- belongs to the provider. Repeating it per
+   * binding produced no information and one real hazard: a single mistyped copy
+   * yields a route pointing at the wrong upstream while every sibling looks correct.
+   */
+  bindingDefaults: z.object({
+    priority: z.number().nonnegative().optional(),
+    weight: z.number().nonnegative().optional(),
+    region: z.string().trim().min(1).optional(),
+    accountId: z.string().trim().min(1).optional()
+  }).strict().optional()
 }).strict();
 var ExecutablePluginProviderDocumentSchema = z.object({
   apiVersion: z.literal("clash.provider/v1"),
@@ -8071,52 +9234,80 @@ var ExecutablePluginModelBindingSpecSchema = z.intersection(
   }),
   ModelProviderImplementationSchema
 );
+var ExecutablePluginModelBindingInputSchema = z.object({
+  id: z.string().trim().regex(PLUGIN_ID_PATTERN).optional(),
+  modelId: z.string().trim().min(1, "A binding must name the model it routes (modelId)."),
+  upstreamModel: z.string().trim().min(1, "A binding must name its upstreamModel."),
+  providerId: z.string().trim().min(1).optional(),
+  upstreamId: z.string().trim().min(1).optional(),
+  apiShape: z.string().trim().min(1).optional(),
+  executorExportId: z.string().trim().min(1).optional(),
+  requiredOAuth: z.array(z.string()).optional(),
+  priority: z.number().optional(),
+  weight: z.number().optional(),
+  region: z.string().trim().min(1).optional(),
+  accountId: z.string().trim().min(1).optional()
+}).passthrough();
+function resolveModelBindingFromProvider(binding, provider) {
+  const parsed = ExecutablePluginModelBindingInputSchema.parse(binding);
+  const defaults = provider.bindingDefaults ?? {};
+  const resolved = {
+    ...parsed,
+    id: parsed.id ?? `${provider.id}-${parsed.modelId}`,
+    providerId: parsed.providerId ?? provider.id,
+    upstreamId: parsed.upstreamId ?? provider.upstreamId,
+    apiShape: parsed.apiShape ?? provider.apiShape,
+    executorExportId: parsed.executorExportId ?? provider.executorExportId
+  };
+  if (parsed.requiredOAuth) resolved.requiredOAuth = parsed.requiredOAuth;
+  else delete resolved.requiredOAuth;
+  for (const key of ["priority", "weight", "region", "accountId"]) {
+    const value = parsed[key] ?? defaults[key];
+    if (value === void 0) delete resolved[key];
+    else resolved[key] = value;
+  }
+  return resolved;
+}
 var ExecutablePluginModelBindingDocumentSchema = z.object({
   apiVersion: z.literal("clash.binding/v1"),
   kind: z.literal("model-provider-binding"),
   spec: ExecutablePluginModelBindingSpecSchema
 }).strict();
+var PLUGIN_ENTRY_OPERATIONS = ["submit", "poll", "callback"];
+var PluginEntryOperationSchema = z.enum(PLUGIN_ENTRY_OPERATIONS);
 var ExecutablePluginFunctionExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.enum(["action", "provider-projector", "provider-executor"]),
-  handler: z.string().trim().min(1)
-});
-var PluginNetworkPermissionsSchema = z.object({
-  domains: z.array(z.string().trim().min(1)).default([])
-}).default({ domains: [] });
-var PluginFilesystemPermissionsSchema = z.object({
-  read: z.array(z.string().trim().min(1)).default([]),
-  write: z.array(z.string().trim().min(1)).default([])
-}).default({ read: [], write: [] });
-var ExecutablePluginPermissionsSchema = z.object({
-  network: PluginNetworkPermissionsSchema,
-  secrets: z.array(z.string().trim().min(1)).default([]),
-  assets: z.array(z.enum(["read", "write"])).default([]),
-  hostTools: z.array(z.enum(["codex.imagegen"])).default([]),
-  filesystem: PluginFilesystemPermissionsSchema,
-  externalWrites: z.boolean().default(false)
-}).default({
-  network: { domains: [] },
-  secrets: [],
-  assets: [],
-  hostTools: [],
-  filesystem: { read: [], write: [] },
-  externalWrites: false
+  /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
+  operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"])
+}).strict().superRefine((entry, ctx) => {
+  if (!entry.operations.includes("submit")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["operations"],
+      message: "An entry must handle submit; nothing can be polled that was never started."
+    });
+  }
+  if (entry.operations.includes("callback") && !entry.operations.includes("poll")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["operations"],
+      message: "An entry handling callbacks must also handle poll. A callback that never arrives is an ordinary event -- providers drop them and networks partition -- and without a poll to fall back on the work is lost."
+    });
+  }
 });
 var ExecutablePluginCardRegistrationSchema = z.object({
-  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  pluginId: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
   runtime: ExecutablePluginRuntimeSchema,
-  permissions: ExecutablePluginPermissionsSchema,
   document: ExecutablePluginCardDocumentSchema
 }).strict();
 var ExecutablePluginArtifactRegistrationBaseSchema = z.object({
-  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  pluginId: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
-  runtime: ExecutablePluginRuntimeSchema,
-  permissions: ExecutablePluginPermissionsSchema
+  runtime: ExecutablePluginRuntimeSchema
 });
 var ExecutablePluginProviderRegistrationSchema = ExecutablePluginArtifactRegistrationBaseSchema.extend({
   document: ExecutablePluginProviderDocumentSchema
@@ -8126,9 +9317,9 @@ var ExecutablePluginModelBindingRegistrationSchema = ExecutablePluginArtifactReg
 }).strict();
 function composeExecutablePluginModelCards(baseModelsInput, registrationsInput, modelBindingRegistrationsInput = []) {
   var _a;
-  const baseModels = z2.array(ModelCardSchema).parse(baseModelsInput);
-  const registrations = z2.array(ExecutablePluginCardRegistrationSchema).parse(registrationsInput);
-  const modelBindingRegistrations = z2.array(ExecutablePluginModelBindingRegistrationSchema).parse(modelBindingRegistrationsInput);
+  const baseModels = z6.array(ModelCardSchema).parse(baseModelsInput);
+  const registrations = z6.array(ExecutablePluginCardRegistrationSchema).parse(registrationsInput);
+  const modelBindingRegistrations = z6.array(ExecutablePluginModelBindingRegistrationSchema).parse(modelBindingRegistrationsInput);
   const pluginModels = /* @__PURE__ */ new Map();
   for (const registration of registrations) {
     if (registration.document.kind !== "model-card") continue;
@@ -8209,7 +9400,7 @@ function composeExecutablePluginModelCards(baseModelsInput, registrationsInput, 
   });
 }
 var ExecutablePluginBindingSchema = z.object({
-  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  pluginId: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN)
@@ -8224,12 +9415,75 @@ var ExecutablePluginJsonValueSchema = z.lazy(
     z.record(ExecutablePluginJsonValueSchema)
   ])
 );
-var ExecutablePluginAssetHandleSchema = z.object({
+var ExecutablePluginAssetHandleObjectSchema = z.object({
   assetId: z.string().trim().min(1),
   uri: z.string().regex(/^clash-asset:\/\/.+/),
   kind: AssetKindSchema,
-  mediaType: z.string().trim().min(1).optional()
+  mediaType: z.string().trim().min(1).optional(),
+  /**
+   * Where the bytes are, when the host has not stored them yet.
+   *
+   * A generation plugin ends up with a link its upstream published, and returning it through the
+   * asset channel keeps the media type a declared field instead of a hand-rolled one. Absent for a
+   * handle that names an asset the host already holds.
+   */
+  url: z.string().url().optional(),
+  /** Who can fetch `url`. The host cannot retrieve an address only the plugin can see. */
+  reach: z.enum(["public", "private"]).optional()
 }).strict();
+var ExecutablePluginAssetHandleSchema = ExecutablePluginAssetHandleObjectSchema.superRefine((handle, ctx) => {
+  if (handle.url && !handle.reach) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "An asset handle with a url must state its reach."
+    });
+  }
+  if (!handle.url && handle.reach) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "An asset handle's reach applies to a url."
+    });
+  }
+});
+var ExecutablePluginAssetReadResultSchema = z.object({
+  handle: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  mediaType: z.string().trim().min(1).optional(),
+  byteLength: z.number().int().nonnegative(),
+  /** Fetchable by the plugin. A `clash-asset://` handle is the request, not an answer. */
+  url: z.string().url().refine((value) => !value.startsWith("clash-asset://"), {
+    message: "asset.read url must be fetchable, not another asset handle."
+  }).optional(),
+  /**
+   * Who can fetch `url`.
+   *
+   * `public` means the provider can retrieve it directly, so it may be forwarded upstream.
+   * `private` means only this plugin process can -- a local asset served on loopback, say --
+   * and forwarding it would hand the provider an address that answers for somebody else.
+   * Both are `https?://` strings, so nothing downstream can tell them apart by inspection.
+   */
+  reach: z.enum(["public", "private"]).optional(),
+  dataBase64: z.string().optional()
+}).strict().superRefine((result, ctx) => {
+  if (Boolean(result.url) === Boolean(result.dataBase64)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "asset.read returns exactly one of url or dataBase64."
+    });
+  }
+  if (result.url && !result.reach) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "asset.read url requires a reach of public or private."
+    });
+  }
+  if (result.dataBase64 && result.reach) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "asset.read reach applies to a url; bytes have none."
+    });
+  }
+});
 var ExecutablePluginReferenceBaseSchema = z.object({
   slot: z.string().trim().min(1),
   index: z.number().int().nonnegative()
@@ -8261,42 +9515,98 @@ var ExecutablePluginInvocationSchema = z.object({
   actor: z.object({
     kind: z.enum(["user", "agent", "system"]),
     id: z.string().trim().min(1).optional()
-  }).strict()
-}).strict();
-var HostedExecutablePluginCapabilitySchema = z.object({
-  protocol: z.literal("clash.plugin.hosted-capability/v1"),
-  capabilityId: z.string().trim().min(1),
-  issuedAt: z.number().int().nonnegative(),
-  expiresAt: z.number().int().positive(),
-  endpoint: z.string().url(),
-  ownerUserId: z.string().trim().min(1),
-  invocation: z.object({
-    invocationId: z.string().trim().min(1),
-    taskId: z.string().trim().min(1),
-    projectId: z.string().trim().min(1),
-    nodeId: z.string().trim().min(1).optional(),
-    target: ExecutablePluginBindingSchema.extend({
-      kind: z.enum(["action", "provider-projector", "provider-executor"])
-    }),
-    actor: z.object({
-      kind: z.enum(["user", "agent", "system"]),
-      id: z.string().trim().min(1).optional()
-    }).strict()
   }).strict(),
-  permissions: ExecutablePluginPermissionsSchema
-}).strict().superRefine((capability, ctx) => {
-  if (capability.expiresAt <= capability.issuedAt) {
+  /**
+   * Which translation the host wants: start the work, or report on work already started.
+   *
+   * A plugin at this level only converts shapes. `submit` turns Clash's request into the provider's
+   * request and reads back an id; `poll` turns that id into the provider's status request and reads
+   * back a verdict. Neither waits. The loop, the interval, the retry budget, and the durability are
+   * the host's, because none of them differ by provider -- and because only the host survives its
+   * own restart.
+   *
+   * Stated as a field rather than inferred from an absent one: a plugin that mistakes a status
+   * query for a submission bills the user twice.
+   */
+  operation: z.enum(["submit", "poll", "callback"]).default("submit"),
+  /**
+   * Where the provider should report completion, issued by the host at submit time.
+   *
+   * The plugin cannot supply this. It has no address: a `local` plugin listens on nothing, and a
+   * short-lived translator has nowhere to keep a listener even if it did. The same reasoning already
+   * governs upload targets -- the host issues the address, so reachability holds by construction
+   * rather than by a plugin's claim about itself.
+   *
+   * Absent when the host cannot receive callbacks, which is the local single-user case today. A
+   * plugin that sees no callback URL submits for polling instead; both paths end in `accepted`.
+   */
+  callbackUrl: z.string().url().optional(),
+  /** The opaque state the plugin returned when it accepted the work. Required by `poll`. */
+  pollState: ExecutablePluginJsonValueSchema.optional(),
+  /**
+   * The provider's own callback body, verbatim, for the plugin to translate.
+   *
+   * The host receives this on the address it issued and cannot read it: the payload is in the
+   * provider's shape, which is exactly the thing this plugin exists to translate. So the host routes
+   * it back rather than parsing it, and the plugin answers with the same `completed` or `failed` it
+   * would have returned from a poll.
+   */
+  callbackPayload: ExecutablePluginJsonValueSchema.optional(),
+  /**
+   * The callback request's headers, so the plugin can decide whether to believe it.
+   *
+   * Providers sign callbacks, and they sign them in headers -- an HMAC over the raw body, a
+   * timestamp, a key id. Only the plugin knows which scheme this provider uses, so only the plugin
+   * can verify, and it cannot verify from a body alone. Withholding these would leave one defence
+   * standing: that the address is hard to guess. An address travels through the provider's logs,
+   * any proxy in between, and a referrer header, so it is a weak thing to rest on by itself.
+   *
+   * A plugin that cannot verify a callback returns `failed`, and the work stays pending until a poll
+   * settles it. Refusing to believe an unverified message is not a failure to make progress -- the
+   * poll path is still there, and it authenticates in the other direction.
+   */
+  callbackHeaders: z.record(z.string()).optional()
+}).strict().superRefine((invocation, ctx) => {
+  if (invocation.operation === "poll" && invocation.pollState === void 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["expiresAt"],
-      message: "Hosted plugin capability must expire after it is issued."
+      path: ["pollState"],
+      message: "A poll must carry the state the plugin returned when it accepted the work."
     });
   }
-  if (capability.expiresAt - capability.issuedAt > 60 * 60) {
+  if (invocation.operation === "submit" && invocation.pollState !== void 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["expiresAt"],
-      message: "Hosted plugin capability lifetime cannot exceed one hour."
+      path: ["pollState"],
+      message: "A submit starts new work and cannot carry poll state."
+    });
+  }
+  if (invocation.operation === "callback" && invocation.callbackPayload === void 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["callbackPayload"],
+      message: "A callback must carry the body the provider sent."
+    });
+  }
+  if (invocation.operation !== "callback" && invocation.callbackHeaders !== void 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["callbackHeaders"],
+      message: "callbackHeaders belongs to a callback."
+    });
+  }
+  if (invocation.operation !== "callback" && invocation.callbackPayload !== void 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["callbackPayload"],
+      message: "callbackPayload belongs to a callback."
+    });
+  }
+  if (invocation.operation !== "submit" && invocation.callbackUrl !== void 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["callbackUrl"],
+      message: "A callback address is issued when the work is submitted, not afterwards."
     });
   }
 });
@@ -8319,6 +9629,33 @@ var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
     status: z.literal("completed"),
     outputs: z.array(ExecutablePluginOutputSchema).default([])
   }).strict(),
+  /**
+   * The provider took the work and has not finished it.
+   *
+   * A blocking call keeps the upstream's task id in its own stack, so a host that stops mid-flight
+   * cannot find the work again -- the node stays pending forever and the generation is already
+   * billed. Naming the task hands the host something durable to resume from, and moves the retry
+   * loop out of every plugin that currently rewrites it.
+   *
+   * How the host learns the answer is deliberately unspecified here. Polling and a cloud callback
+   * differ only in what wakes the host; the plugin's shape is the same either way.
+   */
+  z.object({
+    protocol: z.literal("clash.plugin.result/v1"),
+    invocationId: z.string().trim().min(1),
+    status: z.literal("accepted"),
+    /**
+     * Whatever this plugin needs to ask about the work again, stored verbatim and handed back.
+     *
+     * Not an id, because plenty of providers have no id: one returns a status URL, another needs a
+     * region alongside a job name, a third hands back a cursor. Any of those fits here, and the host
+     * reads none of it -- it persists the value and returns it on the next poll. Naming a field
+     * `taskId` would have forced every provider without one to fake it.
+     */
+    pollState: ExecutablePluginJsonValueSchema,
+    /** How long to wait before asking again, when the provider says. */
+    retryAfterMs: z.number().int().positive().optional()
+  }).strict(),
   z.object({
     protocol: z.literal("clash.plugin.result/v1"),
     invocationId: z.string().trim().min(1),
@@ -8333,45 +9670,124 @@ var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
 ]);
 var ExecutablePluginBrokerOperationSchema = z.union([
   z.object({
-    kind: z.literal("credential.handle"),
-    secretId: z.string().trim().min(1)
-  }).strict(),
-  z.object({
     kind: z.literal("asset.read"),
     asset: ExecutablePluginAssetHandleSchema
   }).strict(),
+  /**
+   * Somewhere to put bytes that is not this message.
+   *
+   * `asset.write` with `dataBase64` carries a result inside the frame that announces it -- one
+   * 30-second video is 3,470,456 characters that way, held at once by the plugin, the pipe and the
+   * host. A slot separates them: the host names a place, the plugin streams to it, and the frame
+   * carries a handle.
+   *
+   * The size is required so the host can refuse before the bytes arrive rather than after.
+   */
+  /**
+   * Read one value this plugin stored for this account.
+   *
+   * There is no plugin id and no account id in the request, and adding either would make the
+   * binding forgeable. The host knows both from the spawn: it started this process for this
+   * account, and the answer is scoped to that pair before the key is looked at.
+   *
+   * The value is opaque. The host does not know what a vendor's auth looks like -- Google wants an
+   * api key on one surface and a bearer token on another, kling wants an access key and a secret --
+   * and enumerating those here would mean editing the host every time a vendor changes its mind.
+   */
+  z.object({
+    kind: z.literal("store.get"),
+    key: z.string().trim().min(1)
+  }).strict(),
+  /** Write one back. Renewal is plugin code: it refreshes a token and stores it where it found it. */
+  z.object({
+    kind: z.literal("store.put"),
+    key: z.string().trim().min(1),
+    value: z.string(),
+    secret: z.boolean().optional(),
+    expiresAt: z.string().datetime().optional()
+  }).strict(),
+  z.object({
+    kind: z.literal("asset.upload-slot"),
+    slot: z.string().trim().min(1),
+    assetKind: AssetKindSchema,
+    mediaType: z.string().trim().min(1).optional(),
+    /**
+     * How many bytes are coming, when the plugin holds them.
+     *
+     * Announced ahead of the payload so the host can refuse an oversized upload before receiving
+     * it rather than after.
+     */
+    byteLength: z.number().int().positive().optional(),
+    /**
+     * Where the bytes are, when the vendor answered with a link.
+     *
+     * A URL has no byte count until someone fetches it, and fetching it only to satisfy a schema
+     * pays for the transfer twice -- the host is the side that knows whether it wants a copy. This
+     * was required-`byteLength`-only, so the url form failed with "Cannot read properties of
+     * undefined (reading 'byteLength')" the first time a real vendor answered with a link, after
+     * the generation had completed and been paid for.
+     */
+    url: z.string().trim().url().refine(
+      (value) => value.startsWith("https://"),
+      "The host will fetch this address, so it must be https."
+    ).optional()
+  }).strict().refine(
+    (operation) => operation.byteLength !== void 0 || operation.url !== void 0,
+    // Neither is a request for storage with nothing to store, and opens a slot that can only ever
+    // be abandoned.
+    { message: "An upload slot needs either a byte count or a url." }
+  ),
   z.object({
     kind: z.literal("asset.write"),
     slot: z.string().trim().min(1),
     assetKind: AssetKindSchema,
     mediaType: z.string().trim().min(1).optional(),
-    sourceHandle: z.string().regex(/^clash-plugin-output:\/\/.+/).optional(),
-    dataBase64: z.string().max(128 * 1024 * 1024).regex(
+    /**
+     * Where the result already lives, for the host to fetch once.
+     *
+     * A generation plugin normally ends up with a link the upstream published, and passing that
+     * through means the bytes cross the wire exactly once and never touch the plugin. Without this
+     * field the only ways to return such a result were to download it and re-encode it inline, or
+     * to smuggle the link through a free-form `kind: "value"` output -- which is what
+     * `hilo-hub-media` does, and why its media type is hardcoded per model kind instead of read
+     * from the response.
+     */
+    url: z.string().url().optional(),
+    /** Who can fetch `url`. A host cannot retrieve an address only the plugin can see. */
+    reach: z.enum(["public", "private"]).optional(),
+    /** Set when the bytes were already streamed to a slot; the write only names them. */
+    assetId: z.string().trim().min(1).optional(),
+    dataBase64: z.string().regex(
       /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
       "Plugin asset data must be canonical base64."
     ).optional()
   }).strict().superRefine((operation, ctx) => {
-    if (Boolean(operation.sourceHandle) === Boolean(operation.dataBase64)) {
+    const sources = [operation.url, operation.dataBase64, operation.assetId].filter((source) => source !== void 0).length;
+    if (sources !== 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "asset.write requires exactly one of sourceHandle or dataBase64."
+        message: "asset.write requires exactly one of url, dataBase64 or assetId."
+      });
+    }
+    if (operation.url && !operation.reach) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "asset.write url requires a reach of public or private."
+      });
+    }
+    if (!operation.url && operation.reach) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "asset.write reach applies to a url."
       });
     }
   }),
-  z.object({
-    kind: z.literal("network.fetch"),
-    url: z.string().url(),
-    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
-    headers: z.record(z.string()).default({}),
-    body: ExecutablePluginJsonValueSchema.optional(),
-    credentialHandle: z.string().regex(/^clash-secret:\/\/.+/).optional()
-  }).strict(),
   z.object({
     kind: z.literal("codex.image.generate"),
     prompt: z.string().trim().min(1).max(2e4),
     aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
     slot: z.string().trim().min(1),
-    references: z.array(ExecutablePluginAssetHandleSchema.extend({
+    references: z.array(ExecutablePluginAssetHandleObjectSchema.extend({
       kind: z.literal("image")
     }).strict()).max(5).default([])
   }).strict()
@@ -8431,11 +9847,27 @@ var ExecutablePluginContractTestDocumentSchema = z.object({
     values: z.record(ExecutablePluginJsonValueSchema).default({}),
     references: z.array(ExecutablePluginReferenceSchema).default([])
   }).strict(),
+  /**
+   * Which half of an executor this case exercises.
+   *
+   * A poll is a different translation from a submit, with a different input and a different set of
+   * answers, so a suite that can only describe submits leaves the resuming path uncovered -- and
+   * that is the path that runs after a restart, when nobody is watching.
+   */
+  operation: z.enum(["submit", "poll", "callback"]).default("submit"),
+  /** The state a poll is asking about, as the plugin would have returned it. */
+  pollState: ExecutablePluginJsonValueSchema.optional(),
   brokerFixtures: z.array(ExecutablePluginContractBrokerFixtureSchema).default([]),
   expect: z.discriminatedUnion("status", [
     z.object({
       status: z.literal("completed"),
       outputs: z.array(ExecutablePluginOutputSchema).default([])
+    }).strict(),
+    // Pinning what a submit hands back is the only way to catch a plugin that silently changes how
+    // its own poll state is shaped, which would strand every generation already in flight.
+    z.object({
+      status: z.literal("accepted"),
+      pollState: ExecutablePluginJsonValueSchema
     }).strict(),
     z.object({
       status: z.literal("failed"),
@@ -8449,62 +9881,77 @@ var ExecutablePluginContractTestDocumentSchema = z.object({
   ]),
   timeoutMs: z.number().int().positive().max(12e4).default(1e4)
 }).strict();
+function uploadTargetForRuntime(kind, targets) {
+  if (targets.publicUploadUrl) return targets.publicUploadUrl;
+  if (kind === "local" && targets.localBaseUrl) {
+    return `${targets.localBaseUrl.replace(/\/+$/, "")}/plugin-uploads`;
+  }
+  return void 0;
+}
+function pluginRuntimeProfile(kind) {
+  return kind === "local" ? { assetReach: ["public", "private"] } : { assetReach: ["public"] };
+}
+function assetReachForRuntime(kind) {
+  return pluginRuntimeProfile(kind).assetReach;
+}
+var ExecutablePluginContributionsSchema = z.object({
+  cards: z.array(ExecutablePluginCardExportSchema).default([]),
+  providers: z.array(ExecutablePluginProviderExportSchema).default([]),
+  modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
+  functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
+  hostTools: z.array(z.enum(["codex.imagegen"])).default([])
+}).strict();
 var ExecutablePluginManifestSchema = z.object({
   apiVersion: z.literal("clash.plugin/v1"),
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  /** `publisher.name`, like clash.google. The version travels beside it, never inside it. */
+  id: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   name: z.string().trim().min(1),
   description: z.string().optional(),
   runtime: ExecutablePluginRuntimeSchema,
-  exports: z.object({
-    cards: z.array(ExecutablePluginCardExportSchema).default([]),
-    providers: z.array(ExecutablePluginProviderExportSchema).default([]),
-    modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
-    functions: z.array(ExecutablePluginFunctionExportSchema).default([])
-  }),
-  permissions: ExecutablePluginPermissionsSchema,
+  contributes: ExecutablePluginContributionsSchema,
   contractTests: z.array(PluginRelativePathSchema).default([]),
   author: z.string().trim().min(1).optional(),
   repository: z.string().trim().min(1).optional()
-}).superRefine((manifest, ctx) => {
+}).strict().superRefine((manifest, ctx) => {
   for (const [key, values] of [
-    ["cards", manifest.exports.cards],
-    ["providers", manifest.exports.providers],
-    ["modelBindings", manifest.exports.modelBindings],
-    ["functions", manifest.exports.functions]
+    ["cards", manifest.contributes.cards],
+    ["providers", manifest.contributes.providers],
+    ["modelBindings", manifest.contributes.modelBindings],
+    ["functions", manifest.contributes.functions]
   ]) {
     const ids = /* @__PURE__ */ new Set();
     for (const value of values) {
       if (ids.has(value.id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["exports", key],
-          message: `Plugin ${key} export ids must be unique.`
+          path: ["contributes", key],
+          message: `Plugin ${key} contribution ids must be unique.`
         });
       }
       ids.add(value.id);
     }
   }
   const cardPaths = /* @__PURE__ */ new Set();
-  for (const card of manifest.exports.cards) {
+  for (const card of manifest.contributes.cards) {
     if (cardPaths.has(card.path)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["exports", "cards"],
-        message: "Plugin Card export paths must be unique."
+        path: ["contributes", "cards"],
+        message: "Plugin Card contribution paths must be unique."
       });
     }
     cardPaths.add(card.path);
   }
   const artifactPaths = new Set(cardPaths);
   for (const artifact of [
-    ...manifest.exports.providers,
-    ...manifest.exports.modelBindings
+    ...manifest.contributes.providers,
+    ...manifest.contributes.modelBindings
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["exports"],
+        path: ["contributes"],
         message: "Plugin declarative artifact paths must be unique."
       });
     }
@@ -8522,64 +9969,61 @@ var ExecutablePluginManifestSchema = z.object({
     contractTestPaths.add(path);
   }
 });
-function executablePluginDomainAllowed(hostname, domains) {
-  const host = hostname.toLowerCase();
-  return domains.some((entry) => {
-    const domain = entry.toLowerCase();
-    return host === domain || host.endsWith(`.${domain}`);
-  });
-}
-function executablePluginBrokerPermissionError(manifestInput, requestInput) {
+function executablePluginDependencyError(manifestInput, requestInput) {
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
   const request = ExecutablePluginBrokerRequestSchema.parse(requestInput);
   const operation = request.operation;
-  if (operation.kind === "credential.handle") {
-    return manifest.permissions.secrets.includes(operation.secretId) ? null : `Secret ${operation.secretId} is not declared by plugin ${manifest.id}.`;
+  const capabilities = pluginCapabilities(manifest.contributes);
+  if (operation.kind === "asset.write" || operation.kind === "asset.upload-slot") {
+    return capabilities.assets ? null : `Plugin ${manifest.id} does not contribute anything that produces assets.`;
   }
   if (operation.kind === "asset.read") {
-    return manifest.permissions.assets.includes("read") ? null : `Asset read is not declared by plugin ${manifest.id}.`;
-  }
-  if (operation.kind === "asset.write") {
-    return manifest.permissions.assets.includes("write") ? null : `Asset write is not declared by plugin ${manifest.id}.`;
+    return capabilities.assets ? null : `Plugin ${manifest.id} does not contribute anything that reads assets.`;
   }
   if (operation.kind === "codex.image.generate") {
-    if (!manifest.permissions.hostTools.includes("codex.imagegen")) {
-      return `Codex ImageGen is not declared by plugin ${manifest.id}.`;
+    if (!capabilities.hostTools.includes("codex.imagegen")) {
+      return `Plugin ${manifest.id} does not contribute Codex ImageGen.`;
     }
-    if (!manifest.permissions.assets.includes("write")) {
-      return `Codex ImageGen requires asset write permission for plugin ${manifest.id}.`;
-    }
-    if (operation.references.length > 0 && !manifest.permissions.assets.includes("read")) {
-      return `Codex ImageGen references require asset read permission for plugin ${manifest.id}.`;
-    }
-    return null;
+    return capabilities.assets ? null : `Plugin ${manifest.id} does not contribute anything that produces assets.`;
   }
-  const hostname = new URL(operation.url).hostname;
-  if (!executablePluginDomainAllowed(hostname, manifest.permissions.network.domains)) {
-    return `Network domain ${hostname} is not declared by plugin ${manifest.id}.`;
+  if (operation.kind === "store.get" || operation.kind === "store.put") {
+    return capabilities.store ? null : `Plugin ${manifest.id} does not contribute anything that owns account state.`;
   }
-  if (operation.method !== "GET" && !manifest.permissions.externalWrites) {
-    return `External writes are not declared by plugin ${manifest.id}.`;
-  }
-  return null;
+  return `Plugin ${manifest.id} does not contribute the requested host dependency.`;
 }
 var ExecutablePluginActivationReceiptSchema = z.object({
   apiVersion: z.literal("clash.plugin.activation/v1"),
-  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  pluginId: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
   contentHash: z.string().regex(SHA256_PATTERN),
   activatedAt: z.string().datetime()
 }).strict();
+function inheritBindingRoute(input, providers, bindingExportId) {
+  if (typeof input !== "object" || input === null) return input;
+  const document = input;
+  if (typeof document.spec !== "object" || document.spec === null) return input;
+  const spec = document.spec;
+  const declared = typeof spec.providerId === "string" ? spec.providerId : void 0;
+  const definitions = Object.values(providers).map((provider) => provider.spec);
+  const owner = declared ? definitions.find((definition) => definition.id === declared) : definitions.length === 1 ? definitions[0] : void 0;
+  if (!owner) {
+    if (declared || definitions.length === 0) return input;
+    throw new Error(
+      `Model Provider binding ${bindingExportId} must name its providerId: this package exports ${definitions.length} providers.`
+    );
+  }
+  return { ...document, spec: resolveModelBindingFromProvider(spec, owner) };
+}
 function validateExecutablePluginPackage(manifestInput, cardDocuments, contractTestDocuments = {}, artifacts = {}) {
   var _a, _b;
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
-  const functions = new Map(manifest.exports.functions.map((entry) => [entry.id, entry]));
+  const functions = new Map(manifest.contributes.functions.map((entry) => [entry.id, entry]));
   const cards = {};
   const providers = {};
   const modelBindings = {};
   const contractTests = {};
-  for (const cardExport of manifest.exports.cards) {
+  for (const cardExport of manifest.contributes.cards) {
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
       throw new Error(`Missing declared Card document: ${cardExport.path}`);
     }
@@ -8611,7 +10055,7 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     cards[cardExport.path] = card;
   }
-  for (const providerExport of manifest.exports.providers) {
+  for (const providerExport of manifest.contributes.providers) {
     const input = (_a = artifacts.providers) == null ? void 0 : _a[providerExport.path];
     if (input === void 0) {
       throw new Error(`Missing declared Provider document: ${providerExport.path}`);
@@ -8630,12 +10074,13 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     }
     providers[providerExport.path] = provider;
   }
-  for (const bindingExport of manifest.exports.modelBindings) {
+  for (const bindingExport of manifest.contributes.modelBindings) {
     const input = (_b = artifacts.modelBindings) == null ? void 0 : _b[bindingExport.path];
     if (input === void 0) {
       throw new Error(`Missing declared model Provider binding: ${bindingExport.path}`);
     }
-    const binding = ExecutablePluginModelBindingDocumentSchema.parse(input);
+    const bindingInput = inheritBindingRoute(input, providers, bindingExport.id);
+    const binding = ExecutablePluginModelBindingDocumentSchema.parse(bindingInput);
     if (binding.spec.id !== bindingExport.id) {
       throw new Error(
         `Model Provider binding ${bindingExport.path} id ${binding.spec.id} does not match export id ${bindingExport.id}.`
@@ -8673,28 +10118,6 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     contractTests[path] = contractTest;
   }
   return { manifest, cards, providers, modelBindings, contractTests };
-}
-function addedValues(before, after) {
-  const existing = new Set(before);
-  return [...new Set(after)].filter((value) => !existing.has(value));
-}
-function diffExecutablePluginPermissions(beforeInput, afterInput) {
-  const before = ExecutablePluginPermissionsSchema.parse(beforeInput);
-  const after = ExecutablePluginPermissionsSchema.parse(afterInput);
-  const diff = {
-    networkDomains: addedValues(before.network.domains, after.network.domains),
-    secrets: addedValues(before.secrets, after.secrets),
-    assetCapabilities: addedValues(before.assets, after.assets),
-    hostTools: addedValues(before.hostTools, after.hostTools),
-    filesystem: {
-      read: addedValues(before.filesystem.read, after.filesystem.read),
-      write: addedValues(before.filesystem.write, after.filesystem.write)
-    },
-    externalWrites: !before.externalWrites && after.externalWrites,
-    requiresApproval: false
-  };
-  diff.requiresApproval = diff.networkDomains.length > 0 || diff.secrets.length > 0 || diff.assetCapabilities.length > 0 || diff.hostTools.length > 0 || diff.filesystem.read.length > 0 || diff.filesystem.write.length > 0 || diff.externalWrites;
-  return diff;
 }
 
 
@@ -10229,7 +11652,7 @@ const zodToJsonSchema = (schema, options) => {
 
 /* harmony default export */ const dist_esm = ((/* unused pure expression or super */ null && (esm_zodToJsonSchema)));
 
-;// ../shared-types/dist/chunk-PVL2FXUQ.js
+;// ../shared-types/dist/chunk-XAYWVA4T.js
 /* unused harmony import specifier */ var z5;
 
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
@@ -10805,13 +12228,39 @@ var FiniteNumberSchema = z.number().finite();
 var NonnegativeFrameSchema = z.number().int().nonnegative();
 var PositiveFrameSchema = z.number().int().positive();
 var CssColorSchema = z.string().min(1);
+var TIMELINE_ITEM_TRANSFORM_SEMANTICS = {
+  position: {
+    fields: ["properties.x", "properties.y"],
+    unit: "composition-pixels",
+    origin: "composition-center"
+  },
+  staticSize: {
+    fields: ["properties.width", "properties.height"],
+    unit: "unitless-source-size-multiplier",
+    outputPixels: false,
+    defaults: { width: 1, height: 1 },
+    oneByOneBehavior: "contain-fit-within-composition"
+  },
+  animatedScale: {
+    field: "keyframes.scale",
+    unit: "unitless-multiplier-of-static-size"
+  }
+};
 var TimelineItemPropertiesSchema = z.object({
-  x: FiniteNumberSchema,
-  y: FiniteNumberSchema,
-  width: FiniteNumberSchema,
-  height: FiniteNumberSchema,
-  rotation: FiniteNumberSchema.optional(),
-  opacity: z.number().finite().min(0).max(1).optional()
+  x: FiniteNumberSchema.describe(
+    "Horizontal center offset in composition pixels; 0 is the composition center."
+  ),
+  y: FiniteNumberSchema.describe(
+    "Vertical center offset in composition pixels; 0 is the composition center."
+  ),
+  width: FiniteNumberSchema.describe(
+    "Unitless multiplier of resolved source natural width; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+  ),
+  height: FiniteNumberSchema.describe(
+    "Unitless multiplier of resolved source natural height; not output pixels. When width and height are both 1, the renderer contain-fits the source within the composition."
+  ),
+  rotation: FiniteNumberSchema.describe("Clockwise rotation in degrees.").optional(),
+  opacity: z.number().finite().min(0).max(1).describe("Unitless opacity from 0 through 1.").optional()
 });
 var TimelineEffectParamValueSchema = z.union([
   z.string(),
@@ -11030,7 +12479,7 @@ var itemBaseFields = {
     editor: noControl,
     runtimeConsumers: ["asset-loader", "canvas-link", "render"]
   }),
-  properties: authored(TimelineItemPropertiesSchema, "Static item transform used as fallback outside animated keyframe channels.", {
+  properties: authored(TimelineItemPropertiesSchema, "Static item transform: x/y are composition-center pixel offsets; width/height are unitless source-size multipliers, never output pixels.", {
     required: false,
     editor: propertiesControl,
     runtimeConsumers: ["editor", "preview", "render", "export"],
@@ -12244,32 +13693,171 @@ function parseFromExpression(raw) {
   return null;
 }
 var TIMELINE_DSL_GLOBAL_SEMANTIC_RULES = [
-  { id: "timeline.track.duplicate-id", kind: "unique-field", objectPath: "tracks[]", field: "id" },
-  { id: "timeline.item.duplicate-id", kind: "unique-field-global", objectPath: "tracks[].items[]", field: "id" },
-  { id: "timeline.primary-track.reference", kind: "reference", objectPath: "primaryTrackId", targetPath: "tracks[].id" },
-  { id: "timeline.primary-track.category", kind: "referenced-object-field", objectPath: "primaryTrackId", field: "category", allowedValues: ["primary"] },
-  { id: "timeline.track.category-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "category" },
-  { id: "timeline.track.role-item-mismatch", kind: "allowed-item-types", objectPath: "tracks[]", discriminator: "role" },
-  { id: "timeline.track.role-category", kind: "owner-field-consistency", objectPath: "tracks[]", fields: ["role", "category"], mapping: TIMELINE_DSL_ROLE_CATEGORIES },
-  { id: "timeline.track.category-order", kind: "ordered-enum", objectPath: "tracks[]", field: "category", order: TIMELINE_DSL_TRACK_CATEGORIES },
-  { id: "timeline.track.mixed-categories", kind: "single-structural-category", objectPath: "tracks[]" },
-  { id: "timeline.item.from-expression", kind: "expression-grammar", objectPath: "tracks[].items[]", field: "from" },
-  { id: "timeline.item.frame-integer", kind: "integer-frame", objectPath: "tracks[].items[]", field: "from" },
-  { id: "timeline.item.from-reference", kind: "reference", objectPath: "tracks[].items[].from", targetPath: "tracks[].items[].id" },
-  { id: "timeline.item.from-cycle", kind: "acyclic-reference", objectPath: "tracks[].items[].from" },
-  { id: "timeline.item.source-required", kind: "requires-any-field", objectPath: "tracks[].items[]", fields: ["src", "assetId", "sourceNodeId"] },
-  { id: "timeline.item.animation-duration", kind: "maximum-by-owner-field", objectPath: "tracks[].items[]", fields: ["entranceAnimation.durationInFrames", "exitAnimation.durationInFrames"], maximumPath: "durationInFrames" },
-  { id: "timeline.audio.ducking-track-role", kind: "field-requires-owner-value", objectPath: "tracks[].items[]", field: "audioDucking", ownerField: "role", ownerValue: "music" },
-  { id: "timeline.composition.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["sourcePath", "renderedAssetPath"] },
-  { id: "timeline.composition.preview-contract", kind: "conditional-required", objectPath: "tracks[].items[]" },
-  { id: "timeline.caption.structured", kind: "conditional-required", objectPath: "tracks[].items[]" },
-  { id: "timeline.caption.lineage", kind: "cross-field-lineage", objectPath: "tracks[].items[]" },
-  { id: "timeline.derived-overlay.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["src"] },
-  { id: "timeline.derived-overlay.copy-on-write", kind: "distinct-fields", objectPath: "tracks[].items[]", fields: ["sourceAssetId", "derivedAssetId"] },
-  { id: "timeline.transition.reference", kind: "references", objectPath: "tracks[].items[]", fields: ["fromItemId", "toItemId"] },
-  { id: "timeline.transition.continuity", kind: "same-track-contiguous-references", objectPath: "tracks[].items[]" },
-  { id: "timeline.transition.centered-range", kind: "centered-on-reference-boundary", objectPath: "tracks[].items[]" },
-  { id: "timeline.transition.duration-handles", kind: "maximum-by-reference-handles", objectPath: "tracks[].items[]" }
+  {
+    id: "timeline.track.duplicate-id",
+    kind: "unique-field",
+    objectPath: "tracks[]",
+    field: "id"
+  },
+  {
+    id: "timeline.item.duplicate-id",
+    kind: "unique-field-global",
+    objectPath: "tracks[].items[]",
+    field: "id"
+  },
+  {
+    id: "timeline.primary-track.reference",
+    kind: "reference",
+    objectPath: "primaryTrackId",
+    targetPath: "tracks[].id"
+  },
+  {
+    id: "timeline.primary-track.category",
+    kind: "referenced-object-field",
+    objectPath: "primaryTrackId",
+    field: "category",
+    allowedValues: ["primary"]
+  },
+  {
+    id: "timeline.track.category-item-mismatch",
+    kind: "allowed-item-types",
+    objectPath: "tracks[]",
+    discriminator: "category"
+  },
+  {
+    id: "timeline.track.role-item-mismatch",
+    kind: "allowed-item-types",
+    objectPath: "tracks[]",
+    discriminator: "role"
+  },
+  {
+    id: "timeline.track.role-category",
+    kind: "owner-field-consistency",
+    objectPath: "tracks[]",
+    fields: ["role", "category"],
+    mapping: TIMELINE_DSL_ROLE_CATEGORIES
+  },
+  {
+    id: "timeline.track.category-order",
+    kind: "ordered-enum",
+    objectPath: "tracks[]",
+    field: "category",
+    order: TIMELINE_DSL_TRACK_CATEGORIES
+  },
+  {
+    id: "timeline.track.mixed-categories",
+    kind: "single-structural-category",
+    objectPath: "tracks[]"
+  },
+  {
+    id: "timeline.item.from-expression",
+    kind: "expression-grammar",
+    objectPath: "tracks[].items[]",
+    field: "from"
+  },
+  {
+    id: "timeline.item.frame-integer",
+    kind: "integer-frame",
+    objectPath: "tracks[].items[]",
+    field: "from"
+  },
+  {
+    id: "timeline.item.from-reference",
+    kind: "reference",
+    objectPath: "tracks[].items[].from",
+    targetPath: "tracks[].items[].id"
+  },
+  {
+    id: "timeline.item.from-cycle",
+    kind: "acyclic-reference",
+    objectPath: "tracks[].items[].from"
+  },
+  {
+    id: "timeline.item.source-required",
+    kind: "requires-any-field",
+    objectPath: "tracks[].items[]",
+    fields: ["src", "assetId", "sourceNodeId"]
+  },
+  {
+    id: "timeline.item.animation-duration",
+    kind: "maximum-by-owner-field",
+    objectPath: "tracks[].items[]",
+    fields: [
+      "entranceAnimation.durationInFrames",
+      "exitAnimation.durationInFrames"
+    ],
+    maximumPath: "durationInFrames"
+  },
+  {
+    id: "timeline.item.scale-unit",
+    kind: "maximum-absolute-value",
+    objectPath: "tracks[].items[]",
+    fields: ["properties.width", "properties.height"],
+    maximum: 4,
+    unit: "unitless-source-size-multiplier"
+  },
+  {
+    id: "timeline.audio.ducking-track-role",
+    kind: "field-requires-owner-value",
+    objectPath: "tracks[].items[]",
+    field: "audioDucking",
+    ownerField: "role",
+    ownerValue: "music"
+  },
+  {
+    id: "timeline.composition.local-path",
+    kind: "local-path",
+    objectPath: "tracks[].items[]",
+    fields: ["sourcePath", "renderedAssetPath"]
+  },
+  {
+    id: "timeline.composition.preview-contract",
+    kind: "conditional-required",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.caption.structured",
+    kind: "conditional-required",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.caption.lineage",
+    kind: "cross-field-lineage",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.derived-overlay.local-path",
+    kind: "local-path",
+    objectPath: "tracks[].items[]",
+    fields: ["src"]
+  },
+  {
+    id: "timeline.derived-overlay.copy-on-write",
+    kind: "distinct-fields",
+    objectPath: "tracks[].items[]",
+    fields: ["sourceAssetId", "derivedAssetId"]
+  },
+  {
+    id: "timeline.transition.reference",
+    kind: "references",
+    objectPath: "tracks[].items[]",
+    fields: ["fromItemId", "toItemId"]
+  },
+  {
+    id: "timeline.transition.continuity",
+    kind: "same-track-contiguous-references",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.transition.centered-range",
+    kind: "centered-on-reference-boundary",
+    objectPath: "tracks[].items[]"
+  },
+  {
+    id: "timeline.transition.duration-handles",
+    kind: "maximum-by-reference-handles",
+    objectPath: "tracks[].items[]"
+  }
 ];
 function issue(ruleId, path, message) {
   return { ruleId, path, message };
@@ -12310,11 +13898,13 @@ function pushReferenceCycleIssues(indexedItems, itemById, issues) {
         for (const cyclicId of path.slice(existing)) {
           const cyclic = itemById.get(cyclicId);
           if (!cyclic) continue;
-          issues.push(issue(
-            "timeline.item.from-cycle",
-            ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
-            `from expression for ${cyclicId} participates in a reference cycle`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.from-cycle",
+              ["tracks", cyclic.trackIndex, "items", cyclic.itemIndex, "from"],
+              `from expression for ${cyclicId} participates in a reference cycle`
+            )
+          );
         }
         break;
       }
@@ -12334,31 +13924,42 @@ function validateTransition(indexed, itemById, issues) {
   const from = nonEmptyString(fromId) ? itemById.get(fromId) : void 0;
   const to = nonEmptyString(toId) ? itemById.get(toId) : void 0;
   if (!from || !to) {
-    issues.push(issue(
-      "timeline.transition.reference",
-      [...itemPath],
-      "transition must reference two existing Timeline items"
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.reference",
+        [...itemPath],
+        "transition must reference two existing Timeline items"
+      )
+    );
     return;
   }
-  const transitionClipTypes = /* @__PURE__ */ new Set(["video", "image", "solid", "text"]);
+  const transitionClipTypes = /* @__PURE__ */ new Set([
+    "video",
+    "image",
+    "solid",
+    "text"
+  ]);
   const boundary = typeof from.item.from === "number" ? from.item.from + from.item.durationInFrames : Number.NaN;
   if (from.track.id !== to.track.id || !transitionClipTypes.has(from.item.type) || !transitionClipTypes.has(to.item.type) || boundary !== to.item.from) {
-    issues.push(issue(
-      "timeline.transition.continuity",
-      [...itemPath],
-      "transition references must be contiguous visual clips on the same track"
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.continuity",
+        [...itemPath],
+        "transition references must be contiguous visual clips on the same track"
+      )
+    );
     return;
   }
   if (typeof item.from === "number") {
     const expectedFrom = boundary - Math.floor(item.durationInFrames / 2);
     if (item.from !== expectedFrom) {
-      issues.push(issue(
-        "timeline.transition.centered-range",
-        [...itemPath, "from"],
-        `transition range must be centered on frame ${boundary}`
-      ));
+      issues.push(
+        issue(
+          "timeline.transition.centered-range",
+          [...itemPath, "from"],
+          `transition range must be centered on frame ${boundary}`
+        )
+      );
     }
   }
   const maximum = Math.max(
@@ -12366,11 +13967,13 @@ function validateTransition(indexed, itemById, issues) {
     Math.min(from.item.durationInFrames, to.item.durationInFrames) * 2
   );
   if (item.durationInFrames > maximum) {
-    issues.push(issue(
-      "timeline.transition.duration-handles",
-      [...itemPath, "durationInFrames"],
-      `transition duration cannot exceed ${maximum} frames for these clips`
-    ));
+    issues.push(
+      issue(
+        "timeline.transition.duration-handles",
+        [...itemPath, "durationInFrames"],
+        `transition duration cannot exceed ${maximum} frames for these clips`
+      )
+    );
   }
 }
 function validFrameRange(start, end) {
@@ -12378,37 +13981,44 @@ function validFrameRange(start, end) {
 }
 function validateCaption(indexed, issues) {
   const { item, track, trackIndex, itemIndex } = indexed;
-  if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues)) return;
+  if (item.type !== "text" || track.role !== "subtitle" && !Array.isArray(item.cues))
+    return;
   const itemPath = ["tracks", trackIndex, "items", itemIndex];
   const cues = Array.isArray(item.cues) ? item.cues : [];
   const wordRefs = Array.isArray(item.wordRefs) ? item.wordRefs : [];
   const mappings = Array.isArray(item.sourceToOutputMap) ? item.sourceToOutputMap : [];
   if (cues.length === 0 || wordRefs.length === 0 || mappings.length === 0) {
-    issues.push(issue(
-      "timeline.caption.structured",
-      [...itemPath],
-      "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
-    ));
+    issues.push(
+      issue(
+        "timeline.caption.structured",
+        [...itemPath],
+        "structured caption text requires non-empty cues, wordRefs, and sourceToOutputMap"
+      )
+    );
     return;
   }
   const wordIds = /* @__PURE__ */ new Set();
   wordRefs.forEach((word, wordIndex) => {
     if (nonEmptyString(word.id)) wordIds.add(word.id);
     if (!nonEmptyString(word.id) || !validFrameRange(word.sourceStartFrame, word.sourceEndFrame)) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "wordRefs", wordIndex],
-        "caption word reference requires an id and a valid source frame range"
-      ));
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "wordRefs", wordIndex],
+          "caption word reference requires an id and a valid source frame range"
+        )
+      );
     }
   });
   mappings.forEach((mapping, mappingIndex) => {
     if (!validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) || !validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame)) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "sourceToOutputMap", mappingIndex],
-        "caption source-to-output mapping requires valid source and output frame ranges"
-      ));
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "sourceToOutputMap", mappingIndex],
+          "caption source-to-output mapping requires valid source and output frame ranges"
+        )
+      );
     }
   });
   cues.forEach((cue, cueIndex) => {
@@ -12416,13 +14026,19 @@ function validateCaption(indexed, issues) {
     const cueDuration = cue.durationInFrames;
     const cueEnd = typeof cueStart === "number" && typeof cueDuration === "number" ? cueStart + cueDuration : Number.NaN;
     const cueWordIds = Array.isArray(cue.wordIds) ? cue.wordIds : [];
-    const covered = mappings.some((mapping) => validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame);
-    if (!nonEmptyString(cue.id) || !nonEmptyString(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some((wordId) => !nonEmptyString(wordId) || !wordIds.has(wordId)) || !covered) {
-      issues.push(issue(
-        "timeline.caption.lineage",
-        [...itemPath, "cues", cueIndex],
-        "caption cue must fit the item and be covered by valid source word and frame lineage"
-      ));
+    const covered = mappings.some(
+      (mapping) => validFrameRange(mapping.sourceStartFrame, mapping.sourceEndFrame) && validFrameRange(mapping.outputStartFrame, mapping.outputEndFrame) && typeof cue.sourceStartFrame === "number" && typeof cue.sourceEndFrame === "number" && typeof cueStart === "number" && cue.sourceStartFrame >= mapping.sourceStartFrame && cue.sourceEndFrame <= mapping.sourceEndFrame && cueStart >= mapping.outputStartFrame && cueEnd <= mapping.outputEndFrame
+    );
+    if (!nonEmptyString(cue.id) || !nonEmptyString(cue.text) || !Number.isInteger(cueStart) || !Number.isInteger(cueDuration) || cueStart < 0 || cueDuration <= 0 || cueEnd > item.durationInFrames || !validFrameRange(cue.sourceStartFrame, cue.sourceEndFrame) || cueWordIds.length === 0 || cueWordIds.some(
+      (wordId) => !nonEmptyString(wordId) || !wordIds.has(wordId)
+    ) || !covered) {
+      issues.push(
+        issue(
+          "timeline.caption.lineage",
+          [...itemPath, "cues", cueIndex],
+          "caption cue must fit the item and be covered by valid source word and frame lineage"
+        )
+      );
     }
   });
 }
@@ -12446,175 +14062,233 @@ function evaluateStructuralSemanticRules(context) {
   let previousCategoryRank = -1;
   timeline.tracks.forEach((track, trackIndex) => {
     if (trackIds.has(track.id)) {
-      issues.push(issue(
-        "timeline.track.duplicate-id",
-        ["tracks", trackIndex, "id"],
-        `track id ${track.id} is duplicated`
-      ));
+      issues.push(
+        issue(
+          "timeline.track.duplicate-id",
+          ["tracks", trackIndex, "id"],
+          `track id ${track.id} is duplicated`
+        )
+      );
     }
     trackIds.add(track.id);
     if (track.category) {
       const rank = TIMELINE_DSL_TRACK_CATEGORIES.indexOf(track.category);
       if (rank < previousCategoryRank) {
-        issues.push(issue(
-          "timeline.track.category-order",
-          ["tracks", trackIndex, "category"],
-          "track categories must follow effect, text, visual, primary, audio order"
-        ));
+        issues.push(
+          issue(
+            "timeline.track.category-order",
+            ["tracks", trackIndex, "category"],
+            "track categories must follow effect, text, visual, primary, audio order"
+          )
+        );
       }
       previousCategoryRank = Math.max(previousCategoryRank, rank);
     }
     if (track.role && track.category) {
       const expectedCategory = TIMELINE_DSL_ROLE_CATEGORIES[track.role];
       if (expectedCategory !== null && expectedCategory !== track.category) {
-        issues.push(issue(
-          "timeline.track.role-category",
-          ["tracks", trackIndex, "category"],
-          `track role ${track.role} requires category ${expectedCategory}`
-        ));
+        issues.push(
+          issue(
+            "timeline.track.role-category",
+            ["tracks", trackIndex, "category"],
+            `track role ${track.role} requires category ${expectedCategory}`
+          )
+        );
       }
     }
-    const structuralCategories = new Set(track.items.map((item) => structuralCategory(item.type)));
+    const structuralCategories = new Set(
+      track.items.map((item) => structuralCategory(item.type))
+    );
     const legacyPrimary = timeline.primaryTrackId === track.id || track.role === "primary-video";
     const primaryCompatible = track.items.every(
       (item) => TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES.primary.includes(item.type)
     );
     if (!track.category && structuralCategories.size > 1 && !(legacyPrimary && primaryCompatible)) {
-      issues.push(issue(
-        "timeline.track.mixed-categories",
-        ["tracks", trackIndex, "items"],
-        `track ${track.id} mixes incompatible structural item categories`
-      ));
+      issues.push(
+        issue(
+          "timeline.track.mixed-categories",
+          ["tracks", trackIndex, "items"],
+          `track ${track.id} mixes incompatible structural item categories`
+        )
+      );
     }
     track.items.forEach((item, itemIndex) => {
       const itemPath = ["tracks", trackIndex, "items", itemIndex];
       if (itemIds.has(item.id)) {
-        issues.push(issue(
-          "timeline.item.duplicate-id",
-          [...itemPath, "id"],
-          `Timeline item id ${item.id} is duplicated`
-        ));
+        issues.push(
+          issue(
+            "timeline.item.duplicate-id",
+            [...itemPath, "id"],
+            `Timeline item id ${item.id} is duplicated`
+          )
+        );
       }
       itemIds.add(item.id);
       if (track.category) {
         const allowed = TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES[track.category];
         if (!allowed.includes(item.type)) {
-          issues.push(issue(
-            "timeline.track.category-item-mismatch",
-            [...itemPath],
-            `track category ${track.category} cannot contain ${item.type} items`
-          ));
+          issues.push(
+            issue(
+              "timeline.track.category-item-mismatch",
+              [...itemPath],
+              `track category ${track.category} cannot contain ${item.type} items`
+            )
+          );
         }
       }
       if (track.role) {
         const allowed = TIMELINE_DSL_ROLE_ALLOWED_ITEM_TYPES[track.role];
         if (!allowed.includes(item.type)) {
-          issues.push(issue(
-            "timeline.track.role-item-mismatch",
-            [...itemPath],
-            `track role ${track.role} cannot contain ${item.type} items`
-          ));
+          issues.push(
+            issue(
+              "timeline.track.role-item-mismatch",
+              [...itemPath],
+              `track role ${track.role} cannot contain ${item.type} items`
+            )
+          );
         }
       }
       const expression = parseFromExpression(item.from);
       const negativeNumericString = typeof item.from === "string" && Number.isFinite(Number(item.from.trim())) && Number(item.from.trim()) < 0;
       if (!expression || negativeNumericString) {
-        issues.push(issue(
-          "timeline.item.from-expression",
-          [...itemPath, "from"],
-          "from must be a non-negative frame or a valid Timeline relative expression"
-        ));
+        issues.push(
+          issue(
+            "timeline.item.from-expression",
+            [...itemPath, "from"],
+            "from must be a non-negative frame or a valid Timeline relative expression"
+          )
+        );
       } else if (expression.kind === "reference" && expression.refId !== "prev" && !itemById.has(expression.refId)) {
-        issues.push(issue(
-          "timeline.item.from-reference",
-          [...itemPath, "from"],
-          `from expression references unknown item ${expression.refId}`
-        ));
+        issues.push(
+          issue(
+            "timeline.item.from-reference",
+            [...itemPath, "from"],
+            `from expression references unknown item ${expression.refId}`
+          )
+        );
       }
       if (expression && (expression.kind === "absolute" ? !Number.isInteger(expression.value) : !Number.isInteger(expression.offset))) {
-        issues.push(issue(
-          "timeline.item.frame-integer",
-          [...itemPath, "from"],
-          "Timeline frame positions and expression offsets must be integers"
-        ));
+        issues.push(
+          issue(
+            "timeline.item.frame-integer",
+            [...itemPath, "from"],
+            "Timeline frame positions and expression offsets must be integers"
+          )
+        );
       }
       if (["video", "audio", "image", "sticker"].includes(item.type)) {
         if (![item.src, item.assetId, item.sourceNodeId].some(nonEmptyString)) {
-          issues.push(issue(
-            "timeline.item.source-required",
-            [...itemPath],
-            `${item.type} item must provide src, assetId, or sourceNodeId`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.source-required",
+              [...itemPath],
+              `${item.type} item must provide src, assetId, or sourceNodeId`
+            )
+          );
         }
       }
-      for (const animationField of ["entranceAnimation", "exitAnimation"]) {
+      for (const animationField of [
+        "entranceAnimation",
+        "exitAnimation"
+      ]) {
         const animation = item[animationField];
         if (animation && typeof animation.durationInFrames === "number" && animation.durationInFrames > item.durationInFrames) {
-          issues.push(issue(
-            "timeline.item.animation-duration",
-            [...itemPath, animationField, "durationInFrames"],
-            `${animationField} cannot exceed the owning item duration`
-          ));
+          issues.push(
+            issue(
+              "timeline.item.animation-duration",
+              [...itemPath, animationField, "durationInFrames"],
+              `${animationField} cannot exceed the owning item duration`
+            )
+          );
+        }
+      }
+      const properties = item.properties;
+      for (const field2 of ["width", "height"]) {
+        const value = properties == null ? void 0 : properties[field2];
+        if (typeof value === "number" && Math.abs(value) > 4) {
+          issues.push(
+            issue(
+              "timeline.item.scale-unit",
+              [...itemPath, "properties", field2],
+              `properties.${field2} is a unitless source-size multiplier, not pixels, and must be at most 4`
+            )
+          );
         }
       }
       if (item.type === "audio" && item.audioDucking !== void 0 && track.role !== "music") {
-        issues.push(issue(
-          "timeline.audio.ducking-track-role",
-          [...itemPath, "audioDucking"],
-          "audioDucking is only valid for audio items on a music track"
-        ));
+        issues.push(
+          issue(
+            "timeline.audio.ducking-track-role",
+            [...itemPath, "audioDucking"],
+            "audioDucking is only valid for audio items on a music track"
+          )
+        );
       }
       if (item.type === "composition") {
         if (!isLocalProjectPath(item.sourcePath)) {
-          issues.push(issue(
-            "timeline.composition.local-path",
-            [...itemPath, "sourcePath"],
-            "composition sourcePath must be a local project path"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.local-path",
+              [...itemPath, "sourcePath"],
+              "composition sourcePath must be a local project path"
+            )
+          );
         }
         if (item.renderedAssetPath !== void 0 && !isLocalProjectPath(item.renderedAssetPath)) {
-          issues.push(issue(
-            "timeline.composition.local-path",
-            [...itemPath, "renderedAssetPath"],
-            "composition renderedAssetPath must be a local project path"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.local-path",
+              [...itemPath, "renderedAssetPath"],
+              "composition renderedAssetPath must be a local project path"
+            )
+          );
         }
         if (item.compositionKind === "motion-graphics" && item.runtime !== "remotion") {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "runtime"],
-            "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "runtime"],
+              "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
+            )
+          );
         }
         if (item.runtime === "remotion" && (typeof item.sourceNodeId !== "string" || item.sourceNodeId.length === 0)) {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "sourceNodeId"],
-            "Remotion compositions require a live Canvas sourceNodeId"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "sourceNodeId"],
+              "Remotion compositions require a live Canvas sourceNodeId"
+            )
+          );
         }
         if (item.runtime === "react" && !isLocalProjectPath(item.renderedAssetPath)) {
-          issues.push(issue(
-            "timeline.composition.preview-contract",
-            [...itemPath, "renderedAssetPath"],
-            "React compositions require a local renderedAssetPath"
-          ));
+          issues.push(
+            issue(
+              "timeline.composition.preview-contract",
+              [...itemPath, "renderedAssetPath"],
+              "React compositions require a local renderedAssetPath"
+            )
+          );
         }
       }
       if (item.type === "derived-overlay") {
         if (!isLocalProjectPath(item.src)) {
-          issues.push(issue(
-            "timeline.derived-overlay.local-path",
-            [...itemPath, "src"],
-            "derived overlay src must be a local project or asset path"
-          ));
+          issues.push(
+            issue(
+              "timeline.derived-overlay.local-path",
+              [...itemPath, "src"],
+              "derived overlay src must be a local project or asset path"
+            )
+          );
         }
         if (item.sourceAssetId === item.derivedAssetId || nonEmptyString(item.assetId) && item.assetId !== item.derivedAssetId) {
-          issues.push(issue(
-            "timeline.derived-overlay.copy-on-write",
-            [...itemPath],
-            "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
-          ));
+          issues.push(
+            issue(
+              "timeline.derived-overlay.copy-on-write",
+              [...itemPath],
+              "derived overlay source and derived identities must be distinct and assetId must identify the derived copy"
+            )
+          );
         }
       }
     });
@@ -12625,19 +14299,25 @@ function evaluatePrimaryTrackSemanticRules(context) {
   const { timeline } = context;
   const issues = [];
   if (nonEmptyString(timeline.primaryTrackId)) {
-    const primaryTrack = timeline.tracks.find((track) => track.id === timeline.primaryTrackId);
+    const primaryTrack = timeline.tracks.find(
+      (track) => track.id === timeline.primaryTrackId
+    );
     if (!primaryTrack) {
-      issues.push(issue(
-        "timeline.primary-track.reference",
-        ["primaryTrackId"],
-        "primaryTrackId must reference an existing track"
-      ));
+      issues.push(
+        issue(
+          "timeline.primary-track.reference",
+          ["primaryTrackId"],
+          "primaryTrackId must reference an existing track"
+        )
+      );
     } else if (primaryTrack.category && primaryTrack.category !== "primary") {
-      issues.push(issue(
-        "timeline.primary-track.category",
-        ["primaryTrackId"],
-        "primaryTrackId must reference a primary category track"
-      ));
+      issues.push(
+        issue(
+          "timeline.primary-track.category",
+          ["primaryTrackId"],
+          "primaryTrackId must reference a primary category track"
+        )
+      );
     }
   }
   return issues;
@@ -12654,7 +14334,9 @@ function evaluateCaptionSemanticRules(context) {
 }
 function evaluateTransitionSemanticRules(context) {
   const issues = [];
-  context.indexedItems.forEach((indexed) => validateTransition(indexed, context.itemById, issues));
+  context.indexedItems.forEach(
+    (indexed) => validateTransition(indexed, context.itemById, issues)
+  );
   return issues;
 }
 var TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
@@ -12673,6 +14355,7 @@ var TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
   "timeline.item.from-cycle": evaluateReferenceCycleSemanticRules,
   "timeline.item.source-required": evaluateStructuralSemanticRules,
   "timeline.item.animation-duration": evaluateStructuralSemanticRules,
+  "timeline.item.scale-unit": evaluateStructuralSemanticRules,
   "timeline.audio.ducking-track-role": evaluateStructuralSemanticRules,
   "timeline.composition.local-path": evaluateStructuralSemanticRules,
   "timeline.composition.preview-contract": evaluateStructuralSemanticRules,
@@ -12691,7 +14374,8 @@ function timelineDslSemanticIssues(input) {
   const compositeEvaluators = new Set(
     Object.values(TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS)
   );
-  for (const evaluator of compositeEvaluators) issues.push(...evaluator(context));
+  for (const evaluator of compositeEvaluators)
+    issues.push(...evaluator(context));
   return issues;
 }
 
@@ -12699,11 +14383,11 @@ function timelineDslSemanticIssues(input) {
 var itemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => {
   const baseShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
-    { overrides: {
-      type: z.literal(type).describe(
-        TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description
-      )
-    } }
+    {
+      overrides: {
+        type: z.literal(type).describe(TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase.type.description)
+      }
+    }
   );
   const variantShape = timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
@@ -12716,7 +14400,9 @@ var TimelineDslItemVariantSchema = z.discriminatedUnion(
 );
 var itemFieldOwners = /* @__PURE__ */ new Map();
 for (const type of TIMELINE_DSL_ITEM_TYPES) {
-  for (const fieldName of Object.keys(TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type])) {
+  for (const fieldName of Object.keys(
+    TIMELINE_DSL_FIELD_ANNOTATIONS.itemTypes[type]
+  )) {
     const owners = itemFieldOwners.get(fieldName) ?? /* @__PURE__ */ new Set();
     owners.add(type);
     itemFieldOwners.set(fieldName, owners);
@@ -12725,14 +14411,18 @@ for (const type of TIMELINE_DSL_ITEM_TYPES) {
 var maskKeyframeChannels = new Set(TIMELINE_MASK_KEYFRAME_CHANNELS);
 var itemBaseFieldApplicabilityRules = Object.entries(
   TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase
-).flatMap(([fieldName, annotation2]) => annotation2.appliesToItemTypes && annotation2.applicabilityRuleId ? [{
-  id: annotation2.applicabilityRuleId,
-  kind: "allowed-item-types-when-present",
-  objectPath: "tracks[].items[]",
-  field: fieldName,
-  allowedItemTypes: annotation2.appliesToItemTypes,
-  ...annotation2.applicabilityMessage ? { message: annotation2.applicabilityMessage } : {}
-}] : []);
+).flatMap(
+  ([fieldName, annotation2]) => annotation2.appliesToItemTypes && annotation2.applicabilityRuleId ? [
+    {
+      id: annotation2.applicabilityRuleId,
+      kind: "allowed-item-types-when-present",
+      objectPath: "tracks[].items[]",
+      field: fieldName,
+      allowedItemTypes: annotation2.appliesToItemTypes,
+      ...annotation2.applicabilityMessage ? { message: annotation2.applicabilityMessage } : {}
+    }
+  ] : []
+);
 var clipMaskRequiresMaskRule = {
   id: "timeline.clip-mask.requires-mask",
   kind: "requires-field-when-any-channel-present",
@@ -12778,7 +14468,9 @@ var TIMELINE_DSL_SEMANTIC_RULES = {
   ]
 };
 function hasMaskKeyframes(keyframes) {
-  return Object.keys(keyframes ?? {}).some((channel) => maskKeyframeChannels.has(channel));
+  return Object.keys(keyframes ?? {}).some(
+    (channel) => maskKeyframeChannels.has(channel)
+  );
 }
 function timelineMaskKeyframeSemanticIssues(item) {
   const issues = [];
@@ -12798,7 +14490,10 @@ function timelineMaskKeyframeSemanticIssues(item) {
       message: "mask keyframes require a mask"
     });
   }
-  for (const frameIssue of timelineKeyframeFrameIssues(item.keyframes, item.durationInFrames)) {
+  for (const frameIssue of timelineKeyframeFrameIssues(
+    item.keyframes,
+    item.durationInFrames
+  )) {
     issues.push({
       ruleId: frameIssue.reason === "duplicate" ? timelineKeyframeUniqueFrameRule.id : timelineKeyframeRangeRule.id,
       path: ["keyframes", frameIssue.channel, frameIssue.index, "frame"],
@@ -12807,45 +14502,51 @@ function timelineMaskKeyframeSemanticIssues(item) {
   }
   return issues;
 }
-var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine((item, ctx) => {
-  const typedItem = item;
-  for (const [fieldName, owners] of itemFieldOwners) {
-    if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine(
+  (item, ctx) => {
+    const typedItem = item;
+    for (const [fieldName, owners] of itemFieldOwners) {
+      if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [fieldName],
+          message: `${fieldName} is not valid on ${typedItem.type} items`,
+          params: { ruleId: timelineItemFieldApplicabilityRule.id }
+        });
+      }
+    }
+    for (const issue2 of timelineMaskKeyframeSemanticIssues(typedItem)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: [fieldName],
-        message: `${fieldName} is not valid on ${typedItem.type} items`,
-        params: { ruleId: timelineItemFieldApplicabilityRule.id }
+        path: issue2.path,
+        message: issue2.message,
+        params: { ruleId: issue2.ruleId }
       });
     }
   }
-  for (const issue2 of timelineMaskKeyframeSemanticIssues(typedItem)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: issue2.path,
-      message: issue2.message,
-      params: { ruleId: issue2.ruleId }
-    });
+).describe("TimelineDslItem");
+var TimelineDslTrackSchema = z.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.track, {
+    overrides: { items: z.array(TimelineDslItemSchema) }
+  })
+).passthrough().describe("TimelineDslTrack");
+var TimelineDslSchemaBase = z.object(
+  timelineDslAnnotatedObjectShape(TIMELINE_DSL_FIELD_ANNOTATIONS.root, {
+    overrides: { tracks: z.array(TimelineDslTrackSchema) }
+  })
+).passthrough();
+var TimelineDslSchema = TimelineDslSchemaBase.superRefine(
+  (timeline, context) => {
+    for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: semanticIssue.path,
+        message: semanticIssue.message,
+        params: { ruleId: semanticIssue.ruleId }
+      });
+    }
   }
-}).describe("TimelineDslItem");
-var TimelineDslTrackSchema = z.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.track,
-  { overrides: { items: z.array(TimelineDslItemSchema) } }
-)).passthrough().describe("TimelineDslTrack");
-var TimelineDslSchemaBase = z.object(timelineDslAnnotatedObjectShape(
-  TIMELINE_DSL_FIELD_ANNOTATIONS.root,
-  { overrides: { tracks: z.array(TimelineDslTrackSchema) } }
-)).passthrough();
-var TimelineDslSchema = TimelineDslSchemaBase.superRefine((timeline, context) => {
-  for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: semanticIssue.path,
-      message: semanticIssue.message,
-      params: { ruleId: semanticIssue.ruleId }
-    });
-  }
-}).describe("TimelineDsl");
+).describe("TimelineDsl");
 function validateTimelineDsl(state) {
   const parsed = TimelineDslSchema.safeParse(state);
   if (parsed.success) return { ok: true, value: parsed.data };
@@ -12870,10 +14571,13 @@ var timelineItemMaskJsonSchema = zodToJsonSchema(TimelineItemMaskSchema, {
   name: "TimelineItemMask",
   target: "jsonSchema7"
 });
-var timelineItemKeyframesJsonSchema = zodToJsonSchema(TimelineItemKeyframesSchema, {
-  name: "TimelineItemKeyframes",
-  target: "jsonSchema7"
-});
+var timelineItemKeyframesJsonSchema = zodToJsonSchema(
+  TimelineItemKeyframesSchema,
+  {
+    name: "TimelineItemKeyframes",
+    target: "jsonSchema7"
+  }
+);
 function jsonSchemaObject(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Timeline DSL JSON Schema is missing ${label}`);
@@ -12963,20 +14667,24 @@ var TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE = {
   compositionHeight: 1080,
   fps: 30,
   durationInFrames: 60,
-  tracks: [{
-    id: "visual-overlays",
-    name: "Visual overlays",
-    category: "visual",
-    items: [{
-      id: "masked-image",
-      type: "image",
-      from: 0,
-      durationInFrames: 60,
-      sourceNodeId: "source-image-node",
-      mask: timelineMaskExample,
-      keyframes: timelineMaskKeyframesExample
-    }]
-  }]
+  tracks: [
+    {
+      id: "visual-overlays",
+      name: "Visual overlays",
+      category: "visual",
+      items: [
+        {
+          id: "masked-image",
+          type: "image",
+          from: 0,
+          durationInFrames: 60,
+          sourceNodeId: "source-image-node",
+          mask: timelineMaskExample,
+          keyframes: timelineMaskKeyframesExample
+        }
+      ]
+    }
+  ]
 };
 var timelineMaskDslFeature = {
   yamlPath: TIMELINE_MASK_CAPABILITY_ANNOTATION.yamlPath,
@@ -12986,19 +14694,21 @@ var timelineMaskDslFeature = {
   animatedChannels: TIMELINE_MASK_CAPABILITY_ANNOTATION.animatedChannels,
   defaultMask: TIMELINE_MASK_CAPABILITY_ANNOTATION.defaultMask,
   fieldDefinitions: Object.fromEntries(
-    Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(([field2, annotation2]) => {
-      var _a;
-      return [
-        field2,
-        {
-          description: annotation2.description,
-          invalidValueDescription: annotation2.invalidValueDescription,
-          unit: annotation2.unit,
-          defaultValue: annotation2.defaultValue,
-          animatedChannel: "animation" in annotation2 ? ((_a = annotation2.animation) == null ? void 0 : _a.channel) ?? null : null
-        }
-      ];
-    })
+    Object.entries(TIMELINE_MASK_FIELD_ANNOTATIONS).map(
+      ([field2, annotation2]) => {
+        var _a;
+        return [
+          field2,
+          {
+            description: annotation2.description,
+            invalidValueDescription: annotation2.invalidValueDescription,
+            unit: annotation2.unit,
+            defaultValue: annotation2.defaultValue,
+            animatedChannel: "animation" in annotation2 ? ((_a = annotation2.animation) == null ? void 0 : _a.channel) ?? null : null
+          }
+        ];
+      }
+    )
   ),
   operations: TIMELINE_MASK_CAPABILITY_ANNOTATION.operations,
   runtimeBehavior: TIMELINE_MASK_CAPABILITY_ANNOTATION.runtimeBehavior,
@@ -13009,7 +14719,9 @@ function canonicalTimelineDslContractJson(value) {
     return `[${value.map(canonicalTimelineDslContractJson).join(",")}]`;
   }
   if (value && typeof value === "object") {
-    return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`).join(",")}}`;
+    return `{${Object.entries(value).filter(([, entry]) => entry !== void 0).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(
+      ([key, entry]) => `${JSON.stringify(key)}:${canonicalTimelineDslContractJson(entry)}`
+    ).join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
 }
@@ -13023,7 +14735,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -13056,11 +14768,15 @@ var timelineDslSerializableDefinition = {
   jsonSchema: {
     ...timelineDslJsonSchema,
     "x-clash-fragments": timelineDslJsonSchemaFragments,
-    "x-clash-features": { clipMask: timelineMaskDslFeature },
+    "x-clash-features": {
+      clipMask: timelineMaskDslFeature,
+      itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS
+    },
     "x-clash-semantic-rules": TIMELINE_DSL_SEMANTIC_RULES
   },
   features: {
-    clipMask: timelineMaskDslFeature
+    clipMask: timelineMaskDslFeature,
+    itemTransform: TIMELINE_ITEM_TRANSFORM_SEMANTICS
   },
   examples: {
     maskKeyframes: TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE
@@ -13392,6 +15108,13 @@ var TimelineLibraryItemSchema = z.discriminatedUnion("category", [
 function parseTimelineLibraryItem(value) {
   return TimelineLibraryItemSchema.parse(value);
 }
+
+
+;// ../shared-types/dist/chunk-PKBMQBKP.js
+
+var __defProp = Object.defineProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 
 // EXTERNAL MODULE: ../../node_modules/.pnpm/loro-crdt@1.13.6/node_modules/loro-crdt/browser/loro_wasm_bg.js
@@ -23228,10 +24951,10 @@ function public_api_stringify(value, replacer, options) {
 
 
 ;// ../shared-types/dist/index.js
+/* unused harmony import specifier */ var dist_MODEL_CARDS;
+/* unused harmony import specifier */ var dist_normalizeModelId;
 /* unused harmony import specifier */ var dist_ExecutablePluginBindingSchema;
 /* unused harmony import specifier */ var dist_resolveAspectRatio;
-/* unused harmony import specifier */ var dist_normalizeModelId;
-/* unused harmony import specifier */ var dist_MODEL_CARDS;
 /* unused harmony import specifier */ var dist_ModelCardSchema;
 /* unused harmony import specifier */ var dist_MOCK_MODEL_CARDS;
 /* unused harmony import specifier */ var dist_AssetKindSchema;
@@ -23244,15 +24967,17 @@ function public_api_stringify(value, replacer, options) {
 /* unused harmony import specifier */ var dist_validateTimelineItemKeyframes;
 /* unused harmony import specifier */ var dist_timelineMaskKeyframeSemanticIssues;
 /* unused harmony import specifier */ var dist_TIMELINE_DSL_DEFINITION;
+/* unused harmony import specifier */ var dist_publicField;
 /* unused harmony import specifier */ var LoroMap3;
 /* unused harmony import specifier */ var dist_NEEDS_LAYOUT_POSITION;
 /* unused harmony import specifier */ var dist_autoInsertNode;
 /* unused harmony import specifier */ var LoroMap2;
 /* unused harmony import specifier */ var LoroMap;
-/* unused harmony import specifier */ var z10;
+/* unused harmony import specifier */ var z14;
 /* unused harmony import specifier */ var dist_LoroDoc;
 /* unused harmony import specifier */ var dist_stringify;
 /* unused harmony import specifier */ var dist_parse;
+
 
 
 
@@ -24244,7 +25969,7 @@ function recommendedCutEveryFrames(density, fps, durationInFrames) {
   if (density === "medium") return Math.max(1, Math.round(fps * 2));
   return Math.max(1, durationInFrames);
 }
-function buildCaptionItemFromTalkingHeadMetadata(id, metadata, from) {
+function buildCaptionItemFromTalkingHeadMetadata(id2, metadata, from) {
   const wordById = new Map(metadata.words.map((word) => [word.id, word]));
   const cues = metadata.captionCues.map((cue) => {
     const cueWords = (cue.wordIds ?? []).map((wordId) => wordById.get(wordId)).filter((word) => Boolean(word));
@@ -24261,7 +25986,7 @@ function buildCaptionItemFromTalkingHeadMetadata(id, metadata, from) {
     0
   );
   return {
-    id,
+    id: id2,
     type: "text",
     text: cues.map((cue) => cue.text).join("\n"),
     color: "#ffffff",
@@ -24282,7 +26007,7 @@ function buildCaptionItemFromTalkingHeadMetadata(id, metadata, from) {
     }))
   };
 }
-function buildCaptionItemFromLyricsAlignmentMetadata(id, metadata, from) {
+function buildCaptionItemFromLyricsAlignmentMetadata(id2, metadata, from) {
   const units = metadata.units.map((unit) => {
     const startFrame = unit.startFrame ?? msToFrame(unit.startMs, metadata.fps);
     const endFrame = unit.endFrame ?? msToFrame(unit.endMs, metadata.fps);
@@ -24306,7 +26031,7 @@ function buildCaptionItemFromLyricsAlignmentMetadata(id, metadata, from) {
     0
   );
   return {
-    id,
+    id: id2,
     type: "text",
     text: cues.map((cue) => cue.text).join("\n"),
     color: "#ffffff",
@@ -24549,9 +26274,9 @@ function buildAdDeliveryExportValidationReceipt(options) {
 function formatSeconds(value) {
   return Number.isInteger(value) ? String(value) : String(value).replace(/0+$/, "").replace(/\.$/, "");
 }
-function passCheck(id, expected, actual) {
+function passCheck(id2, expected, actual) {
   return {
-    id,
+    id: id2,
     status: "pass",
     required: true,
     severity: "error",
@@ -24559,9 +26284,9 @@ function passCheck(id, expected, actual) {
     actual
   };
 }
-function booleanCheck(id, passed, expected, actual, required = true) {
+function booleanCheck(id2, passed, expected, actual, required = true) {
   return {
-    id,
+    id: id2,
     status: passed ? "pass" : "fail",
     required,
     severity: "error",
@@ -24828,8 +26553,8 @@ function fieldLabel(card, field) {
   var _a;
   if (field === "prompt") return "Prompt";
   if (field === "lyrics") return "Lyrics";
-  const id = field.slice("modelParams.".length);
-  return ((_a = card.parameters.find((parameter) => parameter.id === id)) == null ? void 0 : _a.label) ?? id;
+  const id2 = field.slice("modelParams.".length);
+  return ((_a = card.parameters.find((parameter) => parameter.id === id2)) == null ? void 0 : _a.label) ?? id2;
 }
 function sameValue(left, right) {
   return left === right;
@@ -25140,7 +26865,7 @@ var DirectorReferencePacketSchema = z.object({
   })
 });
 function uniqueIds(ids) {
-  return [...new Set(ids.filter((id) => Boolean(id == null ? void 0 : id.trim())))];
+  return [...new Set(ids.filter((id2) => Boolean(id2 == null ? void 0 : id2.trim())))];
 }
 function createDirectorReferencePacket(input) {
   var _a, _b, _c, _d, _e, _f;
@@ -25576,14 +27301,10 @@ function findCompatibleModels(opts) {
 }
 function pickDefaultModel(opts) {
   const compatible = findCompatibleModels(opts);
-  if (opts.outputKind === "audio") {
-    const textToSpeech = compatible.filter((card) => card.task === "text-to-speech");
-    return textToSpeech.find((card) => {
-      var _a;
-      return (_a = card.availableProviders) == null ? void 0 : _a.includes("official");
-    }) ?? textToSpeech[0] ?? compatible[0];
-  }
-  return compatible[0];
+  return compatible.find((card) => {
+    var _a;
+    return (_a = card.availableProviders) == null ? void 0 : _a.includes("official");
+  }) ?? compatible[0];
 }
 
 
@@ -25917,6 +27638,18 @@ function extractLabelFromPrompt(promptText, fallback) {
   const first = lines[0] || fallback;
   return first.length > 60 ? first.slice(0, 57) + "..." : first;
 }
+function pendingDurationFallback(modelId) {
+  var _a, _b, _c;
+  if (!modelId) return void 0;
+  const card = dist_MODEL_CARDS.find((candidate) => candidate.id === dist_normalizeModelId(modelId) || candidate.id === modelId);
+  if (!card) return void 0;
+  const declared = (_a = card.defaultParams) == null ? void 0 : _a.duration;
+  if (declared !== void 0) return declared;
+  const parameter = card.parameters.find((candidate) => candidate.id === "duration");
+  if (!parameter) return void 0;
+  if (parameter.defaultValue !== void 0) return parameter.defaultValue;
+  return (_c = (_b = parameter.options) == null ? void 0 : _b[0]) == null ? void 0 : _c.value;
+}
 function buildPendingAssetNode(input) {
   const {
     nodeId,
@@ -25975,8 +27708,11 @@ function buildPendingAssetNode(input) {
     data.referenceAudioAssetIds = referenceAudioAssetIds;
   }
   if (isVideo && !isCustom) {
-    const dur = modelParams.duration ?? 5;
-    data.duration = typeof dur === "string" ? parseInt(dur, 10) : Number(dur) || 5;
+    const declared = modelParams.duration ?? pendingDurationFallback(modelId);
+    if (declared !== void 0) {
+      const numeric = typeof declared === "number" ? declared : Number(declared);
+      data.duration = Number.isFinite(numeric) ? numeric : declared;
+    }
   }
   return { id: nodeId, type: rfType, data };
 }
@@ -26171,7 +27907,6 @@ var CustomActionSecretSchema = z.object({
 var ACTION_PROVIDER_IDS = [
   "fal",
   "replicate",
-  "kie",
   "official",
   "openai",
   "google-ai-studio",
@@ -26186,8 +27921,6 @@ var ACTION_PROVIDER_ALIASES = {
   replicate: "replicate",
   replica: "replicate",
   "replicate.com": "replicate",
-  kie: "kie",
-  "kie.ai": "kie",
   official: "official",
   native: "official",
   openai: "openai",
@@ -26219,13 +27952,6 @@ var ACTION_PROVIDER_PRESETS = {
     secretLabel: "Replicate API token",
     secretDescription: "API key used to call the Replicate model provider.",
     docsUrl: "https://replicate.com/account/api-tokens"
-  },
-  kie: {
-    id: "kie",
-    label: "Kie.ai",
-    defaultSecretId: "KIE_API_KEY",
-    secretLabel: "Kie.ai API key",
-    secretDescription: "API key used to call the Kie.ai model provider."
   },
   official: {
     id: "official",
@@ -26318,11 +28044,11 @@ function mergeActionProviderSecrets(def) {
   const provider = (_a = def.model) == null ? void 0 : _a.provider;
   if (provider) {
     const preset = ACTION_PROVIDER_PRESETS[provider];
-    const id = ((_b = def.model) == null ? void 0 : _b.secretId) || (preset == null ? void 0 : preset.defaultSecretId);
-    if (id && !secrets.some((secret) => secret.id === id)) {
+    const id2 = ((_b = def.model) == null ? void 0 : _b.secretId) || (preset == null ? void 0 : preset.defaultSecretId);
+    if (id2 && !secrets.some((secret) => secret.id === id2)) {
       const label = providerLabel(provider);
       secrets.push({
-        id,
+        id: id2,
         label: (preset == null ? void 0 : preset.secretLabel) ?? `${label} API key`,
         description: (preset == null ? void 0 : preset.secretDescription) ?? `API key used to call the ${label} model provider.`,
         required: true
@@ -26357,8 +28083,6 @@ var CustomActionDefinitionBaseSchema = z.object({
   secrets: z.array(CustomActionSecretSchema).default([]),
   /** Exact hosted/local executable plugin version represented by this action. */
   pluginBinding: ExecutablePluginBindingSchema.optional(),
-  /** Capability set approved when this exact plugin version was installed. */
-  pluginPermissions: ExecutablePluginPermissionsSchema.optional(),
   /** Provider/model binding used by MaaS-compatible actions. */
   model: CustomActionModelSchema.optional(),
   /** Discovery tags */
@@ -26369,7 +28093,7 @@ var CustomActionDefinitionBaseSchema = z.object({
    * runtime_id of the local runtime that registered this action. The server
    * stamps this from the connecting WS client's `x-runtime-id` header, which
    * the python SDK forwards from the CLASH_RUNTIME_ID env var (set by the
-   * bridge daemon when it spawns each action subprocess).
+   * local-api host when it spawns each action subprocess).
    *
    * Custom actions are a property of THE USER'S MACHINE — when the runtime
    * is offline, NodeProcessor refuses to dispatch the action and the node
@@ -26766,7 +28490,7 @@ function timelineActionTimelineId(raw) {
 function nodeCanvasId2(raw) {
   return dist_isRecord2(raw) && typeof raw.canvasId === "string" ? raw.canvasId : DEFAULT_CANVAS_ID;
 }
-function parseTimeline(id, raw) {
+function parseTimeline(id2, raw) {
   if (!dist_isRecord2(raw) && !isLoroMap2(raw)) return null;
   const nameValue = timelineField(raw, "name");
   const ownerField = timelineField(raw, "owner");
@@ -26781,10 +28505,10 @@ function parseTimeline(id, raw) {
   const state = "state" in revisionValue ? revisionValue.state : timelineField(raw, "state");
   const legacyRevisionId = timelineField(raw, "revisionId");
   return {
-    id,
+    id: id2,
     name: typeof nameValue === "string" && nameValue.trim() ? nameValue : "Untitled Timeline",
     owner,
-    revisionId: typeof revisionValue.revisionId === "string" && revisionValue.revisionId.trim() ? revisionValue.revisionId : typeof legacyRevisionId === "string" && legacyRevisionId.trim() ? legacyRevisionId : projectTimelineRevisionId(id, state),
+    revisionId: typeof revisionValue.revisionId === "string" && revisionValue.revisionId.trim() ? revisionValue.revisionId : typeof legacyRevisionId === "string" && legacyRevisionId.trim() ? legacyRevisionId : projectTimelineRevisionId(id2, state),
     state
   };
 }
@@ -26823,12 +28547,12 @@ function ensureProjectCanvas(doc, canvasId = DEFAULT_CANVAS_ID, name = defaultCa
 }
 function listProjectCanvases(doc) {
   const canvases = [];
-  for (const [id, raw] of doc.getMap("canvases").entries()) {
+  for (const [id2, raw] of doc.getMap("canvases").entries()) {
     if (!raw || typeof raw !== "object") continue;
     const value = raw;
     canvases.push({
-      id,
-      name: typeof value.name === "string" && value.name.trim() ? value.name : defaultCanvasName(id),
+      id: id2,
+      name: typeof value.name === "string" && value.name.trim() ? value.name : defaultCanvasName(id2),
       position: typeof value.position === "number" ? value.position : Number.MAX_SAFE_INTEGER
     });
   }
@@ -26837,22 +28561,22 @@ function listProjectCanvases(doc) {
   );
 }
 function createProjectCanvas(doc, input) {
-  const id = input.id.trim();
+  const id2 = input.id.trim();
   const name = input.name.trim();
-  if (!id) return { ok: false, error: "Canvas id is required" };
+  if (!id2) return { ok: false, error: "Canvas id is required" };
   if (!name) return { ok: false, error: "Canvas name is required" };
   const canvases = doc.getMap("canvases");
-  if (canvases.size === 0 && id !== DEFAULT_CANVAS_ID) {
+  if (canvases.size === 0 && id2 !== DEFAULT_CANVAS_ID) {
     ensureProjectCanvas(doc);
   }
-  if (canvases.get(id)) return { ok: false, error: `Canvas ${id} already exists` };
+  if (canvases.get(id2)) return { ok: false, error: `Canvas ${id2} already exists` };
   const existing = listProjectCanvases(doc);
   const canvas = {
-    id,
+    id: id2,
     name,
     position: existing.length === 0 ? 0 : Math.max(...existing.map((candidate) => candidate.position)) + 1
   };
-  canvases.set(id, canvas);
+  canvases.set(id2, canvas);
   return { ok: true, canvas };
 }
 function renameProjectCanvas(doc, canvasId, name) {
@@ -26882,8 +28606,8 @@ function deleteProjectCanvas(doc, canvasId) {
 }
 function listProjectTimelines(doc) {
   const timelines = [];
-  for (const [id, raw] of doc.getMap("timelines").entries()) {
-    const timeline = parseTimeline(id, raw);
+  for (const [id2, raw] of doc.getMap("timelines").entries()) {
+    const timeline = parseTimeline(id2, raw);
     if (timeline) timelines.push(timeline);
   }
   return timelines.sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
@@ -26892,20 +28616,20 @@ function listStandaloneTimelines(doc) {
   return listProjectTimelines(doc).filter((timeline) => timeline.owner.kind === "project");
 }
 function createProjectTimeline(doc, input) {
-  const id = input.id.trim();
+  const id2 = input.id.trim();
   const name = input.name.trim();
-  if (!id) return { ok: false, error: "Timeline id is required" };
+  if (!id2) return { ok: false, error: "Timeline id is required" };
   if (!name) return { ok: false, error: "Timeline name is required" };
   const timelines = doc.getMap("timelines");
-  if (timelines.get(id)) return { ok: false, error: `Timeline ${id} already exists` };
+  if (timelines.get(id2)) return { ok: false, error: `Timeline ${id2} already exists` };
   const timeline = {
-    id,
+    id: id2,
     name,
     owner: { kind: "project" },
-    revisionId: projectTimelineRevisionId(id, input.state),
+    revisionId: projectTimelineRevisionId(id2, input.state),
     state: input.state
   };
-  setTimelineFields(timelines.ensureMergeableMap(id), timeline);
+  setTimelineFields(timelines.ensureMergeableMap(id2), timeline);
   return { ok: true, timeline };
 }
 function updateProjectTimelineState(doc, timelineId, state) {
@@ -27120,20 +28844,21 @@ function toLayoutNode(node) {
   };
 }
 var Canvas = class {
-  constructor(doc, broadcast, canvasId = "main") {
-    this.doc = doc;
-    this.broadcast = broadcast;
-    this.canvasId = canvasId;
+  constructor(doc, broadcast, canvasId = "main", modelCards = dist_MODEL_CARDS) {
+    dist_publicField(this, "doc", doc);
+    dist_publicField(this, "broadcast", broadcast);
+    dist_publicField(this, "canvasId", canvasId);
+    dist_publicField(this, "modelCards", modelCards);
   }
   // ── Read ─────────────────────────────────────────────
   listNodes(nodeType, parentId) {
     const nodesMap = this.doc.getMap("nodes");
     let nodes = [];
-    for (const [id, raw] of nodesMap.entries()) {
+    for (const [id2, raw] of nodesMap.entries()) {
       const node = parseLoroNode(
-        id,
+        id2,
         raw,
-        readNodeUpstreamRefs(this.doc, id, raw)
+        readNodeUpstreamRefs(this.doc, id2, raw)
       );
       if (node.canvas_id === this.canvasId) nodes.push(node);
     }
@@ -27192,7 +28917,7 @@ var Canvas = class {
     }
   }
   // ── Write ────────────────────────────────────────────
-  insertNode(nodeId, nodeType, data, parentId, position) {
+  insertNode(nodeId, nodeType, data, parentId, position2) {
     const versionBefore = this.doc.version();
     this.ensureWritableCanvas();
     const nodesMap = this.doc.getMap("nodes");
@@ -27201,7 +28926,7 @@ var Canvas = class {
       type: nodeType,
       data,
       parentId: parentId ?? void 0,
-      position
+      position: position2
     });
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
@@ -27266,14 +28991,14 @@ var Canvas = class {
     this.broadcast(update);
     return true;
   }
-  moveNode(nodeId, position) {
+  moveNode(nodeId, position2) {
     const node = this.readNode(nodeId);
     if (!node) return false;
     const nodesMap = this.doc.getMap("nodes");
     const raw = nodesMap.get(nodeId);
     if (!raw) return false;
     const versionBefore = this.doc.version();
-    nodesMap.set(nodeId, { ...raw, position });
+    nodesMap.set(nodeId, { ...raw, position: position2 });
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
     return true;
@@ -27320,7 +29045,7 @@ var Canvas = class {
     return { deletedNodeIds, deletedEdgeIds };
   }
   // ── Create with auto-layout ──────────────────────────
-  createNode(nodeId, nodeType, data, position, parentId, assetId) {
+  createNode(nodeId, nodeType, data, position2, parentId, assetId) {
     const canvases = this.doc.getMap("canvases");
     if (!canvases.get(this.canvasId) && !(this.canvasId === "main" && canvases.size === 0)) {
       return {
@@ -27358,7 +29083,7 @@ var Canvas = class {
         nodeData.actionType = mapping.actionType;
       }
     }
-    let finalPos = position ?? null;
+    let finalPos = position2 ?? null;
     if (!finalPos) {
       const existingNodes = this.listNodes().map(toLayoutNode);
       const virtualNode = {
@@ -27444,7 +29169,7 @@ var Canvas = class {
    * phrase its log line ("created pending asset" vs "created pending
    * render-video") without re-reading the node.
    */
-  execute(nodeId, generateId) {
+  execute(nodeId, generateId, providerAccountId) {
     const node = this.readNode(nodeId);
     if (!node) {
       return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: `Node ${nodeId} not found` };
@@ -27456,7 +29181,7 @@ var Canvas = class {
       }
       return { kind: "render", childNodeId: r2.renderNodeId, childNodeType: "video", position: r2.position, error: null };
     }
-    const r = this.executeGeneration(nodeId, generateId);
+    const r = this.executeGeneration(nodeId, generateId, providerAccountId);
     if (r.error) {
       return { kind: null, childNodeId: "", childNodeType: "", position: { x: 0, y: 0 }, error: r.error };
     }
@@ -27468,7 +29193,7 @@ var Canvas = class {
    * Public for back-compat (api-cf agent tool + tests call this directly);
    * new code should prefer `execute()` which dispatches by node type.
    */
-  executeGeneration(nodeId, generateId) {
+  executeGeneration(nodeId, generateId, providerAccountId) {
     var _a;
     const node = this.readNode(nodeId);
     if (!node) {
@@ -27499,7 +29224,7 @@ var Canvas = class {
     } else {
       const requestedModelId = nodeData.modelId || nodeData.model || "";
       const modelId = dist_normalizeModelId(requestedModelId) ?? requestedModelId;
-      const modelCard = dist_MODEL_CARDS.find((c) => c.id === modelId);
+      const modelCard = this.modelCards.find((c) => c.id === modelId);
       if (!modelCard) {
         return {
           assetNodeId: "",
@@ -27555,6 +29280,9 @@ var Canvas = class {
       };
     }
     const pendingNode = buildPendingAssetNode({ ...pendingInput, nodeId: assetNodeId });
+    if (providerAccountId) {
+      pendingNode.data.providerAccountId = providerAccountId;
+    }
     const pendingData = { ...pendingNode.data };
     if (nodeData.actorType === "user" || nodeData.actorType === "agent") {
       pendingData.actorType = nodeData.actorType;
@@ -28213,7 +29941,7 @@ function stageField(raw, field) {
   if (isLoroMap3(raw)) return raw.get(field);
   return isRecord3(raw) ? raw[field] : void 0;
 }
-function parseDirectorStage(id, raw) {
+function parseDirectorStage(id2, raw) {
   if (!isRecord3(raw) && !isLoroMap3(raw)) return null;
   const nameValue = stageField(raw, "name");
   const ownerValue = stageField(raw, "owner");
@@ -28227,9 +29955,9 @@ function parseDirectorStage(id, raw) {
   if (!isRecord3(revisionValue)) return null;
   const parsedState = DirectorStageStateSchema.safeParse(revisionValue.state);
   if (!parsedState.success) return null;
-  const revisionId = typeof revisionValue.revisionId === "string" ? revisionValue.revisionId : projectDirectorStageRevisionId(id, parsedState.data);
+  const revisionId = typeof revisionValue.revisionId === "string" ? revisionValue.revisionId : projectDirectorStageRevisionId(id2, parsedState.data);
   return {
-    id,
+    id: id2,
     name: typeof nameValue === "string" && nameValue.trim() ? nameValue : "Untitled Director Stage",
     owner,
     revisionId,
@@ -28267,8 +29995,8 @@ function readProjectDirectorStage(doc, stageId) {
 }
 function listProjectDirectorStages(doc) {
   const stages = [];
-  for (const [id, raw] of doc.getMap("directorStages").entries()) {
-    const stage = parseDirectorStage(id, raw);
+  for (const [id2, raw] of doc.getMap("directorStages").entries()) {
+    const stage = parseDirectorStage(id2, raw);
     if (stage) stages.push(stage);
   }
   return stages.sort(
@@ -28277,24 +30005,24 @@ function listProjectDirectorStages(doc) {
 }
 function createProjectDirectorStage(doc, input) {
   var _a;
-  const id = input.id.trim();
+  const id2 = input.id.trim();
   const name = input.name.trim();
-  if (!id) return { ok: false, error: "Director Stage id is required" };
+  if (!id2) return { ok: false, error: "Director Stage id is required" };
   if (!name) return { ok: false, error: "Director Stage name is required" };
   const parsedState = DirectorStageStateSchema.safeParse(input.state);
   if (!parsedState.success) {
     return { ok: false, error: ((_a = parsedState.error.issues[0]) == null ? void 0 : _a.message) ?? "Invalid Director Stage state" };
   }
   const stages = doc.getMap("directorStages");
-  if (stages.get(id)) return { ok: false, error: `Director Stage ${id} already exists` };
+  if (stages.get(id2)) return { ok: false, error: `Director Stage ${id2} already exists` };
   const stage = {
-    id,
+    id: id2,
     name,
     owner: { kind: "project" },
-    revisionId: projectDirectorStageRevisionId(id, parsedState.data),
+    revisionId: projectDirectorStageRevisionId(id2, parsedState.data),
     state: parsedState.data
   };
-  setDirectorStageFields(stages.ensureMergeableMap(id), stage);
+  setDirectorStageFields(stages.ensureMergeableMap(id2), stage);
   return { ok: true, stage };
 }
 function updateProjectDirectorStageState(doc, stageId, state) {
@@ -28400,15 +30128,15 @@ function reconcileProjectDirectorStageOwnership(doc) {
     detachedStageIds: detachedStageIds.sort()
   };
 }
-function applyDirectorStageCommand(state, command) {
+function applyDirectorStageCommand(state, command2) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
   const parsedState = DirectorStageStateSchema.safeParse(state);
   if (!parsedState.success) {
     return { ok: false, error: ((_a = parsedState.error.issues[0]) == null ? void 0 : _a.message) ?? "Invalid Director Stage state" };
   }
   const next = structuredClone(parsedState.data);
-  if (command.op === "object.add") {
-    const object = DirectorStageObjectSchema.safeParse(command.object);
+  if (command2.op === "object.add") {
+    const object = DirectorStageObjectSchema.safeParse(command2.object);
     if (!object.success) {
       return { ok: false, error: ((_b = object.error.issues[0]) == null ? void 0 : _b.message) ?? "Invalid Director Stage object" };
     }
@@ -28419,10 +30147,10 @@ function applyDirectorStageCommand(state, command) {
     const attachmentError = attachmentGraphError(next.objects);
     if (attachmentError) return { ok: false, error: attachmentError };
   }
-  if (command.op === "object.addMany") {
-    if (command.objects.length === 0) return { ok: false, error: "At least one object is required" };
+  if (command2.op === "object.addMany") {
+    if (command2.objects.length === 0) return { ok: false, error: "At least one object is required" };
     const parsedObjects = [];
-    for (const candidate of command.objects) {
+    for (const candidate of command2.objects) {
       const object = DirectorStageObjectSchema.safeParse(candidate);
       if (!object.success) {
         return { ok: false, error: ((_c = object.error.issues[0]) == null ? void 0 : _c.message) ?? "Invalid Director Stage object" };
@@ -28438,11 +30166,11 @@ function applyDirectorStageCommand(state, command) {
     const attachmentError = attachmentGraphError(next.objects);
     if (attachmentError) return { ok: false, error: attachmentError };
   }
-  if (command.op === "object.update") {
-    const objectIndex = next.objects.findIndex((candidate) => candidate.id === command.objectId);
-    if (objectIndex < 0) return { ok: false, error: `Object ${command.objectId} not found` };
+  if (command2.op === "object.update") {
+    const objectIndex = next.objects.findIndex((candidate) => candidate.id === command2.objectId);
+    if (objectIndex < 0) return { ok: false, error: `Object ${command2.objectId} not found` };
     const current = next.objects[objectIndex];
-    const patch = command.patch;
+    const patch = command2.patch;
     const raw = {
       ...current,
       ...patch.name !== void 0 ? { name: patch.name } : {},
@@ -28456,7 +30184,7 @@ function applyDirectorStageCommand(state, command) {
     };
     if (patch.pose !== void 0 || patch.bodyType !== void 0 || patch.bodyShape !== void 0) {
       if (current.kind !== "mannequin") {
-        return { ok: false, error: `Object ${command.objectId} does not support mannequin patches` };
+        return { ok: false, error: `Object ${command2.objectId} does not support mannequin patches` };
       }
       raw.mannequin = {
         ...current.mannequin,
@@ -28467,7 +30195,7 @@ function applyDirectorStageCommand(state, command) {
     }
     if (patch.creatureBuild !== void 0 || patch.creatureGait !== void 0) {
       if (current.kind !== "creature") {
-        return { ok: false, error: `Object ${command.objectId} does not support creature patches` };
+        return { ok: false, error: `Object ${command2.objectId} does not support creature patches` };
       }
       raw.creature = {
         ...current.creature,
@@ -28477,25 +30205,25 @@ function applyDirectorStageCommand(state, command) {
     }
     if (patch.propType !== void 0) {
       if (current.kind !== "prop") {
-        return { ok: false, error: `Object ${command.objectId} does not support prop patches` };
+        return { ok: false, error: `Object ${command2.objectId} does not support prop patches` };
       }
       raw.prop = { ...current.prop, type: patch.propType };
     }
     if (patch.setType !== void 0) {
       if (current.kind !== "set") {
-        return { ok: false, error: `Object ${command.objectId} does not support set patches` };
+        return { ok: false, error: `Object ${command2.objectId} does not support set patches` };
       }
       raw.set = { ...current.set, type: patch.setType };
     }
     if (patch.vehicleType !== void 0) {
       if (current.kind !== "vehicle") {
-        return { ok: false, error: `Object ${command.objectId} does not support vehicle patches` };
+        return { ok: false, error: `Object ${command2.objectId} does not support vehicle patches` };
       }
       raw.vehicle = { ...current.vehicle, type: patch.vehicleType };
     }
     if (patch.lightType !== void 0 || patch.lightIntensity !== void 0 || patch.lightRange !== void 0 || patch.lightAngle !== void 0) {
       if (current.kind !== "light") {
-        return { ok: false, error: `Object ${command.objectId} does not support light patches` };
+        return { ok: false, error: `Object ${command2.objectId} does not support light patches` };
       }
       raw.light = {
         ...current.light,
@@ -28511,32 +30239,32 @@ function applyDirectorStageCommand(state, command) {
     }
     next.objects[objectIndex] = updated.data;
   }
-  if (command.op === "object.group") {
-    const ids = new Set(command.objectIds);
-    const missing = command.objectIds.find((id) => !next.objects.some((object) => object.id === id));
+  if (command2.op === "object.group") {
+    const ids = new Set(command2.objectIds);
+    const missing = command2.objectIds.find((id2) => !next.objects.some((object) => object.id === id2));
     if (missing) return { ok: false, error: `Object ${missing} not found` };
-    if (!command.groupId.trim()) return { ok: false, error: "Group id is required" };
+    if (!command2.groupId.trim()) return { ok: false, error: "Group id is required" };
     next.objects = next.objects.map(
-      (object) => ids.has(object.id) ? { ...object, groupId: command.groupId } : object
+      (object) => ids.has(object.id) ? { ...object, groupId: command2.groupId } : object
     );
   }
-  if (command.op === "object.ungroup") {
+  if (command2.op === "object.ungroup") {
     next.objects = next.objects.map((object) => {
-      if (object.groupId !== command.groupId) return object;
+      if (object.groupId !== command2.groupId) return object;
       const { groupId: _groupId, ...ungrouped } = object;
       return ungrouped;
     });
   }
-  if (command.op === "object.attach") {
-    const objectIndex = next.objects.findIndex((object) => object.id === command.objectId);
-    if (objectIndex < 0) return { ok: false, error: `Object ${command.objectId} not found` };
-    if (!next.objects.some((object) => object.id === command.parentId)) {
-      return { ok: false, error: `Object ${command.parentId} not found` };
+  if (command2.op === "object.attach") {
+    const objectIndex = next.objects.findIndex((object) => object.id === command2.objectId);
+    if (objectIndex < 0) return { ok: false, error: `Object ${command2.objectId} not found` };
+    if (!next.objects.some((object) => object.id === command2.parentId)) {
+      return { ok: false, error: `Object ${command2.parentId} not found` };
     }
     const attachment = DirectorStageAttachmentSchema.safeParse({
-      parentId: command.parentId,
-      socket: command.socket,
-      offset: command.offset ?? directorDefaultAttachmentOffset(command.socket)
+      parentId: command2.parentId,
+      socket: command2.socket,
+      offset: command2.offset ?? directorDefaultAttachmentOffset(command2.socket)
     });
     if (!attachment.success) {
       return { ok: false, error: ((_e = attachment.error.issues[0]) == null ? void 0 : _e.message) ?? "Invalid attachment" };
@@ -28548,30 +30276,30 @@ function applyDirectorStageCommand(state, command) {
     const attachmentError = attachmentGraphError(next.objects);
     if (attachmentError) return { ok: false, error: attachmentError };
   }
-  if (command.op === "object.detach") {
-    const objectIndex = next.objects.findIndex((object) => object.id === command.objectId);
-    if (objectIndex < 0) return { ok: false, error: `Object ${command.objectId} not found` };
+  if (command2.op === "object.detach") {
+    const objectIndex = next.objects.findIndex((object) => object.id === command2.objectId);
+    if (objectIndex < 0) return { ok: false, error: `Object ${command2.objectId} not found` };
     const current = next.objects[objectIndex];
-    if (!current.attachment) return { ok: false, error: `Object ${command.objectId} is not attached` };
+    if (!current.attachment) return { ok: false, error: `Object ${command2.objectId} is not attached` };
     const { attachment: _attachment, ...detached } = current;
     next.objects[objectIndex] = detached;
   }
-  if (command.op === "object.remove") {
-    if (!next.objects.some((object) => object.id === command.objectId)) {
-      return { ok: false, error: `Object ${command.objectId} not found` };
+  if (command2.op === "object.remove") {
+    if (!next.objects.some((object) => object.id === command2.objectId)) {
+      return { ok: false, error: `Object ${command2.objectId} not found` };
     }
-    next.objects = next.objects.filter((object) => object.id !== command.objectId).map((object) => {
+    next.objects = next.objects.filter((object) => object.id !== command2.objectId).map((object) => {
       var _a2;
-      if (((_a2 = object.attachment) == null ? void 0 : _a2.parentId) !== command.objectId) return object;
+      if (((_a2 = object.attachment) == null ? void 0 : _a2.parentId) !== command2.objectId) return object;
       const { attachment: _attachment, ...detached } = object;
       return detached;
     });
     next.cameras = next.cameras.map((camera) => {
       var _a2, _b2;
       const remainingTargetObjectIds = (_a2 = camera.targetObjectIds) == null ? void 0 : _a2.filter(
-        (targetId) => targetId !== command.objectId
+        (targetId) => targetId !== command2.objectId
       );
-      if (camera.targetObjectId !== command.objectId && (remainingTargetObjectIds == null ? void 0 : remainingTargetObjectIds.length) === ((_b2 = camera.targetObjectIds) == null ? void 0 : _b2.length)) {
+      if (camera.targetObjectId !== command2.objectId && (remainingTargetObjectIds == null ? void 0 : remainingTargetObjectIds.length) === ((_b2 = camera.targetObjectIds) == null ? void 0 : _b2.length)) {
         return camera;
       }
       const {
@@ -28582,31 +30310,31 @@ function applyDirectorStageCommand(state, command) {
       } = camera;
       return {
         ...unbound,
-        ...camera.targetObjectId !== command.objectId ? { targetObjectId: camera.targetObjectId } : {},
+        ...camera.targetObjectId !== command2.objectId ? { targetObjectId: camera.targetObjectId } : {},
         ...(remainingTargetObjectIds == null ? void 0 : remainingTargetObjectIds.length) ? { targetObjectIds: remainingTargetObjectIds } : {},
-        ...camera.targetObjectId !== command.objectId || (remainingTargetObjectIds == null ? void 0 : remainingTargetObjectIds.length) ? { targetOffset: camera.targetOffset } : {}
+        ...camera.targetObjectId !== command2.objectId || (remainingTargetObjectIds == null ? void 0 : remainingTargetObjectIds.length) ? { targetOffset: camera.targetOffset } : {}
       };
     });
     if (next.animation) {
       next.animation.tracks = next.animation.tracks.filter(
-        (track) => track.targetId !== command.objectId
+        (track) => track.targetId !== command2.objectId
       );
       next.animation.actionClips = (_f = next.animation.actionClips) == null ? void 0 : _f.filter(
-        (clip) => clip.targetId !== command.objectId
+        (clip) => clip.targetId !== command2.objectId
       );
       next.animation.storyBeats = (_g = next.animation.storyBeats) == null ? void 0 : _g.filter((beat) => {
         var _a2;
-        return ((_a2 = beat.dialogue) == null ? void 0 : _a2.speakerId) !== command.objectId;
+        return ((_a2 = beat.dialogue) == null ? void 0 : _a2.speakerId) !== command2.objectId;
       }).map((beat) => ({
         ...beat,
         participantIds: beat.participantIds.filter(
-          (participantId) => participantId !== command.objectId
+          (participantId) => participantId !== command2.objectId
         )
       })).filter((beat) => beat.participantIds.length > 0);
     }
   }
-  if (command.op === "camera.add") {
-    const camera = DirectorStageCameraSchema.safeParse(command.camera);
+  if (command2.op === "camera.add") {
+    const camera = DirectorStageCameraSchema.safeParse(command2.camera);
     if (!camera.success) {
       return { ok: false, error: ((_h = camera.error.issues[0]) == null ? void 0 : _h.message) ?? "Invalid Director Stage camera" };
     }
@@ -28630,13 +30358,13 @@ function applyDirectorStageCommand(state, command) {
     }
     next.cameras.push(camera.data);
   }
-  if (command.op === "camera.update") {
-    const cameraIndex = next.cameras.findIndex((candidate) => candidate.id === command.cameraId);
-    if (cameraIndex < 0) return { ok: false, error: `Camera ${command.cameraId} not found` };
+  if (command2.op === "camera.update") {
+    const cameraIndex = next.cameras.findIndex((candidate) => candidate.id === command2.cameraId);
+    if (cameraIndex < 0) return { ok: false, error: `Camera ${command2.cameraId} not found` };
     const updated = DirectorStageCameraSchema.safeParse({
       ...next.cameras[cameraIndex],
-      ...command.patch,
-      id: command.cameraId
+      ...command2.patch,
+      id: command2.cameraId
     });
     if (!updated.success) {
       return { ok: false, error: ((_j = updated.error.issues[0]) == null ? void 0 : _j.message) ?? "Invalid Director Stage camera patch" };
@@ -28644,7 +30372,7 @@ function applyDirectorStageCommand(state, command) {
     if (updated.data.targetObjectId && !next.objects.some((object) => object.id === updated.data.targetObjectId)) {
       return {
         ok: false,
-        error: `Camera ${command.cameraId} targets missing object ${updated.data.targetObjectId}`
+        error: `Camera ${command2.cameraId} targets missing object ${updated.data.targetObjectId}`
       };
     }
     const missingGroupTarget = (_k = updated.data.targetObjectIds) == null ? void 0 : _k.find(
@@ -28653,34 +30381,34 @@ function applyDirectorStageCommand(state, command) {
     if (missingGroupTarget) {
       return {
         ok: false,
-        error: `Camera ${command.cameraId} targets missing object ${missingGroupTarget}`
+        error: `Camera ${command2.cameraId} targets missing object ${missingGroupTarget}`
       };
     }
     next.cameras[cameraIndex] = updated.data;
   }
-  if (command.op === "camera.remove") {
-    if (!next.cameras.some((camera) => camera.id === command.cameraId)) {
-      return { ok: false, error: `Camera ${command.cameraId} not found` };
+  if (command2.op === "camera.remove") {
+    if (!next.cameras.some((camera) => camera.id === command2.cameraId)) {
+      return { ok: false, error: `Camera ${command2.cameraId} not found` };
     }
-    if (next.shots.some((shot) => shot.cameraId === command.cameraId)) {
-      return { ok: false, error: `Camera ${command.cameraId} has captured shots` };
+    if (next.shots.some((shot) => shot.cameraId === command2.cameraId)) {
+      return { ok: false, error: `Camera ${command2.cameraId} has captured shots` };
     }
-    if ((_l = next.shotSequence) == null ? void 0 : _l.some((shot) => shot.cameraId === command.cameraId)) {
-      return { ok: false, error: `Camera ${command.cameraId} is used by the shot sequence` };
+    if ((_l = next.shotSequence) == null ? void 0 : _l.some((shot) => shot.cameraId === command2.cameraId)) {
+      return { ok: false, error: `Camera ${command2.cameraId} is used by the shot sequence` };
     }
-    next.cameras = next.cameras.filter((camera) => camera.id !== command.cameraId);
-    if (next.activeCameraId === command.cameraId) delete next.activeCameraId;
+    next.cameras = next.cameras.filter((camera) => camera.id !== command2.cameraId);
+    if (next.activeCameraId === command2.cameraId) delete next.activeCameraId;
     if (next.animation) {
       next.animation.tracks = next.animation.tracks.filter(
-        (track) => track.targetId !== command.cameraId
+        (track) => track.targetId !== command2.cameraId
       );
       next.animation.cameraCues = (_m = next.animation.cameraCues) == null ? void 0 : _m.filter(
-        (cue) => cue.cameraId !== command.cameraId
+        (cue) => cue.cameraId !== command2.cameraId
       );
     }
   }
-  if (command.op === "shot.register") {
-    const shot = DirectorStageShotSchema.safeParse(command.shot);
+  if (command2.op === "shot.register") {
+    const shot = DirectorStageShotSchema.safeParse(command2.shot);
     if (!shot.success) {
       return { ok: false, error: ((_n = shot.error.issues[0]) == null ? void 0 : _n.message) ?? "Invalid Director Stage shot" };
     }
@@ -28692,18 +30420,18 @@ function applyDirectorStageCommand(state, command) {
     }
     next.shots.push(shot.data);
   }
-  if (command.op === "sequence-shot.upsert") {
-    const shot = DirectorStageSequenceShotSchema.safeParse(command.shot);
+  if (command2.op === "sequence-shot.upsert") {
+    const shot = DirectorStageSequenceShotSchema.safeParse(command2.shot);
     if (!shot.success) {
       return { ok: false, error: ((_o = shot.error.issues[0]) == null ? void 0 : _o.message) ?? "Invalid sequence shot" };
     }
     if (!next.cameras.some((camera) => camera.id === shot.data.cameraId)) {
       return { ok: false, error: `Shot ${shot.data.id} uses missing camera ${shot.data.cameraId}` };
     }
-    if (shot.data.startTime + shot.data.durationSeconds > command.durationSeconds + Number.EPSILON) {
+    if (shot.data.startTime + shot.data.durationSeconds > command2.durationSeconds + Number.EPSILON) {
       return {
         ok: false,
-        error: `Shot ${shot.data.id} ends after the ${command.durationSeconds}s sequence`
+        error: `Shot ${shot.data.id} ends after the ${command2.durationSeconds}s sequence`
       };
     }
     const shots = [...next.shotSequence ?? []];
@@ -28713,22 +30441,22 @@ function applyDirectorStageCommand(state, command) {
     shots.sort((left, right) => left.startTime - right.startTime || left.id.localeCompare(right.id));
     next.shotSequence = shots;
     const animation = next.animation ?? {
-      durationSeconds: command.durationSeconds,
-      fps: command.fps,
+      durationSeconds: command2.durationSeconds,
+      fps: command2.fps,
       tracks: []
     };
-    animation.durationSeconds = command.durationSeconds;
-    animation.fps = command.fps;
+    animation.durationSeconds = command2.durationSeconds;
+    animation.fps = command2.fps;
     next.animation = animation;
   }
-  if (command.op === "sequence-shot.remove") {
-    if (!((_p = next.shotSequence) == null ? void 0 : _p.some((shot) => shot.id === command.shotId))) {
-      return { ok: false, error: `Sequence shot ${command.shotId} not found` };
+  if (command2.op === "sequence-shot.remove") {
+    if (!((_p = next.shotSequence) == null ? void 0 : _p.some((shot) => shot.id === command2.shotId))) {
+      return { ok: false, error: `Sequence shot ${command2.shotId} not found` };
     }
-    next.shotSequence = next.shotSequence.filter((shot) => shot.id !== command.shotId);
+    next.shotSequence = next.shotSequence.filter((shot) => shot.id !== command2.shotId);
   }
-  if (command.op === "motion.upsert") {
-    const motion = DirectorStageMotionAssetSchema.safeParse(command.motion);
+  if (command2.op === "motion.upsert") {
+    const motion = DirectorStageMotionAssetSchema.safeParse(command2.motion);
     if (!motion.success) {
       return { ok: false, error: ((_q = motion.error.issues[0]) == null ? void 0 : _q.message) ?? "Invalid motion asset" };
     }
@@ -28739,50 +30467,50 @@ function applyDirectorStageCommand(state, command) {
     motions.sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
     next.motionAssets = motions;
   }
-  if (command.op === "motion.remove") {
-    if (!((_r = next.motionAssets) == null ? void 0 : _r.some((motion) => motion.id === command.motionId))) {
-      return { ok: false, error: `Motion asset ${command.motionId} not found` };
+  if (command2.op === "motion.remove") {
+    if (!((_r = next.motionAssets) == null ? void 0 : _r.some((motion) => motion.id === command2.motionId))) {
+      return { ok: false, error: `Motion asset ${command2.motionId} not found` };
     }
-    if ((_t = (_s = next.animation) == null ? void 0 : _s.actionClips) == null ? void 0 : _t.some((clip) => clip.motionAssetId === command.motionId)) {
-      return { ok: false, error: `Motion asset ${command.motionId} is used by an action clip` };
+    if ((_t = (_s = next.animation) == null ? void 0 : _s.actionClips) == null ? void 0 : _t.some((clip) => clip.motionAssetId === command2.motionId)) {
+      return { ok: false, error: `Motion asset ${command2.motionId} is used by an action clip` };
     }
-    next.motionAssets = next.motionAssets.filter((motion) => motion.id !== command.motionId);
+    next.motionAssets = next.motionAssets.filter((motion) => motion.id !== command2.motionId);
   }
-  if (command.op === "scene.update") {
+  if (command2.op === "scene.update") {
     next.scene = {
       ...next.scene,
-      ...command.patch.backgroundColor !== void 0 ? { backgroundColor: command.patch.backgroundColor } : {},
-      ...command.patch.environmentAssetId !== void 0 ? { environmentAssetId: command.patch.environmentAssetId } : {},
-      ...command.patch.environmentRotation !== void 0 ? { environmentRotation: command.patch.environmentRotation } : {},
-      ...command.patch.environmentCalibration !== void 0 ? { environmentCalibration: command.patch.environmentCalibration } : {},
+      ...command2.patch.backgroundColor !== void 0 ? { backgroundColor: command2.patch.backgroundColor } : {},
+      ...command2.patch.environmentAssetId !== void 0 ? { environmentAssetId: command2.patch.environmentAssetId } : {},
+      ...command2.patch.environmentRotation !== void 0 ? { environmentRotation: command2.patch.environmentRotation } : {},
+      ...command2.patch.environmentCalibration !== void 0 ? { environmentCalibration: command2.patch.environmentCalibration } : {},
       grid: {
         ...next.scene.grid,
-        ...command.patch.grid ?? {}
+        ...command2.patch.grid ?? {}
       }
     };
   }
-  if (command.op === "keyframe.upsert") {
-    const targetExists = next.objects.some((object) => object.id === command.track.targetId) || next.cameras.some((camera) => camera.id === command.track.targetId);
+  if (command2.op === "keyframe.upsert") {
+    const targetExists = next.objects.some((object) => object.id === command2.track.targetId) || next.cameras.some((camera) => camera.id === command2.track.targetId);
     if (!targetExists) {
-      return { ok: false, error: `Animation target ${command.track.targetId} not found` };
+      return { ok: false, error: `Animation target ${command2.track.targetId} not found` };
     }
-    const parsedKeyframe = DirectorStageAnimationKeyframeSchema.safeParse(command.keyframe);
+    const parsedKeyframe = DirectorStageAnimationKeyframeSchema.safeParse(command2.keyframe);
     if (!parsedKeyframe.success) {
       return { ok: false, error: ((_u = parsedKeyframe.error.issues[0]) == null ? void 0 : _u.message) ?? "Invalid keyframe" };
     }
     const animation = next.animation ?? {
-      durationSeconds: command.durationSeconds,
-      fps: command.fps,
+      durationSeconds: command2.durationSeconds,
+      fps: command2.fps,
       tracks: []
     };
-    animation.durationSeconds = command.durationSeconds;
-    animation.fps = command.fps;
-    let track = animation.tracks.find((candidate) => candidate.id === command.track.id);
+    animation.durationSeconds = command2.durationSeconds;
+    animation.fps = command2.fps;
+    let track = animation.tracks.find((candidate) => candidate.id === command2.track.id);
     if (!track) {
-      track = { ...command.track, keyframes: [] };
+      track = { ...command2.track, keyframes: [] };
       animation.tracks.push(track);
-    } else if (track.targetId !== command.track.targetId || track.property !== command.track.property) {
-      return { ok: false, error: `Track ${command.track.id} identity does not match` };
+    } else if (track.targetId !== command2.track.targetId || track.property !== command2.track.property) {
+      return { ok: false, error: `Track ${command2.track.id} identity does not match` };
     }
     const existingIndex = track.keyframes.findIndex(
       (keyframe) => keyframe.id === parsedKeyframe.data.id
@@ -28793,31 +30521,31 @@ function applyDirectorStageCommand(state, command) {
     animation.tracks.sort((left, right) => left.id.localeCompare(right.id));
     next.animation = animation;
   }
-  if (command.op === "keyframe.remove") {
+  if (command2.op === "keyframe.remove") {
     const animation = next.animation;
-    const track = animation == null ? void 0 : animation.tracks.find((candidate) => candidate.id === command.trackId);
+    const track = animation == null ? void 0 : animation.tracks.find((candidate) => candidate.id === command2.trackId);
     if (!animation || !track) {
-      return { ok: false, error: `Animation track ${command.trackId} not found` };
+      return { ok: false, error: `Animation track ${command2.trackId} not found` };
     }
-    if (!track.keyframes.some((keyframe) => keyframe.id === command.keyframeId)) {
-      return { ok: false, error: `Keyframe ${command.keyframeId} not found` };
+    if (!track.keyframes.some((keyframe) => keyframe.id === command2.keyframeId)) {
+      return { ok: false, error: `Keyframe ${command2.keyframeId} not found` };
     }
     track.keyframes = track.keyframes.filter(
-      (keyframe) => keyframe.id !== command.keyframeId
+      (keyframe) => keyframe.id !== command2.keyframeId
     );
     if (track.keyframes.length === 0) {
       animation.tracks = animation.tracks.filter(
-        (candidate) => candidate.id !== command.trackId
+        (candidate) => candidate.id !== command2.trackId
       );
     }
   }
-  if (command.op === "action.upsert") {
-    const target = next.objects.find((object) => object.id === command.clip.targetId);
+  if (command2.op === "action.upsert") {
+    const target = next.objects.find((object) => object.id === command2.clip.targetId);
     const actionCapable = (target == null ? void 0 : target.kind) === "mannequin" || (target == null ? void 0 : target.kind) === "model" && Boolean(target.model.animation);
     if (!actionCapable) {
-      return { ok: false, error: `Action target ${command.clip.targetId} must be an action-capable object` };
+      return { ok: false, error: `Action target ${command2.clip.targetId} must be an action-capable object` };
     }
-    const parsedClip = DirectorStageActionClipSchema.safeParse(command.clip);
+    const parsedClip = DirectorStageActionClipSchema.safeParse(command2.clip);
     if (!parsedClip.success) {
       return { ok: false, error: ((_v = parsedClip.error.issues[0]) == null ? void 0 : _v.message) ?? "Invalid action clip" };
     }
@@ -28827,19 +30555,19 @@ function applyDirectorStageCommand(state, command) {
         error: `Motion asset ${parsedClip.data.motionAssetId} not found`
       };
     }
-    if (parsedClip.data.startTime + parsedClip.data.durationSeconds > command.durationSeconds + Number.EPSILON) {
+    if (parsedClip.data.startTime + parsedClip.data.durationSeconds > command2.durationSeconds + Number.EPSILON) {
       return {
         ok: false,
-        error: `Action clip ${parsedClip.data.id} ends after the ${command.durationSeconds}s animation`
+        error: `Action clip ${parsedClip.data.id} ends after the ${command2.durationSeconds}s animation`
       };
     }
     const animation = next.animation ?? {
-      durationSeconds: command.durationSeconds,
-      fps: command.fps,
+      durationSeconds: command2.durationSeconds,
+      fps: command2.fps,
       tracks: []
     };
-    animation.durationSeconds = command.durationSeconds;
-    animation.fps = command.fps;
+    animation.durationSeconds = command2.durationSeconds;
+    animation.fps = command2.fps;
     const actionClips = [...animation.actionClips ?? []];
     const existingIndex = actionClips.findIndex((clip) => clip.id === parsedClip.data.id);
     if (existingIndex >= 0) actionClips[existingIndex] = parsedClip.data;
@@ -28848,12 +30576,12 @@ function applyDirectorStageCommand(state, command) {
     animation.actionClips = actionClips;
     next.animation = animation;
   }
-  if (command.op === "action.remove") {
-    if (!((_y = (_x = next.animation) == null ? void 0 : _x.actionClips) == null ? void 0 : _y.some((clip) => clip.id === command.clipId))) {
-      return { ok: false, error: `Action clip ${command.clipId} not found` };
+  if (command2.op === "action.remove") {
+    if (!((_y = (_x = next.animation) == null ? void 0 : _x.actionClips) == null ? void 0 : _y.some((clip) => clip.id === command2.clipId))) {
+      return { ok: false, error: `Action clip ${command2.clipId} not found` };
     }
     next.animation.actionClips = next.animation.actionClips.filter(
-      (clip) => clip.id !== command.clipId
+      (clip) => clip.id !== command2.clipId
     );
   }
   const validated = DirectorStageStateSchema.safeParse(next);
@@ -28883,10 +30611,12 @@ function detachDirectorStageFromCanvas(doc, stageId) {
 }
 function validateAgentObservation(options) {
   var _a;
-  if (options.actorClientType !== "agent") return { ok: true };
   const operation = options.operation.trim() || "writing";
   const observedVersion = (_a = options.observedVersion) == null ? void 0 : _a.trim();
   if (!observedVersion) {
+    if (options.actorClientType !== "agent" && options.actorClientType !== "mcp") {
+      return { ok: true };
+    }
     return {
       ok: false,
       code: "READ_REQUIRED",
@@ -28945,6 +30675,196 @@ function compactRecord(record) {
     Object.entries(record).filter(([, value]) => value !== void 0)
   );
 }
+
+var id = z.string().trim().min(1);
+var actorClientType = z.enum(["browser", "cli", "mcp", "agent"]).optional();
+var observed = {
+  actorClientType,
+  observedVersion: id.optional(),
+  ifMatch: id.optional()
+};
+var position = z.object({ x: z.number().finite(), y: z.number().finite() });
+var primitiveParameter = z.union([z.string(), z.number().finite(), z.boolean()]);
+var command = (action, shape = {}) => z.object({ action: z.literal(action), ...shape }).passthrough();
+var addCommand = z.object({
+  action: z.literal("add"),
+  canvasId: id.optional(),
+  type: z.enum([
+    "text",
+    "group",
+    "remotion",
+    "image_gen",
+    "video_gen",
+    "audio_gen",
+    "text_gen"
+  ]),
+  label: id,
+  content: z.string().optional(),
+  prompt: z.string().optional(),
+  parentId: id.optional(),
+  modelId: id.optional(),
+  actionId: id.optional(),
+  refs: z.array(id).optional(),
+  params: z.record(id, primitiveParameter).optional(),
+  actorClientType,
+  actorAgentId: id.optional()
+}).strict();
+var ProjectHostCommandSchema = z.discriminatedUnion("action", [
+  command("list_custom_actions"),
+  command("register_custom_action", {
+    actionId: id,
+    definition: z.record(z.string(), z.unknown())
+  }),
+  command("unregister_custom_action", { actionId: id }),
+  command("list_canvases"),
+  command("create_canvas", { canvasId: id, name: id }),
+  command("rename_canvas", { canvasId: id, name: id, ...observed }),
+  command("delete_canvas", { canvasId: id, ...observed }),
+  command("list_timelines"),
+  command("validate_timeline", { document: z.unknown() }),
+  command("list_timeline_renders", {
+    status: z.enum(["completed", "all"]).optional()
+  }),
+  command("create_timeline", {
+    timelineId: id,
+    name: id,
+    state: z.unknown().optional()
+  }),
+  command("update_timeline_state", {
+    timelineId: id,
+    state: z.unknown(),
+    ...observed
+  }),
+  command("attach_timeline", {
+    timelineId: id,
+    canvasId: id,
+    actionNodeId: id.optional(),
+    position: position.optional(),
+    ...observed
+  }),
+  command("detach_timeline", { timelineId: id, ...observed }),
+  command("copy_timeline_action", {
+    sourceTimelineId: id,
+    targetCanvasId: id,
+    newTimelineId: id.optional(),
+    newActionNodeId: id.optional(),
+    position: position.optional(),
+    ...observed
+  }),
+  command("request_timeline_render", {
+    timelineId: id,
+    actorAgentId: id.optional(),
+    ...observed
+  }),
+  command("list_director_stages"),
+  command("create_director_stage", {
+    stageId: id,
+    name: id,
+    state: z.unknown().optional()
+  }),
+  command("update_director_stage_state", {
+    stageId: id,
+    state: z.unknown(),
+    ...observed
+  }),
+  command("attach_director_stage", {
+    stageId: id,
+    canvasId: id,
+    actionNodeId: id.optional(),
+    position: position.optional(),
+    ...observed
+  }),
+  command("detach_director_stage", { stageId: id, ...observed }),
+  command("capture_director_stage", {
+    stageId: id,
+    frames: z.array(z.object({
+      label: id,
+      timeSeconds: z.number().finite().nonnegative(),
+      aspectRatio: z.enum(["16:9", "9:16", "4:3", "3:4", "1:1"])
+    }).strict()).min(1).max(12),
+    longEdge: z.number().int().min(256).max(4096),
+    ...observed
+  }),
+  command("list", { canvasId: id.optional(), type: id.optional() }),
+  command("edges", { canvasId: id.optional() }),
+  command("batch_delete_plan", {
+    canvasId: id.optional(),
+    nodeIds: z.array(id).min(1)
+  }),
+  command("get", { canvasId: id.optional(), nodeId: id }),
+  addCommand,
+  command("update", {
+    canvasId: id.optional(),
+    nodeId: id,
+    label: z.string().optional(),
+    content: z.string().optional(),
+    data: z.record(z.string(), z.unknown()).optional(),
+    ...observed
+  }),
+  command("move", {
+    canvasId: id.optional(),
+    nodeId: id,
+    position,
+    ...observed
+  }),
+  command("copy_node", {
+    canvasId: id.optional(),
+    nodeId: id,
+    newNodeId: id.optional(),
+    ...observed
+  }),
+  command("text_cas_update", {
+    canvasId: id.optional(),
+    projectId: id.optional(),
+    nodeId: id,
+    content: z.string(),
+    cwd: id.optional(),
+    filePath: id.optional(),
+    parentRevisionId: id.optional(),
+    actor: z.unknown().optional(),
+    ...observed
+  }),
+  command("text_cow_replace", {
+    canvasId: id.optional(),
+    projectId: id.optional(),
+    nodeId: id,
+    content: z.string(),
+    cwd: id.optional(),
+    filePath: id.optional(),
+    parentRevisionId: id.optional(),
+    label: z.string().optional(),
+    newNodeId: id.optional(),
+    actor: z.unknown().optional(),
+    ...observed
+  }),
+  command("delete", { canvasId: id.optional(), nodeId: id, ...observed }),
+  command("delete_batch", {
+    canvasId: id.optional(),
+    nodeIds: z.array(id).min(1),
+    ...observed
+  }),
+  command("asset_cow_replace", {
+    canvasId: id.optional(),
+    nodeId: id,
+    assetId: id,
+    newNodeId: id.optional(),
+    label: z.string().optional(),
+    ...observed
+  }),
+  command("search", {
+    canvasId: id.optional(),
+    query: z.string(),
+    types: z.array(id).nullable().optional()
+  }),
+  command("execute", {
+    canvasId: id.optional(),
+    nodeId: id,
+    providerAccountId: id.optional(),
+    ...observed
+  }),
+  command("ensure_edge", { canvasId: id.optional(), source: id, target: id }),
+  command("ping")
+]);
 var PROJECTION_OWNED_DATA_FIELDS = /* @__PURE__ */ new Set([
   "timelineDsl"
 ]);
@@ -29436,6 +31356,174 @@ var DOStateSchema = z.object({
   updated_at: z.number()
 });
 
+var CredentialSourceKindSchema = z.enum([
+  "field",
+  "choice",
+  "button",
+  "display-code"
+]);
+function resolveCredentialSources(declaration) {
+  if (!declaration) return [];
+  const sources = [];
+  for (const method of declaration.methods) {
+    const opensWindow = method.flow !== void 0;
+    for (const item of method.form ?? []) {
+      if (item.kind === "notice") continue;
+      const control = item.kind === "button" ? opensWindow ? "button-window" : "button-action" : "field";
+      sources.push({
+        id: item.key,
+        kind: item.kind,
+        label: item.label,
+        control,
+        // Only a window needs someone at the keyboard. A typed key needs a human once,
+        // but it can be provisioned ahead of time, so an unattended caller is not
+        // blocked by it; a button that calls the host needs nobody at all.
+        interactive: control === "button-window",
+        credentialId: item.key,
+        secret: item.kind === "field" ? item.secret === true : false,
+        item
+      });
+    }
+  }
+  return sources;
+}
+function unattendedCredentialSources(declaration) {
+  return resolveCredentialSources(declaration).filter((source) => !source.interactive);
+}
+function hasUnattendedCredentialSource(declaration) {
+  return unattendedCredentialSources(declaration).length > 0;
+}
+var MINIMAX_ENDPOINTS = {
+  global: "https://api.minimax.io",
+  cn: "https://api.minimaxi.com"
+};
+function minimaxBaseUrl(region, baseUrl) {
+  if (baseUrl && baseUrl.trim()) return baseUrl.trim().replace(/\/+$/, "");
+  if (region === void 0 || region === "") return MINIMAX_ENDPOINTS.global;
+  const endpoint = MINIMAX_ENDPOINTS[region];
+  if (!endpoint) {
+    throw new Error(
+      `MiniMax has no endpoint for region "${region}". Known regions: ${Object.keys(MINIMAX_ENDPOINTS).join(", ")}.`
+    );
+  }
+  return endpoint;
+}
+
+var GOOGLE_PLATFORMS = {
+  "ai-studio": "https://generativelanguage.googleapis.com",
+  "agent-platform": "https://aiplatform.googleapis.com"
+};
+var GooglePlatformSchema = z.enum(
+  Object.keys(GOOGLE_PLATFORMS)
+);
+function googleApiBaseUrl(platform, options = {}) {
+  if (options.baseUrl && options.baseUrl.trim()) {
+    return options.baseUrl.trim().replace(/\/+$/, "");
+  }
+  const host = GOOGLE_PLATFORMS[platform];
+  if (!host) {
+    throw new Error(
+      `Google has no surface named "${platform}". Known surfaces: ${Object.keys(GOOGLE_PLATFORMS).join(", ")}.`
+    );
+  }
+  if (platform === "agent-platform" && options.location && options.location !== "global") {
+    return `https://${options.location}-aiplatform.googleapis.com`;
+  }
+  return host;
+}
+
+var AccountSettingOptionSchema = z.object({
+  value: z.string().trim().min(1),
+  /** What the person choosing reads. Names the service, not our identifier for it. */
+  label: z.string().trim().min(1)
+}).strict();
+var AccountSettingSchema = z.object({
+  key: z.string().trim().min(1),
+  label: z.string().trim().min(1),
+  /** A closed set makes this a choice; without it the setting is free text. */
+  options: z.array(AccountSettingOptionSchema).nonempty().optional(),
+  /** What the setting is when nobody said. Must be one of the options, when there are options. */
+  defaultValue: z.string().trim().min(1).optional(),
+  description: z.string().trim().min(1).optional()
+}).strict().superRefine((setting, ctx) => {
+  if (setting.options && setting.defaultValue && !setting.options.some((option) => option.value === setting.defaultValue)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["defaultValue"],
+      message: `Default "${setting.defaultValue}" is not one of the options. A default outside the set would be stored, pass validation, and then match nothing downstream.`
+    });
+  }
+});
+var ACCOUNT_SETTINGS = {
+  google: [
+    {
+      key: "service",
+      label: "Service",
+      options: [
+        { value: "agent-platform", label: "Gemini Enterprise Agent Platform (aiplatform.googleapis.com)" },
+        { value: "ai-studio", label: "Gemini Developer API (generativelanguage.googleapis.com)" }
+      ],
+      // Agent Platform serves the whole catalogue -- Veo and the Gemini text models exist only
+      // there -- while the Developer API additionally needs the Gemini API enabled on the project
+      // behind the key, which a Cloud key does not have by default.
+      defaultValue: "agent-platform",
+      description: "Which Google service issued this key. Both accept the same kind of key."
+    },
+    {
+      key: "region",
+      label: "Region",
+      // Free text rather than a menu: Google adds locations, and a stale menu would refuse one that
+      // works. Agent Platform rejects an unknown location itself, and says so clearly.
+      //
+      // `global` is the default because model availability is widest there -- measured:
+      // gemini-3.1-flash-image answers on global and 404s on us-central1.
+      defaultValue: "global",
+      description: "Agent Platform location, e.g. global or us-central1. Unused by the Developer API."
+    }
+  ],
+  minimax: [
+    {
+      key: "service",
+      label: "Service",
+      options: [
+        { value: "global", label: "International (api.minimax.io)" },
+        { value: "cn", label: "Mainland China (api.minimaxi.com)" }
+      ],
+      // Accounts predate this choice, and moving them to a host their key is unknown to -- without
+      // anyone asking -- would break the ones that work today.
+      defaultValue: "global",
+      description: "Which MiniMax service issued this key. They do not share a login."
+    }
+  ]
+};
+function resolveRequiredSetting(setting, stored) {
+  const value = stored == null ? void 0 : stored.trim();
+  if (value) {
+    if (setting.options && !setting.options.some((option) => option.value === value)) {
+      throw new Error(
+        `"${value}" is not a valid ${setting.label}. Known values: ${setting.options.map((option) => option.value).join(", ")}.`
+      );
+    }
+    return value;
+  }
+  if (setting.defaultValue) return setting.defaultValue;
+  throw new Error(
+    `${setting.label} is required and this account has not set it. A setting declared without a default cannot be left out.`
+  );
+}
+function resolveAccountSetting(vendor, key, stored) {
+  var _a;
+  const setting = (_a = ACCOUNT_SETTINGS[vendor]) == null ? void 0 : _a.find((entry) => entry.key === key);
+  if (!setting) return stored;
+  if (stored === void 0 || stored === "") return setting.defaultValue;
+  if (setting.options && !setting.options.some((option) => option.value === stored)) {
+    throw new Error(
+      `"${stored}" is not a known ${vendor} ${key}. Known values: ${setting.options.map((option) => option.value).join(", ")}.`
+    );
+  }
+  return stored;
+}
+
 var DynamicProviderIdSchema = z.string().trim().regex(
   /^[a-z0-9][a-z0-9._-]*$/,
   "Provider ecosystem ids must be lowercase plugin-safe identifiers."
@@ -29452,10 +31540,8 @@ var BuiltinModelUpstreamIdSchema = z.enum([
   "anthropic",
   "openrouter",
   "replicate",
-  "kie",
   "kling",
   "minimax",
-  "jimeng",
   "volcengine",
   "elevenlabs",
   "suno"
@@ -29475,29 +31561,23 @@ var BuiltinModelUpstreamApiShapeSchema = z.enum([
   "openai-compatible",
   "anthropic-compatible",
   "replicate",
-  "kie",
   "kling",
   "minimax",
   "modelark",
-  "dreamina-cli",
   "elevenlabs",
   "suno"
 ]);
 var ModelUpstreamApiShapeSchema = DynamicProviderIdSchema;
-var BuiltinProviderOAuthIdSchema = z.enum([
-  "dreamina"
-]);
+var BuiltinProviderOAuthIdSchema = z.never();
 var ProviderOAuthIdSchema = DynamicProviderIdSchema;
 var BuiltinProviderAccountIdSchema = z.enum([
   "local",
   "official",
   "fal",
   "pika",
-  "kie",
   "replicate",
   "kling",
   "minimax",
-  "jimeng",
   "volcengine",
   "elevenlabs",
   "suno",
@@ -29588,7 +31668,7 @@ function customTextModelCard(config, providers) {
   });
 }
 function buildEffectiveModelCards(options = {}) {
-  const configs = z10.array(UserModelCardConfigSchema).parse(options.configs ?? []);
+  const configs = z14.array(UserModelCardConfigSchema).parse(options.configs ?? []);
   const baseModels = options.baseModels ?? dist_MODEL_CARDS;
   const configByModelId = new Map(configs.map((config) => [config.modelId, config]));
   const builtInModels = baseModels.map((model) => {
@@ -29610,8 +31690,7 @@ var API_KEY_CREDENTIAL = "apiKey";
 var BASE_URL_CREDENTIAL = "baseUrl";
 var ACCESS_KEY_CREDENTIAL = "accessKey";
 var SECRET_KEY_CREDENTIAL = "secretKey";
-var VERTEX_CREDENTIAL = "vertexCredentials";
-var DREAMINA_OAUTH = "dreamina";
+var VERTEX_CREDENTIAL = "serviceAccountKey";
 function falMock(modelCode, kind, upstreamModel) {
   return {
     modelCode,
@@ -29671,6 +31750,15 @@ function routesFromModelCard(model) {
       } : {},
       ...((_b = implementation.requiredOAuth) == null ? void 0 : _b.length) ? { requiredOAuth: implementation.requiredOAuth.map((provider) => ProviderOAuthIdSchema.parse(provider)) } : {},
       ...implementation.referenceBinding ?? model.input.referenceBinding ? { referenceBinding: implementation.referenceBinding ?? model.input.referenceBinding } : {},
+      ...implementation.inputAdaptation ? {
+        inputAdaptation: {
+          ...implementation.inputAdaptation.audio ? {
+            audio: {
+              mimeAliases: { ...implementation.inputAdaptation.audio.mimeAliases }
+            }
+          } : {}
+        }
+      } : {},
       ...((_c = implementation.parameterOverrides) == null ? void 0 : _c.length) ? { parameterOverrides: implementation.parameterOverrides.map((parameter) => ({ ...parameter })) } : {},
       ...implementation.defaultParamOverrides ? { defaultParamOverrides: { ...implementation.defaultParamOverrides } } : {},
       ...((_d = implementation.excludedParameterIds) == null ? void 0 : _d.length) ? { excludedParameterIds: [...implementation.excludedParameterIds] } : {},
@@ -29713,13 +31801,6 @@ var MODEL_PROVIDER_DEFINITIONS = [
     region: "global",
     apiShape: "bfl",
     priority: 10,
-    requiredCredentials: [API_KEY_CREDENTIAL]
-  },
-  {
-    providerId: "kie",
-    upstreamId: "kie",
-    apiShape: "kie",
-    priority: 25,
     requiredCredentials: [API_KEY_CREDENTIAL]
   },
   {
@@ -29775,13 +31856,6 @@ var MODEL_PROVIDER_DEFINITIONS = [
     apiShape: "kling",
     priority: 8,
     requiredCredentials: [ACCESS_KEY_CREDENTIAL, SECRET_KEY_CREDENTIAL]
-  },
-  {
-    providerId: "jimeng",
-    upstreamId: "jimeng",
-    apiShape: "dreamina-cli",
-    priority: 8,
-    requiredOAuth: [DREAMINA_OAUTH]
   },
   {
     providerId: "volcengine",
@@ -29847,7 +31921,7 @@ function providerIdForRoute(route) {
   if (route.providerId) return route.providerId;
   if (route.upstreamId === "local") return "local";
   if (route.upstreamId === "openai" || route.upstreamId === "google-ai-studio" || route.upstreamId === "google-agent-platform" || route.upstreamId === "anthropic") return "official";
-  if (route.upstreamId === "fal" || route.upstreamId === "pika" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
+  if (route.upstreamId === "fal" || route.upstreamId === "pika" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
     return route.upstreamId;
   }
   return "custom";
@@ -29908,7 +31982,7 @@ function unsupportedProviderModelFilterIds(provider, options = {}) {
   );
   if (!support) return [...provider.supportedModelIds];
   const supported = new Set(support.models.map((model) => model.id));
-  return provider.supportedModelIds.filter((id) => !supported.has(dist_normalizeModelId(id) ?? id.trim()));
+  return provider.supportedModelIds.filter((id2) => !supported.has(dist_normalizeModelId(id2) ?? id2.trim()));
 }
 function invalidProviderModelFilters(providers, options = {}) {
   return providers.flatMap((provider) => {
@@ -30188,6 +32262,216 @@ function listCompatibleModelCatalogEntries(options) {
 }
 var listModelProviderRoutes = (/* unused pure expression or super */ null && (listModelUpstreamRoutes));
 var resolveModelProviderRoute = (/* unused pure expression or super */ null && (resolveModelUpstreamRoute));
+
+var MediaTranscriptMetadataSchema = z.object({
+  schemaVersion: z.literal(1),
+  kind: z.literal("media.transcript"),
+  backendId: z.string().min(1),
+  modelId: z.string().min(1),
+  language: z.string().min(1).optional(),
+  /** The media this grid was transcribed from. */
+  sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  /**
+   * The word grid itself. Downstream wordIds only mean anything against this,
+   * and it survives a reflow of `text` or `segments` unchanged.
+   */
+  contentHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  /**
+   * Where the full body is stored. Distinct from `contentHash` on purpose: this
+   * addresses the whole document, so restating the same grid moves it.
+   */
+  bodyHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  summary: z.object({
+    wordCount: z.number().int().nonnegative(),
+    durationMs: z.number().int().min(0),
+    segmentCount: z.number().int().nonnegative().optional(),
+    averageConfidence: z.number().min(0).max(1).optional()
+  })
+});
+var MediaRenderLineageMetadataSchema = z.object({
+  schemaVersion: z.literal(1),
+  kind: z.literal("media.render-lineage"),
+  /** The entity rendered, e.g. a Director Stage or a Timeline. */
+  sourceEntityKind: z.string().min(1),
+  sourceEntityId: z.string().min(1),
+  /** The exact revision rendered, so a later edit cannot be mistaken for this one. */
+  sourceRevisionId: z.string().min(1),
+  /** Where in the entity's own time this frame was taken, when it has time. */
+  timeSeconds: z.number().nonnegative().optional(),
+  /** Which renderer produced it. */
+  renderer: z.string().min(1).optional(),
+  /** The media file this describes. */
+  sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u)
+});
+var MediaDescriptionMetadataSchema = z.object({
+  schemaVersion: z.literal(1),
+  kind: z.literal("media.description"),
+  text: z.string().min(1),
+  language: z.string().min(1).optional(),
+  /** Which model or person wrote it. */
+  producerModelId: z.string().min(1).optional(),
+  /** The media file this describes. */
+  sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u)
+});
+function transcriptContentHashInput(body) {
+  return JSON.stringify(
+    body.words.map((word) => [word.id, word.text, word.startMs, word.endMs])
+  );
+}
+function summarizeTranscript(body) {
+  const confidences = body.words.flatMap(
+    (word) => typeof word.confidence === "number" ? [word.confidence] : []
+  );
+  return {
+    wordCount: body.words.length,
+    durationMs: body.durationMs,
+    segmentCount: body.segments.length,
+    ...confidences.length > 0 ? {
+      averageConfidence: confidences.reduce((total, value) => total + value, 0) / confidences.length
+    } : {}
+  };
+}
+var declaredKinds = /* @__PURE__ */ new Map();
+function registerAssetMetadataKind(declaration) {
+  const issuesFor = (probe) => {
+    const result = declaration.schema.safeParse(probe);
+    return result.success ? [] : result.error.issues;
+  };
+  const complainsAbout = (issues, field) => issues.some((issue) => issue.path.length === 1 && issue.path[0] === field);
+  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
+    );
+  }
+  if (!complainsAbout(issuesFor({ kind: declaration.kind }), "schemaVersion")) {
+    throw new Error(
+      `Asset metadata kind ${declaration.kind} must declare a schemaVersion`
+    );
+  }
+  declaredKinds.set(declaration.kind, declaration);
+}
+function listDeclaredAssetMetadataKinds() {
+  return [...declaredKinds.keys()].sort();
+}
+function getDeclaredAssetMetadataKind(kind) {
+  return declaredKinds.get(kind);
+}
+var FillActionEnvelopeSchema = z.object({
+  actionId: z.string().min(1),
+  targetAssetId: z.string().min(1),
+  metadataKind: z.string().min(1),
+  metadata: z.object({ kind: z.string().min(1) }).passthrough(),
+  producer: z.string().min(1),
+  createdAt: z.string().optional()
+});
+function parseAssetMetadataFillAction(value) {
+  const envelope = FillActionEnvelopeSchema.parse(value);
+  if (envelope.metadata.kind !== envelope.metadataKind) {
+    throw new Error(
+      `metadata kind mismatch: ${envelope.metadataKind} does not match ${envelope.metadata.kind}`
+    );
+  }
+  const declared = declaredKinds.get(envelope.metadataKind);
+  if (!declared) {
+    throw new Error(
+      `Undeclared asset metadata kind: ${envelope.metadataKind}. Declare it with registerAssetMetadataKind first.`
+    );
+  }
+  return {
+    ...envelope,
+    metadata: declared.schema.parse(envelope.metadata)
+  };
+}
+function parseDeclaredAssetMetadata(kind, value) {
+  const declared = declaredKinds.get(kind);
+  if (!declared) throw new Error(`Undeclared asset metadata kind: ${kind}`);
+  return declared.schema.parse(value);
+}
+registerAssetMetadataKind({
+  kind: "media.transcript",
+  schema: MediaTranscriptMetadataSchema
+});
+registerAssetMetadataKind({
+  kind: "media.description",
+  schema: MediaDescriptionMetadataSchema
+});
+registerAssetMetadataKind({
+  kind: "media.render-lineage",
+  schema: MediaRenderLineageMetadataSchema
+});
+function transcribesAudioToText(model) {
+  var _a;
+  if (model.kind !== "text") return false;
+  const declared = (_a = model.input) == null ? void 0 : _a.promptModalities;
+  if (!Array.isArray(declared)) return false;
+  const modalities = declared.map(String);
+  return modalities.includes("audio") && !modalities.includes("text");
+}
+function isLocalAsrModelEntry(entry) {
+  var _a;
+  return transcribesAudioToText(entry.model) && (((_a = entry.selectedRoute) == null ? void 0 : _a.apiShape) === "local-asr" || (entry.candidateProviders ?? []).map(String).includes("local"));
+}
+function isLocalTtsModelEntry(entry) {
+  var _a;
+  return ((_a = entry.selectedRoute) == null ? void 0 : _a.apiShape) === "local-tts" || (entry.routes ?? []).some((route) => route.apiShape === "local-tts");
+}
+function isLocalSpeechModelEntry(entry) {
+  return isLocalAsrModelEntry(entry) || isLocalTtsModelEntry(entry);
+}
+function localSpeechCapability(entry) {
+  if (isLocalAsrModelEntry(entry)) return "speech-to-text";
+  if (isLocalTtsModelEntry(entry)) return "text-to-speech";
+  return null;
+}
+function defaultParamModel(entry, key) {
+  const defaultParams = entry.model.defaultParams;
+  const value = defaultParams == null ? void 0 : defaultParams[key];
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function asrModelValue(entry) {
+  var _a;
+  if (typeof ((_a = entry.selectedRoute) == null ? void 0 : _a.upstreamModel) === "string" && entry.selectedRoute.upstreamModel) {
+    return entry.selectedRoute.upstreamModel;
+  }
+  return defaultParamModel(entry, "asr_model") ?? entry.model.id;
+}
+function ttsModelValue(entry) {
+  var _a;
+  if (typeof ((_a = entry.selectedRoute) == null ? void 0 : _a.upstreamModel) === "string" && entry.selectedRoute.upstreamModel) {
+    return entry.selectedRoute.upstreamModel;
+  }
+  return defaultParamModel(entry, "tts_model") ?? entry.model.id;
+}
+function localSpeechModelValue(entry) {
+  return isLocalTtsModelEntry(entry) ? ttsModelValue(entry) : asrModelValue(entry);
+}
+function localSpeechModelCard(entry) {
+  const capability2 = localSpeechCapability(entry);
+  if (!capability2) return void 0;
+  return {
+    cardId: entry.model.id,
+    model: localSpeechModelValue(entry),
+    capability: capability2,
+    ...typeof entry.model.name === "string" ? { name: entry.model.name } : {},
+    ...typeof entry.model.provider === "string" ? { provider: entry.model.provider } : {},
+    ...typeof entry.model.description === "string" ? { description: entry.model.description } : {},
+    ...typeof entry.model.promptGuidance === "string" ? { guidance: entry.model.promptGuidance } : {}
+  };
+}
+function listLocalSpeechModelCards(entries, capability2) {
+  return entries.flatMap((entry) => {
+    const card = localSpeechModelCard(entry);
+    if (!card) return [];
+    if (capability2 && card.capability !== capability2) return [];
+    return [card];
+  });
+}
+function resolveLocalSpeechModelId(entries, capability2, requested) {
+  var _a, _b;
+  const cards = listLocalSpeechModelCards(entries, capability2);
+  const wanted = requested.trim();
+  return ((_a = cards.find((card) => card.cardId === wanted)) == null ? void 0 : _a.model) ?? ((_b = cards.find((card) => card.model === wanted)) == null ? void 0 : _b.model);
+}
 function isDraftStatus(status) {
   return status === "draft" || status === "idle";
 }
@@ -30456,11 +32740,23 @@ function loroSyncUpdateId(update) {
 var LoroSyncClient = class {
   constructor(options) {
     var _a;
-    this.doc = new dist_LoroDoc();
-    this.canvasScopes = /* @__PURE__ */ new Map();
-    this.ws = null;
-    this.unsubscribe = null;
-    this.pendingSyncAcks = /* @__PURE__ */ new Map();
+    dist_publicField(this, "doc");
+    dist_publicField(this, "canvasScopes", /* @__PURE__ */ new Map());
+    dist_publicField(this, "activeCanvasId");
+    dist_publicField(this, "ws", null);
+    dist_publicField(this, "unsubscribe", null);
+    dist_publicField(this, "serverUrl");
+    dist_publicField(this, "projectId");
+    dist_publicField(this, "token");
+    dist_publicField(this, "clientType");
+    dist_publicField(this, "userId");
+    dist_publicField(this, "userName");
+    dist_publicField(this, "agentName");
+    dist_publicField(this, "WS");
+    dist_publicField(this, "requireSyncAck");
+    dist_publicField(this, "modelCards");
+    dist_publicField(this, "pendingSyncAcks", /* @__PURE__ */ new Map());
+    this.doc = options.doc ?? new dist_LoroDoc();
     this.serverUrl = options.serverUrl.replace(/\/$/, "");
     this.projectId = options.projectId;
     this.token = options.token ?? "";
@@ -30470,6 +32766,7 @@ var LoroSyncClient = class {
     this.agentName = options.agentName;
     this.WS = options.WebSocket ?? globalThis.WebSocket;
     this.requireSyncAck = options.requireSyncAck ?? isLoopbackServerUrl(this.serverUrl);
+    this.modelCards = options.modelCards ?? dist_MODEL_CARDS;
     this.activeCanvasId = ((_a = options.canvasId) == null ? void 0 : _a.trim()) || DEFAULT_CANVAS_ID;
   }
   /** Canvas operations in the currently selected scope. */
@@ -30477,27 +32774,27 @@ var LoroSyncClient = class {
     return this.canvasFor(this.activeCanvasId);
   }
   canvasFor(canvasId) {
-    const id = canvasId.trim() || DEFAULT_CANVAS_ID;
-    const existing = this.canvasScopes.get(id);
+    const id2 = canvasId.trim() || DEFAULT_CANVAS_ID;
+    const existing = this.canvasScopes.get(id2);
     if (existing) return existing;
     const canvas = new Canvas(this.doc, () => {
-    }, id);
-    this.canvasScopes.set(id, canvas);
+    }, id2, this.modelCards);
+    this.canvasScopes.set(id2, canvas);
     return canvas;
   }
   selectCanvas(canvasId) {
-    const id = canvasId.trim() || DEFAULT_CANVAS_ID;
+    const id2 = canvasId.trim() || DEFAULT_CANVAS_ID;
     const canvases = this.doc.getMap("canvases");
-    if (!canvases.get(id)) {
-      if (id === DEFAULT_CANVAS_ID && canvases.size === 0) {
+    if (!canvases.get(id2)) {
+      if (id2 === DEFAULT_CANVAS_ID && canvases.size === 0) {
         ensureProjectCanvas(this.doc);
         this.doc.commit({ origin: "sys:canvas-registry" });
       } else {
-        throw new Error(`Canvas ${id} not found`);
+        throw new Error(`Canvas ${id2} not found`);
       }
     }
-    const canvas = this.canvasFor(id);
-    this.activeCanvasId = id;
+    const canvas = this.canvasFor(id2);
+    this.activeCanvasId = id2;
     return canvas;
   }
   listCanvases() {
@@ -30717,8 +33014,8 @@ var LoroSyncClient = class {
   readNode(nodeId) {
     return this.canvas.readNode(nodeId);
   }
-  createNode(nodeId, nodeType, data, position, parentId, assetId) {
-    return this.canvas.createNode(nodeId, nodeType, data, position, parentId, assetId);
+  createNode(nodeId, nodeType, data, position2, parentId, assetId) {
+    return this.canvas.createNode(nodeId, nodeType, data, position2, parentId, assetId);
   }
   updateNode(nodeId, updates) {
     return this.canvas.updateNode(nodeId, updates);
@@ -31275,7 +33572,7 @@ function catalogSection(title, fields) {
 ${catalogFieldRows(fields)}`;
 }
 function operationCatalogSection(title, operations) {
-  const rows = Object.entries(operations).map(([id, operation]) => `| \`${id}\` | ${operation.agentCallable ? "yes" : "no"} | ${operation.access} | ${operation.cas} | ${operation.readProof} | ${(operation.surfaceBindings ?? []).join(", ") || "internal"} | ${operation.runtimeConsumers.join(", ")} | ${operation.description} Preconditions: ${operation.preconditions.join(" ")} |`);
+  const rows = Object.entries(operations).map(([id2, operation]) => `| \`${id2}\` | ${operation.agentCallable ? "yes" : "no"} | ${operation.access} | ${operation.cas} | ${operation.readProof} | ${(operation.surfaceBindings ?? []).join(", ") || "internal"} | ${operation.runtimeConsumers.join(", ")} | ${operation.description} Preconditions: ${operation.preconditions.join(" ")} |`);
   return `### ${title}
 
 | Operation | Agent-callable | Access | CAS | Read proof | Public bindings | Runtime consumers | Meaning and preconditions |
@@ -31658,6 +33955,57 @@ var ProviderUsageAuditEventSchema = z.object({
   errorMessage: z.string().optional(),
   occurredAt: z.string().datetime()
 });
+function authFormControls(declaration, stored = {}, methodId) {
+  if (!declaration) return [];
+  const method = methodId ? declaration.methods.find((candidate) => candidate.id === methodId) : declaration.methods[0];
+  if (!method) return [];
+  const controls = [];
+  for (const item of method.form ?? []) {
+    const control = controlFor(item, method, stored);
+    if (control) controls.push(control);
+  }
+  return controls;
+}
+function controlFor(item, method, stored) {
+  switch (item.kind) {
+    case "field":
+      return {
+        control: "text",
+        key: item.key,
+        label: item.label,
+        masked: item.secret === true,
+        // A field with no declared default is required: unset means the account does not work. The
+        // rule lives in the declaration so the form and the request agree about the same fact.
+        required: item.default === void 0,
+        value: stored[item.key] ?? item.default ?? "",
+        ...item.placeholder ? { placeholder: item.placeholder } : {}
+      };
+    case "choice":
+      return {
+        control: "select",
+        key: item.key,
+        label: item.label,
+        required: item.default === void 0,
+        value: stored[item.key] ?? item.default ?? "",
+        options: [...item.options]
+      };
+    case "notice":
+      return { control: "notice", text: item.text };
+    case "button":
+      if (!method.flow) return void 0;
+      return { control: "button", key: item.key, label: item.label };
+    case "display-code":
+      return {
+        control: "code",
+        key: item.key,
+        label: item.label,
+        value: stored[item.key] ?? ""
+      };
+  }
+}
+function missingAuthKeys(declaration, stored = {}, methodId) {
+  return authFormControls(declaration, stored, methodId).filter((control) => "required" in control && control.required).filter((control) => !control.value.trim()).map((control) => control.key);
+}
 
 
 ;// ../remotion-core/src/trackCategories.ts
@@ -36240,9 +38588,9 @@ class WebGlEffectRuntime {
       preserveDrawingBuffer: true
     });
     if (!gl) throw new Error("WebGL2 is unavailable; use the effect fallback renderer.");
-    const vertexBuffer = gl.createBuffer();
-    if (!vertexBuffer) throw new Error("Unable to allocate the WebGL fullscreen vertex buffer.");
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    const agentPlatformBuffer = gl.createBuffer();
+    if (!agentPlatformBuffer) throw new Error("Unable to allocate the WebGL fullscreen vertex buffer.");
+    gl.bindBuffer(gl.ARRAY_BUFFER, agentPlatformBuffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
       new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
@@ -36253,7 +38601,7 @@ class WebGlEffectRuntime {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
     this.gl = gl;
     this.resolveShader = options.resolveShader;
-    this.vertexBuffer = vertexBuffer;
+    this.agentPlatformBuffer = agentPlatformBuffer;
   }
   render(options) {
     const draw = prepareWebGlDraw({
@@ -36309,7 +38657,7 @@ class WebGlEffectRuntime {
       gl.deleteFramebuffer(target.framebuffer);
       gl.deleteTexture(target.texture);
     }
-    gl.deleteBuffer(this.vertexBuffer);
+    gl.deleteBuffer(this.agentPlatformBuffer);
     this.programs.clear();
     this.inputTextures.clear();
     this.renderTargets = [];
@@ -36384,7 +38732,7 @@ class WebGlEffectRuntime {
     const { gl } = this;
     const location = gl.getAttribLocation(program, "a_position");
     if (location < 0) throw new Error("Effect vertex shader does not expose a_position.");
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.agentPlatformBuffer);
     gl.enableVertexAttribArray(location);
     gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
   }
@@ -276813,7 +279161,7 @@ var NoReactInternals = {
 /******/ 	/* webpack/runtime/load script */
 /******/ 	(() => {
 /******/ 		var inProgress = {};
-/******/ 		var dataWebpackPrefix = "@master-clash/remotion-components:";
+/******/ 		var dataWebpackPrefix = "@clash/remotion-components:";
 /******/ 		// loadScript function to load a script via script tag
 /******/ 		__webpack_require__.l = (url, done, key, chunkId) => {
 /******/ 			if(inProgress[url]) { inProgress[url].push(done); return; }
@@ -276974,7 +279322,7 @@ var NoReactInternals = {
 /******/ 		
 /******/ 		}
 /******/ 		
-/******/ 		var chunkLoadingGlobal = self["webpackChunk_master_clash_remotion_components"] = self["webpackChunk_master_clash_remotion_components"] || [];
+/******/ 		var chunkLoadingGlobal = self["webpackChunk_clash_remotion_components"] = self["webpackChunk_clash_remotion_components"] || [];
 /******/ 		chunkLoadingGlobal.forEach(webpackJsonpCallback.bind(null, 0));
 /******/ 		chunkLoadingGlobal.push = webpackJsonpCallback.bind(null, chunkLoadingGlobal.push.bind(chunkLoadingGlobal));
 /******/ 	})();
@@ -276985,7 +279333,7 @@ var NoReactInternals = {
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module is referenced by other modules so it can't be inlined
 /******/ 	__webpack_require__(7835);
-/******/ 	__webpack_require__(9138);
+/******/ 	__webpack_require__(3668);
 /******/ 	__webpack_require__(6426);
 /******/ 	var __webpack_exports__ = __webpack_require__(1366);
 /******/ 	

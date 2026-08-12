@@ -258,5 +258,5 @@ async def connect(self):
 ## 参考资料
 
 - 前端改动：`apps/web/app/hooks/useLoroSync.ts`
-- Python 实现：`apps/api/src/master_clash/loro_sync/`
+- Python 实现：`apps/api/src/clash/loro_sync/`
 - Loro 文档：https://loro.dev/docs

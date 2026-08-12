@@ -4,6 +4,18 @@ import { resolve } from "node:path";
 export default defineConfig({
   resolve: {
     alias: [
+      {
+        find: /^@clash\/gui\/test-support\/source-match$/,
+        replacement: resolve(__dirname, "../gui/test-support/source-match.ts"),
+      },
+      {
+        find: /^@clash\/gui\/(.+)$/,
+        replacement: resolve(__dirname, "../gui/src/$1"),
+      },
+      {
+        find: /^@clash\/gui$/,
+        replacement: resolve(__dirname, "../gui/src/index.ts"),
+      },
       // A string alias is a prefix match, so `@clash/shared-types` alone rewrote
       // `@clash/shared-types/timeline-library` into `.../src/index.ts/timeline-library`.
       // Subpath entries must be matched first, and each maps to its own source file so
@@ -19,6 +31,14 @@ export default defineConfig({
       {
         find: /^@clash\/shared-layout$/,
         replacement: resolve(__dirname, "../shared-layout/src/index.ts"),
+      },
+      {
+        find: /^@clash\/shared-runtime\/(.+)$/,
+        replacement: resolve(__dirname, "../shared-runtime/src/$1.ts"),
+      },
+      {
+        find: /^@clash\/shared-runtime$/,
+        replacement: resolve(__dirname, "../shared-runtime/src/browser.ts"),
       },
     ],
   },

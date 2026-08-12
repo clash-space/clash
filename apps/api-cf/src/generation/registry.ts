@@ -66,9 +66,6 @@ export function resolveAdapter(params: GenerationParams): GenerationAdapter {
       if (route?.apiShape === "google-ai-studio-interactions") return googleAiStudioInteractionsAdapter;
       if (route?.upstreamId === "google-agent-platform") return googleAgentPlatformVideoAdapter;
       if (route?.upstreamId === "kling") return klingVideoAdapter;
-      if (route?.apiShape === "dreamina-cli") {
-        throw new Error("Dreamina CLI generation is only available in the local desktop runtime.");
-      }
       if (route?.upstreamId === "volcengine") return volcengineVideoAdapter;
       if (route?.upstreamId === "minimax") return minimaxVideoAdapter;
       if (route?.apiShape === "fal") return falVideoAdapter;

@@ -57,7 +57,6 @@ export const router = createBrowserRouter([
         lazy: lazyRoute(() => import("./routes/editor-standalone")),
       },
       { path: "auth/cli", lazy: lazyRoute(() => import("./routes/auth.cli")) },
-      { path: "connect-daemon", lazy: lazyRoute(() => import("./routes/connect-daemon")) },
       { path: "__codex-copilot-preview", lazy: lazyRoute(() => import("./routes/__codex-copilot-preview")) },
       ...devOnlyRoutes,
       { path: "terms", lazy: lazyRoute(() => import("./routes/terms")) },

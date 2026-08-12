@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
-import Background from "@clash/web-ui/components/Background";
-import { Button } from "@clash/web-ui/components/ui/button";
+import Background from "@clash/gui/components/Background";
+import { Button } from "@clash/gui/components/ui/button";
 
 export type CliAuthorizationParams = {
   response_type: "code";

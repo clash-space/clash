@@ -3,7 +3,7 @@ import {
   assetReferenceScopePath,
   planAssetScopeCascade,
   visibleAssetSourceScopes,
-} from "./asset-scope-cascade";
+} from "./asset-scope-cascade.js";
 
 describe("asset scope cascade", () => {
   it("derives propagation from the target reference path", () => {

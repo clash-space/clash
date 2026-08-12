@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-gpt-image-2",
+    "modelId": "gpt-image-2",
+    "upstreamModel": "gpt-image-2"
+  }
+}

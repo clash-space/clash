@@ -17,24 +17,24 @@ import { parse, stringify } from "yaml";
 import {
   validateTimelineItemKeyframes,
   type TimelineItemKeyframes,
-} from "./timeline-keyframes";
-import { validateTimelineItemMask } from "./timeline-mask";
-import { timelineMaskKeyframeSemanticIssues } from "./timeline-dsl-schema";
+} from "./timeline-keyframes.js";
+import { validateTimelineItemMask } from "./timeline-mask.js";
+import { timelineMaskKeyframeSemanticIssues } from "./timeline-dsl-schema.js";
 import {
   TIMELINE_CLIP_ANIMATION_TYPES,
   TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES,
   TIMELINE_DSL_FIELD_ANNOTATIONS,
   TIMELINE_DSL_TRACK_CATEGORIES,
   type TimelineDslFieldAnnotation,
-} from "./timeline-field-annotations";
+} from "./timeline-field-annotations.js";
 import {
   parseFromExpression,
   type FromExpression,
-} from "./timeline-from-expression";
+} from "./timeline-from-expression.js";
 export {
   parseFromExpression,
   type FromExpression,
-} from "./timeline-from-expression";
+} from "./timeline-from-expression.js";
 
 const TRACK_CATEGORIES = TIMELINE_DSL_TRACK_CATEGORIES;
 export type TimelineTrackCategory = (typeof TRACK_CATEGORIES)[number];

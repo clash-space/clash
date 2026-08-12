@@ -5,7 +5,7 @@ import {
   timelineDslHash,
   parseFromExpression,
   resolveFromExpression,
-} from "./timeline-yaml";
+} from "./timeline-yaml.js";
 
 describe("parseFromExpression", () => {
   it("parses raw numbers", () => {

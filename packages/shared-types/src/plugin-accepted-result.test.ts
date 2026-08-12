@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ExecutablePluginResultSchema,
   ExecutablePluginInvocationSchema,
-} from './executable-plugin';
+} from './executable-plugin.js';
 
 /**
  * A plugin reports that the provider accepted the work, and the host owns the wait.
@@ -66,7 +66,7 @@ describe('accepted results', () => {
     taskId: 'task-1',
     projectId: 'proj-1',
     target: {
-      pluginId: 'p',
+      pluginId: 'acme.p',
       version: '1.0.0',
       exportId: 'generate',
       schemaHash: `sha256:${'a'.repeat(64)}`,
@@ -140,7 +140,7 @@ describe('callback safety', () => {
     taskId: 'task-1',
     projectId: 'proj-1',
     target: {
-      pluginId: 'p',
+      pluginId: 'acme.p',
       version: '1.0.0',
       exportId: 'generate',
       schemaHash: `sha256:${'a'.repeat(64)}`,

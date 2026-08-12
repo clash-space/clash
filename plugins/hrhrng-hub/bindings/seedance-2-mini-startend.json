@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-seedance-2-mini-startend",
+    "modelId": "seedance-2-mini-startend",
+    "upstreamModel": "seedance2.0-mini"
+  }
+}

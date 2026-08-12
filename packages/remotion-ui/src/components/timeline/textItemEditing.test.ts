@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SubtitleTextItem, TextItem } from '@master-clash/remotion-core';
+import type { SubtitleTextItem, TextItem } from '@clash/remotion-core';
 import { createTimelineTextEditUpdates } from './textItemEditing';
 
 describe('timeline text sticker editing', () => {

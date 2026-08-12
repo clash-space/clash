@@ -1,5 +1,5 @@
 import React from 'react';
-import type { SubtitleTextItem } from '@master-clash/remotion-core';
+import type { SubtitleTextItem } from '@clash/remotion-core';
 import type { ItemRenderProps } from '../registry';
 import { colors, timeline } from '../../styles';
 

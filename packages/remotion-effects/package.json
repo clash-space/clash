@@ -1,6 +1,10 @@
 {
-  "name": "@master-clash/remotion-effects",
+  "name": "@clash/remotion-effects",
   "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "description": "Versioned effect SDK and render-graph compiler for Clash",
   "type": "module",
   "main": "./src/index.ts",

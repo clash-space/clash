@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { MODEL_CARDS } from "./models";
-import { listModelCatalogEntries } from "./model-routing";
+import { MODEL_CARDS } from "./models.js";
+import { listModelCatalogEntries } from "./model-routing.js";
 import {
   asrModelValue,
   isLocalAsrModelEntry,
@@ -9,7 +9,7 @@ import {
   localSpeechCapability,
   resolveLocalSpeechModelId,
   type LocalSpeechCatalogEntry,
-} from "./local-speech-catalog";
+} from "./local-speech-catalog.js";
 
 function catalogEntries(): LocalSpeechCatalogEntry[] {
   return listModelCatalogEntries({}) as unknown as LocalSpeechCatalogEntry[];
@@ -60,5 +60,76 @@ describe("local speech catalog selectors", () => {
     expect(isLocalAsrModelEntry(entry)).toBe(true);
     expect(localSpeechCapability(entry)).toBe("speech-to-text");
     expect(asrModelValue(entry)).toBe("mlx-community/whisper-small-mlx");
+  });
+});
+
+/**
+ * Transcription is recognised by what it does, not by a kind of its own.
+ *
+ * `kind: 'asr'` was a fifth member of the model kinds, sitting beside image, video, audio and text.
+ * The other four name what a card produces; `asr` named a technique, and all five cards under it
+ * produce text. Removing it means this predicate can no longer ask for it.
+ *
+ * The honest replacement is the shape those cards actually declare: audio is their only prompt
+ * modality. That is what separates transcription from a chat model -- Gemini accepts audio too, but
+ * it also accepts text, because it converses about a recording rather than transcribing it. A
+ * predicate that only asked "accepts audio" would sweep those four Gemini cards into the local
+ * speech installer, which offers to download MLX weights for them.
+ */
+describe("asr entries after the kind is gone", () => {
+  it("still finds a transcription card once its kind is text", () => {
+    const whisper = MODEL_CARDS.find((card) => card.id === "whisper-small-asr");
+    expect(whisper?.kind).toBe("text");
+
+    const entry = {
+      model: whisper as unknown as LocalSpeechCatalogEntry["model"],
+      candidateProviders: ["local"],
+      routes: [],
+    } satisfies LocalSpeechCatalogEntry;
+
+    expect(isLocalAsrModelEntry(entry)).toBe(true);
+  });
+
+  it("does not treat a multimodal text model as transcription", () => {
+    // Gemini declares `promptModalities: ['text','image','video','audio']`. It produces text and
+    // accepts audio, so every weaker predicate matches it.
+    const gemini = MODEL_CARDS.find((card) => card.id === "gemini-3.1-pro");
+    expect(gemini?.input.promptModalities).toContain("audio");
+
+    const entry = {
+      model: gemini as unknown as LocalSpeechCatalogEntry["model"],
+      candidateProviders: ["local"],
+      routes: [],
+    } satisfies LocalSpeechCatalogEntry;
+
+    expect(isLocalAsrModelEntry(entry)).toBe(false);
+  });
+
+  it("does not treat an audio-to-audio model as transcription", () => {
+    // Caught by mutation: dropping the "produces text" half of the predicate passed every test,
+    // because no shipped card takes audio alone and produces something other than text. A voice
+    // converter, a denoiser or a stem splitter is exactly that shape -- audio in, audio out, no way
+    // to prompt it with words -- and one would have been offered MLX transcription weights.
+    const entry = {
+      model: {
+        id: "voice-convert-1",
+        kind: "audio",
+        input: { requiresPrompt: false, promptModalities: ["audio"], inputMode: { audios: { max: 1 } } },
+      },
+      candidateProviders: ["local"],
+      routes: [],
+    } satisfies LocalSpeechCatalogEntry;
+
+    expect(isLocalAsrModelEntry(entry)).toBe(false);
+    expect(localSpeechCapability(entry)).toBeNull();
+  });
+
+  it("finds every shipped local transcription card by that shape alone", () => {
+    const ids = listLocalSpeechModelCards(catalogEntries(), "speech-to-text").map((c) => c.cardId);
+    for (const id of ["whisper-small-asr", "whisper-large-v3-turbo-asr", "sensevoice-small-asr"]) {
+      expect(ids).toContain(id);
+    }
+    // Nothing that merely converses about audio may appear here.
+    expect(ids).not.toContain("gemini-3.1-pro");
   });
 });

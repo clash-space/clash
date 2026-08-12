@@ -35,10 +35,15 @@ const nodeTests = [];
 const vitestTests = [];
 for (const test of tests) {
   const source = await readFile(join(packageRoot, test), "utf8");
-  if (source.includes("from \"vitest\"") || source.includes("from 'vitest'")) {
+  // A runner-coverage test necessarily contains both import spellings as data.
+  // Prefer its real node:test import so a string under inspection cannot make
+  // Vitest collect a node:test-only file as an empty suite.
+  if (source.includes("from \"node:test\"") || source.includes("from 'node:test'")) {
+    nodeTests.push(test);
+  } else if (source.includes("from \"vitest\"") || source.includes("from 'vitest'")) {
     vitestTests.push(test);
   } else {
-    nodeTests.push(test);
+    throw new Error(`No test runner import found in ${test}`);
   }
 }
 
@@ -47,6 +52,10 @@ function run(label, command, args) {
     const child = spawn(command, args, {
       cwd: packageRoot,
       stdio: "inherit",
+      env: {
+        ...process.env,
+        TSX_TSCONFIG_PATH: join(packageRoot, "tsconfig.dev.json"),
+      },
     });
     child.on("exit", (code, signal) => {
       if (signal) {

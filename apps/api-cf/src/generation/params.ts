@@ -6,7 +6,6 @@
 
 import type {
   ExecutablePluginBinding,
-  ExecutablePluginPermissions,
   ExecutablePluginReference,
   ModelUpstreamRoute,
 } from "@clash/shared-types";
@@ -118,8 +117,6 @@ export interface GenerationParams {
   workerUrl?: string;
   /** Immutable executable-plugin target copied from the author-time Canvas node. */
   pluginBinding?: ExecutablePluginBinding;
-  /** User-approved capability set from the exact installed plugin version. */
-  pluginPermissions?: ExecutablePluginPermissions;
   /** Opaque, project-scoped references for the executable-plugin invocation ABI. */
   pluginReferences?: ExecutablePluginReference[];
 

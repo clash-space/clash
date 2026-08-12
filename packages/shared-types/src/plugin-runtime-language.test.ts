@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ExecutablePluginRuntimeSchema,
   resolvePluginLanguage,
-} from './executable-plugin';
+} from './executable-plugin.js';
 
 /**
  * The host launches a plugin; the plugin declares which interpreter to use.
@@ -13,10 +13,9 @@ import {
  * dispatcher. It worked, but it made a TypeScript entrypoint impossible to express
  * and left "how do I run this" as a filename convention.
  *
- * `language` is a closed enum rather than a command line on purpose. The host builds
- * the argv, which is what keeps `--permission`, the network guard, and the Python
- * filesystem allowlist attached to every launch. A plugin able to name its own
- * command could name `bash`.
+ * `language` is a closed enum rather than a command line on purpose. The host owns
+ * the launch protocol, stdio framing, and lifecycle adapter for each supported
+ * runtime; an arbitrary command would not have that contract.
  */
 describe('plugin runtime language', () => {
   const base = {
@@ -39,7 +38,7 @@ describe('plugin runtime language', () => {
     expect(resolvePluginLanguage(runtime)).toBe('python');
   });
 
-  it('rejects an interpreter the host cannot sandbox', () => {
+  it('rejects an interpreter without a host runtime adapter', () => {
     expect(() => ExecutablePluginRuntimeSchema.parse({ ...base, language: 'bash' })).toThrow();
     expect(() => ExecutablePluginRuntimeSchema.parse({ ...base, language: 'deno' })).toThrow();
   });

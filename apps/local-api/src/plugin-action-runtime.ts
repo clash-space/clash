@@ -11,7 +11,7 @@ import {
   type ExecutablePluginJsonValue,
 } from "@clash/shared-types";
 
-export interface BridgeExecutablePluginActionClient {
+export interface ExecutablePluginActionClient {
   invoke(
     pluginId: string,
     invocation: ExecutablePluginInvocation,
@@ -35,8 +35,8 @@ export type ExecutablePluginActionInvoker = (
   request: ExecutablePluginActionRequest,
 ) => Promise<ExecutablePluginResult>;
 
-export function createBridgeExecutablePluginActionInvoker(options: {
-  client: BridgeExecutablePluginActionClient;
+export function createExecutablePluginActionInvoker(options: {
+  client: ExecutablePluginActionClient;
   timeoutMs?: number;
 }): ExecutablePluginActionInvoker {
   return async (request) => {

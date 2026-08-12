@@ -301,13 +301,6 @@ describe("NodeProcessor - processPendingNodes", () => {
           id: "fal-ai/flux-pro",
         },
         pluginBinding,
-        pluginPermissions: {
-          network: { domains: ["queue.fal.run"] },
-          secrets: ["provider:fal"],
-          assets: ["read", "write"],
-          filesystem: { read: [], write: [] },
-          externalWrites: true,
-        },
       }),
     });
     const env = makeEnv({
@@ -340,14 +333,6 @@ describe("NodeProcessor - processPendingNodes", () => {
             }),
           ],
           pluginBinding,
-          pluginPermissions: {
-            network: { domains: ["queue.fal.run"] },
-            secrets: ["provider:fal"],
-            assets: ["read", "write"],
-            hostTools: [],
-            filesystem: { read: [], write: [] },
-            externalWrites: true,
-          },
         }),
       }),
     );

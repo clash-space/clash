@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as shared from "./index";
+import * as shared from "./index.js";
 
 const EXPECTED_FIELDS = {
   root: [

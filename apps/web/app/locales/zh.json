@@ -42,7 +42,7 @@
       "runInTerminal": "在终端运行",
       "copy": "复制",
       "copied": "已复制",
-      "footnote": "需要 Node 18+。守护进程以 launchd / systemd 用户服务方式安装（开机自启）。卸载请运行"
+      "footnote": "需要 Node 24.18+（Node 24.x）。守护进程以 launchd / systemd 用户服务方式安装（开机自启）。卸载请运行"
     },
     "selectedContext": {
       "count_one": "已选 {{count}} 项",

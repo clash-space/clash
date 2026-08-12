@@ -2,11 +2,11 @@ import type { CSSProperties } from 'react';
 import {
   TIMELINE_SHARED_DEFAULTS,
   type EffectInstanceRef,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import {
   builtInEffectRegistry,
   computeEffectPresentation,
-} from '@master-clash/remotion-effects';
+} from '@clash/remotion-effects';
 
 export type ComputeItemEffectStyleOptions = {
   effects?: EffectInstanceRef[];

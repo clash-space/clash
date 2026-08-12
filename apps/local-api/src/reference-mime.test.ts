@@ -18,8 +18,8 @@ import { referenceDataUrlMimeType } from "./local-aigc";
  *   audio format ".mpeg" not allowed
  *
  * The Card still accepts `audio/mpeg`, because that is MP3's registered type and the model
- * does read MP3. Spelling it `audio/mp3` is the provider's dialect, so it belongs in the
- * transport — the same place `adaptive` and `landscape_16_9` live.
+ * does read MP3. The official H3 adapter now uploads those bytes with an `.mp3` filename, so
+ * neither the Card nor the route has to rewrite the product-level media type.
  */
 describe("reference media types derive an allowed extension", () => {
   const h3 = MODEL_CARDS.find((card) => card.id === "minimax-h3")!;
@@ -31,13 +31,9 @@ describe("reference media types derive an allowed extension", () => {
     expect(audio.fileExtensions).toEqual(["wav", "mp3"]);
   });
 
-  it("spells every accepted mime so it derives an accepted extension", () => {
-    const allowed = new Set(audio.fileExtensions);
-    const offenders = (audio.mimeTypes ?? []).filter((mime) => {
-      const extension = referenceDataUrlMimeType(mime).split("/")[1].replace(/^x-/, "");
-      return !allowed.has(extension);
-    });
-    expect(offenders, "the transport must map each mime onto an allowed extension").toEqual([]);
+  it("keeps provider-neutral MIME types unchanged before route adaptation", () => {
+    expect(referenceDataUrlMimeType("audio/mpeg")).toBe("audio/mpeg");
+    expect(referenceDataUrlMimeType("audio/x-wav")).toBe("audio/x-wav");
   });
 
   it("leaves a mime that already derives an allowed extension alone", () => {

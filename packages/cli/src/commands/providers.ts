@@ -1,4 +1,6 @@
 import { Command } from "commander";
+import type { PluginAuthDeclaration } from "@clash/shared-types";
+import { assertDeclaredSetting } from "./provider-settings.js";
 import { readFileSync } from "node:fs";
 
 import { apiJson } from "../lib/api";
@@ -21,6 +23,8 @@ interface ProviderAccountRow {
   label?: string;
   enabled?: boolean;
   configuredCredentials?: string[];
+  priority?: number;
+  modelPriorities?: Record<string, number>;
   readToken?: string;
 }
 
@@ -36,11 +40,6 @@ interface ProviderAccountsResponse {
  * `region` look right, but Google's are two products — and Agent Platform has real regions of its
  * own, which then had nowhere to go. Where the service runs is `--location`.
  */
-const SERVICES: Record<string, string[]> = {
-  minimax: ["global", "cn"],
-  official: ["ai-studio", "agent-platform"],
-};
-
 async function currentAccounts(): Promise<ProviderAccountsResponse> {
   try {
     return await apiJson<ProviderAccountsResponse>("/api/v1/model-providers");
@@ -48,11 +47,10 @@ async function currentAccounts(): Promise<ProviderAccountsResponse> {
     // A stopped host is an ordinary situation. Unhandled, it arrives as an AggregateError of
     // ECONNREFUSED entries and a Node stack, which reads like the CLI broke rather than like
     // something needs starting -- and the address matters, because discovery silently falls back
-    // to the cloud gateway's port when no local daemon is found.
+    // to the optional cloud gateway when no local host is discovered.
     if (error instanceof Error && /fetch failed|ECONNREFUSED/.test(`${error.message}${error.cause ?? ""}`)) {
       throw new Error(
-        `The Clash host is not running at ${getServerUrl()}. Start the host, or run any local `
-        + "command to start one automatically.",
+        `The Clash host is not running at ${getServerUrl()}. Open Clash Desktop or start local-api first.`,
       );
     }
     throw error;
@@ -116,17 +114,24 @@ function collectPair(value: string, previous: Record<string, string>): Record<st
   return { ...previous, [value.slice(0, at)]: resolveValue(value.slice(at + 1)) };
 }
 
-function assertService(providerId: string, service: string | undefined): void {
-  const known = SERVICES[providerId];
-  if (!service) return;
-  if (!known) {
-    throw new Error(`Provider ${providerId} runs one service; --service does not apply to it.`);
-  }
-  if (!known.includes(service)) {
+/** The Provider's own declaration, as the host reports it. */
+async function providerAuthDeclaration(
+  providerId: string,
+): Promise<PluginAuthDeclaration | undefined> {
+  // Not caught. Swallowing the failure made every declared key look undeclared, so a correct
+  // `--set apiKey=...` was refused with "this provider does not declare an apiKey setting" -- a
+  // message about the Provider, for a problem with the host.
+  const response = await apiJson<{ providers?: { id: string; auth?: PluginAuthDeclaration }[] }>(
+    "/api/v1/plugin-providers",
+  );
+  const provider = response.providers?.find((candidate) => candidate.id === providerId);
+  if (!provider) {
     throw new Error(
-      `Provider ${providerId} has no service "${service}". Known services: ${known.join(", ")}.`,
+      `No provider ${providerId} is installed. Installed: `
+      + `${(response.providers ?? []).map((candidate) => candidate.id).join(", ") || "none"}.`,
     );
   }
+  return provider.auth;
 }
 
 /**
@@ -166,6 +171,10 @@ export function registerProviderCommands(program: Command): void {
         provider: provider.providerId,
         upstream: provider.upstreamId ?? provider.providerId,
         ...(provider.region ? { region: provider.region } : {}),
+        ...(provider.priority === undefined ? {} : { priority: provider.priority }),
+        ...(provider.modelPriorities && Object.keys(provider.modelPriorities).length
+          ? { modelPriorities: provider.modelPriorities }
+          : {}),
         enabled: provider.enabled !== false,
         credentials: provider.configuredCredentials ?? [],
       }));
@@ -187,20 +196,25 @@ export function registerProviderCommands(program: Command): void {
   providers
     .command("add <providerId>")
     .description("Connect an account for a provider")
-    .option(
-      "--api-key <value>",
-      "The provider's API key. Use @path to read a file, or - to read stdin, so the secret stays out of shell history",
-    )
-    .option("--service <service>", "Which of the vendor's services issued this key, where it runs more than one")
+    // One flag for everything a vendor wants. `--api-key`, `--service` and `--region` were three
+    // flags naming three things one vendor happens to want, each validated against a table here --
+    // so connecting a Provider that wants an access key and a secret meant adding flags, and one
+    // that spells its regions differently meant editing a table. Which keys exist, what they accept
+    // and which are required all come from the Provider's own declaration, the same one the settings
+    // screen renders.
     .option("--upstream <upstreamId>", "Upstream service, when it differs from the provider id")
     .option("--label <label>", "A name for this account")
     .option("--id <accountId>", "Account id, for holding more than one key per provider")
     .option(
-      "--credential <key=value>",
-      "Any other credential this provider needs, repeatable. Values accept @path and - as well "
-        + "(e.g. --credential accessKey=@ak.txt --credential secretKey=@sk.txt)",
+      "--set <key=value>",
+      "A setting or credential this provider declares, repeatable. Values accept @path and - so a "
+        + "secret stays out of shell history (e.g. --set apiKey=@key.txt --set service=agent-platform)",
       collectPair,
       {},
+    )
+    .option(
+      "--priority <number>",
+      "Lower wins when several accounts serve one model. Unset leaves the resolver's own order",
     )
     .option("--json", "Machine-readable output")
     .action(async (providerId: string, options: {
@@ -209,17 +223,23 @@ export function registerProviderCommands(program: Command): void {
       upstream?: string;
       label?: string;
       id?: string;
+      region?: string;
+      priority?: string;
       json?: boolean;
-      credential?: Record<string, string>;
+      set?: Record<string, string>;
     }) => {
-      assertService(providerId, options.service);
-      const apiKey = options.apiKey ? resolveValue(options.apiKey) : undefined;
-      const supplied = { ...(apiKey ? { apiKey } : {}), ...(options.credential ?? {}) };
+      const supplied = options.set ?? {};
       if (Object.keys(supplied).length === 0) {
         throw new Error(
-          "No credentials given. Pass --api-key <value|@path|->, or --credential key=value "
-          + "(also accepting @path and -).",
+          "Nothing to store. Pass --set key=value for each setting this provider declares "
+          + "(values accept @path and - so a secret stays out of shell history).",
         );
+      }
+      // Checked against the Provider's own declaration, so a key it does not read is refused here
+      // rather than stored and silently ignored.
+      const declaration = await providerAuthDeclaration(providerId);
+      for (const [key, value] of Object.entries(supplied)) {
+        assertDeclaredSetting(declaration, key, value);
       }
       const current = await currentAccounts();
       const accountId = options.id ?? `${providerId}-primary`;
@@ -239,40 +259,124 @@ export function registerProviderCommands(program: Command): void {
         id: accountId,
         providerId,
         ...(options.upstream ? { upstreamId: options.upstream } : {}),
-        ...(options.service ? { region: options.service } : {}),
+        // The service is a fact about the credential, not a place. It used to be written to the
+        // region column, which made a Google account read `region: "agent-platform"` -- matching no
+        // route, resolving to nothing, and silently producing a placeholder.
         ...(options.label ? { label: options.label } : {}),
         enabled: true,
+        ...(options.priority === undefined ? {} : { priority: Number(options.priority) }),
         // A file-sourced value wins over an inline one for the same key: whoever passed both meant
         // the safer of the two, and silently preferring the argument would put a secret in history.
+        // Everything the Provider declared, stored side by side. A setting is a fact about the
+        // credential rather than a place, and separating the two put `service: "agent-platform"` in
+        // the region column -- matching no route and resolving to nothing.
         credentials: supplied,
       };
       await writeAccounts([...kept, added], current.readToken);
       if (isJsonMode(options)) {
-        printJson({ added: accountId, providerId, ...(options.service ? { service: options.service } : {}) });
+        printJson({ added: accountId, providerId, set: Object.keys(supplied) });
         return;
       }
-      console.log(`Connected ${accountId} (${providerId}${options.service ? `, ${options.service}` : ""}).`);
+      console.log(`Connected ${accountId} (${providerId}): ${Object.keys(supplied).join(", ")}.`);
+    });
+
+  providers
+    .command("priority <accountId> <priority>")
+    .description("Change which account answers first when several serve one model")
+    .option("--json", "Machine-readable output")
+    .action(async (accountId: string, priority: string, options: { json?: boolean }) => {
+      const value = Number(priority);
+      if (!Number.isFinite(value)) throw new Error(`Priority must be a number, got "${priority}".`);
+      const current = await currentAccounts();
+      let found = false;
+      const providers = current.providers
+        .filter((provider) => provider.id ?? provider.providerId)
+        .map((provider) => {
+          const id = provider.id ?? provider.providerId;
+          const matched = id === accountId;
+          if (matched) found = true;
+          return {
+            id,
+            providerId: provider.providerId,
+            ...(provider.upstreamId ? { upstreamId: provider.upstreamId } : {}),
+            ...(provider.region ? { region: provider.region } : {}),
+            enabled: provider.enabled !== false,
+            // Every account is sent back because the endpoint merges; the one being changed carries
+            // its new priority and the rest carry the priority they already had.
+            ...(matched
+              ? { priority: value }
+              : provider.priority === undefined ? {} : { priority: provider.priority }),
+          };
+        });
+      if (!found) throw new Error(`No provider account named ${accountId}.`);
+      await writeAccounts(providers, current.readToken);
+      if (isJsonMode(options)) {
+        printJson({ accountId, priority: value });
+        return;
+      }
+      console.log(`${accountId} now has priority ${value}.`);
+    });
+
+  providers
+    .command("prefer <accountId> <model> [priority]")
+    .description("Make this account answer first for one model, whatever the catalogue order says")
+    .option("--json", "Machine-readable output")
+    .action(async (accountId: string, model: string, priority: string | undefined, options: { json?: boolean }) => {
+      // Lower wins, and 1 is the useful default: the gesture is almost always "this one, for this
+      // model", not a position in a ladder nobody can see.
+      const value = priority === undefined ? 1 : Number(priority);
+      if (!Number.isFinite(value)) throw new Error(`Priority must be a number, got "${priority}".`);
+      const current = await currentAccounts();
+      let found = false;
+      const providers = current.providers
+        .filter((provider) => provider.id ?? provider.providerId)
+        .map((provider) => {
+          const id = provider.id ?? provider.providerId;
+          const matched = id === accountId;
+          if (matched) found = true;
+          const modelPriorities = {
+            ...(provider.modelPriorities ?? {}),
+            ...(matched ? { [model]: value } : {}),
+          };
+          return {
+            id,
+            providerId: provider.providerId,
+            ...(provider.upstreamId ? { upstreamId: provider.upstreamId } : {}),
+            ...(provider.region ? { region: provider.region } : {}),
+            enabled: provider.enabled !== false,
+            ...(provider.priority === undefined ? {} : { priority: provider.priority }),
+            ...(Object.keys(modelPriorities).length ? { modelPriorities } : {}),
+          };
+        });
+      if (!found) throw new Error(`No provider account named ${accountId}.`);
+      await writeAccounts(providers, current.readToken);
+      if (isJsonMode(options)) {
+        printJson({ accountId, model, priority: value });
+        return;
+      }
+      console.log(`${accountId} now answers first for ${model} (priority ${value}).`);
     });
 
   providers
     .command("remove <accountId>")
-    .description("Disconnect a provider account")
+    .description("Disconnect an account")
     .option("--json", "Machine-readable output")
     .action(async (accountId: string, options: { json?: boolean }) => {
+      // A deletion is a deletion, not a rewrite of everything else. Sending the remaining accounts
+      // through PATCH looked like it worked -- it printed success and named the account -- and the
+      // row survived, because that endpoint merges rather than replaces. The DELETE route was there
+      // the whole time.
       const current = await currentAccounts();
-      const remaining = current.providers
-        .filter((provider) => (provider.id ?? provider.providerId) !== accountId)
-        .map((provider) => ({
-          id: provider.id ?? provider.providerId,
-          providerId: provider.providerId,
-          ...(provider.upstreamId ? { upstreamId: provider.upstreamId } : {}),
-          ...(provider.region ? { region: provider.region } : {}),
-          enabled: provider.enabled !== false,
-        }));
-      if (remaining.length === current.providers.length) {
-        throw new Error(`No provider account named ${accountId}.`);
-      }
-      await writeAccounts(remaining, current.readToken);
+      const known = current.providers.some((provider) =>
+        (provider.id ?? provider.providerId) === accountId);
+      if (!known) throw new Error(`No provider account named ${accountId}.`);
+
+      await apiJson(`/api/v1/model-providers/${encodeURIComponent(accountId)}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ readToken: current.readToken }),
+      });
+
       if (isJsonMode(options)) {
         printJson({ removed: accountId });
         return;

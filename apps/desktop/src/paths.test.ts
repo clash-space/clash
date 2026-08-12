@@ -5,8 +5,11 @@ import {
   prependPythonPath,
   resolveAcpBinDir,
   resolveAgentBundleRoot,
+  resolveClashBuiltinPluginRoot,
   resolveClashCliEntryPath,
   resolveClashCliNodePath,
+  resolveClashDevTsconfigPath,
+  resolveClashHostEntryPath,
   resolveDesktopStatePaths,
   resolveClashSdkPythonPath,
   resolveWebDistDir,
@@ -14,10 +17,19 @@ import {
 
 describe("desktop paths", () => {
   it("keeps mutable NLE handoffs under the canonical Clash home", () => {
-    const mainSource = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+    const mainSource = readFileSync(
+      new URL("./main.ts", import.meta.url),
+      "utf8",
+    );
+    const windowControllerSource = readFileSync(
+      new URL("./controller/windows.ts", import.meta.url),
+      "utf8",
+    );
 
     expect(mainSource).not.toContain('app.getPath("userData")');
-    expect(mainSource).toContain('join(dirname(dataDir), "nle-handoffs")');
+    expect(windowControllerSource).toContain(
+      'join(dirname(dataDir), "nle-handoffs")',
+    );
   });
 
   it("keeps Electron-owned browser state below the canonical Clash home", () => {
@@ -73,21 +85,28 @@ describe("desktop paths", () => {
     );
   });
 
-  it("exposes the Clash CLI from resources for packaged child processes", () => {
+  it("exposes the unified Clash runtime from resources for packaged child processes", () => {
     expect(
       resolveClashCliEntryPath({
         isPackaged: true,
         moduleDir: "/app/dist",
         resourcesPath: "/app/resources",
       }),
-    ).toBe(join("/app/resources", "clash-cli", "dist", "index.js"));
+    ).toBe(join("/app/resources", "clash-runtime", "dispatcher.js"));
     expect(
       resolveClashCliNodePath({
         isPackaged: true,
         moduleDir: "/app/dist",
         resourcesPath: "/app/resources",
       }),
-    ).toBe(join("/app/resources", "clash-cli", "vendor"));
+    ).toBe(join("/app/resources", "clash-runtime", "node_modules"));
+    expect(
+      resolveClashHostEntryPath({
+        isPackaged: true,
+        moduleDir: "/app/dist",
+        resourcesPath: "/app/resources",
+      }),
+    ).toBe(join("/app/resources", "clash-runtime", "local-api.cjs"));
   });
 
   it("exposes built-in agents from Resources instead of app.asar", () => {
@@ -97,55 +116,93 @@ describe("desktop paths", () => {
         moduleDir: "/app/Resources/app.asar/dist",
         resourcesPath: "/app/Resources",
       }),
-    ).toBe(join("/app/Resources", "agents"));
+    ).toBe(join("/app/Resources", "clash-runtime", "agents"));
     expect(
       resolveAgentBundleRoot({
         isPackaged: false,
         moduleDir: "/repo/apps/desktop/dist",
         resourcesPath: "/app/Resources",
       }),
-    ).toBe(resolve("/repo/apps/desktop/dist", "../../../packages/clash-bridge/dist/agents"));
+    ).toBe(
+      resolve("/repo/apps/desktop/dist", "../../../packages/cli/assets/agents"),
+    );
   });
 
-  it("exposes the workspace Clash CLI build in development", () => {
+  it("runs host and CLI sources directly in development", () => {
     expect(
       resolveClashCliEntryPath({
         isPackaged: false,
         moduleDir: "/repo/apps/desktop/dist",
         resourcesPath: "/app/resources",
       }),
-    ).toBe(resolve("/repo/apps/desktop/dist", "../../../packages/cli/dist/index.js"));
+    ).toBe(
+      resolve("/repo/apps/desktop/dist", "../../../packages/cli/src/index.ts"),
+    );
     expect(
       resolveClashCliNodePath({
         isPackaged: false,
         moduleDir: "/repo/apps/desktop/dist",
         resourcesPath: "/app/resources",
       }),
-    ).toBeUndefined();
+    ).toBe(resolve("/repo/apps/desktop/dist", "../../../node_modules"));
+    expect(
+      resolveClashHostEntryPath({
+        isPackaged: false,
+        moduleDir: "/repo/apps/desktop/dist",
+        resourcesPath: "/app/resources",
+      }),
+    ).toBe(
+      resolve(
+        "/repo/apps/desktop/dist",
+        "../../../plugins/clash/src/local-api-entry.ts",
+      ),
+    );
+    expect(resolveClashDevTsconfigPath("/repo/apps/desktop/dist")).toBe(
+      resolve(
+        "/repo/apps/desktop/dist",
+        "../../../plugins/clash/tsconfig.dev.json",
+      ),
+    );
+    expect(resolveClashBuiltinPluginRoot("/repo/apps/desktop/dist")).toBe(
+      resolve("/repo/apps/desktop/dist", "../../../plugins/clash"),
+    );
   });
 
   it("resolves the bundled local-model Python SDK without losing an existing PYTHONPATH", () => {
-    expect(resolveClashSdkPythonPath({
-      isPackaged: true,
-      moduleDir: "/app/Resources/app.asar/dist",
-      resourcesPath: "/app/Resources",
-    })).toBe(join("/app/Resources", "clash-sdk", "python"));
-    expect(resolveClashSdkPythonPath({
-      isPackaged: false,
-      moduleDir: "/repo/apps/desktop/dist",
-      resourcesPath: "/app/Resources",
-    })).toBe(resolve("/repo/apps/desktop/dist", "../../../packages/clash-sdk/python"));
-    expect(resolveClashSdkPythonPath({
-      envPythonSdkPath: "/tmp/custom-clash-sdk-python",
-      isPackaged: true,
-      moduleDir: "/app/Resources/app.asar/dist",
-      resourcesPath: "/app/Resources",
-    })).toBe("/tmp/custom-clash-sdk-python");
-    expect(prependPythonPath("/tmp/user-python", "/app/Resources/clash-sdk/python")).toBe(
+    expect(
+      resolveClashSdkPythonPath({
+        isPackaged: true,
+        moduleDir: "/app/Resources/app.asar/dist",
+        resourcesPath: "/app/Resources",
+      }),
+    ).toBe(join("/app/Resources", "clash-sdk", "python"));
+    expect(
+      resolveClashSdkPythonPath({
+        isPackaged: false,
+        moduleDir: "/repo/apps/desktop/dist",
+        resourcesPath: "/app/Resources",
+      }),
+    ).toBe(
+      resolve("/repo/apps/desktop/dist", "../../../packages/clash-sdk/python"),
+    );
+    expect(
+      resolveClashSdkPythonPath({
+        envPythonSdkPath: "/tmp/custom-clash-sdk-python",
+        isPackaged: true,
+        moduleDir: "/app/Resources/app.asar/dist",
+        resourcesPath: "/app/Resources",
+      }),
+    ).toBe("/tmp/custom-clash-sdk-python");
+    expect(
+      prependPythonPath("/tmp/user-python", "/app/Resources/clash-sdk/python"),
+    ).toBe(
       `/app/Resources/clash-sdk/python${process.platform === "win32" ? ";" : ":"}/tmp/user-python`,
     );
-    expect(prependPythonPath("/app/Resources/clash-sdk/python", "/app/Resources/clash-sdk/python")).toBe(
-      "/app/Resources/clash-sdk/python",
-    );
+    expect(
+      prependPythonPath(
+        "/app/Resources/clash-sdk/python",
+        "/app/Resources/clash-sdk/python",
+      ),
+    ).toBe("/app/Resources/clash-sdk/python");
   });
 });

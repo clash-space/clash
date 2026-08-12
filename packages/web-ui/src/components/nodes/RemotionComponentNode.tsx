@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { Node, NodeProps } from "@xyflow/react";
 import { Code, FilmStrip, FloppyDisk, Plus, X } from "@phosphor-icons/react";
 import { Player } from "@remotion/player";
-import { RemotionSourceComposition } from "@master-clash/remotion-components";
+import { RemotionSourceComposition } from "@clash/remotion-components";
 
 import { appendRemotionComponentToTimelineState } from "@clash/web-ui/lib/remotionComponentTimeline";
 import { useOptionalLoroSyncContext } from "../LoroSyncContext";

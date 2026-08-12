@@ -23,11 +23,16 @@ export interface ModelArkVideoResult {
   model: string;
 }
 
-const DEFAULT_MODELARK_BASE_URL = "https://ark.ap-southeast.bytepluses.com/api/v3";
+const DEFAULT_MODELARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 const MODELARK_MODEL_MAP: Record<string, string> = {
-  "seedance-2-text": "dreamina-seedance-2-0-260128",
-  "seedance-2-startend": "dreamina-seedance-2-0-260128",
-  "seedance-2-ref": "dreamina-seedance-2-0-260128",
+  "seedance-2-text": "doubao-seedance-2-0-260128",
+  "seedance-2-startend": "doubao-seedance-2-0-260128",
+  "seedance-2-ref": "doubao-seedance-2-0-260128",
+  "seedance-2-extend": "doubao-seedance-2-0-260128",
+  "seedance-2.5-text": "doubao-seedance-2-5-260628",
+  "seedance-2.5-startend": "doubao-seedance-2-5-260628",
+  "seedance-2.5-ref": "doubao-seedance-2-5-260628",
+  "seedance-2.5-extend": "doubao-seedance-2-5-260628",
 };
 
 function normalizeBaseUrl(baseUrl: string | undefined): string {
@@ -46,19 +51,25 @@ function boolParam(params: Record<string, unknown> | undefined, key: string): bo
 
 function numericDuration(value: number | string | undefined): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() && value !== "auto") {
+  if (value === "auto") return -1;
+  if (typeof value === "string" && value.trim()) {
     const parsed = Number.parseInt(value, 10);
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
 }
 
-function mediaContent(type: "image_url" | "video_url" | "audio_url", urls: string[] | undefined): Array<Record<string, unknown>> {
+function mediaContent(
+  type: "image_url" | "video_url" | "audio_url",
+  role: "reference_image" | "reference_video" | "reference_audio" | "first_frame" | "last_frame",
+  urls: string[] | undefined,
+): Array<Record<string, unknown>> {
   return (urls ?? [])
     .filter((url) => url.trim())
     .map((url) => ({
       type,
       [type]: { url },
+      role,
     }));
 }
 
@@ -90,14 +101,11 @@ async function parseJsonResponse(resp: Response, label: string): Promise<any> {
 function buildContent(params: ModelArkVideoParams): Array<Record<string, unknown>> {
   const content: Array<Record<string, unknown>> = [];
   if (params.prompt.trim()) content.push({ type: "text", text: params.prompt.trim() });
-  const imageUrls = [
-    ...(params.startFrameUrl ? [params.startFrameUrl] : []),
-    ...(params.endFrameUrl ? [params.endFrameUrl] : []),
-    ...(params.referenceImageUrls ?? []),
-  ];
-  content.push(...mediaContent("image_url", imageUrls));
-  content.push(...mediaContent("video_url", params.referenceVideoUrls));
-  content.push(...mediaContent("audio_url", params.referenceAudioUrls));
+  content.push(...mediaContent("image_url", "first_frame", params.startFrameUrl ? [params.startFrameUrl] : []));
+  content.push(...mediaContent("image_url", "last_frame", params.endFrameUrl ? [params.endFrameUrl] : []));
+  content.push(...mediaContent("image_url", "reference_image", params.referenceImageUrls));
+  content.push(...mediaContent("video_url", "reference_video", params.referenceVideoUrls));
+  content.push(...mediaContent("audio_url", "reference_audio", params.referenceAudioUrls));
   return content;
 }
 
@@ -107,7 +115,19 @@ export async function generateModelArkVideo(
 ): Promise<ModelArkVideoResult> {
   const key = apiKey?.trim();
   if (!key) throw new Error("ModelArk API key is required for Seedance generation.");
-  const model = params.upstreamModel ?? MODELARK_MODEL_MAP[params.modelName ?? "seedance-2-ref"] ?? params.modelName ?? "dreamina-seedance-2-0-260128";
+  const modelName = params.modelName ?? "seedance-2-ref";
+  const model = params.upstreamModel ?? MODELARK_MODEL_MAP[modelName] ?? modelName;
+  const referenceVideos = (params.referenceVideoUrls ?? []).filter((url) => url.trim());
+  const editMode = boolParam(params.modelParams, "edit_mode") === true;
+  const extensionMode = modelName.endsWith("-extend");
+  const startEndMode = modelName.endsWith("-startend") || !!params.startFrameUrl || !!params.endFrameUrl;
+  const seedance25 = modelName.startsWith("seedance-2.5") || model.includes("seedance-2-5");
+  if (editMode && referenceVideos.length === 0) {
+    throw new Error("Seedance edit mode requires at least one reference video.");
+  }
+  if (extensionMode && referenceVideos.length === 0) {
+    throw new Error("Seedance video extension requires at least one reference video.");
+  }
   const endpoint = `${normalizeBaseUrl(params.baseUrl)}/contents/generations/tasks`;
   const content = buildContent(params);
   if (!content.length) throw new Error("Prompt or reference media is required for ModelArk video generation.");
@@ -116,13 +136,21 @@ export async function generateModelArkVideo(
     model,
     content,
   };
-  const duration = numericDuration(params.duration);
+  const duration = editMode ? -1 : numericDuration(params.duration);
   if (duration !== undefined) body.duration = duration;
-  if (params.aspectRatio) body.ratio = params.aspectRatio;
+  if (editMode || extensionMode || startEndMode) {
+    body.ratio = "adaptive";
+  } else if (params.aspectRatio) {
+    body.ratio = params.aspectRatio === "auto" ? "adaptive" : params.aspectRatio;
+  }
+  if (seedance25 && editMode) body.omni_reference_task_type = "edit";
+  if (seedance25 && extensionMode) body.omni_reference_task_type = "extend";
   const resolution = stringParam(params.modelParams, "resolution");
   if (resolution) body.resolution = resolution;
   const generateAudio = boolParam(params.modelParams, "generate_audio");
   if (generateAudio !== undefined) body.generate_audio = generateAudio;
+  const outputFormat = stringParam(params.modelParams, "output_format");
+  if (outputFormat === "mp4" || outputFormat === "mov") body.output_format = outputFormat;
 
   const createResp = await fetch(endpoint, {
     method: "POST",
@@ -138,7 +166,7 @@ export async function generateModelArkVideo(
 
   const start = Date.now();
   const pollIntervalMs = params.pollIntervalMs ?? 5000;
-  const maxWaitMs = params.maxWaitMs ?? 10 * 60 * 1000;
+  const maxWaitMs = params.maxWaitMs ?? 30 * 60 * 1000;
   while (Date.now() - start <= maxWaitMs) {
     const pollResp = await fetch(`${endpoint}/${encodeURIComponent(taskId)}`, {
       headers: {

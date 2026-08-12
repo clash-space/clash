@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateTimelineDsl, type SubtitleTextItem, type TimelineTranscriptWord } from '@master-clash/remotion-core';
+import { validateTimelineDsl, type SubtitleTextItem, type TimelineTranscriptWord } from '@clash/remotion-core';
 import {
   buildCaptionItemFromTimelineWords,
   parseCaptionFile,

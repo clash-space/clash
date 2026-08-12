@@ -1,12 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://clash.local/schemas/skill-marketplace-registry.schema.json",
-  "title": "Clash first-party skill marketplace registry",
+  "title": "Clash skill marketplace registry",
   "type": "object",
   "required": [
     "version",
     "marketplaceSemantics",
-    "actions",
     "skills",
     "systemCapabilities",
     "thirdPartyReferences"
@@ -272,7 +271,6 @@
           "description",
           "kind",
           "source",
-          "path",
           "tags",
           "requiredSystemCapabilities"
         ],
@@ -281,14 +279,27 @@
           "name": { "type": "string" },
           "title": { "type": "string" },
           "description": { "type": "string" },
+          "type": { "const": "skill" },
           "kind": { "enum": ["architecture", "detail"] },
-          "source": { "const": "first-party" },
+          "source": { "enum": ["first-party", "provider-official"] },
+          "sourceVersion": { "type": "string" },
           "path": { "type": "string" },
+          "install": {
+            "type": "object",
+            "required": ["kind", "source", "skill", "scope"],
+            "properties": {
+              "kind": { "const": "npx-skills" },
+              "source": { "type": "string", "pattern": "^https://" },
+              "skill": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+              "scope": { "const": "global" }
+            },
+            "additionalProperties": false
+          },
           "tags": { "type": "array", "items": { "type": "string" } },
           "inputs": { "type": "array", "items": { "type": "string" } },
           "outputs": { "type": "array", "items": { "type": "string" } },
           "executionContract": {
-            "enum": ["production-action", "native-cli-mcp"],
+            "enum": ["production-action", "native-cli-mcp", "prompt-compiler"],
             "description": "How the ready skill reaches executable product behavior. Native CLI/MCP contracts do not require a synthetic production action wrapper."
           },
           "requiredSystemCapabilities": {
@@ -316,6 +327,31 @@
           }
         },
         "allOf": [
+          {
+            "if": {
+              "properties": {
+                "source": { "const": "first-party" }
+              },
+              "required": ["source"]
+            },
+            "then": {
+              "required": ["path"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "source": { "const": "provider-official" }
+              },
+              "required": ["source"]
+            },
+            "then": {
+              "required": ["sourceVersion", "install", "executionContract"],
+              "properties": {
+                "executionContract": { "const": "prompt-compiler" }
+              }
+            }
+          },
           {
             "if": {
               "properties": {

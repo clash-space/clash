@@ -2,7 +2,7 @@ import { Fragment, memo, useState, useEffect, useCallback, useMemo, useRef, type
 import { Handle, NodeToolbar, Position, type Node as RFNode, NodeProps, useReactFlow, useNodeConnections } from '@xyflow/react';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy, SpeakerHigh, TextT, SlidersHorizontal } from '@phosphor-icons/react';
 import { motion, Reorder } from 'framer-motion';
-import { AspectRatioPicker, parseAspectRatio, type AspectRatioOption } from '@master-clash/remotion-ui';
+import { AspectRatioPicker, parseAspectRatio, type AspectRatioOption } from '@clash/remotion-ui';
 import { useProject } from '../ProjectContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { usePeersSelectingNode } from '../PresenceAwarenessContext';
@@ -12,7 +12,7 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { SignedImg } from '../SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
-import { applyModelParameterChange, normalizeModelParametersForCard, listCompatibleModelCatalogEntries, MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, capabilityFromCustom, customActionDefaultParams, directorReferencePackets, referenceAssetId, referenceModality, validateReferenceMedia, type DirectorReferencePacket, type ExecutablePluginBinding, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality, type ReferenceMediaMetadata } from '@clash/shared-types';
+import { activeModelParameterIds, applyModelParameterChange, normalizeModelParametersForCard, listCompatibleModelCatalogEntries, modelRouteSupportsParameters, MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, capabilityFromCustom, customActionDefaultParams, directorReferencePackets, referenceAssetId, referenceModality, validateReferenceMedia, type DirectorReferencePacket, type ExecutablePluginBinding, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality, type ReferenceMediaMetadata } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
 import { useProjectCustomActions } from '../CustomActionsContext';
 import {
@@ -752,6 +752,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         () => isCustom ? undefined : enabledModelCatalog.find((entry) => entry.model.id === modelId),
         [enabledModelCatalog, isCustom, modelId],
     );
+    const unavailableParameterIds = useMemo(
+        () => new Set(selectedCatalogEntry?.unavailableParameterIds ?? []),
+        [selectedCatalogEntry?.unavailableParameterIds],
+    );
     const selectedModel = useMemo<ModelCard | undefined>(
         // For custom actions, fall back to `undefined` rather than the
         // first image model card — otherwise the picker chip shows
@@ -762,17 +766,30 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         () => isCustom ? undefined : (availableModels.find((card) => card.id === modelId) ?? MODEL_CARDS.find((card) => card.id === modelId) ?? availableModels[0]),
         [availableModels, modelId, isCustom]
     );
+    const selectedModelRoute = useMemo(() => {
+        if (!selectedCatalogEntry?.routes?.length) return selectedCatalogEntry?.selectedRoute;
+        const requestedParameterIds = activeModelParameterIds(modelParams);
+        return selectedCatalogEntry.routes.find((route) =>
+            modelRouteSupportsParameters(route, requestedParameterIds));
+    }, [modelParams, selectedCatalogEntry]);
     useEffect(() => {
         if (!selectedModel) return;
         setModelParams((current) => {
             const next = normalizeModelParametersForCard(selectedModel, current);
+            for (const parameterId of unavailableParameterIds) delete next[parameterId];
             const keys = new Set([...Object.keys(current), ...Object.keys(next)]);
             return [...keys].every((key) => current[key] === next[key]) ? current : next;
         });
-    }, [selectedModel]);
-    const isMusicModel = selectedModel?.task === 'music-generation';
+    }, [selectedModel, unavailableParameterIds]);
+    // A card that declares `musicInput` is one that takes lyrics, and says where they go. This
+    // read `selectedModel?.task === 'music-generation'` until that field was removed: producing one
+    // class of output is one action, so speech and music are both audio and what separates them is
+    // this parameter. The textarea below already read `musicInput.maxLyricsCharacters`, so the flag
+    // and the declaration were two names for one fact -- and they disagreed, because `lyria-3-pro`
+    // was tagged music while declaring no lyrics input, which drew it a box that went nowhere.
+    const isMusicModel = Boolean(selectedModel?.musicInput);
     const storedPluginBinding = data.pluginBinding as ExecutablePluginBinding | undefined;
-    const routePluginBinding = preferredModelRoutePluginBinding(selectedCatalogEntry?.selectedRoute);
+    const routePluginBinding = preferredModelRoutePluginBinding(selectedModelRoute);
     const resolvedPluginBinding = resolveModelProjectorBinding(
         storedPluginBinding,
         routePluginBinding,
@@ -806,6 +823,25 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const isKeyframePresentation = selectedModel?.input.presentation?.type === 'keyframes';
     const isContinuationPresentation = selectedModel?.input.presentation?.type === 'video-continuation';
     const keyframeLimit = cap?.ref.image.max ?? 0;
+    const continuationVideoMin = cap?.ref.video.min ?? 1;
+    const continuationVideoLimit = cap?.ref.video.max ?? 1;
+    const continuationVideoConstraints = cap?.ref.video.constraints;
+    const continuationVideoSummary = continuationVideoLimit === 1
+        ? [
+            continuationVideoConstraints?.fileExtensions?.map(extension => extension.toUpperCase()).join('/'),
+            continuationVideoConstraints?.maxDurationMs
+                ? `up to ${continuationVideoConstraints.maxDurationMs / 1000}s`
+                : undefined,
+            continuationVideoConstraints?.maxBytes
+                ? `${Math.round(continuationVideoConstraints.maxBytes / (1024 * 1024))} MB`
+                : undefined,
+        ].filter(Boolean).join(' · ')
+        : [
+            `${continuationVideoMin}–${continuationVideoLimit} videos`,
+            cap?.ref.video.maxTotalDurationMs
+                ? `up to ${cap.ref.video.maxTotalDurationMs / 1000}s total`
+                : undefined,
+        ].filter(Boolean).join(' · ');
     const keyframeFrameRate = selectedModel?.input.presentation?.type === 'keyframes'
         ? selectedModel.input.presentation.frameRate ?? 24
         : 24;
@@ -1035,6 +1071,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         }
     }, [id, connectedEdges, setEdges, loroSync]);
 
+    const removeContinuationRef = useCallback((sourceNodeId: string) => {
+        persistRefOrder(refNodeIds.filter(nodeId => nodeId !== sourceNodeId));
+        removeRefNode(sourceNodeId);
+    }, [persistRefOrder, refNodeIds, removeRefNode]);
+
     const removeKeyframeRef = useCallback((sourceNodeId: string) => {
         const removedIndex = refNodeIds.indexOf(sourceNodeId);
         if (removedIndex < 0) return;
@@ -1131,9 +1172,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // "append a middle frame": insert immediately before the fixed End slot.
     const attachRefToSlot = useCallback((sourceNodeId: string, target: 'append' | 'start' | 'end') => {
         if (target === 'append' && isKeyframePresentation && refNodeIds.length >= keyframeLimit) return;
+        if (target === 'append' && isContinuationPresentation && refNodeIds.length >= continuationVideoLimit) return;
         addRefNode(sourceNodeId);
         const existing = Array.isArray(data.referenceImageOrder) ? [...(data.referenceImageOrder as string[])] : [...refNodeIds];
         if (target === 'append') {
+            if (isContinuationPresentation) {
+                persistRefOrder([...existing, sourceNodeId]);
+                return;
+            }
             if (!isKeyframePresentation) return;
             const insertion = planKeyframeInsertion(
                 keyframeFrames,
@@ -1158,7 +1204,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         if (isKeyframePresentation) {
             persistKeyframeFrames(target === 'start' ? [0] : [0, keyframeLastFrame], false);
         }
-    }, [addRefNode, data.referenceImageOrder, isKeyframePresentation, keyframeFrames, keyframeLastFrame, keyframeLimit, keyframeTimingCustomized, persistKeyframeFrames, refNodeIds, persistRefOrder]);
+    }, [addRefNode, continuationVideoLimit, data.referenceImageOrder, isContinuationPresentation, isKeyframePresentation, keyframeFrames, keyframeLastFrame, keyframeLimit, keyframeTimingCustomized, persistKeyframeFrames, refNodeIds, persistRefOrder]);
 
     // Resolve ref node → asset R2 key map. Used for @-mention thumbnails,
     // startEnd slot previews, and the generic ref grid. node.data.src is
@@ -2480,47 +2526,53 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     })() : isContinuationPresentation ? (
                         <div className="pointer-events-auto mb-2 min-w-[18rem] rounded-xl border border-warm-border bg-warm-surface px-3 py-2.5 shadow-sm">
                             <div className="mb-2">
-                                <div className="text-[11px] font-semibold text-content-primary">Source video</div>
-                                <div className="text-[10px] text-content-secondary">MP4 · up to 15s · 50 MB</div>
+                                <div className="text-[11px] font-semibold text-content-primary">
+                                    {continuationVideoLimit === 1 ? 'Source video' : 'Source videos'}
+                                </div>
+                                <div className="text-[10px] text-content-secondary">{continuationVideoSummary}</div>
                             </div>
-                            {refNodeIds[0] ? (() => {
-                                const sourceNodeId = refNodeIds[0];
-                                const sourceNode = getNode(sourceNodeId);
-                                const thumb = refThumbByNodeId.get(sourceNodeId);
-                                return (
-                                    <div className="group/thumb relative flex w-52 items-center gap-2 rounded-lg border border-warm-border bg-warm-muted p-1.5">
-                                        <div className="flex h-10 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-video/15 text-video">
-                                            {thumb ? <SignedImg src={thumb} alt="Source video" className="h-full w-full object-cover" /> : <VideoCamera size={16} weight="bold" />}
-                                        </div>
-                                        <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-content-primary">
-                                            {(sourceNode?.data?.label as string | undefined) ?? sourceNodeId}
-                                        </span>
-                                        {!isCheckpointLocked && (
-                                            <IconButton
-                                                label="Remove source video"
-                                                icon="×"
-                                                size="sm"
-                                                shape="circle"
-                                                onClick={() => removeRefNode(sourceNodeId)}
-                                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} h-6 min-h-6 w-6 min-w-6 text-[11px]`}
-                                            />
-                                        )}
-                                    </div>
-                                );
-                            })() : !isCheckpointLocked && (
+                            {refNodeIds.length > 0 && (
+                                <div className="mb-2 flex max-w-[30rem] flex-wrap gap-2" role="list" aria-label="Source videos">
+                                    {refNodeIds.map((sourceNodeId, index) => {
+                                        const sourceNode = getNode(sourceNodeId);
+                                        const thumb = refThumbByNodeId.get(sourceNodeId);
+                                        return (
+                                            <div key={sourceNodeId} role="listitem" className="group/thumb relative flex w-52 items-center gap-2 rounded-lg border border-warm-border bg-warm-muted p-1.5">
+                                                <div className="flex h-10 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-video/15 text-video">
+                                                    {thumb ? <SignedImg src={thumb} alt={`Source video ${index + 1}`} className="h-full w-full object-cover" /> : <VideoCamera size={16} weight="bold" />}
+                                                </div>
+                                                <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-content-primary">
+                                                    {(sourceNode?.data?.label as string | undefined) ?? sourceNodeId}
+                                                </span>
+                                                {!isCheckpointLocked && (
+                                                    <IconButton
+                                                        label={`Remove source video ${index + 1}`}
+                                                        icon="×"
+                                                        size="sm"
+                                                        shape="circle"
+                                                        onClick={() => removeContinuationRef(sourceNodeId)}
+                                                        className={`${NODE_INTERACTION_BOUNDARY_CLASS} h-6 min-h-6 w-6 min-w-6 text-[11px]`}
+                                                    />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {!isCheckpointLocked && refNodeIds.length < continuationVideoLimit && (
                                 <Popover
                                     open={refPickerTarget === 'append'}
                                     onOpenChange={(open) => setRefPickerTarget(open ? 'append' : null)}
                                 >
                                     <PopoverTrigger asChild>
                                         <Button
-                                            aria-label="Choose source video"
+                                            aria-label={refNodeIds.length === 0 ? 'Choose source video' : 'Add source video'}
                                             size="sm"
                                             shape="rounded"
                                             leftIcon={<Plus size={14} weight="bold" />}
                                             className="border border-dashed border-warm-border bg-transparent text-content-secondary shadow-none hover:bg-warm-muted hover:text-content-primary"
                                         >
-                                            Choose source video
+                                            {refNodeIds.length === 0 ? 'Choose source video' : 'Add source video'}
                                         </Button>
                                     </PopoverTrigger>
                                     <PopoverContent
@@ -2832,7 +2884,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 <PopoverTrigger asChild>
                                     <Button
                                         aria-label={`${aspectRatioParameter.label}: ${aspectRatioCurrentLabel}`}
-                                        disabled={aspectRatioParameter.readOnly}
+                                        disabled={aspectRatioParameter.readOnly || unavailableParameterIds.has(aspectRatioParameter.id)}
                                         className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors ${
                                             aspectRatioPopoverOpen
                                                 ? 'bg-warm-hover text-slate-900 dark:text-slate-50'
@@ -2897,6 +2949,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     <Accordion type="single" collapsible>
                                         {secondaryParameters.map((param: any, idx: number) => {
                                             const p = param as ModelParameter;
+                                            const unavailable = unavailableParameterIds.has(p.id);
                                             const currentVal = (isCustom ? customActionParams : modelParams)[p.id] ?? p.defaultValue;
                                             const currentLabel = p.type === 'select'
                                                 ? (p.options?.find((o) => String(o.value) === String(currentVal))?.label ?? String(currentVal))
@@ -2914,15 +2967,15 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         <Button
                                                             size="sm"
                                                             shape="rounded"
-                                                            disabled={p.readOnly}
+                                                            disabled={p.readOnly || unavailable}
                                                             className="group w-full justify-between rounded-none border-0 bg-transparent px-4 py-2.5 shadow-none hover:bg-warm-muted"
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
                                                             <span className="flex items-center gap-1.5 text-xs text-stone-700 dark:text-stone-300">
                                                                 {p.label}
-                                                                {p.readOnly && (
+                                                                {(p.readOnly || unavailable) && (
                                                                     <span className="rounded-full bg-warm-muted px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
-                                                                        Fixed
+                                                                        {unavailable ? 'Unavailable' : 'Fixed'}
                                                                     </span>
                                                                 )}
                                                             </span>
@@ -2966,6 +3019,17 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                     onChange={(e) => updateModelParam(p.id, Number(e.target.value))}
                                                                     className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full text-xs border border-warm-border rounded-lg px-3 py-2 focus:outline-none focus:border-brand/70`}
                                                                     onClick={(e) => e.stopPropagation()}
+                                                                />
+                                                            )}
+                                                            {p.type === 'text' && (
+                                                                <Input
+                                                                    aria-label={p.label}
+                                                                    type="text"
+                                                                    value={typeof currentVal === 'string' ? currentVal : ''}
+                                                                    placeholder={p.placeholder}
+                                                                    onChange={(event) => updateModelParam(p.id, event.target.value)}
+                                                                    className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full rounded-lg border border-warm-border px-3 py-2 text-xs focus:border-brand/70 focus:outline-none`}
+                                                                    onClick={(event) => event.stopPropagation()}
                                                                 />
                                                             )}
                                                             {p.type === 'slider' && (

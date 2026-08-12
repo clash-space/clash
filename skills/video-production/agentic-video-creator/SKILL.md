@@ -1,7 +1,7 @@
 ---
 name: agentic-video-creator
 description: Use whenever an agent should autonomously turn a natural-language brief into a finished Clash video workflow: organize one or more draft Canvases by creative context or sequence, keep storyboard/A-roll/B-roll together in grouped generation paths, ask for only high-leverage human choices, select assets, and assemble the final edit in a Timeline. Trigger for end-to-end video creation, "make me a video", Flova-style agent creation, agent-driven editing, or requests that expect the agent to operate Clash rather than explain how Clash works.
-compatibility: Requires a running Clash local host and @clash-space/cli >=0.1.0-beta.3 <0.2.0 for managed execution.
+compatibility: Requires a running Clash local host and @clash/cli >=0.1.0-beta.3 <0.2.0 for managed execution.
 ---
 
 # Agentic Video Creator

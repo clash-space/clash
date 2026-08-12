@@ -1,24 +1,26 @@
 ---
 name: clash
-description: Operate a Clash video project through either the Clash CLI or its peer stdio MCP transport. Use when an agent needs to initialize a workspace, discover current commands or tools progressively, mutate product state, or verify a persisted result.
+description: Operate a Clash video project through either the Clash CLI or its peer plugin stdio MCP surface. Use when an agent needs to initialize a workspace, discover current commands or typed tools progressively, mutate product state through local-api, or verify a persisted result.
 ---
 
 # Use Clash
 
-Clash has two peer transports over the same product state: the `clash` CLI and
-the Clash stdio MCP server. Choose the transport that is actually available in
-the current agent session. Do not invoke one transport through a wrapper in the
-other, and do not expect repository-level AGENTS instructions to provide the
+Clash has two peer interfaces over the same product state: the `clash` CLI and
+the plugin stdio MCP surface. They expose the same capabilities and semantics,
+so choose whichever is available in the current agent session. Both call the
+discovered `local-api` host directly; do not invoke one through the other or
+recreate product behavior, Project state, or daemon ownership in either
+interface. Do not expect repository-level AGENTS instructions to provide the
 product manual.
 
 ## Establish the collaboration runtime
 
 Treat the Clash daemon as a prerequisite for product work, not as part of the
-creative outcome. The normal CLI or MCP entry point owns the daemon probe and
-start: invoke it normally, let it reuse a compatible daemon or start one when
-none exists, and treat its readiness error as authoritative. Do not manually
-launch an internal JavaScript entrypoint, a second daemon command, or a
-background substitute.
+creative outcome. The normal CLI or plugin MCP bootstrap owns host discovery:
+invoke it normally, let it reuse a compatible `local-api` host or start the
+bundled host when none exists, and treat its readiness error as authoritative.
+Do not manually launch an internal JavaScript entrypoint, a second daemon
+command, or a background substitute.
 
 Some headless environments establish the workspace binding and daemon before
 the agent starts. When they provide a ready receipt, use that project as-is and

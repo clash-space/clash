@@ -4,7 +4,7 @@ import type {
   SourceToOutputFrameMap,
   SubtitleTextItem,
   TimelineTranscriptWord,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 
 type CreateId = (prefix: string) => string;
 type ParsedCue = { startSeconds: number; endSeconds: number; text: string };

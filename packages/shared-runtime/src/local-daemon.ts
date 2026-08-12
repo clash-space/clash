@@ -1,4 +1,8 @@
-import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import {
+  spawn,
+  type ChildProcess,
+  type SpawnOptions,
+} from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,6 +14,7 @@ import {
 } from "./index.js";
 import {
   defaultDaemonNodeCandidates,
+  isDaemonNodeVersionSupported,
   resolveDaemonNodeRuntime,
   type DaemonNodeRuntime,
 } from "./local-daemon-runtime.js";
@@ -30,12 +35,18 @@ export interface LocalDaemonLaunchResult {
 
 export interface DetachedLocalDaemonOptions {
   entryPath: string;
+  /** Node flags placed before the entrypoint (for example `--import tsx` in development). */
+  nodeArgs?: readonly string[];
   dataDir: string;
   runDir: string;
   cliEntryPath: string;
   env?: NodeJS.ProcessEnv;
   daemonEnv?: NodeJS.ProcessEnv;
   nodePath?: string;
+  /** Version already reported by an explicitly supplied runtime. */
+  nodeVersion?: string;
+  /** Run an Electron executable as its embedded Node runtime. */
+  electronRunAsNode?: boolean;
   spawnProcess?: (
     command: string,
     args: readonly string[],
@@ -60,7 +71,12 @@ export interface LocalDaemonBootstrapOptions {
 }
 
 function isMissingFile(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "code" in error && error.code === "ENOENT");
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "ENOENT",
+  );
 }
 
 function processExists(pid: number): boolean {
@@ -68,7 +84,12 @@ function processExists(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return Boolean(error && typeof error === "object" && "code" in error && error.code === "EPERM");
+    return Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "EPERM",
+    );
   }
 }
 
@@ -77,12 +98,25 @@ export function launchDetachedLocalDaemon(
 ): LocalDaemonLaunchResult {
   const spawnProcess = options.spawnProcess ?? spawn;
   const env = options.env ?? process.env;
-  // Decoupled from the launcher on purpose: the GUI shell's Electron runtime and
-  // whichever nvm version a shell happened to have active are both accidents of
-  // who started the host, not properties of the host.
+  // Decoupled from the launcher on purpose. Desktop may explicitly use its
+  // bundled Electron executable in Node mode after validating that embedded
+  // Node against DAEMON_SUPPORTED_NODE_RANGE; every other launcher resolves a
+  // standalone compatible Node runtime.
+  if (
+    options.nodePath &&
+    !isDaemonNodeVersionSupported(
+      options.nodeVersion,
+      DAEMON_SUPPORTED_NODE_RANGE,
+    )
+  ) {
+    throw new Error(
+      `Explicit daemon Node ${options.nodeVersion ?? "unknown"} does not satisfy ${DAEMON_SUPPORTED_NODE_RANGE}.`,
+    );
+  }
   const runtime = options.nodePath
     ? {
         nodePath: options.nodePath,
+        version: options.nodeVersion,
         source: "explicit" as const,
         inheritedFromLauncher: false,
       }
@@ -90,24 +124,31 @@ export function launchDetachedLocalDaemon(
         execPath: process.execPath,
         env: env as Record<string, string | undefined>,
         supportedRange: DAEMON_SUPPORTED_NODE_RANGE,
-        candidates: defaultDaemonNodeCandidates(env as Record<string, string | undefined>),
+        candidates: defaultDaemonNodeCandidates(
+          env as Record<string, string | undefined>,
+        ),
       });
-  const child = spawnProcess(runtime.nodePath, [options.entryPath], {
-    detached: true,
-    env: {
-      ...env,
-      ...(options.daemonEnv ?? {}),
-      CLASH_LOCAL_DATA_DIR: options.dataDir,
-      CLASH_HOST_RUN_DIR: options.runDir,
-      CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
-      CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
-      // The daemon is a Node process, never the GUI shell running as node.
-      ELECTRON_RUN_AS_NODE: undefined,
-      CLASH_DAEMON_NODE_PATH: runtime.nodePath,
-      PORT: "0",
+  const child = spawnProcess(
+    runtime.nodePath,
+    [...(options.nodeArgs ?? []), options.entryPath],
+    {
+      detached: true,
+      env: {
+        ...env,
+        ...(options.daemonEnv ?? {}),
+        CLASH_LOCAL_DATA_DIR: options.dataDir,
+        CLASH_HOST_RUN_DIR: options.runDir,
+        CLASH_CLI_ENTRY_PATH: options.cliEntryPath,
+        CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+        // Electron Node mode is still a detached Node process; without this
+        // explicit opt-in an Electron executable would recursively open the GUI.
+        ELECTRON_RUN_AS_NODE: options.electronRunAsNode ? "1" : undefined,
+        CLASH_DAEMON_NODE_PATH: runtime.nodePath,
+        PORT: "0",
+      },
+      stdio: "ignore",
     },
-    stdio: "ignore",
-  });
+  );
   if (!child.pid) throw new Error("Failed to start Clash daemon process");
   const pid = child.pid;
   child.unref();
@@ -119,7 +160,12 @@ export function launchDetachedLocalDaemon(
       try {
         process.kill(pid, "SIGTERM");
       } catch (error) {
-        if (!(error && typeof error === "object" && "code" in error && error.code === "ESRCH")) {
+        if (!(
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "ESRCH"
+        )) {
           throw error;
         }
       }
@@ -131,13 +177,15 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function defaultHealthProbe(record: LocalHostDiscoveryRecord): Promise<boolean> {
+async function defaultHealthProbe(
+  record: LocalHostDiscoveryRecord,
+): Promise<boolean> {
   try {
     const response = await fetch(new URL("/health", record.endpoint), {
       signal: AbortSignal.timeout(1_000),
     });
     if (!response.ok) return false;
-    const body = await response.json() as {
+    const body = (await response.json()) as {
       ok?: unknown;
       mode?: unknown;
       host?: {
@@ -147,12 +195,14 @@ async function defaultHealthProbe(record: LocalHostDiscoveryRecord): Promise<boo
         protocolVersion?: unknown;
       };
     };
-    return body.ok === true
-      && body.mode === "local"
-      && body.host?.hostId === record.hostId
-      && body.host.pid === record.pid
-      && body.host.profile === (record.profile ?? "prod")
-      && body.host.protocolVersion === record.protocolVersion;
+    return (
+      body.ok === true &&
+      body.mode === "local" &&
+      body.host?.hostId === record.hostId &&
+      body.host.pid === record.pid &&
+      body.host.profile === (record.profile ?? "prod") &&
+      body.host.protocolVersion === record.protocolVersion
+    );
   } catch {
     return false;
   }
@@ -167,8 +217,12 @@ function isLoopbackEndpoint(endpoint: string): boolean {
   try {
     const url = new URL(endpoint);
     const hostname = url.hostname.toLowerCase();
-    return (url.protocol === "http:" || url.protocol === "https:")
-      && (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1");
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (hostname === "127.0.0.1" ||
+        hostname === "localhost" ||
+        hostname === "::1")
+    );
   } catch {
     return false;
   }
@@ -182,19 +236,24 @@ async function inspectLocalDaemon(options: {
 }): Promise<LocalDaemonInspection> {
   let value: unknown;
   try {
-    value = JSON.parse(await readFile(join(options.runDir, "host.json"), "utf8"));
+    value = JSON.parse(
+      await readFile(join(options.runDir, "host.json"), "utf8"),
+    );
   } catch (error) {
-    if (isMissingFile(error) || error instanceof SyntaxError) return { status: "absent" };
+    if (isMissingFile(error) || error instanceof SyntaxError)
+      return { status: "absent" };
     throw error;
   }
   if (!isLocalHostDiscoveryRecord(value)) return { status: "absent" };
   if (!options.pidExists(value.pid)) return { status: "absent" };
-  if ((value.profile ?? "prod") !== options.profile
-    || !isCompatibleHost(value, LOCAL_HOST_PROTOCOL_VERSION)
-    || !isLoopbackEndpoint(value.endpoint)) {
+  if (
+    (value.profile ?? "prod") !== options.profile ||
+    !isCompatibleHost(value, LOCAL_HOST_PROTOCOL_VERSION) ||
+    !isLoopbackEndpoint(value.endpoint)
+  ) {
     return { status: "unhealthy", record: value };
   }
-  return await options.probe(value)
+  return (await options.probe(value))
     ? { status: "healthy", record: value }
     : { status: "unhealthy", record: value };
 }
@@ -213,18 +272,28 @@ async function acquireStartupLock(options: {
   while (Date.now() < deadline) {
     try {
       const handle = await open(lockPath, "wx", 0o600);
-      await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }), "utf8");
+      await handle.writeFile(
+        JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }),
+        "utf8",
+      );
       return async () => {
         await handle.close().catch(() => undefined);
         try {
-          const current = JSON.parse(await readFile(lockPath, "utf8")) as { token?: unknown };
+          const current = JSON.parse(await readFile(lockPath, "utf8")) as {
+            token?: unknown;
+          };
           if (current.token === token) await rm(lockPath, { force: true });
         } catch (error) {
           if (!isMissingFile(error)) throw error;
         }
       };
     } catch (error) {
-      if (!(error && typeof error === "object" && "code" in error && error.code === "EEXIST")) {
+      if (!(
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "EEXIST"
+      )) {
         throw error;
       }
     }
@@ -234,10 +303,11 @@ async function acquireStartupLock(options: {
         pid?: unknown;
         createdAt?: unknown;
       };
-      const stale = typeof lock.pid !== "number"
-        || !options.pidExists(lock.pid)
-        || typeof lock.createdAt !== "number"
-        || Date.now() - lock.createdAt > options.lockTimeoutMs * 2;
+      const stale =
+        typeof lock.pid !== "number" ||
+        !options.pidExists(lock.pid) ||
+        typeof lock.createdAt !== "number" ||
+        Date.now() - lock.createdAt > options.lockTimeoutMs * 2;
       if (stale) {
         await rm(lockPath, { force: true });
         continue;
@@ -262,12 +332,13 @@ export function createLocalDaemonBootstrap(
   const startupTimeoutMs = options.startupTimeoutMs ?? 10_000;
   const lockTimeoutMs = options.lockTimeoutMs ?? 15_000;
   const pollIntervalMs = options.pollIntervalMs ?? 50;
-  const inspectDaemon = () => inspectLocalDaemon({
-    runDir: options.runDir,
-    profile: options.profile,
-    pidExists,
-    probe,
-  });
+  const inspectDaemon = () =>
+    inspectLocalDaemon({
+      runDir: options.runDir,
+      profile: options.profile,
+      pidExists,
+      probe,
+    });
   let ensuring: Promise<LocalHostDiscoveryRecord> | undefined;
   let closed = false;
 
@@ -277,8 +348,8 @@ export function createLocalDaemonBootstrap(
     if (active.status === "healthy") return active.record;
     if (active.status === "unhealthy") {
       throw new Error(
-        `Clash daemon process ${active.record.pid} is alive but unhealthy at ${active.record.endpoint}; `
-        + "refusing to start a second project-state writer",
+        `Clash daemon process ${active.record.pid} is alive but unhealthy at ${active.record.endpoint}; ` +
+          "refusing to start a second project-state writer",
       );
     }
 
@@ -294,8 +365,8 @@ export function createLocalDaemonBootstrap(
       if (activeAfterLock.status === "healthy") return activeAfterLock.record;
       if (activeAfterLock.status === "unhealthy") {
         throw new Error(
-          `Clash daemon process ${activeAfterLock.record.pid} is alive but unhealthy at ${activeAfterLock.record.endpoint}; `
-          + "refusing to start a second project-state writer",
+          `Clash daemon process ${activeAfterLock.record.pid} is alive but unhealthy at ${activeAfterLock.record.endpoint}; ` +
+            "refusing to start a second project-state writer",
         );
       }
       launched = await options.launch();
@@ -328,8 +399,12 @@ export function createLocalDaemonBootstrap(
       const attempt = establish();
       ensuring = attempt;
       void attempt.then(
-        () => { if (ensuring === attempt) ensuring = undefined; },
-        () => { if (ensuring === attempt) ensuring = undefined; },
+        () => {
+          if (ensuring === attempt) ensuring = undefined;
+        },
+        () => {
+          if (ensuring === attempt) ensuring = undefined;
+        },
       );
       return ensuring;
     },

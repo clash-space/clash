@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { TIMELINE_DSL_DEFINITION, validateTimelineDsl } from "./index";
-import * as semantics from "./timeline-dsl-semantics";
+import { TIMELINE_DSL_DEFINITION, validateTimelineDsl } from "./index.js";
+import * as semantics from "./timeline-dsl-semantics.js";
 
 function validationRuleIds(state: unknown): string[] {
   const result = validateTimelineDsl(state);

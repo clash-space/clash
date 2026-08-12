@@ -6,7 +6,7 @@ import {
   EditorProvider,
   type AudioItem,
   type EditorState,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import { PropertiesPanel } from './PropertiesPanel';
 
 afterEach(() => cleanup());

@@ -28,7 +28,7 @@ importers:
         version: 0.2.4
       better-auth:
         specifier: ^1.4.6
-        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
+        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       better-auth-cloudflare:
         specifier: ^0.2.9
         version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
@@ -63,6 +63,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.48
         version: 3.0.80(zod@4.4.3)
+      '@clash/remotion-core':
+        specifier: workspace:*
+        version: link:../../packages/remotion-core
       '@clash/shared-layout':
         specifier: workspace:^
         version: link:../../packages/shared-layout
@@ -81,12 +84,6 @@ importers:
       '@fal-ai/client':
         specifier: ^1.9.5
         version: 1.10.1
-      '@google/generative-ai':
-        specifier: ^0.24.0
-        version: 0.24.1
-      '@master-clash/remotion-core':
-        specifier: workspace:*
-        version: link:../../packages/remotion-core
       agents:
         specifier: ^0.8.6
         version: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
@@ -95,10 +92,10 @@ importers:
         version: 6.0.219(zod@4.4.3)
       better-auth:
         specifier: ^1.6.9
-        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
+        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       better-auth-cloudflare:
         specifier: ^0.2.9
-        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
+        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
       consola:
         specifier: ^3.4.2
         version: 3.4.2
@@ -142,15 +139,9 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@clash-space/cli':
-        specifier: workspace:*
-        version: link:../../packages/cli
       '@clash/shared-runtime':
         specifier: workspace:*
         version: link:../../packages/shared-runtime
-      '@master-clash/local-api':
-        specifier: workspace:*
-        version: link:../local-api
       '@remotion/renderer':
         specifier: 4.0.507
         version: 4.0.507(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -161,12 +152,24 @@ importers:
       '@agentclientprotocol/codex-acp':
         specifier: ^1.1.7
         version: 1.1.7
+      '@clash/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@clash/local-api':
+        specifier: workspace:*
+        version: link:../local-api
+      '@clash/render-server':
+        specifier: workspace:*
+        version: link:../render-server
       '@remotion/bundler':
         specifier: 4.0.507
         version: 4.0.507(@swc/core@1.15.43)(lightningcss@1.32.0)(postcss@8.5.16)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@types/node':
-        specifier: ^22.13.0
-        version: 22.20.0
+        specifier: ^24.0.0
+        version: 24.13.2
+      clash:
+        specifier: workspace:*
+        version: link:../../plugins/clash
       electron:
         specifier: ^42.3.2
         version: 42.6.0
@@ -184,7 +187,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
   apps/docs:
     devDependencies:
@@ -194,19 +197,25 @@ importers:
 
   apps/local-api:
     dependencies:
+      '@agentclientprotocol/claude-agent-acp':
+        specifier: ^0.47.0
+        version: 0.47.0(@anthropic-ai/sdk@0.110.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))
+      '@agentclientprotocol/sdk':
+        specifier: ^0.28.1
+        version: 0.28.1(zod@4.4.3)
       '@clash-plugin/codex-imagegen':
         specifier: workspace:*
         version: link:../../plugins/codex-imagegen
-      '@clash-plugin/first-party-media':
+      '@clash-plugin/google':
         specifier: workspace:*
-        version: link:../../plugins/first-party-media
-      '@clash-space/bridge':
+        version: link:../../plugins/google
+      '@clash-plugin/minimax':
         specifier: workspace:*
-        version: link:../../packages/clash-bridge
-      '@clash-space/cli':
+        version: link:../../plugins/minimax
+      '@clash-plugin/volcengine':
         specifier: workspace:*
-        version: link:../../packages/cli
-      '@clash-space/sdk':
+        version: link:../../plugins/volcengine
+      '@clash/sdk':
         specifier: workspace:*
         version: link:../../packages/clash-sdk/js
       '@clash/shared-runtime':
@@ -218,6 +227,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.14(hono@4.12.27)
+      '@openma/common':
+        specifier: github:openma-ai/openma-common#codex/acp-lifecycle-v05
+        version: https://codeload.github.com/openma-ai/openma-common/tar.gz/28d93020c85c2dddbddcb8231f784d768fb88e69(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(zod@4.4.3)
       hono:
         specifier: ^4.7.10
         version: 4.12.27
@@ -231,9 +243,12 @@ importers:
         specifier: ^2.6.0
         version: 2.9.0
     devDependencies:
+      '@mswjs/interceptors':
+        specifier: ^0.42.3
+        version: 0.42.3
       '@types/node':
-        specifier: ^22.13.0
-        version: 22.20.0
+        specifier: ^24.0.0
+        version: 24.13.2
       '@types/ws':
         specifier: ^8.5.0
         version: 8.18.1
@@ -245,7 +260,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
   apps/render-server:
     dependencies:
@@ -271,10 +286,10 @@ importers:
         specifier: 4.0.507
         version: 4.0.507(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
     devDependencies:
-      '@master-clash/remotion-components':
+      '@clash/remotion-components':
         specifier: workspace:*
         version: link:../../packages/remotion-components
-      '@master-clash/remotion-core':
+      '@clash/remotion-core':
         specifier: workspace:*
         version: link:../../packages/remotion-core
       tsup:
@@ -298,6 +313,18 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.940.0
         version: 3.1079.0
+      '@clash/gui':
+        specifier: workspace:*
+        version: link:../../packages/gui
+      '@clash/remotion-components':
+        specifier: workspace:*
+        version: link:../../packages/remotion-components
+      '@clash/remotion-core':
+        specifier: workspace:*
+        version: link:../../packages/remotion-core
+      '@clash/remotion-ui':
+        specifier: workspace:*
+        version: link:../../packages/remotion-ui
       '@clash/shared-layout':
         specifier: workspace:^
         version: link:../../packages/shared-layout
@@ -331,9 +358,6 @@ importers:
       '@fontsource-variable/space-grotesk':
         specifier: ^5.2.5
         version: 5.2.10
-      '@google/generative-ai':
-        specifier: ^0.24.1
-        version: 0.24.1
       '@langchain/core':
         specifier: ^1.0.6
         version: 1.2.1(@opentelemetry/api@1.9.1)(ws@8.21.0)
@@ -343,15 +367,6 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.0.2
         version: 1.4.7(@langchain/core@1.2.1(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vue@3.5.39(typescript@5.9.3))(zod@4.4.3)
-      '@master-clash/remotion-components':
-        specifier: workspace:*
-        version: link:../../packages/remotion-components
-      '@master-clash/remotion-core':
-        specifier: workspace:*
-        version: link:../../packages/remotion-core
-      '@master-clash/remotion-ui':
-        specifier: workspace:*
-        version: link:../../packages/remotion-ui
       '@milkdown/core':
         specifier: ^7.17.2
         version: 7.21.2
@@ -396,16 +411,16 @@ importers:
         version: 12.11.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       agents:
         specifier: ^0.8.6
-        version: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(rolldown@1.1.4)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
+        version: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
       ai:
         specifier: ^6.0.138
         version: 6.0.219(zod@4.4.3)
       better-auth:
         specifier: ^1.6.9
-        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
+        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       better-auth-cloudflare:
         specifier: ^0.2.9
-        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
+        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5)
@@ -452,9 +467,12 @@ importers:
         specifier: ^4.1.13
         version: 4.4.3
     devDependencies:
+      '@clash/local-api':
+        specifier: workspace:*
+        version: link:../local-api
       '@cloudflare/vite-plugin':
         specifier: ^1.33.1
-        version: 1.43.0(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(workerd@1.20260701.1)(wrangler@4.107.0(@cloudflare/workers-types@4.20260702.1))
+        version: 1.43.0(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(workerd@1.20260701.1)(wrangler@4.107.0(@cloudflare/workers-types@4.20260702.1))
       '@cloudflare/workers-types':
         specifier: ^4.20251105.0
         version: 4.20260702.1
@@ -463,7 +481,7 @@ importers:
         version: 0.5.20(tailwindcss@4.3.2)
       '@tailwindcss/vite':
         specifier: ^4.2.4
-        version: 4.3.2(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 4.3.2(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1
@@ -471,8 +489,8 @@ importers:
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@types/node':
-        specifier: ^22.13.0
-        version: 22.20.0
+        specifier: ^24.0.0
+        version: 24.13.2
       '@types/react':
         specifier: ^19.2.0
         version: 19.2.17
@@ -502,19 +520,19 @@ importers:
         version: 5.9.3
       vite:
         specifier: ^7.1.0
-        version: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
+        version: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
       vite-plugin-top-level-await:
         specifier: ^1.6.0
-        version: 1.6.0(rollup@4.62.2)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 1.6.0(rollup@4.62.2)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
       vite-plugin-wasm:
         specifier: ^3.6.0
-        version: 3.6.0(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 3.6.0(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
       vite-tsconfig-paths:
         specifier: ^5.1.4
-        version: 5.1.4(typescript@5.9.3)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 5.1.4(typescript@5.9.3)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
       wrangler:
         specifier: ^4.84.1
         version: 4.107.0(@cloudflare/workers-types@4.20260702.1)
@@ -532,46 +550,6 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
-  packages/clash-bridge:
-    dependencies:
-      '@agentclientprotocol/claude-agent-acp':
-        specifier: ^0.47.0
-        version: 0.47.0(@anthropic-ai/sdk@0.110.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))
-      '@agentclientprotocol/sdk':
-        specifier: ^0.28.1
-        version: 0.28.1(zod@4.4.3)
-      '@clash/shared-runtime':
-        specifier: workspace:*
-        version: link:../shared-runtime
-      '@clash/shared-types':
-        specifier: workspace:*
-        version: link:../shared-types
-      '@openma/common':
-        specifier: github:openma-ai/openma-common#codex/acp-lifecycle-v05
-        version: https://codeload.github.com/openma-ai/openma-common/tar.gz/28d93020c85c2dddbddcb8231f784d768fb88e69(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(zod@4.4.3)
-      ws:
-        specifier: ^8.18.0
-        version: 8.21.0
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.0
-      '@types/ws':
-        specifier: ^8.5.0
-        version: 8.18.1
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
-      tsx:
-        specifier: ^4.19.0
-        version: 4.23.0
-      typescript:
-        specifier: ^5.8.0
-        version: 5.9.3
-      vitest:
-        specifier: 4.1.0
-        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
-
   packages/clash-sdk/js:
     dependencies:
       ws:
@@ -579,8 +557,8 @@ importers:
         version: 8.21.0
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.0
+        specifier: ^24.0.0
+        version: 24.13.2
       '@types/ws':
         specifier: ^8.5.10
         version: 8.18.1
@@ -592,37 +570,25 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/cli:
     dependencies:
-      '@clash-space/bridge':
+      '@clash/remotion-effects':
         specifier: workspace:*
-        version: link:../clash-bridge
-      '@clash-space/mcp-server':
-        specifier: workspace:*
-        version: link:../mcp-server
+        version: link:../remotion-effects
       '@clash/shared-runtime':
         specifier: workspace:*
         version: link:../shared-runtime
-      '@master-clash/remotion-effects':
+      '@clash/shared-types':
         specifier: workspace:*
-        version: link:../remotion-effects
-      ajv:
-        specifier: ^8.20.0
-        version: 8.20.0
+        version: link:../shared-types
       commander:
         specifier: ^13.0.0
         version: 13.0.0
       esbuild:
         specifier: ^0.25.0
         version: 0.25.0
-      loro-crdt:
-        specifier: ^1.10.3
-        version: 1.13.6
-      ws:
-        specifier: ^8.18.0
-        version: 8.21.0
       yaml:
         specifier: ^2.6.0
         version: 2.9.0
@@ -630,12 +596,9 @@ importers:
       '@clash/shared-layout':
         specifier: workspace:^
         version: link:../shared-layout
-      '@clash/shared-types':
-        specifier: workspace:*
-        version: link:../shared-types
-      '@types/ws':
-        specifier: ^8.5.0
-        version: 8.18.1
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.2
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
@@ -670,12 +633,12 @@ importers:
       '@clash/director-core':
         specifier: workspace:*
         version: link:../director-core
+      '@clash/remotion-ui':
+        specifier: workspace:*
+        version: link:../remotion-ui
       '@clash/shared-types':
         specifier: workspace:*
         version: link:../shared-types
-      '@master-clash/remotion-ui':
-        specifier: workspace:*
-        version: link:../remotion-ui
       '@react-three/drei':
         specifier: ^10.7.7
         version: 10.7.7(@react-three/fiber@9.6.1(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(three@0.185.1))(@types/react@19.2.17)(@types/three@0.185.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(three@0.185.1)
@@ -711,6 +674,79 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
+  packages/gui:
+    dependencies:
+      '@ariakit/react':
+        specifier: ^0.4.31
+        version: 0.4.32(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@dnd-kit/core':
+        specifier: ^6.3.1
+        version: 6.3.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@dnd-kit/modifiers':
+        specifier: ^9.0.0
+        version: 9.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react@19.2.5)
+      '@dnd-kit/sortable':
+        specifier: ^10.0.0
+        version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react@19.2.5)
+      '@dnd-kit/utilities':
+        specifier: ^3.2.2
+        version: 3.2.2(react@19.2.5)
+      '@phosphor-icons/react':
+        specifier: ^2.1.10
+        version: 2.1.10(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@radix-ui/react-use-controllable-state':
+        specifier: ^1.2.2
+        version: 1.2.3(@types/react@19.2.17)(react@19.2.5)
+      '@use-gesture/react':
+        specifier: ^10.3.1
+        version: 10.3.1(react@19.2.5)
+      class-variance-authority:
+        specifier: ^0.7.1
+        version: 0.7.1
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      framer-motion:
+        specifier: ^12.23.24
+        version: 12.42.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      radix-ui:
+        specifier: ^1.4.3
+        version: 1.6.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      react:
+        specifier: 19.2.5
+        version: 19.2.5
+      react-dom:
+        specifier: 19.2.5
+        version: 19.2.5(react@19.2.5)
+      tailwind-merge:
+        specifier: ^3.6.0
+        version: 3.6.0
+    devDependencies:
+      '@testing-library/jest-dom':
+        specifier: ^6.9.1
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.2
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.2.3(@types/react@19.2.17)
+      jsdom:
+        specifier: ^29.0.2
+        version: 29.1.1(@noble/hashes@2.2.0)
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.0
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+
   packages/mcp-server:
     dependencies:
       '@clash/shared-mcp':
@@ -719,6 +755,9 @@ importers:
       '@clash/shared-runtime':
         specifier: workspace:*
         version: link:../shared-runtime
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.4
         version: 1.7.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(zod@4.4.3)
@@ -744,15 +783,15 @@ importers:
 
   packages/remotion-components:
     dependencies:
+      '@clash/remotion-core':
+        specifier: workspace:*
+        version: link:../remotion-core
+      '@clash/remotion-effects':
+        specifier: workspace:*
+        version: link:../remotion-effects
       '@clash/shared-types':
         specifier: workspace:*
         version: link:../shared-types
-      '@master-clash/remotion-core':
-        specifier: workspace:*
-        version: link:../remotion-core
-      '@master-clash/remotion-effects':
-        specifier: workspace:*
-        version: link:../remotion-effects
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -854,6 +893,15 @@ importers:
       '@ariakit/react':
         specifier: ^0.4.31
         version: 0.4.32(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@clash/remotion-components':
+        specifier: workspace:*
+        version: link:../remotion-components
+      '@clash/remotion-core':
+        specifier: workspace:*
+        version: link:../remotion-core
+      '@clash/remotion-effects':
+        specifier: workspace:*
+        version: link:../remotion-effects
       '@clash/shared-types':
         specifier: workspace:*
         version: link:../shared-types
@@ -866,15 +914,6 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.5)
-      '@master-clash/remotion-components':
-        specifier: workspace:*
-        version: link:../remotion-components
-      '@master-clash/remotion-core':
-        specifier: workspace:*
-        version: link:../remotion-core
-      '@master-clash/remotion-effects':
-        specifier: workspace:*
-        version: link:../remotion-effects
       '@use-gesture/react':
         specifier: ^10.3.1
         version: 10.3.1(react@19.2.5)
@@ -1001,6 +1040,10 @@ importers:
         version: 5.9.3
 
   packages/shared-runtime:
+    dependencies:
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
     devDependencies:
       typescript:
         specifier: ^5.0.0
@@ -1057,6 +1100,18 @@ importers:
       '@clash/director-ui':
         specifier: workspace:*
         version: link:../director-ui
+      '@clash/gui':
+        specifier: workspace:*
+        version: link:../gui
+      '@clash/remotion-components':
+        specifier: workspace:*
+        version: link:../remotion-components
+      '@clash/remotion-core':
+        specifier: workspace:*
+        version: link:../remotion-core
+      '@clash/remotion-ui':
+        specifier: workspace:*
+        version: link:../remotion-ui
       '@clash/shared-layout':
         specifier: workspace:^
         version: link:../shared-layout
@@ -1081,15 +1136,6 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.5)
-      '@master-clash/remotion-components':
-        specifier: workspace:*
-        version: link:../remotion-components
-      '@master-clash/remotion-core':
-        specifier: workspace:*
-        version: link:../remotion-core
-      '@master-clash/remotion-ui':
-        specifier: workspace:*
-        version: link:../remotion-ui
       '@milkdown/core':
         specifier: ^7.17.2
         version: 7.21.2
@@ -1146,16 +1192,16 @@ importers:
         version: 12.11.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       agents:
         specifier: ^0.8.6
-        version: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(rolldown@1.1.4)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
+        version: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
       ai:
         specifier: ^6.0.138
         version: 6.0.219(zod@4.4.3)
       better-auth:
         specifier: ^1.6.9
-        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
+        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       better-auth-cloudflare:
         specifier: ^0.2.9
-        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
+        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1230,8 +1276,8 @@ importers:
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@types/node':
-        specifier: ^22.13.0
-        version: 22.20.0
+        specifier: ^24.0.0
+        version: 24.13.2
       '@types/react':
         specifier: ^19.2.0
         version: 19.2.17
@@ -1246,41 +1292,50 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
   plugins/clash:
     dependencies:
-      '@clash-space/director-plugin':
-        specifier: workspace:*
-        version: link:../clash-director
-      '@clash-space/mcp-server':
-        specifier: workspace:*
-        version: link:../../packages/mcp-server
-      '@clash-space/timeline-plugin':
-        specifier: workspace:*
-        version: link:../clash-timeline
-      '@clash/shared-mcp':
-        specifier: workspace:*
-        version: link:../../packages/shared-mcp
-      '@clash/shared-runtime':
-        specifier: workspace:*
-        version: link:../../packages/shared-runtime
-      '@master-clash/local-api':
-        specifier: workspace:*
-        version: link:../../apps/local-api
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.29.0
-        version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
       '@remotion/renderer':
         specifier: 4.0.507
         version: 4.0.507(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       loro-crdt:
         specifier: ^1.10.3
         version: 1.13.6
-      zod:
-        specifier: ^4.1.13
-        version: 4.4.3
+      yaml:
+        specifier: ^2.6.0
+        version: 2.9.0
     devDependencies:
+      '@clash/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@clash/director-plugin':
+        specifier: workspace:*
+        version: link:../clash-director
+      '@clash/local-api':
+        specifier: workspace:*
+        version: link:../../apps/local-api
+      '@clash/mcp-server':
+        specifier: workspace:*
+        version: link:../../packages/mcp-server
+      '@clash/render-server':
+        specifier: workspace:*
+        version: link:../../apps/render-server
+      '@clash/shared-mcp':
+        specifier: workspace:*
+        version: link:../../packages/shared-mcp
+      '@clash/shared-runtime':
+        specifier: workspace:*
+        version: link:../../packages/shared-runtime
+      '@clash/timeline-plugin':
+        specifier: workspace:*
+        version: link:../clash-timeline
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
+      '@remotion/bundler':
+        specifier: 4.0.507
+        version: 4.0.507(@swc/core@1.15.43)(lightningcss@1.32.0)(postcss@8.5.16)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.2
@@ -1296,12 +1351,18 @@ importers:
       typescript:
         specifier: ^5.9.0
         version: 5.9.3
+      zod:
+        specifier: ^4.1.13
+        version: 4.4.3
 
   plugins/clash-director:
     dependencies:
       '@clash/shared-mcp':
         specifier: workspace:*
         version: link:../../packages/shared-mcp
+      '@clash/shared-runtime':
+        specifier: workspace:*
+        version: link:../../packages/shared-runtime
       '@clash/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -1339,19 +1400,25 @@ importers:
       '@clash/shared-mcp':
         specifier: workspace:*
         version: link:../../packages/shared-mcp
+      '@clash/shared-runtime':
+        specifier: workspace:*
+        version: link:../../packages/shared-runtime
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.4
         version: 1.7.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(zod@4.4.3)
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
+      yaml:
+        specifier: ^2.6.0
+        version: 2.9.0
       zod:
         specifier: ^4.1.13
         version: 4.4.3
     devDependencies:
-      '@clash/shared-types':
-        specifier: workspace:*
-        version: link:../../packages/shared-types
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.2
@@ -1370,13 +1437,16 @@ importers:
 
   plugins/codex-imagegen:
     dependencies:
+      '@clash/action-sdk':
+        specifier: workspace:*
+        version: link:../../packages/action-sdk
       '@clash/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.0
+        specifier: ^24.0.0
+        version: 24.13.2
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
@@ -1385,17 +1455,20 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
-  plugins/first-party-media:
+  plugins/google:
     dependencies:
+      '@clash/action-sdk':
+        specifier: workspace:*
+        version: link:../../packages/action-sdk
       '@clash/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.0
+        specifier: ^24.0.0
+        version: 24.13.2
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
@@ -1404,7 +1477,76 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.0
-        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  plugins/hrhrng-hub:
+    dependencies:
+      '@clash/action-sdk':
+        specifier: workspace:*
+        version: link:../../packages/action-sdk
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.0
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  plugins/minimax:
+    dependencies:
+      '@clash/action-sdk':
+        specifier: workspace:*
+        version: link:../../packages/action-sdk
+      '@clash/shared-runtime':
+        specifier: workspace:*
+        version: link:../../packages/shared-runtime
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.0
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  plugins/volcengine:
+    dependencies:
+      '@clash/action-sdk':
+        specifier: workspace:*
+        version: link:../../packages/action-sdk
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.2
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.0
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
 packages:
 
@@ -4014,6 +4156,10 @@ packages:
     resolution: {integrity: sha512-47XIizs9XZXvuJgoaJUIE2lFoID8ugvc0jzSHP+Ptfk8nTbnR8g788wv48N03Kx0UkAv559HWRQ3yzOgzlRNUA==}
     engines: {node: '>= 18'}
 
+  '@mswjs/interceptors@0.42.3':
+    resolution: {integrity: sha512-/KTwTlSIPEHdxy0mkkTLRIINgZwMmPgSlEJOFLadXQmU0dr+tDVPJJBNYYvbLkY/v8spMXsYt72fS1rw9yAOow==}
+    engines: {node: '>=22'}
+
   '@napi-rs/wasm-runtime@1.0.7':
     resolution: {integrity: sha512-SeDnOO0Tk7Okiq6DbXmmBODgOAb9dp9gjlphokTUxmt8U3liIP1ZsozBahH69j/RJv+Rfs6IwUKHTgQYJ/HBAw==}
 
@@ -4049,6 +4195,9 @@ packages:
 
   '@ocavue/utils@1.7.0':
     resolution: {integrity: sha512-yEk9ATNBjTZTtuVFMB/MAIF6zJBvJ2+lVNQvK2+O+ggEBGTgx2tp27d4FPgmD5bRsNHHP3D0SleQia/bvIeV8w==}
+
+  '@open-draft/until@3.0.1':
+    resolution: {integrity: sha512-s7/9ELP4aP9YZtW7RJaa0Xf3RISaRH9+EFN18FtykJYRHGNrl8f9ymvoNXzjhrjmftFvkQudtuDU9RYhk0xs3A==}
 
   '@openai/codex@0.145.0':
     resolution: {integrity: sha512-/PSPSFujjjmiyVFvG2yu/grOFhsWdokTH8t2KGWhXSo/M5n/dIDsnbsnO82/7bLtIoDuzQf7ATBUMWqPWQINlQ==}
@@ -5896,9 +6045,6 @@ packages:
 
   '@types/node@12.7.1':
     resolution: {integrity: sha512-aK9jxMypeSrhiYofWWBf/T7O+KwaiAHzM4sveCdWPn71lzUSMimRnKzhXDKfKwV1kWoBo2P1aGgaIYGLf9/ljw==}
-
-  '@types/node@22.20.0':
-    resolution: {integrity: sha512-QWlFW2wf3nTjC13/DqRnBpR4ZO36VJH/JVBkA/vcnmbTBNQIlnObqyqZE1tUR7+Ni23Lda8R1BxMfbXRpCUx5g==}
 
   '@types/node@24.13.2':
     resolution: {integrity: sha512-fRa09kZTgu8o71KFcDjUFuc7F+dEbZYZmkI0mg5YBTRs0yMKjYHsq/c0urDKeDb+D5qVgXOdFcuu+DZPKOITwA==}
@@ -8189,6 +8335,9 @@ packages:
     resolution: {integrity: sha512-PhBY86zaxNZUuWP6h13Vu5oFe0XY6/UlKzQnYFELzGVHygP3MxmvTfYSG7GN3aIab/iWudSMgjSnG9Dq+nHrgA==}
     engines: {node: '>=16'}
 
+  is-node-process@1.2.0:
+    resolution: {integrity: sha512-Vg4o6/fqPxIjtxgUH5QLJhwZ7gW5diGCVlXpuUfELC62CuxM1iHcRe51f2W1FDy04Ai4KJkagKjx3XaqyfRKXw==}
+
   is-number@7.0.0:
     resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}
     engines: {node: '>=0.12.0'}
@@ -9010,6 +9159,9 @@ packages:
   outdent@0.5.0:
     resolution: {integrity: sha512-/jHxFIzoMXdqPzTaCpFzAAWhpkSjZPF4Vsn6jAfNpmbH/ymsmd7Qc6VE9BGn0L6YMj6uwpQLxCECpus4ukKS9Q==}
 
+  outvariant@1.4.3:
+    resolution: {integrity: sha512-+Sl2UErvtsoajRDKCE5/dBz4DIvHXQQnAxtQTF04OJxY0+DyZXSo5P5Bb7XYWOh81syohlYL24hbDwxedPUJCA==}
+
   overlap-area@1.1.0:
     resolution: {integrity: sha512-3dlJgJCaVeXH0/eZjYVJvQiLVVrPO4U1ZGqlATtx6QGO3b5eNM6+JgUKa7oStBTdYuGTk7gVoABCW6Tp+dhRdw==}
 
@@ -9735,6 +9887,9 @@ packages:
     resolution: {integrity: sha512-9LkiTwjUh6rT555DtE9rTX+BKByPfrMzEAtnlEtdEwr3Nkffwiihqe2bWADg+OQRjt9gl6ICdmB/ZFDCGAtSow==}
     engines: {node: '>= 4'}
 
+  rettime@0.11.11:
+    resolution: {integrity: sha512-ILJRqVWBCTlg9r42fFgwVZx1gnFAcQF8mRoMkbgQfIrjEDf9nbBFDFx00oloOa+Q869FUtaYDXZvEfnecQSCoQ==}
+
   reusify@1.1.0:
     resolution: {integrity: sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==}
     engines: {iojs: '>=1.0.0', node: '>=0.10.0'}
@@ -10377,9 +10532,6 @@ packages:
 
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
-
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
@@ -11874,12 +12026,12 @@ snapshots:
     optionalDependencies:
       workerd: 1.20260701.1
 
-  '@cloudflare/vite-plugin@1.43.0(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(workerd@1.20260701.1)(wrangler@4.107.0(@cloudflare/workers-types@4.20260702.1))':
+  '@cloudflare/vite-plugin@1.43.0(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(workerd@1.20260701.1)(wrangler@4.107.0(@cloudflare/workers-types@4.20260702.1))':
     dependencies:
       '@cloudflare/unenv-preset': 2.16.1(unenv@2.0.0-rc.24)(workerd@1.20260701.1)
       miniflare: 4.20260701.0
       unenv: 2.0.0-rc.24
-      vite: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
+      vite: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
       wrangler: 4.107.0(@cloudflare/workers-types@4.20260702.1)
       ws: 8.21.0
     transitivePeerDependencies:
@@ -13780,6 +13932,17 @@ snapshots:
 
   '@msgpack/msgpack@3.1.3': {}
 
+  '@mswjs/interceptors@0.42.3':
+    dependencies:
+      '@open-draft/until': 3.0.1
+      '@types/debug': 4.1.13
+      debug: 4.4.3
+      is-node-process: 1.2.0
+      outvariant: 1.4.3
+      rettime: 0.11.11
+    transitivePeerDependencies:
+      - supports-color
+
   '@napi-rs/wasm-runtime@1.0.7':
     dependencies:
       '@emnapi/core': 1.11.1
@@ -13813,6 +13976,8 @@ snapshots:
       fastq: 1.20.1
 
   '@ocavue/utils@1.7.0': {}
+
+  '@open-draft/until@3.0.1': {}
 
   '@openai/codex@0.145.0':
     optionalDependencies:
@@ -14987,15 +15152,6 @@ snapshots:
   '@rolldown/binding-win32-x64-msvc@1.1.4':
     optional: true
 
-  '@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7)(@babel/runtime@7.29.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))':
-    dependencies:
-      '@babel/core': 7.29.7
-      picomatch: 4.0.5
-      rolldown: 1.1.4
-    optionalDependencies:
-      '@babel/runtime': 7.29.7
-      vite: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
-
   '@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7)(@babel/runtime@7.29.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))':
     dependencies:
       '@babel/core': 7.29.7
@@ -15437,12 +15593,12 @@ snapshots:
       postcss-selector-parser: 6.0.10
       tailwindcss: 4.3.2
 
-  '@tailwindcss/vite@4.3.2(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))':
+  '@tailwindcss/vite@4.3.2(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))':
     dependencies:
       '@tailwindcss/node': 4.3.2
       '@tailwindcss/oxide': 4.3.2
       tailwindcss: 4.3.2
-      vite: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
+      vite: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
 
   '@testing-library/dom@10.4.1':
     dependencies:
@@ -15663,7 +15819,7 @@ snapshots:
 
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 22.20.0
+      '@types/node': 24.13.2
 
   '@types/geojson@7946.0.16': {}
 
@@ -15699,10 +15855,6 @@ snapshots:
   '@types/node@10.0.3': {}
 
   '@types/node@12.7.1': {}
-
-  '@types/node@22.20.0':
-    dependencies:
-      undici-types: 6.21.0
 
   '@types/node@24.13.2':
     dependencies:
@@ -15748,7 +15900,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.20.0
+      '@types/node': 24.13.2
 
   '@typescript-eslint/eslint-plugin@8.62.1(@typescript-eslint/parser@8.62.1(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(typescript@5.9.3)':
     dependencies:
@@ -15905,14 +16057,6 @@ snapshots:
       '@vitest/utils': 4.1.0
       chai: 6.2.2
       tinyrainbow: 3.1.0
-
-  '@vitest/mocker@4.1.0(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))':
-    dependencies:
-      '@vitest/spy': 4.1.0
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
 
   '@vitest/mocker@4.1.0(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))':
     dependencies:
@@ -16198,37 +16342,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  agents@0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(rolldown@1.1.4)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3):
-    dependencies:
-      '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@7.29.7)
-      '@cfworker/json-schema': 4.1.1
-      '@modelcontextprotocol/sdk': 1.28.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
-      '@rolldown/plugin-babel': 0.2.3(@babel/core@7.29.7)(@babel/runtime@7.29.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
-      ai: 6.0.219(zod@4.4.3)
-      cron-schedule: 6.0.0
-      json-schema: 0.4.0
-      json-schema-to-typescript: 15.0.4
-      mimetext: 3.0.28
-      nanoid: 5.1.16
-      partyserver: 0.4.1(@cloudflare/workers-types@4.20260702.1)
-      partysocket: 1.1.16(react@19.2.5)
-      picomatch: 4.0.5
-      react: 19.2.5
-      yargs: 18.0.0
-      zod: 4.4.3
-    optionalDependencies:
-      '@ai-sdk/openai': 3.0.80(zod@4.4.3)
-      '@ai-sdk/react': 3.0.221(react@19.2.5)(zod@4.4.3)
-      '@cloudflare/ai-chat': 0.2.6(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(agents@0.8.7)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(zod@4.4.3)
-      vite: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - '@babel/core'
-      - '@babel/plugin-transform-runtime'
-      - '@babel/runtime'
-      - '@cloudflare/workers-types'
-      - rolldown
-      - supports-color
-
   agents@0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3):
     dependencies:
       '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@7.29.7)
@@ -16432,9 +16545,9 @@ snapshots:
 
   bcp-47-match@2.0.3: {}
 
-  better-auth-cloudflare@0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3):
+  better-auth-cloudflare@0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3):
     dependencies:
-      better-auth: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
+      better-auth: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       drizzle-orm: 0.44.5(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(kysely@0.29.3)
       mime: 4.1.0
       zod: 4.4.3
@@ -16471,7 +16584,7 @@ snapshots:
 
   better-auth-cloudflare@0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3):
     dependencies:
-      better-auth: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
+      better-auth: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       drizzle-orm: 0.44.5(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(kysely@0.29.3)
       mime: 4.1.0
       zod: 4.4.3
@@ -16506,7 +16619,7 @@ snapshots:
       - sql.js
       - sqlite3
 
-  better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)):
+  better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)):
     dependencies:
       '@better-auth/core': 1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0)
       '@better-auth/drizzle-adapter': 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))
@@ -16530,13 +16643,13 @@ snapshots:
       drizzle-orm: 0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5)
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
-      vitest: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+      vitest: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
       vue: 3.5.39(typescript@5.9.3)
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'
 
-  better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)):
+  better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)):
     dependencies:
       '@better-auth/core': 1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0)
       '@better-auth/drizzle-adapter': 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5))
@@ -16556,7 +16669,6 @@ snapshots:
       nanostores: 1.4.0
       zod: 4.4.3
     optionalDependencies:
-      drizzle-orm: 0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.5)
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
       vitest: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
@@ -18356,6 +18468,8 @@ snapshots:
 
   is-network-error@1.3.2: {}
 
+  is-node-process@1.2.0: {}
+
   is-number@7.0.0: {}
 
   is-path-inside@3.0.3: {}
@@ -18414,7 +18528,7 @@ snapshots:
 
   jest-worker@27.4.5:
     dependencies:
-      '@types/node': 22.20.0
+      '@types/node': 24.13.2
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -19360,6 +19474,8 @@ snapshots:
 
   outdent@0.5.0: {}
 
+  outvariant@1.4.3: {}
+
   overlap-area@1.1.0:
     dependencies:
       '@daybrush/utils': 1.13.0
@@ -20169,6 +20285,8 @@ snapshots:
 
   retry@0.12.0: {}
 
+  rettime@0.11.11: {}
+
   reusify@1.1.0: {}
 
   rfdc@1.4.1: {}
@@ -20878,8 +20996,6 @@ snapshots:
 
   ufo@1.6.4: {}
 
-  undici-types@6.21.0: {}
-
   undici-types@7.18.2: {}
 
   undici@6.27.0: {}
@@ -21042,28 +21158,28 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite-plugin-top-level-await@1.6.0(rollup@4.62.2)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)):
+  vite-plugin-top-level-await@1.6.0(rollup@4.62.2)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)):
     dependencies:
       '@rollup/plugin-virtual': 3.0.2(rollup@4.62.2)
       '@swc/core': 1.15.43
       '@swc/wasm': 1.15.43
       uuid: 10.0.0
-      vite: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
+      vite: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
     transitivePeerDependencies:
       - '@swc/helpers'
       - rollup
 
-  vite-plugin-wasm@3.6.0(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)):
+  vite-plugin-wasm@3.6.0(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)):
     dependencies:
-      vite: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
+      vite: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
 
-  vite-tsconfig-paths@5.1.4(typescript@5.9.3)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)):
+  vite-tsconfig-paths@5.1.4(typescript@5.9.3)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)):
     dependencies:
       debug: 4.4.3
       globrex: 0.1.2
       tsconfck: 3.1.6(typescript@5.9.3)
     optionalDependencies:
-      vite: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
+      vite: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -21078,23 +21194,6 @@ snapshots:
       fsevents: 2.3.3
       lightningcss: 1.32.0
       terser: 5.48.0
-
-  vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0):
-    dependencies:
-      esbuild: 0.28.1
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
-      postcss: 8.5.16
-      rollup: 4.62.2
-      tinyglobby: 0.2.17
-    optionalDependencies:
-      '@types/node': 22.20.0
-      fsevents: 2.3.3
-      jiti: 2.7.0
-      lightningcss: 1.32.0
-      terser: 5.48.0
-      tsx: 4.23.0
-      yaml: 2.9.0
 
   vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0):
     dependencies:
@@ -21162,35 +21261,6 @@ snapshots:
       - terser
       - typescript
       - universal-cookie
-
-  vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)):
-    dependencies:
-      '@vitest/expect': 4.1.0
-      '@vitest/mocker': 4.1.0(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
-      '@vitest/pretty-format': 4.1.0
-      '@vitest/runner': 4.1.0
-      '@vitest/snapshot': 4.1.0
-      '@vitest/spy': 4.1.0
-      '@vitest/utils': 4.1.0
-      es-module-lexer: 2.3.0
-      expect-type: 1.4.0
-      magic-string: 0.30.21
-      obug: 2.1.3
-      pathe: 2.0.3
-      picomatch: 4.0.5
-      std-env: 4.1.0
-      tinybench: 2.9.0
-      tinyexec: 1.2.4
-      tinyglobby: 0.2.17
-      tinyrainbow: 3.1.0
-      vite: 7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.1
-      '@types/node': 22.20.0
-      jsdom: 29.1.1(@noble/hashes@2.2.0)
-    transitivePeerDependencies:
-      - msw
 
   vitest@4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)):
     dependencies:

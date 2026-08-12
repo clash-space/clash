@@ -89,13 +89,27 @@ describe("MiniMax H3 content invariants", () => {
 
   it("keeps the ordered-parts path intact when no start frame is present", () => {
     const content = buildMiniMaxH3Content({
-      prompt,
+      prompt: "Keep the subject aligned with the beat.",
       orderedContentParts: [
-        { type: "text", text: prompt },
-        { type: "image", url: "https://example.test/ordered.png" },
+        { type: "text", text: "Keep " },
+        { type: "image", url: "https://example.test/subject.png" },
+        { type: "text", text: " aligned with " },
+        { type: "audio", url: "https://example.test/beat.wav" },
+        { type: "text", text: "." },
       ],
     });
-    expect(content).toHaveLength(2);
-    expect(content[1]).toMatchObject({ type: "image_url", role: "reference_image" });
+    expect(content).toEqual([
+      { type: "text", text: "Keep the subject aligned with the beat." },
+      {
+        type: "image_url",
+        image_url: { url: "https://example.test/subject.png" },
+        role: "reference_image",
+      },
+      {
+        type: "audio_url",
+        audio_url: { url: "https://example.test/beat.wav" },
+        role: "reference_audio",
+      },
+    ]);
   });
 });

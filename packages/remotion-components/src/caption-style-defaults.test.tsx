@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { TIMELINE_CAPTION_STYLE_DEFAULTS } from '@master-clash/remotion-core';
+import { TIMELINE_CAPTION_STYLE_DEFAULTS } from '@clash/remotion-core';
 import { VideoComposition } from './VideoComposition';
 
 vi.mock('remotion', () => ({

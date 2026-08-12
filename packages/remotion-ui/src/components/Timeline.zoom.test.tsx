@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { EditorProvider, useEditorStaticState } from '@master-clash/remotion-core';
+import { EditorProvider, useEditorStaticState } from '@clash/remotion-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Timeline } from './Timeline';
 import { timeline } from './timeline/styles';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assetReadToken, assetRefReadToken, AssetKindSchema, AssetMetadataSchema, type Asset } from "./assets";
+import { assetReadToken, assetRefReadToken, AssetKindSchema, AssetMetadataSchema, type Asset } from "./assets.js";
 
 describe("asset metadata", () => {
   it("treats uploaded 3D models as durable project-referenced assets", () => {
@@ -42,11 +42,12 @@ describe("asset metadata", () => {
       updatedAt: 20,
     };
 
-    expect(assetReadToken({
+    const refreshedUrl: Asset = {
       ...asset,
       signedUrl: "http://localhost/assets/uploads/source.png?read=2",
       signedUrlExp: 200,
-    })).toBe(assetReadToken(asset));
+    };
+    expect(assetReadToken(refreshedUrl)).toBe(assetReadToken(asset));
     expect(assetReadToken({ ...asset, coverR2Key: "uploads/cover.png", updatedAt: 21 }))
       .not.toBe(assetReadToken(asset));
   });

@@ -9,16 +9,15 @@ import {
   resolveCanvasActor,
   resolveCanvasPresenceOptions,
   resolveCanvasProjectId,
-  resolveInstalledPluginAction,
 } from "./canvas";
 import { initProject } from "./projects";
 
 test("marks spawned agent canvas sync as agent presence", () => {
   assert.deepEqual(resolveCanvasPresenceOptions({
-    CLASH_AGENT_MEMBER_ID: "local-master-clash",
+    CLASH_AGENT_MEMBER_ID: "local-clash",
   }), {
     clientType: "agent",
-    agentName: "local-master-clash",
+    agentName: "local-clash",
   });
 });
 
@@ -41,59 +40,35 @@ test("uses runtime-injected actor identity without a network lookup", async () =
   });
 });
 
-test("canvas custom actions resolve executable plugin bindings from the active profile host", async () => {
-  const action = await resolveInstalledPluginAction({
-    actionId: "codex-imagegen",
-    serverUrl: "http://127.0.0.1:49321",
-    apiKey: "local-token",
-    request: async () => new Response(JSON.stringify({
-      actions: [{
-        id: "codex-imagegen",
-        outputType: "image",
-        pluginBinding: {
-          pluginId: "clash-codex-imagegen",
-          version: "0.1.0",
-          exportId: "generate-image",
-          schemaHash: `sha256:${"a".repeat(64)}`,
-        },
-      }],
-    }), { status: 200, headers: { "content-type": "application/json" } }),
-  });
-
-  assert.deepEqual(action?.pluginBinding, {
-    pluginId: "clash-codex-imagegen",
-    version: "0.1.0",
-    exportId: "generate-image",
-    schemaHash: `sha256:${"a".repeat(64)}`,
-  });
+test("canvas add leaves trusted custom-action resolution to local-api", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
-  assert.match(source, /getMap\("customActions"\)\.set\(action\.id, action\.definition\)/);
-  assert.match(source, /await registerInstalledPluginAction\(projectId, installedPluginAction\)/);
+
+  assert.doesNotMatch(source, /\/api\/v1\/plugin-actions|registerInstalledPluginAction/);
+  assert.match(source, /action: "add",[\s\S]*actionId: options\.action/);
 });
 
-test("canvas connect passes presence options into the daemon", () => {
+test("canvas commands are thin local-api clients without direct replica connections", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
 
-  assert.match(source, /startDaemon\(projectId, serverUrl, apiKey, resolveCanvasPresenceOptions\(\)\)/);
+  assert.match(source, /sendProjectCommand/);
+  assert.doesNotMatch(source, /LoroSyncClient|WebSocket|ProjectRoom|connectToProject|\.command\("connect"\)|\.command\("disconnect"\)/);
 });
 
 test("canvas direct writes use implicit cwd observations for agents", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
 
-  assert.match(source, /canvasNodeReadToken\(node\)/);
   assert.match(source, /recordWorktreeObservation/);
   assert.match(source, /requireWorktreeObservation/);
   assert.match(source, /observedVersion/);
   assert.doesNotMatch(source, /\.option\("--if-match <readToken>"/);
-  assert.match(source, /actorClientType: resolveCanvasPresenceOptions\(\)\.clientType/);
-  assert.match(source, /assertAgentHostWritePath/);
+  assert.match(source, /actorClientType: agentClientType\(\)/);
 });
 
 test("canvas records edge graph observations without exposing tokens", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
 
   assert.match(source, /\.command\("edges"\)/);
-  assert.match(source, /canvasEdgesReadToken\(baseEdges\)/);
+  assert.match(source, /action: "edges"/);
   assert.match(source, /entityKind: "canvas-edges"/);
   assert.match(source, /printJson\(edges\)/);
   assert.doesNotMatch(source, /Graph read token/);
@@ -104,17 +79,16 @@ test("canvas node commands accept and propagate a concrete Canvas scope", () => 
 
   assert.match(source, /--canvas <id>/);
   assert.match(source, /canvasId: activeCanvasId/);
-  assert.match(source, /canvasId: activeCanvasId,/);
-  assert.match(source, /client\.selectCanvas\(activeCanvasId\)/);
+  assert.doesNotMatch(source, /client\.selectCanvas/);
 });
 
 test("CLI exposes Project Canvas registry management with implicit observations", () => {
   const commandUrl = new URL("./canvases.ts", import.meta.url);
   assert.equal(existsSync(commandUrl), true);
   const source = readFileSync(commandUrl, "utf8");
-  const indexSource = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
+  const programSource = readFileSync(new URL("../program.ts", import.meta.url), "utf8");
 
-  assert.match(indexSource, /canvasesCommand/);
+  assert.match(programSource, /canvasesCommand/);
   assert.match(source, /new Command\("canvases"\)/);
   assert.match(source, /\.command\("list"\)/);
   assert.match(source, /\.command\("create"\)/);
@@ -128,29 +102,28 @@ test("CLI exposes Project Canvas registry management with implicit observations"
 
 test("canvas get exposes whole-node immutability", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
-  const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
+  const hostSource = readFileSync(new URL("../../../../apps/local-api/src/project-command-host.ts", import.meta.url), "utf8");
 
   assert.match(source, /immutable: immutable === true/);
   assert.match(source, /Immutable:/);
-  assert.match(daemonSource, /immutable: isCanvasNodeImmutable/);
+  assert.match(hostSource, /immutable: isCanvasNodeImmutable/);
 });
 
 test("canvas exposes graph-aware batch delete read and apply commands", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
-  const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
+  const hostSource = readFileSync(new URL("../../../../apps/local-api/src/project-command-host.ts", import.meta.url), "utf8");
 
   assert.match(source, /\.command\("delete-plan"\)/);
   assert.match(source, /\.command\("delete-batch"\)/);
-  assert.match(source, /canvasBatchDeleteReadToken\(\{/);
   assert.match(source, /action: "batch_delete_plan"/);
   assert.match(source, /action: "delete_batch"/);
-  assert.match(daemonSource, /case "batch_delete_plan"/);
-  assert.match(daemonSource, /case "delete_batch"/);
+  assert.match(hostSource, /case "batch_delete_plan"/);
+  assert.match(hostSource, /case "delete_batch"/);
 });
 
 test("canvas exposes explicit media asset copy-on-write replacement", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
-  const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
+  const hostSource = readFileSync(new URL("../../../../apps/local-api/src/project-command-host.ts", import.meta.url), "utf8");
   const mediaReplacementSource = readFileSync(new URL("../../../shared-types/src/media-asset-replacement.ts", import.meta.url), "utf8");
 
   assert.match(source, /\.command\("replace-asset"\)/);
@@ -158,47 +131,45 @@ test("canvas exposes explicit media asset copy-on-write replacement", () => {
   assert.doesNotMatch(source, /--if-match <readToken>/);
   assert.match(source, /observedVersion/);
   assert.match(source, /copy-on-write media node/);
-  assert.match(daemonSource, /case "asset_cow_replace"/);
+  assert.match(hostSource, /case "asset_cow_replace"/);
   assert.match(mediaReplacementSource, /copyOnWriteKind: "media-asset-replacement"/);
 });
 
 test("canvas exposes one generic copy command for immutable nodes", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
-  const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
+  const hostSource = readFileSync(new URL("../../../../apps/local-api/src/project-command-host.ts", import.meta.url), "utf8");
 
   assert.match(source, /\.command\("copy"\)/);
   assert.match(source, /action: "copy_node"/);
   assert.match(source, /requireCanvasObservation/);
-  assert.match(daemonSource, /case "copy_node"/);
+  assert.match(hostSource, /case "copy_node"/);
 });
 
 test("canvas exposes the same persisted spatial move used by MCP Canvas App", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
-  const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
+  const hostSource = readFileSync(new URL("../../../../apps/local-api/src/project-command-host.ts", import.meta.url), "utf8");
 
   assert.match(source, /\.command\("move"\)/);
   assert.match(source, /\.requiredOption\("--x <number>"/);
   assert.match(source, /\.requiredOption\("--y <number>"/);
   assert.match(source, /action: "move"/);
-  assert.match(daemonSource, /case "move"/);
-  assert.match(daemonSource, /client\.canvas\.moveNode/);
-});
-
-test("canvas add fallback checks createNode errors before wiring reference edges", () => {
-  const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
-
-  assert.match(
-    source,
-    /const result = client\.createNode\(nodeId, persistedNodeType, data, null, options\.parent \?\? null\);[\s\S]*if \(result\.error\) \{ console\.error\(`Error: \$\{result\.error\}`\); process\.exit\(1\); \}[\s\S]*const existing = client\.canvas\.listEdges\(\);/,
-  );
+  assert.match(source, /action: "move",[\s\S]*observedVersion,[\s\S]*ifMatch: observedVersion/);
+  assert.match(source, /action: "move",[\s\S]*recordCanvasObservation/);
+  assert.match(hostSource, /case "move"/);
+  assert.match(hostSource, /client\.canvas\.moveNode/);
 });
 
 test("canvas add exposes the distinct Remotion component node type", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
+  const canvasContractSource = readFileSync(
+    new URL("../../../shared-types/src/canvas.ts", import.meta.url),
+    "utf8",
+  );
 
-  assert.match(source, /remotion-component/);
   assert.match(source, /Node type:.*remotion/);
   assert.match(source, /Body content.*Remotion TSX/);
+  assert.match(source, /action: "add",[\s\S]*type: options\.type/);
+  assert.match(canvasContractSource, /remotion:\s*\{ rfType: RF_NODE_TYPE\.RemotionComponent \}/);
 });
 
 test("asset downloader accepts absolute and relative signed URLs", () => {

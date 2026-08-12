@@ -28,7 +28,7 @@
  *     clash-sdk + pillow; aiohttp comes from the SDK dependency set.
  *
  * Run:
- *   pnpm --filter @clash-space/cli build
+ *   pnpm build:package @clash/cli
  *   node packages/cli/e2e/custom-action-grid-split.test.mjs
  */
 

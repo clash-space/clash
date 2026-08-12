@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ExecutablePluginBrokerOperationSchema,
   uploadTargetForRuntime,
-} from './executable-plugin';
+} from './executable-plugin.js';
 
 /**
  * A plugin hands a result back in whichever form it already has, and the host does the rest.

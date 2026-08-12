@@ -16,14 +16,14 @@ import {
   type AuthenticateAgentResult,
   type KnownAgentEntry,
   type ProbeAgentAuthStatus,
-} from "@clash-space/bridge/acp-runtime";
-import { listLocalCcSessions } from "@clash-space/bridge/cc-sessions";
-import { machineName, osTag as defaultOsTag } from "@clash-space/bridge/platform";
+} from "./runtime/host/_acp-runtime/index.js";
+import { listLocalCcSessions } from "./runtime/host/lib/cc-sessions.js";
+import { machineName, osTag as defaultOsTag } from "./runtime/host/lib/platform.js";
 import {
   SessionManager,
   type ManagerOut,
   type SessionPermissionBroker,
-} from "@clash-space/bridge/session-manager";
+} from "./runtime/host/lib/session-manager.js";
 import type {
   LocalAcpAdapter,
   LocalAcpAttachSessionParams,

@@ -150,7 +150,7 @@ WORKER_ID = f"worker_{uuid.uuid4().hex[:8]}"
 
 ### Multi-Agent Workflow
 
-**Location**: [apps/api/src/master_clash/workflow/](../apps/api/src/master_clash/workflow/)
+**Location**: [apps/api/src/clash/workflow/](../apps/api/src/clash/workflow/)
 
 Inspired by the deepagents architecture, the system uses a supervisor-subordinate pattern:
 
@@ -164,7 +164,7 @@ Supervisor Agent (Coordinator)
 
 ### Middleware System
 
-**Location**: [apps/api/src/master_clash/workflow/middleware.py](../apps/api/src/master_clash/workflow/middleware.py)
+**Location**: [apps/api/src/clash/workflow/middleware.py](../apps/api/src/clash/workflow/middleware.py)
 
 Middleware provides composable capabilities to agents:
 
@@ -188,7 +188,7 @@ Enables task delegation to specialist agents:
 
 ### Canvas Backend Protocol
 
-**Location**: [apps/api/src/master_clash/workflow/backends.py](../apps/api/src/master_clash/workflow/backends.py)
+**Location**: [apps/api/src/clash/workflow/backends.py](../apps/api/src/clash/workflow/backends.py)
 
 Two implementations:
 
@@ -204,7 +204,7 @@ Two implementations:
 
 ### Canvas Tools
 
-**Location**: [apps/api/src/master_clash/workflow/tools.py](../apps/api/src/master_clash/workflow/tools.py)
+**Location**: [apps/api/src/clash/workflow/tools.py](../apps/api/src/clash/workflow/tools.py)
 
 Available tools for agents:
 
@@ -270,7 +270,7 @@ CREATE TABLE aigc_tasks (
 
 ### PostgreSQL Schema (Session/Agent Tracking)
 
-**Location**: [apps/api/src/master_clash/database/pg_schema.py](../apps/api/src/master_clash/database/pg_schema.py)
+**Location**: [apps/api/src/clash/database/pg_schema.py](../apps/api/src/clash/database/pg_schema.py)
 
 #### Sessions Table
 ```sql
@@ -381,7 +381,7 @@ interface UseLoroSyncReturn {
 
 ### Task Management API
 
-**Location**: [apps/api/src/master_clash/api/tasks_router.py](../apps/api/src/master_clash/api/tasks_router.py)
+**Location**: [apps/api/src/clash/api/tasks_router.py](../apps/api/src/clash/api/tasks_router.py)
 
 #### Submit Task
 
@@ -445,7 +445,7 @@ Response:
 
 ### Description Generation API
 
-**Location**: [apps/api/src/master_clash/api/describe_router.py](../apps/api/src/master_clash/api/describe_router.py)
+**Location**: [apps/api/src/clash/api/describe_router.py](../apps/api/src/clash/api/describe_router.py)
 
 ```http
 POST /api/describe/submit
@@ -456,7 +456,7 @@ Same interface as task API, specialized for description generation.
 
 ### Generation Models Service
 
-**Location**: [apps/api/src/master_clash/services/generation_models.py](../apps/api/src/master_clash/services/generation_models.py)
+**Location**: [apps/api/src/clash/services/generation_models.py](../apps/api/src/clash/services/generation_models.py)
 
 #### Key Functions
 
@@ -722,13 +722,13 @@ class CanvasBackend(ABC):
    })
    ```
 
-2. **Implement Generation Service** ([apps/api/src/master_clash/services/generation_models.py](../apps/api/src/master_clash/services/generation_models.py)):
+2. **Implement Generation Service** ([apps/api/src/clash/services/generation_models.py](../apps/api/src/clash/services/generation_models.py)):
    ```python
    async def generate_my_task(params: dict) -> dict:
        # Implement generation logic
    ```
 
-3. **Add Task Router Handler** ([apps/api/src/master_clash/api/tasks_router.py](../apps/api/src/master_clash/api/tasks_router.py)):
+3. **Add Task Router Handler** ([apps/api/src/clash/api/tasks_router.py](../apps/api/src/clash/api/tasks_router.py)):
    ```python
    async def process_my_task(task_id: str, params: dict):
        # Handle task processing
@@ -741,7 +741,7 @@ class CanvasBackend(ABC):
 
 ### Adding a New Agent
 
-1. **Define Agent** ([apps/api/src/master_clash/workflow/agents/](../apps/api/src/master_clash/workflow/agents/)):
+1. **Define Agent** ([apps/api/src/clash/workflow/agents/](../apps/api/src/clash/workflow/agents/)):
    ```python
    class MyAgent:
        def __init__(self, model, canvas_backend):
@@ -754,7 +754,7 @@ class CanvasBackend(ABC):
    supervisor.add_subordinate('my-agent', MyAgent(...))
    ```
 
-3. **Add Tools** ([apps/api/src/master_clash/workflow/tools.py](../apps/api/src/master_clash/workflow/tools.py)):
+3. **Add Tools** ([apps/api/src/clash/workflow/tools.py](../apps/api/src/clash/workflow/tools.py)):
    ```python
    @tool
    def my_agent_tool(param: str) -> str:
@@ -879,11 +879,11 @@ Future:   API Gateway → Redis Queue → Worker pool → PostgreSQL
 
 ### Backend
 
-- **Task Router**: [apps/api/src/master_clash/api/tasks_router.py](../apps/api/src/master_clash/api/tasks_router.py)
-- **Task Processor**: [apps/api/src/master_clash/services/task_processor.py](../apps/api/src/master_clash/services/task_processor.py)
-- **Generation Service**: [apps/api/src/master_clash/services/generation_models.py](../apps/api/src/master_clash/services/generation_models.py)
-- **Agent System**: [apps/api/src/master_clash/workflow/](../apps/api/src/master_clash/workflow/)
-- **Database Schema**: [apps/api/src/master_clash/database/](../apps/api/src/master_clash/database/)
+- **Task Router**: [apps/api/src/clash/api/tasks_router.py](../apps/api/src/clash/api/tasks_router.py)
+- **Task Processor**: [apps/api/src/clash/services/task_processor.py](../apps/api/src/clash/services/task_processor.py)
+- **Generation Service**: [apps/api/src/clash/services/generation_models.py](../apps/api/src/clash/services/generation_models.py)
+- **Agent System**: [apps/api/src/clash/workflow/](../apps/api/src/clash/workflow/)
+- **Database Schema**: [apps/api/src/clash/database/](../apps/api/src/clash/database/)
 
 ### Frontend
 

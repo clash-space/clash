@@ -6,12 +6,10 @@ import { log } from "../../logger";
 import { loadSecrets } from "../../services/user-variables";
 import {
   ExecutablePluginInvocationSchema,
-  ExecutablePluginPermissionsSchema,
   ExecutablePluginResultSchema,
   type ExecutablePluginJsonValue,
   type ExecutablePluginResult,
 } from "@clash/shared-types";
-import { signHostedExecutablePluginCapability } from "../../services/hosted-plugin-capabilities";
 import type { GenerationContext } from "../context";
 import type { GenerationAdapter } from "../adapter";
 
@@ -62,47 +60,10 @@ export const customActionAdapter: GenerationAdapter = {
             : params.actorUserId,
         },
       });
-      const permissions = ExecutablePluginPermissionsSchema.parse(params.pluginPermissions ?? {});
-      const capabilityKey = env.PLUGIN_CAPABILITY_KEY ?? env.ACTION_SECRET_KEY;
-      const brokerBaseUrl = env.WORKER_PUBLIC_URL;
-      const needsBroker = permissions.network.domains.length > 0
-        || permissions.secrets.length > 0
-        || permissions.assets.length > 0
-        || permissions.externalWrites;
-      if (needsBroker && (!capabilityKey || !brokerBaseUrl)) {
-        throw new Error(
-          "Hosted executable plugin requests broker capabilities, but the hosted Kernel broker is not configured.",
-        );
-      }
       const hostedHeaders: Record<string, string> = {
         "Content-Type": "application/json",
         "X-Clash-Plugin-Protocol": invocation.protocol,
       };
-      if (capabilityKey && brokerBaseUrl) {
-        const nowSeconds = Math.floor(Date.now() / 1000);
-        const capabilityToken = await signHostedExecutablePluginCapability({
-          protocol: "clash.plugin.hosted-capability/v1",
-          capabilityId: crypto.randomUUID(),
-          issuedAt: nowSeconds,
-          expiresAt: nowSeconds + 15 * 60,
-          endpoint: params.workerUrl,
-          ownerUserId: params.actorUserId,
-          invocation: {
-            invocationId: invocation.invocationId,
-            taskId: invocation.taskId,
-            projectId: invocation.projectId,
-            ...(invocation.nodeId ? { nodeId: invocation.nodeId } : {}),
-            target: invocation.target,
-            actor: invocation.actor,
-          },
-          permissions,
-        }, capabilityKey);
-        hostedHeaders["X-Clash-Plugin-Broker"] = new URL(
-          "/api/v1/plugin-broker",
-          brokerBaseUrl,
-        ).toString();
-        hostedHeaders["X-Clash-Plugin-Capability"] = capabilityToken;
-      }
 
       const result = await ctx.step<ExecutablePluginResult>(
         "execute-plugin",

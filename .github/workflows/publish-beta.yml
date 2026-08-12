@@ -19,41 +19,9 @@ jobs:
           registry-url: https://registry.npmjs.org/
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --filter=@clash-space/cli --filter=@clash-space/action-sdk --filter=@clash-space/bridge
+      - run: pnpm build:package clash
 
-      # IMPORTANT — bridge MUST publish before any `pnpm --filter X publish`
-      # below. pnpm 8.x's filter-publish is not exclusive: it scans the whole
-      # workspace and silently publishes any package whose version isn't
-      # already on the registry, ignoring the filter. That's how beta.{1..6}
-      # all landed as 2KB stub tarballs — pnpm packed bridge from somewhere
-      # outside packages/clash-bridge (no dist), uploaded that, then our
-      # explicit publish step got 403 "already published".
-      - name: Publish @clash-space/bridge
-        working-directory: packages/clash-bridge
-        run: |
-          set -euo pipefail
-          ls -la dist/
-          npm pack --pack-destination /tmp
-          TARBALL=$(ls /tmp/clash-space-bridge-*.tgz | tail -1)
-          # List into a tmp file first — `tar | grep -q` triggers SIGPIPE
-          # on tar (grep -q exits early on first match), and pipefail then
-          # aborts the script even though both commands "succeeded".
-          tar -tzf "$TARBALL" > /tmp/tarball-list
-          if ! grep -q '^package/dist/cli\.js$' /tmp/tarball-list; then
-            echo "::error::pack output missing dist/cli.js"
-            cat /tmp/tarball-list
-            exit 1
-          fi
-          node scripts/publish.mjs "$TARBALL" --tag beta
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @clash-space/cli
-        run: pnpm --filter @clash-space/cli publish --tag beta --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @clash-space/action-sdk
-        run: pnpm --filter @clash-space/action-sdk publish --tag beta --access public --no-git-checks
+      - name: Publish clash
+        run: pnpm --filter clash publish --tag beta --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

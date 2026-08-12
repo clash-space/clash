@@ -2,7 +2,7 @@ import { ClientOnly } from "../components/ClientOnly";
 import { Suspense, lazy } from "react";
 
 const Editor = lazy(() =>
-  import("@master-clash/remotion-ui").then((m) => ({ default: m.Editor })),
+  import("@clash/remotion-ui").then((m) => ({ default: m.Editor })),
 );
 
 export default function EditorStandaloneRoute() {

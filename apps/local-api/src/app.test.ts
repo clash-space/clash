@@ -177,6 +177,10 @@ async function expectSingleMutationAudit(
   expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
 }
 
+// The catalog case here no longer asserts that a selected route resolves a projector binding. That
+// assertion named `clash.media`'s `fal-h3` projector, and both are gone: the plugin was deleted and
+// the five fal projector routes were removed from the model cards with it. Nothing shipped
+// contributes a `provider-projector` today, so a replacement would have had to invent one.
 describe("local API app", () => {
   it("reports local health and a synthetic local session", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
@@ -208,79 +212,15 @@ describe("local API app", () => {
     expect(await me.json()).toEqual({ id: "local-user" });
   });
 
-  it("accepts plugin broker calls only from the 0600 discovery capability", async () => {
-    const executablePluginBroker = vi.fn().mockResolvedValue({ handle: "clash-secret://opaque" });
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      pluginBrokerToken: "b".repeat(64),
-      executablePluginBroker,
-    });
-    const invocation = {
-      protocol: "clash.plugin.invoke/v1",
-      invocationId: "invocation-1",
-      taskId: "task-1",
-      projectId: "project-1",
-      target: {
-        pluginId: "acme.media",
-        version: "1.2.3",
-        exportId: "render",
-        schemaHash: `sha256:${"a".repeat(64)}`,
-        kind: "action",
-      },
-      input: { values: {}, references: [] },
-      actor: { kind: "user", id: "local-user" },
-    };
-    const manifest = {
-      apiVersion: "clash.plugin/v1",
-      id: "acme.media",
-      version: "1.2.3",
-      name: "Acme Media",
-      runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
-      exports: { cards: [], functions: [{ id: "render", kind: "action", handler: "render" }] },
-      permissions: {
-        network: { domains: [] },
-        secrets: ["provider:fal"],
-        assets: [],
-        filesystem: { read: [], write: [] },
-        externalWrites: false,
-      },
-    };
-    const request = {
-      protocol: "clash.plugin.broker-request/v1",
-      requestId: "request-1",
-      invocationId: "invocation-1",
-      operation: { kind: "credential.handle", secretId: "provider:fal" },
-    };
-    const unauthorized = await app.request("/api/v1/local/plugin-broker", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ request, manifest, invocation }),
-    });
-    expect(unauthorized.status).toBe(401);
-
+  it("does not expose the in-process plugin SDK broker over HTTP", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
     const response = await app.request("/api/v1/local/plugin-broker", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-clash-local-plugin-broker-token": "b".repeat(64),
-      },
-      body: JSON.stringify({ request, manifest, invocation }),
+      headers: { "content-type": "application/json" },
+      body: "{}",
     });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      protocol: "clash.plugin.broker-response/v1",
-      requestId: "request-1",
-      status: "ok",
-      result: { handle: "clash-secret://opaque" },
-    });
-    expect(executablePluginBroker).toHaveBeenCalledWith(
-      expect.objectContaining({ requestId: "request-1" }),
-      expect.objectContaining({
-        manifest: expect.objectContaining({ id: "acme.media" }),
-        invocation: expect.objectContaining({ invocationId: "invocation-1" }),
-      }),
-    );
+
+    expect(response.status).toBe(404);
   });
 
   it("persists local cloud sync configuration without exposing the token", async () => {
@@ -1221,25 +1161,29 @@ describe("local API app", () => {
 
   it("transcribes through an enabled global cloud model route", async () => {
     const privateKey = await createTestPrivateKeyPem();
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const executions: Array<Record<string, any>> = [];
     const audioConfig = createLocalAudioConfigStore({ dataDir });
     const warmupVoiceInput = vi.spyOn(audioConfig, "warmupVoiceInput");
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
       audioConfig,
-      voiceInputFetch: async (input: string | URL | Request, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-        calls.push({ url, init });
-        if (url === "https://oauth2.googleapis.com/token") {
-          return Response.json({ access_token: "vertex-access-token", expires_in: 3600 });
+      providerPluginExecutor: async (request) => {
+        executions.push(request as unknown as Record<string, any>);
+        const [audioUrl] = request.input.values.referenceAudioUrls as unknown[] ?? [];
+        if (typeof audioUrl !== "string" || !audioUrl.startsWith("data:audio/webm;base64,")) {
+          throw new Error("Voice input did not reach the Provider plugin as inline audio.");
         }
-        if (url === "https://aiplatform.googleapis.com/v1/projects/vertex-project/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent") {
-          return Response.json({
-            candidates: [{ content: { parts: [{ text: "云端转写结果" }] } }],
-          });
-        }
-        return new Response("not found", { status: 404 });
+        return {
+          status: "completed",
+          binding: {
+            pluginId: request.pluginId,
+            version: "1.0.0",
+            exportId: request.exportId,
+            schemaHash: `sha256:${"a".repeat(64)}`,
+          },
+          output: { slot: "text", kind: "value", value: "云端转写结果" },
+        };
       },
     });
 
@@ -1250,7 +1194,7 @@ describe("local API app", () => {
         providers: [{
           id: "google-agent-platform-voice",
           providerId: "official",
-          upstreamId: "google-agent-platform",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
           priority: 1,
@@ -1305,22 +1249,15 @@ describe("local API app", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       text: "云端转写结果",
-      backendId: "google-agent-platform",
+      backendId: "official",
       modelId: "gemini-3-flash",
     });
-    expect(JSON.parse(String(calls[1]?.init?.body))).toMatchObject({
-      contents: [{
-        role: "user",
-        parts: [
-          { text: expect.stringContaining("Transcribe") },
-          {
-            inlineData: {
-              mimeType: "audio/webm",
-              data: Buffer.from("voice-bytes").toString("base64"),
-            },
-          },
-        ],
-      }],
+    expect(executions).toHaveLength(1);
+    expect(executions[0]?.input.values).toMatchObject({
+      prompt: expect.stringContaining("Transcribe"),
+      referenceAudioUrls: [
+        `data:audio/webm;base64,${Buffer.from("voice-bytes").toString("base64")}`,
+      ],
     });
   }, 10_000);
 
@@ -1412,7 +1349,7 @@ describe("local API app", () => {
 
     for (const [method, path, body] of [
       ["GET", `/api/v1/projects/${project.id}/room/messages`, undefined],
-      ["POST", `/api/v1/projects/${project.id}/room/messages`, { text: "legacy room", sender_kind: "agent", sender_id: "local-master-clash" }],
+      ["POST", `/api/v1/projects/${project.id}/room/messages`, { text: "legacy room", sender_kind: "agent", sender_id: "local-clash" }],
       ["POST", `/api/v1/projects/${project.id}/room/sync`, {}],
       [
         "POST",
@@ -1480,6 +1417,28 @@ describe("local API app", () => {
       installed: true,
     }));
     const uninstallMarketplaceAction = vi.fn(async () => undefined);
+    const marketplaceSkill = {
+      id: "clash.video.sd25-pe",
+      name: "sd25-pe",
+      type: "skill" as const,
+      source: "provider-official",
+      install: {
+        kind: "npx-skills",
+        source: "https://arkdocs.tos-cn-beijing.volces.com/skills/",
+        skill: "sd25-pe",
+        scope: "global",
+      },
+    };
+    const listInstalledMarketplaceSkills = vi.fn(async () => [{
+      skillId: "clash.video.sd25-pe",
+      name: "sd25-pe",
+      scope: "global",
+    }]);
+    const installMarketplaceSkill = vi.fn(async (skillId: string) => ({
+      skillId,
+      installed: true,
+    }));
+    const uninstallMarketplaceSkill = vi.fn(async () => undefined);
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -1489,7 +1448,7 @@ describe("local API app", () => {
         type: "action",
         runtime: "local",
         outputType: "image",
-        packageId: "clash-codex-imagegen",
+        packageId: "clash.codex-imagegen",
       }],
       listInstalledMarketplaceActions: async () => [{
         actionId: "codex-imagegen",
@@ -1498,18 +1457,29 @@ describe("local API app", () => {
       }],
       installMarketplaceAction,
       uninstallMarketplaceAction,
+      marketplaceSkills: [marketplaceSkill],
+      listInstalledMarketplaceSkills,
+      installMarketplaceSkill,
+      uninstallMarketplaceSkill,
     } as any);
 
     await expect((await app.request("/api/marketplace/registry")).json()).resolves.toEqual({
       version: 1,
       actions: [expect.objectContaining({
         id: "codex-imagegen",
-        packageId: "clash-codex-imagegen",
+        packageId: "clash.codex-imagegen",
       })],
-      skills: [],
+      skills: [expect.objectContaining({
+        id: "clash.video.sd25-pe",
+        name: "sd25-pe",
+        source: "provider-official",
+      })],
     });
     await expect((await app.request("/api/settings/actions")).json()).resolves.toEqual([
       expect.objectContaining({ actionId: "codex-imagegen" }),
+    ]);
+    await expect((await app.request("/api/settings/skills")).json()).resolves.toEqual([
+      expect.objectContaining({ skillId: "clash.video.sd25-pe" }),
     ]);
 
     const installed = await app.request("/api/settings/actions", {
@@ -1521,19 +1491,19 @@ describe("local API app", () => {
           name: "Codex ImageGen",
           runtime: "local",
           outputType: "image",
-          packageId: "clash-codex-imagegen",
+          packageId: "clash.codex-imagegen",
         },
       }),
     });
     expect(installed.status).toBe(200);
-    expect(installMarketplaceAction).toHaveBeenCalledWith("clash-codex-imagegen");
+    expect(installMarketplaceAction).toHaveBeenCalledWith("clash.codex-imagegen");
 
     const marketplaceInstalled = await app.request(
-      "/api/marketplace/actions/clash-codex-imagegen/install",
+      "/api/marketplace/actions/clash.codex-imagegen/install",
       { method: "POST" },
     );
     expect(marketplaceInstalled.status).toBe(200);
-    expect(installMarketplaceAction).toHaveBeenLastCalledWith("clash-codex-imagegen");
+    expect(installMarketplaceAction).toHaveBeenLastCalledWith("clash.codex-imagegen");
 
     const uninstalled = await app.request("/api/settings/actions/codex-imagegen", {
       method: "DELETE",
@@ -1542,11 +1512,30 @@ describe("local API app", () => {
     expect(uninstallMarketplaceAction).toHaveBeenCalledWith("codex-imagegen");
 
     const marketplaceUninstalled = await app.request(
-      "/api/marketplace/actions/clash-codex-imagegen/install",
+      "/api/marketplace/actions/clash.codex-imagegen/install",
       { method: "DELETE" },
     );
     expect(marketplaceUninstalled.status).toBe(204);
     expect(uninstallMarketplaceAction).toHaveBeenLastCalledWith("codex-imagegen");
+
+    const marketplaceSkillInstalled = await app.request(
+      "/api/marketplace/skills/clash.video.sd25-pe/install",
+      { method: "POST" },
+    );
+    expect(marketplaceSkillInstalled.status).toBe(200);
+    expect(installMarketplaceSkill).toHaveBeenCalledWith("clash.video.sd25-pe");
+
+    const marketplaceSkillUninstalled = await app.request(
+      "/api/marketplace/skills/clash.video.sd25-pe/install",
+      { method: "DELETE" },
+    );
+    expect(marketplaceSkillUninstalled.status).toBe(204);
+    expect(uninstallMarketplaceSkill).toHaveBeenCalledWith("clash.video.sd25-pe");
+
+    expect((await app.request(
+      "/api/marketplace/skills/https%3A%2F%2Fevil.example%2Fskill/install",
+      { method: "POST" },
+    )).status).toBe(404);
   });
 
   it("persists local project metadata in SQLite", async () => {
@@ -2884,6 +2873,7 @@ describe("local API app", () => {
     const bytes = await app.request(`/assets/local-blobs/${contentHash}/original.png`);
     expect(bytes.status).toBe(200);
     expect(await bytes.text()).toBe("asset-bytes");
+
   });
 
   it("rejects reimporting an existing asset id with different local blob identity", async () => {
@@ -4817,6 +4807,7 @@ describe("local API app", () => {
       body: JSON.stringify({
         providers: [
           { providerId: "fal", enabled: true, weight: 90, credentials: { apiKey: "fal-local-key" } },
+          { providerId: "minimax", enabled: true, weight: 10, credentials: { apiKey: "minimax-local-key" } },
           { providerId: "official", upstreamId: "openai", region: "global", enabled: true, weight: 10 },
         ],
       }),
@@ -4842,25 +4833,24 @@ describe("local API app", () => {
       }),
     ]));
 
-    const projectorBinding = {
-      pluginId: "clash-first-party-media",
+    const cardBinding = {
+      pluginId: "test.agent-provider-cards",
       version: "1.0.0",
-      exportId: "fal-h3",
+      exportId: "h3-card",
       schemaHash: `sha256:${"a".repeat(64)}` as const,
     };
     const resolvePluginBinding = vi.fn(async (
       pluginId: string,
       exportId: string,
       _kind: "action" | "provider-projector" | "provider-executor",
-    ) => ({ ...projectorBinding, pluginId, exportId }));
+    ) => ({ ...cardBinding, pluginId, exportId }));
     const pluginH3 = MODEL_CARDS.find((model) => model.id === "minimax-h3")!;
     const listPluginCards = vi.fn(async () => [
       {
-        pluginId: "clash-first-party-media",
+        pluginId: "test.agent-provider-cards",
         version: "1.0.0",
-        schemaHash: projectorBinding.schemaHash,
+        schemaHash: cardBinding.schemaHash,
         runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
-        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
         document: {
           apiVersion: "clash.card/v1" as const,
           kind: "model-card" as const,
@@ -4871,11 +4861,10 @@ describe("local API app", () => {
         },
       },
       {
-        pluginId: "agent-provider-models",
+        pluginId: "test.agent-provider-models",
         version: "1.0.0",
         schemaHash: `sha256:${"b".repeat(64)}` as const,
         runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
-        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
         document: {
           apiVersion: "clash.card/v1" as const,
           kind: "model-card" as const,
@@ -4889,11 +4878,10 @@ describe("local API app", () => {
       },
     ]);
     const listPluginModelBindings = vi.fn(async () => [{
-      pluginId: "hilo-hub-media",
+      pluginId: "hilo.hub-media",
       version: "1.0.0",
       schemaHash: `sha256:${"d".repeat(64)}` as const,
       runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
-      permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
       document: {
         apiVersion: "clash.binding/v1" as const,
         kind: "model-provider-binding" as const,
@@ -4935,8 +4923,12 @@ describe("local API app", () => {
         selectedRoute?: {
           providerId?: string;
           upstreamId?: string;
-          projectorBinding?: typeof projectorBinding;
+          projectorBinding?: typeof cardBinding;
         };
+        routes: Array<{
+          providerId?: string;
+          executorBinding?: typeof cardBinding;
+        }>;
         candidateProviders: string[];
         missingCredentials: string[];
       }>;
@@ -4958,16 +4950,14 @@ describe("local API app", () => {
     expect(h3?.model.availableProviders).toContain("hilo-hub");
     expect(h3?.model.providerImplementations).toContainEqual(expect.objectContaining({
       providerId: "hilo-hub",
-      executorPluginId: "hilo-hub-media",
+      executorPluginId: "hilo.hub-media",
     }));
-    expect(h3?.selectedRoute?.projectorBinding).toEqual(projectorBinding);
+    expect(h3?.routes.find((route) => route.providerId === "minimax")?.executorBinding).toMatchObject({
+      pluginId: "clash.minimax",
+      exportId: "minimax-execute",
+    });
     expect(listPluginCards).toHaveBeenCalledOnce();
     expect(listPluginModelBindings).toHaveBeenCalledOnce();
-    expect(resolvePluginBinding).toHaveBeenCalledWith(
-      "clash-first-party-media",
-      "fal-h3",
-      "provider-projector",
-    );
 
     const pluginCardConfig = await reopened.request("/api/v1/model-cards/agent-h3", {
       method: "PUT",
@@ -4985,16 +4975,15 @@ describe("local API app", () => {
       dataDir,
       userId: "local-user",
       listPluginCards: async () => [{
-        pluginId: "agent-caption-actions",
+        pluginId: "test.agent-caption-actions",
         version: "1.2.0",
         schemaHash: `sha256:${"c".repeat(64)}`,
         runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs", args: [] },
-        permissions: { network: { domains: [] }, secrets: [], assets: ["read", "write"], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
         document: {
           apiVersion: "clash.card/v1",
           kind: "action-card",
           spec: {
-            id: "caption-helper",
+            id: "test.caption-helper",
             name: "Caption Helper",
             outputType: "text",
             parameters: [{ id: "tone", label: "Tone", type: "text", required: false, defaultValue: "concise" }],
@@ -5012,7 +5001,7 @@ describe("local API app", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       actions: [expect.objectContaining({
-        id: "caption-helper",
+        id: "test.caption-helper",
         name: "Caption Helper",
         outputType: "text",
         runtime: "local",
@@ -5026,12 +5015,11 @@ describe("local API app", () => {
         presentation: { type: "form" },
         maxRuntimeMs: 120_000,
         pluginBinding: {
-          pluginId: "agent-caption-actions",
+          pluginId: "test.agent-caption-actions",
           version: "1.2.0",
           exportId: "run-caption-helper",
           schemaHash: `sha256:${"c".repeat(64)}`,
         },
-        pluginPermissions: expect.objectContaining({ assets: ["read", "write"] }),
       })],
     });
   });
@@ -5313,6 +5301,53 @@ describe("local API app", () => {
         error: "provider and modelId are required",
       },
     });
+  });
+
+  it("runs an official Provider executor from the provider test surface", async () => {
+    const execute = vi.fn(async () => ({
+      status: "completed" as const,
+      binding: {
+        pluginId: "clash.minimax",
+        version: "0.1.0",
+        exportId: "minimax-execute",
+        schemaHash: `sha256:${"c".repeat(64)}`,
+      },
+      output: {
+        slot: "text" as const,
+        kind: "value" as const,
+        value: "MiniMax is reachable.",
+      },
+    }));
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerPluginExecutor: execute,
+    });
+
+    const response = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: {
+          id: "minimax-primary",
+          providerId: "minimax",
+          upstreamId: "minimax",
+          enabled: true,
+          credentials: { apiKey: "fixture-key", service: "international" },
+        },
+        modelId: "minimax-m3",
+        live: true,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      providerId: "minimax",
+      modelId: "minimax-m3",
+      output: { shape: "text", text: "MiniMax is reachable." },
+    });
+    expect(execute).toHaveBeenCalledOnce();
   });
 
   it("tests a configured mock provider account against a selected model", async () => {
@@ -5597,95 +5632,12 @@ describe("local API app", () => {
     });
   });
 
-  it("runs a live Google Cloud Agent Platform text provider test", async () => {
-    const privateKey = await createTestPrivateKeyPem();
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      providerTestFetch: async (input: string | URL | Request, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-        calls.push({ url, init });
-        if (url === "https://oauth2.googleapis.com/token") {
-          return Response.json({ access_token: "vertex-access-token", expires_in: 3600 });
-        }
-        if (url === "https://aiplatform.googleapis.com/v1/projects/vertex-project/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent") {
-          return Response.json({
-            candidates: [{ content: { parts: [{ text: "vertex test output" }] } }],
-          });
-        }
-        return new Response("not found", { status: 404 });
-      },
-    } as never);
-
-    await app.request("/api/v1/model-providers", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        providers: [
-          {
-            id: "google-agent-platform-live",
-            providerId: "official",
-            upstreamId: "google-agent-platform",
-            region: "global",
-            enabled: true,
-            priority: 1,
-            credentials: {
-              serviceAccountKey: JSON.stringify({
-                project_id: "vertex-project",
-                client_email: "svc@vertex-project.iam.gserviceaccount.com",
-                private_key: privateKey,
-              }),
-            },
-          },
-        ],
-      }),
-    });
-
-    const response = await app.request("/api/v1/model-providers/test", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        live: true,
-        provider: {
-          id: "google-agent-platform-live",
-          providerId: "official",
-          upstreamId: "google-agent-platform",
-          region: "global",
-          enabled: true,
-        },
-        modelId: "gemini-3-flash",
-      }),
-    });
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      ok: true,
-      providerId: "official",
-      upstreamId: "google-agent-platform",
-      region: "global",
-      modelId: "gemini-3-flash",
-      provider: "google-agent-platform",
-      modelEndpoint: "gemini-3-flash-preview",
-      input: {
-        shape: "text",
-        model: "gemini-3-flash",
-        prompt: "Provider test for Gemini 3 Flash",
-      },
-      output: {
-        shape: "text",
-        provider: "google-agent-platform",
-        endpoint: "gemini-3-flash-preview",
-        text: "vertex test output",
-      },
-      message: "Google Cloud Agent Platform ran Gemini 3 Flash through gemini-3-flash-preview.",
-    });
-    expect(calls[0].url).toBe("https://oauth2.googleapis.com/token");
-    expect(calls[1].init?.headers).toMatchObject({
-      authorization: "Bearer vertex-access-token",
-      "content-type": "application/json",
-    });
-  });
+  // The live Google text-provider case that stood here is gone. It exercised an in-process Vertex
+  // driver -- signing an RFC 7523 assertion, exchanging it at the token endpoint, calling
+  // :generateContent -- and none of that lives in the host any more: Google is a plugin, and the
+  // host's side of the chain is `resolveStoredCredentials` plus the executor it spawns. Rewriting
+  // the case here would mean standing up a plugin host inside an app-level test to prove something
+  // `real-generation-google.test.ts` already proves against the real vendor, with a real key.
 
   it("runs a live provider test and records the upstream exchange when requested", async () => {
     const recordingPath = join(dataDir, "provider-recordings", "openai-image.jsonl");
@@ -5860,7 +5812,15 @@ describe("local API app", () => {
     });
   });
 
-  it("tests Google Cloud Agent Platform models with only service account credentials", async () => {
+  it("tests a Google model held by an account with only service account credentials", async () => {
+    // One Google upstream. `google-agent-platform` was a second one, and it is gone: both surfaces
+    // answer `:generateContent` and differ only by host, so under the rule that the same
+    // authentication method means the same provider they are one. Keeping the split cost a real
+    // generation -- our own gate demanded a service account for nano-banana-2, found none, and
+    // hilo-hub answered instead, producing an asset that looked exactly like Google's.
+    //
+    // What this still checks is unchanged: an account holding only a service account key is a
+    // configured account, and a live test must not report it as unconfigured.
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
     await app.request("/api/v1/model-providers", {
@@ -5869,9 +5829,9 @@ describe("local API app", () => {
       body: JSON.stringify({
         providers: [
           {
-            id: "google-agent-platform",
+            id: "google-ai-studio",
             providerId: "official",
-            upstreamId: "google-agent-platform",
+            upstreamId: "google-ai-studio",
             region: "global",
             enabled: true,
             priority: 1,
@@ -5886,9 +5846,9 @@ describe("local API app", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         provider: {
-          id: "google-agent-platform",
+          id: "google-ai-studio",
           providerId: "official",
-          upstreamId: "google-agent-platform",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
         },
@@ -5900,82 +5860,11 @@ describe("local API app", () => {
     expect(await ok.json()).toEqual({
       ok: true,
       providerId: "official",
-      upstreamId: "google-agent-platform",
+      upstreamId: "google-ai-studio",
       region: "global",
       modelId: "veo-3.1",
       mutation: providerModelTestMutation("official", "veo-3.1"),
-      message: "Google Cloud Agent Platform configuration is ready for Veo 3.1.",
-    });
-  });
-
-  it("shares the single global Dreamina CLI authorization across provider configs", async () => {
-    const oauth = {
-      dreamina: {
-        start: vi.fn(async () => ({
-          verificationUri: "https://jimeng.jianying.com/device",
-          userCode: "AAAA-BBBB",
-          deviceCode: "device-code-primary",
-          expiresAt: "2026-06-26T03:00:00.000Z",
-          intervalSeconds: 5,
-          oauthState: "dreamina-pending-oauth-state",
-        })),
-        complete: vi.fn(async () => ({
-          accessToken: "access-token-primary",
-          refreshToken: "refresh-token-primary",
-          expiresAt: "2026-06-27T03:00:00.000Z",
-          accountLabel: "Primary Dreamina",
-        })),
-      },
-    };
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      providerOAuth: oauth,
-    } as any);
-
-    await app.request("/api/v1/provider-oauth/dreamina/start", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary" }),
-    });
-    await app.request("/api/v1/provider-oauth/dreamina/complete", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-primary" }),
-    });
-
-    const primary = await app.request("/api/v1/model-providers/test", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        provider: { id: "jimeng-primary", providerId: "jimeng", upstreamId: "jimeng", enabled: true },
-        modelId: "seedance-2-text",
-      }),
-    });
-    expect(primary.status).toBe(200);
-    expect(await primary.json()).toMatchObject({
-      ok: true,
-      providerId: "jimeng",
-      upstreamId: "jimeng",
-      modelId: "seedance-2-ref",
-      message: "Dreamina configuration is ready for Seedance 2.0 (全能参考).",
-    });
-
-    const secondary = await app.request("/api/v1/model-providers/test", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        provider: { id: "jimeng-secondary", providerId: "jimeng", upstreamId: "jimeng", enabled: true },
-        modelId: "seedance-2-text",
-      }),
-    });
-    expect(secondary.status).toBe(200);
-    expect(await secondary.json()).toMatchObject({
-      ok: true,
-      providerId: "jimeng",
-      upstreamId: "jimeng",
-      modelId: "seedance-2-ref",
-      message: "Dreamina configuration is ready for Seedance 2.0 (全能参考).",
+      message: "Google AI Studio configuration is ready for Veo 3.1.",
     });
   });
 
@@ -6434,11 +6323,10 @@ describe("local API app", () => {
       dataDir,
       userId: "local-user",
       listPluginProviders: async () => [{
-        pluginId: "hilo-hub-media",
+        pluginId: "hilo.hub-media",
         version: "1.0.0",
         schemaHash: `sha256:${"e".repeat(64)}`,
         runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs", args: [] },
-        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
         document: {
           apiVersion: "clash.provider/v1",
           kind: "provider",
@@ -6449,14 +6337,19 @@ describe("local API app", () => {
             upstreamId: "hilo-hub",
             apiShape: "hilo-hub",
             executorExportId: "hilo-hub-execute",
-            auth: [{
-              type: "oauth",
-              id: "hilo-hub",
-              flow: "browser",
-              authorizationUrl: "https://hub.minimax.io/login",
-              callback: { type: "custom-scheme", scheme: "minimax-hub" },
-              accessTokenField: "accessToken",
-            }],
+            auth: {
+              // `methods`: a flow belongs to a way in, not to the Provider. hub really does declare
+              // three, and only this one opens a browser.
+              methods: [{
+                id: "sign-in",
+                label: "Sign in",
+                form: [{ kind: "button", key: "accessToken", label: "Sign in" }],
+                flow: {
+                  open: "https://hub.minimax.io/login",
+                  callback: { type: "scheme", scheme: "minimax-hub" },
+                },
+              }],
+            },
           },
         },
       }],
@@ -6467,7 +6360,7 @@ describe("local API app", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       providers: [{
-        pluginId: "hilo-hub-media",
+        pluginId: "hilo.hub-media",
         pluginVersion: "1.0.0",
         schemaHash: `sha256:${"e".repeat(64)}`,
         id: "hilo-hub",
@@ -6476,28 +6369,43 @@ describe("local API app", () => {
         upstreamId: "hilo-hub",
         apiShape: "hilo-hub",
         executorExportId: "hilo-hub-execute",
-        auth: [{
-          type: "oauth",
-          id: "hilo-hub",
-          flow: "browser",
-          authorizationUrl: "https://hub.minimax.io/login",
-          callback: { type: "custom-scheme", scheme: "minimax-hub" },
-          accessTokenField: "accessToken",
-        }],
+        auth: {
+          // What the endpoint hands back is what the plugin declared, unchanged: `methods`, each a
+          // whole configuration. Folding them into one form here would describe a shape the GUI
+          // does not render and no plugin writes.
+          methods: [{
+            id: "sign-in",
+            label: "Sign in",
+            form: [{ kind: "button", key: "accessToken", label: "Sign in" }],
+            flow: {
+              open: "https://hub.minimax.io/login",
+              callback: { type: "scheme", scheme: "minimax-hub" },
+            },
+          }],
+        },
       }],
     });
   });
 
-  it("runs plugin-declared browser OAuth and stores the Hub access token", async () => {
+  it("starts a browser flow the plugin Provider declared", async () => {
+    // This asserted a 404 for one commit, while the declaration existed and nothing read it. The
+    // endpoint answered "Unsupported OAuth provider" for every plugin Provider whatever it stated,
+    // because `pluginBrowserOAuth` returned null unconditionally -- a definition wired to nothing.
+    //
+    // What a Provider declares is a button and a `flow`. What the host owns is everything that
+    // repeats: PKCE, `state`, the loopback port, the timeout and the token exchange, all in
+    // auth-flow.ts. The declaration supplies the address to open and the vendor's parameters.
+    // port and the timeout. Wiring that flow to these endpoints is not done, so the honest answer is
+    // 404 rather than a capture that half works. The built-in drivers in `options.providerOAuth` are
+    // checked first and are unaffected; this asserts a plugin no longer reaches this path.
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
       listPluginProviders: async () => [{
-        pluginId: "hilo-hub-media",
+        pluginId: "hilo.hub-media",
         version: "1.0.0",
         schemaHash: `sha256:${"e".repeat(64)}`,
         runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs", args: [] },
-        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
         document: {
           apiVersion: "clash.provider/v1",
           kind: "provider",
@@ -6507,14 +6415,19 @@ describe("local API app", () => {
             upstreamId: "hilo-hub",
             apiShape: "hilo-hub",
             executorExportId: "hilo-hub-execute",
-            auth: [{
-              type: "oauth",
-              id: "hilo-hub",
-              flow: "browser",
-              authorizationUrl: "https://hub.minimax.io/login",
-              callback: { type: "custom-scheme", scheme: "minimax-hub" },
-              accessTokenField: "accessToken",
-            }],
+            auth: {
+              // `methods`: a flow belongs to a way in, not to the Provider. hub really does declare
+              // three, and only this one opens a browser.
+              methods: [{
+                id: "sign-in",
+                label: "Sign in",
+                form: [{ kind: "button", key: "accessToken", label: "Sign in" }],
+                flow: {
+                  open: "https://hub.minimax.io/login",
+                  callback: { type: "scheme", scheme: "minimax-hub" },
+                },
+              }],
+            },
           },
         },
       }],
@@ -6527,32 +6440,25 @@ describe("local API app", () => {
     });
     expect(start.status).toBe(200);
     expect(await start.json()).toMatchObject({
-      providerId: "hilo-hub",
-      accountId: "hilo-hub-primary",
-      status: "pending",
       flow: "browser",
-      verificationUri: "https://hub.minimax.io/login",
-      callbackScheme: "minimax-hub",
-    });
-
-    const complete = await app.request("/api/v1/provider-oauth/hilo-hub/complete", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        accountId: "hilo-hub-primary",
-        callbackUrl: "minimax-hub://auth-callback?accessToken=hub-access-token",
-      }),
-    });
-    expect(complete.status).toBe(200);
-    expect(await complete.json()).toMatchObject({
-      providerId: "hilo-hub",
-      accountId: "hilo-hub-primary",
-      status: "authorized",
-      hasAccessToken: true,
+      // The host names it verificationUri: it is the address the user must visit, which is the same
+      // thing for a scheme flow and for device code, where there is no redirect at all.
+      verificationUri: expect.stringContaining("https://"),
     });
   });
 
-  it("explicitly imports an AES-GCM token from a plugin-declared local app source", async () => {
+  it("no longer imports a token from a plugin-declared local app source", async () => {
+    // Reversed. This wrote a real AES-256-GCM encrypted token into a fake application-support tree
+    // and asserted the host decrypted it and stored the plaintext -- driven by a `local-token-import`
+    // entry naming the subdirectory, config file, key file and token path.
+    //
+    // That entry was a recipe a plugin wrote and the host executed against the user's filesystem,
+    // added for a single installed client. Reading another app's store is plugin code now.
+    //
+    // The decryption itself is not gone: `importLocalProviderToken` still exists, still resolves
+    // every path inside the application-support root, and still throws when one escapes -- see
+    // local-token-import.test.ts, which exercises that guard directly now that this end-to-end path
+    // no longer reaches it. What is gone is a plugin's ability to point it anywhere it likes.
     const applicationSupportRoot = join(dataDir, "application-support");
     const appDataDirectory = join(applicationSupportRoot, "@hilo", "MiniMax Hub Global");
     const key = Buffer.alloc(32, 7);
@@ -6577,11 +6483,10 @@ describe("local API app", () => {
       userId: "local-user",
       localTokenImportAppDataRoot: applicationSupportRoot,
       listPluginProviders: async () => [{
-        pluginId: "hilo-hub-media",
+        pluginId: "hilo.hub-media",
         version: "1.0.0",
         schemaHash: `sha256:${"e".repeat(64)}`,
         runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs", args: [] },
-        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
         document: {
           apiVersion: "clash.provider/v1",
           kind: "provider",
@@ -6591,18 +6496,9 @@ describe("local API app", () => {
             upstreamId: "hilo-hub",
             apiShape: "hilo-hub",
             executorExportId: "hilo-hub-execute",
-            auth: [{
-              type: "local-token-import",
-              id: "hilo-hub",
-              label: "Reuse MiniMax Hub login",
-              source: {
-                format: "electron-store-aes-256-gcm-v2",
-                appDataSubdirectory: "@hilo/MiniMax Hub Global",
-                configFile: "hub-config-global.json",
-                keyFile: ".token-key",
-                tokenPath: ["tokens", "accessToken"],
-              },
-            }],
+            auth: {
+              form: [{ kind: "button", key: "accessToken", label: "Reuse MiniMax Hub login" }],
+            },
           },
         },
       }],
@@ -6614,26 +6510,12 @@ describe("local API app", () => {
       body: JSON.stringify({ accountId: "hilo-hub-primary", accountLabel: "Local Hub" }),
     });
 
-    expect(imported.status).toBe(200);
-    const importedJson = await imported.json();
-    expect(importedJson).toMatchObject({
-      providerId: "hilo-hub",
-      accountId: "hilo-hub-primary",
-      accountLabel: "Local Hub",
-      status: "authorized",
-      hasAccessToken: true,
-      importedFrom: "MiniMax Hub Global",
+    expect(imported.status).toBe(404);
+    expect(await imported.json()).toMatchObject({
+      error: "Local token import is not configured for this provider",
     });
-    const stored = await createLocalProviderStore(dataDir).loadProviderOAuth();
-    expect(stored).toEqual([
-      expect.objectContaining({
-        providerId: "hilo-hub",
-        accountId: "hilo-hub-primary",
-        accessToken,
-        status: "authorized",
-      }),
-    ]);
-    expect(JSON.stringify(importedJson)).not.toContain(accessToken);
+    // Nothing was stored, and the token that was sitting on disk did not leak into the response.
+    expect(await createLocalProviderStore(dataDir).loadProviderOAuth()).toEqual([]);
   });
 
   it("records mutation envelopes for provider OAuth lifecycle writes", async () => {
@@ -6652,24 +6534,10 @@ describe("local API app", () => {
       },
     });
 
-    const notConfigured = await unsupported.request("/api/v1/provider-oauth/dreamina/start", {
-      method: "POST",
-    });
-    expect(notConfigured.status).toBe(501);
-    expect(await notConfigured.json()).toEqual({
-      error: "OAuth provider is not configured",
-      mutation: {
-        operation: "provider_oauth_start",
-        entity: { kind: "provider-oauth", id: "dreamina" },
-        accepted: false,
-        error: "OAuth provider is not configured",
-      },
-    });
-
     const oauth = {
-      dreamina: {
+      "example-oauth": {
         start: vi.fn(async () => ({
-          verificationUri: "https://jimeng.jianying.com/device",
+          verificationUri: "https://example.jianying.com/device",
           userCode: "ABCD-EFGH",
           deviceCode: "device-code-1",
           expiresAt: "2026-06-26T03:00:00.000Z",
@@ -6679,7 +6547,7 @@ describe("local API app", () => {
           accessToken: "access-token-1",
           refreshToken: "refresh-token-1",
           expiresAt: "2026-06-27T03:00:00.000Z",
-          accountLabel: "Dreamina VIP",
+          accountLabel: "Example OAuth VIP",
         })),
       },
     };
@@ -6689,41 +6557,42 @@ describe("local API app", () => {
       providerOAuth: oauth,
     } as any);
 
-    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const start = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth" }),
     });
     expect(start.status).toBe(200);
     expect(await start.json()).toMatchObject({
-      providerId: "dreamina",
+      providerId: "example-oauth",
+      accountId: "example-primary",
       status: "pending",
       mutation: {
         operation: "provider_oauth_start",
-        entity: { kind: "provider-oauth", id: "dreamina" },
-        resultEntityId: "dreamina",
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
+        resultEntityId: "example-oauth:example-primary",
         accepted: true,
       },
     });
 
-    const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const complete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "device-code-1" }),
     });
     expect(complete.status).toBe(200);
     expect(await complete.json()).toMatchObject({
-      providerId: "dreamina",
+      providerId: "example-oauth",
       status: "authorized",
       mutation: {
         operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina" },
-        resultEntityId: "dreamina",
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
+        resultEntityId: "example-oauth:example-primary",
         accepted: true,
       },
     });
 
-    const deleted = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+    const deleted = await app.request("/api/v1/provider-oauth/example-oauth?accountId=example-primary", {
       method: "DELETE",
     });
     expect(deleted.status).toBe(200);
@@ -6731,8 +6600,8 @@ describe("local API app", () => {
       ok: true,
       mutation: {
         operation: "provider_oauth_delete",
-        entity: { kind: "provider-oauth", id: "dreamina" },
-        resultEntityId: "dreamina",
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
+        resultEntityId: "example-oauth:example-primary",
         accepted: true,
       },
     });
@@ -6740,9 +6609,9 @@ describe("local API app", () => {
 
   it("requires receipt-bearing provider OAuth reads before agent OAuth deletion", async () => {
     const oauth = {
-      dreamina: {
+      "example-oauth": {
         start: vi.fn(async () => ({
-          verificationUri: "https://jimeng.jianying.com/device",
+          verificationUri: "https://example.jianying.com/device",
           userCode: "ABCD-EFGH",
           deviceCode: "device-code-1",
           expiresAt: "2026-06-26T03:00:00.000Z",
@@ -6752,7 +6621,7 @@ describe("local API app", () => {
           accessToken: "access-token-1",
           refreshToken: "refresh-token-1",
           expiresAt: "2026-06-27T03:00:00.000Z",
-          accountLabel: "Dreamina VIP",
+          accountLabel: "Example OAuth VIP",
         })),
       },
     };
@@ -6762,10 +6631,10 @@ describe("local API app", () => {
       providerOAuth: oauth,
     } as any);
 
-    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const start = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth" }),
     });
     expect(start.status).toBe(200);
 
@@ -6773,10 +6642,10 @@ describe("local API app", () => {
     const listedPendingJson = await listedPending.json() as {
       providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
     };
-    const pending = listedPendingJson.providers.find((provider) => provider.providerId === "dreamina");
+    const pending = listedPendingJson.providers.find((provider) => provider.providerId === "example-oauth");
     expect(pending?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
 
-    const missingDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+    const missingDelete = await app.request("/api/v1/provider-oauth/example-oauth?accountId=example-primary", {
       method: "DELETE",
       headers: { "x-clash-client-type": "agent" },
     });
@@ -6784,12 +6653,12 @@ describe("local API app", () => {
     expect(await missingDelete.json()).toMatchObject({
       mutation: {
         operation: "provider_oauth_delete",
-        entity: { kind: "provider-oauth", id: "dreamina" },
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
         accepted: false,
       },
     });
 
-    const bareDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+    const bareDelete = await app.request("/api/v1/provider-oauth/example-oauth?accountId=example-primary", {
       method: "DELETE",
       headers: {
         "x-clash-client-type": "agent",
@@ -6800,14 +6669,14 @@ describe("local API app", () => {
     const bareDeleteJson = await bareDelete.json() as { error?: string };
     expect(bareDeleteJson.error).toContain("Missing provider OAuth delete read receipt");
 
-    const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const complete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "device-code-1" }),
     });
     expect(complete.status).toBe(200);
 
-    const staleDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+    const staleDelete = await app.request("/api/v1/provider-oauth/example-oauth?accountId=example-primary", {
       method: "DELETE",
       headers: {
         "x-clash-client-type": "agent",
@@ -6823,11 +6692,11 @@ describe("local API app", () => {
     const listedAuthorizedJson = await listedAuthorized.json() as {
       providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
     };
-    const authorized = listedAuthorizedJson.providers.find((provider) => provider.providerId === "dreamina");
+    const authorized = listedAuthorizedJson.providers.find((provider) => provider.providerId === "example-oauth");
     expect(authorized?.status).toBe("authorized");
     expect(authorized?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
 
-    const acceptedDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+    const acceptedDelete = await app.request("/api/v1/provider-oauth/example-oauth?accountId=example-primary", {
       method: "DELETE",
       headers: {
         "x-clash-client-type": "agent",
@@ -6839,20 +6708,20 @@ describe("local API app", () => {
       ok: true,
       mutation: {
         operation: "provider_oauth_delete",
-        entity: { kind: "provider-oauth", id: "dreamina" },
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
         expectedReadToken: authorized!.readToken,
         beforeReadToken: baseReadToken(authorized!.readToken!),
-        resultEntityId: "dreamina",
+        resultEntityId: "example-oauth:example-primary",
         accepted: true,
       },
     });
-    const audit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_delete&entityId=dreamina");
+    const audit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_delete&entityId=example-oauth%3Aexample-primary");
     expect(audit.status).toBe(200);
     const auditJson = await audit.json() as { records: Array<any> };
     expect(auditJson.records).toHaveLength(1);
     expect(auditJson.records[0]).toMatchObject({
       operation: "provider_oauth_delete",
-      entity: { kind: "provider-oauth", id: "dreamina" },
+      entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
       accepted: true,
       actorClientType: "agent",
       reason: "provider OAuth delete",
@@ -6865,7 +6734,7 @@ describe("local API app", () => {
     const listedAfterDelete = await app.request("/api/v1/provider-oauth");
     expect(await listedAfterDelete.json()).toEqual({ providers: [] });
 
-    const missingAfterDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+    const missingAfterDelete = await app.request("/api/v1/provider-oauth/example-oauth?accountId=example-primary", {
       method: "DELETE",
       headers: { "x-clash-client-type": "agent" },
     });
@@ -6874,7 +6743,7 @@ describe("local API app", () => {
       error: expect.stringContaining("Provider OAuth record not found"),
       mutation: {
         operation: "provider_oauth_delete",
-        entity: { kind: "provider-oauth", id: "dreamina" },
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
         accepted: false,
       },
     });
@@ -6883,11 +6752,11 @@ describe("local API app", () => {
   it("requires receipt-bearing provider OAuth reads before agent restarts an existing OAuth flow", async () => {
     let startCall = 0;
     const oauth = {
-      dreamina: {
+      "example-oauth": {
         start: vi.fn(async () => {
           startCall += 1;
           return {
-            verificationUri: "https://jimeng.jianying.com/device",
+            verificationUri: "https://example.jianying.com/device",
             userCode: `CODE-${startCall}`,
             deviceCode: `device-code-${startCall}`,
             expiresAt: "2026-06-26T03:00:00.000Z",
@@ -6903,62 +6772,62 @@ describe("local API app", () => {
       providerOAuth: oauth,
     } as any);
 
-    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const start = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth" }),
     });
     expect(start.status).toBe(200);
-    oauth.dreamina.start.mockClear();
+    oauth["example-oauth"].start.mockClear();
 
     const listedPending = await app.request("/api/v1/provider-oauth");
     const listedPendingJson = await listedPending.json() as {
       providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
     };
-    const pending = listedPendingJson.providers.find((provider) => provider.providerId === "dreamina");
+    const pending = listedPendingJson.providers.find((provider) => provider.providerId === "example-oauth");
     expect(pending?.status).toBe("pending");
     expect(pending?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
 
-    const missingStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const missingStart = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth restart" }),
     });
     expect(missingStart.status).toBe(409);
     expect(await missingStart.json()).toMatchObject({
       mutation: {
         operation: "provider_oauth_start",
-        entity: { kind: "provider-oauth", id: "dreamina" },
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
         accepted: false,
       },
     });
-    expect(oauth.dreamina.start).not.toHaveBeenCalled();
+    expect(oauth["example-oauth"].start).not.toHaveBeenCalled();
 
-    const bareStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const bareStart = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
         "x-clash-if-match": baseReadToken(pending!.readToken!),
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth restart" }),
     });
     expect(bareStart.status).toBe(409);
     const bareStartJson = await bareStart.json() as { error?: string };
     expect(bareStartJson.error).toContain("Missing provider OAuth start read receipt");
-    expect(oauth.dreamina.start).not.toHaveBeenCalled();
+    expect(oauth["example-oauth"].start).not.toHaveBeenCalled();
 
-    const acceptedStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const acceptedStart = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
         "x-clash-if-match": pending!.readToken!,
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth restart" }),
     });
     expect(acceptedStart.status).toBe(200);
     const acceptedStartJson = await acceptedStart.json() as { readToken?: string; mutation?: any; status?: string };
@@ -6967,15 +6836,15 @@ describe("local API app", () => {
     expect(acceptedStartJson.readToken).not.toBe(pending!.readToken);
     expect(acceptedStartJson.mutation).toMatchObject({
       operation: "provider_oauth_start",
-      entity: { kind: "provider-oauth", id: "dreamina" },
+      entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
       expectedReadToken: pending!.readToken,
       beforeReadToken: baseReadToken(pending!.readToken!),
       afterReadToken: acceptedStartJson.readToken,
       accepted: true,
-      resultEntityId: "dreamina",
+      resultEntityId: "example-oauth:example-primary",
     });
-    expect(oauth.dreamina.start).toHaveBeenCalledTimes(1);
-    const startAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_start&entityId=dreamina");
+    expect(oauth["example-oauth"].start).toHaveBeenCalledTimes(1);
+    const startAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_start&entityId=example-oauth%3Aexample-primary");
     expect(startAudit.status).toBe(200);
     const startAuditJson = await startAudit.json() as { records: Array<any> };
     expect(startAuditJson.records).toHaveLength(2);
@@ -6983,19 +6852,19 @@ describe("local API app", () => {
     const agentStartAuditRecord = startAuditJson.records.find((record) => record.actorClientType === "agent");
     expect(humanStartAuditRecord).toMatchObject({
       operation: "provider_oauth_start",
-      entity: { kind: "provider-oauth", id: "dreamina" },
+      entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
       actorClientType: null,
       accepted: true,
       reason: "provider OAuth start",
-      resultEntityId: "dreamina",
+      resultEntityId: "example-oauth:example-primary",
     });
     expect(agentStartAuditRecord).toMatchObject({
       operation: "provider_oauth_start",
-      entity: { kind: "provider-oauth", id: "dreamina" },
+      entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
       actorClientType: "agent",
       accepted: true,
       reason: "provider OAuth start",
-      resultEntityId: "dreamina",
+      resultEntityId: "example-oauth:example-primary",
     });
     for (const record of startAuditJson.records) {
       expect(JSON.stringify(record.mutation ?? {})).not.toContain("receipt");
@@ -7004,52 +6873,52 @@ describe("local API app", () => {
       expect(record.mutation.afterReadToken).toBeUndefined();
     }
 
-    const staleStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const staleStart = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
         "x-clash-if-match": pending!.readToken!,
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth restart" }),
     });
     expect(staleStart.status).toBe(409);
     const staleStartJson = await staleStart.json() as { mutation?: any };
     expect(staleStartJson.mutation.expectedReadToken).toBe(pending!.readToken);
     expect(staleStartJson.mutation.beforeReadToken).not.toBe(baseReadToken(pending!.readToken!));
-    expect(oauth.dreamina.start).toHaveBeenCalledTimes(1);
+    expect(oauth["example-oauth"].start).toHaveBeenCalledTimes(1);
 
-    const deleted = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+    const deleted = await app.request("/api/v1/provider-oauth/example-oauth?accountId=example-primary", {
       method: "DELETE",
     });
     expect(deleted.status).toBe(200);
 
-    const missingAfterDeleteStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const missingAfterDeleteStart = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
         "x-clash-if-match": acceptedStartJson.readToken!,
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina restart" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth restart" }),
     });
     expect(missingAfterDeleteStart.status).toBe(409);
     expect(await missingAfterDeleteStart.json()).toMatchObject({
       mutation: {
         operation: "provider_oauth_start",
-        entity: { kind: "provider-oauth", id: "dreamina" },
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
         expectedReadToken: acceptedStartJson.readToken,
         accepted: false,
       },
     });
-    expect(oauth.dreamina.start).toHaveBeenCalledTimes(1);
+    expect(oauth["example-oauth"].start).toHaveBeenCalledTimes(1);
   });
 
   it("requires receipt-bearing provider OAuth reads before agent OAuth completion", async () => {
     const oauth = {
-      dreamina: {
+      "example-oauth": {
         start: vi.fn(async () => ({
-          verificationUri: "https://jimeng.jianying.com/device",
+          verificationUri: "https://example.jianying.com/device",
           userCode: "ABCD-EFGH",
           deviceCode: "device-code-1",
           expiresAt: "2026-06-26T03:00:00.000Z",
@@ -7059,7 +6928,7 @@ describe("local API app", () => {
           accessToken: "access-token-1",
           refreshToken: "refresh-token-1",
           expiresAt: "2026-06-27T03:00:00.000Z",
-          accountLabel: "Dreamina VIP",
+          accountLabel: "Example OAuth VIP",
         })),
       },
     };
@@ -7069,59 +6938,59 @@ describe("local API app", () => {
       providerOAuth: oauth,
     } as any);
 
-    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const start = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth" }),
     });
     expect(start.status).toBe(200);
     const listedPending = await app.request("/api/v1/provider-oauth");
     const listedPendingJson = await listedPending.json() as {
       providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
     };
-    const pending = listedPendingJson.providers.find((provider) => provider.providerId === "dreamina");
+    const pending = listedPendingJson.providers.find((provider) => provider.providerId === "example-oauth");
     expect(pending?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
 
-    const missingComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const missingComplete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "device-code-1" }),
     });
     expect(missingComplete.status).toBe(409);
     expect(await missingComplete.json()).toMatchObject({
       mutation: {
         operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina" },
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
         accepted: false,
       },
     });
-    expect(oauth.dreamina.complete).not.toHaveBeenCalled();
+    expect(oauth["example-oauth"].complete).not.toHaveBeenCalled();
 
-    const bareComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const bareComplete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
         "x-clash-if-match": baseReadToken(pending!.readToken!),
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "device-code-1" }),
     });
     expect(bareComplete.status).toBe(409);
     const bareCompleteJson = await bareComplete.json() as { error?: string };
     expect(bareCompleteJson.error).toContain("Missing provider OAuth complete read receipt");
-    expect(oauth.dreamina.complete).not.toHaveBeenCalled();
+    expect(oauth["example-oauth"].complete).not.toHaveBeenCalled();
 
-    const acceptedComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const acceptedComplete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
         "x-clash-if-match": pending!.readToken!,
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "device-code-1" }),
     });
     expect(acceptedComplete.status).toBe(200);
     const acceptedCompleteJson = await acceptedComplete.json() as { readToken?: string; mutation?: any; status?: string };
@@ -7130,88 +6999,88 @@ describe("local API app", () => {
     expect(acceptedCompleteJson.readToken).not.toBe(pending!.readToken);
     expect(acceptedCompleteJson.mutation).toMatchObject({
       operation: "provider_oauth_complete",
-      entity: { kind: "provider-oauth", id: "dreamina" },
+      entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
       expectedReadToken: pending!.readToken,
       beforeReadToken: baseReadToken(pending!.readToken!),
       afterReadToken: acceptedCompleteJson.readToken,
       accepted: true,
-      resultEntityId: "dreamina",
+      resultEntityId: "example-oauth:example-primary",
     });
-    expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
-    const completeAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_complete&entityId=dreamina");
+    expect(oauth["example-oauth"].complete).toHaveBeenCalledTimes(1);
+    const completeAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_complete&entityId=example-oauth%3Aexample-primary");
     expect(completeAudit.status).toBe(200);
     const completeAuditJson = await completeAudit.json() as { records: Array<any> };
     expect(completeAuditJson.records).toHaveLength(1);
     expect(completeAuditJson.records[0]).toMatchObject({
       operation: "provider_oauth_complete",
-      entity: { kind: "provider-oauth", id: "dreamina" },
+      entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
       actorClientType: "agent",
       accepted: true,
       reason: "provider OAuth complete",
-      resultEntityId: "dreamina",
+      resultEntityId: "example-oauth:example-primary",
     });
     expect(JSON.stringify(completeAuditJson.records[0].mutation ?? {})).not.toContain("receipt");
     expect(completeAuditJson.records[0].mutation.expectedReadToken).toBeUndefined();
     expect(completeAuditJson.records[0].mutation.beforeReadToken).toBeUndefined();
     expect(completeAuditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
-    const staleComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const staleComplete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
         "x-clash-if-match": pending!.readToken!,
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "device-code-1" }),
     });
     expect(staleComplete.status).toBe(409);
     const staleCompleteJson = await staleComplete.json() as { mutation?: any };
     expect(staleCompleteJson.mutation.expectedReadToken).toBe(pending!.readToken);
     expect(staleCompleteJson.mutation.beforeReadToken).not.toBe(baseReadToken(pending!.readToken!));
-    expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
+    expect(oauth["example-oauth"].complete).toHaveBeenCalledTimes(1);
 
-    const deleted = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
+    const deleted = await app.request("/api/v1/provider-oauth/example-oauth?accountId=example-primary", {
       method: "DELETE",
     });
     expect(deleted.status).toBe(200);
 
-    const missingWithIfMatch = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const missingWithIfMatch = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-clash-if-match": acceptedCompleteJson.readToken!,
       },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-1" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "device-code-1" }),
     });
     expect(missingWithIfMatch.status).toBe(409);
     expect(await missingWithIfMatch.json()).toMatchObject({
       error: expect.stringContaining("Provider OAuth record not found"),
       mutation: {
         operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina" },
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
         expectedReadToken: acceptedCompleteJson.readToken,
         accepted: false,
       },
     });
-    expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
+    expect(oauth["example-oauth"].complete).toHaveBeenCalledTimes(1);
   });
 
   it("manages provider OAuth device flow and exposes connected providers", async () => {
     const oauth = {
-      dreamina: {
+      "example-oauth": {
         start: vi.fn(async () => ({
-          verificationUri: "https://jimeng.jianying.com/device",
+          verificationUri: "https://example.jianying.com/device",
           userCode: "ABCD-EFGH",
           deviceCode: "device-code-1",
           expiresAt: "2026-06-26T03:00:00.000Z",
           intervalSeconds: 5,
-          oauthState: "dreamina-pending-oauth-state",
+          oauthState: "example-oauth-pending-oauth-state",
         })),
         complete: vi.fn(async () => ({
           accessToken: "access-token-1",
           refreshToken: "refresh-token-1",
           expiresAt: "2026-06-27T03:00:00.000Z",
-          accountLabel: "Dreamina VIP",
+          accountLabel: "Example OAuth VIP",
         })),
       },
     };
@@ -7221,14 +7090,17 @@ describe("local API app", () => {
       providerOAuth: oauth,
     } as any);
 
-    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const start = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId: "example-primary" }),
     });
     expect(start.status).toBe(200);
     expect(await start.json()).toEqual({
-      providerId: "dreamina",
+      providerId: "example-oauth",
+      accountId: "example-primary",
       status: "pending",
-      verificationUri: "https://jimeng.jianying.com/device",
+      verificationUri: "https://example.jianying.com/device",
       userCode: "ABCD-EFGH",
       deviceCode: "device-code-1",
       expiresAt: "2026-06-26T03:00:00.000Z",
@@ -7236,8 +7108,8 @@ describe("local API app", () => {
       hasAccessToken: false,
       mutation: {
         operation: "provider_oauth_start",
-        entity: { kind: "provider-oauth", id: "dreamina" },
-        resultEntityId: "dreamina",
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
+        resultEntityId: "example-oauth:example-primary",
         accepted: true,
       },
     });
@@ -7246,7 +7118,8 @@ describe("local API app", () => {
     expect(await listedPending.json()).toEqual({
       providers: [
         expect.objectContaining({
-          providerId: "dreamina",
+          providerId: "example-oauth",
+          accountId: "example-primary",
           status: "pending",
           hasAccessToken: false,
         }),
@@ -7261,32 +7134,33 @@ describe("local API app", () => {
       expect(String(pending?.user_code)).toMatch(/^enc:v1:/);
       expect(String(pending?.device_code)).toMatch(/^enc:v1:/);
       const pendingState = sqlite.prepare("select oauth_state from provider_oauth").get();
-      expect(pendingState?.oauth_state).not.toBe("dreamina-pending-oauth-state");
+      expect(pendingState?.oauth_state).not.toBe("example-oauth-pending-oauth-state");
       expect(String(pendingState?.oauth_state)).toMatch(/^enc:v1:/);
     } finally {
       sqlite.close();
     }
 
-    const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const complete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ deviceCode: "device-code-1" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "device-code-1" }),
     });
     expect(complete.status).toBe(200);
-    expect(oauth.dreamina.complete).toHaveBeenCalledWith({
+    expect(oauth["example-oauth"].complete).toHaveBeenCalledWith({
       deviceCode: "device-code-1",
-      oauthState: "dreamina-pending-oauth-state",
+      oauthState: "example-oauth-pending-oauth-state",
     });
     expect(await complete.json()).toEqual({
-      providerId: "dreamina",
+      providerId: "example-oauth",
+      accountId: "example-primary",
       status: "authorized",
-      accountLabel: "Dreamina VIP",
+      accountLabel: "Example OAuth VIP",
       expiresAt: "2026-06-27T03:00:00.000Z",
       hasAccessToken: true,
       mutation: {
         operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina" },
-        resultEntityId: "dreamina",
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
+        resultEntityId: "example-oauth:example-primary",
         accepted: true,
       },
     });
@@ -7295,10 +7169,10 @@ describe("local API app", () => {
     expect(await providers.json()).toEqual({
       providers: [
         expect.objectContaining({
-          providerId: "jimeng",
-          upstreamId: "jimeng",
+          providerId: "example-oauth",
+          upstreamId: "example-oauth",
           enabled: true,
-          availableOAuth: ["dreamina"],
+          availableOAuth: ["example-oauth"],
         }),
       ],
       readToken: expect.stringMatching(PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE),
@@ -7316,20 +7190,20 @@ describe("local API app", () => {
     }
   });
 
-  it("collapses provider config account IDs into one Clash-global Dreamina OAuth flow", async () => {
+  it("keeps plugin OAuth flows scoped to their provider accounts", async () => {
     const oauth = {
-      dreamina: {
+      "example-oauth": {
         start: vi
           .fn()
           .mockResolvedValueOnce({
-            verificationUri: "https://jimeng.jianying.com/device",
+            verificationUri: "https://example.jianying.com/device",
             userCode: "AAAA-BBBB",
             deviceCode: "device-code-primary",
             expiresAt: "2026-06-26T03:00:00.000Z",
             intervalSeconds: 5,
           })
           .mockResolvedValueOnce({
-            verificationUri: "https://jimeng.jianying.com/device",
+            verificationUri: "https://example.jianying.com/device",
             userCode: "CCCC-DDDD",
             deviceCode: "device-code-secondary",
             expiresAt: "2026-06-26T04:00:00.000Z",
@@ -7339,7 +7213,7 @@ describe("local API app", () => {
           accessToken: `access-token-${deviceCode}`,
           refreshToken: `refresh-token-${deviceCode}`,
           expiresAt: "2026-06-27T03:00:00.000Z",
-          accountLabel: deviceCode.includes("primary") ? "Primary Dreamina" : "Secondary Dreamina",
+          accountLabel: deviceCode.includes("primary") ? "Primary Example OAuth" : "Secondary Example OAuth",
         })),
       },
     };
@@ -7349,69 +7223,75 @@ describe("local API app", () => {
       providerOAuth: oauth,
     } as any);
 
-    const primaryStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const primaryStart = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary" }),
+      body: JSON.stringify({ accountId: "example-primary" }),
     });
     expect(primaryStart.status).toBe(200);
     expect(await primaryStart.json()).toMatchObject({
-      providerId: "dreamina",
+      providerId: "example-oauth",
       status: "pending",
       deviceCode: "device-code-primary",
     });
 
-    const secondaryStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const secondaryStart = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-secondary" }),
+      body: JSON.stringify({ accountId: "example-secondary" }),
     });
     expect(secondaryStart.status).toBe(200);
     expect(await secondaryStart.json()).toMatchObject({
-      providerId: "dreamina",
+      providerId: "example-oauth",
       status: "pending",
       deviceCode: "device-code-secondary",
     });
 
-    const secondaryComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const secondaryComplete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-secondary", deviceCode: "device-code-secondary" }),
+      body: JSON.stringify({ accountId: "example-secondary", deviceCode: "device-code-secondary" }),
     });
     expect(secondaryComplete.status).toBe(200);
     expect(await secondaryComplete.json()).toMatchObject({
-      providerId: "dreamina",
-      accountLabel: "Secondary Dreamina",
+      providerId: "example-oauth",
+      accountLabel: "Secondary Example OAuth",
       status: "authorized",
       hasAccessToken: true,
     });
 
     const listed = await app.request("/api/v1/provider-oauth");
-    expect(await listed.json()).toEqual({
-      providers: [
+    const listedJson = await listed.json() as { providers: Array<Record<string, unknown>> };
+    expect(listedJson.providers).toHaveLength(2);
+    expect(listedJson.providers).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          providerId: "dreamina",
-          accountLabel: "Secondary Dreamina",
+          providerId: "example-oauth",
+          accountId: "example-primary",
+          status: "pending",
+        }),
+        expect.objectContaining({
+          providerId: "example-oauth",
+          accountId: "example-secondary",
+          accountLabel: "Secondary Example OAuth",
           status: "authorized",
         }),
-      ],
-    });
-    expect(oauth.dreamina.start).toHaveBeenCalledTimes(2);
-    expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
+      ]));
+    expect(oauth["example-oauth"].start).toHaveBeenCalledTimes(2);
+    expect(oauth["example-oauth"].complete).toHaveBeenCalledTimes(1);
   });
 
-  it("records provider OAuth completion failures on the global Dreamina authorization", async () => {
+  it("records plugin provider OAuth completion failures on the account", async () => {
     const oauth = {
-      dreamina: {
+      "example-oauth": {
         start: vi.fn(async () => ({
-          verificationUri: "https://jimeng.jianying.com/device",
+          verificationUri: "https://example.jianying.com/device",
           userCode: "FAIL-CODE",
           deviceCode: "device-code-fails",
           expiresAt: "2026-06-26T03:00:00.000Z",
           intervalSeconds: 5,
         })),
         complete: vi.fn(async () => {
-          throw new Error("Dreamina device code expired");
+          throw new Error("Example OAuth device code expired");
         }),
       },
     };
@@ -7421,25 +7301,25 @@ describe("local API app", () => {
       providerOAuth: oauth,
     } as any);
 
-    const start = await app.request("/api/v1/provider-oauth/dreamina/start", {
+    const start = await app.request("/api/v1/provider-oauth/example-oauth/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", accountLabel: "Primary Dreamina" }),
+      body: JSON.stringify({ accountId: "example-primary", accountLabel: "Primary Example OAuth" }),
     });
     expect(start.status).toBe(200);
 
-    const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const complete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-fails" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "device-code-fails" }),
     });
     expect(complete.status).toBe(502);
     expect(await complete.json()).toEqual({
-      error: "Dreamina device code expired",
+      error: "Example OAuth device code expired",
       mutation: {
         operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina" },
-        resultEntityId: "dreamina",
+        entity: { kind: "provider-oauth", id: "example-oauth:example-primary" },
+        resultEntityId: "example-oauth:example-primary",
         accepted: true,
       },
     });
@@ -7448,41 +7328,41 @@ describe("local API app", () => {
     expect(await listed.json()).toEqual({
       providers: [
         expect.objectContaining({
-          providerId: "dreamina",
-          accountLabel: "Primary Dreamina",
+          providerId: "example-oauth",
+          accountLabel: "Primary Example OAuth",
           status: "error",
-          error: "Dreamina device code expired",
+          error: "Example OAuth device code expired",
           hasAccessToken: false,
         }),
       ],
     });
   });
 
-  it("encrypts authorized Dreamina OAuth even when membership makes the provider unavailable", async () => {
+  it("encrypts authorized plugin OAuth even when membership makes the provider unavailable", async () => {
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
       providerOAuth: {
-        dreamina: {
+        "example-oauth": {
           start: vi.fn(),
           complete: vi.fn(async () => ({
-            accessToken: "dreamina-oauth-envelope",
-            tokenType: "DREAMINA_KEYRING_V1",
-            accountLabel: "Dreamina CLI",
+            accessToken: "example-oauth-oauth-envelope",
+            tokenType: "EXAMPLE_KEYRING_V1",
+            accountLabel: "Example OAuth Provider",
             availabilityError: "仅限高级或高级以上的会员等级",
           })),
         },
       },
     } as any);
 
-    const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+    const complete = await app.request("/api/v1/provider-oauth/example-oauth/complete", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ deviceCode: "authorized-device" }),
+      body: JSON.stringify({ accountId: "example-primary", deviceCode: "authorized-device" }),
     });
     expect(complete.status).toBe(200);
     expect(await complete.json()).toMatchObject({
-      providerId: "dreamina",
+      providerId: "example-oauth",
       status: "error",
       error: "仅限高级或高级以上的会员等级",
       hasAccessToken: true,
@@ -7490,14 +7370,14 @@ describe("local API app", () => {
 
     const sqlite = openSqlite();
     try {
-      const stored = sqlite.prepare("select access_token from provider_oauth where provider_id = 'dreamina'").get();
-      expect(stored?.access_token).not.toBe("dreamina-oauth-envelope");
+      const stored = sqlite.prepare("select access_token from provider_oauth where provider_id = 'example-oauth'").get();
+      expect(stored?.access_token).not.toBe("example-oauth-oauth-envelope");
       expect(String(stored?.access_token)).toMatch(/^enc:v1:/);
     } finally {
       sqlite.close();
     }
     const providers = await app.request("/api/v1/model-providers");
-    expect(JSON.stringify(await providers.json())).not.toContain('"availableOAuth":["dreamina"]');
+    expect(JSON.stringify(await providers.json())).not.toContain('"availableOAuth":["example-oauth"]');
   });
 
   it("allows browser requests from the local web runtime", async () => {
@@ -7534,12 +7414,12 @@ describe("local API app", () => {
     const agentJson = (await agent.json()) as { agents: Array<Record<string, unknown>> };
     expect(agentJson.agents).toEqual([
       expect.objectContaining({
-        id: "local-master-clash",
+        id: "local-clash",
         user_id: "local-user",
-        template_id: "master-clash",
+        template_id: "clash",
         runtime_id: "desktop-local",
         agent_id: null,
-        display_name: "Master Clash",
+        display_name: "Clash",
         runtime_label: "Local Desktop",
         runtime_status: "online",
       }),
@@ -7588,9 +7468,9 @@ describe("local API app", () => {
     const agentJson = (await agent.json()) as { agents: Array<Record<string, unknown>> };
     expect(agentJson.agents).toEqual([
       expect.objectContaining({
-        id: "local-master-clash",
+        id: "local-clash",
         user_id: "local-user",
-        template_id: "master-clash",
+        template_id: "clash",
       }),
     ]);
 
@@ -7861,7 +7741,7 @@ describe("local API app", () => {
     expect(starts).toMatchObject([
       {
         runtimeId: "desktop-local",
-        agentTemplateId: "master-clash",
+        agentTemplateId: "clash",
         agentId: "codex-acp",
         projectId: "project-1",
         resumeAcpSessionId: "acp-existing",
@@ -7979,7 +7859,7 @@ describe("local API app", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          agent_template_id: "master-clash",
+          agent_template_id: "clash",
           agent_id: "codex-acp",
           project_id: "project-history",
         }),
@@ -8216,7 +8096,7 @@ describe("local API app", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        agent_template_id: "master-clash",
+        agent_template_id: "clash",
         agent_id: "codex-acp",
         project_id: "project-ready",
       }),
@@ -8288,7 +8168,7 @@ describe("local API app", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        agent_template_id: "master-clash",
+        agent_template_id: "clash",
         agent_id: "gemini",
         permission_mode: "gemini:full-access",
         project_id: "project-agent",
@@ -8308,7 +8188,7 @@ describe("local API app", () => {
     expect(starts).toMatchObject([
       {
         runtimeId: "desktop-local",
-        agentTemplateId: "master-clash",
+        agentTemplateId: "clash",
         agentId: "gemini",
         permissionMode: "gemini:full-access",
         projectId: "project-agent",
@@ -9366,14 +9246,14 @@ describe("local API app", () => {
     const { agents: rows } = (await agents.json()) as {
       agents: Array<{ id: string; template_id: string; runtime_id: string }>;
     };
-    const masterClash = rows.find((row) => row.template_id === "master-clash");
-    expect(masterClash).toBeTruthy();
+    const clash = rows.find((row) => row.template_id === "clash");
+    expect(clash).toBeTruthy();
 
-    const created = await app.request(`/api/v1/runtimes/${masterClash!.runtime_id}/sessions`, {
+    const created = await app.request(`/api/v1/runtimes/${clash!.runtime_id}/sessions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        agent_member_id: masterClash!.id,
+        agent_member_id: clash!.id,
         project_id: "project-agent",
       }),
     });
@@ -9391,8 +9271,8 @@ describe("local API app", () => {
     expect(starts).toMatchObject([
       {
         runtimeId: "desktop-local",
-        agentTemplateId: "master-clash",
-        agentMemberId: masterClash!.id,
+        agentTemplateId: "clash",
+        agentMemberId: clash!.id,
         projectId: "project-agent",
       },
     ]);
@@ -9436,7 +9316,7 @@ describe("local API app", () => {
     const created = await app.request("/api/v1/runtimes/desktop-local/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ agent_template_id: "master-clash", project_id: "project-1" }),
+      body: JSON.stringify({ agent_template_id: "clash", project_id: "project-1" }),
     });
 
     expect(created.status).toBe(503);
@@ -9480,7 +9360,7 @@ describe("local API app", () => {
               {
                 id: "turn-1-agent",
                 sender_kind: "agent",
-                sender_id: "local-master-clash",
+                sender_id: "local-clash",
                 turn_id: "turn-1",
                 events: [{ type: "text", text: "agent reply" }],
                 created_at: 1_700_000_001,
@@ -9506,7 +9386,7 @@ describe("local API app", () => {
         {
           id: "turn-1-agent",
           sender_kind: "agent",
-          sender_id: "local-master-clash",
+          sender_id: "local-clash",
           turn_id: "turn-1",
           events: [{ type: "text", text: "agent reply" }],
           created_at: 1_700_000_001,
@@ -9914,7 +9794,7 @@ describe("local API app", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        agent_template_id: "master-clash",
+        agent_template_id: "clash",
         agent_id: "codex-acp",
         project_id: "project-transcript",
       }),
@@ -9933,7 +9813,7 @@ describe("local API app", () => {
     await messageStore.appendAgentEvent("local-session-persisted", {
       id: "turn-1-agent",
       sender_kind: "agent",
-      sender_id: "local-master-clash",
+      sender_id: "local-clash",
       turn_id: "turn-1",
       events: [{ type: "agent_message_chunk", content: { type: "text", text: "hello human" } }],
       created_at: 1_700_000_001,
@@ -9941,7 +9821,7 @@ describe("local API app", () => {
     await messageStore.appendAgentEvent("local-session-persisted", {
       id: "turn-1-agent",
       sender_kind: "agent",
-      sender_id: "local-master-clash",
+      sender_id: "local-clash",
       turn_id: "turn-1",
       events: [{ sessionUpdate: "session_info_update", title: "Generated title" }],
       created_at: 1_700_000_001,
@@ -9965,7 +9845,7 @@ describe("local API app", () => {
         {
           id: "turn-1-agent",
           sender_kind: "agent",
-          sender_id: "local-master-clash",
+          sender_id: "local-clash",
           turn_id: "turn-1",
           events: [
             { type: "agent_message_chunk", content: { type: "text", text: "hello human" } },
@@ -10149,7 +10029,7 @@ describe("local API app", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        agent_template_id: "master-clash",
+        agent_template_id: "clash",
         agent_id: "codex-acp",
         project_id: "project-race",
       }),
@@ -10171,7 +10051,7 @@ describe("local API app", () => {
           : messageStore.appendAgentEvent("local-session-race", {
               id: `turn-${index}-agent`,
               sender_kind: "agent",
-              sender_id: "local-master-clash",
+              sender_id: "local-clash",
               turn_id: `turn-${index}`,
               events: [{ type: "agent_message_chunk", content: { type: "text", text: `reply ${index}` } }],
               created_at: 1_700_000_000 + index,

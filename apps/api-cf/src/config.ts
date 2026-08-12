@@ -22,7 +22,6 @@ export interface Env {
   SUPERVISOR: DurableObjectNamespace;
   GENERATION_WORKFLOW: Workflow;
   RENDER_CONTAINER: DurableObjectNamespace<import("./containers/render").RenderContainer>;
-  BYO_BRIDGE: DurableObjectNamespace<import("./agents/byo-bridge").ByoBridgeRoom>;
   RUNTIME_ROOM: DurableObjectNamespace<import("./agents/runtime-room").RuntimeRoom>;
   /** For local dev: direct URL to render-server (bypasses Container) */
   RENDER_SERVER_URL?: string;
@@ -35,7 +34,6 @@ export interface Env {
   /** AES-GCM key for encrypting/decrypting user variables (action secrets) */
   ACTION_SECRET_KEY?: string;
   /** HMAC key for short-lived hosted executable-plugin broker capabilities. */
-  PLUGIN_CAPABILITY_KEY?: string;
   // Better Auth — handler runs in this Worker now (apps/api-cf/src/auth.ts).
   KV?: KVNamespace<string>;
   /** Cloudflare Email Service binding — wrangler [[send_email]] name = "EMAIL". */

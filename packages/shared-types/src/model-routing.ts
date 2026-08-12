@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard, type ModelKind, type ModelParameter, type ProviderCredentialRequirements, type ReferenceBinding } from "./models";
-import { findCompatibleModels, type Modality } from "./model-capabilities";
-import type { ExecutablePluginBinding } from "./executable-plugin";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard, type ModelKind, type ModelParameter, type ProviderCredentialRequirements, type ProviderInputAdaptation, type ReferenceBinding } from "./models.js";
+import { findCompatibleModels, type Modality } from "./model-capabilities.js";
+import type { ExecutablePluginBinding } from "./executable-plugin.js";
 
 const DynamicProviderIdSchema = z.string().trim().regex(
   /^[a-z0-9][a-z0-9._-]*$/,
@@ -21,10 +21,8 @@ export const BuiltinModelUpstreamIdSchema = z.enum([
   "anthropic",
   "openrouter",
   "replicate",
-  "kie",
   "kling",
   "minimax",
-  "jimeng",
   "volcengine",
   "elevenlabs",
   "suno",
@@ -46,20 +44,16 @@ export const BuiltinModelUpstreamApiShapeSchema = z.enum([
   "openai-compatible",
   "anthropic-compatible",
   "replicate",
-  "kie",
   "kling",
   "minimax",
   "modelark",
-  "dreamina-cli",
   "elevenlabs",
   "suno",
 ]);
 export const ModelUpstreamApiShapeSchema = DynamicProviderIdSchema;
 export type ModelUpstreamApiShape = z.infer<typeof ModelUpstreamApiShapeSchema>;
 
-export const BuiltinProviderOAuthIdSchema = z.enum([
-  "dreamina",
-]);
+export const BuiltinProviderOAuthIdSchema = z.never();
 export const ProviderOAuthIdSchema = DynamicProviderIdSchema;
 export type ProviderOAuthId = z.infer<typeof ProviderOAuthIdSchema>;
 
@@ -68,11 +62,9 @@ export const BuiltinProviderAccountIdSchema = z.enum([
   "official",
   "fal",
   "pika",
-  "kie",
   "replicate",
   "kling",
   "minimax",
-  "jimeng",
   "volcengine",
   "elevenlabs",
   "suno",
@@ -106,6 +98,8 @@ export interface ModelUpstreamRoute {
   requiredOAuth?: ProviderOAuthId[];
   /** Effective inline-reference semantics after applying the provider implementation override. */
   referenceBinding?: ReferenceBinding;
+  /** Provider-wire input spellings applied only for this selected implementation. */
+  inputAdaptation?: ProviderInputAdaptation;
   /** Provider-specific replacements for user-configurable candidates/ranges. */
   parameterOverrides?: ModelParameter[];
   /** Provider-specific defaults paired with parameterOverrides. */
@@ -184,6 +178,8 @@ export interface ModelUpstreamRouteQuery {
   models?: readonly ModelCard[];
   configuredUpstreams?: UpstreamAvailability[];
   configuredProviders?: ProviderAccountAvailability[];
+  /** Canonical Card parameters materially selected for this invocation. */
+  requestedParameterIds?: readonly string[];
   allowMock?: boolean;
 }
 
@@ -202,6 +198,8 @@ export interface ModelCatalogEntry {
   routes: ModelUpstreamRoute[];
   selectedRoute: ModelUpstreamRoute | null;
   candidateProviders: ProviderAccountId[];
+  /** Canonical controls unsupported by every provider account the user configured for this model. */
+  unavailableParameterIds: string[];
   missingCredentials: string[];
   missingOAuth: ProviderOAuthId[];
 }
@@ -330,7 +328,6 @@ const BASE_URL_CREDENTIAL = "baseUrl";
 const ACCESS_KEY_CREDENTIAL = "accessKey";
 const SECRET_KEY_CREDENTIAL = "secretKey";
 const VERTEX_CREDENTIAL = "serviceAccountKey";
-const DREAMINA_OAUTH = "dreamina";
 
 function falMock(
   modelCode: string,
@@ -402,6 +399,15 @@ function routesFromModelCard(model: ModelCard): ModelUpstreamRoute[] {
     ...((implementation.referenceBinding ?? model.input.referenceBinding)
       ? { referenceBinding: implementation.referenceBinding ?? model.input.referenceBinding }
       : {}),
+    ...(implementation.inputAdaptation ? {
+      inputAdaptation: {
+        ...(implementation.inputAdaptation.audio ? {
+          audio: {
+            mimeAliases: { ...implementation.inputAdaptation.audio.mimeAliases },
+          },
+        } : {}),
+      },
+    } : {}),
     ...(implementation.parameterOverrides?.length
       ? { parameterOverrides: implementation.parameterOverrides.map((parameter) => ({ ...parameter })) }
       : {}),
@@ -457,13 +463,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     requiredCredentials: [API_KEY_CREDENTIAL],
   },
   {
-    providerId: "kie",
-    upstreamId: "kie",
-    apiShape: "kie",
-    priority: 25,
-    requiredCredentials: [API_KEY_CREDENTIAL],
-  },
-  {
     providerId: "replicate",
     upstreamId: "replicate",
     apiShape: "replicate",
@@ -516,13 +515,6 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     apiShape: "kling",
     priority: 8,
     requiredCredentials: [ACCESS_KEY_CREDENTIAL, SECRET_KEY_CREDENTIAL],
-  },
-  {
-    providerId: "jimeng",
-    upstreamId: "jimeng",
-    apiShape: "dreamina-cli",
-    priority: 8,
-    requiredOAuth: [DREAMINA_OAUTH],
   },
   {
     providerId: "volcengine",
@@ -599,7 +591,7 @@ function providerIdForRoute(route: ModelUpstreamRoute): ProviderAccountId {
     route.upstreamId === "google-agent-platform" ||
     route.upstreamId === "anthropic"
   ) return "official";
-  if (route.upstreamId === "fal" || route.upstreamId === "pika" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
+  if (route.upstreamId === "fal" || route.upstreamId === "pika" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
     return route.upstreamId;
   }
   return "custom";
@@ -928,8 +920,28 @@ function candidateRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
     : routes.filter(
         (route) =>
           route.modelCode === modelCode &&
-          (!query.kind || route.kind === query.kind),
+          (!query.kind || route.kind === query.kind) &&
+          modelRouteSupportsParameters(route, query.requestedParameterIds ?? []),
       );
+}
+
+export function activeModelParameterIds(
+  modelParams: Record<string, unknown> | undefined,
+): string[] {
+  return Object.entries(modelParams ?? {}).flatMap(([parameterId, value]) => {
+    if (value === undefined || value === null) return [];
+    if (typeof value === "string" && value.trim().length === 0) return [];
+    return [parameterId];
+  });
+}
+
+export function modelRouteSupportsParameters(
+  route: Pick<ModelUpstreamRoute, "excludedParameterIds">,
+  requestedParameterIds: readonly string[],
+): boolean {
+  if (!route.excludedParameterIds?.length || requestedParameterIds.length === 0) return true;
+  const excluded = new Set(route.excludedParameterIds);
+  return requestedParameterIds.every((parameterId) => !excluded.has(parameterId));
 }
 
 export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
@@ -986,6 +998,7 @@ export function applyModelProviderImplementation(
   route: ModelUpstreamRoute | null | undefined,
 ): ModelCard {
   if (!route) return model;
+  const { providerImplementations: _providerImplementations, ...canonicalCard } = model;
   const excludedParameterIds = new Set(route.excludedParameterIds ?? []);
   const overrides = new Map((route.parameterOverrides ?? []).map((parameter) => [parameter.id, parameter]));
   const parameterIds = new Set(model.parameters.map((parameter) => parameter.id));
@@ -999,9 +1012,26 @@ export function applyModelProviderImplementation(
     Object.entries(model.defaultParams).filter(([parameterId]) => !excludedParameterIds.has(parameterId)),
   );
   return ModelCardSchema.parse({
-    ...model,
+    ...canonicalCard,
     parameters,
     defaultParams: { ...defaultParams, ...(route.defaultParamOverrides ?? {}) },
+    input: route.referenceBinding
+      ? { ...model.input, referenceBinding: route.referenceBinding }
+      : model.input,
+  });
+}
+
+/** Apply provider-specific candidates/defaults without shrinking the canonical product Card. */
+function applyModelProviderPresentation(
+  model: ModelCard,
+  route: ModelUpstreamRoute | null | undefined,
+): ModelCard {
+  if (!route) return model;
+  const overrides = new Map((route.parameterOverrides ?? []).map((parameter) => [parameter.id, parameter]));
+  return ModelCardSchema.parse({
+    ...model,
+    parameters: model.parameters.map((parameter) => overrides.get(parameter.id) ?? parameter),
+    defaultParams: { ...model.defaultParams, ...(route.defaultParamOverrides ?? {}) },
     input: route.referenceBinding
       ? { ...model.input, referenceBinding: route.referenceBinding }
       : model.input,
@@ -1052,17 +1082,24 @@ export function listModelCatalogEntries(options: {
     const missingOAuth = [
       ...new Set(configuredCandidates.flatMap((route) => missingRequiredOAuth(route, configForRoute(query, route)))),
     ];
+    const unavailableParameterIds = configuredCandidates.length === 0
+      ? []
+      : model.parameters
+          .filter((parameter) => configuredCandidates.every((route) =>
+            route.excludedParameterIds?.includes(parameter.id) === true))
+          .map((parameter) => parameter.id);
     const tier: ModelCatalogTier = selectedRoute
       ? "available"
       : configuredCandidates.length > 0
         ? "configured-provider"
         : "all";
     return {
-      model: applyModelProviderImplementation(model, selectedRoute),
+      model: applyModelProviderPresentation(model, selectedRoute),
       tier,
       routes,
       selectedRoute,
       candidateProviders: uniqueProviderIds(configuredCandidates.length ? configuredCandidates : allRoutes),
+      unavailableParameterIds,
       missingCredentials,
       missingOAuth,
     };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MODEL_CARDS } from "./models";
+import { MODEL_CARDS } from "./models.js";
 
 describe("Veo 3.1 model cards", () => {
   it("only offers Agent Platform-supported output durations", () => {

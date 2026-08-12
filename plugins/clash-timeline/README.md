@@ -15,9 +15,9 @@ projection apply behavior.
 ## Build and verify
 
 ```bash
-pnpm --filter @clash-space/timeline-plugin test
-pnpm --filter @clash-space/timeline-plugin typecheck
-pnpm --filter @clash-space/timeline-plugin build
+pnpm test:package @clash/timeline-plugin
+pnpm typecheck:package @clash/timeline-plugin
+pnpm build:package @clash/timeline-plugin
 ```
 
 The build produces `runtime/index.js` and `runtime/app-client.js`, which are the

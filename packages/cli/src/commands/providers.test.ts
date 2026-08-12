@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const source = readFileSync(join(__dirname, "providers.ts"), "utf8");
-const entrypoint = readFileSync(join(__dirname, "..", "index.ts"), "utf8");
+const entrypoint = readFileSync(join(__dirname, "..", "program.ts"), "utf8");
 
 /**
  * Connecting an account is something a person does, so it belongs on the CLI.
@@ -72,7 +72,11 @@ describe("provider account commands", () => {
  */
 describe("credentials the form knows, the CLI can set", () => {
   it("takes any credential as a key=value pair", () => {
-    expect(source).toMatch(/--credential <[a-z=]+>/);
+    // `--set key=value`. It was `--credential`, and before that `--api-key` / `--service` /
+    // `--region` -- three flags naming three things one vendor happens to want, each validated
+    // against a table here. Which keys exist and which are required come from the Provider's own
+    // declaration now, the same one the settings screen renders.
+    expect(source).toMatch(/--set <key=value>/);
   });
 
   it("collects more than one", () => {

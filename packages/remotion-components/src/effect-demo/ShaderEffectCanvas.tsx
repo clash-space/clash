@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef } from 'react';
-import { compileEffect } from '@master-clash/remotion-effects';
-import { getBuiltInShaderSource, resolveBuiltInShaderEffect } from '@master-clash/remotion-effects/shader-effects';
-import { WebGlEffectRuntime } from '@master-clash/remotion-effects/webgl';
+import { compileEffect } from '@clash/remotion-effects';
+import { getBuiltInShaderSource, resolveBuiltInShaderEffect } from '@clash/remotion-effects/shader-effects';
+import { WebGlEffectRuntime } from '@clash/remotion-effects/webgl';
 
 export type ShaderEffectCanvasProps = {
   effectId: string;

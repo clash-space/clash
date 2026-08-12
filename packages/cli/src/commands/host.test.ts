@@ -73,7 +73,7 @@ it("host status does not advertise an unimplemented start command", async () => 
   });
 
   expect(lines.join("\n")).toContain(
-    "No local daemon is active; the next local Clash command starts one automatically.",
+    "No local-api host is active; open Clash Desktop or start local-api first.",
   );
   expect(lines.join("\n")).not.toContain("clash host start");
 });

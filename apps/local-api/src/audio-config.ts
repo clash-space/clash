@@ -12,7 +12,7 @@ import {
   type LocalSpeechCapability,
   type LocalTtsRuntime as LocalTtsRuntimePort,
   type LocalTtsSynthesis,
-} from "@clash-space/sdk";
+} from "@clash/sdk";
 import { createSqliteLocalConfigStore, type SqliteLocalConfigStore } from "./local-config-store.js";
 import {
   createClashUserConfigStore,

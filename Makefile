@@ -1,4 +1,4 @@
-.PHONY: install dev dev-web dev-api-cf dev-full build test lint clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render deploy deploy-api deploy-web deploy-loro-sync deploy-all predeploy-check wrangler-whoami deploy-staging deploy-api-staging deploy-web-staging
+.PHONY: install dev dev-web dev-api-cf dev-full build test lint typecheck clean format setup db-web-local check-tools help bundle remotion-bundle remotion-render deploy deploy-api deploy-web deploy-loro-sync deploy-all predeploy-check wrangler-whoami deploy-staging deploy-api-staging deploy-web-staging
 
 # Use interactive shell to load .zshrc environment
 
@@ -33,7 +33,7 @@ NC := \033[0m # No Color
 #==============================================================================
 
 help: ## Show this help message
-	@echo "$(BLUE)Master Clash - Development Commands$(NC)"
+	@echo "$(BLUE)Clash - Development Commands$(NC)"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
@@ -48,8 +48,13 @@ help: ## Show this help message
 
 check-tools: ## Verify required tools are installed
 	@echo "$(BLUE)Checking required tools...$(NC)"
+	@command -v node >/dev/null 2>&1 || { echo "$(RED)Error: Node.js not found.$(NC)"; exit 1; }
+	@[ "$$(node -p 'process.versions.node.split(".")[0]')" = "24" ] || { \
+		echo "$(RED)Error: Clash requires Node.js 24.x (found $$(node --version)).$(NC)"; \
+		echo "$(YELLOW)Run 'nvm use' from the repository root.$(NC)"; \
+		exit 1; \
+	}
 	@command -v pnpm >/dev/null 2>&1 || { echo "$(RED)Error: pnpm not found.$(NC)"; echo "$(YELLOW)Install: brew install pnpm$(NC)"; exit 1; }
-	@command -v turbo >/dev/null 2>&1 || { echo "$(YELLOW)Warning: turbo not found. Run 'pnpm install' first$(NC)"; }
 	@echo "$(GREEN)✓ All required tools are installed$(NC)"
 
 #==============================================================================
@@ -77,9 +82,8 @@ db-local: db-web-local ## Setup all local D1 databases
 
 dev-web: ## Start web app (Vite + RR7 + Cloudflare Vite plugin) on :3000
 	@echo "$(BLUE)Starting web on http://localhost:$(WEB_PORT)...$(NC)"
-	@cd apps/web && \
-		HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) \
-		pnpm dev
+	@HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) \
+		pnpm dev:package @clash/web
 
 dev-api-cf: ## (Deprecated) api-cf is started by vite as an auxiliary worker
 	@echo "$(YELLOW)api-cf is spawned by apps/web's vite config (auxiliaryWorkers).$(NC)"
@@ -88,11 +92,13 @@ dev-api-cf: ## (Deprecated) api-cf is started by vite as an auxiliary worker
 
 dev-api-cf-standalone: ## Rare: run api-cf on its own for tests/debugging
 	@echo "$(BLUE)Starting api-cf on http://localhost:$(API_CF_PORT)...$(NC)"
-	@cd apps/api-cf && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) pnpm dev
+	@HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) \
+		pnpm dev:package @clash/api-cf
 
 dev-render: ## Start render server (runs outside wrangler — ffmpeg/remotion)
 	@echo "$(BLUE)Starting render server on http://localhost:$(RENDER_PORT)...$(NC)"
-	@cd apps/render-server && HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) PORT=$(RENDER_PORT) pnpm dev
+	@HTTP_PROXY=$(HTTP_PROXY) HTTPS_PROXY=$(HTTPS_PROXY) NO_PROXY=$(NO_PROXY) PORT=$(RENDER_PORT) \
+		pnpm dev:package @clash/render-server
 
 #==============================================================================
 # Combined Development
@@ -126,15 +132,15 @@ dev-full: dev ## Alias for dev
 
 build: check-tools ## Build all packages
 	@echo "$(BLUE)Building TypeScript packages...$(NC)"
-	@pnpm turbo run build
+	@pnpm build
 
 test: check-tools ## Run all tests
 	@echo "$(BLUE)Running TypeScript tests...$(NC)"
-	@pnpm turbo run test
+	@pnpm test
 
 test-web: ## Run frontend tests only
 	@echo "$(BLUE)Running frontend tests...$(NC)"
-	@cd apps/web && pnpm test
+	@pnpm test:package @clash/web
 
 #==============================================================================
 # Remotion Bundle & Render
@@ -161,11 +167,15 @@ bundle: remotion-bundle ## Alias for remotion-bundle
 
 lint: check-tools ## Lint all code
 	@echo "$(BLUE)Linting TypeScript...$(NC)"
-	@pnpm turbo run lint
+	@pnpm lint
+
+typecheck: check-tools ## Type-check all packages
+	@echo "$(BLUE)Type-checking TypeScript...$(NC)"
+	@pnpm typecheck
 
 lint-web: ## Lint frontend only
 	@echo "$(BLUE)Linting frontend...$(NC)"
-	@cd apps/web && pnpm lint
+	@pnpm lint:package @clash/web
 
 format: check-tools ## Format all code
 	@echo "$(BLUE)Formatting TypeScript...$(NC)"
@@ -223,7 +233,8 @@ deploy-api: predeploy-check ## Deploy api-cf (Workers + RenderContainer image)
 
 deploy-web: predeploy-check ## Build + deploy web (Pages/Worker)
 	@echo "$(BLUE)Deploying clash-web → Cloudflare...$(NC)"
-	@cd apps/web && pnpm run deploy
+	@pnpm build:package @clash/web
+	@pnpm --filter @clash/web run deploy
 	@echo "$(GREEN)✓ web deployed$(NC)"
 
 deploy-loro-sync: predeploy-check ## Deploy legacy loro-sync-server (rare)
@@ -259,7 +270,8 @@ deploy-api-staging: predeploy-check ## Deploy clash-api-staging (uses prod data)
 
 deploy-web-staging: predeploy-check ## Build + deploy clash-web-staging (uses prod data)
 	@echo "$(BLUE)Deploying clash-web-staging → Cloudflare...$(NC)"
-	@cd apps/web && pnpm build && pnpm exec wrangler deploy --env staging
+	@pnpm build:package @clash/web
+	@pnpm --filter @clash/web exec wrangler deploy --env staging
 	@echo "$(GREEN)✓ web staging deployed$(NC)"
 
 deploy-staging: predeploy-check ## Deploy api-cf + web staging (in order)
@@ -300,7 +312,7 @@ update-deps: ## Update all dependencies
 	@pnpm update --latest
 
 info: ## Show project information
-	@echo "$(BLUE)Master Clash - Project Information$(NC)"
+	@echo "$(BLUE)Clash - Project Information$(NC)"
 	@echo ""
 	@echo "Project Root: $(shell pwd)"
 	@echo "Git Branch: $$(git branch --show-current 2>/dev/null || echo 'Not a git repo')"

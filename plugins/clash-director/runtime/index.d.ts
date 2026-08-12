@@ -1,5 +1,6 @@
-export { D as DIRECTOR_PLUGIN_TOOL_NAMES, a as DirectorAdapter, b as DirectorCommandRunner, c as DirectorEntity, d as DirectorPluginToolName, e as DirectorProjectionWriter, f as DirectorToolInput, g as buildDirectorCliArgs, h as createClashDirectorRunner, i as createDirectorAdapter, j as directorWorkspaceCwd } from './adapter-sbJuaJaM.js';
+export { D as DIRECTOR_PLUGIN_TOOL_NAMES, a as DirectorAdapter, b as DirectorEntity, c as DirectorPluginToolName, d as DirectorProjectionWriter, e as DirectorToolInput, f as buildDirectorCliArgs, g as createDirectorAdapter, h as directorWorkspaceCwd } from './adapter-BJBHIdFm.js';
 export { DirectorToolErrorPayload, createDirectorPluginServer, directorToolErrorPayload, registerDirectorPluginMcp, serveDirectorPluginStdio } from './server.js';
+import '@clash/shared-runtime/project-host-client';
 import '@modelcontextprotocol/sdk/server/mcp.js';
 import '@clash/shared-mcp';
 

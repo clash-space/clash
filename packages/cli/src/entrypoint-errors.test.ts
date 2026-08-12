@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const entrypoint = readFileSync(join(__dirname, "index.ts"), "utf8");
+const entrypoint = readFileSync(join(__dirname, "program.ts"), "utf8");
 
 /**
  * A failure the CLI can explain should not arrive as a Node stack.

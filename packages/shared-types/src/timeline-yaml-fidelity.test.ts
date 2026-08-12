@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { timelineDslFromYaml, timelineDslToYaml } from "./index";
+import { timelineDslFromYaml, timelineDslToYaml } from "./index.js";
 
 describe("Timeline YAML full-state fidelity", () => {
   it("round-trips persisted root and track fields without silently dropping state", () => {

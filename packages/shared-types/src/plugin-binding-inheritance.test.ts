@@ -4,7 +4,7 @@ import {
   ExecutablePluginProviderDefinitionSchema,
   resolveModelBindingFromProvider,
   validateExecutablePluginPackage,
-} from './executable-plugin';
+} from './executable-plugin.js';
 
 /**
  * A binding says which catalogue model reaches a provider, and under what upstream
@@ -23,15 +23,17 @@ const provider = ExecutablePluginProviderDefinitionSchema.parse({
   upstreamId: 'hilo-hub',
   apiShape: 'hilo-hub',
   executorExportId: 'hilo-hub-execute',
-  auth: [
-    {
-      type: 'oauth',
-      id: 'hilo-hub',
-      flow: 'browser',
-      authorizationUrl: 'https://hub.minimax.io/login',
-      callback: { type: 'custom-scheme', scheme: 'minimax-hub' },
-    },
-  ],
+  auth: {
+    methods: [{
+      id: 'sign-in',
+      label: 'Sign in to MiniMax Hub',
+      form: [{ kind: 'button', key: 'accessToken', label: 'Sign in' }],
+      flow: {
+        open: 'https://hub.minimax.io/login',
+        callback: { type: 'scheme', scheme: 'minimax-hub' },
+      },
+    }],
+  },
   bindingDefaults: { priority: 5 },
 });
 
@@ -49,44 +51,56 @@ describe('binding inheritance', () => {
       upstreamId: 'hilo-hub',
       apiShape: 'hilo-hub',
       executorExportId: 'hilo-hub-execute',
-      requiredOAuth: ['hilo-hub'],
       priority: 5,
     });
   });
 
-  it('derives requiredOAuth from the provider auth it declares', () => {
-    // The provider already states how it authenticates; repeating that per binding
-    // is how the two drift apart.
+  it('no longer derives requiredOAuth, because the provider no longer names acquisitions', () => {
+    // Reversed, in two halves that used to be two tests.
+    //
+    // `requiredOAuth` was read off the provider's auth array: every `oauth`, `derived-token` and
+    // `local-token-import` entry carried an `id` naming one acquisition a route had to wait for,
+    // de-duplicated because a login page and an import of another app's token were two ways to the
+    // same credential. An `api-key` entry carried no id, so a key-only provider inherited nothing.
+    //
+    // The declarative model has no acquisition ids. A provider declares form keys, an optional
+    // browser flow and an optional renewal schedule -- a key is a key whether it is typed or
+    // captured, and nothing there is a name a route can wait for. So nothing is inherited, and a
+    // binding that needs a route to wait states it, which is what every binding in-tree already did.
+    const resolved = resolveModelBindingFromProvider(
+      { modelId: 'gpt-image-2', upstreamModel: 'gpt-image-2' },
+      provider,
+    );
+    expect(resolved.requiredOAuth).toBeUndefined();
+
     const apiKeyProvider = ExecutablePluginProviderDefinitionSchema.parse({
       id: 'acme',
       name: 'Acme',
       upstreamId: 'acme',
       apiShape: 'acme',
       executorExportId: 'acme-execute',
-      auth: [{ type: 'api-key' }],
+      auth: {
+        methods: [{
+          id: 'api-key',
+          label: 'API key',
+          form: [{ kind: 'field', key: 'apiKey', label: 'API key', secret: true }],
+        }],
+      },
     });
-    const resolved = resolveModelBindingFromProvider({ modelId: 'm', upstreamModel: 'M' }, apiKeyProvider);
-    expect(resolved.requiredOAuth).toBeUndefined();
+    expect(
+      resolveModelBindingFromProvider({ modelId: 'm', upstreamModel: 'M' }, apiKeyProvider)
+        .requiredOAuth,
+    ).toBeUndefined();
   });
 
-
-  it('names each credential once when several acquisitions share it', () => {
-    // A login page and an import of another app's stored token are two ways to obtain the
-    // same credential, so they carry the same id. Listing both produced
-    // `["hilo-hub", "hilo-hub"]`, which is not what any hand-written binding said.
-    const resolved = resolveModelBindingFromProvider({ modelId: 'm', upstreamModel: 'M' }, {
-      id: 'hub', name: 'Hub', upstreamId: 'hub', apiShape: 'hub', executorExportId: 'hub-execute',
-      auth: [
-        { type: 'oauth', id: 'hub', flow: 'browser', authorizationUrl: 'https://hub.example/login',
-          callback: { type: 'custom-scheme', scheme: 'hub' }, accessTokenField: 'accessToken' },
-        { type: 'local-token-import', id: 'hub', source: {
-          format: 'electron-store-aes-256-gcm-v2', appDataSubdirectory: 'a',
-          configFile: 'c.json', keyFile: 'k', tokenPath: ['t'] } },
-        // An api-key is the credential itself, not a named acquisition to wait for.
-        { type: 'api-key', credentialId: 'apiKey' },
-      ],
-    } as never);
-    expect(resolved.requiredOAuth).toEqual(['hub']);
+  it('still carries a requiredOAuth the binding states itself', () => {
+    // The half that survives. Routing reads `requiredOAuth` against the account's `availableOAuth`
+    // to decide whether a route can run, and that is unchanged -- only the inheritance is gone.
+    const resolved = resolveModelBindingFromProvider(
+      { modelId: 'gpt-image-2', upstreamModel: 'gpt-image-2', requiredOAuth: ['hilo-hub'] },
+      provider,
+    );
+    expect(resolved.requiredOAuth).toEqual(['hilo-hub']);
   });
 
   it('is equivalent to writing every field out by hand', () => {
@@ -103,7 +117,6 @@ describe('binding inheritance', () => {
         upstreamId: 'hilo-hub',
         apiShape: 'hilo-hub',
         executorExportId: 'hilo-hub-execute',
-        requiredOAuth: ['hilo-hub'],
         priority: 5,
       },
       provider,
@@ -181,7 +194,7 @@ describe('package validation applies inheritance', () => {
    */
   const manifest = {
     apiVersion: 'clash.plugin/v1' as const,
-    id: 'slim-hub',
+    id: 'acme.slim-hub',
     version: '1.0.0',
     name: 'Slim Hub',
     runtime: {
@@ -190,9 +203,9 @@ describe('package validation applies inheritance', () => {
       language: 'node' as const,
       entrypoint: 'handler.mjs',
     },
-    exports: {
+    contributes: {
       providers: [{ id: 'slim-hub', kind: 'provider' as const, path: 'providers/slim-hub.json' }],
-      functions: [{ id: 'slim-hub-execute', kind: 'provider-executor' as const, handler: 'run' }],
+      functions: [{ id: 'slim-hub-execute', kind: 'provider-executor' as const }],
       modelBindings: [{ id: 'slim-hub-flux-2-pro', kind: 'model-provider-binding' as const, path: 'bindings/flux-2-pro.json' }],
     },
   };
@@ -206,9 +219,17 @@ describe('package validation applies inheritance', () => {
       upstreamId: 'slim-hub',
       apiShape: 'slim-hub',
       executorExportId: 'slim-hub-execute',
-      auth: [{ type: 'oauth' as const, id: 'slim-hub', flow: 'browser' as const,
-        authorizationUrl: 'https://hub.example/login',
-        callback: { type: 'custom-scheme' as const, scheme: 'slim-hub' } }],
+      auth: {
+        methods: [{
+          id: 'sign-in',
+          label: 'Sign in to Slim Hub',
+          form: [{ kind: 'button' as const, key: 'accessToken', label: 'Sign in' }],
+          flow: {
+            open: 'https://hub.example/login',
+            callback: { type: 'scheme' as const, scheme: 'slim-hub' },
+          },
+        }],
+      },
       bindingDefaults: { priority: 5 },
     },
   };
@@ -230,7 +251,9 @@ describe('package validation applies inheritance', () => {
     expect(spec.upstreamId).toBe('slim-hub');
     expect(spec.apiShape).toBe('slim-hub');
     expect(spec.executorExportId).toBe('slim-hub-execute');
-    expect(spec.requiredOAuth).toEqual(['slim-hub']);
+    // Nothing to inherit: the provider declares a form and a flow, neither of which names an
+    // acquisition. A binding that needs a route to wait writes `requiredOAuth` itself.
+    expect(spec.requiredOAuth).toBeUndefined();
     expect(spec.priority).toBe(5);
     // The two facts the binding carries are untouched.
     expect(spec.modelId).toBe('flux-2-pro');

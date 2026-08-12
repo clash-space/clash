@@ -114,15 +114,37 @@ Inline in the card (first-party) or contributed by a plugin binding
 | `defaultParamOverrides` | The card default is invalid or suboptimal **on this provider** | MiniMax-H3 text-to-video rejects `ratio: adaptive`; the in-repo fal implementation overrides the default to `16:9`, and gateway bindings do the same |
 | `excludedParameterIds` | The provider **cannot serve** a parameter at all | A gateway that ignores `voice_id` excludes it so the UI never renders a dead control |
 
-¹ The fal example ships in this repo
-(`plugins/first-party-media/cards/minimax-h3.json`). The Kling and gateway
-binding examples come from a third-party gateway plugin distributed outside
-this repository; they were verified against the live upstream but you will
-not find those binding files in-tree.
+¹ All examples are in-tree. The MiniMax H3 base card and fal implementation live in
+`packages/shared-types/src/models.ts`; the fal binding overrides `aspect_ratio` to `16:9`.
+The Hilo gateway repeats that override in
+`plugins/hrhrng-hub/bindings/minimax-h3.json`. Its Kling value-domain example is in
+`plugins/hrhrng-hub/bindings/kling-image-o1.json`, and its excluded-parameter examples include
+`plugins/hrhrng-hub/bindings/kling-video-o1.json` and
+`plugins/hrhrng-hub/bindings/seed-audio-1.json`.
 
-Parameters absent from `parameterOverrides` are reused from the base card.
-Excluded parameters are removed from the effective card instead of being
-rendered and silently discarded.
+Parameters absent from `parameterOverrides` are reused from the base card. The
+canonical card remains the full product capability union: a provider-only
+control still belongs on the card, while providers that cannot honor it name it
+in `excludedParameterIds`.
+
+The catalog keeps that full parameter surface. It reports
+`unavailableParameterIds` only when every enabled provider account configured
+for the model excludes the control, so the UI can disable the control instead
+of hiding product capability. For an invocation, every materially supplied
+parameter filters the route candidates; a route that excludes any requested
+parameter cannot be selected. Empty text is not material, while `false` is an
+explicit boolean choice.
+
+After route selection, the runtime derives an effective card for validation by
+removing that route's excluded parameters and applying its overrides. This is
+the only reduced card: catalog and authoring surfaces continue to use the full
+canonical card.
+
+`ModelCardSchema` validates the relationship formally. Override, default, and
+exclusion ids must reference canonical parameters; ids must be unique; one
+provider cannot both override and exclude the same parameter; excluded
+parameters cannot receive provider defaults; and provider defaults must satisfy
+the effective parameter's type, candidates, and numeric range.
 
 ### Don't fix vocabulary in executor code
 

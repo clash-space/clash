@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TextRevisionContentDescriptorSchema } from "./index";
+import { TextRevisionContentDescriptorSchema } from "./index.js";
 
 describe("revision content descriptors", () => {
   it("marks text revision content as host-indexed revision storage, not media assets", () => {

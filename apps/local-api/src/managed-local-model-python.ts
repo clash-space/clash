@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
-import type { LocalAsrRuntime, LocalModelStatus, LocalTtsRuntime } from "@clash-space/sdk";
+import type { LocalAsrRuntime, LocalModelStatus, LocalTtsRuntime } from "@clash/sdk";
 
 const execFileAsync = promisify(execFile);
 const MANAGED_RUNTIME_SCHEMA_VERSION = 1;

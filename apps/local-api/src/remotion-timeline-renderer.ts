@@ -65,7 +65,6 @@ export function createRemotionTimelineRenderer(
 ): LocalTimelineRenderer {
   let queue: Promise<void> = Promise.resolve();
   let rendererPromise: Promise<RemotionRendererApi> | undefined;
-  let serveUrlPromise: Promise<string> | undefined;
 
   const render: LocalTimelineRenderer["render"] = (request) => {
     const current = queue.then(async () => {
@@ -75,7 +74,10 @@ export function createRemotionTimelineRenderer(
       const outputPath = join(outputDir, `${safeTaskSegment(request.taskId)}.mp4`);
       try {
         const [serveUrl, renderer] = await Promise.all([
-          serveUrlPromise ??= options.resolveServeUrl(),
+          // Development resolvers fingerprint workspace source here. Do not
+          // cache this promise for the daemon lifetime or browser-only package
+          // edits would keep rendering the old bundle until a manual restart.
+          options.resolveServeUrl(),
           rendererPromise ??= options.loadRenderer(),
         ]);
         const composition = await renderer.selectComposition({

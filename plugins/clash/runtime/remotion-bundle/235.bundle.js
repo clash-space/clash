@@ -1,5 +1,5 @@
 "use strict";
-(self["webpackChunk_master_clash_remotion_components"] = self["webpackChunk_master_clash_remotion_components"] || []).push([[235],{
+(self["webpackChunk_clash_remotion_components"] = self["webpackChunk_clash_remotion_components"] || []).push([[235],{
 
 /***/ 3352
 (__unused_webpack___webpack_module__, __unused_webpack___webpack_exports__, __webpack_require__) {

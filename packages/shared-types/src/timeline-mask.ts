@@ -3,7 +3,7 @@ import {
   DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
   TIMELINE_KEYFRAME_INTERPOLATIONS,
   TIMELINE_KEYFRAME_SAMPLING_POLICY,
-} from "./timeline-keyframe-annotations";
+} from "./timeline-keyframe-annotations.js";
 
 export const TIMELINE_MASK_SHAPE_ANNOTATIONS = {
   rectangle: {

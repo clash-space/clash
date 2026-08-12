@@ -7,7 +7,7 @@ describe("Timeline YAML registry synchronization", () => {
 
   it("round-trips future root and track fields added only to the annotation registry", async () => {
     vi.resetModules();
-    const annotationsModule = await import("./timeline-field-annotations");
+    const annotationsModule = await import("./timeline-field-annotations.js");
     const annotations = annotationsModule.TIMELINE_DSL_FIELD_ANNOTATIONS as unknown as {
       root: Record<string, unknown>;
       track: Record<string, unknown>;
@@ -23,7 +23,7 @@ describe("Timeline YAML registry synchronization", () => {
     };
 
     try {
-      const { timelineDslFromYaml, timelineDslToYaml } = await import("./timeline-yaml");
+      const { timelineDslFromYaml, timelineDslToYaml } = await import("./timeline-yaml.js");
       const yaml = timelineDslToYaml({
         futureRootMemo: "memo-v1",
         tracks: [{
@@ -51,7 +51,7 @@ describe("Timeline YAML registry synchronization", () => {
   });
 
   it("runs the canonical annotated contract before returning a resolved document", async () => {
-    const { timelineDslFromYaml } = await import("./timeline-yaml");
+    const { timelineDslFromYaml } = await import("./timeline-yaml.js");
     const parsed = timelineDslFromYaml(`
 tracks:
   - id: audio

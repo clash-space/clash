@@ -7,7 +7,7 @@ export default defineConfig({
     server: "src/server.ts",
   },
   format: ["esm"],
-  target: "es2022",
+  target: "node24",
   platform: "node",
   outDir: "runtime",
   clean: true,

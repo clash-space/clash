@@ -14,7 +14,7 @@ import {
   type EditorAssetTranscript,
   type NleAvailability,
   type NleTarget,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import { CanvasPreview } from './CanvasPreview';
 import type { TimelineRuntimeNode } from './CanvasPreview';
 import { Timeline } from './Timeline';

@@ -1,6 +1,10 @@
 {
-  "name": "@master-clash/remotion-components",
+  "name": "@clash/remotion-components",
   "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "description": "Remotion rendering components for Remotion Fast video editor",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
@@ -15,7 +19,6 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "type-check": "pnpm typecheck",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "test": "vitest run --passWithNoTests",
@@ -36,8 +39,8 @@
   },
   "dependencies": {
     "@clash/shared-types": "workspace:*",
-    "@master-clash/remotion-core": "workspace:*",
-    "@master-clash/remotion-effects": "workspace:*",
+    "@clash/remotion-core": "workspace:*",
+    "@clash/remotion-effects": "workspace:*",
     "typescript": "^5.9.3"
   },
   "devDependencies": {

@@ -10,7 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { flushSync } from "react-dom";
-import type { EditorAssetInput } from "@master-clash/remotion-core";
+import type { EditorAssetInput } from "@clash/remotion-core";
 import {
   ReactFlow,
   Background,

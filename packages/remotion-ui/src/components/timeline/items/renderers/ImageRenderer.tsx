@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { ImageItem } from '@master-clash/remotion-core';
+import type { ImageItem } from '@clash/remotion-core';
 import type { ItemRenderProps } from '../registry';
 import { colors } from '../../styles';
 

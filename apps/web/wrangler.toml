@@ -67,7 +67,7 @@ ip = "0.0.0.0"
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║  [env.staging] — DO NOT COMMIT real resource IDs upstream.       ║
 # ║  This section binds the staging worker to PRODUCTION data        ║
-# ║  (master-clash-frontend D1 + master-clash-assets R2). The OSS    ║
+# ║  (clash-d1 D1 + clash-r2 R2). The OSS template keeps             ║
 # ║  template should keep placeholder IDs only.                      ║
 # ╚══════════════════════════════════════════════════════════════════╝
 #
@@ -95,7 +95,7 @@ run_worker_first = [
 
 [[env.staging.d1_databases]]
 binding = "DB"
-database_name = "master-clash-frontend"
+database_name = "clash-d1"
 database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
 migrations_dir = "drizzle"
 
@@ -105,7 +105,7 @@ service = "clash-api-staging"
 
 [[env.staging.r2_buckets]]
 binding = "R2_BUCKET"
-bucket_name = "master-clash-assets"
+bucket_name = "clash-r2"
 
 [env.staging.vars]
 BETTER_AUTH_BASE_PATH = "/api/better-auth"

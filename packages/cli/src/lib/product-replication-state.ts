@@ -1,3 +1,4 @@
+import { nodeRequire } from "./node-require.js";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -44,7 +45,7 @@ export function readProductReplicationState(
 
   let db: SqliteDatabase | undefined;
   try {
-    const { DatabaseSync } = require("node:sqlite") as SqliteModule;
+    const { DatabaseSync } = nodeRequire()("node:sqlite") as SqliteModule;
     db = new DatabaseSync(sqlitePath, { readOnly: true });
     const row = db.prepare(
       "SELECT value_json FROM local_config WHERE key = ?",

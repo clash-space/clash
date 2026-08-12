@@ -1,6 +1,6 @@
+import { nodeRequire } from "./node-require.js";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { createRequire } from "node:module";
 
 import { z } from "zod";
 import {
@@ -31,24 +31,16 @@ const DeclarationSchema = z.object({
 
 type CompiledValidator = (value: unknown) => Array<{ path: Array<string | number>; message: string }>;
 
-function nodeRequire(): NodeRequire {
-  // tsx runs this as ESM (import.meta.url is a file URL); the tsup CJS bundle
-  // leaves import.meta.url undefined but provides a real `require`.
-  const url = typeof import.meta !== "undefined" ? import.meta.url : undefined;
-  if (typeof url === "string" && url) return createRequire(url);
-  return eval("require") as NodeRequire;
-}
-
 function compileJsonSchema(kind: string, schema: Record<string, unknown>): CompiledValidator {
   // The registry's probe decides "does this schema pin kind and schemaVersion"
   // from issue paths, so ajv errors must be mapped onto real paths -- including
   // `required`, whose ajv error points at the parent, not the missing field.
-  const require = nodeRequire();
+  const requireFrom = nodeRequire();
   let AjvConstructor: new (options: Record<string, unknown>) => {
     compile(schema: unknown): ((value: unknown) => boolean) & { errors?: unknown[] | null };
   };
   try {
-    const imported = require("ajv") as { default?: unknown };
+    const imported = requireFrom("ajv") as { default?: unknown };
     AjvConstructor = (imported.default ?? imported) as typeof AjvConstructor;
   } catch {
     throw new Error(

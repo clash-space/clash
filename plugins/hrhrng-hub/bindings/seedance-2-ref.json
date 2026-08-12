@@ -1,0 +1,12 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-seedance-2-ref",
+    "modelId": "seedance-2-ref",
+    "upstreamModel": "seedance2.0",
+    "referenceBinding": {
+      "type": "grouped-references"
+    }
+  }
+}

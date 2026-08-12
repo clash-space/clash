@@ -71,7 +71,11 @@ See [Overview](/plugins/overview).
 
 ## Credentials: how the plugin gets one
 
-The plugin never sees a token. It names what it needs; the broker injects.
+Routing selects an account before invocation. The Host binds `context.store`
+to that plugin and account, and the plugin reads the actual values it needs.
+Plugin code owns vendor-specific headers, JWT exchange, refresh, and regional
+endpoint selection; the Host does not proxy the request or interpret the
+credential.
 
 Declare at least one source that works unattended. A plugin whose only credential path
 requires a human at a browser cannot run on a schedule, cannot be resumed after a restart,
@@ -81,7 +85,7 @@ A browser redirect capture is not an OAuth grant. If that is what your provider 
 so — the host presents it differently, and mislabelling it produces a consent screen that
 never appears.
 
-See [Capability Broker & Security](/plugins/broker).
+See [Host-scoped SDK Context](/plugins/sdk-context).
 
 ## Language and build: declared, not scripted
 
@@ -93,9 +97,9 @@ See [Authoring Workflow](/plugins/authoring).
 
 ## Why these are closed sets
 
-Each of these fields tells the host how to do something on the plugin's behalf: when to ask
-again, whether an address can be handed to a third party, which credential to inject, how to
-build. The host owns those actions, so it owns the vocabulary.
+Each of these fields tells the host how to coordinate product-owned state: when to ask again,
+whether an address can be handed to a third party, which account-scoped store to bind, and how
+to build. The plugin still owns its ordinary process I/O and vendor protocol.
 
 The alternative has been tried in this codebase. A command surface that let each concept
 name its own verbs reached forty-four subcommands, every one a slightly different spelling

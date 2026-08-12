@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   ProviderUsageAuditEventSchema,
   type ProviderUsageAuditEvent,
@@ -33,16 +33,39 @@ const PROVIDER_OAUTH_MIGRATION_ID = "provider-oauth-sqlite-v1";
 const SECRET_PREFIX = "enc:v1:";
 const secretKeyCache = new Map<string, Promise<Buffer>>();
 
+// `createRequire` rather than a bare `require`: this package is ESM (`"type": "module"`), and a
+// bare `require` in a file that also uses `import` leaves the module kind ambiguous. Node and tsx
+// both refuse it -- `tsx` reports ERR_AMBIGUOUS_MODULE_SYNTAX and will not load the file at all,
+// which is why a throwaway script that imported this module could not be run.
+//
+// Still lazy, which is the point: `node:sqlite` is loaded on the first call below, not at import
+// time. It is an experimental built-in, so paying for it only when a database is actually opened
+// keeps the cost off every consumer that merely imports this module.
+const nodeRequire = createRequire(import.meta.url);
+
 function sqlitePath(dataDir: string): string {
   return join(dataDir, "local.sqlite");
 }
 
-function fallbackKeyPath(dataDir: string): string {
-  return join(dataDir, "provider-secret.key");
+/**
+ * Where the encryption key lives, which is not beside what it encrypts.
+ *
+ * It used to be `provider-secret.key` in the same directory as `local.sqlite`, both 0600. Anything
+ * that copied the data directory -- a backup, a support bundle, an rsync -- carried the ciphertext
+ * and its key together, which makes the encryption an encoding.
+ *
+ * A platform keystore is the real answer and is not this. Electron's `safeStorage` fits the app;
+ * the daemon needs a route that does not prompt on every unattended read, and `keytar` was archived
+ * in 2023. Until that is settled, separating the two at least makes copying the data directory
+ * insufficient.
+ */
+export function providerSecretKeyPath(dataDir: string): string {
+  const home = process.env.HOME || process.env.USERPROFILE || dataDir;
+  return join(home, ".clash", "keys", "provider-secret.key");
 }
 
 function openDatabase(path: string): SqliteDatabase {
-  const { DatabaseSync } = require("node:sqlite") as {
+  const { DatabaseSync } = nodeRequire("node:sqlite") as {
     DatabaseSync: new (path: string) => SqliteDatabase;
   };
   const db = new DatabaseSync(path);
@@ -475,21 +498,21 @@ function keyFromString(value: string): Buffer {
 }
 
 async function resolveKeyFromFile(dataDir: string): Promise<Buffer> {
-  const path = fallbackKeyPath(dataDir);
+  const path = providerSecretKeyPath(dataDir);
   try {
     const existing = (await readFile(path, "utf8")).trim();
     if (existing) return keyFromString(`base64:${existing}`);
   } catch {
     // Generate below.
   }
-  await mkdir(dataDir, { recursive: true });
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const generated = randomBytes(32).toString("base64");
   await writeFile(path, `${generated}\n`, { mode: 0o600 });
   await chmod(path, 0o600).catch(() => undefined);
   return keyFromString(`base64:${generated}`);
 }
 
-async function resolveProviderSecretKey(dataDir: string): Promise<Buffer> {
+export async function resolveProviderSecretKey(dataDir: string): Promise<Buffer> {
   const cached = secretKeyCache.get(dataDir);
   if (cached) return cached;
   const task = (async () => {

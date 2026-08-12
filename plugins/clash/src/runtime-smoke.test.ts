@@ -11,7 +11,10 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const execFileAsync = promisify(execFile);
 
-async function waitUntil(check: () => Promise<boolean>, timeoutMs = 5_000): Promise<void> {
+async function waitUntil(
+  check: () => Promise<boolean>,
+  timeoutMs = 5_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await check()) return;
@@ -32,14 +35,14 @@ function processExists(pid: number): boolean {
 async function isHealthy(endpoint: string): Promise<boolean> {
   try {
     const response = await fetch(new URL("/health", endpoint));
-    const body = await response.json() as { ok?: unknown; mode?: unknown };
+    const body = (await response.json()) as { ok?: unknown; mode?: unknown };
     return response.ok && body.ok === true && body.mode === "local";
   } catch {
     return false;
   }
 }
 
-test("bundled CLI and stdio MCP actively start and reuse one persistent Clash daemon", async () => {
+test("bundled CLI and peer plugin MCP share one persistent Clash daemon", async () => {
   const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const clashHome = await mkdtemp(join(tmpdir(), "clash-plugin-runtime-"));
   const workspace = await mkdtemp(join(tmpdir(), "clash-plugin-workspace-"));
@@ -55,11 +58,13 @@ test("bundled CLI and stdio MCP actively start and reuse one persistent Clash da
   try {
     const firstCli = await execFileAsync(
       process.execPath,
-      ["runtime/clash-cli.cjs", "projects", "list", "--json"],
+      ["runtime/dispatcher.js", "projects", "list", "--json"],
       { cwd: pluginRoot, env, timeout: 20_000 },
     );
     assert.doesNotThrow(() => JSON.parse(firstCli.stdout));
-    const firstRecord = JSON.parse(await readFile(join(clashHome, "run", "host.json"), "utf8"));
+    const firstRecord = JSON.parse(
+      await readFile(join(clashHome, "run", "host.json"), "utf8"),
+    );
     daemonPid = firstRecord.pid;
     assert.equal(firstRecord.launchMode, "user-service");
     assert.equal(firstRecord.startedBy, "cli");
@@ -70,7 +75,7 @@ test("bundled CLI and stdio MCP actively start and reuse one persistent Clash da
     const client = new Client({ name: "clash-runtime-test", version: "1.0.0" });
     const transport = new StdioClientTransport({
       command: "node",
-      args: ["runtime/index.js"],
+      args: ["runtime/dispatcher.js", "mcp"],
       cwd: pluginRoot,
       stderr: "pipe",
       env,
@@ -79,20 +84,35 @@ test("bundled CLI and stdio MCP actively start and reuse one persistent Clash da
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      assert.deepEqual(
-        tools.tools.map((tool) => tool.name).sort(),
-        ["clash", "clash_canvas", "clash_composition", "clash_workspace_init"],
-      );
+      assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
+        "clash",
+        "clash_canvas",
+        "clash_composition",
+        "clash_workspace_init",
+      ]);
       for (const name of [
         "clash_studio_open",
         "clash_canvas_open",
         "clash_canvas_snapshot",
         "clash_timeline_open",
         "clash_director_open",
-      ]) assert.equal(tools.tools.some((tool) => tool.name === name), false);
-      assert.equal(tools.tools.some((tool) => tool.name === "clash"), true);
-      assert.equal(tools.tools.some((tool) => tool.name === "clash_workspace_init"), true);
-      assert.equal(tools.tools.some((tool) => tool.name.startsWith("clash_cli_")), false);
+      ])
+        assert.equal(
+          tools.tools.some((tool) => tool.name === name),
+          false,
+        );
+      assert.equal(
+        tools.tools.some((tool) => tool.name === "clash"),
+        true,
+      );
+      assert.equal(
+        tools.tools.some((tool) => tool.name === "clash_workspace_init"),
+        true,
+      );
+      assert.equal(
+        tools.tools.some((tool) => tool.name.startsWith("clash_cli_")),
+        false,
+      );
       await assert.rejects(
         client.listResources(),
         (error: unknown) => (error as { code?: number }).code === -32601,
@@ -130,7 +150,9 @@ test("bundled CLI and stdio MCP actively start and reuse one persistent Clash da
         true,
         JSON.stringify(timelineContracts),
       );
-      const record = JSON.parse(await readFile(join(clashHome, "run", "host.json"), "utf8"));
+      const record = JSON.parse(
+        await readFile(join(clashHome, "run", "host.json"), "utf8"),
+      );
       assert.equal(record.hostId, firstRecord.hostId);
       assert.equal(record.pid, firstRecord.pid);
       assert.equal(record.launchMode, "user-service");
@@ -139,15 +161,23 @@ test("bundled CLI and stdio MCP actively start and reuse one persistent Clash da
       assert.match(record.agentCliPath, /agent-bin\/clash$/);
 
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
-      const stableRecord = JSON.parse(await readFile(join(clashHome, "run", "host.json"), "utf8"));
-      assert.equal(stableRecord.hostId, record.hostId, "plugin discovery must not be overwritten by a second bundled server");
+      const stableRecord = JSON.parse(
+        await readFile(join(clashHome, "run", "host.json"), "utf8"),
+      );
+      assert.equal(
+        stableRecord.hostId,
+        record.hostId,
+        "plugin discovery must not be overwritten by a second bundled server",
+      );
       assert.equal(stableRecord.launchMode, "user-service");
       assert.equal(stableRecord.startedBy, "cli");
     } finally {
       await client.close().catch(() => undefined);
     }
 
-    const afterMcp = JSON.parse(await readFile(join(clashHome, "run", "host.json"), "utf8"));
+    const afterMcp = JSON.parse(
+      await readFile(join(clashHome, "run", "host.json"), "utf8"),
+    );
     assert.equal(afterMcp.hostId, firstRecord.hostId);
     assert.equal(afterMcp.pid, firstRecord.pid);
     assert.equal(processExists(afterMcp.pid), true);
@@ -155,14 +185,17 @@ test("bundled CLI and stdio MCP actively start and reuse one persistent Clash da
 
     await execFileAsync(
       process.execPath,
-      ["runtime/clash-cli.cjs", "host", "status", "--json"],
+      ["runtime/dispatcher.js", "host", "status", "--json"],
       { cwd: pluginRoot, env, timeout: 20_000 },
     );
-    const afterSecondCli = JSON.parse(await readFile(join(clashHome, "run", "host.json"), "utf8"));
+    const afterSecondCli = JSON.parse(
+      await readFile(join(clashHome, "run", "host.json"), "utf8"),
+    );
     assert.equal(afterSecondCli.hostId, firstRecord.hostId);
     assert.equal(afterSecondCli.pid, firstRecord.pid);
   } finally {
-    if (daemonPid && processExists(daemonPid)) process.kill(daemonPid, "SIGTERM");
+    if (daemonPid && processExists(daemonPid))
+      process.kill(daemonPid, "SIGTERM");
     await waitUntil(async () => !daemonPid || !processExists(daemonPid));
     await Promise.all([
       rm(clashHome, { recursive: true, force: true }),

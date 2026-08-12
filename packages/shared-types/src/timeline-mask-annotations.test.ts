@@ -10,7 +10,7 @@ import {
   TIMELINE_MASK_SHAPES,
   TIMELINE_MASK_STATIC_CONTROL_BINDINGS,
   TIMELINE_MASK_VECTOR_ANIMATION_BINDINGS,
-} from "./index";
+} from "./index.js";
 
 describe("Timeline mask annotation graph", () => {
   it("routes every field to a generated static control or animated control", () => {

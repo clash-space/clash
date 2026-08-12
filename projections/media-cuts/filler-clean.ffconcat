@@ -1,7 +1,7 @@
 ffconcat version 1.0
-file '/Users/xiaoyang/Proj/clash-space/clash/artifacts/asr-demo/filler-source.mp4'
+file '../../artifacts/asr-demo/filler-source.mp4'
 inpoint 0.000000
 outpoint 0.866667
-file '/Users/xiaoyang/Proj/clash-space/clash/artifacts/asr-demo/filler-source.mp4'
+file '../../artifacts/asr-demo/filler-source.mp4'
 inpoint 1.200000
 outpoint 3.300000

@@ -1,8 +1,8 @@
 import { LoroMap, type LoroDoc } from "loro-crdt";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { agentReadToken } from "./agent-read-proof";
-import { Canvas } from "./canvas-ops";
+import { agentReadToken } from "./agent-read-proof.js";
+import { Canvas } from "./canvas-ops.js";
 export {
   DirectorReferencePacketSchema,
   DirectorReferenceShotSchema,
@@ -14,8 +14,8 @@ export {
   type DirectorReferenceShot,
   type DirectorReferenceStill,
   type DirectorReferenceVideo,
-} from "./director-reference";
-import { DEFAULT_CANVAS_ID, ensureProjectCanvas } from "./project-workspace";
+} from "./director-reference.js";
+import { DEFAULT_CANVAS_ID, ensureProjectCanvas } from "./project-workspace.js";
 
 export const DirectorStageVector3Schema = z.tuple([
   z.number().finite(),

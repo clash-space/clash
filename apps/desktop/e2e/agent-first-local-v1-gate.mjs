@@ -56,7 +56,7 @@ const suiteDefinitions = [
   },
   {
     id: "project-workspace-cli",
-    command: [pnpmBin, "--filter", "@master-clash/desktop", "test:e2e:project-workspace-cli"],
+    command: [pnpmBin, "--filter", "@clash/desktop", "test:e2e:project-workspace-cli"],
     schemaVersion: 1,
     minChecks: 21,
     requiredChecks: [
@@ -69,7 +69,7 @@ const suiteDefinitions = [
       "stale Timeline apply is rejected",
       "forged semantic observation cannot authorize a write",
       "cwd observation is owner-only",
-      "daemon restart recovers all Project Timelines from one snapshot",
+      "daemon restart recovers all Project Timelines from the local replica",
       "public CLI output hides internal observations",
       "canonical project metadata uses SQLite",
     ],

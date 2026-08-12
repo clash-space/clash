@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { desktopChromeMetrics } from '@clash/shared-runtime';
-import type { NleAvailability } from '@master-clash/remotion-core';
+import type { NleAvailability } from '@clash/remotion-core';
 import {
   ArrowLeft,
   ArrowRight,

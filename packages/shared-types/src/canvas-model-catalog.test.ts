@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { LoroDoc } from 'loro-crdt';
 
-import { Canvas } from './canvas-ops';
-import { MODEL_CARDS } from './models';
+import { Canvas } from './canvas-ops.js';
+import { MODEL_CARDS } from './models.js';
 
 /**
  * The effective model catalogue is composed at runtime, so `Canvas` must be told what it

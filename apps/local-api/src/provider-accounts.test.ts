@@ -140,7 +140,7 @@ describe("provider accounts", () => {
     await expect(store.saveProviderOAuth([
       {
         userId: "user-1",
-        providerId: "dreamina",
+        providerId: "example-oauth",
         accountId: "mock-primary",
         status: "authorized",
         accessToken: "access-token",
@@ -148,7 +148,7 @@ describe("provider accounts", () => {
       },
       {
         userId: "user-1",
-        providerId: "dreamina",
+        providerId: "example-oauth",
         accountId: "mock-secondary",
         status: "pending",
         userCode: "user-code",
@@ -170,7 +170,7 @@ describe("provider accounts", () => {
     await expect(store.loadProviderOAuth()).resolves.toMatchObject([
       {
         userId: "user-1",
-        providerId: "dreamina",
+        providerId: "example-oauth",
         accountId: "mock-primary",
         status: "authorized",
         accessToken: "access-token",
@@ -178,7 +178,7 @@ describe("provider accounts", () => {
       },
       {
         userId: "user-1",
-        providerId: "dreamina",
+        providerId: "example-oauth",
         accountId: "mock-secondary",
         status: "pending",
         userCode: "user-code",
@@ -471,14 +471,14 @@ describe("provider accounts", () => {
     });
   });
 
-  it("discovers Dreamina provider availability from connected OAuth state", () => {
+  it("discovers plugin provider availability from connected OAuth state", () => {
     const providers = publicProviderAccounts(
       [],
       "user-1",
       [
         {
           userId: "user-1",
-          providerId: "dreamina",
+          providerId: "example-oauth",
           status: "authorized",
           accessToken: "access-token",
           refreshToken: "refresh-token",
@@ -488,32 +488,32 @@ describe("provider accounts", () => {
 
     expect(providers).toEqual([
       expect.objectContaining({
-        providerId: "jimeng",
-        upstreamId: "jimeng",
+        providerId: "example-oauth",
+        upstreamId: "example-oauth",
         enabled: true,
-        configuredCredentials: [],
-        availableOAuth: ["dreamina"],
+        configuredCredentials: ["apiKey"],
+        availableOAuth: ["example-oauth"],
       }),
     ]);
   });
 
-  it("shares global Dreamina OAuth availability across matching provider account configs", () => {
+  it("scopes plugin OAuth availability to the matching provider account", () => {
     const providers = publicProviderAccounts(
       [
         {
-          id: "jimeng-primary",
-          label: "Primary Dreamina",
+          id: "example-primary",
+          label: "Primary Example OAuth",
           userId: "user-1",
-          providerId: "jimeng",
-          upstreamId: "jimeng",
+          providerId: "example-oauth",
+          upstreamId: "example-oauth",
           enabled: true,
         },
         {
-          id: "jimeng-secondary",
-          label: "Secondary Dreamina",
+          id: "example-secondary",
+          label: "Secondary Example OAuth",
           userId: "user-1",
-          providerId: "jimeng",
-          upstreamId: "jimeng",
+          providerId: "example-oauth",
+          upstreamId: "example-oauth",
           enabled: true,
         },
       ],
@@ -521,8 +521,8 @@ describe("provider accounts", () => {
       [
         {
           userId: "user-1",
-          accountId: "jimeng-primary",
-          providerId: "dreamina",
+          accountId: "example-primary",
+          providerId: "example-oauth",
           status: "authorized",
           accessToken: "access-token",
         },
@@ -531,48 +531,55 @@ describe("provider accounts", () => {
 
     expect(providers).toEqual([
       expect.objectContaining({
-        id: "jimeng-primary",
-        availableOAuth: ["dreamina"],
+        id: "example-primary",
+        availableOAuth: ["example-oauth"],
       }),
       expect.objectContaining({
-        id: "jimeng-secondary",
-        availableOAuth: ["dreamina"],
+        id: "example-secondary",
+        availableOAuth: [],
       }),
     ]);
   });
 
-  it("collapses legacy account-scoped Dreamina OAuth records into one global provider", () => {
+  it("keeps account-scoped plugin OAuth records as separate provider accounts", () => {
     const providers = publicProviderAccounts(
       [],
       "user-1",
       [
         {
           userId: "user-1",
-          accountId: "jimeng-production",
-          accountLabel: "Production Dreamina",
-          providerId: "dreamina",
+          accountId: "example-production",
+          accountLabel: "Production Example OAuth",
+          providerId: "example-oauth",
           status: "authorized",
           accessToken: "access-token-1",
         },
         {
           userId: "user-1",
-          accountId: "jimeng-team",
-          accountLabel: "Team Dreamina",
-          providerId: "dreamina",
+          accountId: "example-team",
+          accountLabel: "Team Example OAuth",
+          providerId: "example-oauth",
           status: "authorized",
           accessToken: "access-token-2",
         },
       ] as any,
     );
 
-    expect(providers).toHaveLength(1);
+    expect(providers).toHaveLength(2);
     expect(providers).toEqual([
       expect.objectContaining({
-        label: "Production Dreamina",
-        providerId: "jimeng",
-        upstreamId: "jimeng",
+        label: "Production Example OAuth",
+        providerId: "example-oauth",
+        upstreamId: "example-oauth",
         enabled: true,
-        availableOAuth: ["dreamina"],
+        availableOAuth: ["example-oauth"],
+      }),
+      expect.objectContaining({
+        label: "Team Example OAuth",
+        providerId: "example-oauth",
+        upstreamId: "example-oauth",
+        enabled: true,
+        availableOAuth: ["example-oauth"],
       }),
     ]);
   });

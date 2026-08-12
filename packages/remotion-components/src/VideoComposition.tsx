@@ -24,14 +24,14 @@ import {
   type EffectInstanceRef,
   type Track,
   type Item,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import {
   builtInEffectRegistry,
   computeBuiltInTransitionStyle,
   computeEffectPresentation,
   type BuiltInTransitionType,
   type EffectPresentationRole,
-} from '@master-clash/remotion-effects';
+} from '@clash/remotion-effects';
 import {
   TIMELINE_MASK_FEATHER_BLUR_DIVISOR,
   TIMELINE_MASK_SHAPE_ANNOTATIONS,

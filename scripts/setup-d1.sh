@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Cloudflare D1 Setup Script for Master Clash
+# Cloudflare D1 Setup Script for Clash
 # This script automates the creation and setup of D1 databases
 
 set -e  # Exit on error
 
-echo "🚀 Master Clash - Cloudflare D1 Setup"
+echo "🚀 Clash - Cloudflare D1 Setup"
 echo "======================================"
 echo ""
 
@@ -37,8 +37,8 @@ echo ""
 read -p "Create frontend database? (y/n) " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Creating database: master-clash-frontend..."
-    wrangler d1 create master-clash-frontend
+    echo "Creating database: clash-frontend..."
+    wrangler d1 create clash-frontend
 
     echo ""
     echo "⚠️  IMPORTANT: Copy the database_id from above and add it to:"
@@ -50,7 +50,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     # Run migrations
     echo ""
     echo "Running frontend migrations..."
-    wrangler d1 execute master-clash-frontend --remote --file=frontend/drizzle/d1-schema.sql
+    wrangler d1 execute clash-frontend --remote --file=frontend/drizzle/d1-schema.sql
 
     echo "✅ Frontend database created and migrated!"
 else
@@ -68,8 +68,8 @@ echo ""
 read -p "Create backend database? (y/n) " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Creating database: master-clash-backend..."
-    wrangler d1 create master-clash-backend
+    echo "Creating database: clash-backend..."
+    wrangler d1 create clash-backend
 
     echo ""
     echo "⚠️  IMPORTANT: Copy the database_id from above and add it to:"
@@ -80,7 +80,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     # Run migrations
     echo ""
     echo "Running backend migrations..."
-    wrangler d1 execute master-clash-backend --remote --file=backend/migrations/d1/0001_checkpoints.sql
+    wrangler d1 execute clash-backend --remote --file=backend/migrations/d1/0001_checkpoints.sql
 
     echo "✅ Backend database created and migrated!"
 else
@@ -126,8 +126,8 @@ echo "   CLOUDFLARE_D1_DATABASE_ID=your-backend-db-id"
 echo "   CLOUDFLARE_API_TOKEN=your-api-token"
 echo ""
 echo "3. Test the connection:"
-echo "   wrangler d1 execute master-clash-frontend --remote --command \"SELECT name FROM sqlite_master\""
-echo "   wrangler d1 execute master-clash-backend --remote --command \"SELECT name FROM sqlite_master\""
+echo "   wrangler d1 execute clash-frontend --remote --command \"SELECT name FROM sqlite_master\""
+echo "   wrangler d1 execute clash-backend --remote --command \"SELECT name FROM sqlite_master\""
 echo ""
 echo "For detailed documentation, see D1_SETUP_GUIDE.md"
 echo ""

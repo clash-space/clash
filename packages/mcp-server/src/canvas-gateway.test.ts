@@ -1,55 +1,140 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import type {
+  ProjectHostClient,
+  ProjectHostRequest,
+  ProjectHostResponse,
+} from "@clash/shared-runtime/project-host-client";
 
-test("open composes the CLI node and edge reads into one App snapshot", async () => {
-  const { invokeCanvasTool } = await import("./canvas-gateway");
-  const calls: string[][] = [];
-  const runner = async (args: string[]) => {
-    calls.push(args);
-    return args[1] === "list"
-      ? [{ id: "note-1", type: "text", position: { x: 20, y: 40 }, data: { label: "Beat" } }]
-      : [{ id: "note-action", source: "note-1", target: "action-1", type: "default" }];
+function hostClient(
+  respond: (request: ProjectHostRequest) => ProjectHostResponse,
+  calls: ProjectHostRequest[],
+): ProjectHostClient {
+  return {
+    resolveContext: async ({ projectId, cwd } = {}) => ({
+      projectId: projectId ?? "project-marker",
+      source: projectId ? "explicit" : "marker",
+      ...(cwd ? { workspaceRoot: cwd } : {}),
+    }),
+    async request<T extends ProjectHostResponse>(request: ProjectHostRequest<T>) {
+      calls.push(request);
+      return {
+        projectId: request.projectId ?? "project-marker",
+        value: respond(request) as T,
+      };
+    },
   };
+}
 
-  const result = await invokeCanvasTool("clash_canvas_open", {
+test("Canvas reads and mutations use typed ProjectHost commands with the host receipt", async () => {
+  const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
+  const calls: ProjectHostRequest[] = [];
+  const gateway = createCanvasProjectHostGateway(hostClient((request) => {
+    if (request.command.action === "list") {
+      return {
+        nodes: [{ id: "note-1", type: "text", data: { label: "Beat" } }],
+        versions: { "note-1": "host-receipt-note-1" },
+      };
+    }
+    return { updated: true, nodeId: "note-1", readToken: "host-receipt-note-2" };
+  }, calls));
+
+  assert.deepEqual(await gateway.invoke("clash_canvas_list", {
     projectId: "project-1",
     canvasId: "main",
-  }, runner);
-
-  assert.deepEqual(calls, [
-    ["canvas", "list", "--project", "project-1", "--canvas", "main", "--json"],
-    ["canvas", "edges", "--project", "project-1", "--canvas", "main", "--json"],
-  ]);
-  assert.deepEqual(result, {
+  }), [{ id: "note-1", type: "text", data: { label: "Beat" } }]);
+  assert.deepEqual(await gateway.invoke("clash_canvas_update", {
     projectId: "project-1",
     canvasId: "main",
-    nodes: [{ id: "note-1", type: "text", position: { x: 20, y: 40 }, data: { label: "Beat" } }],
-    edges: [{ id: "note-action", source: "note-1", target: "action-1", type: "default" }],
-  });
-});
-
-test("semantic MCP tools execute their matching CLI invocation", async () => {
-  const { invokeCanvasTool } = await import("./canvas-gateway");
-  const runner = async (args: string[]) => ({ args, moved: true });
-
-  assert.deepEqual(await invokeCanvasTool("clash_canvas_move", {
     nodeId: "note-1",
-    x: 90,
-    y: 140,
-  }, runner), {
-    args: ["canvas", "move", "--node", "note-1", "--x", "90", "--y", "140", "--json"],
-    moved: true,
+    label: "Opening beat",
+  }), {
+    updated: true,
+    nodeId: "note-1",
+    readToken: "host-receipt-note-2",
   });
+  assert.deepEqual(calls.map(({ command }) => command), [
+    { action: "list", canvasId: "main" },
+    {
+      action: "update",
+      canvasId: "main",
+      nodeId: "note-1",
+      label: "Opening beat",
+      actorClientType: "mcp",
+      observedVersion: "host-receipt-note-1",
+      ifMatch: "host-receipt-note-1",
+    },
+  ]);
 });
 
-test("CLI runner returns structured JSON without leaking protocol output", async () => {
-  const { createClashCliRunner } = await import("./canvas-gateway");
-  const runner = createClashCliRunner({
-    command: process.execPath,
-    argsPrefix: ["-e", "console.log(JSON.stringify({args: process.argv.slice(2)}))", "clash"],
+test("Canvas mutation without a host observation fails before any request", async () => {
+  const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
+  const calls: ProjectHostRequest[] = [];
+  const gateway = createCanvasProjectHostGateway(hostClient(() => ({ moved: true }), calls));
+
+  await assert.rejects(
+    gateway.invoke("clash_canvas_move", {
+      projectId: "project-1",
+      nodeId: "note-1",
+      x: 90,
+      y: 140,
+    }),
+    /READ_REQUIRED.*clash_canvas_(?:get|list)/i,
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("Canvas batch deletion consumes the exact delete-plan receipt", async () => {
+  const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
+  const calls: ProjectHostRequest[] = [];
+  const gateway = createCanvasProjectHostGateway(hostClient((request) => (
+    request.command.action === "batch_delete_plan"
+      ? { nodeIds: ["a", "b"], nodes: [], edges: [], readToken: "batch-receipt" }
+      : { deleted: true, nodeIds: ["a", "b"] }
+  ), calls));
+
+  await gateway.invoke("clash_canvas_delete_plan", {
+    projectId: "project-1",
+    nodeIds: ["b", "a", "a"],
+  });
+  await gateway.invoke("clash_canvas_delete_batch", {
+    projectId: "project-1",
+    nodeIds: ["a", "b"],
   });
 
-  assert.deepEqual(await runner(["canvas", "list", "--json"]), {
-    args: ["canvas", "list", "--json"],
+  assert.deepEqual(calls.map(({ command }) => command), [
+    { action: "batch_delete_plan", canvasId: "main", nodeIds: ["a", "b"] },
+    {
+      action: "delete_batch",
+      canvasId: "main",
+      nodeIds: ["a", "b"],
+      actorClientType: "mcp",
+      observedVersion: "batch-receipt",
+      ifMatch: "batch-receipt",
+    },
+  ]);
+});
+
+test("Canvas App snapshot composes direct host node and edge reads", async () => {
+  const { createCanvasProjectHostGateway } = await import("./canvas-gateway");
+  const calls: ProjectHostRequest[] = [];
+  const gateway = createCanvasProjectHostGateway(hostClient((request) => (
+    request.command.action === "list"
+      ? { nodes: [{ id: "note-1" }], versions: { "note-1": "receipt-1" } }
+      : { edges: [{ id: "edge-1", source: "note-1", target: "action-1" }], readToken: "edges-receipt" }
+  ), calls));
+
+  assert.deepEqual(await gateway.invoke("clash_canvas_open", {
+    projectId: "project-1",
+    canvasId: "main",
+  }), {
+    projectId: "project-1",
+    canvasId: "main",
+    nodes: [{ id: "note-1" }],
+    edges: [{ id: "edge-1", source: "note-1", target: "action-1" }],
   });
+  assert.deepEqual(calls.map(({ command }) => command), [
+    { action: "list", canvasId: "main" },
+    { action: "edges", canvasId: "main" },
+  ]);
 });

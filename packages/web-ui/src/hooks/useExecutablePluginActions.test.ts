@@ -11,12 +11,11 @@ describe('loadExecutablePluginActions', () => {
                 runtime: 'local',
                 parameters: [],
                 pluginBinding: {
-                    pluginId: 'agent-caption-actions',
+                    pluginId: 'acme.agent-caption-actions',
                     version: '1.2.0',
                     exportId: 'run-caption-helper',
                     schemaHash: `sha256:${'c'.repeat(64)}`,
                 },
-                pluginPermissions: { assets: ['read', 'write'] },
             }],
         }));
 
@@ -28,8 +27,7 @@ describe('loadExecutablePluginActions', () => {
         expect(actions).toHaveLength(1);
         expect(actions[0]).toMatchObject({
             id: 'caption-helper',
-            pluginBinding: { pluginId: 'agent-caption-actions', version: '1.2.0' },
-            pluginPermissions: { assets: ['read', 'write'] },
+            pluginBinding: { pluginId: 'acme.agent-caption-actions', version: '1.2.0' },
         });
     });
 

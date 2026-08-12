@@ -195,8 +195,31 @@ test("first-party skill marketplace registry is self-contained and installable",
 
 
 
+  const seedancePromptOptimizer = registry.skills.find((skill) => skill.id === "clash.video.sd25-pe");
+  assert.equal(seedancePromptOptimizer?.name, "sd25-pe");
+  assert.equal(seedancePromptOptimizer?.source, "provider-official");
+  assert.equal(seedancePromptOptimizer?.sourceVersion, "0.1.1");
+  assert.equal(seedancePromptOptimizer?.path, undefined);
+  assert.deepEqual(seedancePromptOptimizer?.install, {
+    kind: "npx-skills",
+    source: "https://arkdocs.tos-cn-beijing.volces.com/skills/",
+    skill: "sd25-pe",
+    scope: "global",
+  });
+  assert.equal(seedancePromptOptimizer?.executionContract, "prompt-compiler");
+  assert.deepEqual(seedancePromptOptimizer?.requiredSystemCapabilities, []);
+
   for (const skill of registry.skills) {
-    assert.equal(skill.source, "first-party", `${skill.id} should be marked first-party`);
+    assert.ok(
+      skill.source === "first-party" || skill.source === "provider-official",
+      `${skill.id} should name a supported marketplace source`,
+    );
+    if (skill.source === "provider-official") {
+      assert.ok(skill.sourceVersion, `${skill.id} needs a pinned source version`);
+      assert.equal(skill.install?.kind, "npx-skills", `${skill.id} needs a supported lazy installer`);
+      assert.ok(skill.install?.source?.startsWith("https://"), `${skill.id} needs an official install source`);
+      assert.equal(skill.install?.scope, "global", `${skill.id} should install independently of project cwd`);
+    }
     // Eval prompts retired with the workflow family.
     void evalSkillIds;
     assert.ok(skill.id && !ids.has(skill.id), `duplicate skill id ${skill.id}`);
@@ -212,9 +235,10 @@ test("first-party skill marketplace registry is self-contained and installable",
     }
     if (skill.status === "ready") {
       const hasNativePeerContract = skill.executionContract === "native-cli-mcp";
+      const isPromptCompiler = skill.executionContract === "prompt-compiler";
       assert.ok(
-        hasNativePeerContract,
-        `${skill.id} cannot be ready without a native CLI/MCP contract`,
+        hasNativePeerContract || isPromptCompiler,
+        `${skill.id} cannot be ready without an executable or prompt-compiler contract`,
       );
       if (skill.kind === "architecture") {
         assert.equal(
@@ -249,18 +273,33 @@ test("first-party skill marketplace registry is self-contained and installable",
       );
     }
 
-    const skillPath = path.join(repoRoot, skill.path, "SKILL.md");
-    assert.ok(existsSync(skillPath), `${skill.id} SKILL.md missing at ${skill.path}`);
-    const skillMarkdown = await readFile(skillPath, "utf8");
-    const frontmatter = parseFrontmatter(skillMarkdown);
-    assert.equal(frontmatter.name, skill.name, `${skill.id} frontmatter name should match registry`);
-    assert.ok(frontmatter.description?.length > 60, `${skill.id} needs a trigger-rich description`);
-    assert.doesNotMatch(
-      skillMarkdown,
-      /projections\/timelines\/[^\s"`]*\.lock\.json/,
-      `${skill.id} docs must not tell agents to use projection-sidecar locks for timeline apply`,
-    );
+    if (skill.source === "first-party") {
+      const skillPath = path.join(repoRoot, skill.path, "SKILL.md");
+      assert.ok(existsSync(skillPath), `${skill.id} SKILL.md missing at ${skill.path}`);
+      const skillMarkdown = await readFile(skillPath, "utf8");
+      const frontmatter = parseFrontmatter(skillMarkdown);
+      assert.equal(frontmatter.name, skill.name, `${skill.id} frontmatter name should match registry`);
+      assert.ok(frontmatter.description?.length > 60, `${skill.id} needs a trigger-rich description`);
+      assert.doesNotMatch(
+        skillMarkdown,
+        /projections\/timelines\/[^\s"`]*\.lock\.json/,
+        `${skill.id} docs must not tell agents to use projection-sidecar locks for timeline apply`,
+      );
+    }
   }
+
+  assert.ok(
+    JSON.stringify(skillSchema?.properties?.source).includes("provider-official"),
+    "the registry schema should admit provider-official skills",
+  );
+  assert.ok(
+    JSON.stringify(skillSchema?.properties?.executionContract).includes("prompt-compiler"),
+    "the registry schema should admit prompt-only compiler skills",
+  );
+  assert.ok(
+    JSON.stringify(skillSchema?.properties?.install).includes("npx-skills"),
+    "the registry schema should admit declarative npx skills installers",
+  );
 
   for (const reference of registry.thirdPartyReferences) {
     assert.ok(reference.url?.startsWith("https://"), `${reference.name} needs a source URL`);
@@ -476,4 +515,3 @@ test("clash command reference exposes declared asset metadata with implicit CAS"
   assert.match(commands, /READ_REQUIRED/);
   assert.doesNotMatch(commands, /--lock|readToken|--if-match/);
 });
-

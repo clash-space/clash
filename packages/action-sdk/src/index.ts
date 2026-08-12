@@ -1,5 +1,4 @@
-import { ExecutablePluginAssetReadResultSchema } from "@clash/shared-types";
-import type { AssetKind } from "@clash/shared-types";
+import type { AssetKind } from "@clash/shared-types/executable-plugin";
 /**
  * @clash/action-sdk — Types for building Clash canvas actions.
  *
@@ -21,29 +20,30 @@ import type { AssetKind } from "@clash/shared-types";
  */
 
 import {
-  ExecutablePluginBrokerResponseSchema,
   ExecutablePluginInvocationSchema,
   ExecutablePluginOutputSchema,
   ExecutablePluginResultSchema,
-  type ExecutablePluginBrokerOperation,
   type ExecutablePluginInvocation,
-  type ExecutablePluginJsonValue,
   type ExecutablePluginOutput,
   type ExecutablePluginResult,
-} from "@clash/shared-types";
+} from "@clash/shared-types/executable-plugin";
+import {
+  executorContextFrom,
+  type ExecutorContext,
+} from "./define-plugin.js";
 
-export { ExecutablePluginAssetReadResultSchema } from "@clash/shared-types";
+// Re-exported as a type *and* imported for use below. `export type` alone publishes the name
+// without binding it in this module, so the signature referencing it did not compile.
+import type { ExecutablePluginAssetHandle } from "@clash/shared-types/executable-plugin";
 export type {
   AssetKind,
   ExecutablePluginAssetHandle,
   ExecutablePluginBinding,
-  ExecutablePluginBrokerOperation,
   ExecutablePluginInvocation,
-  ExecutablePluginJsonValue,
   ExecutablePluginOutput,
   ExecutablePluginReference,
   ExecutablePluginResult,
-} from "@clash/shared-types";
+} from "@clash/shared-types/executable-plugin";
 
 /**
  * An asset the host has resolved for the plugin, in whichever form the host could supply.
@@ -85,7 +85,7 @@ export type ResolvedAssetReference =
     };
 
 /**
- * Resolves a `clash-asset://` handle through the broker into whichever form the host has.
+ * Resolves a `clash-asset://` handle through the typed reference context.
  *
  * Validates the answer against the shared contract, so a plugin never has to guess the shape
  * or the handle prefix. The installed hilo plugin checks for `asset://` while the host emits
@@ -95,27 +95,32 @@ export async function resolveAssetReference(
   context: HostedExecutablePluginContext,
   asset: ExecutablePluginAssetHandle,
 ): Promise<ResolvedAssetReference> {
-  const answer = await context.broker({ kind: "asset.read", asset });
-  const result = ExecutablePluginAssetReadResultSchema.parse(answer);
-  const common = {
-    kind: result.kind,
-    ...(result.mediaType ? { mediaType: result.mediaType } : {}),
-    byteLength: result.byteLength,
-  };
-  if (result.dataBase64 !== undefined) {
-    return { form: "bytes", ...common, dataBase64: result.dataBase64 };
+  const result = await context.reference({ asset });
+  if (result.form === "text") {
+    throw new Error(`Asset ${asset.assetId} resolved as text.`);
+  }
+  if (result.form === "bytes") {
+    let binary = "";
+    for (const byte of result.bytes) binary += String.fromCharCode(byte);
+    return {
+      form: "bytes",
+      kind: result.kind ?? asset.kind,
+      ...(result.mediaType ? { mediaType: result.mediaType } : {}),
+      byteLength: result.bytes.byteLength,
+      dataBase64: btoa(binary),
+    };
   }
   return {
     form: "url",
-    ...common,
-    url: result.url!,
-    forwardable: result.reach === "public",
+    kind: result.kind ?? asset.kind,
+    ...(result.mediaType ? { mediaType: result.mediaType } : {}),
+    byteLength: 0,
+    url: result.url,
+    forwardable: true,
   };
 }
 
-export interface HostedExecutablePluginContext {
-  broker(operation: ExecutablePluginBrokerOperation): Promise<ExecutablePluginJsonValue>;
-}
+export type HostedExecutablePluginContext = ExecutorContext;
 
 export type HostedExecutablePluginHandler = (
   invocation: ExecutablePluginInvocation,
@@ -123,19 +128,21 @@ export type HostedExecutablePluginHandler = (
 ) => Promise<ExecutablePluginResult | ExecutablePluginOutput[]>;
 
 export interface HostedExecutablePluginWorkerOptions {
-  fetch?: typeof fetch;
+  /** Host-owned asset/store dependencies, already scoped to this plugin invocation. */
+  context?: Partial<HostedExecutablePluginContext> | (
+    (invocation: ExecutablePluginInvocation) => Partial<HostedExecutablePluginContext>
+  );
 }
 
 /**
  * Minimal FaaS adapter for agent-authored hosted plugins. The handler sees the
- * same invocation/result ABI as a local stdio plugin and can access external
- * capabilities only through the Kernel broker advertised by request headers.
+ * same invocation/result ABI as a local stdio plugin. Asset and account-store
+ * dependencies are injected directly by the embedding host.
  */
 export function defineHostedExecutablePlugin(
   handlers: Record<string, HostedExecutablePluginHandler>,
   options: HostedExecutablePluginWorkerOptions = {},
 ): { fetch(request: Request): Promise<Response> } {
-  const brokerFetch = options.fetch ?? fetch;
   return {
     async fetch(request: Request): Promise<Response> {
       let invocationId = "unknown";
@@ -146,40 +153,10 @@ export function defineHostedExecutablePlugin(
         if (!handler) {
           throw new Error(`No hosted plugin handler is registered for ${invocation.target.exportId}.`);
         }
-        const context: HostedExecutablePluginContext = {
-          broker: async (operation) => {
-            const endpoint = request.headers.get("x-clash-plugin-broker");
-            const capability = request.headers.get("x-clash-plugin-capability");
-            if (!endpoint || !capability) {
-              throw new Error("Clash hosted capability broker is unavailable for this invocation.");
-            }
-            const requestId = crypto.randomUUID();
-            const response = await brokerFetch(endpoint, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                "x-clash-plugin-capability": capability,
-              },
-              body: JSON.stringify({
-                protocol: "clash.plugin.broker-request/v1",
-                requestId,
-                invocationId: invocation.invocationId,
-                operation,
-              }),
-            });
-            if (!response.ok) {
-              throw new Error(`Clash hosted broker returned HTTP ${response.status}.`);
-            }
-            const brokerResult = ExecutablePluginBrokerResponseSchema.parse(await response.json());
-            if (brokerResult.requestId !== requestId) {
-              throw new Error(`Clash hosted broker response does not match request ${requestId}.`);
-            }
-            if (brokerResult.status === "error") {
-              throw new Error(`${brokerResult.error.code}: ${brokerResult.error.message}`);
-            }
-            return brokerResult.result;
-          },
-        };
+        const injected = typeof options.context === "function"
+          ? options.context(invocation)
+          : options.context;
+        const context = executorContextFrom(injected);
         const output = await handler(invocation, context);
         const result = Array.isArray(output)
           ? {
@@ -227,7 +204,6 @@ export interface ActionInputNode {
 export type ActionProvider =
   | "fal"
   | "replicate"
-  | "kie"
   | "official"
   | "openai"
   | "google-ai-studio"
@@ -329,3 +305,33 @@ export interface ActionManifest {
   color?: string;
   tags?: string[];
 }
+
+export {
+  defineStdioExecutablePlugin,
+  type StdioExecutablePlugin,
+  type StdioExecutablePluginHandler,
+  type StdioExecutablePluginOptions,
+} from "./stdio-plugin.js";
+
+export {
+  definePlugin,
+  type DefinedPlugin,
+  type Executor,
+  type ExecutorContext,
+  type ExecutorStep,
+  type AssetUploadRequest,
+  type AssetWriteRequest,
+  type CodexImageGenerateRequest,
+  type PluginDefinition,
+  type PluginHostTools,
+  type PluginStoreHandle,
+} from "./define-plugin.js";
+
+export {
+  assemblePlugin,
+  defineExecutor,
+  defineProjector,
+  type AssembleOptions,
+  type AssembledPlugin,
+  type ProjectorFn,
+} from "./assemble.js";

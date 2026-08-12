@@ -107,7 +107,7 @@ test("project destructive commands surface cloud recovery policy hints", () => {
 });
 
 test("agent-first mutation commands expose no force bypass", () => {
-  for (const file of ["actions.ts", "assets.ts", "canvas.ts", "models.ts", "asset-metadata.ts", "projects.ts", "text.ts", "timeline.ts"]) {
+  for (const file of ["plugin.ts", "assets.ts", "canvas.ts", "models.ts", "asset-metadata.ts", "projects.ts", "text.ts", "timeline.ts"]) {
     assert.doesNotMatch(commandSource(file), /\.option\("--force"/, `${file} exposes --force`);
   }
 });

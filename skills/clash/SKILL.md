@@ -12,8 +12,8 @@ metadata:
   version: 1.0.2
   category: video-production
   tags: [video, canvas, generation, storyboard, cli]
-  cliPackage: "@clash-space/cli"
-  cliVersion: ">=0.1.0-beta.3 <0.2.0"
+  cliPackage: "clash"
+  cliVersion: ">=0.1.3 <0.2.0"
 ---
 
 # Clash — AI Video Production
@@ -40,17 +40,17 @@ Pin the GitHub source to a release tag when reproducibility matters.
 
 ## CLI Compatibility
 
-This skill expects `@clash-space/cli >=0.1.0-beta.3 <0.2.0`.
+This skill expects `clash >=0.1.3 <0.2.0`.
 
 ```bash
 clash --version
-npm view @clash-space/cli version
+npm view clash version
 ```
 
 If the local CLI is too old, upgrade it before using canvas commands:
 
 ```bash
-npm install -g @clash-space/cli@latest
+npm install -g clash@latest
 ```
 
 ## Quick Start
@@ -77,12 +77,12 @@ clash canvas disconnect --project <id>
 
 **Projects** contain a **canvas** with **nodes**. Nodes are the building blocks:
 
-| Type | Purpose |
-|------|---------|
-| `text` | Content — scripts, prompts, style guides |
-| `group` | Container — organizes related nodes |
+| Type                      | Purpose                                       |
+| ------------------------- | --------------------------------------------- |
+| `text`                    | Content — scripts, prompts, style guides      |
+| `group`                   | Container — organizes related nodes           |
 | `image_gen` / `video_gen` | Generation trigger — creates images or videos |
-| `image` / `video` | Asset — holds generated media |
+| `image` / `video`         | Asset — holds generated media                 |
 
 Text nodes in a group provide context for generation nodes in the same group.
 
@@ -109,8 +109,8 @@ clash canvas disconnect --project <id>  # or just let it auto-exit
 
 For detailed information, read these files from the skill directory:
 
-| File | When to read |
-|------|-------------|
-| [references/setup.md](references/setup.md) | First-time setup, auth issues, environment config |
-| [references/canvas.md](references/canvas.md) | Node types, data structures, generation pipeline, grouping patterns |
-| [references/commands.md](references/commands.md) | Full command reference with examples |
+| File                                             | When to read                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------- |
+| [references/setup.md](references/setup.md)       | First-time setup, auth issues, environment config                   |
+| [references/canvas.md](references/canvas.md)     | Node types, data structures, generation pipeline, grouping patterns |
+| [references/commands.md](references/commands.md) | Full command reference with examples                                |

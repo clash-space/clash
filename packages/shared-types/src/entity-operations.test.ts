@@ -4,7 +4,7 @@ import {
   ENTITY_OPERATIONS,
   EntityOperationSchema,
   ExecutablePluginEntityExportSchema,
-} from './entity-operations';
+} from './entity-operations.js';
 
 /**
  * Everything a plugin can do to an entity is one of a closed set of operations.

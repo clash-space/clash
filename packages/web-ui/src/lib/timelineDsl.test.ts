@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Track } from '@master-clash/remotion-core';
+import type { Track } from '@clash/remotion-core';
 import { stripSrcFromTracks } from './timelineDsl';
 
 describe('stripSrcFromTracks', () => {

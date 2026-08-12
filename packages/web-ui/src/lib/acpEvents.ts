@@ -1,6 +1,6 @@
 /**
  * ACP (Agent Client Protocol) event parser + per-turn assistant message
- * accumulator. Used by `useAgentByoBridge` (one-shot pair) and
+ * accumulator. Used by local and hosted ACP transports and
  * `useGroupChat` (persistent daemon) — they share this so the two
  * surfaces render identical bubbles for the same wire input.
  *
@@ -880,7 +880,7 @@ export interface AppendResult {
  * out via the `commands` field; caller copies it into hook state.
  *
  * Mutates `messages` — caller is responsible for cloning before this
- * if passing a state slice (both useGroupChat + useAgentByoBridge do).
+ * if passing a state slice (for example useGroupChat).
  */
 export function appendAcpEvent(
   messages: ByoMessage[],

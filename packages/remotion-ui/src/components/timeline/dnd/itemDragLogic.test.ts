@@ -8,7 +8,7 @@
  * synthesized inputs and check the outputs structurally — no DOM, no React.
  */
 import { describe, it, expect } from 'vitest';
-import type { Item, Track, VideoItem } from '@master-clash/remotion-core';
+import type { Item, Track, VideoItem } from '@clash/remotion-core';
 import {
   buildPreview,
   computeVerticalLandmarks,

@@ -1,6 +1,27 @@
+import { pluginCapabilities } from "./plugin-capabilities.js";
 import { z } from "zod";
 
-import { AssetKindSchema } from "./assets";
+import { AssetKindSchema } from "./assets.js";
+import { pluginIdSchema } from "./plugin-namespace.js";
+import { PluginAuthDeclarationSchema } from "./plugin-auth.js";
+
+// Re-exported so a plugin reaches it through the one entry it already imports. The package index
+// pulls in loro-crdt, which is CommonJS, and bundling that into an ESM plugin turns its first
+// import into "Dynamic require of ... is not supported" at spawn.
+export {
+  PluginAuthDeclarationSchema,
+  PluginAuthFlowSchema,
+  PluginAuthFormItemSchema,
+  PluginAuthRenewSchema,
+  type PluginAuthDeclaration,
+  type PluginAuthFormItem,
+} from "./plugin-auth.js";
+
+// Re-exported so a plugin can reach everything the protocol mentions through this one entry. The
+// package index pulls in loro-crdt, which is CommonJS, and bundling that into an ESM plugin turns
+// its first import into "Dynamic require of ... is not supported" at spawn.
+export { AssetKindSchema, type AssetKind } from "./assets.js";
+export { aspectRatioLabel, parseAspectRatio, reduceAspectRatio, type AspectRatio } from "./aspect-ratio.js";
 import {
   ModelCardSchema,
   ModelConstraintRuleSchema,
@@ -8,7 +29,7 @@ import {
   ModelParameterSchema,
   ModelProviderImplementationSchema,
   type ModelCard,
-} from "./models";
+} from "./models.js";
 
 const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -33,10 +54,9 @@ export const ExecutablePluginRuntimeSchema = z.discriminatedUnion("kind", [
     /**
      * Which interpreter the host launches.
      *
-     * A closed enum rather than a command line: the host builds the argv, so it can
-     * keep `--permission`, the network guard, and the Python filesystem allowlist
-     * attached. A plugin that could name its own command could name `bash` and step
-     * outside all of them.
+     * A closed enum rather than a command line: the host owns the launch protocol,
+     * stdio framing, and process lifecycle for each supported runtime. A plugin that
+     * could name an arbitrary command would no longer have a predictable adapter.
      *
      * Optional only so the two manifests written before this field existed keep
      * loading; `resolvePluginLanguage` falls back to the entrypoint extension.
@@ -85,19 +105,19 @@ export const ExecutablePluginCardExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.enum(["model-card", "action-card"]),
   path: PluginRelativePathSchema,
-});
+}).strict();
 
 export const ExecutablePluginProviderExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.literal("provider"),
   path: PluginRelativePathSchema,
-});
+}).strict();
 
 export const ExecutablePluginModelBindingExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.literal("model-provider-binding"),
   path: PluginRelativePathSchema,
-});
+}).strict();
 
 export const ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
   z.object({
@@ -235,85 +255,21 @@ export const ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
   }).strict(),
 ]);
 
-export const ExecutablePluginProviderAuthSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("api-key"),
-    credentialId: z.string().trim().min(1).default("apiKey"),
-    label: z.string().trim().min(1).optional(),
-  }).strict(),
-  z.object({
-    type: z.literal("oauth"),
-    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    flow: z.literal("browser"),
-    authorizationUrl: z.string().url(),
-    callback: z.object({
-      type: z.literal("custom-scheme"),
-      scheme: z.string().trim().regex(/^[a-z][a-z0-9+.-]*$/),
-    }).strict(),
-    accessTokenField: z.string().trim().min(1).default("accessToken"),
-  }).strict(),
-  /**
-   * The stored secret is not the credential; a short-lived one is minted from it.
-   *
-   * Vertex is the case that forced this: a service account key holds an RSA private key, and the
-   * credential the API accepts is a bearer token produced by signing a JWT with that key and
-   * exchanging it (RFC 7523). The token lasts about an hour, the key until it is revoked.
-   *
-   * Kept apart from `api-key` because the two disagree about the one thing a host most wants to do
-   * uniformly. For `api-key`, "send what is stored" is correct. Here it would put a private key on
-   * the wire as a bearer token.
-   *
-   * Every field is a recipe. A manifest is authored by a plugin and readable by anyone who installs
-   * it, so there is deliberately nowhere to write a key or a token: `.strict()` turns an attempt to
-   * smuggle one into a validation error instead of a secret shipped in a package.
-   */
-  z.object({
-    type: z.literal("derived-token"),
-    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    label: z.string().trim().min(1).optional(),
-    /**
-     * Field holding the durable secret. Unlike the other kinds it does not default to `apiKey`:
-     * what is stored here is a signing document, and that name would invite code to forward it.
-     */
-    credentialId: z.string().trim().min(1),
-    derivation: z.object({
-      /**
-       * Closed for the same reason acquisition is: a plugin declares this but the host executes it,
-       * holding the signing key while it does. An open field would let a plugin name a scheme
-       * nobody implements, discovered when a generation fails rather than when it is installed.
-       */
-      kind: z.literal("jwt-bearer-assertion"),
-      tokenUrl: z.string().url(),
-      scope: z.string().trim().min(1),
-    }).strict(),
-  }).strict(),
-  z.object({
-    type: z.literal("local-token-import"),
-    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    label: z.string().trim().min(1).optional(),
-    source: z.object({
-      format: z.literal("electron-store-aes-256-gcm-v2"),
-      appDataSubdirectory: PluginRelativePathSchema,
-      configFile: PluginRelativePathSchema,
-      keyFile: PluginRelativePathSchema,
-      tokenPath: z.array(
-        z.string().trim().regex(/^[A-Za-z0-9_-]+$/).refine(
-          (segment) => !["__proto__", "constructor", "prototype"].includes(segment),
-          "Token path contains a reserved property.",
-        ),
-      ).min(1),
-    }).strict(),
-  }).strict(),
-]);
-
 export const ExecutablePluginProviderDefinitionSchema = z.object({
+  /**
+   * What this provider needs to authenticate, and how to draw it.
+   *
+   * Optional because a provider may need nothing -- a local model has no credential. Present, it is
+   * the whole of what the host knows: it renders the form, stores the answers opaquely, wakes the
+   * plugin on the declared schedule, and never learns what any of the values mean.
+   */
+  auth: PluginAuthDeclarationSchema.optional(),
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   name: z.string().trim().min(1),
   description: z.string().trim().min(1).optional(),
   upstreamId: z.string().trim().regex(PLUGIN_ID_PATTERN),
   apiShape: z.string().trim().regex(PLUGIN_ID_PATTERN),
   executorExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  auth: z.array(ExecutablePluginProviderAuthSchema).default([]),
   /**
    * Route values every binding of this provider inherits.
    *
@@ -375,9 +331,13 @@ export const ExecutablePluginModelBindingInputSchema = z.object({
  * information, and one mistyped copy would route a model at the wrong upstream while
  * every sibling looked correct.
  *
- * `requiredOAuth` is derived from the provider's declared auth rather than repeated,
- * so the credential a route needs cannot drift from the credential the provider
- * knows how to obtain.
+ * `requiredOAuth` is no longer derived from the provider's auth. It used to be: the
+ * old auth array was a union over auth *types*, and the `oauth`, `derived-token` and
+ * `local-token-import` members each carried an `id` naming one acquisition a route
+ * had to wait for. The declarative model has no such ids -- a provider declares form
+ * keys, an optional browser flow and an optional renewal schedule, none of which is
+ * a named acquisition -- so there is nothing left to derive from. A binding that
+ * needs a route to wait states `requiredOAuth` itself.
  */
 export function resolveModelBindingFromProvider(
   binding: z.input<typeof ExecutablePluginModelBindingInputSchema>,
@@ -385,17 +345,6 @@ export function resolveModelBindingFromProvider(
 ): Record<string, unknown> {
   const parsed = ExecutablePluginModelBindingInputSchema.parse(binding);
   const defaults = provider.bindingDefaults ?? {};
-  // One credential can be obtained several ways -- a login page and an import of another
-  // app's token are two routes to the same `hilo-hub` credential -- so the ids are
-  // de-duplicated. An `api-key` entry carries no id: it is the credential itself, not a
-  // named acquisition a route has to wait for.
-  const oauthIds = [
-    ...new Set(
-      provider.auth
-        .filter((entry): entry is Extract<typeof entry, { id: string }> => "id" in entry)
-        .map((entry) => entry.id),
-    ),
-  ];
 
   const resolved: Record<string, unknown> = {
     ...parsed,
@@ -406,8 +355,7 @@ export function resolveModelBindingFromProvider(
     executorExportId: parsed.executorExportId ?? provider.executorExportId,
   };
 
-  const inheritedOAuth = parsed.requiredOAuth ?? (oauthIds.length > 0 ? oauthIds : undefined);
-  if (inheritedOAuth) resolved.requiredOAuth = inheritedOAuth;
+  if (parsed.requiredOAuth) resolved.requiredOAuth = parsed.requiredOAuth;
   else delete resolved.requiredOAuth;
 
   for (const key of ["priority", "weight", "region", "accountId"] as const) {
@@ -444,10 +392,9 @@ export type PluginEntryOperation = z.infer<typeof PluginEntryOperationSchema>;
 export const ExecutablePluginFunctionExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.enum(["action", "provider-projector", "provider-executor"]),
-  handler: z.string().trim().min(1),
   /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
   operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"]),
-}).superRefine((entry, ctx) => {
+}).strict().superRefine((entry, ctx) => {
   if (!entry.operations.includes("submit")) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -467,47 +414,20 @@ export const ExecutablePluginFunctionExportSchema = z.object({
   }
 });
 
-const PluginNetworkPermissionsSchema = z.object({
-  domains: z.array(z.string().trim().min(1)).default([]),
-}).default({ domains: [] });
-
-const PluginFilesystemPermissionsSchema = z.object({
-  read: z.array(z.string().trim().min(1)).default([]),
-  write: z.array(z.string().trim().min(1)).default([]),
-}).default({ read: [], write: [] });
-
-export const ExecutablePluginPermissionsSchema = z.object({
-  network: PluginNetworkPermissionsSchema,
-  secrets: z.array(z.string().trim().min(1)).default([]),
-  assets: z.array(z.enum(["read", "write"])).default([]),
-  hostTools: z.array(z.enum(["codex.imagegen"])).default([]),
-  filesystem: PluginFilesystemPermissionsSchema,
-  externalWrites: z.boolean().default(false),
-}).default({
-  network: { domains: [] },
-  secrets: [],
-  assets: [],
-  hostTools: [],
-  filesystem: { read: [], write: [] },
-  externalWrites: false,
-});
-
 /** Activated Card plus the exact package provenance that supplied it. */
 export const ExecutablePluginCardRegistrationSchema = z.object({
-  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  pluginId: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
   runtime: ExecutablePluginRuntimeSchema,
-  permissions: ExecutablePluginPermissionsSchema,
   document: ExecutablePluginCardDocumentSchema,
 }).strict();
 
 const ExecutablePluginArtifactRegistrationBaseSchema = z.object({
-  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  pluginId: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
   runtime: ExecutablePluginRuntimeSchema,
-  permissions: ExecutablePluginPermissionsSchema,
 });
 
 export const ExecutablePluginProviderRegistrationSchema =
@@ -632,7 +552,7 @@ export function composeExecutablePluginModelCards(
 
 /** Immutable reference stored with Canvas nodes and task invocations. */
 export const ExecutablePluginBindingSchema = z.object({
-  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  pluginId: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
@@ -672,18 +592,6 @@ const ExecutablePluginAssetHandleObjectSchema = z.object({
   url: z.string().url().optional(),
   /** Who can fetch `url`. The host cannot retrieve an address only the plugin can see. */
   reach: z.enum(["public", "private"]).optional(),
-  /**
-   * Which credential opens `url`, when an anonymous request will not.
-   *
-   * Some providers leave a finished generation behind their own auth: Gemini's Files API wants the
-   * key that made the request, Vertex expects a bearer token. `reach` cannot express this -- it says
-   * whether an address may be handed to a third party, and these may be. What they cannot be is
-   * opened by a stranger. Fetching one bare returns 403 after the work succeeded and was billed.
-   *
-   * Absent means anonymous, which is what a published CDN link needs. The plugin still never holds
-   * the token: it names the credential and the broker injects it, exactly as on the way out.
-   */
-  credential: z.literal("provider").optional(),
 }).strict();
 
 /**
@@ -692,13 +600,6 @@ const ExecutablePluginAssetHandleObjectSchema = z.object({
  */
 export const ExecutablePluginAssetHandleSchema = ExecutablePluginAssetHandleObjectSchema
   .superRefine((handle, ctx) => {
-  if (handle.credential && !handle.url) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["credential"],
-      message: "A credential opens an address. Bytes have none.",
-    });
-  }
   if (handle.url && !handle.reach) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -895,45 +796,6 @@ export const ExecutablePluginInvocationSchema = z.object({
   }
 });
 
-/** Signed, short-lived authorization context passed to hosted functions in headers. */
-export const HostedExecutablePluginCapabilitySchema = z.object({
-  protocol: z.literal("clash.plugin.hosted-capability/v1"),
-  capabilityId: z.string().trim().min(1),
-  issuedAt: z.number().int().nonnegative(),
-  expiresAt: z.number().int().positive(),
-  endpoint: z.string().url(),
-  ownerUserId: z.string().trim().min(1),
-  invocation: z.object({
-    invocationId: z.string().trim().min(1),
-    taskId: z.string().trim().min(1),
-    projectId: z.string().trim().min(1),
-    nodeId: z.string().trim().min(1).optional(),
-    target: ExecutablePluginBindingSchema.extend({
-      kind: z.enum(["action", "provider-projector", "provider-executor"]),
-    }),
-    actor: z.object({
-      kind: z.enum(["user", "agent", "system"]),
-      id: z.string().trim().min(1).optional(),
-    }).strict(),
-  }).strict(),
-  permissions: ExecutablePluginPermissionsSchema,
-}).strict().superRefine((capability, ctx) => {
-  if (capability.expiresAt <= capability.issuedAt) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["expiresAt"],
-      message: "Hosted plugin capability must expire after it is issued.",
-    });
-  }
-  if (capability.expiresAt - capability.issuedAt > 60 * 60) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["expiresAt"],
-      message: "Hosted plugin capability lifetime cannot exceed one hour.",
-    });
-  }
-});
-
 export const ExecutablePluginOutputSchema = z.union([
   z.object({
     slot: z.string().trim().min(1),
@@ -996,19 +858,78 @@ export const ExecutablePluginResultSchema = z.discriminatedUnion("status", [
 
 export const ExecutablePluginBrokerOperationSchema = z.union([
   z.object({
-    kind: z.literal("credential.handle"),
-    secretId: z.string().trim().min(1),
-  }).strict(),
-  z.object({
     kind: z.literal("asset.read"),
     asset: ExecutablePluginAssetHandleSchema,
   }).strict(),
+  /**
+   * Somewhere to put bytes that is not this message.
+   *
+   * `asset.write` with `dataBase64` carries a result inside the frame that announces it -- one
+   * 30-second video is 3,470,456 characters that way, held at once by the plugin, the pipe and the
+   * host. A slot separates them: the host names a place, the plugin streams to it, and the frame
+   * carries a handle.
+   *
+   * The size is required so the host can refuse before the bytes arrive rather than after.
+   */
+  /**
+   * Read one value this plugin stored for this account.
+   *
+   * There is no plugin id and no account id in the request, and adding either would make the
+   * binding forgeable. The host knows both from the spawn: it started this process for this
+   * account, and the answer is scoped to that pair before the key is looked at.
+   *
+   * The value is opaque. The host does not know what a vendor's auth looks like -- Google wants an
+   * api key on one surface and a bearer token on another, kling wants an access key and a secret --
+   * and enumerating those here would mean editing the host every time a vendor changes its mind.
+   */
+  z.object({
+    kind: z.literal("store.get"),
+    key: z.string().trim().min(1),
+  }).strict(),
+  /** Write one back. Renewal is plugin code: it refreshes a token and stores it where it found it. */
+  z.object({
+    kind: z.literal("store.put"),
+    key: z.string().trim().min(1),
+    value: z.string(),
+    secret: z.boolean().optional(),
+    expiresAt: z.string().datetime().optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal("asset.upload-slot"),
+    slot: z.string().trim().min(1),
+    assetKind: AssetKindSchema,
+    mediaType: z.string().trim().min(1).optional(),
+    /**
+     * How many bytes are coming, when the plugin holds them.
+     *
+     * Announced ahead of the payload so the host can refuse an oversized upload before receiving
+     * it rather than after.
+     */
+    byteLength: z.number().int().positive().optional(),
+    /**
+     * Where the bytes are, when the vendor answered with a link.
+     *
+     * A URL has no byte count until someone fetches it, and fetching it only to satisfy a schema
+     * pays for the transfer twice -- the host is the side that knows whether it wants a copy. This
+     * was required-`byteLength`-only, so the url form failed with "Cannot read properties of
+     * undefined (reading 'byteLength')" the first time a real vendor answered with a link, after
+     * the generation had completed and been paid for.
+     */
+    url: z.string().trim().url().refine(
+      (value) => value.startsWith("https://"),
+      "The host will fetch this address, so it must be https.",
+    ).optional(),
+  }).strict().refine(
+    (operation) => operation.byteLength !== undefined || operation.url !== undefined,
+    // Neither is a request for storage with nothing to store, and opens a slot that can only ever
+    // be abandoned.
+    { message: "An upload slot needs either a byte count or a url." },
+  ),
   z.object({
     kind: z.literal("asset.write"),
     slot: z.string().trim().min(1),
     assetKind: AssetKindSchema,
     mediaType: z.string().trim().min(1).optional(),
-    sourceHandle: z.string().regex(/^clash-plugin-output:\/\/.+/).optional(),
     /**
      * Where the result already lives, for the host to fetch once.
      *
@@ -1022,17 +943,19 @@ export const ExecutablePluginBrokerOperationSchema = z.union([
     url: z.string().url().optional(),
     /** Who can fetch `url`. A host cannot retrieve an address only the plugin can see. */
     reach: z.enum(["public", "private"]).optional(),
-    dataBase64: z.string().max(128 * 1024 * 1024).regex(
+    /** Set when the bytes were already streamed to a slot; the write only names them. */
+    assetId: z.string().trim().min(1).optional(),
+    dataBase64: z.string().regex(
       /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
       "Plugin asset data must be canonical base64.",
     ).optional(),
   }).strict().superRefine((operation, ctx) => {
-    const sources = [operation.sourceHandle, operation.url, operation.dataBase64]
+    const sources = [operation.url, operation.dataBase64, operation.assetId]
       .filter((source) => source !== undefined).length;
     if (sources !== 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "asset.write requires exactly one of sourceHandle, url, or dataBase64.",
+        message: "asset.write requires exactly one of url, dataBase64 or assetId.",
       });
     }
     if (operation.url && !operation.reach) {
@@ -1048,14 +971,6 @@ export const ExecutablePluginBrokerOperationSchema = z.union([
       });
     }
   }),
-  z.object({
-    kind: z.literal("network.fetch"),
-    url: z.string().url(),
-    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
-    headers: z.record(z.string()).default({}),
-    body: ExecutablePluginJsonValueSchema.optional(),
-    credentialHandle: z.string().regex(/^clash-secret:\/\/.+/).optional(),
-  }).strict(),
   z.object({
     kind: z.literal("codex.image.generate"),
     prompt: z.string().trim().min(1).max(20_000),
@@ -1221,62 +1136,65 @@ export function assetReachForRuntime(kind: "local" | "hosted"): readonly ("publi
   return pluginRuntimeProfile(kind).assetReach;
 }
 
+export const ExecutablePluginContributionsSchema = z.object({
+  cards: z.array(ExecutablePluginCardExportSchema).default([]),
+  providers: z.array(ExecutablePluginProviderExportSchema).default([]),
+  modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
+  functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
+  hostTools: z.array(z.enum(["codex.imagegen"])).default([]),
+}).strict();
+
 export const ExecutablePluginManifestSchema = z.object({
   apiVersion: z.literal("clash.plugin/v1"),
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  /** `publisher.name`, like clash.google. The version travels beside it, never inside it. */
+  id: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   name: z.string().trim().min(1),
   description: z.string().optional(),
   runtime: ExecutablePluginRuntimeSchema,
-  exports: z.object({
-    cards: z.array(ExecutablePluginCardExportSchema).default([]),
-    providers: z.array(ExecutablePluginProviderExportSchema).default([]),
-    modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
-    functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
-  }),
-  permissions: ExecutablePluginPermissionsSchema,
+  contributes: ExecutablePluginContributionsSchema,
   contractTests: z.array(PluginRelativePathSchema).default([]),
   author: z.string().trim().min(1).optional(),
   repository: z.string().trim().min(1).optional(),
-}).superRefine((manifest, ctx) => {
+}).strict().superRefine((manifest, ctx) => {
   for (const [key, values] of [
-    ["cards", manifest.exports.cards],
-    ["providers", manifest.exports.providers],
-    ["modelBindings", manifest.exports.modelBindings],
-    ["functions", manifest.exports.functions],
+    ["cards", manifest.contributes.cards],
+    ["providers", manifest.contributes.providers],
+    ["modelBindings", manifest.contributes.modelBindings],
+    ["functions", manifest.contributes.functions],
   ] as const) {
     const ids = new Set<string>();
     for (const value of values) {
       if (ids.has(value.id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["exports", key],
-          message: `Plugin ${key} export ids must be unique.`,
+          path: ["contributes", key],
+          message: `Plugin ${key} contribution ids must be unique.`,
         });
       }
       ids.add(value.id);
     }
   }
   const cardPaths = new Set<string>();
-  for (const card of manifest.exports.cards) {
+  for (const card of manifest.contributes.cards) {
     if (cardPaths.has(card.path)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["exports", "cards"],
-        message: "Plugin Card export paths must be unique.",
+        path: ["contributes", "cards"],
+        message: "Plugin Card contribution paths must be unique.",
       });
     }
     cardPaths.add(card.path);
   }
   const artifactPaths = new Set(cardPaths);
   for (const artifact of [
-    ...manifest.exports.providers,
-    ...manifest.exports.modelBindings,
+    ...manifest.contributes.providers,
+    ...manifest.contributes.modelBindings,
   ]) {
     if (artifactPaths.has(artifact.path)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["exports"],
+        path: ["contributes"],
         message: "Plugin declarative artifact paths must be unique.",
       });
     }
@@ -1295,68 +1213,60 @@ export const ExecutablePluginManifestSchema = z.object({
   }
 });
 
-function executablePluginDomainAllowed(hostname: string, domains: readonly string[]): boolean {
-  const host = hostname.toLowerCase();
-  return domains.some((entry) => {
-    const domain = entry.toLowerCase();
-    return host === domain || host.endsWith(`.${domain}`);
-  });
-}
-
 /**
- * Kernel policy shared by local stdio and hosted HTTP brokers. Keeping this in
- * the versioned contract package prevents the two runtimes from granting
- * subtly different capabilities for the same manifest.
+ * The host dependency surface shared by local stdio and hosted HTTP runtimes.
+ * Keeping this in the versioned contract package prevents the two runtimes
+ * from offering different SDK operations for the same contribution shape.
  */
-export function executablePluginBrokerPermissionError(
+export function executablePluginDependencyError(
   manifestInput: unknown,
   requestInput: unknown,
 ): string | null {
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
   const request = ExecutablePluginBrokerRequestSchema.parse(requestInput);
   const operation = request.operation;
-  if (operation.kind === "credential.handle") {
-    return manifest.permissions.secrets.includes(operation.secretId)
+  const capabilities = pluginCapabilities(manifest.contributes);
+
+  if (operation.kind === "asset.write" || operation.kind === "asset.upload-slot") {
+    // A slot is a write that has not happened yet. Letting one through without the contribution would
+    // put the check after the bytes are already stored.
+    return capabilities.assets
       ? null
-      : `Secret ${operation.secretId} is not declared by plugin ${manifest.id}.`;
-  }
-  if (operation.kind === "asset.read") {
-    return manifest.permissions.assets.includes("read")
-      ? null
-      : `Asset read is not declared by plugin ${manifest.id}.`;
-  }
-  if (operation.kind === "asset.write") {
-    return manifest.permissions.assets.includes("write")
-      ? null
-      : `Asset write is not declared by plugin ${manifest.id}.`;
-  }
-  if (operation.kind === "codex.image.generate") {
-    if (!manifest.permissions.hostTools.includes("codex.imagegen")) {
-      return `Codex ImageGen is not declared by plugin ${manifest.id}.`;
-    }
-    if (!manifest.permissions.assets.includes("write")) {
-      return `Codex ImageGen requires asset write permission for plugin ${manifest.id}.`;
-    }
-    if (operation.references.length > 0 && !manifest.permissions.assets.includes("read")) {
-      return `Codex ImageGen references require asset read permission for plugin ${manifest.id}.`;
-    }
-    return null;
+      : `Plugin ${manifest.id} does not contribute anything that produces assets.`;
   }
 
-  const hostname = new URL(operation.url).hostname;
-  if (!executablePluginDomainAllowed(hostname, manifest.permissions.network.domains)) {
-    return `Network domain ${hostname} is not declared by plugin ${manifest.id}.`;
+  if (operation.kind === "asset.read") {
+    return capabilities.assets
+      ? null
+      : `Plugin ${manifest.id} does not contribute anything that reads assets.`;
   }
-  if (operation.method !== "GET" && !manifest.permissions.externalWrites) {
-    return `External writes are not declared by plugin ${manifest.id}.`;
+
+  if (operation.kind === "codex.image.generate") {
+    // A named generator this host provides, asked for by name. Nothing about being an action
+    // implies it -- deriving it from the kind would hand this host's generator to every action ever
+    // written, and dropping the dimension entirely broke clash.codex-imagegen, which is real and
+    // installed.
+    if (!capabilities.hostTools.includes("codex.imagegen")) {
+      return `Plugin ${manifest.id} does not contribute Codex ImageGen.`;
+    }
+    return capabilities.assets
+      ? null
+      : `Plugin ${manifest.id} does not contribute anything that produces assets.`;
   }
-  return null;
+
+  if (operation.kind === "store.get" || operation.kind === "store.put") {
+    return capabilities.store
+      ? null
+      : `Plugin ${manifest.id} does not contribute anything that owns account state.`;
+  }
+
+  return `Plugin ${manifest.id} does not contribute the requested host dependency.`;
 }
 
 /** Kernel-owned proof that one exact plugin directory passed activation. */
 export const ExecutablePluginActivationReceiptSchema = z.object({
   apiVersion: z.literal("clash.plugin.activation/v1"),
-  pluginId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+  pluginId: pluginIdSchema,
   version: z.string().trim().regex(SEMVER_PATTERN),
   schemaHash: z.string().regex(SHA256_PATTERN),
   contentHash: z.string().regex(SHA256_PATTERN),
@@ -1421,13 +1331,13 @@ export function validateExecutablePluginPackage(
   } = {},
 ): ValidatedExecutablePluginPackage {
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
-  const functions = new Map(manifest.exports.functions.map((entry) => [entry.id, entry]));
+  const functions = new Map(manifest.contributes.functions.map((entry) => [entry.id, entry]));
   const cards: Record<string, ExecutablePluginCardDocument> = {};
   const providers: Record<string, ExecutablePluginProviderDocument> = {};
   const modelBindings: Record<string, ExecutablePluginModelBindingDocument> = {};
   const contractTests: Record<string, ExecutablePluginContractTestDocument> = {};
 
-  for (const cardExport of manifest.exports.cards) {
+  for (const cardExport of manifest.contributes.cards) {
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
       throw new Error(`Missing declared Card document: ${cardExport.path}`);
     }
@@ -1461,7 +1371,7 @@ export function validateExecutablePluginPackage(
     cards[cardExport.path] = card;
   }
 
-  for (const providerExport of manifest.exports.providers) {
+  for (const providerExport of manifest.contributes.providers) {
     const input = artifacts.providers?.[providerExport.path];
     if (input === undefined) {
       throw new Error(`Missing declared Provider document: ${providerExport.path}`);
@@ -1481,7 +1391,7 @@ export function validateExecutablePluginPackage(
     providers[providerExport.path] = provider;
   }
 
-  for (const bindingExport of manifest.exports.modelBindings) {
+  for (const bindingExport of manifest.contributes.modelBindings) {
     const input = artifacts.modelBindings?.[bindingExport.path];
     if (input === undefined) {
       throw new Error(`Missing declared model Provider binding: ${bindingExport.path}`);
@@ -1538,56 +1448,6 @@ export function validateExecutablePluginPackage(
   return { manifest, cards, providers, modelBindings, contractTests };
 }
 
-export interface ExecutablePluginPermissionDiff {
-  networkDomains: string[];
-  secrets: string[];
-  assetCapabilities: Array<"read" | "write">;
-  hostTools: Array<"codex.imagegen">;
-  filesystem: {
-    read: string[];
-    write: string[];
-  };
-  externalWrites: boolean;
-  requiresApproval: boolean;
-}
-
-function addedValues<T>(before: readonly T[], after: readonly T[]): T[] {
-  const existing = new Set(before);
-  return [...new Set(after)].filter((value) => !existing.has(value));
-}
-
-/**
- * Returns only capability increases. Agents may freely remove permissions, but
- * the installer must ask the user before activating any non-empty diff.
- */
-export function diffExecutablePluginPermissions(
-  beforeInput: unknown,
-  afterInput: unknown,
-): ExecutablePluginPermissionDiff {
-  const before = ExecutablePluginPermissionsSchema.parse(beforeInput);
-  const after = ExecutablePluginPermissionsSchema.parse(afterInput);
-  const diff: ExecutablePluginPermissionDiff = {
-    networkDomains: addedValues(before.network.domains, after.network.domains),
-    secrets: addedValues(before.secrets, after.secrets),
-    assetCapabilities: addedValues(before.assets, after.assets),
-    hostTools: addedValues(before.hostTools, after.hostTools),
-    filesystem: {
-      read: addedValues(before.filesystem.read, after.filesystem.read),
-      write: addedValues(before.filesystem.write, after.filesystem.write),
-    },
-    externalWrites: !before.externalWrites && after.externalWrites,
-    requiresApproval: false,
-  };
-  diff.requiresApproval = diff.networkDomains.length > 0
-    || diff.secrets.length > 0
-    || diff.assetCapabilities.length > 0
-    || diff.hostTools.length > 0
-    || diff.filesystem.read.length > 0
-    || diff.filesystem.write.length > 0
-    || diff.externalWrites;
-  return diff;
-}
-
 export type ExecutablePluginRuntime = z.infer<typeof ExecutablePluginRuntimeSchema>;
 export type ExecutableActionCard = z.infer<typeof ExecutableActionCardSchema>;
 export type ExecutableActionPresentation = z.infer<typeof ExecutableActionPresentationSchema>;
@@ -1595,7 +1455,6 @@ export type ExecutablePluginCardDocument = z.infer<typeof ExecutablePluginCardDo
 export type ExecutablePluginCardRegistration = z.infer<
   typeof ExecutablePluginCardRegistrationSchema
 >;
-export type ExecutablePluginProviderAuth = z.infer<typeof ExecutablePluginProviderAuthSchema>;
 export type ExecutablePluginProviderDefinition = z.infer<typeof ExecutablePluginProviderDefinitionSchema>;
 export type ExecutablePluginProviderDocument = z.infer<typeof ExecutablePluginProviderDocumentSchema>;
 export type ExecutablePluginProviderRegistration = z.infer<
@@ -1613,7 +1472,6 @@ export type ExecutablePluginAssetHandle = z.infer<typeof ExecutablePluginAssetHa
 export type ExecutablePluginAssetReadResult = z.infer<typeof ExecutablePluginAssetReadResultSchema>;
 export type ExecutablePluginReference = z.infer<typeof ExecutablePluginReferenceSchema>;
 export type ExecutablePluginInvocation = z.infer<typeof ExecutablePluginInvocationSchema>;
-export type HostedExecutablePluginCapability = z.infer<typeof HostedExecutablePluginCapabilitySchema>;
 export type ExecutablePluginOutput = z.infer<typeof ExecutablePluginOutputSchema>;
 export type ExecutablePluginResult = z.infer<typeof ExecutablePluginResultSchema>;
 export type ExecutablePluginBrokerOperation = z.infer<typeof ExecutablePluginBrokerOperationSchema>;
@@ -1626,7 +1484,7 @@ export type ExecutablePluginCardExport = z.infer<typeof ExecutablePluginCardExpo
 export type ExecutablePluginProviderExport = z.infer<typeof ExecutablePluginProviderExportSchema>;
 export type ExecutablePluginModelBindingExport = z.infer<typeof ExecutablePluginModelBindingExportSchema>;
 export type ExecutablePluginFunctionExport = z.infer<typeof ExecutablePluginFunctionExportSchema>;
-export type ExecutablePluginPermissions = z.infer<typeof ExecutablePluginPermissionsSchema>;
+export type ExecutablePluginContributions = z.infer<typeof ExecutablePluginContributionsSchema>;
 export type ExecutablePluginManifest = z.infer<typeof ExecutablePluginManifestSchema>;
 export type ExecutablePluginActivationReceipt = z.infer<
   typeof ExecutablePluginActivationReceiptSchema

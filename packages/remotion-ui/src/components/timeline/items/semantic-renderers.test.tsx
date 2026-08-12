@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
-import type { CompositionItem, DerivedOverlayItem, SubtitleTextItem } from '@master-clash/remotion-core';
+import type { CompositionItem, DerivedOverlayItem, SubtitleTextItem } from '@clash/remotion-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getRendererForItem, itemRendererRegistry } from './registry';
 

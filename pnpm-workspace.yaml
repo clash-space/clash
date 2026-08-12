@@ -10,10 +10,10 @@ packages:
   - 'packages/shared-*'
   - 'packages/action-sdk'
   - 'packages/clash-sdk/js'
+  - 'packages/gui'
   - 'packages/web-ui'
   - 'packages/cli'
   - 'packages/mcp-server'
-  - 'packages/clash-bridge'
   - 'plugins/*'
 supportedArchitectures:
   cpu: [arm64, x64]

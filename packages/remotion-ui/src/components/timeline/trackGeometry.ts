@@ -1,5 +1,5 @@
-import { inferTrackCategory } from '@master-clash/remotion-core';
-import type { Track } from '@master-clash/remotion-core';
+import { inferTrackCategory } from '@clash/remotion-core';
+import type { Track } from '@clash/remotion-core';
 import { getTimelineTrackHeight } from './styles';
 
 export type TimelineTrackBand = {

@@ -46,5 +46,5 @@ clash models              # includes local audio model management
 
 Local model deploy/status/remove and the ASR/TTS runtimes are also scriptable
 from the JS SDK (`createPythonLocalAsrRuntime`,
-`createPythonLocalTtsRuntime` in `@clash-space/sdk`), which wrap the Python
+`createPythonLocalTtsRuntime` in `@clash/sdk`), which wrap the Python
 runtime over a typed RPC surface (`LocalModelRpcInvoker`).

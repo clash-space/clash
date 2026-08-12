@@ -20,7 +20,7 @@ function key(scope: RuntimeSessionCacheScope): string {
     'clash:runtimeSession',
     scope.projectId,
     scope.runtimeId,
-    scope.agentMemberId ?? 'master-clash',
+    scope.agentMemberId ?? 'clash',
     scope.agentId ?? 'default',
   ].join(':');
 }

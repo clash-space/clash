@@ -1,0 +1,31 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-kling-image-o1",
+    "modelId": "kling-image-o1",
+    "upstreamModel": "kling-image-o1",
+    "parameterOverrides": [
+      {
+        "id": "resolution",
+        "label": "Resolution",
+        "type": "select",
+        "required": false,
+        "options": [
+          {
+            "label": "1K",
+            "value": "1k"
+          },
+          {
+            "label": "2K",
+            "value": "2k"
+          }
+        ],
+        "defaultValue": "2k"
+      }
+    ],
+    "defaultParamOverrides": {
+      "resolution": "2k"
+    }
+  }
+}

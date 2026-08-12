@@ -3,7 +3,7 @@ import { CircleNotch } from '@phosphor-icons/react';
 import { SessionStartPicker, type AgentTemplate } from './SessionStartPicker';
 import { Dialog } from '../ui/dialog';
 import type { Runtime } from '@clash/web-ui/hooks/useClashRuntime';
-import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import type { RuntimeResumeSession } from '@clash/web-ui/lib/runtimeResume';
 
 /**
  * Picker shown when the user clicks a registered runtime in the
@@ -13,7 +13,7 @@ import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
  */
 
 const BUILTIN_AGENT_TEMPLATES: AgentTemplate[] = [
-  { id: 'master-clash', label: 'Master Clash' },
+  { id: 'clash', label: 'Clash' },
 ];
 
 export function RuntimePickerDialog({
@@ -27,13 +27,13 @@ export function RuntimePickerDialog({
 }: {
   open: boolean;
   runtime: Runtime | null;
-  loadResumeOptions: (runtimeId: string) => Promise<BridgeSession[]>;
+  loadResumeOptions: (runtimeId: string) => Promise<RuntimeResumeSession[]>;
   onPick: (agentTemplateId: string | null, resumeSessionId?: string, agentId?: string) => void;
   onRecheckAgents?: () => void;
   onClose: () => void;
   busy?: boolean;
 }) {
-  const [sessions, setSessions] = useState<BridgeSession[]>([]);
+  const [sessions, setSessions] = useState<RuntimeResumeSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
 
   useEffect(() => {

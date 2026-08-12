@@ -2,7 +2,7 @@
  * Vendored from openma's group-chat primitives (independent
  * implementation; sync with upstream when openma stabilizes its
  * surface). Underscore prefix marks the module as vendored — same
- * convention as `_acp-runtime/` in clash-bridge.
+ * convention as the ACP runtime in the Clash CLI.
  *
  * Core idea (from user's design):
  *   - All events relay as messages on a per-agent log.
@@ -28,7 +28,7 @@ export type AgentStatus =
   | 'error';
 
 export interface AgentView {
-  /** Agent member id (e.g. "local-master-clash"). */
+  /** Agent member id (e.g. "local-clash"). */
   agentMemberId: string;
   /** Server-side runtime_session row id, "" until POST /sessions returns. */
   sessionId: string;

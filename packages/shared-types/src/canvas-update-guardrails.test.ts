@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentReadReceiptToken } from "./agent-read-proof";
+import { agentReadReceiptToken } from "./agent-read-proof.js";
 import {
   canvasBatchDeleteReadToken,
   canvasNodeReadToken,
@@ -15,7 +15,7 @@ import {
   validateCanvasUpdateDataFields,
   isCanvasActionCheckpointLocked,
   isCanvasNodeImmutable,
-} from "./canvas-update-guardrails";
+} from "./canvas-update-guardrails.js";
 
 describe("canvas update guardrails", () => {
   it("derives whole-node immutability from downstream references", () => {

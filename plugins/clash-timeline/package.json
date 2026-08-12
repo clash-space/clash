@@ -1,6 +1,7 @@
 {
-  "name": "@clash-space/timeline-plugin",
+  "name": "@clash/timeline-plugin",
   "version": "0.1.0",
+  "private": true,
   "description": "Installable Codex plugin that exposes Clash Timeline MCP tools",
   "type": "module",
   "bin": {
@@ -30,8 +31,7 @@
     "skills"
   ],
   "scripts": {
-    "prebuild": "pnpm --filter @clash/shared-mcp build && pnpm --filter @clash/shared-types generate:timeline-dsl-docs",
-    "build": "tsup && tsx scripts/build-cli-runtime.ts && esbuild src/app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=runtime/app-client.js",
+    "build": "tsup && esbuild src/app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=runtime/app-client.js",
     "clean": "rm -rf runtime",
     "lint": "tsc --noEmit",
     "test": "node --import tsx --test src/*.test.ts",
@@ -39,12 +39,14 @@
   },
   "dependencies": {
     "@clash/shared-mcp": "workspace:*",
+    "@clash/shared-runtime": "workspace:*",
+    "@clash/shared-types": "workspace:*",
     "@modelcontextprotocol/ext-apps": "^1.7.4",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "yaml": "^2.6.0",
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@clash/shared-types": "workspace:*",
     "@types/node": "^24.0.0",
     "esbuild": "^0.25.0",
     "tsx": "^4.23.0",

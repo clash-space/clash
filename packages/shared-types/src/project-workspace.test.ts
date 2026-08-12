@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LoroDoc } from "loro-crdt";
-import { Canvas } from "./canvas-ops";
-import * as workspace from "./project-workspace";
+import { Canvas } from "./canvas-ops.js";
+import * as workspace from "./project-workspace.js";
 
 describe("Project workspace model", () => {
   it("scopes nodes to concrete canvases in one Project Loro document", () => {

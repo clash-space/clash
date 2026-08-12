@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  executablePluginBrokerPermissionError,
+  executablePluginDependencyError,
   type PluginBroker,
-} from "@clash-space/bridge/actions-host";
-import { assetReachForRuntime, ExecutablePluginAssetReadResultSchema } from "@clash/shared-types";
+} from "./runtime/host/lib/actions-loader.js";
+import {
+  assetReachForRuntime,
+  ExecutablePluginAssetReadResultSchema,
+} from "@clash/shared-types";
 import type {
   AssetKind,
   ExecutablePluginAssetHandle,
@@ -40,7 +43,9 @@ export async function readAssetForPlugin(options: {
 }): Promise<ExecutablePluginAssetReadResult> {
   const reachable = assetReachForRuntime(options.runtimeKind);
   const publicUrl = options.publicUrl?.();
-  const localUrl = reachable.includes("private") ? options.localUrl?.() : undefined;
+  const localUrl = reachable.includes("private")
+    ? options.localUrl?.()
+    : undefined;
   const asset = await options.readAsset({
     assetId: options.asset.assetId,
     ...(options.projectId ? { projectId: options.projectId } : {}),
@@ -52,10 +57,18 @@ export async function readAssetForPlugin(options: {
     byteLength: asset.bytes.byteLength,
   };
   if (publicUrl) {
-    return ExecutablePluginAssetReadResultSchema.parse({ ...common, url: publicUrl, reach: "public" });
+    return ExecutablePluginAssetReadResultSchema.parse({
+      ...common,
+      url: publicUrl,
+      reach: "public",
+    });
   }
   if (localUrl) {
-    return ExecutablePluginAssetReadResultSchema.parse({ ...common, url: localUrl, reach: "private" });
+    return ExecutablePluginAssetReadResultSchema.parse({
+      ...common,
+      url: localUrl,
+      reach: "private",
+    });
   }
   return ExecutablePluginAssetReadResultSchema.parse({
     ...common,
@@ -69,7 +82,13 @@ export interface LocalPluginBrokerAuditRecord {
   projectId: string;
   invocationId: string;
   requestId: string;
-  operation: "credential.handle" | "asset.read" | "asset.write" | "network.fetch" | "codex.image.generate";
+  operation:
+    | "asset.read"
+    | "asset.write"
+    | "asset.upload-slot"
+    | "store.get"
+    | "store.put"
+    | "codex.image.generate";
   target: string;
   status: "ok" | "error";
   error?: string;
@@ -82,21 +101,8 @@ export interface LocalPluginBrokerAssetReadResult {
   bytes: Uint8Array;
 }
 
-export interface LocalPluginBrokerTrafficContext {
-  pluginId: string;
-  pluginVersion: string;
-  providerId?: string;
-  accountId?: string;
-}
-
 export interface LocalExecutablePluginBrokerOptions {
   loadProviderAccounts: () => Promise<RuntimeProviderAccountAvailability[]>;
-  fetch?: typeof fetch;
-  /**
-   * Supplies a per-call fetch for outbound provider traffic so recorders can
-   * attribute each request to the plugin and provider account that caused it.
-   */
-  providerTrafficFetch?: (context: LocalPluginBrokerTrafficContext) => typeof fetch;
   readAsset?: (input: {
     assetId: string;
     projectId: string;
@@ -112,6 +118,61 @@ export interface LocalExecutablePluginBrokerOptions {
     mediaType?: string;
     bytes: Uint8Array;
   }) => Promise<ExecutablePluginAssetHandle>;
+  /**
+   * Hand out somewhere to stream bytes, and collect them afterwards.
+   *
+   * The alternative is `dataBase64` inside the broker frame, which for one 30-second video is
+   * 3,470,456 characters held at once by the plugin, the pipe and this process.
+   */
+  openUploadSlot?: (input: {
+    pluginId: string;
+    pluginVersion: string;
+    projectId: string;
+    invocationId: string;
+    taskId: string;
+    slot: string;
+    kind: AssetKind;
+    mediaType?: string;
+    /** How many bytes are coming, when the plugin holds them. */
+    byteLength?: number;
+    /** Where they are, when the vendor answered with a link and there is nothing to count yet. */
+    url?: string;
+  }) => Promise<{
+    /** Where to PUT the bytes. Absent when the host already holds them -- a vendor link is fetched
+     * by the host, and there is nobody left to upload. */
+    uploadUrl?: string;
+    assetId: string;
+  }>;
+  finishUpload?: (input: {
+    pluginId: string;
+    projectId: string;
+    invocationId: string;
+    taskId: string;
+    slot: string;
+    kind: AssetKind;
+    mediaType?: string;
+    assetId: string;
+  }) => Promise<ExecutablePluginAssetHandle>;
+  /**
+   * This plugin's own stored values, for this account.
+   *
+   * Bound to the active invocation. The request carries a key and nothing else, so a plugin cannot
+   * reach another plugin's credentials or another account's by asking -- the pair is decided before
+   * the key is read.
+   */
+  storeGet?: (input: {
+    pluginId: string;
+    accountId: string;
+    key: string;
+  }) => Promise<string | undefined>;
+  storePut?: (input: {
+    pluginId: string;
+    accountId: string;
+    key: string;
+    value: string;
+    secret?: boolean;
+    expiresAt?: string;
+  }) => Promise<void>;
   generateCodexImage?: (input: {
     prompt: string;
     aspectRatio: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "21:9";
@@ -122,130 +183,39 @@ export interface LocalExecutablePluginBrokerOptions {
     }>;
   }) => Promise<{ mediaType: string; bytes: Uint8Array }>;
   audit?: (record: LocalPluginBrokerAuditRecord) => Promise<void> | void;
-  credentialHandleTtlMs?: number;
   now?: () => number;
 }
 
-interface CredentialCapability {
-  invocationId: string;
-  pluginId: string;
-  providerId: string;
-  accountId?: string;
-  credentials: Record<string, string>;
-  expiresAt: number;
-}
-
-const CREDENTIAL_HEADER_NAMES = new Set([
-  "authorization",
-  "api-key",
-  "token",
-  "x-api-key",
-  "xi-api-key",
-  "x-goog-api-key",
-]);
-
-function credentialTarget(secretId: string): { providerId?: string; accountId?: string } {
-  if (secretId.startsWith("provider:")) {
-    return { providerId: secretId.slice("provider:".length) };
-  }
-  if (secretId.startsWith("provider-account:")) {
-    return { accountId: secretId.slice("provider-account:".length) };
-  }
-  throw new Error(
-    `Unsupported secret id ${secretId}; use provider:<id> or provider-account:<id>.`,
-  );
-}
-
-function authorizationHeaders(
-  providerId: string,
-  credentials: Record<string, string>,
-): Record<string, string> {
-  const apiKey = credentials.apiKey?.trim();
-  if (!apiKey) throw new Error(`Provider ${providerId} has no configured apiKey.`);
-  if (providerId === "fal") return { authorization: `Key ${apiKey}` };
-  if (providerId === "replicate") return { authorization: `Token ${apiKey}` };
-  if (providerId === "elevenlabs") return { "xi-api-key": apiKey };
-  if (providerId === "hilo-hub") {
-    return { authorization: `Bearer ${apiKey}`, token: apiKey };
-  }
-  if (providerId === "google" || providerId === "google-ai-studio") {
-    return { "x-goog-api-key": apiKey };
-  }
-  return { authorization: `Bearer ${apiKey}` };
-}
-
-function safeRequestHeaders(
-  headers: Record<string, string>,
-  credential?: CredentialCapability,
-): Headers {
-  const result = new Headers();
-  for (const [name, value] of Object.entries(headers)) {
-    if (CREDENTIAL_HEADER_NAMES.has(name.toLowerCase())) continue;
-    result.set(name, value);
-  }
-  if (credential) {
-    for (const [name, value] of Object.entries(
-      authorizationHeaders(credential.providerId, credential.credentials),
-    )) result.set(name, value);
-  }
-  return result;
-}
-
-function safeResponseHeaders(headers: Headers): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const name of ["content-type", "location", "retry-after", "x-request-id", "x-fal-request-id"]) {
-    const value = headers.get(name);
-    if (value !== null) result[name] = value;
-  }
-  return result;
-}
-
-async function responseBody(response: Response): Promise<ExecutablePluginJsonValue> {
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-  if (contentType.includes("application/json")) {
-    const text = new TextDecoder().decode(bytes);
-    try {
-      return JSON.parse(text) as ExecutablePluginJsonValue;
-    } catch {
-      return { encoding: "utf8", data: text };
-    }
-  }
-  if (contentType.startsWith("text/")) {
-    return { encoding: "utf8", data: new TextDecoder().decode(bytes) };
-  }
-  return { encoding: "base64", data: Buffer.from(bytes).toString("base64") };
-}
-
-function requestTarget(operation: Parameters<PluginBroker>[0]["operation"]): string {
-  if (operation.kind === "credential.handle") return operation.secretId;
+function requestTarget(
+  operation: Parameters<PluginBroker>[0]["operation"],
+): string {
+  if (operation.kind === "store.get" || operation.kind === "store.put")
+    return operation.key;
   if (operation.kind === "asset.read") return operation.asset.assetId;
-  if (operation.kind === "asset.write") return operation.slot;
+  if (
+    operation.kind === "asset.write" ||
+    operation.kind === "asset.upload-slot"
+  )
+    return operation.slot;
   if (operation.kind === "codex.image.generate") return "codex.imagegen";
-  return new URL(operation.url).hostname;
+  throw new Error(
+    `Unsupported plugin broker operation ${String(
+      (operation as unknown as { kind?: unknown }).kind,
+    )}.`,
+  );
 }
 
 export function createLocalExecutablePluginBroker(
   options: LocalExecutablePluginBrokerOptions,
 ): PluginBroker {
-  const credentialCapabilities = new Map<string, CredentialCapability>();
   const now = options.now ?? Date.now;
-  // Defaults to 30 minutes, comfortably above the executor's 25-minute polling
-  // ceiling (300 x 5s, whose final attempt starts at 24m55s before per-request
-  // network time), so a long video generation is never discarded after the
-  // upstream already billed it. Hosts may tune it via
-  // CLASH_PLUGIN_CREDENTIAL_TTL_MINUTES. The handle is a backstop, not the
-  // security boundary — the sandbox, the domain allowlist and the
-  // invocation/plugin binding are, and a plugin holding the matching provider:*
-  // permission can mint a fresh handle at any time. The TTL still bounds leaked
-  // handles and keeps the capability map from growing forever, since handles
-  // are only reclaimed on expiry.
-  const credentialHandleTtlMs = options.credentialHandleTtlMs ?? 30 * 60_000;
-  const brokerFetch = options.fetch ?? fetch;
 
   return async (request, context) => {
     const target = requestTarget(request.operation);
-    const permissionError = executablePluginBrokerPermissionError(context.manifest, request);
+    const dependencyError = executablePluginDependencyError(
+      context.manifest,
+      request,
+    );
     const audit = async (status: "ok" | "error", error?: string) => {
       await options.audit?.({
         pluginId: context.manifest.id,
@@ -253,7 +223,8 @@ export function createLocalExecutablePluginBroker(
         projectId: context.invocation.projectId,
         invocationId: request.invocationId,
         requestId: request.requestId,
-        operation: request.operation.kind,
+        operation:
+          request.operation.kind as LocalPluginBrokerAuditRecord["operation"],
         target,
         status,
         ...(error ? { error } : {}),
@@ -262,80 +233,17 @@ export function createLocalExecutablePluginBroker(
     };
 
     try {
-      if (permissionError) throw new Error(permissionError);
+      if (dependencyError) throw new Error(dependencyError);
       if (request.invocationId !== context.invocation.invocationId) {
-        throw new Error("Broker request invocation does not match the active invocation.");
+        throw new Error(
+          "Broker request invocation does not match the active invocation.",
+        );
       }
-      for (const [handle, capability] of credentialCapabilities) {
-        if (capability.expiresAt <= now()) credentialCapabilities.delete(handle);
-      }
-
       let result: ExecutablePluginJsonValue;
       const operation = request.operation;
-      if (operation.kind === "credential.handle") {
-        const selector = credentialTarget(operation.secretId);
-        const accounts = await options.loadProviderAccounts();
-        const account = accounts.find((candidate) => candidate.enabled && (
-          selector.accountId
-            ? candidate.id === selector.accountId
-            : candidate.providerId === selector.providerId
-        ));
-        if (!account?.credentials) {
-          throw new Error(`No enabled provider account satisfies ${operation.secretId}.`);
-        }
-        const handle = `clash-secret://${randomUUID()}`;
-        credentialCapabilities.set(handle, {
-          invocationId: request.invocationId,
-          pluginId: context.manifest.id,
-          providerId: account.providerId,
-          ...(account.id ? { accountId: account.id } : {}),
-          credentials: { ...account.credentials },
-          expiresAt: now() + credentialHandleTtlMs,
-        });
-        result = {
-          handle,
-          providerId: account.providerId,
-          ...(account.id ? { accountId: account.id } : {}),
-          expiresAt: new Date(now() + credentialHandleTtlMs).toISOString(),
-        };
-      } else if (operation.kind === "network.fetch") {
-        const credential = operation.credentialHandle
-          ? credentialCapabilities.get(operation.credentialHandle)
-          : undefined;
-        if (operation.credentialHandle && !credential) {
-          throw new Error("Credential handle is unknown or expired.");
-        }
-        if (credential && (
-          credential.invocationId !== request.invocationId
-          || credential.pluginId !== context.manifest.id
-        )) {
-          throw new Error("Credential handle does not belong to invocation or plugin.");
-        }
-        const headers = safeRequestHeaders(operation.headers, credential);
-        const body = operation.body === undefined
-          ? undefined
-          : typeof operation.body === "string"
-            ? operation.body
-            : JSON.stringify(operation.body);
-        const trafficFetch = options.providerTrafficFetch?.({
-          pluginId: context.manifest.id,
-          pluginVersion: context.manifest.version,
-          ...(credential?.providerId ? { providerId: credential.providerId } : {}),
-          ...(credential?.accountId ? { accountId: credential.accountId } : {}),
-        });
-        const response = await (trafficFetch ?? brokerFetch)(operation.url, {
-          method: operation.method,
-          headers,
-          ...(body !== undefined ? { body } : {}),
-          redirect: "manual",
-        });
-        result = {
-          status: response.status,
-          headers: safeResponseHeaders(response.headers),
-          body: await responseBody(response),
-        };
-      } else if (operation.kind === "asset.read") {
-        if (!options.readAsset) throw new Error("Local asset broker is unavailable.");
+      if (operation.kind === "asset.read") {
+        if (!options.readAsset)
+          throw new Error("Local asset broker is unavailable.");
         const asset = await options.readAsset({
           assetId: operation.asset.assetId,
           projectId: context.invocation.projectId,
@@ -354,12 +262,106 @@ export function createLocalExecutablePluginBroker(
           byteLength: asset.bytes.byteLength,
           dataBase64: Buffer.from(asset.bytes).toString("base64"),
         });
-      } else if (operation.kind === "asset.write") {
-        if (!options.writeAsset) throw new Error("Local asset write broker is unavailable.");
-        if (!operation.dataBase64) {
-          throw new Error("Local asset.write currently requires inline dataBase64.");
+      } else if (operation.kind === "store.get") {
+        if (!options.storeGet)
+          throw new Error("Local plugin store is unavailable.");
+        if (!context.accountId) {
+          throw new Error(
+            "Plugin store access requires a Host-selected provider account.",
+          );
         }
-        const bytes = new Uint8Array(Buffer.from(operation.dataBase64, "base64"));
+        const stored = await options.storeGet({
+          pluginId: context.manifest.id,
+          accountId: context.accountId,
+          key: operation.key,
+        });
+        const account = stored === undefined
+          ? (await options.loadProviderAccounts()).find(
+              (candidate) =>
+                candidate.enabled && candidate.id === context.accountId,
+            )
+          : undefined;
+        if (stored === undefined && !account) {
+          throw new Error(
+            `Host-selected provider account ${context.accountId} is unavailable.`,
+          );
+        }
+        const value = stored ?? account?.credentials?.[operation.key];
+        result = {
+          // `null`, not `undefined`. An unset key used to answer `{ value: undefined }`, which
+          // serialises to `{}` -- the plugin then saw a value-shaped object with no value in it.
+          // clash.google asks for `service` and `region`, and an account holding a service account
+          // key has neither, so the first optional lookup any Google account made killed the
+          // invocation with a wall of union errors about a key that was simply not set.
+          value: value ?? null,
+        } as never;
+      } else if (operation.kind === "store.put") {
+        if (!options.storePut)
+          throw new Error("Local plugin store is unavailable.");
+        if (!context.accountId) {
+          throw new Error(
+            "Plugin store access requires a Host-selected provider account.",
+          );
+        }
+        await options.storePut({
+          pluginId: context.manifest.id,
+          accountId: context.accountId,
+          key: operation.key,
+          value: operation.value,
+          ...(operation.secret === undefined
+            ? {}
+            : { secret: operation.secret }),
+          ...(operation.expiresAt === undefined
+            ? {}
+            : { expiresAt: operation.expiresAt }),
+        });
+        result = { ok: true } as never;
+      } else if (operation.kind === "asset.upload-slot") {
+        if (!options.openUploadSlot)
+          throw new Error("Local upload slots are unavailable.");
+        result = (await options.openUploadSlot({
+          pluginId: context.manifest.id,
+          pluginVersion: context.manifest.version,
+          projectId: context.invocation.projectId,
+          invocationId: context.invocation.invocationId,
+          taskId: context.invocation.taskId,
+          slot: operation.slot,
+          kind: operation.assetKind,
+          ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
+          // Only what the plugin actually said. A url has no byte count until someone fetches it,
+          // and inventing a zero here would announce a size the host would then enforce.
+          ...(operation.byteLength === undefined
+            ? {}
+            : { byteLength: operation.byteLength }),
+          ...(operation.url === undefined ? {} : { url: operation.url }),
+        })) as never;
+      } else if (operation.kind === "asset.write") {
+        if (operation.assetId) {
+          // The bytes are already stored; this only names them.
+          if (!options.finishUpload)
+            throw new Error("Local upload slots are unavailable.");
+          result = (await options.finishUpload({
+            pluginId: context.manifest.id,
+            projectId: context.invocation.projectId,
+            invocationId: context.invocation.invocationId,
+            taskId: context.invocation.taskId,
+            slot: operation.slot,
+            kind: operation.assetKind,
+            ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
+            assetId: operation.assetId,
+          })) as never;
+          return result;
+        }
+        if (!options.writeAsset)
+          throw new Error("Local asset write broker is unavailable.");
+        if (!operation.dataBase64) {
+          throw new Error(
+            "Local asset.write requires dataBase64, or an assetId from an upload slot.",
+          );
+        }
+        const bytes = new Uint8Array(
+          Buffer.from(operation.dataBase64, "base64"),
+        );
         result = await options.writeAsset({
           pluginId: context.manifest.id,
           pluginVersion: context.manifest.version,
@@ -371,27 +373,35 @@ export function createLocalExecutablePluginBroker(
           ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
           bytes,
         });
-      } else {
+      } else if (operation.kind === "codex.image.generate") {
         if (!options.generateCodexImage) {
-          throw new Error("Codex ImageGen is unavailable in this Clash runtime.");
+          throw new Error(
+            "Codex ImageGen is unavailable in this Clash runtime.",
+          );
         }
         if (!options.readAsset || !options.writeAsset) {
-          throw new Error("Codex ImageGen requires local asset read and write brokers.");
+          throw new Error(
+            "Codex ImageGen requires local asset read and write brokers.",
+          );
         }
-        const references = await Promise.all(operation.references.map(async (asset) => {
-          const resolved = await options.readAsset!({
-            assetId: asset.assetId,
-            projectId: context.invocation.projectId,
-          });
-          if (resolved.kind !== "image") {
-            throw new Error(`Codex ImageGen reference ${asset.assetId} is not an image.`);
-          }
-          return {
-            asset,
-            ...(resolved.mediaType ? { mediaType: resolved.mediaType } : {}),
-            bytes: resolved.bytes,
-          };
-        }));
+        const references = await Promise.all(
+          operation.references.map(async (asset) => {
+            const resolved = await options.readAsset!({
+              assetId: asset.assetId,
+              projectId: context.invocation.projectId,
+            });
+            if (resolved.kind !== "image") {
+              throw new Error(
+                `Codex ImageGen reference ${asset.assetId} is not an image.`,
+              );
+            }
+            return {
+              asset,
+              ...(resolved.mediaType ? { mediaType: resolved.mediaType } : {}),
+              bytes: resolved.bytes,
+            };
+          }),
+        );
         const generated = await options.generateCodexImage({
           prompt: operation.prompt,
           aspectRatio: operation.aspectRatio,
@@ -408,6 +418,12 @@ export function createLocalExecutablePluginBroker(
           mediaType: generated.mediaType,
           bytes: generated.bytes,
         });
+      } else {
+        throw new Error(
+          `Unsupported plugin broker operation ${String(
+            (operation as unknown as { kind?: unknown }).kind,
+          )}.`,
+        );
       }
       await audit("ok");
       return result;

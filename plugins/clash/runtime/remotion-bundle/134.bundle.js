@@ -227,7 +227,7 @@
 /******/ 			}
 /******/ 		};
 /******/ 		
-/******/ 		var chunkLoadingGlobal = self["webpackChunk_master_clash_remotion_components"] = self["webpackChunk_master_clash_remotion_components"] || [];
+/******/ 		var chunkLoadingGlobal = self["webpackChunk_clash_remotion_components"] = self["webpackChunk_clash_remotion_components"] || [];
 /******/ 		var parentChunkLoadingFunction = chunkLoadingGlobal.push.bind(chunkLoadingGlobal);
 /******/ 		chunkLoadingGlobal.push = installChunk;
 /******/ 		

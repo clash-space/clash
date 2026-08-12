@@ -8,7 +8,8 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { declaredBrowserFlow } from "./declared-oauth.js";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
@@ -17,6 +18,11 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { LoroDoc } from "loro-crdt";
 import { clashHomeForLocalDataDir } from "./local-paths.js";
+import {
+  handleProjectCommand,
+  projectCommandMutates,
+} from "./project-command-host.js";
+import { ProjectHostCommandSchema } from "./domain/requests.js";
 import {
   importLocalProviderToken,
   type LocalTokenImportAuth,
@@ -69,10 +75,6 @@ import {
   sessionReadToken,
   TextAppliedRevisionSchema,
   UserModelCardConfigSchema,
-  ExecutablePluginBrokerRequestSchema,
-  ExecutablePluginBrokerResponseSchema,
-  ExecutablePluginInvocationSchema,
-  ExecutablePluginManifestSchema,
   validateCanvasBatchDelete,
   validateCanvasBatchDeleteReadProof,
   validateCanvasEdgeAdd,
@@ -102,12 +104,9 @@ import {
   type ExecutablePluginBinding,
   type ExecutablePluginCardRegistration,
   type ExecutablePluginModelBindingRegistration,
-  type ExecutablePluginProviderAuth,
   type ExecutablePluginProviderRegistration,
-  type ExecutablePluginBrokerRequest,
-  type ExecutablePluginInvocation,
-  type ExecutablePluginJsonValue,
-  type ExecutablePluginManifest,
+  missingModelRouteCredentials,
+  type ProviderCredentialRequirements,
 } from "@clash/shared-types";
 import type {
   Asset,
@@ -178,6 +177,7 @@ import {
   type MockMediaGenerationCompleted,
   type MockMediaGenerationInput,
   type MockMediaGenerationResult,
+  type ProviderPluginExecutor,
 } from "./local-aigc.js";
 import {
   createJsonlProviderTestRecorder,
@@ -264,6 +264,13 @@ export interface ProviderOAuthDriver {
 
 export interface LocalApiOptions {
   dataDir: string;
+  /**
+   * Receive bytes for an upload slot the broker handed out.
+   *
+   * Injected because the slot registry belongs to whoever issued the URL. A hosted deployment
+   * issues presigned object-storage URLs and never sees this call at all.
+   */
+  acceptPluginUpload?: (token: string, bytes: Uint8Array) => boolean;
   clashRoot?: string;
   userId?: string;
   hostIdentity?: {
@@ -288,8 +295,10 @@ export interface LocalApiOptions {
   providerTestFalQueueBaseUrl?: string;
   providerTestGoogleAiStudioBaseUrl?: string;
   providerTestPikaBaseUrl?: string;
-  providerTestKieBaseUrl?: string;
   providerTestReplicateBaseUrl?: string;
+  providerPluginExecutor?: ProviderPluginExecutor;
+  /** Wake the shared project room after an HTTP command creates pending backend work. */
+  processProjectWork?: (projectId: string) => Promise<void>;
   voiceInputFetch?: typeof fetch;
   voiceInputGoogleAiStudioBaseUrl?: string;
   directorModelGenerationFetch?: typeof fetch;
@@ -306,14 +315,6 @@ export interface LocalApiOptions {
   listPluginProviders?: () => Promise<ExecutablePluginProviderRegistration[]>;
   /** Test/embedding override for the OS application-support directory. */
   localTokenImportAppDataRoot?: string;
-  pluginBrokerToken?: string;
-  executablePluginBroker?: (
-    request: ExecutablePluginBrokerRequest,
-    context: {
-      manifest: ExecutablePluginManifest;
-      invocation: ExecutablePluginInvocation;
-    },
-  ) => Promise<ExecutablePluginJsonValue>;
   marketplaceActions?: Array<Record<string, unknown> & {
     id: string;
     packageId: string;
@@ -321,6 +322,18 @@ export interface LocalApiOptions {
   listInstalledMarketplaceActions?: () => Promise<Array<Record<string, unknown>>>;
   installMarketplaceAction?: (packageId: string) => Promise<Record<string, unknown>>;
   uninstallMarketplaceAction?: (actionId: string) => Promise<void>;
+  marketplaceSkills?: Array<Record<string, unknown> & { id: string }>;
+  listInstalledMarketplaceSkills?: () => Promise<Array<Record<string, unknown>>>;
+  installMarketplaceSkill?: (skillId: string) => Promise<Record<string, unknown>>;
+  uninstallMarketplaceSkill?: (skillId: string) => Promise<void>;
+  pluginPackages?: {
+    list(): Promise<object>;
+    validate(input: unknown): Promise<object>;
+    activate(input: unknown): Promise<object>;
+    read(id: string): Promise<object>;
+    rollback(id: string): Promise<object>;
+    remove(id: string): Promise<object>;
+  };
   directorStageRenderer?: LocalDirectorStageRenderer;
 }
 
@@ -811,11 +824,11 @@ function refreshAssetReferenceProjectionState(
 }
 
 const LOCAL_RUNTIME_ID = "desktop-local";
-const DEFAULT_RUNTIME_SESSION_CONTEXT_ID = "master-clash";
+const DEFAULT_RUNTIME_SESSION_CONTEXT_ID = "clash";
 const DEFAULT_RUNTIME_SESSION_TITLE = "New session";
 
 const BUILTIN_AGENT_TEMPLATES: Array<{ id: string; label: string }> = [
-  { id: "master-clash", label: "Master Clash" },
+  { id: "clash", label: "Clash" },
 ];
 
 function truncateProjectName(prompt: string): string {
@@ -1042,6 +1055,59 @@ function parseAssetByteRange(
     start,
     end: Math.min(requestedEnd, size - 1),
   };
+}
+
+async function serveLocalAssetFile(options: {
+  dataDir: string;
+  clashRoot: string;
+  storageKey: string;
+  rangeHeader?: string;
+}): Promise<Response> {
+  const path = await assetPathForRead(
+    options.dataDir,
+    options.storageKey,
+    options.clashRoot,
+  );
+  const fileInfo = await stat(path);
+  const range = parseAssetByteRange(options.rangeHeader, fileInfo.size);
+  if (range === "unsatisfiable") {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        "accept-ranges": "bytes",
+        "content-range": `bytes */${fileInfo.size}`,
+      },
+    });
+  }
+  if (range) {
+    const length = range.end - range.start + 1;
+    const handle = await open(path, "r");
+    try {
+      const bytes = new Uint8Array(length);
+      const { bytesRead } = await handle.read(bytes, 0, length, range.start);
+      return new Response(bytes.subarray(0, bytesRead), {
+        status: 206,
+        headers: {
+          "accept-ranges": "bytes",
+          "content-type": contentTypeForPath(options.storageKey),
+          "content-length": String(bytesRead),
+          "content-range": `bytes ${range.start}-${range.start + bytesRead - 1}/${fileInfo.size}`,
+          "cache-control": "public, max-age=31536000, immutable",
+        },
+      });
+    } finally {
+      await handle.close();
+    }
+  }
+  const bytes = await readFile(path);
+  return new Response(bytes, {
+    headers: {
+      "accept-ranges": "bytes",
+      "content-type": contentTypeForPath(options.storageKey),
+      "content-length": String(bytes.byteLength),
+      "cache-control": "public, max-age=31536000, immutable",
+    },
+  });
 }
 
 function nowIso(): string {
@@ -3094,7 +3160,36 @@ function parseProviderOAuthId(value: unknown): ProviderOAuthId | null {
   return parsed.success ? parsed.data : null;
 }
 
-type BrowserProviderOAuth = Extract<ExecutablePluginProviderAuth, { type: "oauth" }>;
+/**
+ * A browser OAuth capture, as it was stored before the auth-type registry was deleted.
+ *
+ * Declared here rather than derived from `@clash/shared-types` because a plugin can no longer
+ * declare this shape. It was the `oauth` member of a union over auth types -- an authorization URL,
+ * a custom URL scheme, and a configurable field to read the token out of -- and a union over auth
+ * types needs a member per vendor, which is what the declarative model exists to stop.
+ *
+ * The type stays because pending OAuth records already hold it: `oauthState` is JSON written at
+ * start and read back at complete, so a capture begun before this change still finishes. Nothing
+ * mints new ones.
+ */
+interface BrowserProviderOAuth {
+  type: "oauth";
+  id: string;
+  flow: "browser";
+  authorizationUrl: string;
+  /**
+   * Loopback as well as a custom scheme.
+   *
+   * The previous shape allowed only `custom-scheme`, which Google cannot use: it requires loopback
+   * for desktop clients, and withdrew the out-of-band flow in 2022. A Provider declaring Google's
+   * flow had nowhere to put its callback.
+   */
+  callback:
+    | { type: "scheme"; scheme: string }
+    | { type: "loopback" }
+    | { type: "poll-until"; url: string; intervalMs?: number };
+  accessTokenField: string;
+}
 
 interface BrowserProviderOAuthState {
   protocol: "clash.provider-oauth.browser/v1";
@@ -3114,44 +3209,86 @@ function parseBrowserProviderOAuthState(value: string | undefined): BrowserProvi
   }
 }
 
+/**
+ * No plugin can declare a browser capture any more, so there is never one to find.
+ *
+ * The lookup used to scan every installed provider's `auth` array for an `oauth` entry with a
+ * matching id. That array is gone: a provider now declares form keys, an optional browser flow and
+ * an optional renewal schedule, and the flow carries no id for a route to name and no field to read
+ * a token out of.
+ *
+ * Kept as a function returning null rather than deleted, because both call sites already handle
+ * null by answering 404 -- "OAuth provider is not configured" -- which is the truthful answer. The
+ * built-in drivers in `options.providerOAuth` are checked first and are unaffected.
+ */
 async function pluginBrowserOAuth(
   options: Pick<LocalApiOptions, "listPluginProviders">,
   oauthId: ProviderOAuthId,
 ): Promise<BrowserProviderOAuth | null> {
-  const registrations = options.listPluginProviders
-    ? await options.listPluginProviders()
-    : [];
-  for (const registration of registrations) {
-    const auth = registration.document.spec.auth.find(
-      (candidate): candidate is BrowserProviderOAuth =>
-        candidate.type === "oauth" && candidate.id === oauthId,
-    );
-    if (auth) return auth;
-  }
+  // Read from the Provider's own declaration. This returned null unconditionally after the
+  // auth-type registry was deleted, so every plugin Provider got a 404 from the start endpoint no
+  // matter what it declared -- a definition wired to nothing.
+  const registrations = (await options.listPluginProviders?.()) ?? [];
+  const flow = declaredBrowserFlow(
+    registrations.map((registration) => ({
+      id: registration.document.spec.id,
+      name: registration.document.spec.name,
+      ...(registration.document.spec.auth ? { auth: registration.document.spec.auth } : {}),
+    })),
+    oauthId,
+  );
+  if (!flow) return null;
+
+  return {
+    type: "oauth",
+    id: oauthId,
+    flow: "browser",
+    authorizationUrl: flow.open,
+    callback: flow.callback,
+    // The host stores whatever the exchange returns; this names the field it hands back as the
+    // credential so the account form has something to show as configured.
+    accessTokenField: "accessToken",
+  };
+}
+
+/**
+ * Likewise for reading a token out of another desktop app's store.
+ *
+ * This was a recipe -- a path inside an installed client's encrypted config -- that a plugin wrote
+ * into its manifest and the host executed. Reading another app's store is plugin code now. The
+ * decryption routine in `local-token-import.ts` is unchanged and still reachable by the host's own
+ * import path; what is gone is a plugin's ability to point it anywhere it likes.
+ */
+async function pluginLocalTokenImport(
+  _options: Pick<LocalApiOptions, "listPluginProviders">,
+  _oauthId: ProviderOAuthId,
+): Promise<LocalTokenImportAuth | null> {
   return null;
 }
 
-async function pluginLocalTokenImport(
-  options: Pick<LocalApiOptions, "listPluginProviders">,
-  oauthId: ProviderOAuthId,
-): Promise<LocalTokenImportAuth | null> {
-  const registrations = options.listPluginProviders
-    ? await options.listPluginProviders()
-    : [];
-  for (const registration of registrations) {
-    const auth = registration.document.spec.auth.find(
-      (candidate): candidate is LocalTokenImportAuth =>
-        candidate.type === "local-token-import" && candidate.id === oauthId,
-    );
-    if (auth) return auth;
-  }
-  return null;
+/**
+ * How this flow gets its answer back, in a form the settings screen can show.
+ *
+ * A loopback flow has no scheme to name -- the port is chosen when the flow starts -- so reporting
+ * one would mean inventing a value the caller could not use.
+ */
+function callbackDescription(auth: BrowserProviderOAuth): { callbackScheme?: string; callbackType: string } {
+  return auth.callback.type === "scheme"
+    ? { callbackType: "scheme", callbackScheme: auth.callback.scheme }
+    : { callbackType: auth.callback.type };
 }
 
 function browserOAuthToken(callbackUrl: string, auth: BrowserProviderOAuth): string {
+  // Only the custom-scheme callback carries the token in a fragment. A loopback flow is completed
+  // by `runLoopbackFlow` and `exchangeAuthorizationCode` in auth-flow.ts, which return a token
+  // rather than a URL, and device code never produces a callback URL at all.
+  if (auth.callback.type !== "scheme") {
+    throw new Error(`A ${auth.callback.type} flow is not completed by parsing a callback URL.`);
+  }
+  const scheme = auth.callback.scheme;
   const callback = new URL(callbackUrl);
-  if (callback.protocol !== `${auth.callback.scheme}:`) {
-    throw new Error(`OAuth callback must use the ${auth.callback.scheme}: scheme.`);
+  if (callback.protocol !== `${scheme}:`) {
+    throw new Error(`OAuth callback must use the ${scheme}: scheme.`);
   }
   const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
   const accessToken = callback.searchParams.get(auth.accessTokenField)
@@ -3181,7 +3318,7 @@ function publicProviderOAuth(record: LocalProviderOAuthRecord) {
     ...(record.error ? { error: record.error } : {}),
     ...(browserState ? {
       flow: "browser" as const,
-      callbackScheme: browserState.auth.callback.scheme,
+      ...callbackDescription(browserState.auth),
     } : {}),
     hasAccessToken:
       typeof record.accessToken === "string" &&
@@ -3190,7 +3327,6 @@ function publicProviderOAuth(record: LocalProviderOAuthRecord) {
 }
 
 function providerOAuthEntityId(providerId: string, accountId?: string): string {
-  if (providerId === "dreamina") return providerId;
   return accountId ? `${providerId}:${accountId}` : providerId;
 }
 
@@ -3201,19 +3337,15 @@ function upsertProviderOAuth(
   patch: Partial<LocalProviderOAuthRecord>,
 ): LocalProviderOAuthRecord {
   const now = nowIso();
-  const accountId = providerId === "dreamina" ? undefined : patch.accountId;
+  const accountId = patch.accountId;
   const existing = state.providerOAuth.find(
     (record) =>
       record.userId === userId &&
       record.providerId === providerId &&
-      (providerId === "dreamina" || (record.accountId ?? "") === (accountId ?? "")),
+      (record.accountId ?? "") === (accountId ?? ""),
   );
-  const normalizedPatch = providerId === "dreamina"
-    ? Object.fromEntries(Object.entries(patch).filter(([key]) => key !== "accountId"))
-    : patch;
   if (existing) {
-    Object.assign(existing, normalizedPatch, { updatedAt: now });
-    if (providerId === "dreamina") delete existing.accountId;
+    Object.assign(existing, patch, { updatedAt: now });
     return existing;
   }
   const record: LocalProviderOAuthRecord = {
@@ -3222,7 +3354,7 @@ function upsertProviderOAuth(
     status: patch.status ?? "pending",
     createdAt: now,
     updatedAt: now,
-    ...normalizedPatch,
+    ...patch,
   };
   state.providerOAuth.unshift(record);
   return record;
@@ -3241,7 +3373,7 @@ function providerOAuthMatches(
   return (
     record.userId === userId &&
     record.providerId === providerId &&
-    (providerId === "dreamina" || (record.accountId ?? "") === (accountId ?? ""))
+    (record.accountId ?? "") === (accountId ?? "")
   );
 }
 
@@ -3483,7 +3615,6 @@ function executablePluginActionDefinitions(
         exportId: card.functionExportId,
         schemaHash: registration.schemaHash,
       },
-      pluginPermissions: registration.permissions,
       promptModalities: card.input.promptModalities,
       tags: ["executable-plugin", registration.pluginId],
     });
@@ -3553,11 +3684,9 @@ function displayProviderName(
   const names: Record<string, string> = {
     fal: "fal.ai",
     pika: "Pika API Club",
-    kie: "KIE",
     replicate: "Replicate",
     kling: "Kling",
     minimax: "MiniMax",
-    jimeng: "Dreamina",
     volcengine: "Volcengine",
     elevenlabs: "ElevenLabs",
     suno: "Suno API",
@@ -3595,7 +3724,6 @@ function routeProviderId(route: ModelUpstreamRoute): string {
   if (
     route.upstreamId === "fal" ||
     route.upstreamId === "pika" ||
-    route.upstreamId === "kie" ||
     route.upstreamId === "replicate" ||
     route.upstreamId === "mock"
   ) {
@@ -3643,12 +3771,6 @@ function providerTestStubForAccount(
   );
 }
 
-function sameLocalBrokerToken(left: string, right: string): boolean {
-  const leftDigest = createHash("sha256").update(left).digest();
-  const rightDigest = createHash("sha256").update(right).digest();
-  return timingSafeEqual(leftDigest, rightDigest);
-}
-
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
@@ -3689,6 +3811,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     },
     fetch: options.voiceInputFetch,
     googleAiStudioBaseUrl: options.voiceInputGoogleAiStudioBaseUrl,
+    providerPluginExecutor: options.providerPluginExecutor,
   });
   const syncConfig =
     options.syncConfig ??
@@ -3746,47 +3869,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
   });
 
-  app.post("/api/v1/local/plugin-broker", async (c) => {
-    if (!options.executablePluginBroker || !options.pluginBrokerToken) {
-      return c.json({ error: "local plugin broker unavailable" }, 404);
-    }
-    const token = c.req.header("x-clash-local-plugin-broker-token") ?? "";
-    if (!token || !sameLocalBrokerToken(token, options.pluginBrokerToken)) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-    let requestId = "unknown";
-    try {
-      const body = await c.req.json() as Record<string, unknown>;
-      const request = ExecutablePluginBrokerRequestSchema.parse(body.request);
-      requestId = request.requestId;
-      const manifest = ExecutablePluginManifestSchema.parse(body.manifest);
-      const invocation = ExecutablePluginInvocationSchema.parse(body.invocation);
-      if (request.invocationId !== invocation.invocationId) {
-        throw new Error("Broker envelope invocation does not match request.");
-      }
-      if (invocation.target.pluginId !== manifest.id || invocation.target.version !== manifest.version) {
-        throw new Error("Broker envelope manifest does not match invocation target.");
-      }
-      const result = await options.executablePluginBroker(request, { manifest, invocation });
-      return c.json(ExecutablePluginBrokerResponseSchema.parse({
-        protocol: "clash.plugin.broker-response/v1",
-        requestId,
-        status: "ok",
-        result,
-      }));
-    } catch (error) {
-      return c.json(ExecutablePluginBrokerResponseSchema.parse({
-        protocol: "clash.plugin.broker-response/v1",
-        requestId,
-        status: "error",
-        error: {
-          code: "local_broker_error",
-          message: error instanceof Error ? error.message : String(error),
-        },
-      }));
-    }
-  });
-
   app.get("/api/better-auth/get-session", (c) =>
     c.json({
       user: { id: userId, name: "Local User", email: "local@clash.local" },
@@ -3821,7 +3903,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return new Response(null, { status: 204 });
     });
   }
-  app.get("/api/settings/skills", (c) => c.json([]));
+  app.get("/api/settings/skills", async (c) => c.json(
+    options.listInstalledMarketplaceSkills
+      ? await options.listInstalledMarketplaceSkills()
+      : [],
+  ));
   app.get("/api/settings/tokens", (c) => c.json([]));
   app.get("/api/v1/model-providers", async (c) => {
     const state = await db.load();
@@ -4220,11 +4306,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       modelId,
       providerTestModels,
     );
-    const requirementCandidates =
+    // One shape from both branches, so the field survives inference. `credentialRequirements` is
+    // what else a route accepts: Google takes an API key or a service account JSON, and an account
+    // holds one or the other, while `requiredCredentials` means all of them.
+    interface RequirementCandidate {
+      requiredCredentials: readonly string[];
+      requiredOAuth: readonly string[];
+      credentialRequirements?: ProviderCredentialRequirements;
+    }
+    const requirementCandidates: RequirementCandidate[] =
       routeRequirements.length > 0
         ? routeRequirements.map((route) => ({
             requiredCredentials: route.requiredCredentials ?? [],
             requiredOAuth: route.requiredOAuth ?? [],
+            ...(route.credentialRequirements
+              ? { credentialRequirements: route.credentialRequirements }
+              : {}),
           }))
         : supportedModelEntries.map((model) => ({
             requiredCredentials:
@@ -4238,8 +4335,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           }));
     const credentialChecks = requirementCandidates.map((candidate) => ({
       candidate,
-      missingCredentials: candidate.requiredCredentials.filter(
-        (credential) => !credentialKeys.has(credential),
+      // `missingModelRouteCredentials` reads both the flat list and `credentialRequirements.anyOf`,
+      // and picks the nearest alternative when none is satisfied, so the message names the fewest
+      // keys that would fix it. Filtering the flat list here ignored `anyOf` entirely -- the
+      // implementation was in model-routing and nothing on this path called it.
+      missingCredentials: missingModelRouteCredentials(
+        {
+          requiredCredentials: [...candidate.requiredCredentials],
+          ...(candidate.credentialRequirements
+            ? { credentialRequirements: candidate.credentialRequirements }
+            : {}),
+        },
+        // Availability is stated per upstream, and `missingModelRouteCredentials` reads only the
+        // credential list off it -- the id is required by the shape, not by the check, and the
+        // account's own is optional here.
+        {
+          upstreamId: (account.upstreamId ?? support.upstreamId) as never,
+          configuredCredentials: [...credentialKeys],
+        },
       ),
     }));
     const credentialReadyChecks = credentialChecks.filter(
@@ -4294,14 +4407,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       const taskId = `provider-test-${modelId}`;
       const prompt = `Provider test for ${modelName}`;
       const shape = model?.kind ?? supportedModelEntries[0]?.kind ?? "image";
-      if (shape === "asr") {
-        return providerTestResponse({
-          ok: false,
-          ...baseResult,
-          unsupported: true,
-          message: `${displayProviderName(account)} live tests do not support ASR models yet.`,
-        } satisfies ModelProviderTestResult);
-      }
+      // The `asr` branch that stood here is gone with the kind. `asr` named a technique rather than
+      // a thing produced -- every card carrying it produced text -- so the vocabulary is now the
+      // four outputs, and this comparison had become one that can never be true.
       const testInput = providerTestInputSummary({
         shape,
         model: modelId,
@@ -4365,17 +4473,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                 process.env.CLASH_FAL_QUEUE_URL,
               googleAiStudioBaseUrl: options.providerTestGoogleAiStudioBaseUrl,
               pikaBaseUrl: options.providerTestPikaBaseUrl,
-              kieBaseUrl: options.providerTestKieBaseUrl,
               replicateBaseUrl: options.providerTestReplicateBaseUrl,
+              providerPluginExecutor: options.providerPluginExecutor,
               localTts,
             });
       const providerName = displayProviderName(account);
+      const explicitMockSelection = account.providerId === "mock"
+        ? { modelParams: { provider_id: "mock" } }
+        : {};
       try {
         if (shape === "text") {
           const result = await testAigc.generateText({
             taskId,
             prompt,
             model: modelId,
+            ...explicitMockSelection,
           });
           const output: ModelProviderTestOutputSummary = {
             shape: "text",
@@ -4407,6 +4519,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             taskId,
             prompt,
             model: modelId,
+            ...explicitMockSelection,
             ...(pollState === undefined ? {} : { pollState }),
           };
           return mediaShape === "video"
@@ -4618,10 +4731,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const driver = options.providerOAuth?.[providerId];
     const browserAuth = driver ? null : await pluginBrowserOAuth(options, providerId);
     if (!driver && !browserAuth) {
-      const configuredBuiltin = providerId === "dreamina";
       return c.json(
         {
-          error: configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
+          error: "Unsupported OAuth provider",
           mutation: hostMutationRejected(
             {
               operation: "provider_oauth_start",
@@ -4630,10 +4742,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                 id: providerOAuthEntityId(providerId),
               },
             },
-            configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
+            "Unsupported OAuth provider",
           ),
         },
-        configuredBuiltin ? 501 : 404,
+        404,
       );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
@@ -4740,7 +4852,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ...publicProviderOAuth(record),
       ...(browserAuth ? {
         flow: "browser",
-        callbackScheme: browserAuth.callback.scheme,
+        ...callbackDescription(browserAuth),
       } : {}),
       ...(hostMutation ? { readToken } : {}),
       mutation,
@@ -4770,10 +4882,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const driver = options.providerOAuth?.[providerId];
     const browserAuth = driver ? null : await pluginBrowserOAuth(options, providerId);
     if (!driver && !browserAuth) {
-      const configuredBuiltin = providerId === "dreamina";
       return c.json(
         {
-          error: configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
+          error: "Unsupported OAuth provider",
           mutation: hostMutationRejected(
             {
               operation: "provider_oauth_complete",
@@ -4782,10 +4893,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                 id: providerOAuthEntityId(providerId),
               },
             },
-            configuredBuiltin ? "OAuth provider is not configured" : "Unsupported OAuth provider",
+            "Unsupported OAuth provider",
           ),
         },
-        configuredBuiltin ? 501 : 404,
+        404,
       );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
@@ -5060,6 +5171,64 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       mutation,
     });
   });
+  app.get("/api/v1/local/plugins", async (c) => {
+    if (!options.pluginPackages) {
+      return c.json({ error: "local plugin package management is unavailable" }, 503);
+    }
+    return c.json(await options.pluginPackages.list());
+  });
+  app.post("/api/v1/local/plugins/validate", async (c) => {
+    if (!options.pluginPackages) {
+      return c.json({ error: "local plugin package management is unavailable" }, 503);
+    }
+    try {
+      return c.json(await options.pluginPackages.validate(await c.req.json()));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 422);
+    }
+  });
+  app.post("/api/v1/local/plugins/activate", async (c) => {
+    if (!options.pluginPackages) {
+      return c.json({ error: "local plugin package management is unavailable" }, 503);
+    }
+    try {
+      return c.json(await options.pluginPackages.activate(await c.req.json()));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 422);
+    }
+  });
+  app.get("/api/v1/local/plugins/:id/package", async (c) => {
+    if (!options.pluginPackages) {
+      return c.json({ error: "local plugin package management is unavailable" }, 503);
+    }
+    try {
+      return c.json(await options.pluginPackages.read(c.req.param("id")));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, /ENOENT|not found/i.test(message) ? 404 : 409);
+    }
+  });
+  app.post("/api/v1/local/plugins/:id/rollback", async (c) => {
+    if (!options.pluginPackages) {
+      return c.json({ error: "local plugin package management is unavailable" }, 503);
+    }
+    try {
+      return c.json(await options.pluginPackages.rollback(c.req.param("id")));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, /No rollback version/i.test(message) ? 404 : 409);
+    }
+  });
+  app.delete("/api/v1/local/plugins/:id", async (c) => {
+    if (!options.pluginPackages) {
+      return c.json({ error: "local plugin package management is unavailable" }, 503);
+    }
+    try {
+      return c.json(await options.pluginPackages.remove(c.req.param("id")));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 422);
+    }
+  });
   app.get("/api/v1/plugin-actions", async (c) => {
     const registrations = options.listPluginCards ? await options.listPluginCards() : [];
     return c.json({ actions: executablePluginActionDefinitions(registrations) });
@@ -5116,46 +5285,35 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             },
           }
         : entry;
-      if (!route || !options.resolvePluginBinding) {
+      if (!options.resolvePluginBinding) {
         return entryWithReadiness;
       }
-      const projectorBinding = route.projectorPluginId && route.projectorExportId
-        ? await options.resolvePluginBinding(
-            route.projectorPluginId,
-            route.projectorExportId,
-            "provider-projector",
-          )
-        : undefined;
-      const executorBinding = route.executorPluginId && route.executorExportId
-        ? await options.resolvePluginBinding(
-            route.executorPluginId,
-            route.executorExportId,
-            "provider-executor",
-          )
-        : undefined;
-      if (!projectorBinding && !executorBinding) return entryWithReadiness;
-      return {
-        ...entryWithReadiness,
-        selectedRoute: {
-          ...route,
+      const routes = await Promise.all(entry.routes.map(async (candidate) => {
+        const projectorBinding = candidate.projectorPluginId && candidate.projectorExportId
+          ? await options.resolvePluginBinding!(
+              candidate.projectorPluginId,
+              candidate.projectorExportId,
+              "provider-projector",
+            )
+          : undefined;
+        const executorBinding = candidate.executorPluginId && candidate.executorExportId
+          ? await options.resolvePluginBinding!(
+              candidate.executorPluginId,
+              candidate.executorExportId,
+              "provider-executor",
+            )
+          : undefined;
+        return {
+          ...candidate,
           ...(projectorBinding ? { projectorBinding } : {}),
           ...(executorBinding ? { executorBinding } : {}),
-        },
-        routes: entry.routes.map((candidate) =>
-          ({
-            ...candidate,
-            ...(projectorBinding
-              && candidate.projectorPluginId === route.projectorPluginId
-              && candidate.projectorExportId === route.projectorExportId
-              ? { projectorBinding }
-              : {}),
-            ...(executorBinding
-              && candidate.executorPluginId === route.executorPluginId
-              && candidate.executorExportId === route.executorExportId
-              ? { executorBinding }
-              : {}),
-          })
-        ),
+        };
+      }));
+      const selectedRouteIndex = route ? entry.routes.indexOf(route) : -1;
+      return {
+        ...entryWithReadiness,
+        selectedRoute: selectedRouteIndex >= 0 ? routes[selectedRouteIndex] ?? null : null,
+        routes,
       };
     }));
     return c.json({ models });
@@ -5225,7 +5383,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return new Response(null, { status: 204 });
   });
   app.get("/api/marketplace/registry", (c) =>
-    c.json({ version: 1, actions: options.marketplaceActions ?? [], skills: [] }),
+    c.json({
+      version: 1,
+      actions: options.marketplaceActions ?? [],
+      skills: options.marketplaceSkills ?? [],
+    }),
   );
   if (options.installMarketplaceAction) {
     app.post("/api/marketplace/actions/:packageId/install", async (c) => {
@@ -5244,6 +5406,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       );
       if (!item) return c.json({ error: "Unknown local marketplace action package" }, 404);
       await options.uninstallMarketplaceAction!(item.id);
+      return new Response(null, { status: 204 });
+    });
+  }
+  if (options.installMarketplaceSkill) {
+    app.post("/api/marketplace/skills/:skillId/install", async (c) => {
+      const skillId = c.req.param("skillId");
+      const item = options.marketplaceSkills?.find(
+        (candidate) => candidate.id === skillId,
+      );
+      if (!item) return c.json({ error: "Unknown local marketplace skill" }, 404);
+      return c.json(await options.installMarketplaceSkill!(skillId));
+    });
+  }
+  if (options.uninstallMarketplaceSkill) {
+    app.delete("/api/marketplace/skills/:skillId/install", async (c) => {
+      const skillId = c.req.param("skillId");
+      const item = options.marketplaceSkills?.find(
+        (candidate) => candidate.id === skillId,
+      );
+      if (!item) return c.json({ error: "Unknown local marketplace skill" }, 404);
+      await options.uninstallMarketplaceSkill!(skillId);
       return new Response(null, { status: 204 });
     });
   }
@@ -7385,6 +7568,99 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json(result.body, result.status);
   });
 
+  app.post("/api/v1/projects/:projectId/host-command", async (c) => {
+    const projectId = c.req.param("projectId");
+    const raw = await c.req.json().catch(() => undefined);
+    const parsed = ProjectHostCommandSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({
+        error: "Invalid project host command",
+        details: parsed.error.issues.map((issue) => ({
+          code: issue.code,
+          path: issue.path,
+          message: issue.message,
+        })),
+      }, 400);
+    }
+    const body = parsed.data;
+    const action = body.action;
+    const hostContext: Parameters<typeof handleProjectCommand>[3] = {
+      actorUserId: userId,
+    };
+    if (action === "capture_director_stage") {
+      const captureBody = body as Extract<
+        typeof body,
+        { action: "capture_director_stage" }
+      > & DirectorStageRenderRequest;
+      if (!options.directorStageRenderer) {
+        return c.json({ error: "Director Stage product renderer is unavailable" }, 503);
+      }
+      const beforeDoc = await replicaStore.recover(projectId);
+      const before = handleProjectCommand(projectId, beforeDoc, body, hostContext) as {
+        error?: string;
+        code?: string;
+        stage?: { state?: unknown };
+        sourceStageRevisionId?: string;
+      };
+      if (before.error || !before.stage?.state || !before.sourceStageRevisionId) {
+        return c.json(before);
+      }
+      try {
+        const rendered = await options.directorStageRenderer.render({
+          state: before.stage.state as DirectorStageRenderRequest["state"],
+          longEdge: captureBody.longEdge,
+          frames: captureBody.frames,
+        });
+        const afterDoc = await replicaStore.recover(projectId);
+        const after = handleProjectCommand(projectId, afterDoc, body, hostContext) as {
+          error?: string;
+          code?: string;
+          sourceStageRevisionId?: string;
+        };
+        if (after.error || after.sourceStageRevisionId !== before.sourceStageRevisionId) {
+          return c.json(after.error ? after : {
+            code: "STALE_READ",
+            error: `Director Stage ${body.stageId} changed during capture; read it again`,
+          });
+        }
+        return c.json({
+          captured: true,
+          stageId: body.stageId,
+          sourceStageRevisionId: before.sourceStageRevisionId,
+          ...rendered,
+        });
+      } catch (error) {
+        return c.json({ error: error instanceof Error ? error.message : String(error) }, 422);
+      }
+    }
+    if (action === "add" || action === "execute") {
+      const [state, pluginCards] = await Promise.all([
+        db.load(),
+        options.listPluginCards ? options.listPluginCards() : [],
+      ]);
+      hostContext.effectiveModelCards = await effectiveModelCards(
+        state,
+        userId,
+        async () => pluginCards,
+        options.listPluginModelBindings,
+      );
+      hostContext.trustedCustomActions = executablePluginActionDefinitions(pluginCards) as Record<string, unknown>[];
+    }
+    const result = await replicaStore.updateSnapshotAtomic(projectId, (doc) => ({
+      value: handleProjectCommand(projectId, doc, body, hostContext),
+      save: projectCommandMutates(action),
+    }));
+    if (action === "execute" && !(result as { error?: unknown }).error) {
+      void options.processProjectWork?.(projectId).catch((error) => {
+        console.error(
+          `[local-api] failed to wake project work for ${projectId}:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    }
+    return c.json(result);
+  });
+
   app.get("/api/v1/projects/:projectId/canvas/nodes/:nodeId", async (c) => {
     const projectId = c.req.param("projectId");
     const nodeId = c.req.param("nodeId");
@@ -8984,59 +9260,31 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return c.text("Not found", 404);
     }
     try {
-      const path = await assetPathForRead(
-        options.dataDir,
-        storageKey,
+      return await serveLocalAssetFile({
+        dataDir: options.dataDir,
         clashRoot,
-      );
-      const fileInfo = await stat(path);
-      const range = parseAssetByteRange(c.req.header("range"), fileInfo.size);
-      if (range === "unsatisfiable") {
-        return new Response(null, {
-          status: 416,
-          headers: {
-            "accept-ranges": "bytes",
-            "content-range": `bytes */${fileInfo.size}`,
-          },
-        });
-      }
-      if (range) {
-        const length = range.end - range.start + 1;
-        const handle = await open(path, "r");
-        try {
-          const bytes = new Uint8Array(length);
-          const { bytesRead } = await handle.read(
-            bytes,
-            0,
-            length,
-            range.start,
-          );
-          return new Response(bytes.subarray(0, bytesRead), {
-            status: 206,
-            headers: {
-              "accept-ranges": "bytes",
-              "content-type": contentTypeForPath(storageKey),
-              "content-length": String(bytesRead),
-              "content-range": `bytes ${range.start}-${range.start + bytesRead - 1}/${fileInfo.size}`,
-              "cache-control": "public, max-age=31536000, immutable",
-            },
-          });
-        } finally {
-          await handle.close();
-        }
-      }
-      const bytes = await readFile(path);
-      return new Response(bytes, {
-        headers: {
-          "accept-ranges": "bytes",
-          "content-type": contentTypeForPath(storageKey),
-          "content-length": String(bytes.byteLength),
-          "cache-control": "public, max-age=31536000, immutable",
-        },
+        storageKey,
+        ...(c.req.header("range") ? { rangeHeader: c.req.header("range") } : {}),
       });
     } catch {
       return c.text("Asset not found", 404);
     }
+  });
+
+  /**
+   * Where a plugin streams bytes it was given a slot for.
+   *
+   * The token is the authorisation: it was minted for one upload, handed to one plugin, and is
+   * forgotten once collected. There is no listing and no second PUT -- an unknown or spent token is
+   * a 404, so a leaked one names nothing.
+   */
+  app.put("/api/v1/plugin-uploads/:token", async (c) => {
+    const accepted = options.acceptPluginUpload?.(
+      c.req.param("token"),
+      new Uint8Array(await c.req.arrayBuffer()),
+    );
+    if (!accepted) return c.json({ error: "unknown upload" }, 404);
+    return c.json({ ok: true });
   });
 
   app.get("/api/v1/assets", async (c) => {

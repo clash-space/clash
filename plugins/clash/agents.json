@@ -1,10 +1,11 @@
 {
-  "name": "Clash Codex Plugin",
-  "purpose": "Package the complete Clash MCP tool and focused App surface as one installable Codex Plugin.",
-  "runtimeBoundary": "CLI and stdio MCP are peer clients of one discoverable local daemon. Reuse a healthy compatible host or start the bundled daemon once; client shutdown releases only client resources and does not stop the shared daemon.",
+  "name": "Clash Distribution",
+  "purpose": "Package the CLI, stdio MCP surface, skills, and internal local-api host as the single installable clash npm package.",
+  "runtimeBoundary": "The clash dispatcher selects the CLI for ordinary arguments and the peer stdio MCP for `clash mcp`. Both use one discoverable local-api daemon. Desktop carries the same host runtime and reuses the compatible machine singleton; client or Desktop shutdown does not stop the shared daemon.",
   "entrypoints": [
     ".codex-plugin/plugin.json",
     ".mcp.json",
+    "src/dispatcher.ts",
     "src/index.ts",
     "src/server.ts",
     "src/host-runner.ts",
@@ -18,8 +19,8 @@
     "skills/clash-video-finishing/SKILL.md"
   ],
   "verification": [
-    "pnpm --filter @clash-space/codex-plugin test",
-    "pnpm --filter @clash-space/codex-plugin typecheck",
-    "pnpm --filter @clash-space/codex-plugin build"
+    "pnpm test:package clash",
+    "pnpm typecheck:package clash",
+    "pnpm build:package clash"
   ]
 }

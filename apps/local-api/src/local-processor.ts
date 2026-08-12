@@ -19,7 +19,10 @@ import type {
   TextAppliedRevision,
 } from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
-import { createMockExternalAigcService, type ExternalAigcService } from "./local-aigc.js";
+import {
+  createMockExternalAigcService,
+  type ExternalAigcService,
+} from "./local-aigc.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import { assetPathForWrite } from "./local-asset-paths.js";
 import { storeTextRevisionContentBlob } from "./text-revision-content.js";
@@ -29,6 +32,8 @@ export interface LocalWorkflowProcessorInput {
   doc: LoroDoc;
   projectId: string;
   broadcastJson?: (msg: Record<string, unknown>) => void;
+  /** Persist mutations that must survive before an external side effect starts. */
+  checkpoint?: () => Promise<void>;
 }
 
 export interface LocalWorkflowProcessor {
@@ -43,6 +48,8 @@ export interface LocalWorkflowProcessorOptions {
   aigc?: ExternalAigcService;
   modelCards?: () => Promise<ModelCard[]>;
   executablePluginAction?: ExecutablePluginActionInvoker;
+  /** Replay harness only: compress wall-clock waits while preserving provider responses and deadline. */
+  providerPollDelayCapMs?: number;
   textAgent?: {
     generate(input: {
       projectId: string;
@@ -72,22 +79,30 @@ type ProcessableKind = Extract<AssetKind, "image" | "video" | "audio">;
 type ProcessableNodeKind = ProcessableKind | "text";
 
 function sanitizeStorageSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^-+|-+$/g, "") || "item";
+  return (
+    value.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^-+|-+$/g, "") || "item"
+  );
 }
 
 function modelParams(data: Record<string, unknown>): Record<string, unknown> {
   const params = data.modelParams;
   return params && typeof params === "object" && !Array.isArray(params)
-    ? params as Record<string, unknown>
+    ? (params as Record<string, unknown>)
     : {};
 }
 
-function stringParam(data: Record<string, unknown>, key: string): string | undefined {
+function stringParam(
+  data: Record<string, unknown>,
+  key: string,
+): string | undefined {
   const value = data[key] ?? modelParams(data)[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function numberParam(data: Record<string, unknown>, key: string): number | undefined {
+function numberParam(
+  data: Record<string, unknown>,
+  key: string,
+): number | undefined {
   const value = data[key] ?? modelParams(data)[key];
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -97,7 +112,10 @@ function numberParam(data: Record<string, unknown>, key: string): number | undef
   return undefined;
 }
 
-function authoredPromptFromData(data: Record<string, unknown>, fallback: string): string {
+function authoredPromptFromData(
+  data: Record<string, unknown>,
+  fallback: string,
+): string {
   return typeof data.prompt === "string" && data.prompt.trim()
     ? data.prompt
     : typeof data.label === "string" && data.label.trim()
@@ -107,18 +125,27 @@ function authoredPromptFromData(data: Record<string, unknown>, fallback: string)
 
 /** Flat local adapters consume plain text plus separate reference arrays. Keep
  * authored @-mentions on the node and collapse them only at this boundary. */
-function providerPromptFromData(data: Record<string, unknown>, fallback: string): string {
+function providerPromptFromData(
+  data: Record<string, unknown>,
+  fallback: string,
+): string {
   const authoredPrompt = authoredPromptFromData(data, fallback);
   return extractPromptText(parsePromptParts(authoredPrompt));
 }
 
-function localAssetReferenceUrl(baseUrl: string | (() => string), storageKey: string): string {
+function localAssetReferenceUrl(
+  baseUrl: string | (() => string),
+  storageKey: string,
+): string {
   const base = typeof baseUrl === "function" ? baseUrl() : baseUrl;
   const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
   return `${base.replace(/\/+$/, "")}/assets/${encodedKey}`;
 }
 
-function modelFromData(data: Record<string, unknown>, fallback: string): string {
+function modelFromData(
+  data: Record<string, unknown>,
+  fallback: string,
+): string {
   return typeof data.modelId === "string" && data.modelId.trim()
     ? data.modelId
     : typeof data.model === "string" && data.model.trim()
@@ -126,7 +153,9 @@ function modelFromData(data: Record<string, unknown>, fallback: string): string 
       : fallback;
 }
 
-function aspectRatioFromData(data: Record<string, unknown>): string | undefined {
+function aspectRatioFromData(
+  data: Record<string, unknown>,
+): string | undefined {
   return stringParam(data, "aspectRatio") ?? stringParam(data, "aspect_ratio");
 }
 
@@ -139,21 +168,59 @@ function aspectRatioFromData(data: Record<string, unknown>): string | undefined 
  * a request is ever made -- `seedance-2-fast-startend` offers [auto, 4, 6, 8, 10, 15] and
  * was handed 5.
  */
-/**
- * How long the host will keep asking about accepted work.
- *
- * Generous on purpose: the longest legitimate generation measured here was 275 seconds, and video
- * models under load run longer. This is not a timeout for slow work — it is the point at which
- * continued silence is better reported than waited on.
- */
-const PROVIDER_POLL_BUDGET_MS = 45 * 60 * 1000;
+/** Submit, provider wait, and ordinary polls share this one absolute budget. */
+const PROVIDER_GENERATION_DEADLINE_MS = 30 * 60 * 1000;
 
-export function cardDurationFallback(card: ModelCard): number | string | undefined {
+function providerGenerationTimeoutMessage(): string {
+  return "Provider did not reach a final state within 30 minutes after submission.";
+}
+
+function providerTerminalData(
+  data: Record<string, unknown>,
+  updates: Record<string, unknown>,
+): Record<string, unknown> {
+  const terminal = { ...data, ...updates };
+  delete terminal.providerPollState;
+  delete terminal.providerPollAt;
+  return terminal;
+}
+
+async function beforeProviderGenerationDeadline<T>(
+  operation: Promise<T>,
+  deadlineAt: number,
+): Promise<T> {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) throw new Error(providerGenerationTimeoutMessage());
+  return await new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(providerGenerationTimeoutMessage())),
+      remainingMs,
+    );
+    timer.unref?.();
+    operation.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+export function cardDurationFallback(
+  card: ModelCard,
+): number | string | undefined {
   const declared = card.defaultParams?.duration;
   if (declared !== undefined) return declared as number | string;
-  const parameter = card.parameters.find((candidate) => candidate.id === "duration");
+  const parameter = card.parameters.find(
+    (candidate) => candidate.id === "duration",
+  );
   if (!parameter) return undefined;
-  if (parameter.defaultValue !== undefined) return parameter.defaultValue as number | string;
+  if (parameter.defaultValue !== undefined)
+    return parameter.defaultValue as number | string;
   return parameter.options?.[0]?.value as number | string | undefined;
 }
 
@@ -168,7 +235,9 @@ export function durationFromData(
 
 function stringList(value: unknown): string[] {
   return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
+    ? value.filter(
+        (item): item is string => typeof item === "string" && item.length > 0,
+      )
     : [];
 }
 
@@ -180,12 +249,14 @@ function textRevisionActor(
   nodeData: Record<string, unknown>,
   userId: string,
 ): TextAppliedRevision["actor"] | undefined {
-  if (nodeData.actorType !== "user" && nodeData.actorType !== "agent") return undefined;
+  if (nodeData.actorType !== "user" && nodeData.actorType !== "agent")
+    return undefined;
   return {
     actorType: nodeData.actorType,
-    actorUserId: typeof nodeData.actorUserId === "string" && nodeData.actorUserId
-      ? nodeData.actorUserId
-      : userId,
+    actorUserId:
+      typeof nodeData.actorUserId === "string" && nodeData.actorUserId
+        ? nodeData.actorUserId
+        : userId,
     ...(typeof nodeData.actorAgentId === "string" && nodeData.actorAgentId
       ? { actorAgentId: nodeData.actorAgentId }
       : {}),
@@ -237,11 +308,18 @@ async function recordGeneratedTextRevision(options: {
   content: string;
 }): Promise<TextAppliedRevision> {
   const revision = generatedTextRevision(options);
-  const mutation = hostMutationSucceeded({
-    operation: "text_generate",
-    entity: { kind: "text-revision", id: revision.revisionId },
-  }, { resultEntityId: revision.revisionId });
-  await storeTextRevisionContentBlob(options.dataDir, revision, options.content);
+  const mutation = hostMutationSucceeded(
+    {
+      operation: "text_generate",
+      entity: { kind: "text-revision", id: revision.revisionId },
+    },
+    { resultEntityId: revision.revisionId },
+  );
+  await storeTextRevisionContentBlob(
+    options.dataDir,
+    revision,
+    options.content,
+  );
   await createLocalMetadataStore(options.dataDir).upsertTextRevision(revision, {
     id: randomUUID(),
     createdAt: Date.now(),
@@ -263,20 +341,36 @@ function pendingCustomNode(node: Record<string, any>): {
 } | null {
   const data = node.data;
   if (!data || typeof data !== "object") return null;
-  if (typeof data.actionType !== "string" || !data.actionType.startsWith("custom:")) return null;
+  if (
+    typeof data.actionType !== "string" ||
+    !data.actionType.startsWith("custom:")
+  )
+    return null;
   if (data.status !== "pending") return null;
   if (data.pendingTask) return null;
-  const actionId = typeof data.customActionId === "string" && data.customActionId
-    ? data.customActionId
-    : data.actionType.slice("custom:".length);
-  const outputType = data.outputType === "video" || data.outputType === "audio" || data.outputType === "text"
-    ? data.outputType
-    : "image";
+  const actionId =
+    typeof data.customActionId === "string" && data.customActionId
+      ? data.customActionId
+      : data.actionType.slice("custom:".length);
+  const outputType =
+    data.outputType === "video" ||
+    data.outputType === "audio" ||
+    data.outputType === "text"
+      ? data.outputType
+      : "image";
   return { actionId, outputType };
 }
 
-function pendingKindForNode(node: Record<string, any>): ProcessableNodeKind | null {
-  if (node.type !== "image" && node.type !== "video" && node.type !== "audio" && node.type !== "text") return null;
+function pendingKindForNode(
+  node: Record<string, any>,
+): ProcessableNodeKind | null {
+  if (
+    node.type !== "image" &&
+    node.type !== "video" &&
+    node.type !== "audio" &&
+    node.type !== "text"
+  )
+    return null;
   const data = node.data;
   if (!data || typeof data !== "object") return null;
   if (data.assetId) return null;
@@ -300,27 +394,25 @@ function extensionForContentType(contentType: string): string {
   return ".bin";
 }
 
-async function saveAsset(
-  options: {
-    dataDir: string;
-    userId: string;
-    projectId: string;
-    taskId: string;
-    kind: ProcessableKind;
-    nodeData: Record<string, unknown>;
-    bytes: Uint8Array;
-    contentType: string;
-    width?: number;
-    height?: number;
-    durationMs?: number;
-    waveform?: number[];
-    transcript?: string;
-    requestId?: string;
-    provider?: string;
-    modelEndpoint?: string;
-    remoteUrl?: string;
-  },
-): Promise<Asset> {
+async function saveAsset(options: {
+  dataDir: string;
+  userId: string;
+  projectId: string;
+  taskId: string;
+  kind: ProcessableKind;
+  nodeData: Record<string, unknown>;
+  bytes: Uint8Array;
+  contentType: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  waveform?: number[];
+  transcript?: string;
+  requestId?: string;
+  provider?: string;
+  modelEndpoint?: string;
+  remoteUrl?: string;
+}): Promise<Asset> {
   const extension = extensionForContentType(options.contentType);
   const storageKey = `generated/${sanitizeStorageSegment(options.taskId)}${extension}`;
   const assetPath = await assetPathForWrite(options.dataDir, storageKey);
@@ -329,12 +421,17 @@ async function saveAsset(
   const now = Math.floor(Date.now() / 1000);
   const assetId = `local-asset-${sanitizeStorageSegment(options.taskId)}`;
   const model = modelFromData(options.nodeData, `mock-${options.kind}`);
-  const prompt = providerPromptFromData(options.nodeData, `Mock ${options.kind}`);
+  const prompt = providerPromptFromData(
+    options.nodeData,
+    `Mock ${options.kind}`,
+  );
   const asset: Asset & { projectId?: string } = {
     id: assetId,
-    userId: typeof options.nodeData.actorUserId === "string" && options.nodeData.actorUserId
-      ? options.nodeData.actorUserId
-      : options.userId,
+    userId:
+      typeof options.nodeData.actorUserId === "string" &&
+      options.nodeData.actorUserId
+        ? options.nodeData.actorUserId
+        : options.userId,
     kind: options.kind,
     srcR2Key: storageKey,
     coverR2Key: null,
@@ -349,7 +446,9 @@ async function saveAsset(
       ...(options.transcript ? { transcript: options.transcript } : {}),
       ...(options.provider ? { provider: options.provider } : {}),
       ...(options.requestId ? { requestId: options.requestId } : {}),
-      ...(options.modelEndpoint ? { modelEndpoint: options.modelEndpoint } : {}),
+      ...(options.modelEndpoint
+        ? { modelEndpoint: options.modelEndpoint }
+        : {}),
       ...(options.remoteUrl ? { remoteUrl: options.remoteUrl } : {}),
     },
     sourceModel: model,
@@ -363,31 +462,42 @@ async function saveAsset(
     projectId: options.projectId,
   };
 
-  const mutation = hostMutationSucceeded({
-    operation: "asset_generate",
-    entity: { kind: "asset", id: asset.id },
-  }, { resultEntityId: asset.id });
-  await createLocalMetadataStore(options.dataDir).upsertAsset(asset, {
-    assetId: asset.id,
-    projectId: options.projectId,
-    importedAt: now,
-  }, {
-    id: randomUUID(),
-    createdAt: Date.now(),
-    operation: mutation.operation,
-    entity: mutation.entity,
-    actorClientType: options.nodeData.actorType === "agent" ? "agent" : null,
-    accepted: mutation.accepted,
-    reason: "workflow generated asset",
-    resultEntityId: mutation.resultEntityId ?? null,
-    error: mutation.error ?? null,
-    mutation,
-  });
+  const mutation = hostMutationSucceeded(
+    {
+      operation: "asset_generate",
+      entity: { kind: "asset", id: asset.id },
+    },
+    { resultEntityId: asset.id },
+  );
+  await createLocalMetadataStore(options.dataDir).upsertAsset(
+    asset,
+    {
+      assetId: asset.id,
+      projectId: options.projectId,
+      importedAt: now,
+    },
+    {
+      id: randomUUID(),
+      createdAt: Date.now(),
+      operation: mutation.operation,
+      entity: mutation.entity,
+      actorClientType: options.nodeData.actorType === "agent" ? "agent" : null,
+      accepted: mutation.accepted,
+      reason: "workflow generated asset",
+      resultEntityId: mutation.resultEntityId ?? null,
+      error: mutation.error ?? null,
+      mutation,
+    },
+  );
   return asset;
 }
 
-function localAssetHttpUrl(mediaBaseUrl: string | (() => string), storageKey: string): string {
-  const base = typeof mediaBaseUrl === "function" ? mediaBaseUrl() : mediaBaseUrl;
+function localAssetHttpUrl(
+  mediaBaseUrl: string | (() => string),
+  storageKey: string,
+): string {
+  const base =
+    typeof mediaBaseUrl === "function" ? mediaBaseUrl() : mediaBaseUrl;
   const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
   return `${base.replace(/\/+$/, "")}/assets/${encodedKey}`;
 }
@@ -408,7 +518,11 @@ export async function resolveLocalTimelineDslReferences(options: {
   );
   const assetById = new Map(
     metadata.assets
-      .filter((asset) => asset.projectId === options.projectId || projectAssetIds.has(asset.id))
+      .filter(
+        (asset) =>
+          asset.projectId === options.projectId ||
+          projectAssetIds.has(asset.id),
+      )
       .map((asset) => [asset.id, asset]),
   );
   const nodes = options.doc.getMap("nodes");
@@ -416,24 +530,28 @@ export async function resolveLocalTimelineDslReferences(options: {
   for (const track of resolved.tracks ?? []) {
     for (const item of track.items ?? []) {
       if (item.type === "composition" && item.runtime === "remotion") {
-        const sourceNodeId = typeof item.sourceNodeId === "string"
-          ? item.sourceNodeId.trim()
-          : "";
+        const sourceNodeId =
+          typeof item.sourceNodeId === "string" ? item.sourceNodeId.trim() : "";
         if (!sourceNodeId) {
           throw new Error(
             `Timeline Remotion item ${String(item.id ?? "unknown")} requires sourceNodeId`,
           );
         }
-        const sourceNode = nodes.get(sourceNodeId) as Record<string, any> | undefined;
+        const sourceNode = nodes.get(sourceNodeId) as
+          Record<string, any> | undefined;
         if (!sourceNode || sourceNode.type !== "remotion-component") {
           throw new Error(
             `Timeline Remotion item ${String(item.id ?? "unknown")} must reference a remotion-component Canvas node`,
           );
         }
-        const sourceData = sourceNode.data && typeof sourceNode.data === "object"
-          ? sourceNode.data as Record<string, any>
-          : {};
-        if (typeof sourceData.content !== "string" || !sourceData.content.trim()) {
+        const sourceData =
+          sourceNode.data && typeof sourceNode.data === "object"
+            ? (sourceNode.data as Record<string, any>)
+            : {};
+        if (
+          typeof sourceData.content !== "string" ||
+          !sourceData.content.trim()
+        ) {
           throw new Error(
             `Remotion Canvas node ${sourceNodeId} has no executable TSX content`,
           );
@@ -442,22 +560,38 @@ export async function resolveLocalTimelineDslReferences(options: {
         // keeps the stable sourceNodeId and resolves the latest code anew for
         // every preview/export start.
         item.componentSource = sourceData.content;
-        if (typeof sourceData.componentId === "string" && sourceData.componentId.trim()) {
+        if (
+          typeof sourceData.componentId === "string" &&
+          sourceData.componentId.trim()
+        ) {
           item.compositionId = sourceData.componentId.trim();
         }
         continue;
       }
-      if (item.type !== "video" && item.type !== "image" && item.type !== "audio") continue;
-      const lookupIds = [item.assetId, item.sourceNodeId]
-        .filter((value): value is string => typeof value === "string" && value.length > 0);
-      if (typeof item.sourceNodeId === "string" && item.sourceNodeId.startsWith("timeline-asset:")) {
+      if (
+        item.type !== "video" &&
+        item.type !== "image" &&
+        item.type !== "audio"
+      )
+        continue;
+      const lookupIds = [item.assetId, item.sourceNodeId].filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      );
+      if (
+        typeof item.sourceNodeId === "string" &&
+        item.sourceNodeId.startsWith("timeline-asset:")
+      ) {
         lookupIds.push(item.sourceNodeId.slice("timeline-asset:".length));
       }
       let asset = lookupIds.map((id) => assetById.get(id)).find(Boolean);
       if (!asset) {
         for (const id of lookupIds) {
           const node = nodes.get(id) as Record<string, any> | undefined;
-          const backingAssetId = typeof node?.data?.assetId === "string" ? node.data.assetId : undefined;
+          const backingAssetId =
+            typeof node?.data?.assetId === "string"
+              ? node.data.assetId
+              : undefined;
           if (backingAssetId && assetById.has(backingAssetId)) {
             asset = assetById.get(backingAssetId);
             break;
@@ -465,9 +599,12 @@ export async function resolveLocalTimelineDslReferences(options: {
         }
       }
       if (!asset) {
-        throw new Error(`Timeline render cannot resolve media item ${String(item.id ?? "unknown")}`);
+        throw new Error(
+          `Timeline render cannot resolve media item ${String(item.id ?? "unknown")}`,
+        );
       }
-      const signedUrl = typeof asset.signedUrl === "string" ? asset.signedUrl : "";
+      const signedUrl =
+        typeof asset.signedUrl === "string" ? asset.signedUrl : "";
       // Local signed URLs are host-instance projections and may contain a
       // port from an earlier desktop launch. Rebind storage identity to the
       // currently listening local API whenever its origin is available.
@@ -493,7 +630,9 @@ export function createLocalWorkflowProcessor(
       const { doc, projectId } = input;
       const nodes = doc.getMap("nodes");
       const tasks = doc.getMap("tasks");
-      const modelCards = options.modelCards ? await options.modelCards() : MODEL_CARDS;
+      const modelCards = options.modelCards
+        ? await options.modelCards()
+        : MODEL_CARDS;
       let changed = false;
 
       for (const [nodeId, rawNode] of nodes.entries()) {
@@ -501,37 +640,61 @@ export function createLocalWorkflowProcessor(
         const custom = pendingCustomNode(node);
         if (custom) {
           const data = node.data as Record<string, unknown>;
-          const parsedBinding = ExecutablePluginBindingSchema.safeParse(data.pluginBinding);
+          const parsedBinding = ExecutablePluginBindingSchema.safeParse(
+            data.pluginBinding,
+          );
           if (parsedBinding.success && options.executablePluginAction) {
             try {
               const references = [
-                ...stringList(data.referenceImageAssetIds).map((assetId, index) => ({
-                  slot: "image",
-                  index,
-                  asset: { assetId, uri: `clash-asset://${assetId}`, kind: "image" as const },
-                })),
-                ...stringList(data.referenceVideoAssetIds).map((assetId, index) => ({
-                  slot: "video",
-                  index,
-                  asset: { assetId, uri: `clash-asset://${assetId}`, kind: "video" as const },
-                })),
-                ...stringList(data.referenceAudioAssetIds).map((assetId, index) => ({
-                  slot: "audio",
-                  index,
-                  asset: { assetId, uri: `clash-asset://${assetId}`, kind: "audio" as const },
-                })),
+                ...stringList(data.referenceImageAssetIds).map(
+                  (assetId, index) => ({
+                    slot: "image",
+                    index,
+                    asset: {
+                      assetId,
+                      uri: `clash-asset://${assetId}`,
+                      kind: "image" as const,
+                    },
+                  }),
+                ),
+                ...stringList(data.referenceVideoAssetIds).map(
+                  (assetId, index) => ({
+                    slot: "video",
+                    index,
+                    asset: {
+                      assetId,
+                      uri: `clash-asset://${assetId}`,
+                      kind: "video" as const,
+                    },
+                  }),
+                ),
+                ...stringList(data.referenceAudioAssetIds).map(
+                  (assetId, index) => ({
+                    slot: "audio",
+                    index,
+                    asset: {
+                      assetId,
+                      uri: `clash-asset://${assetId}`,
+                      kind: "audio" as const,
+                    },
+                  }),
+                ),
               ];
-              const prompt = extractPromptText(parsePromptParts(
-                typeof data.prompt === "string"
-                  ? data.prompt
-                  : typeof data.content === "string"
-                    ? data.content
-                    : "",
-              ));
-              const params = data.customActionParams && typeof data.customActionParams === "object"
-                && !Array.isArray(data.customActionParams)
-                ? data.customActionParams as Record<string, any>
-                : {};
+              const prompt = extractPromptText(
+                parsePromptParts(
+                  typeof data.prompt === "string"
+                    ? data.prompt
+                    : typeof data.content === "string"
+                      ? data.content
+                      : "",
+                ),
+              );
+              const params =
+                data.customActionParams &&
+                typeof data.customActionParams === "object" &&
+                !Array.isArray(data.customActionParams)
+                  ? (data.customActionParams as Record<string, any>)
+                  : {};
               const taskId = `local-custom-${sanitizeStorageSegment(nodeId)}`;
               const result = await options.executablePluginAction({
                 binding: parsedBinding.data,
@@ -542,18 +705,25 @@ export function createLocalWorkflowProcessor(
                   values: { prompt, ...params },
                   references,
                 },
-                actor: data.actorType === "agent"
-                  ? {
-                      kind: "agent",
-                      ...(typeof data.actorAgentId === "string" ? { id: data.actorAgentId } : {}),
-                    }
-                  : {
-                      kind: "user",
-                      ...(typeof data.actorUserId === "string" ? { id: data.actorUserId } : {}),
-                    },
+                actor:
+                  data.actorType === "agent"
+                    ? {
+                        kind: "agent",
+                        ...(typeof data.actorAgentId === "string"
+                          ? { id: data.actorAgentId }
+                          : {}),
+                      }
+                    : {
+                        kind: "user",
+                        ...(typeof data.actorUserId === "string"
+                          ? { id: data.actorUserId }
+                          : {}),
+                      },
               });
               if (result.status === "failed") {
-                throw new Error(`Plugin action failed (${result.error.code}): ${result.error.message}`);
+                throw new Error(
+                  `Plugin action failed (${result.error.code}): ${result.error.message}`,
+                );
               }
               if (result.status === "accepted") {
                 // This path has no poll loop yet, so accepting work here would strand it: the node
@@ -563,22 +733,37 @@ export function createLocalWorkflowProcessor(
                   "Plugin action returned accepted, which this path cannot resume yet.",
                 );
               }
-              const assetOutput = result.outputs.find((output) => output.kind === "asset");
-              const valueOutput = result.outputs.find((output) => output.kind === "value");
-              const nextData: Record<string, unknown> = { ...data, status: "completed" };
+              const assetOutput = result.outputs.find(
+                (output) => output.kind === "asset",
+              );
+              const valueOutput = result.outputs.find(
+                (output) => output.kind === "value",
+              );
+              const nextData: Record<string, unknown> = {
+                ...data,
+                status: "completed",
+              };
               if (assetOutput?.kind === "asset") {
                 nextData.assetId = assetOutput.asset.assetId;
-              } else if (custom.outputType === "text" && valueOutput?.kind === "value") {
+              } else if (
+                custom.outputType === "text" &&
+                valueOutput?.kind === "value"
+              ) {
                 const value = valueOutput.value;
-                const text = typeof value === "string"
-                  ? value
-                  : value && typeof value === "object" && !Array.isArray(value)
-                      && typeof value.text === "string"
-                    ? value.text
-                    : value && typeof value === "object" && !Array.isArray(value)
-                        && typeof value.content === "string"
-                      ? value.content
-                      : JSON.stringify(value);
+                const text =
+                  typeof value === "string"
+                    ? value
+                    : value &&
+                        typeof value === "object" &&
+                        !Array.isArray(value) &&
+                        typeof value.text === "string"
+                      ? value.text
+                      : value &&
+                          typeof value === "object" &&
+                          !Array.isArray(value) &&
+                          typeof value.content === "string"
+                        ? value.content
+                        : JSON.stringify(value);
                 await recordGeneratedTextRevision({
                   dataDir: options.dataDir,
                   userId,
@@ -610,7 +795,8 @@ export function createLocalWorkflowProcessor(
             changed = true;
             continue;
           }
-          const actionDef = doc.getMap("customActions").get(custom.actionId) as Record<string, unknown> | undefined;
+          const actionDef = doc.getMap("customActions").get(custom.actionId) as
+            Record<string, unknown> | undefined;
           if (!actionDef) {
             nodes.set(nodeId, {
               ...node,
@@ -625,14 +811,33 @@ export function createLocalWorkflowProcessor(
           }
 
           const metadataStore = createLocalMetadataStore(options.dataDir);
-          const [referenceImageR2Keys, referenceVideoR2Keys, referenceAudioR2Keys] = await Promise.all([
-            metadataStore.resolveStorageKeys(projectId, stringList(data.referenceImageAssetIds)),
-            metadataStore.resolveStorageKeys(projectId, stringList(data.referenceVideoAssetIds)),
-            metadataStore.resolveStorageKeys(projectId, stringList(data.referenceAudioAssetIds)),
+          const [
+            referenceImageR2Keys,
+            referenceVideoR2Keys,
+            referenceAudioR2Keys,
+          ] = await Promise.all([
+            metadataStore.resolveStorageKeys(
+              projectId,
+              stringList(data.referenceImageAssetIds),
+            ),
+            metadataStore.resolveStorageKeys(
+              projectId,
+              stringList(data.referenceVideoAssetIds),
+            ),
+            metadataStore.resolveStorageKeys(
+              projectId,
+              stringList(data.referenceAudioAssetIds),
+            ),
           ]);
-          referenceImageR2Keys.unshift(...stringList(data.referenceImageR2Keys));
-          referenceVideoR2Keys.unshift(...stringList(data.referenceVideoR2Keys));
-          referenceAudioR2Keys.unshift(...stringList(data.referenceAudioR2Keys));
+          referenceImageR2Keys.unshift(
+            ...stringList(data.referenceImageR2Keys),
+          );
+          referenceVideoR2Keys.unshift(
+            ...stringList(data.referenceVideoR2Keys),
+          );
+          referenceAudioR2Keys.unshift(
+            ...stringList(data.referenceAudioR2Keys),
+          );
           const refs: Record<string, string[]> = {};
           if (referenceImageR2Keys.length) refs.image = referenceImageR2Keys;
           if (referenceVideoR2Keys.length) refs.video = referenceVideoR2Keys;
@@ -646,27 +851,38 @@ export function createLocalWorkflowProcessor(
             projectId,
             actionType: data.actionType,
             customActionId: custom.actionId,
-            params: data.customActionParams && typeof data.customActionParams === "object"
-              ? data.customActionParams
-              : {},
-            prompt: extractPromptText(parsePromptParts(
-              typeof data.prompt === "string"
-                ? data.prompt
-                : typeof data.content === "string"
-                  ? data.content
-                  : "",
-            )),
+            params:
+              data.customActionParams &&
+              typeof data.customActionParams === "object"
+                ? data.customActionParams
+                : {},
+            prompt: extractPromptText(
+              parsePromptParts(
+                typeof data.prompt === "string"
+                  ? data.prompt
+                  : typeof data.content === "string"
+                    ? data.content
+                    : "",
+              ),
+            ),
             outputType: custom.outputType,
             refs,
             referenceImageR2Keys,
             referenceVideoR2Keys,
             referenceAudioR2Keys,
             actorType: data.actorType === "agent" ? "agent" : "user",
-            actorUserId: typeof data.actorUserId === "string" ? data.actorUserId : userId,
-            actorAgentId: typeof data.actorAgentId === "string" ? data.actorAgentId : undefined,
+            actorUserId:
+              typeof data.actorUserId === "string" ? data.actorUserId : userId,
+            actorAgentId:
+              typeof data.actorAgentId === "string"
+                ? data.actorAgentId
+                : undefined,
             status: "waiting_for_agent",
             createdAt: Date.now(),
-            registeredByRuntime: typeof actionDef.registeredByRuntime === "string" ? actionDef.registeredByRuntime : undefined,
+            registeredByRuntime:
+              typeof actionDef.registeredByRuntime === "string"
+                ? actionDef.registeredByRuntime
+                : undefined,
           };
           tasks.set(taskId, taskRecord);
           nodes.set(nodeId, {
@@ -679,14 +895,19 @@ export function createLocalWorkflowProcessor(
             },
           });
           changed = true;
-          input.broadcastJson?.({ type: "custom_task_assigned", task: taskRecord });
+          input.broadcastJson?.({
+            type: "custom_task_assigned",
+            task: taskRecord,
+          });
           continue;
         }
 
-        const renderData = node.data && typeof node.data === "object"
-          ? node.data as Record<string, any>
-          : {};
-        const isTimelineRender = node.type === "video" &&
+        const renderData =
+          node.data && typeof node.data === "object"
+            ? (node.data as Record<string, any>)
+            : {};
+        const isTimelineRender =
+          node.type === "video" &&
           renderData.status === "pending" &&
           !renderData.assetId &&
           !renderData.pendingTask &&
@@ -755,75 +976,119 @@ export function createLocalWorkflowProcessor(
         if (!kind) continue;
 
         const taskId = `local-gen-${sanitizeStorageSegment(nodeId)}`;
-        const data = node.data as Record<string, unknown>;
+        let data = node.data as Record<string, unknown>;
         try {
           const authoredPrompt = authoredPromptFromData(data, `Mock ${kind}`);
           const parsedPromptParts = parsePromptParts(authoredPrompt);
           const prompt = extractPromptText(parsedPromptParts);
           const model = modelFromData(data, `mock-${kind}`);
           const normalizedModel = normalizeModelId(model) ?? model;
-          const modelCard = modelCards.find((card) => card.id === normalizedModel);
+          const modelCard = modelCards.find(
+            (card) => card.id === normalizedModel,
+          );
           const isStartEnd = !!modelCard?.input.inputMode.startEnd;
           const metadataStore = createLocalMetadataStore(options.dataDir);
-          const referenceImageAssetIds = stringList(data.referenceImageAssetIds);
-          const referenceVideoAssetIds = stringList(data.referenceVideoAssetIds);
-          const referenceAudioAssetIds = stringList(data.referenceAudioAssetIds);
+          const referenceImageAssetIds = stringList(
+            data.referenceImageAssetIds,
+          );
+          const referenceVideoAssetIds = stringList(
+            data.referenceVideoAssetIds,
+          );
+          const referenceAudioAssetIds = stringList(
+            data.referenceAudioAssetIds,
+          );
           const directReferenceImageUrls = stringList(data.referenceImageUrls);
           const directReferenceVideoUrls = stringList(data.referenceVideoUrls);
           const directReferenceAudioUrls = stringList(data.referenceAudioUrls);
-          const directReferenceImageKeys = stringList(data.referenceImageR2Keys);
-          const directReferenceVideoKeys = stringList(data.referenceVideoR2Keys);
-          const directReferenceAudioKeys = stringList(data.referenceAudioR2Keys);
+          const directReferenceImageKeys = stringList(
+            data.referenceImageR2Keys,
+          );
+          const directReferenceVideoKeys = stringList(
+            data.referenceVideoR2Keys,
+          );
+          const directReferenceAudioKeys = stringList(
+            data.referenceAudioR2Keys,
+          );
           if (modelCard) {
-            const referenceError = validateRefs(modelCard, {
-              image: Math.max(
-                referenceImageAssetIds.length,
-                directReferenceImageUrls.length,
-                directReferenceImageKeys.length,
-              ),
-              video: Math.max(
-                referenceVideoAssetIds.length,
-                directReferenceVideoUrls.length,
-                directReferenceVideoKeys.length,
-              ),
-              audio: Math.max(
-                referenceAudioAssetIds.length,
-                directReferenceAudioUrls.length,
-                directReferenceAudioKeys.length,
-              ),
-            }, { prompt });
+            const referenceError = validateRefs(
+              modelCard,
+              {
+                image: Math.max(
+                  referenceImageAssetIds.length,
+                  directReferenceImageUrls.length,
+                  directReferenceImageKeys.length,
+                ),
+                video: Math.max(
+                  referenceVideoAssetIds.length,
+                  directReferenceVideoUrls.length,
+                  directReferenceVideoKeys.length,
+                ),
+                audio: Math.max(
+                  referenceAudioAssetIds.length,
+                  directReferenceAudioUrls.length,
+                  directReferenceAudioKeys.length,
+                ),
+              },
+              { prompt },
+            );
             if (referenceError) throw new Error(referenceError);
           }
-          const [referenceImageKeys, referenceVideoKeys, referenceAudioKeys] = await Promise.all([
-            metadataStore.resolveStorageKeys(projectId, referenceImageAssetIds),
-            metadataStore.resolveStorageKeys(projectId, referenceVideoAssetIds),
-            metadataStore.resolveStorageKeys(projectId, referenceAudioAssetIds),
-          ]);
+          const [referenceImageKeys, referenceVideoKeys, referenceAudioKeys] =
+            await Promise.all([
+              metadataStore.resolveStorageKeys(
+                projectId,
+                referenceImageAssetIds,
+              ),
+              metadataStore.resolveStorageKeys(
+                projectId,
+                referenceVideoAssetIds,
+              ),
+              metadataStore.resolveStorageKeys(
+                projectId,
+                referenceAudioAssetIds,
+              ),
+            ]);
           if (modelCard) {
             const localMetadata = await metadataStore.load();
-            const assetById = new Map(localMetadata.assets.map((asset) => [asset.id, asset]));
+            const assetById = new Map(
+              localMetadata.assets.map((asset) => [asset.id, asset]),
+            );
             const mediaReferences: ReferenceMediaMetadata[] = [
-              ...referenceImageAssetIds.map((assetId) => ({ assetId, modality: "image" as const })),
-              ...referenceVideoAssetIds.map((assetId) => ({ assetId, modality: "video" as const })),
-              ...referenceAudioAssetIds.map((assetId) => ({ assetId, modality: "audio" as const })),
+              ...referenceImageAssetIds.map((assetId) => ({
+                assetId,
+                modality: "image" as const,
+              })),
+              ...referenceVideoAssetIds.map((assetId) => ({
+                assetId,
+                modality: "video" as const,
+              })),
+              ...referenceAudioAssetIds.map((assetId) => ({
+                assetId,
+                modality: "audio" as const,
+              })),
             ].flatMap(({ assetId, modality }) => {
               const metadata = assetById.get(assetId)?.metadata;
               if (!metadata) return [];
-              return [{
-                modality,
-                contentType: metadata.contentType,
-                fileName: metadata.originalName,
-                bytes: metadata.bytes,
-                width: metadata.width,
-                height: metadata.height,
-                durationMs: metadata.durationMs,
-                frameRate: metadata.frameRate,
-                videoCodec: metadata.videoCodec,
-                audioCodec: metadata.audioCodec,
-                embedded: !!options.mediaBaseUrl,
-              }];
+              return [
+                {
+                  modality,
+                  contentType: metadata.contentType,
+                  fileName: metadata.originalName,
+                  bytes: metadata.bytes,
+                  width: metadata.width,
+                  height: metadata.height,
+                  durationMs: metadata.durationMs,
+                  frameRate: metadata.frameRate,
+                  videoCodec: metadata.videoCodec,
+                  audioCodec: metadata.audioCodec,
+                  embedded: !!options.mediaBaseUrl,
+                },
+              ];
             });
-            const mediaError = validateReferenceMedia(modelCard, mediaReferences);
+            const mediaError = validateReferenceMedia(
+              modelCard,
+              mediaReferences,
+            );
             if (mediaError) throw new Error(mediaError);
           }
           referenceImageKeys.unshift(...directReferenceImageKeys);
@@ -832,42 +1097,69 @@ export function createLocalWorkflowProcessor(
           const referenceImageUrls = [
             ...directReferenceImageUrls,
             ...(options.mediaBaseUrl
-              ? referenceImageKeys.map((key) => localAssetReferenceUrl(options.mediaBaseUrl!, key))
+              ? referenceImageKeys.map((key) =>
+                  localAssetReferenceUrl(options.mediaBaseUrl!, key),
+                )
               : []),
           ];
           const referenceVideoUrls = [
             ...directReferenceVideoUrls,
             ...(options.mediaBaseUrl
-              ? referenceVideoKeys.map((key) => localAssetReferenceUrl(options.mediaBaseUrl!, key))
+              ? referenceVideoKeys.map((key) =>
+                  localAssetReferenceUrl(options.mediaBaseUrl!, key),
+                )
               : []),
           ];
           const referenceAudioUrls = [
             ...directReferenceAudioUrls,
             ...(options.mediaBaseUrl
-              ? referenceAudioKeys.map((key) => localAssetReferenceUrl(options.mediaBaseUrl!, key))
+              ? referenceAudioKeys.map((key) =>
+                  localAssetReferenceUrl(options.mediaBaseUrl!, key),
+                )
               : []),
           ];
           let orderedContentParts: OrderedPromptContentPart[] = [];
           const referenceBindingType = modelCard?.input.referenceBinding?.type;
-          if (referenceBindingType === "ordered-content-parts" || referenceBindingType === "positional-tokens") {
-            const imageUrlByAssetId = new Map(referenceImageAssetIds.flatMap((assetId, index) =>
-              referenceImageUrls[index] ? [[assetId, referenceImageUrls[index]] as const] : []));
-            const videoUrlByAssetId = new Map(referenceVideoAssetIds.flatMap((assetId, index) =>
-              referenceVideoUrls[index] ? [[assetId, referenceVideoUrls[index]] as const] : []));
-            const audioUrlByAssetId = new Map(referenceAudioAssetIds.flatMap((assetId, index) =>
-              referenceAudioUrls[index] ? [[assetId, referenceAudioUrls[index]] as const] : []));
+          if (
+            referenceBindingType === "ordered-content-parts" ||
+            referenceBindingType === "positional-tokens"
+          ) {
+            const imageUrlByAssetId = new Map(
+              referenceImageAssetIds.flatMap((assetId, index) =>
+                referenceImageUrls[index]
+                  ? [[assetId, referenceImageUrls[index]] as const]
+                  : [],
+              ),
+            );
+            const videoUrlByAssetId = new Map(
+              referenceVideoAssetIds.flatMap((assetId, index) =>
+                referenceVideoUrls[index]
+                  ? [[assetId, referenceVideoUrls[index]] as const]
+                  : [],
+              ),
+            );
+            const audioUrlByAssetId = new Map(
+              referenceAudioAssetIds.flatMap((assetId, index) =>
+                referenceAudioUrls[index]
+                  ? [[assetId, referenceAudioUrls[index]] as const]
+                  : [],
+              ),
+            );
             const inlineParts: OrderedPromptContentPart[] = [];
 
             for (const part of parsedPromptParts) {
               if (part.type === "text") {
-                if (part.text) inlineParts.push({ type: "text", text: part.text });
+                if (part.text)
+                  inlineParts.push({ type: "text", text: part.text });
                 continue;
               }
               if (!part.nodeId) continue;
-              const referencedNode = nodes.get(part.nodeId) as Record<string, any> | undefined;
-              const assetId = typeof referencedNode?.data?.assetId === "string"
-                ? referencedNode.data.assetId
-                : undefined;
+              const referencedNode = nodes.get(part.nodeId) as
+                Record<string, any> | undefined;
+              const assetId =
+                typeof referencedNode?.data?.assetId === "string"
+                  ? referencedNode.data.assetId
+                  : undefined;
               const modality = referencedNode?.type;
               const url = assetId
                 ? modality === "image"
@@ -878,19 +1170,37 @@ export function createLocalWorkflowProcessor(
                       ? audioUrlByAssetId.get(assetId)
                       : undefined
                 : undefined;
-              if (!url || (modality !== "image" && modality !== "video" && modality !== "audio")) continue;
+              if (
+                !url ||
+                (modality !== "image" &&
+                  modality !== "video" &&
+                  modality !== "audio")
+              )
+                continue;
               inlineParts.push({ type: modality, url });
             }
 
             orderedContentParts = appendUnmentionedGlobalReferences(
               inlineParts,
               [
-                ...referenceImageUrls.map((url) => ({ type: "image" as const, url })),
-                ...referenceVideoUrls.map((url) => ({ type: "video" as const, url })),
-                ...referenceAudioUrls.map((url) => ({ type: "audio" as const, url })),
+                ...referenceImageUrls.map((url) => ({
+                  type: "image" as const,
+                  url,
+                })),
+                ...referenceVideoUrls.map((url) => ({
+                  type: "video" as const,
+                  url,
+                })),
+                ...referenceAudioUrls.map((url) => ({
+                  type: "audio" as const,
+                  url,
+                })),
               ],
             );
-            if (!orderedContentParts.some((part) => part.type === "text") && prompt) {
+            if (
+              !orderedContentParts.some((part) => part.type === "text") &&
+              prompt
+            ) {
               orderedContentParts.unshift({ type: "text", text: prompt });
             }
           }
@@ -898,36 +1208,98 @@ export function createLocalWorkflowProcessor(
             taskId,
             projectId,
             nodeId,
-            actorType: data.actorType === "agent" ? "agent" as const : "user" as const,
-            actorUserId: typeof data.actorUserId === "string" ? data.actorUserId : userId,
-            ...(typeof data.actorAgentId === "string" ? { actorAgentId: data.actorAgentId } : {}),
+            actorType:
+              data.actorType === "agent"
+                ? ("agent" as const)
+                : ("user" as const),
+            actorUserId:
+              typeof data.actorUserId === "string" ? data.actorUserId : userId,
+            ...(typeof data.actorAgentId === "string"
+              ? { actorAgentId: data.actorAgentId }
+              : {}),
             prompt,
             model,
-            modelParams: modelParams(data),
-            ...(ExecutablePluginBindingSchema.safeParse(data.pluginBinding).success
-              ? { pluginBinding: ExecutablePluginBindingSchema.parse(data.pluginBinding) }
+            modelParams: {
+              ...modelParams(data),
+              // Set by `canvas execute --provider`, and honoured whenever the host gets to the
+              // request -- including after a restart, since it lives on the node.
+              ...(typeof data.providerAccountId === "string" &&
+              data.providerAccountId
+                ? { provider_id: data.providerAccountId }
+                : {}),
+            },
+            ...(ExecutablePluginBindingSchema.safeParse(data.pluginBinding)
+              .success
+              ? {
+                  pluginBinding: ExecutablePluginBindingSchema.parse(
+                    data.pluginBinding,
+                  ),
+                }
               : {}),
-            ...(isStartEnd && referenceImageUrls[0] ? { startFrameUrl: referenceImageUrls[0] } : {}),
-            ...(isStartEnd && referenceImageUrls[1] ? { endFrameUrl: referenceImageUrls[1] } : {}),
-            ...(!isStartEnd && referenceImageUrls.length ? { referenceImageUrls } : {}),
+            ...(isStartEnd && referenceImageUrls[0]
+              ? { startFrameUrl: referenceImageUrls[0] }
+              : {}),
+            ...(isStartEnd && referenceImageUrls[1]
+              ? { endFrameUrl: referenceImageUrls[1] }
+              : {}),
+            ...(!isStartEnd && referenceImageUrls.length
+              ? { referenceImageUrls }
+              : {}),
             ...(referenceVideoUrls.length ? { referenceVideoUrls } : {}),
             ...(referenceAudioUrls.length ? { referenceAudioUrls } : {}),
             ...(orderedContentParts.length ? { orderedContentParts } : {}),
           };
+          const providerPollState = data.providerPollState;
+          const resuming = providerPollState !== undefined;
+          const invocationStartedAt = Date.now();
+          const providerStartedAt =
+            typeof data.providerStartedAt === "number"
+              ? data.providerStartedAt
+              : typeof data.providerAcceptedAt === "number"
+                ? data.providerAcceptedAt
+                : invocationStartedAt;
+          const providerDeadlineAt =
+            typeof data.providerDeadlineAt === "number"
+              ? data.providerDeadlineAt
+              : providerStartedAt + PROVIDER_GENERATION_DEADLINE_MS;
+          data = {
+            ...data,
+            providerStartedAt,
+            providerDeadlineAt,
+          };
           if (kind === "text") {
+            if (invocationStartedAt >= providerDeadlineAt) {
+              throw new Error(providerGenerationTimeoutMessage());
+            }
+            nodes.set(nodeId, { ...node, data });
+            changed = true;
             let generated;
-            try {
-              generated = options.textAgent && model === "local-acp"
-                ? await options.textAgent.generate({
+            if (options.textAgent && model === "local-acp") {
+              try {
+                generated = await beforeProviderGenerationDeadline(
+                  options.textAgent.generate({
                     projectId,
                     prompt,
                     modelId: model,
                     modelParams: modelParams(data),
-                    actorAgentId: typeof data.actorAgentId === "string" ? data.actorAgentId : undefined,
-                  })
-                : await aigc.generateText(commonInput);
-            } catch {
-              generated = await aigc.generateText(commonInput);
+                    actorAgentId:
+                      typeof data.actorAgentId === "string"
+                        ? data.actorAgentId
+                        : undefined,
+                  }),
+                  providerDeadlineAt,
+                );
+              } catch {
+                generated = await beforeProviderGenerationDeadline(
+                  aigc.generateText(commonInput),
+                  providerDeadlineAt,
+                );
+              }
+            } else {
+              generated = await beforeProviderGenerationDeadline(
+                aigc.generateText(commonInput),
+                providerDeadlineAt,
+              );
             }
             await recordGeneratedTextRevision({
               dataDir: options.dataDir,
@@ -942,11 +1314,15 @@ export function createLocalWorkflowProcessor(
               status: "completed",
               content: generated.text,
               ...(generated.provider ? { provider: generated.provider } : {}),
-              ...(generated.modelEndpoint ? { modelEndpoint: generated.modelEndpoint } : {}),
+              ...(generated.modelEndpoint
+                ? { modelEndpoint: generated.modelEndpoint }
+                : {}),
             };
             delete (nextData as Record<string, unknown>).pendingTask;
             delete (nextData as Record<string, unknown>).pendingTaskAt;
             delete (nextData as Record<string, unknown>).error;
+            delete (nextData as Record<string, unknown>).providerPollState;
+            delete (nextData as Record<string, unknown>).providerPollAt;
             nodes.set(nodeId, { ...node, data: nextData });
             changed = true;
             continue;
@@ -955,70 +1331,121 @@ export function createLocalWorkflowProcessor(
           // Work the provider already accepted is asked about, never sent again. `generating` looks
           // identical on the tick that submitted it and on every tick after, so without this the
           // loop rebuys the same generation forever.
-          const providerPollState = data.providerPollState;
-          const resuming = providerPollState !== undefined;
+          let finalReconciliationPoll = false;
           if (resuming) {
-            // A plugin decides what its provider's statuses mean by listing the words it knows, so
-            // anything unlisted reads as "not finished". That used to self-correct when the plugin
-            // owned a bounded loop; now that the host does the asking, the same gap polls forever
-            // for a job that already died. The host cannot know the vocabulary, but it can refuse to
-            // wait on silence indefinitely.
-            const acceptedAt = typeof data.providerAcceptedAt === "number"
-              ? data.providerAcceptedAt
-              : Date.now();
-            if (Date.now() - acceptedAt > PROVIDER_POLL_BUDGET_MS) {
+            if (invocationStartedAt >= providerDeadlineAt) {
+              if (typeof data.providerFinalPolledAt === "number") {
+                nodes.set(nodeId, {
+                  ...node,
+                  data: providerTerminalData(data, {
+                    status: "failed",
+                    error: providerGenerationTimeoutMessage(),
+                  }),
+                });
+                changed = true;
+                continue;
+              }
+              finalReconciliationPoll = true;
+              data = {
+                ...data,
+                providerFinalPolledAt: invocationStartedAt,
+              };
+              nodes.set(nodeId, { ...node, data });
+              changed = true;
+              // A restart during the final provider request must see that this one reconciliation
+              // attempt was already consumed. The room checkpoints the marker before the external
+              // poll starts; without a room (unit-level processor use), the callback is absent.
+              await input.checkpoint?.();
+            } else {
+              const dueAt =
+                typeof data.providerPollAt === "number"
+                  ? data.providerPollAt
+                  : 0;
+              // Asking sooner than the provider allowed gets the host rate-limited, and a provider
+              // that throttles status checks throttles submissions on the same credential.
+              if (invocationStartedAt < dueAt) continue;
+            }
+          } else {
+            if (invocationStartedAt >= providerDeadlineAt) {
               nodes.set(nodeId, {
                 ...node,
-                data: {
-                  ...data,
+                data: providerTerminalData(data, {
                   status: "failed",
-                  error: `Provider did not reach a final state within ${
-                    Math.round(PROVIDER_POLL_BUDGET_MS / 60000)
-                  } minutes. The work may have finished or failed upstream without a status this `
-                    + "plugin recognises.",
-                },
+                  error: providerGenerationTimeoutMessage(),
+                }),
               });
               changed = true;
               continue;
             }
-            const dueAt = typeof data.providerPollAt === "number" ? data.providerPollAt : 0;
-            // Asking sooner than the provider allowed gets the host rate-limited, and a provider
-            // that throttles status checks throttles submissions on the same credential.
-            if (Date.now() < dueAt) continue;
+            nodes.set(nodeId, { ...node, data });
+            changed = true;
           }
-          const common = resuming ? { ...commonInput, pollState: providerPollState } : commonInput;
-          const generated = kind === "image"
-            ? await aigc.generateImage({
-                ...common,
-                aspectRatio: aspectRatioFromData(data),
-              })
-            : kind === "video"
-              ? await aigc.generateVideo({
+          const common = resuming
+            ? { ...commonInput, pollState: providerPollState }
+            : commonInput;
+          const generation =
+            kind === "image"
+              ? aigc.generateImage({
                   ...common,
                   aspectRatio: aspectRatioFromData(data),
-                  duration: durationFromData(data, modelCard),
                 })
-              : await aigc.generateAudio({
-                  ...common,
-                  duration: durationFromData(data, modelCard),
-                });
+              : kind === "video"
+                ? aigc.generateVideo({
+                    ...common,
+                    aspectRatio: aspectRatioFromData(data),
+                    duration: durationFromData(data, modelCard),
+                  })
+                : aigc.generateAudio({
+                    ...common,
+                    duration: durationFromData(data, modelCard),
+                  });
+          const generated = finalReconciliationPoll
+            ? await generation
+            : await beforeProviderGenerationDeadline(
+                generation,
+                providerDeadlineAt,
+              );
           if (generated.status === "accepted") {
+            if (finalReconciliationPoll) {
+              nodes.set(nodeId, {
+                ...node,
+                data: providerTerminalData(data, {
+                  status: "failed",
+                  error: providerGenerationTimeoutMessage(),
+                }),
+              });
+              changed = true;
+              continue;
+            }
             // The provider holds the work. Record how to ask again on the node itself -- the same
             // document that holds the canvas, so it is already durable and already replicated. A
             // restart then resumes by reading the node it would have read anyway, rather than
             // through a separate recovery path that only runs after a crash and is therefore only
             // tested by one.
+            const requestedPollDelayMs = Math.max(
+              1000,
+              generated.retryAfterMs ?? 5000,
+            );
+            const providerPollDelayMs =
+              options.providerPollDelayCapMs !== undefined
+              && Number.isFinite(options.providerPollDelayCapMs)
+              && options.providerPollDelayCapMs >= 0
+                ? Math.min(requestedPollDelayMs, options.providerPollDelayCapMs)
+                : requestedPollDelayMs;
             nodes.set(nodeId, {
               ...node,
               data: {
                 ...data,
                 status: "generating",
                 providerPollState: generated.pollState,
-                providerPollAt: Date.now() + Math.max(1000, generated.retryAfterMs ?? 5000),
-                providerAcceptedAt: typeof data.providerAcceptedAt === "number"
-                  ? data.providerAcceptedAt
-                  : Date.now(),
-                ...(generated.pluginBinding ? { pluginBinding: generated.pluginBinding } : {}),
+                providerPollAt: Date.now() + providerPollDelayMs,
+                providerAcceptedAt:
+                  typeof data.providerAcceptedAt === "number"
+                    ? data.providerAcceptedAt
+                    : Date.now(),
+                ...(generated.pluginBinding
+                  ? { pluginBinding: generated.pluginBinding }
+                  : {}),
               },
             });
             changed = true;
@@ -1047,11 +1474,15 @@ export function createLocalWorkflowProcessor(
             ...data,
             status: "completed",
             assetId: asset.id,
-            ...(generated.pluginBinding ? { pluginBinding: generated.pluginBinding } : {}),
+            ...(generated.pluginBinding
+              ? { pluginBinding: generated.pluginBinding }
+              : {}),
           };
           delete (nextData as Record<string, unknown>).pendingTask;
           delete (nextData as Record<string, unknown>).pendingTaskAt;
           delete (nextData as Record<string, unknown>).error;
+          delete (nextData as Record<string, unknown>).providerPollState;
+          delete (nextData as Record<string, unknown>).providerPollAt;
           nodes.set(nodeId, { ...node, data: nextData });
           changed = true;
         } catch (error) {
@@ -1062,6 +1493,8 @@ export function createLocalWorkflowProcessor(
           };
           delete (nextData as Record<string, unknown>).pendingTask;
           delete (nextData as Record<string, unknown>).pendingTaskAt;
+          delete (nextData as Record<string, unknown>).providerPollState;
+          delete (nextData as Record<string, unknown>).providerPollAt;
           nodes.set(nodeId, { ...node, data: nextData });
           changed = true;
         }

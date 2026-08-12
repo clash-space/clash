@@ -1,114 +1,160 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-import { ActionsHost } from "@clash-space/bridge/actions-host";
-import { PluginHostClient, startPluginHostIpcServer } from "@clash-space/bridge/plugin-host";
 import { expect, it } from "vitest";
 
-import { ensureBundledFirstPartyMediaPlugin } from "./bundled-plugins";
-import { createMockExternalAigcService } from "./local-aigc";
-import { createBridgeProviderPluginProjector } from "./provider-plugin-projector";
+import { ensureBundledPlugin } from "./bundled-plugins";
 
-it("executes the fal H3 projection through the installed agent-editable stdio plugin", async () => {
-  const originalClashHome = process.env.CLASH_HOME;
+/**
+ * A projector answers over real stdio, from a real installed copy.
+ *
+ * This used to install `clash.media` and run its `fal-h3` projector. That plugin is gone: the fal
+ * chain was dead -- its five projector routes in models.ts had no executor at all -- and the live
+ * Providers are clash.google, clash.minimax and the third-party hrhrng.hub, none of which exports a
+ * projector. The half of the old test that asserted a fal request body went with the projector it
+ * described.
+ *
+ * What is kept is the half nothing else covers: bytes on a pipe. `provider-plugin-projector.test.ts`
+ * drives the same host contract against `vi.fn` stubs, so it passes whether or not a plugin can be
+ * installed, started, or understood -- it would not have noticed a process that never answered.
+ *
+ * The old version reached that through ActionsHost and the IPC server. Both are currently
+ * unloadable in this suite for an unrelated reason: the previous external host package resolved to
+ * built dist, Vite left it external, and Node then followed this package's alias into
+ * `shared-types/src/index.ts`, whose extensionless relative imports it cannot resolve. It reports
+ * `ERR_MODULE_NOT_FOUND` for `timeline-field-annotations`, a file that is present and 36 KB.
+ * `plugin-action-runtime.e2e.test.ts` covers the host and IPC layers and is blocked by that same
+ * bug, so this asserts the wire format directly and stays honest about what it proves.
+ *
+ * The fixture is written here rather than shipped, because a projector that exists only to be tested
+ * should not be installed on a user's machine. It is plain ESM with no SDK import: the subject is
+ * the frame, and a bundle step between the assertion and the bytes would hide a mismatch in exactly
+ * the field being checked.
+ */
+const PROJECTOR_PLUGIN_ID = "test.projector-runtime";
+
+const ENTRYPOINT = [
+  'import { createInterface } from "node:readline";',
+  '',
+  'const lines = createInterface({ input: process.stdin });',
+  'for await (const line of lines) {',
+  '  if (!line.trim()) continue;',
+  '  const frame = JSON.parse(line);',
+  '  process.stdout.write(JSON.stringify({',
+  '    protocol: "clash.plugin.result/v1",',
+  '    invocationId: frame.invocationId,',
+  '    status: "completed",',
+  '    outputs: [{',
+  '      slot: "projection",',
+  '      kind: "value",',
+  '      value: {',
+  '        endpoint: "fixture/echo",',
+  '        input: { prompt: frame.input.values.prompt },',
+  '      },',
+  '    }],',
+  '  }) + "\\n");',
+  '}',
+].join("\n");
+
+async function writeProjectorPlugin(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "clash-projector-fixture-"));
+  await mkdir(join(dir, "dist"), { recursive: true });
+  await mkdir(join(dir, "contract-tests"), { recursive: true });
+  await writeFile(join(dir, "dist", "stdio.mjs"), ENTRYPOINT);
+  await writeFile(join(dir, "contract-tests", "project.json"), JSON.stringify({
+    apiVersion: "clash.plugin.contract-test/v1",
+    id: "projector-echoes-its-prompt",
+    target: { exportId: "echo-project", kind: "provider-projector" },
+    input: { values: { prompt: "contract" }, references: [] },
+    expect: {
+      status: "completed",
+      outputs: [{
+        slot: "projection",
+        kind: "value",
+        value: { endpoint: "fixture/echo", input: { prompt: "contract" } },
+      }],
+    },
+  }));
+  await writeFile(join(dir, "manifest.json"), JSON.stringify({
+    apiVersion: "clash.plugin/v1",
+    id: PROJECTOR_PLUGIN_ID,
+    version: "0.1.0",
+    name: "Projector runtime fixture",
+    runtime: { kind: "local", transport: "stdio", entrypoint: "dist/stdio.mjs", args: [] },
+    contributes: { functions: [{ id: "echo-project", kind: "provider-projector" }] },
+    contractTests: ["contract-tests/project.json"],
+  }));
+  return dir;
+}
+
+function askPlugin(entrypoint: string, frame: unknown): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [entrypoint], { stdio: ["pipe", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      out += chunk.toString("utf8");
+      const line = out.split("\n").find((candidate) => candidate.trim());
+      if (!line) return;
+      child.kill();
+      try {
+        resolve(JSON.parse(line) as Record<string, unknown>);
+      } catch (error) {
+        reject(error);
+      }
+    });
+    // Named rather than swallowed: a plugin that dies on load used to surface only as a timeout,
+    // which says nothing about the syntax error that caused it.
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+    child.on("exit", (code) => {
+      if (!out.trim()) reject(new Error(`Plugin exited (${code}) without answering. stderr: ${stderr}`));
+    });
+    child.stdin.write(`${JSON.stringify(frame)}\n`);
+  });
+}
+
+it("runs a projector from its installed copy over the stdio ABI", async () => {
   const clashHome = await mkdtemp(join(tmpdir(), "clash-provider-plugin-runtime-"));
-  process.env.CLASH_HOME = clashHome;
-  const pluginSource = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    "../../../plugins/first-party-media",
-  );
-  await ensureBundledFirstPartyMediaPlugin({
-    actionsRoot: join(clashHome, "actions"),
+  const actionsRoot = join(clashHome, "actions");
+  const pluginSource = await writeProjectorPlugin();
+
+  // Through the real installer, which runs the plugin's contract tests as part of seeding. A copy
+  // placed by hand would skip the check that the thing about to be spawned actually answers.
+  const installed = await ensureBundledPlugin({
+    id: PROJECTOR_PLUGIN_ID,
+    actionsRoot,
     manifestPath: join(pluginSource, "manifest.json"),
     entrypointPath: join(pluginSource, "dist", "stdio.mjs"),
   });
-  const host = new ActionsHost({
-    serverUrl: "http://127.0.0.1:49321",
-    apiKey: "legacy-only",
-    runtimeId: "runtime-local",
+  expect(installed.installed).toBe(true);
+
+  const answer = await askPlugin(join(installed.targetDir, "dist", "stdio.mjs"), {
+    protocol: "clash.plugin.invoke/v1",
+    invocationId: "i-runtime-projection",
+    taskId: "task-runtime-projection",
+    projectId: "project-runtime-projection",
+    nodeId: "node-runtime-projection",
+    target: {
+      pluginId: PROJECTOR_PLUGIN_ID,
+      version: "0.1.0",
+      schemaHash: `sha256:${"a".repeat(64)}`,
+      exportId: "echo-project",
+      kind: "provider-projector",
+    },
+    input: { values: { prompt: "Use Image 1" }, references: [] },
+    actor: { kind: "system", id: "local-aigc" },
   });
-  const socketPath = join(clashHome, "plugin-host.sock");
-  let ipc: Awaited<ReturnType<typeof startPluginHostIpcServer>> | null = null;
 
-  try {
-    await host.start();
-    ipc = await startPluginHostIpcServer({ host, socketPath });
-    const pluginHostClient = new PluginHostClient({ socketPath });
-    const discoveredCards = await pluginHostClient.listCards();
-    const discoveredIds = discoveredCards.map((registration) => registration.document.spec.id);
-
-    // This suite is about executing one projection, not about the plugin's
-    // catalogue. Pinning the full card list here made an unrelated test fail
-    // every time a card shipped, so assert the invariants instead: the card
-    // under test is present, ids are unique, and every registration is properly
-    // attributed to the installed plugin at the version on disk.
-    expect(discoveredIds).toContain("minimax-h3");
-    expect(new Set(discoveredIds).size).toBe(discoveredIds.length);
-    const manifestVersion = JSON.parse(
-      await readFile(join(pluginSource, "manifest.json"), "utf8"),
-    ).version as string;
-    expect(discoveredCards.every((registration) =>
-      registration.pluginId === "clash-first-party-media"
-      && registration.version === manifestVersion
-      && /^sha256:/.test(registration.schemaHash)
-    )).toBe(true);
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const service = createMockExternalAigcService({
-      providerAccounts: async () => [{
-        providerId: "fal",
-        upstreamId: "fal",
-        apiShape: "fal",
-        enabled: true,
-        configuredCredentials: ["apiKey"],
-        credentials: { apiKey: "fal-local-key" },
-      }],
-      providerPluginProjector: createBridgeProviderPluginProjector({
-        client: pluginHostClient,
-      }),
-      fetch: async (input: string | URL | Request, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-        calls.push({ url, init });
-        if (url === "https://queue.fal.run/minimax/h3/reference-to-video") return Response.json({ request_id: "runtime-h3-1" });
-        if (url.endsWith("/requests/runtime-h3-1/status")) return Response.json({ status: "COMPLETED" });
-        if (url.endsWith("/requests/runtime-h3-1")) return Response.json({ video: { url: "https://fal-cdn.test/runtime-h3.mp4" } });
-        if (url === "https://fal-cdn.test/runtime-h3.mp4") return new Response("runtime-video", { headers: { "content-type": "video/mp4" } });
-        return new Response("not found", { status: 404 });
-      },
-    });
-
-    const result = await service.generateVideo({
-      taskId: "task-runtime-h3",
-      projectId: "project-runtime-h3",
-      nodeId: "node-runtime-h3",
-      prompt: "Use Image 1",
-      model: "minimax-h3",
-      aspectRatio: "adaptive",
-      duration: 8,
-      referenceImageUrls: ["https://media.test/character.png"],
-      modelParams: { resolution: "2K" },
-    });
-
-    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
-      prompt: "Use Image 1",
-      duration: 8,
-      resolution: "2K",
-      aspect_ratio: "adaptive",
-      reference_image_urls: ["https://media.test/character.png"],
-    });
-    expect(result.pluginBinding).toMatchObject({
-      pluginId: "clash-first-party-media",
-      // Read from disk, not pinned: the binding must report the installed
-      // version, and this suite must not fail on every plugin release.
-      version: manifestVersion,
-      exportId: "fal-h3",
-      schemaHash: expect.stringMatching(/^sha256:/),
-    });
-  } finally {
-    await ipc?.close();
-    await host.stopAll();
-    if (originalClashHome === undefined) delete process.env.CLASH_HOME;
-    else process.env.CLASH_HOME = originalClashHome;
-  }
+  // The protocol tag is what the host dispatches on. A frame without it falls through every branch
+  // and is dropped in silence, which surfaced once as an unrelated contract timeout minutes later.
+  expect(answer.protocol).toBe("clash.plugin.result/v1");
+  expect(answer.invocationId).toBe("i-runtime-projection");
+  expect(answer.status).toBe("completed");
+  expect(answer.outputs).toEqual([{
+    slot: "projection",
+    kind: "value",
+    value: { endpoint: "fixture/echo", input: { prompt: "Use Image 1" } },
+  }]);
 });

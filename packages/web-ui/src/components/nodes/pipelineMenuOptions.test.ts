@@ -24,9 +24,14 @@ describe("PIPELINE_MENU_OPTIONS", () => {
         // The intent, not a model id: a bare "Audio Prompt" is speech. Selecting
         // by catalog order instead of the product's default picker silently made
         // this music generation when a music card was added above the TTS cards.
+        //
+        // Said through the card's own declaration rather than a `task` of "text-to-speech", which
+        // no longer exists: a music model is one that declares where lyrics go, so a default with
+        // no `musicInput` is a speech default.
         const selected = MODEL_CARDS.find((card) => card.id === data?.modelId);
         expect(selected, `unknown model ${String(data?.modelId)}`).toBeDefined();
-        expect(selected!.task).toBe("text-to-speech");
+        expect(selected!.kind).toBe("audio");
+        expect(selected!.musicInput, `${selected!.id} takes lyrics`).toBeUndefined();
         expect(data?.model).toBe(data?.modelId);
     });
 

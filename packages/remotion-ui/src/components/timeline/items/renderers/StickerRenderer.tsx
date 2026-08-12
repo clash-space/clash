@@ -1,5 +1,5 @@
 import React from 'react';
-import type { StickerItem } from '@master-clash/remotion-core';
+import type { StickerItem } from '@clash/remotion-core';
 import type { ItemRenderProps } from '../registry';
 
 export const StickerRenderer: React.FC<ItemRenderProps> = ({ item, width, height }) => {

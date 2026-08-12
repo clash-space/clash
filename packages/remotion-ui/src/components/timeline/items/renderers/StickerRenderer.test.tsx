@@ -2,7 +2,7 @@
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { StickerItem } from '@master-clash/remotion-core';
+import type { StickerItem } from '@clash/remotion-core';
 import { StickerRenderer } from './StickerRenderer';
 
 afterEach(() => cleanup());

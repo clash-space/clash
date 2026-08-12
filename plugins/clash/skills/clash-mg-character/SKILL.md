@@ -79,8 +79,9 @@ limbs, shadows, and strokes against all four edges.
 
 ## Use the live product path
 
-CLI and MCP are peer transports over the same project. Use whichever is
-available; do not invoke the CLI through a generic MCP wrapper.
+CLI and MCP are peer surfaces with the same capabilities over the same project.
+Use whichever is available; do not invoke one through the other or create a
+second implementation of product behavior.
 
 For CLI work, keep the TSX in the working tree while authoring it, then persist
 its contents in a distinct Canvas node:

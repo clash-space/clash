@@ -1,0 +1,196 @@
+{
+  "apiVersion": "clash.plugin/v1",
+  "id": "hrhrng.hub",
+  "version": "1.3.1",
+  "name": "Hilo Hub Overseas Media",
+  "description": "Third-party MiniMax Hub Provider and implementation bindings for the overseas media catalog.",
+  "runtime": {
+    "kind": "local",
+    "transport": "stdio",
+    "entrypoint": "dist/stdio.mjs",
+    "args": []
+  },
+  "contributes": {
+    "cards": [],
+    "providers": [
+      {
+        "id": "hilo-hub",
+        "kind": "provider",
+        "path": "providers/hilo-hub.json"
+      }
+    ],
+    "modelBindings": [
+      {
+        "id": "hilo-elevenlabs-music-v2",
+        "kind": "model-provider-binding",
+        "path": "bindings/elevenlabs-music-v2.json"
+      },
+      {
+        "id": "hilo-gpt-image-2",
+        "kind": "model-provider-binding",
+        "path": "bindings/gpt-image-2.json"
+      },
+      {
+        "id": "hilo-jimeng-motion-control-2",
+        "kind": "model-provider-binding",
+        "path": "bindings/jimeng-motion-control-2.json"
+      },
+      {
+        "id": "hilo-kling-avatar",
+        "kind": "model-provider-binding",
+        "path": "bindings/kling-avatar.json"
+      },
+      {
+        "id": "hilo-kling-image-o1",
+        "kind": "model-provider-binding",
+        "path": "bindings/kling-image-o1.json"
+      },
+      {
+        "id": "hilo-kling-image-o3",
+        "kind": "model-provider-binding",
+        "path": "bindings/kling-image-o3.json"
+      },
+      {
+        "id": "hilo-kling-motion-control",
+        "kind": "model-provider-binding",
+        "path": "bindings/kling-motion-control.json"
+      },
+      {
+        "id": "hilo-kling-video-o1",
+        "kind": "model-provider-binding",
+        "path": "bindings/kling-video-o1.json"
+      },
+      {
+        "id": "hilo-kling-video-o3",
+        "kind": "model-provider-binding",
+        "path": "bindings/kling-video-o3.json"
+      },
+      {
+        "id": "hilo-midjourney-7",
+        "kind": "model-provider-binding",
+        "path": "bindings/midjourney-7.json"
+      },
+      {
+        "id": "hilo-midjourney-8.1",
+        "kind": "model-provider-binding",
+        "path": "bindings/midjourney-8.1.json"
+      },
+      {
+        "id": "hilo-midjourney-niji-7",
+        "kind": "model-provider-binding",
+        "path": "bindings/midjourney-niji-7.json"
+      },
+      {
+        "id": "hilo-minimax-h3",
+        "kind": "model-provider-binding",
+        "path": "bindings/minimax-h3.json"
+      },
+      {
+        "id": "hilo-minimax-h3-startend",
+        "kind": "model-provider-binding",
+        "path": "bindings/minimax-h3-startend.json"
+      },
+      {
+        "id": "hilo-minimax-music-3",
+        "kind": "model-provider-binding",
+        "path": "bindings/minimax-music-3.json"
+      },
+      {
+        "id": "hilo-minimax-speech-2.8-hd",
+        "kind": "model-provider-binding",
+        "path": "bindings/minimax-speech-2.8-hd.json"
+      },
+      {
+        "id": "hilo-music-cover",
+        "kind": "model-provider-binding",
+        "path": "bindings/music-cover.json"
+      },
+      {
+        "id": "hilo-nano-banana-2",
+        "kind": "model-provider-binding",
+        "path": "bindings/nano-banana-2.json"
+      },
+      {
+        "id": "hilo-seed-audio-1",
+        "kind": "model-provider-binding",
+        "path": "bindings/seed-audio-1.json"
+      },
+      {
+        "id": "hilo-seedance-2-fast-ref",
+        "kind": "model-provider-binding",
+        "path": "bindings/seedance-2-fast-ref.json"
+      },
+      {
+        "id": "hilo-seedance-2-fast-startend",
+        "kind": "model-provider-binding",
+        "path": "bindings/seedance-2-fast-startend.json"
+      },
+      {
+        "id": "hilo-seedance-2-mini-ref",
+        "kind": "model-provider-binding",
+        "path": "bindings/seedance-2-mini-ref.json"
+      },
+      {
+        "id": "hilo-seedance-2-mini-startend",
+        "kind": "model-provider-binding",
+        "path": "bindings/seedance-2-mini-startend.json"
+      },
+      {
+        "id": "hilo-seedance-2-ref",
+        "kind": "model-provider-binding",
+        "path": "bindings/seedance-2-ref.json"
+      },
+      {
+        "id": "hilo-seedance-2-startend",
+        "kind": "model-provider-binding",
+        "path": "bindings/seedance-2-startend.json"
+      },
+      {
+        "id": "hilo-seedream-4.5",
+        "kind": "model-provider-binding",
+        "path": "bindings/seedream-4.5.json"
+      },
+      {
+        "id": "hilo-seedream-5-pro",
+        "kind": "model-provider-binding",
+        "path": "bindings/seedream-5-pro.json"
+      },
+      {
+        "id": "hilo-veo-3.1",
+        "kind": "model-provider-binding",
+        "path": "bindings/veo-3.1.json"
+      },
+      {
+        "id": "hilo-veo-3.1-fast",
+        "kind": "model-provider-binding",
+        "path": "bindings/veo-3.1-fast.json"
+      },
+      {
+        "id": "hilo-veo-3.1-fast-startend",
+        "kind": "model-provider-binding",
+        "path": "bindings/veo-3.1-fast-startend.json"
+      },
+      {
+        "id": "hilo-veo-3.1-startend",
+        "kind": "model-provider-binding",
+        "path": "bindings/veo-3.1-startend.json"
+      }
+    ],
+    "functions": [
+      {
+        "id": "hilo-hub-execute",
+        "kind": "provider-executor",
+        "operations": [
+          "submit",
+          "poll"
+        ]
+      }
+    ]
+  },
+  "contractTests": [
+    "contract-tests/hub-execute-unsupported-model.json",
+    "contract-tests/hub-execute-missing-poll-state.json",
+    "contract-tests/hub-execute-requires-a-token.json"
+  ],
+  "author": "Clash local third-party"
+}

@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import Moveable from 'react-moveable';
 import { Player, PlayerRef } from '@remotion/player';
-import { VideoComposition } from '@master-clash/remotion-components';
-import { getItemLookupIds, type Track, type Item, type ItemProperties } from '@master-clash/remotion-core';
+import { VideoComposition } from '@clash/remotion-components';
+import { getItemLookupIds, type Track, type Item, type ItemProperties } from '@clash/remotion-core';
 import { findTopItemAtPoint } from './canvas/hitTest';
 import { RemotionIconButton } from './ui/controls';
 import { useDragGesture } from './ui/gesture';

@@ -1,11 +1,13 @@
 {
-  "name": "@master-clash/api-cf",
+  "name": "@clash/api-cf",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "scripts": {
     "dev": "wrangler dev --port 8789 --inspector-port 9333 --persist-to ../../.wrangler/state",
     "deploy": "wrangler deploy",
-    "type-check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,7 +24,7 @@
     "@cloudflare/ai-chat": "^0.2.5",
     "@cloudflare/containers": "^0.2.0",
     "@fal-ai/client": "^1.9.5",
-    "@master-clash/remotion-core": "workspace:*",
+    "@clash/remotion-core": "workspace:*",
     "agents": "^0.8.6",
     "ai": "^6.0.0",
     "better-auth": "^1.6.9",

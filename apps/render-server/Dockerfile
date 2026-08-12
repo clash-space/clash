@@ -10,13 +10,13 @@
 
 # ── Stage 1: build ──────────────────────────────────────────────────────
 
-FROM node:22-slim AS builder
+FROM node:24-slim AS builder
 ARG NPM_REGISTRY=https://registry.npmjs.org/
 
 WORKDIR /app
 
 # Workspace topology so pnpm can resolve the deps graph.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY packages/shared-layout/package.json packages/shared-layout/
 COPY packages/shared-types/package.json packages/shared-types/
 COPY packages/remotion-core/package.json packages/remotion-core/
@@ -27,7 +27,7 @@ COPY apps/render-server/package.json apps/render-server/
 # Bootstrap pnpm via corepack against the configured mirror.
 RUN COREPACK_NPM_REGISTRY="$NPM_REGISTRY" corepack enable && \
     pnpm config set registry "$NPM_REGISTRY" && \
-    pnpm install --frozen-lockfile --filter @master-clash/render-server...
+    pnpm install --frozen-lockfile --filter . --filter @clash/render-server...
 
 # Source.
 COPY packages/shared-layout/ packages/shared-layout/
@@ -37,22 +37,15 @@ COPY packages/remotion-effects/ packages/remotion-effects/
 COPY packages/remotion-components/ packages/remotion-components/
 COPY apps/render-server/ apps/render-server/
 
-RUN pnpm --filter @master-clash/render-server build
-
-# Pre-compile the Remotion webpack bundle. Doing this here (vs at request
-# time) keeps cold /render requests under Cloudflare Containers' DO fetch
-# timeout — a fresh bundle() takes 60-90s and was causing
-# WorkflowInternalError retries in prod. Output: /app/.remotion-bundle.
-# Must run before `pnpm deploy --prod` strips the source tree.
-RUN node apps/render-server/dist/prebundle.js
+RUN pnpm build:package @clash/render-server
 
 # pnpm deploy: copies only prod deps + the workspace deps the target needs,
 # inlined into a self-contained tree at /tmp/deploy that we can copy as-is.
-RUN pnpm deploy --filter @master-clash/render-server --prod --legacy /tmp/deploy
+RUN pnpm deploy --filter @clash/render-server --prod --legacy /tmp/deploy
 
 # ── Stage 2: runtime ────────────────────────────────────────────────────
 
-FROM node:22-slim AS runtime
+FROM node:24-slim AS runtime
 ARG DEBIAN_MIRROR=
 
 # Optional Debian mirror for slow networks.
@@ -75,9 +68,9 @@ WORKDIR /app
 # node_modules with workspace deps already inlined.
 COPY --from=builder /tmp/deploy/ /app/
 
-# Pre-compiled Remotion webpack bundle from stage 1 (see prebundle.ts).
+# Package-owned Remotion webpack bundle from stage 1 (see prebundle.ts).
 # Runtime resolves ../.remotion-bundle from dist/index.js.
-COPY --from=builder /app/.remotion-bundle /app/.remotion-bundle
+COPY --from=builder /app/apps/render-server/.remotion-bundle /app/.remotion-bundle
 
 EXPOSE 8080
 CMD ["node", "dist/index.js"]

@@ -27,7 +27,6 @@ ProviderApiShape = Literal[
     "google-agent-platform",
     "google-ai-studio",
     "replicate",
-    "kie",
     "serverless-function",
     "http",
 ]

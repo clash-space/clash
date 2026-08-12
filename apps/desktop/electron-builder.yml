@@ -16,15 +16,9 @@ files:
   - "!*.test.*"
 
 extraResources:
-  - from: ../../packages/clash-bridge/dist/agents
-    to: agents
-    filter:
-      - "**/*"
-      - "**/.*"
-      - "**/.*/**/*"
   - from: ../web/dist/client
     to: web-dist
-  - from: ../../.remotion-bundle
+  - from: ../render-server/.remotion-bundle
     to: remotion-bundle
   - from: ../../packages/clash-sdk/python
     to: clash-sdk/python
@@ -32,8 +26,8 @@ extraResources:
       - "clash_sdk/**/*"
       - "!**/__pycache__/**"
       - "!**/*.py[cod]"
-  - from: build/clash-cli
-    to: clash-cli
+  - from: build/clash-runtime
+    to: clash-runtime
     filter:
       - "**/*"
 

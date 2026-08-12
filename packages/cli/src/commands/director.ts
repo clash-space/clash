@@ -2,12 +2,10 @@ import { Command, Option } from "commander";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import WebSocket from "ws";
 import {
   applyDirectorStageCommand,
   createDefaultDirectorStageState,
   directorDefaultAttachmentOffset,
-  LoroSyncClient,
   projectDirectorStageReadToken,
   type DirectorStageCameraPatch,
   type DirectorStageCommand,
@@ -15,10 +13,9 @@ import {
   type DirectorStageObjectPatch,
   type ProjectDirectorStage,
 } from "@clash/shared-types";
-import { requireApiKey, getServerUrl } from "../lib/config";
+import { getServerUrl, requireApiKey } from "../lib/config";
 import { isJsonMode, printJson, printTable } from "../lib/output";
-import { isDaemonRunning, sendCommand } from "../lib/daemon";
-import { assertAgentHostWritePath } from "../lib/agent-host-write";
+import { sendProjectCommand } from "../lib/project-host-client";
 import { type ResolvedProjectContext } from "../lib/project-context";
 import {
   recordWorktreeObservation,
@@ -93,15 +90,6 @@ async function requireDirectorStageObservation(
   return observation.revision;
 }
 
-function assertDirectorStageHostWrite(operation: string): void {
-  const result = assertAgentHostWritePath({
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    operation,
-    readCommand: "clash director list --json",
-  });
-  if (!result.ok) throw new Error(result.error);
-}
-
 function finiteNumber(value: unknown, option: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) throw new Error(`${option} must be a finite number`);
@@ -121,41 +109,14 @@ function booleanValue(value: unknown, option: string): boolean {
   throw new Error(`${option} must be true or false`);
 }
 
-async function connectToProject(projectId: string): Promise<LoroSyncClient> {
-  const serverUrl = getServerUrl();
-  const client = new LoroSyncClient({
-    serverUrl: serverUrl.replace(/^http/, "ws"),
-    projectId,
-    token: requireApiKey(),
-    ...resolveCanvasPresenceOptions(),
-    WebSocket: WebSocket as never,
-  });
-  await client.connect();
-  return client;
-}
-
 async function listDirectorStages(
   context: ResolvedProjectContext,
 ): Promise<{ stages: ProjectDirectorStage[]; versions: Record<string, string> }> {
-  if (isDaemonRunning(context.projectId)) {
-    const result = await sendCommand(context.projectId, {
-      action: "list_director_stages",
-    }) as DirectorStageWorkspaceResult;
-    if (result.error) throw new Error(result.error);
-    return { stages: result.stages ?? [], versions: result.versions ?? {} };
-  }
-  const client = await connectToProject(context.projectId);
-  try {
-    const stages = client.listDirectorStages();
-    return {
-      stages,
-      versions: Object.fromEntries(
-        stages.map((stage) => [stage.id, projectDirectorStageReadToken(stage)]),
-      ),
-    };
-  } finally {
-    await client.disconnect();
-  }
+  const result = await sendProjectCommand<DirectorStageWorkspaceResult>(context.projectId, {
+    action: "list_director_stages",
+  });
+  if (result.error) throw new Error(result.error);
+  return { stages: result.stages ?? [], versions: result.versions ?? {} };
 }
 
 async function readDirectorStage(
@@ -531,29 +492,12 @@ directorCommand
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     const context = await resolveCanvasProjectContext(options);
-    let result: DirectorStageWorkspaceResult;
-    if (isDaemonRunning(context.projectId)) {
-      result = await sendCommand(context.projectId, {
-        action: "create_director_stage",
-        stageId: options.id,
-        name: options.name,
-        state: createDefaultDirectorStageState(),
-      }) as DirectorStageWorkspaceResult;
-    } else {
-      const client = await connectToProject(context.projectId);
-      try {
-        const created = client.createDirectorStage({
-          id: options.id,
-          name: options.name,
-          state: createDefaultDirectorStageState(),
-        });
-        result = created.ok
-          ? { stage: created.stage, version: projectDirectorStageReadToken(created.stage) }
-          : { error: created.error };
-      } finally {
-        await client.disconnect();
-      }
-    }
+    const result = await sendProjectCommand<DirectorStageWorkspaceResult>(context.projectId, {
+      action: "create_director_stage",
+      stageId: options.id,
+      name: options.name,
+      state: createDefaultDirectorStageState(),
+    });
     if (result.error || !result.stage) throw new Error(result.error ?? "Director Stage create failed");
     await recordDirectorStageObservation(
       context,
@@ -578,41 +522,19 @@ directorCommand
     const context = await resolveCanvasProjectContext(options);
     const observedVersion = await requireDirectorStageObservation(context, options.stage);
     const actionNodeId = options.node?.trim() || `director-stage-${randomUUID().slice(0, 8)}`;
-    let result: DirectorStageWorkspaceResult;
-    if (isDaemonRunning(context.projectId)) {
-      result = await sendCommand(context.projectId, {
-        action: "attach_director_stage",
-        stageId: options.stage,
-        canvasId: options.canvas,
-        actionNodeId,
-        position: {
-          x: finiteNumber(options.x, "--x"),
-          y: finiteNumber(options.y, "--y"),
-        },
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        observedVersion,
-        ifMatch: observedVersion,
-      }) as DirectorStageWorkspaceResult;
-    } else {
-      assertDirectorStageHostWrite("Director Stage attach");
-      const client = await connectToProject(context.projectId);
-      try {
-        const attached = client.attachDirectorStage({
-          stageId: options.stage,
-          canvasId: options.canvas,
-          actionNodeId,
-          position: {
-            x: finiteNumber(options.x, "--x"),
-            y: finiteNumber(options.y, "--y"),
-          },
-        });
-        result = attached.ok
-          ? { stage: attached.stage, version: projectDirectorStageReadToken(attached.stage) }
-          : { error: attached.error };
-      } finally {
-        await client.disconnect();
-      }
-    }
+    const result = await sendProjectCommand<DirectorStageWorkspaceResult>(context.projectId, {
+      action: "attach_director_stage",
+      stageId: options.stage,
+      canvasId: options.canvas,
+      actionNodeId,
+      position: {
+        x: finiteNumber(options.x, "--x"),
+        y: finiteNumber(options.y, "--y"),
+      },
+      actorClientType: resolveCanvasPresenceOptions().clientType,
+      observedVersion,
+      ifMatch: observedVersion,
+    });
     if (result.error || !result.stage) throw new Error(result.error ?? "Director Stage attach failed");
     await recordDirectorStageObservation(
       context,
@@ -632,27 +554,13 @@ directorCommand
   .action(async (options) => {
     const context = await resolveCanvasProjectContext(options);
     const observedVersion = await requireDirectorStageObservation(context, options.stage);
-    let result: DirectorStageWorkspaceResult;
-    if (isDaemonRunning(context.projectId)) {
-      result = await sendCommand(context.projectId, {
-        action: "detach_director_stage",
-        stageId: options.stage,
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        observedVersion,
-        ifMatch: observedVersion,
-      }) as DirectorStageWorkspaceResult;
-    } else {
-      assertDirectorStageHostWrite("Director Stage detach");
-      const client = await connectToProject(context.projectId);
-      try {
-        const detached = client.detachDirectorStage(options.stage);
-        result = detached.ok
-          ? { stage: detached.stage, version: projectDirectorStageReadToken(detached.stage) }
-          : { error: detached.error };
-      } finally {
-        await client.disconnect();
-      }
-    }
+    const result = await sendProjectCommand<DirectorStageWorkspaceResult>(context.projectId, {
+      action: "detach_director_stage",
+      stageId: options.stage,
+      actorClientType: resolveCanvasPresenceOptions().clientType,
+      observedVersion,
+      ifMatch: observedVersion,
+    });
     if (result.error || !result.stage) throw new Error(result.error ?? "Director Stage detach failed");
     await recordDirectorStageObservation(
       context,
@@ -669,7 +577,7 @@ function collectOption(value: string, previous: string[]): string[] {
 
 directorCommand
   .command("capture")
-  .description("Capture exact-time PNG evidence through the daemon-owned DirectorViewport WebGL renderer")
+  .description("Capture exact-time PNG evidence through the local-api DirectorViewport WebGL renderer")
   .requiredOption("--stage <id>", "Director Stage ID")
   .option("--time <seconds>", "Exact Stage time in seconds (repeat for each PNG)", collectOption, [])
   .option("--label <artifact-id>", "Artifact id for each PNG (repeat in --time order)", collectOption, [])
@@ -763,28 +671,14 @@ directorCommand
     } else {
       observedVersion = await requireDirectorStageObservation(context, options.stage);
     }
-    let result: DirectorStageWorkspaceResult;
-    if (isDaemonRunning(context.projectId)) {
-      result = await sendCommand(context.projectId, {
-        action: "update_director_stage_state",
-        stageId: options.stage,
-        state: parsed.state,
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        observedVersion,
-        ifMatch: observedVersion,
-      }) as DirectorStageWorkspaceResult;
-    } else {
-      assertDirectorStageHostWrite("Director Stage apply");
-      const client = await connectToProject(context.projectId);
-      try {
-        const updated = client.updateDirectorStageState(options.stage, parsed.state);
-        result = updated.ok
-          ? { stage: updated.stage, version: projectDirectorStageReadToken(updated.stage) }
-          : { error: updated.error };
-      } finally {
-        await client.disconnect();
-      }
-    }
+    const result = await sendProjectCommand<DirectorStageWorkspaceResult>(context.projectId, {
+      action: "update_director_stage_state",
+      stageId: options.stage,
+      state: parsed.state,
+      actorClientType: resolveCanvasPresenceOptions().clientType,
+      observedVersion,
+      ifMatch: observedVersion,
+    });
     if (result.error || !result.stage) {
       if (result.code === "STALE_READ") {
         await recoverStaleDirectorStageApply({

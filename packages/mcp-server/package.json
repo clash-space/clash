@@ -1,11 +1,9 @@
 {
-  "name": "@clash-space/mcp-server",
+  "name": "@clash/mcp-server",
   "version": "0.1.0",
-  "description": "Clash Canvas MCP server and MCP App",
+  "private": true,
+  "description": "Canvas peer capability surface for the bundled Clash plugin MCP",
   "type": "module",
-  "bin": {
-    "clash-mcp": "./dist/index.js"
-  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -21,8 +19,10 @@
   "files": [
     "dist"
   ],
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "scripts": {
-    "prebuild": "pnpm --filter @clash/shared-mcp build && pnpm --filter @clash/shared-runtime build",
     "build": "tsup && esbuild src/canvas-app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=dist/canvas-app-client.js && esbuild src/studio-app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=dist/studio-app-client.js",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
@@ -32,6 +32,7 @@
   "dependencies": {
     "@clash/shared-mcp": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
+    "@clash/shared-types": "workspace:*",
     "@modelcontextprotocol/ext-apps": "^1.7.4",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.1.13"

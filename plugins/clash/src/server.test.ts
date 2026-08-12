@@ -3,6 +3,28 @@ import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
+function projectHostClient() {
+  return {
+    resolveContext: async ({ projectId, cwd }: { projectId?: string; cwd?: string } = {}) => ({
+      projectId: projectId ?? "project-test",
+      source: projectId ? "explicit" : "env",
+      ...(cwd ? { workspaceRoot: cwd } : {}),
+    }),
+    async request({ command, projectId }: { command: { action: string }; projectId?: string }) {
+      const value = command.action === "list"
+        ? { nodes: [], versions: {} }
+        : command.action === "edges"
+          ? { edges: [], readToken: "edges-receipt" }
+          : command.action === "list_timelines"
+            ? { timelines: [], versions: {} }
+            : command.action === "list_director_stages"
+              ? { stages: [], versions: {} }
+              : { status: "active" };
+      return { projectId: projectId ?? "project-test", value };
+    },
+  };
+}
+
 function unsupportedTuplePaths(value: unknown, path = "$"): string[] {
   if (!value || typeof value !== "object") return [];
   if (Array.isArray(value)) {
@@ -32,9 +54,7 @@ test("one Clash plugin server quarantines every MCP App while keeping headless t
     close(): Promise<void>;
   };
   const server = create({
-    runner: async (args: string[]) => (
-      args[0] === "projects" || args[1] === "list" ? [] : { status: "active" }
-    ),
+    client: projectHostClient(),
     appBundles: {
       canvas: "window.__CANVAS__ = true;",
       studio: "window.__STUDIO__ = true;",
@@ -179,7 +199,7 @@ test("plugin runtime closes the host manager exactly once", async () => {
     server: { close(): Promise<void> };
     close(): Promise<void>;
   })({
-    runner: async (args: string[]) => args[0] === "projects" ? [] : { status: "active" },
+    client: projectHostClient(),
     hostManager: {
       ensureHost: async () => { throw new Error("runner is injected"); },
       ownsHost: () => true,

@@ -9,7 +9,6 @@ vi.mock("../../services/user-variables", () => ({
 }));
 
 import { customActionAdapter } from "./custom-action";
-import { verifyHostedExecutablePluginCapability } from "../../services/hosted-plugin-capabilities";
 
 function makeCtx(overrides: Record<string, unknown> = {}) {
   const fetchMock = vi.fn().mockResolvedValue(
@@ -104,13 +103,6 @@ describe("customActionAdapter", () => {
     };
     const { ctx, fetchMock, notifyCompleted } = makeCtx({
       pluginBinding,
-      pluginPermissions: {
-        network: { domains: ["queue.fal.run"] },
-        secrets: ["provider:fal"],
-        assets: ["read", "write"],
-        filesystem: { read: [], write: [] },
-        externalWrites: true,
-      },
       pluginReferences: [
         {
           slot: "image",
@@ -141,27 +133,8 @@ describe("customActionAdapter", () => {
     expect(mocks.loadSecrets).not.toHaveBeenCalled();
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(init.headers);
-    expect(headers.get("x-clash-plugin-broker")).toBe("https://api.example.com/api/v1/plugin-broker");
-    const capabilityToken = headers.get("x-clash-plugin-capability");
-    expect(capabilityToken).toBeTruthy();
-    const capability = await verifyHostedExecutablePluginCapability(
-      capabilityToken!,
-      "plugin-capability-secret",
-    );
-    expect(capability).toMatchObject({
-      endpoint: "https://action.example.com",
-      ownerUserId: "user-1",
-      invocation: {
-        invocationId: "task-1",
-        target: { ...pluginBinding, kind: "action" },
-      },
-      permissions: {
-        network: { domains: ["queue.fal.run"] },
-        secrets: ["provider:fal"],
-        assets: ["read", "write"],
-        externalWrites: true,
-      },
-    });
+    expect(headers.get("x-clash-plugin-broker")).toBeNull();
+    expect(headers.get("x-clash-plugin-capability")).toBeNull();
     expect(JSON.parse(init.body as string)).toEqual({
       protocol: "clash.plugin.invoke/v1",
       invocationId: "task-1",

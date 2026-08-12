@@ -8,7 +8,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
-import type { EffectInstanceRef, Track } from '@master-clash/remotion-core';
+import type { EffectInstanceRef, Track } from '@clash/remotion-core';
 import { VideoComposition } from '../VideoComposition';
 import { ShaderEffectCanvas } from '../effect-demo/ShaderEffectCanvas';
 import { buildTimelineLibraryDemoPlan, type TimelineLibraryDemoSegmentId } from './timelineLibraryDemoPlan';

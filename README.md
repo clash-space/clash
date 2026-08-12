@@ -49,7 +49,17 @@ they are applied.
 
 ## Quick start
 
-Clash uses Node.js 22.22+ and pnpm 10+.
+Clash uses Node.js 24.18+ (Node 24.x) and pnpm 10+.
+
+Install the unified command package for CLI and MCP use:
+
+```bash
+npm install -g clash
+clash --help
+# MCP clients run: npx -y clash mcp
+```
+
+For repository development:
 
 ```bash
 git clone https://github.com/clash-space/clash.git
@@ -62,7 +72,7 @@ pnpm dev
 Run the Electron app during local development:
 
 ```bash
-pnpm --filter @master-clash/desktop dev
+pnpm dev:package @clash/desktop
 ```
 
 `clash.video` runs from a private overlay
@@ -165,11 +175,12 @@ apps/
   loro-sync-server/     legacy shell, sync moved into api-cf
 packages/
   director-{core,ui}/   3D Director Stage state and interface
-  mcp-server/           typed MCP tools and focused Clash Apps
+  mcp-server/           internal typed peer capability surface for the plugin MCP
   clash-sdk/            JavaScript and Python agent/model SDKs
   shared-types/         Zod schemas, model cards, ref/capability helpers
   shared-layout/        canvas auto-layout
-  web-ui/               shared React components (ProjectEditor, ChatbotCopilot, …)
+  gui/                  platform-neutral React views and typed UI ports
+  web-ui/               Web product controllers and compatibility exports
   cli/                  terminal CLI
   claude-code-plugin/   Claude Code integration
   remotion-effects/     reusable video effects
@@ -190,7 +201,7 @@ own Cloudflare resources and paste the IDs back in.
 
 ### Prerequisites
 
-- Node 22.22+, pnpm 10+, wrangler 4+
+- Node 24.18+ (Node 24.x), pnpm 10+, wrangler 4+
 - Cloudflare Workers Paid plan (DO + Workflows + Containers all need it)
 
 ### One-time setup
@@ -283,7 +294,7 @@ clash canvas execute --project <id> --node <id>
 
 ```bash
 pnpm test          # unit (vitest)
-pnpm type-check    # tsc --noEmit across all packages
+pnpm typecheck     # tsc --noEmit across all packages
 ```
 
 ---

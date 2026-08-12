@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { editorReducer, type EditorState, type Item, type Track } from '@master-clash/remotion-core';
+import { editorReducer, type EditorState, type Item, type Track } from '@clash/remotion-core';
 import { TIMELINE_LIBRARY_CATALOG } from './timelineLibraryCatalog';
 import { buildTimelineLibraryApplication } from './applyTimelineLibraryItem';
 

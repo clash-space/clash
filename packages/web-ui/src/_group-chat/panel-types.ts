@@ -26,7 +26,7 @@ export function agentHandle(displayName: string): string {
 
 /**
  * Up-to-two letter avatar fallback, word-first-letter style.
- * "Master Clash" -> "MC", "x" -> "X".
+ * "Clash" -> "MC", "x" -> "X".
  * Matches the rule used by UserControls so the same person/agent shows the
  * same monogram across the app.
  */

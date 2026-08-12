@@ -8,7 +8,7 @@ import {
   hasAssetMentions,
   renderPositionalReferencePrompt,
   composeOrderedPromptContent,
-} from "./prompt";
+} from "./prompt.js";
 
 describe("composeOrderedPromptContent", () => {
   it("preserves inline order and appends every unmentioned global reference at the end", () => {

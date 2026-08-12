@@ -54,7 +54,7 @@ export async function generateMiniMaxVideo(params: MiniMaxVideoParams): Promise<
     .filter((part): part is Extract<OrderedPromptContentPart, { type: "text" }> => part.type === "text")
     .map((part) => part.text)
     .join("");
-  const prompt = (orderedPrompt.trim() ? orderedPrompt : params.prompt).trim();
+  const prompt = (params.prompt.trim() ? params.prompt : orderedPrompt).trim();
   if (!prompt) throw new Error("Prompt is required for MiniMax H3 generation.");
   const referenceImages = params.referenceImages ?? [];
   const referenceVideos = params.referenceVideos ?? [];

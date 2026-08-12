@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-minimax-speech-2.8-hd",
+    "modelId": "minimax-speech-2.8-hd",
+    "upstreamModel": "speech-2.8-hd"
+  }
+}

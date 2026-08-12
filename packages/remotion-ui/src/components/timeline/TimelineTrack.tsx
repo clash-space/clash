@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
-import type { Track, Asset, Item } from '@master-clash/remotion-core';
-import { getItemAssetDurationInFrames, useEditorStaticState } from '@master-clash/remotion-core';
+import type { Track, Asset, Item } from '@clash/remotion-core';
+import { getItemAssetDurationInFrames, useEditorStaticState } from '@clash/remotion-core';
 import { TimelineItem } from './TimelineItem';
 import { colors, timeline, typography } from './styles';
 

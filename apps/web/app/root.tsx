@@ -1,5 +1,5 @@
 import { ArrowClockwise, House, Warning } from "@phosphor-icons/react";
-import { Button } from "@clash/web-ui/components/ui/button";
+import { Button } from "@clash/gui/components/ui/button";
 import { Link, isRouteErrorResponse, useRouteError } from "react-router";
 
 type RouteErrorDetails = {

@@ -1,6 +1,10 @@
 {
-  "name": "@master-clash/remotion-core",
+  "name": "@clash/remotion-core",
   "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "description": "Core state management and types for Remotion Fast video editor",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
@@ -16,7 +20,6 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "type-check": "pnpm typecheck",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "test": "vitest run --passWithNoTests",

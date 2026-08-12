@@ -1,123 +1,176 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import type {
+  ProjectHostClient,
+  ProjectHostRequest,
+  ProjectHostResponse,
+} from "@clash/shared-runtime/project-host-client";
 
-test("adapter applies a deterministic Director projection through one base-pinned CLI path", async () => {
-  const module = await import("./adapter.js").catch(() => ({} as Record<string, any>));
-  assert.equal(typeof module.createDirectorAdapter, "function");
-  const calls: string[][] = [];
-  const writes: Array<{ path: string; content: string }> = [];
-  const state = {
-    schemaVersion: 1,
-    scene: { backgroundColor: "#171816", grid: { visible: true, snap: false, size: 1 } },
-    objects: [],
-    cameras: [],
-    shots: [],
-  };
-  const adapter = module.createDirectorAdapter({
-    run: async (args: string[]) => {
-      calls.push(args);
-      if (args.includes("list")) return [{ id: "stage-1", name: "Blocking", revisionId: "revision-1", state }];
-      return { applied: true };
+function hostClient(
+  calls: ProjectHostRequest[],
+  respond: (request: ProjectHostRequest) => ProjectHostResponse,
+): ProjectHostClient {
+  return {
+    resolveContext: async ({ projectId, cwd } = {}) => ({
+      projectId: projectId ?? "project-marker",
+      source: projectId ? "explicit" : "marker",
+      ...(cwd ? { workspaceRoot: cwd } : {}),
+    }),
+    async request<T extends ProjectHostResponse>(request: ProjectHostRequest<T>) {
+      calls.push(request);
+      return { projectId: request.projectId ?? "project-marker", value: respond(request) as T };
     },
-    writeProjection: async (path: string, content: string) => writes.push({ path, content }),
-  });
-  const cwd = "/workspace";
-  await adapter.save({ cwd, stageId: "stage-1", baseRevisionId: "revision-1", state });
+  };
+}
 
-  assert.equal(writes[0]?.path, join(cwd, "director-stages", "stage-1.director-stage.json"));
-  assert.match(writes[0]?.content ?? "", /"schemaVersion": 1/);
-  assert.equal(calls.some((args) => args.includes("list")), false);
-  assert.deepEqual(calls.at(-1), [
-    "director", "apply", "--stage", "stage-1", "--file",
-    join(cwd, "director-stages", "stage-1.director-stage.json"),
-    "--base-revision", "revision-1", "--json",
+const state = {
+  schemaVersion: 1,
+  scene: { backgroundColor: "#171816", grid: { visible: true, snap: false, size: 1 } },
+  objects: [],
+  cameras: [],
+  shots: [],
+};
+const stage = {
+  id: "stage-1",
+  name: "Blocking",
+  revisionId: "revision-1",
+  owner: { kind: "project" },
+  state,
+};
+
+test("Director list receipt is supplied to a direct full-state host save", async () => {
+  const { createDirectorAdapter } = await import("./adapter.js");
+  const calls: ProjectHostRequest[] = [];
+  const writes: Array<{ path: string; content: string | Uint8Array }> = [];
+  const adapter = createDirectorAdapter({
+    client: hostClient(calls, (request) => request.command.action === "list_director_stages"
+      ? { stages: [stage], versions: { "stage-1": "director-host-receipt" } }
+      : { stage: { ...stage, revisionId: "revision-2" }, readToken: "director-next-receipt" }),
+    writeProjection: async (path, content) => { writes.push({ path, content }); },
+  });
+
+  await adapter.get({ cwd: "/workspace", stageId: "stage-1" });
+  await adapter.save({
+    cwd: "/workspace",
+    stageId: "stage-1",
+    baseRevisionId: "revision-1",
+    state,
+  });
+
+  assert.equal(writes[0]?.path, join("/workspace", "director-stages", "stage-1.director-stage.json"));
+  assert.deepEqual(calls.map(({ command }) => command), [
+    { action: "list_director_stages" },
+    {
+      action: "update_director_stage_state",
+      stageId: "stage-1",
+      state,
+      actorClientType: "mcp",
+      observedVersion: "director-host-receipt",
+      ifMatch: "director-host-receipt",
+    },
   ]);
 });
 
-test("defaults to the Clash ACP workspace instead of the MCP process cwd", async () => {
-  const module = await import("./adapter.js").catch(() => ({} as Record<string, any>));
-  const previous = process.env.CLASH_WORKSPACE_ROOT;
-  process.env.CLASH_WORKSPACE_ROOT = "/workspace/from-acp-session";
-  const calls: Array<{ args: string[]; cwd: string }> = [];
-  try {
-    const adapter = module.createDirectorAdapter({
-      run: async (args: string[], cwd: string) => {
-        calls.push({ args, cwd });
-        return [];
-      },
-    });
-    await adapter.list({});
-    assert.equal(calls[0]?.cwd, "/workspace/from-acp-session");
-  } finally {
-    if (previous === undefined) delete process.env.CLASH_WORKSPACE_ROOT;
-    else process.env.CLASH_WORKSPACE_ROOT = previous;
-  }
+test("Director mutation without a host observation fails before writing", async () => {
+  const { createDirectorAdapter } = await import("./adapter.js");
+  const calls: ProjectHostRequest[] = [];
+  let writes = 0;
+  const adapter = createDirectorAdapter({
+    client: hostClient(calls, () => ({ stage })),
+    writeProjection: async () => { writes += 1; },
+  });
+
+  await assert.rejects(
+    adapter.save({
+      projectId: "project-1",
+      stageId: "stage-1",
+      baseRevisionId: "revision-1",
+      state,
+    }),
+    /READ_REQUIRED.*clash_director_get/i,
+  );
+  assert.equal(writes, 0);
+  assert.deepEqual(calls, []);
 });
 
-test("typed object mutation applies the authoritative full object without argv field loss", async () => {
-  const module = await import("./adapter.js").catch(() => ({} as Record<string, any>));
-  const writes: Array<{ path: string; content: string }> = [];
-  const stage = {
-    id: "stage-1",
-    name: "Blocking",
-    revisionId: "revision-1",
-    state: {
-      schemaVersion: 1,
-      scene: { backgroundColor: "#111111", grid: { visible: true, snap: false, size: 1 } },
-      objects: [],
-      cameras: [],
-      shots: [],
-    },
-  };
-  const calls: string[][] = [];
-  const adapter = module.createDirectorAdapter({
-    run: async (args: string[]) => {
-      calls.push(args);
-      if (args.includes("list")) return [stage];
-      return { applied: true, revisionId: "revision-2" };
-    },
-    writeProjection: async (path: string, content: string) => writes.push({ path, content }),
-  });
+test("typed Director object mutation retains the complete object and uses one host update", async () => {
+  const { createDirectorAdapter } = await import("./adapter.js");
+  const calls: ProjectHostRequest[] = [];
   const object = {
     id: "key-light",
     name: "Key Light",
     kind: "light",
     visible: false,
-    groupId: "lighting",
     transform: { position: [1, 2, 3], rotation: [0.1, 0.2, 0.3], scale: [2, 2, 2] },
     light: { type: "spot", intensity: 7, range: 30, angle: 0.8 },
   };
+  const adapter = createDirectorAdapter({
+    client: hostClient(calls, (request) => request.command.action === "list_director_stages"
+      ? { stages: [stage], versions: { "stage-1": "director-host-receipt" } }
+      : { stage: { ...stage, state: { ...state, objects: [object] } } }),
+    writeProjection: async () => undefined,
+  });
 
   await adapter.mutate("clash_director_object_add", {
-    cwd: "/workspace",
+    projectId: "project-1",
     stageId: "stage-1",
     object,
   });
 
-  assert.equal(calls.some((args) => args.includes("object")), false);
-  assert.equal(writes.length, 1);
-  assert.deepEqual(JSON.parse(writes[0]!.content).objects, [object]);
-  assert.deepEqual(calls.at(-1)?.slice(-3), ["--base-revision", stage.revisionId, "--json"]);
+  assert.deepEqual(
+    (calls.at(-1)?.command as { state?: { objects?: unknown[] } }).state?.objects,
+    [object],
+  );
+  assert.equal(calls.some(({ command }) => (command as { action?: string }).action === "director_object_add"), false);
 });
 
-test("save rejects a non-authoritative projection before writing or applying it", async () => {
-  const module = await import("./adapter.js").catch(() => ({} as Record<string, any>));
-  const calls: string[][] = [];
-  const writes: Array<{ path: string; content: string }> = [];
-  const adapter = module.createDirectorAdapter({
-    run: async (args: string[]) => {
-      calls.push(args);
-      return args.includes("list")
-        ? [{ id: "stage-1", name: "Blocking", state: {} }]
-        : { applied: true };
-    },
-    writeProjection: async (path: string, content: string) => writes.push({ path, content }),
+test("Director capture calls the typed host renderer command directly", async () => {
+  const { createDirectorAdapter } = await import("./adapter.js");
+  const calls: ProjectHostRequest[] = [];
+  const writes: string[] = [];
+  const adapter = createDirectorAdapter({
+    client: hostClient(calls, (request) => request.command.action === "list_director_stages"
+      ? { stages: [stage], versions: { "stage-1": "director-host-receipt" } }
+      : {
+          captured: true,
+          stageId: "stage-1",
+          sourceStageRevisionId: "revision-1",
+          renderer: { id: "clash-director-viewport-webgl", contractVersion: 1 },
+          stateSha256: "state-hash",
+          frames: [{
+            label: "opening",
+            timeSeconds: 0,
+            aspectRatio: "16:9",
+            width: 1920,
+            height: 1080,
+            mimeType: "image/png",
+            dataBase64: Buffer.from("png").toString("base64"),
+            sha256: "frame-hash",
+          }],
+        }),
+    writeProjection: async (path) => { writes.push(path); },
   });
 
-  await assert.rejects(
-    adapter.save({ cwd: "/workspace", stageId: "stage-1", state: { schemaVersion: 1 } }),
-  );
-  assert.equal(writes.length, 0);
-  assert.equal(calls.some((args) => args.includes("apply")), false);
+  await adapter.get({ cwd: "/workspace", stageId: "stage-1" });
+  const result = await adapter.capture({
+    cwd: "/workspace",
+    stageId: "stage-1",
+    times: [0],
+    labels: ["opening"],
+    longEdge: 1920,
+  });
+
+  assert.deepEqual(calls.at(-1)?.command, {
+    action: "capture_director_stage",
+    stageId: "stage-1",
+    frames: [{ label: "opening", timeSeconds: 0, aspectRatio: "16:9" }],
+    longEdge: 1920,
+    actorClientType: "mcp",
+    observedVersion: "director-host-receipt",
+    ifMatch: "director-host-receipt",
+  });
+  assert.equal((result as { stageId?: string }).stageId, "stage-1");
+  assert.ok(writes.some((path) => path.endsWith("opening.png")));
+  assert.ok(writes.some((path) => path.endsWith("capture.json")));
 });

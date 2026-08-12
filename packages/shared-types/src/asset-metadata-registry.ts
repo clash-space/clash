@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { AsrTimedTranscriptSchema } from "./production-metadata";
+import { AsrTimedTranscriptSchema } from "./production-metadata.js";
 
 /**
  * Transcription is canonical only as the identity of one word grid: which media

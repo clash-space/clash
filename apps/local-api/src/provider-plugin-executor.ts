@@ -13,10 +13,11 @@ import {
 import type {
   ProviderPluginExecutor,
   ProviderPluginExecutorMedia,
+  ProviderPluginExecutorTextOutput,
 } from "./local-aigc.js";
 import { ProviderPluginHostUnavailableError } from "./local-aigc.js";
 
-export interface BridgeProviderExecutorClient {
+export interface ProviderPluginExecutorClient {
   /** Declared entry points, used to check an acceptance against what the plugin says it supports. */
   listFunctionExports?(pluginId: string): Promise<ExecutablePluginFunctionExport[]>;
   resolveBinding(
@@ -27,13 +28,25 @@ export interface BridgeProviderExecutorClient {
   invoke(
     pluginId: string,
     invocation: ExecutablePluginInvocation,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; accountId?: string },
   ): Promise<ExecutablePluginResult>;
 }
 
 const PROVIDER_PLUGIN_EXECUTION_TIMEOUT_MS = 30 * 60_000;
 
-export function mediaFromResult(input: unknown): ProviderPluginExecutorMedia {
+/**
+ * Everything a finished generation produced, in order.
+ *
+ * This used to be `outputs.find(...)` -- the first match, with the rest dropped silently. One call
+ * routinely yields several files: gpt-image takes an `n`, MiniMax returns a video and its cover,
+ * and image models return variations of one prompt. Losing them looked like success.
+ *
+ * Only the `media` slot. A plugin that names an output something else means it to be something
+ * else; a cover frame and the video it belongs to are not interchangeable.
+ */
+export function mediaListFromResult(
+  input: unknown,
+): ProviderPluginExecutorMedia[] {
   const result = ExecutablePluginResultSchema.parse(input);
   if (result.status === "failed") {
     throw new Error(`Provider plugin failed (${result.error.code}): ${result.error.message}`);
@@ -43,26 +56,45 @@ export function mediaFromResult(input: unknown): ProviderPluginExecutorMedia {
     // The caller decides what to do with an acceptance; this function only reads finished work.
     throw new Error("Provider plugin accepted the work; no media is available yet.");
   }
-  const output = result.outputs.find((entry) => entry.slot === "media");
-  if (!output) throw new Error("Provider plugin returned no media output.");
+  const outputs = result.outputs.filter((entry) => entry.slot === "media");
+  if (outputs.length === 0) throw new Error("Provider plugin returned no media output.");
+  return outputs.map((output) => mediaFromOutput(output));
+}
 
+/** The first media output, for callers that attach exactly one asset to one node. */
+export function mediaFromResult(
+  input: unknown,
+): ProviderPluginExecutorMedia {
+  return mediaListFromResult(input)[0]!;
+}
+
+type CompletedOutput = Extract<
+  ReturnType<typeof ExecutablePluginResultSchema.parse>,
+  { status: "completed" }
+>["outputs"][number];
+
+function mediaFromOutput(
+  output: CompletedOutput,
+): ProviderPluginExecutorMedia {
   // The asset channel is the typed one: the media type is a declared field and the URL states who
   // can fetch it. The value channel stays supported because installed plugins use it -- it was the
   // only way to return a published link before the asset channel accepted a url.
   if (output.kind === "asset") {
     const { asset } = output;
-    if (!asset.url) {
-      throw new Error("Provider plugin media asset carries no url for the host to fetch.");
+
+    // The storage adapter owns projection. A local adapter returns its loopback `/assets/*`
+    // projection with `reach: private`; object storage can return a signed public projection.
+    // This layer consumes that opaque address and never derives a path from assetId.
+    if (asset.url && (asset.reach === "public" || asset.reach === "private")) {
+      return {
+        url: new URL(asset.url).toString(),
+        ...(asset.mediaType ? { contentType: asset.mediaType } : {}),
+      };
     }
-    if (asset.reach !== "public") {
-      throw new Error(
-        `Provider plugin media url is reachable only by the plugin (reach ${asset.reach}); the host cannot fetch it.`,
-      );
-    }
-    return {
-      url: new URL(asset.url).toString(),
-      ...(asset.mediaType ? { contentType: asset.mediaType } : {}),
-    };
+
+    throw new Error(
+      `Provider plugin media asset ${asset.assetId} has no storage projection url.`,
+    );
   }
 
   if (!output.value || typeof output.value !== "object" || Array.isArray(output.value)) {
@@ -93,6 +125,37 @@ export function mediaFromResult(input: unknown): ProviderPluginExecutorMedia {
   };
 }
 
+function assertMediaOutputsMatchKind(
+  result: Extract<ExecutablePluginResult, { status: "completed" }>,
+  expectedKind: "image" | "video" | "audio",
+  target: string,
+): void {
+  const expectedPrefix = `${expectedKind}/`;
+  for (const output of result.outputs.filter((candidate) => candidate.slot === "media")) {
+    if (output.kind === "asset") {
+      if (output.asset.kind !== expectedKind) {
+        throw new Error(
+          `Provider plugin ${target} returned media asset kind ${output.asset.kind} for a ${expectedKind} route.`,
+        );
+      }
+      if (output.asset.mediaType && !output.asset.mediaType.startsWith(expectedPrefix)) {
+        throw new Error(
+          `Provider plugin ${target} returned media type ${output.asset.mediaType} for a ${expectedKind} route.`,
+        );
+      }
+      continue;
+    }
+    const value = output.value;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const contentType = (value as Record<string, unknown>).contentType;
+    if (typeof contentType === "string" && contentType && !contentType.startsWith(expectedPrefix)) {
+      throw new Error(
+        `Provider plugin ${target} returned media type ${contentType} for a ${expectedKind} route.`,
+      );
+    }
+  }
+}
+
 /**
  * Whether this entry says it can be asked about work it accepted.
  *
@@ -105,7 +168,7 @@ export function mediaFromResult(input: unknown): ProviderPluginExecutorMedia {
  * costs a round trip on the path that already worked.
  */
 async function declaresPoll(
-  client: BridgeProviderExecutorClient,
+  client: ProviderPluginExecutorClient,
   pluginId: string,
   exportId: string,
 ): Promise<boolean> {
@@ -114,8 +177,8 @@ async function declaresPoll(
   return entry?.operations?.includes("poll") ?? false;
 }
 
-export function createBridgeProviderPluginExecutor(options: {
-  client: BridgeProviderExecutorClient;
+export function createProviderPluginExecutor(options: {
+  client: ProviderPluginExecutorClient;
 }): ProviderPluginExecutor {
   return async (request) => {
     let binding: ExecutablePluginBinding;
@@ -128,17 +191,25 @@ export function createBridgeProviderPluginExecutor(options: {
             "provider-executor",
           );
     } catch (error) {
-      if (bridgeHostUnavailable(error)) {
+      if (pluginHostUnavailable(error)) {
         throw new ProviderPluginHostUnavailableError((error as Error).message, { cause: error });
       }
       throw error;
     }
     if (binding.pluginId !== request.pluginId || binding.exportId !== request.exportId) {
       throw new Error(
-        `Bridge resolved ${binding.pluginId}/${binding.exportId}, expected `
+        `Plugin host resolved ${binding.pluginId}/${binding.exportId}, expected `
           + `${request.pluginId}/${request.exportId}.`,
       );
     }
+    // Account selection is host state. Remove similarly named model values even when an internal
+    // caller supplies them: sending either field over stdio would let plugin-visible input disagree
+    // with the account the host bills and later resumes.
+    const {
+      accountId: _untrustedAccountId,
+      credentials: _untrustedCredentials,
+      ...pluginValues
+    } = request.input.values;
     const invocation = ExecutablePluginInvocationSchema.parse({
       protocol: "clash.plugin.invoke/v1",
       invocationId: randomUUID(),
@@ -146,7 +217,16 @@ export function createBridgeProviderPluginExecutor(options: {
       projectId: request.projectId,
       ...(request.nodeId ? { nodeId: request.nodeId } : {}),
       target: { ...binding, kind: "provider-executor" },
-      input: request.input,
+      input: {
+        ...request.input,
+        values: {
+          ...pluginValues,
+          // Output shape is route metadata, not a model parameter. Executors need it to choose the
+          // provider lifecycle (MiniMax audio completes inline while video is queued), so carry it
+          // beside the other host-owned invocation metadata.
+          kind: request.kind,
+        },
+      },
       actor: { kind: "system", id: "local-aigc" },
       // Passed through untouched. The host stores whatever the plugin handed back and returns it
       // verbatim, so a provider identified by a URL, a region pair, or nothing resembling an id at
@@ -159,9 +239,10 @@ export function createBridgeProviderPluginExecutor(options: {
     try {
       result = await options.client.invoke(request.pluginId, invocation, {
         timeoutMs: PROVIDER_PLUGIN_EXECUTION_TIMEOUT_MS,
+        ...(request.accountId ? { accountId: request.accountId } : {}),
       });
     } catch (error) {
-      if (bridgeHostUnavailable(error)) {
+      if (pluginHostUnavailable(error)) {
         throw new ProviderPluginHostUnavailableError((error as Error).message, { cause: error });
       }
       throw error;
@@ -183,11 +264,53 @@ export function createBridgeProviderPluginExecutor(options: {
         ...(result.retryAfterMs === undefined ? {} : { retryAfterMs: result.retryAfterMs }),
       };
     }
-    return { status: "completed", binding, media: mediaFromResult(result) };
+    if (result.status === "failed") {
+      throw new Error(`Provider plugin failed (${result.error.code}): ${result.error.message}`);
+    }
+    const textOutputs = result.outputs.filter((output) => output.slot === "text");
+    const target = `${request.pluginId}/${request.exportId}`;
+    if (textOutputs.length > 1) {
+      throw new Error(
+        `Provider plugin ${target} returned ${textOutputs.length} outputs for slot "text"; expected one.`,
+      );
+    }
+    if (textOutputs.length === 1) {
+      if (request.kind !== "text") {
+        throw new Error(
+          `Provider plugin ${target} returned slot "text" for a ${request.kind} route.`,
+        );
+      }
+      if (result.outputs.length !== 1) {
+        throw new Error(
+          `Provider plugin ${target} returned slot "text" alongside conflicting outputs.`,
+        );
+      }
+      const candidate = textOutputs[0];
+      if (candidate?.kind !== "value" || typeof candidate.value !== "string"
+        || !candidate.value.trim()) {
+        throw new Error(
+          `Provider plugin ${target} returned an invalid slot "text"; expected a non-empty string value.`,
+        );
+      }
+      return {
+        status: "completed",
+        binding,
+        output: candidate as ProviderPluginExecutorTextOutput,
+      };
+    }
+    if (request.kind === "text") {
+      throw new Error(`Provider plugin ${target} returned no canonical slot "text" output.`);
+    }
+    assertMediaOutputsMatchKind(result, request.kind, target);
+    return {
+      status: "completed",
+      binding,
+      media: mediaFromResult(result),
+    };
   };
 }
 
-function bridgeHostUnavailable(error: unknown): boolean {
+function pluginHostUnavailable(error: unknown): boolean {
   const code = error && typeof error === "object" && "code" in error
     ? String((error as { code?: unknown }).code)
     : "";

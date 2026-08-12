@@ -1,5 +1,5 @@
 import { LoroMap, type LoroDoc } from "loro-crdt";
-import type { UpstreamRef } from "./canvas";
+import type { UpstreamRef } from "./canvas.js";
 
 export const NODE_UPSTREAMS_CONTAINER = "nodeUpstreams";
 export const EDGE_IDENTITY_CONTAINER = "edgeIdentity";

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildPendingAssetNode } from './canvas';
-import { MODEL_CARDS } from './models';
-import { validateModelCardConfiguration } from './model-constraints';
+import { buildPendingAssetNode } from './canvas.js';
+import { MODEL_CARDS } from './models.js';
+import { validateModelCardConfiguration } from './model-constraints.js';
 
 /**
  * A pending video node must not invent a duration its own model rejects.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import * as sharedTypes from './index';
+import * as sharedTypes from './index.js';
 
 describe('timeline library taxonomy', () => {
   it('covers the full editor library behind task-focused user groups', () => {

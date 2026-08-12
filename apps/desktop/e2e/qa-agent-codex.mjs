@@ -51,11 +51,11 @@ function buildPrompt({
   const shortDramaScenarioPath = path.join(repoRoot, ".tmp", "qa-scenarios", "short-drama-timeline-scenario.json");
   const pnpmBin = process.env.CLASH_QA_PNPM_BIN || "/opt/homebrew/bin/pnpm";
   const pathCommand = targetRuntime === "real-codex-acp"
-    ? `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_E2E_REAL_CODEX=1 CLASH_E2E_REAL_CODEX_CAPTURE_DIR=${JSON.stringify(screenshotDir)} CLASH_E2E_REAL_CODEX_DATA_DIR=${JSON.stringify(localDataDir)} ${JSON.stringify(pnpmBin)} --filter @master-clash/desktop test:startup:real-codex > ${JSON.stringify(smokeLogPath)} 2>&1`
-    : `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_DESKTOP_AGENT_BROWSER_CAPTURE_DIR=${JSON.stringify(screenshotDir)} CLASH_DESKTOP_AGENT_BROWSER_DATA_DIR=${JSON.stringify(localDataDir)} ${JSON.stringify(pnpmBin)} --filter @master-clash/desktop test:e2e:agent-browser > ${JSON.stringify(smokeLogPath)} 2>&1`;
-  const timelineCommand = `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_SHORT_DRAMA_TIMELINE_ARTIFACT_ROOT=${JSON.stringify(timelineArtifactRoot)} CLASH_SHORT_DRAMA_SCENARIO_PATH=${JSON.stringify(shortDramaScenarioPath)} ${JSON.stringify(pnpmBin)} --filter @master-clash/desktop test:e2e:short-drama-timeline > ${JSON.stringify(timelineLogPath)} 2>&1`;
-  const agentFirstCasCommand = `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_AGENT_FIRST_CAS_ARTIFACT_ROOT=${JSON.stringify(agentFirstCasArtifactRoot)} ${JSON.stringify(pnpmBin)} --filter @master-clash/desktop test:e2e:agent-first-cas > ${JSON.stringify(agentFirstCasLogPath)} 2>&1`;
-  const projectWorkspaceCliCommand = `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_PROJECT_WORKSPACE_ARTIFACT_ROOT=${JSON.stringify(projectWorkspaceCliArtifactRoot)} ${JSON.stringify(pnpmBin)} --filter @master-clash/desktop test:e2e:project-workspace-cli > ${JSON.stringify(projectWorkspaceCliLogPath)} 2>&1`;
+    ? `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_E2E_REAL_CODEX=1 CLASH_E2E_REAL_CODEX_CAPTURE_DIR=${JSON.stringify(screenshotDir)} CLASH_E2E_REAL_CODEX_DATA_DIR=${JSON.stringify(localDataDir)} ${JSON.stringify(pnpmBin)} --filter @clash/desktop test:startup:real-codex > ${JSON.stringify(smokeLogPath)} 2>&1`
+    : `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_DESKTOP_AGENT_BROWSER_CAPTURE_DIR=${JSON.stringify(screenshotDir)} CLASH_DESKTOP_AGENT_BROWSER_DATA_DIR=${JSON.stringify(localDataDir)} ${JSON.stringify(pnpmBin)} --filter @clash/desktop test:e2e:agent-browser > ${JSON.stringify(smokeLogPath)} 2>&1`;
+  const timelineCommand = `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_SHORT_DRAMA_TIMELINE_ARTIFACT_ROOT=${JSON.stringify(timelineArtifactRoot)} CLASH_SHORT_DRAMA_SCENARIO_PATH=${JSON.stringify(shortDramaScenarioPath)} ${JSON.stringify(pnpmBin)} --filter @clash/desktop test:e2e:short-drama-timeline > ${JSON.stringify(timelineLogPath)} 2>&1`;
+  const agentFirstCasCommand = `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_AGENT_FIRST_CAS_ARTIFACT_ROOT=${JSON.stringify(agentFirstCasArtifactRoot)} ${JSON.stringify(pnpmBin)} --filter @clash/desktop test:e2e:agent-first-cas > ${JSON.stringify(agentFirstCasLogPath)} 2>&1`;
+  const projectWorkspaceCliCommand = `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_PROJECT_WORKSPACE_ARTIFACT_ROOT=${JSON.stringify(projectWorkspaceCliArtifactRoot)} ${JSON.stringify(pnpmBin)} --filter @clash/desktop test:e2e:project-workspace-cli > ${JSON.stringify(projectWorkspaceCliLogPath)} 2>&1`;
 
   return `You are a black-box QA agent for Clash desktop.
 
@@ -205,7 +205,7 @@ const CAS_BOOLEAN_KEYS = [
 const WORKSPACE_CLI_CHECKS = {
   projectMarkerPreservesSpecialId: "project marker preserves special project id",
   localWithoutCloudCredentials: "local Project CLI works without cloud credentials",
-  hashedDaemonSocketConfined: "hashed daemon socket stays inside socket directory",
+  sharedLocalApiHostDiscovered: "CLI discovers the shared local-api host",
   mainCanvasPresent: "fresh project exposes main Canvas",
   canvasCreateRefreshesObservation: "Canvas create refreshes implicit observation",
   unknownCanvasRejected: "unknown Canvas is rejected",
@@ -213,14 +213,14 @@ const WORKSPACE_CLI_CHECKS = {
   canvasScopesStayIsolated: "Canvas node scopes stay isolated",
   nativeTimelineApplyUsesEntityCas: "native Timeline file edit applies through entity CAS",
   timelineAttachOwnsOneAction: "Timeline attach moves identity under one Canvas Action",
-  timelineRenderUsesProjectState: "Canvas-scoped Timeline Action renders from Project Timeline state",
+  timelineActionResolvesProjectState: "Canvas-scoped Timeline Action resolves Project Timeline state",
   timelineCopyCreatesNewIdentities: "cross-Canvas Timeline copy creates new identities",
   timelineDetachReturnsToProjectRoot: "Timeline detach returns the same Timeline to Project root",
   timelineOwnershipListAccurate: "Timeline ownership list distinguishes standalone and Canvas-owned copies",
   staleTimelineApplyRejected: "stale Timeline apply is rejected",
   forgedObservationRejected: "forged semantic observation cannot authorize a write",
   observationOwnerOnly: "cwd observation is owner-only",
-  daemonRestartRecoversProjectState: "daemon restart recovers all Project Timelines from one snapshot",
+  daemonRestartRecoversProjectState: "daemon restart recovers all Project Timelines from the local replica",
   recoveredTimelineActionKeepsCanvas: "recovered Timeline Action stays on its owning Canvas",
   publicOutputHidesObservations: "public CLI output hides internal observations",
   canonicalSqliteStore: "canonical project metadata uses SQLite",

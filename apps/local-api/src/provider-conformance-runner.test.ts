@@ -13,11 +13,11 @@ describe("provider conformance runner", () => {
     const stubs = createProviderConformanceStubs();
 
     expect(selectProviderConformanceStubs(stubs, [
-      "official:google-agent-platform:global:gemini-3.5-flash",
+      "official:google-ai-studio:global:gemini-3.5-flash",
       "gemini-3.1-flash-lite",
     ]).map((stub) => stub.id)).toEqual([
-      "official:google-agent-platform:global:gemini-3.5-flash",
-      "official:google-agent-platform:global:gemini-3.1-flash-lite",
+      "official:google-ai-studio:global:gemini-3.5-flash",
+      "official:google-ai-studio:global:gemini-3.1-flash-lite",
     ]);
   });
 
@@ -30,13 +30,13 @@ describe("provider conformance runner", () => {
 
   it("matches configured provider accounts by provider, upstream, region, and user", () => {
     const stub = createProviderConformanceStubs()
-      .find((candidate) => candidate.id === "official:google-agent-platform:global:gemini-3.5-flash");
+      .find((candidate) => candidate.id === "official:google-ai-studio:global:gemini-3.5-flash");
     expect(stub).toBeTruthy();
     const account: ProviderConformanceAccountRow = {
       id: "account-1",
       userId: "local-user",
       providerId: "official",
-      upstreamId: "google-agent-platform",
+      upstreamId: "google-ai-studio",
       region: "global",
       enabled: true,
     };
@@ -47,7 +47,7 @@ describe("provider conformance runner", () => {
     }, account], stub!, "local-user")).toBe(account);
     expect(findProviderConformanceAccount([{
       ...account,
-      upstreamId: "google-ai-studio",
+      upstreamId: "minimax",
     }], stub!, "local-user")).toBeUndefined();
   });
 
@@ -57,7 +57,7 @@ describe("provider conformance runner", () => {
       {
         userId: "local-user",
         providerId: "official",
-        upstreamId: "google-agent-platform",
+        upstreamId: "google-ai-studio",
         region: "global",
         enabled: true,
       },
@@ -76,8 +76,8 @@ describe("provider conformance runner", () => {
     ];
 
     const selected = selectProviderConformanceStubsForAccounts(stubs, accounts, "local-user");
-    expect(selected.map((stub) => stub.id)).toContain("official:google-agent-platform:global:gemini-3.5-flash");
-    expect(selected.map((stub) => stub.id)).toContain("official:google-agent-platform:global:nano-banana-pro");
+    expect(selected.map((stub) => stub.id)).toContain("official:google-ai-studio:global:gemini-3.5-flash");
+    expect(selected.map((stub) => stub.id)).toContain("official:google-ai-studio:global:nano-banana-pro");
     expect(selected.some((stub) => stub.providerId === "replicate")).toBe(false);
     expect(selected.some((stub) => stub.providerId === "fal")).toBe(false);
   });

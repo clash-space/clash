@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
-import { EditorProvider } from '@master-clash/remotion-core';
+import { EditorProvider } from '@clash/remotion-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AssetPanel } from './AssetPanel';
 

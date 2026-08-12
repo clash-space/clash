@@ -3,9 +3,9 @@ import { Link, useNavigate } from "react-router";
 import { motion } from "framer-motion";
 import { GoogleLogo } from "@phosphor-icons/react";
 import betterAuthClient from "@clash/web-ui/lib/betterAuthClient";
-import Background from "@clash/web-ui/components/Background";
-import { Button } from "@clash/web-ui/components/ui/button";
-import { Input } from "@clash/web-ui/components/ui/input";
+import Background from "@clash/gui/components/Background";
+import { Button } from "@clash/gui/components/ui/button";
+import { Input } from "@clash/gui/components/ui/input";
 
 type Stage = "email" | "otp" | "password";
 type PwAction = "signin" | "signup";

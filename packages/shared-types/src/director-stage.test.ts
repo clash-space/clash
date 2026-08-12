@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LoroDoc } from "loro-crdt";
-import { Canvas } from "./canvas-ops";
-import * as shared from "./index";
+import { Canvas } from "./canvas-ops.js";
+import * as shared from "./index.js";
 
 const emptyStageState = {
   schemaVersion: 1,

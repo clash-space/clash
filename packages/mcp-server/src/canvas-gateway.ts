@@ -1,62 +1,276 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import type { ProjectHostCommand } from "@clash/shared-types";
 import {
-  buildCanvasCliArgs,
-  type CanvasMcpToolName,
-  type CanvasToolInput,
+  createProjectHostClient,
+  type ProjectHostClient,
+  type ProjectHostResponse,
+} from "@clash/shared-runtime/project-host-client";
+import type {
+  CanvasMcpToolName,
+  CanvasToolInput,
 } from "./canvas-contract";
 
-const execFileAsync = promisify(execFile);
+export type CanvasProjectHostGateway = {
+  invoke(name: CanvasMcpToolName, input: CanvasToolInput): Promise<unknown>;
+};
 
-export type CanvasCliRunner = (args: string[], cwd?: string) => Promise<unknown>;
-
-export function createClashCliRunner(options: {
-  command?: string;
-  argsPrefix?: string[];
-  cwd?: string;
-  env?: NodeJS.ProcessEnv;
-} = {}): CanvasCliRunner {
-  const command = options.command ?? process.env.CLASH_CLI_BIN ?? "clash";
-  const argsPrefix = options.argsPrefix ?? [];
-  const env = options.env ?? process.env;
-  const defaultCwd =
-    options.cwd ??
-    env.CLASH_WORKSPACE_ROOT ??
-    env.CODEX_WORKSPACE_ROOT ??
-    process.cwd();
-  return async (args, cwd) => {
-    const { stdout } = await execFileAsync(command, [...argsPrefix, ...args], {
-      cwd: cwd ?? defaultCwd,
-      env,
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    const text = stdout.trim();
-    if (!text) return {};
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      return { stdout: text };
-    }
-  };
+function requiredString(input: CanvasToolInput, key: keyof CanvasToolInput): string {
+  const value = input[key];
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${String(key)} is required`);
+  return value.trim();
 }
 
-export async function invokeCanvasTool(
-  name: CanvasMcpToolName,
-  input: CanvasToolInput,
-  runner: CanvasCliRunner,
-): Promise<unknown> {
-  if (name === "clash_canvas_open" || name === "clash_canvas_snapshot") {
-    const scope = { projectId: input.projectId, canvasId: input.canvasId };
-    const [nodes, edges] = await Promise.all([
-      runner(buildCanvasCliArgs("clash_canvas_list", scope), input.cwd),
-      runner(buildCanvasCliArgs("clash_canvas_edges", scope), input.cwd),
-    ]);
+function nodeIds(input: CanvasToolInput): string[] {
+  const values = [...new Set((input.nodeIds ?? []).map((value) => value.trim()).filter(Boolean))]
+    .sort();
+  if (values.length === 0) throw new Error("nodeIds is required");
+  return values;
+}
+
+function hostValue(value: ProjectHostResponse): ProjectHostResponse {
+  if (!value.error) return value;
+  const code = typeof value.code === "string" ? `${value.code}: ` : "";
+  throw new Error(`${code}${value.error}`);
+}
+
+function readToken(value: ProjectHostResponse): string | undefined {
+  return typeof value.readToken === "string"
+    ? value.readToken
+    : typeof value.version === "string"
+      ? value.version
+      : undefined;
+}
+
+/** Direct Canvas transport with MCP-session read receipts and no CLI process. */
+export function createCanvasProjectHostGateway(
+  client: ProjectHostClient = createProjectHostClient(),
+): CanvasProjectHostGateway {
+  const observations = new Map<string, string>();
+  const scope = async (input: CanvasToolInput) => {
+    const context = await client.resolveContext({ cwd: input.cwd, projectId: input.projectId });
     return {
-      projectId: input.projectId,
-      canvasId: input.canvasId ?? "main",
-      nodes: Array.isArray(nodes) ? nodes : [],
-      edges: Array.isArray(edges) ? edges : [],
+      projectId: context.projectId,
+      canvasId: input.canvasId?.trim() || "main",
+      key: `${context.projectId}\0${input.canvasId?.trim() || "main"}`,
     };
-  }
-  return runner(buildCanvasCliArgs(name, input), input.cwd);
+  };
+  const request = async (input: CanvasToolInput, command: ProjectHostCommand) => {
+    const result = await client.request({
+      cwd: input.cwd,
+      projectId: input.projectId,
+      command,
+    });
+    return hostValue(result.value);
+  };
+  const requireNodeReceipt = async (input: CanvasToolInput, id: string) => {
+    const resolved = await scope(input);
+    const receipt = observations.get(`${resolved.key}\0node\0${id}`);
+    if (!receipt) {
+      throw new Error(
+        `READ_REQUIRED: Read Canvas node ${id} with clash_canvas_get or clash_canvas_list before mutating it.`,
+      );
+    }
+    return receipt;
+  };
+
+  return {
+    async invoke(name, input) {
+      const resolved = await scope(input);
+      const canvasId = resolved.canvasId;
+      if (name === "clash_canvas_open" || name === "clash_canvas_snapshot") {
+        const listed = await request(input, { action: "list", canvasId });
+        const edges = await request(input, { action: "edges", canvasId });
+        const versions = listed.versions && typeof listed.versions === "object"
+          ? listed.versions as Record<string, unknown>
+          : {};
+        for (const [id, receipt] of Object.entries(versions)) {
+          if (typeof receipt === "string") observations.set(`${resolved.key}\0node\0${id}`, receipt);
+        }
+        return {
+          projectId: resolved.projectId,
+          canvasId,
+          nodes: Array.isArray(listed.nodes) ? listed.nodes : [],
+          edges: Array.isArray(edges.edges) ? edges.edges : [],
+        };
+      }
+
+      switch (name) {
+        case "clash_canvas_list": {
+          const value = await request(input, {
+            action: "list",
+            canvasId,
+            ...(input.type?.trim() ? { type: input.type.trim() } : {}),
+          });
+          const versions = value.versions && typeof value.versions === "object"
+            ? value.versions as Record<string, unknown>
+            : {};
+          for (const [id, receipt] of Object.entries(versions)) {
+            if (typeof receipt === "string") observations.set(`${resolved.key}\0node\0${id}`, receipt);
+          }
+          return Array.isArray(value.nodes) ? value.nodes : [];
+        }
+        case "clash_canvas_edges": {
+          const value = await request(input, { action: "edges", canvasId });
+          return Array.isArray(value.edges) ? value.edges : [];
+        }
+        case "clash_canvas_get": {
+          const nodeId = requiredString(input, "nodeId");
+          const value = await request(input, { action: "get", canvasId, nodeId });
+          const receipt = readToken(value);
+          if (!receipt) throw new Error("Host read did not return a Canvas node receipt");
+          observations.set(`${resolved.key}\0node\0${nodeId}`, receipt);
+          return value.node && typeof value.node === "object"
+            ? { ...value.node as Record<string, unknown>, immutable: value.immutable === true }
+            : value;
+        }
+        case "clash_canvas_search": {
+          const value = await request(input, {
+            action: "search",
+            canvasId,
+            query: requiredString(input, "query"),
+            ...(input.types ? { types: input.types } : {}),
+          });
+          return Array.isArray(value.nodes) ? value.nodes : [];
+        }
+        case "clash_canvas_add":
+          return request(input, {
+            action: "add",
+            canvasId,
+            type: requiredString(input, "type") as "text",
+            label: requiredString(input, "label"),
+            ...(input.content !== undefined ? { content: input.content } : {}),
+            ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
+            ...(input.parentId?.trim() ? { parentId: input.parentId.trim() } : {}),
+            ...(input.modelId?.trim() ? { modelId: input.modelId.trim() } : {}),
+            ...(input.actionId?.trim() ? { actionId: input.actionId.trim() } : {}),
+            ...(input.refs ? { refs: input.refs } : {}),
+            ...(input.params ? { params: input.params } : {}),
+            actorClientType: "mcp",
+          });
+        case "clash_canvas_execute": {
+          const nodeId = requiredString(input, "nodeId");
+          const receipt = await requireNodeReceipt(input, nodeId);
+          return request(input, {
+            action: "execute",
+            canvasId,
+            nodeId,
+            actorClientType: "mcp",
+            observedVersion: receipt,
+            ifMatch: receipt,
+          } as ProjectHostCommand);
+        }
+        case "clash_canvas_update": {
+          const nodeId = requiredString(input, "nodeId");
+          const receipt = await requireNodeReceipt(input, nodeId);
+          const data = {
+            ...(input.data ?? {}),
+            ...(input.assetId?.trim() ? { assetId: input.assetId.trim() } : {}),
+          };
+          const value = await request(input, {
+            action: "update",
+            canvasId,
+            nodeId,
+            ...(input.label !== undefined ? { label: input.label } : {}),
+            ...(input.content !== undefined ? { content: input.content } : {}),
+            ...(Object.keys(data).length ? { data } : {}),
+            actorClientType: "mcp",
+            observedVersion: receipt,
+            ifMatch: receipt,
+          });
+          const nextReceipt = readToken(value);
+          if (nextReceipt) observations.set(`${resolved.key}\0node\0${nodeId}`, nextReceipt);
+          return value;
+        }
+        case "clash_canvas_move": {
+          const nodeId = requiredString(input, "nodeId");
+          if (!Number.isFinite(input.x) || !Number.isFinite(input.y)) {
+            throw new Error("x and y must be finite numbers");
+          }
+          const receipt = await requireNodeReceipt(input, nodeId);
+          const value = await request(input, {
+            action: "move",
+            canvasId,
+            nodeId,
+            position: { x: input.x!, y: input.y! },
+            actorClientType: "mcp",
+            observedVersion: receipt,
+            ifMatch: receipt,
+          });
+          const nextReceipt = readToken(value);
+          if (nextReceipt) observations.set(`${resolved.key}\0node\0${nodeId}`, nextReceipt);
+          return value;
+        }
+        case "clash_canvas_copy": {
+          const nodeId = requiredString(input, "nodeId");
+          const receipt = await requireNodeReceipt(input, nodeId);
+          const value = await request(input, {
+            action: "copy_node",
+            canvasId,
+            nodeId,
+            ...(input.newNodeId?.trim() ? { newNodeId: input.newNodeId.trim() } : {}),
+            actorClientType: "mcp",
+            observedVersion: receipt,
+            ifMatch: receipt,
+          });
+          const resultId = typeof value.newNodeId === "string" ? value.newNodeId : undefined;
+          const nextReceipt = readToken(value);
+          if (resultId && nextReceipt) observations.set(`${resolved.key}\0node\0${resultId}`, nextReceipt);
+          return value;
+        }
+        case "clash_canvas_replace_asset": {
+          const nodeId = requiredString(input, "nodeId");
+          const receipt = await requireNodeReceipt(input, nodeId);
+          const value = await request(input, {
+            action: "asset_cow_replace",
+            canvasId,
+            nodeId,
+            assetId: requiredString(input, "assetId"),
+            ...(input.newNodeId?.trim() ? { newNodeId: input.newNodeId.trim() } : {}),
+            ...(input.label !== undefined ? { label: input.label } : {}),
+            actorClientType: "mcp",
+            observedVersion: receipt,
+            ifMatch: receipt,
+          });
+          const resultId = typeof value.newNodeId === "string" ? value.newNodeId : undefined;
+          const nextReceipt = readToken(value);
+          if (resultId && nextReceipt) observations.set(`${resolved.key}\0node\0${resultId}`, nextReceipt);
+          return value;
+        }
+        case "clash_canvas_delete_plan": {
+          const ids = nodeIds(input);
+          const value = await request(input, { action: "batch_delete_plan", canvasId, nodeIds: ids });
+          const receipt = readToken(value);
+          if (!receipt) throw new Error("Host delete plan did not return a receipt");
+          observations.set(`${resolved.key}\0batch\0${ids.join(",")}`, receipt);
+          return value;
+        }
+        case "clash_canvas_delete_batch": {
+          const ids = nodeIds(input);
+          const receipt = observations.get(`${resolved.key}\0batch\0${ids.join(",")}`);
+          if (!receipt) {
+            throw new Error("READ_REQUIRED: Run clash_canvas_delete_plan for this exact node batch first.");
+          }
+          return request(input, {
+            action: "delete_batch",
+            canvasId,
+            nodeIds: ids,
+            actorClientType: "mcp",
+            observedVersion: receipt,
+            ifMatch: receipt,
+          });
+        }
+        case "clash_canvas_delete": {
+          const nodeId = requiredString(input, "nodeId");
+          const receipt = await requireNodeReceipt(input, nodeId);
+          return request(input, {
+            action: "delete",
+            canvasId,
+            nodeId,
+            actorClientType: "mcp",
+            observedVersion: receipt,
+            ifMatch: receipt,
+          });
+        }
+      }
+    },
+  };
 }

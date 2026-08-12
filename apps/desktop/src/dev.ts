@@ -13,7 +13,7 @@ function resolvePnpmCli(): string {
   const pnpmCli = process.env.npm_execpath;
   if (pnpmCli) return pnpmCli;
   throw new Error(
-    "Desktop dev must be started through pnpm so child processes inherit the selected Node runtime. Run: pnpm --filter @master-clash/desktop dev",
+    "Desktop dev must be started through pnpm so child processes inherit the selected Node runtime. Run: pnpm --filter @clash/desktop dev",
   );
 }
 
@@ -41,12 +41,6 @@ async function waitForChild(child: ChildProcess, label: string): Promise<number>
   const [code, signal] = await once(child, "exit") as [number | null, NodeJS.Signals | null];
   if (signal) throw new Error(`${label} exited from ${signal}`);
   return code ?? 1;
-}
-
-async function runCommand(args: string[], label: string): Promise<void> {
-  const child = spawnManaged(args);
-  const code = await waitForChild(child, label);
-  if (code !== 0) throw new Error(`${label} exited with code ${code}`);
 }
 
 async function waitForHttp(url: string, child: ChildProcess, timeoutMs = 60_000): Promise<void> {
@@ -127,15 +121,11 @@ async function main(): Promise<void> {
   installSignalHandler("SIGINT");
   installSignalHandler("SIGTERM");
 
-  await runCommand(["--filter", "@clash/shared-runtime", "build"], "Shared runtime build");
-  await runCommand(["--filter", "@clash-space/cli", "build"], "Development CLI build");
-  await runCommand(["--filter", "@master-clash/local-api", "build"], "Local API build");
-  await runCommand(["run", "build"], "Desktop build");
   await assertPortAvailable(rendererPort);
 
   const renderer = spawnManaged([
     "--filter",
-    "@master-clash/web",
+    "@clash/web",
     "exec",
     "vite",
     "--host",
@@ -149,7 +139,14 @@ async function main(): Promise<void> {
   });
   await waitForHttp(rendererUrl, renderer);
 
-  const electron = spawnManaged(["exec", "electron", "."], {
+  const desktop = spawnManaged([
+    "--filter",
+    "@clash/desktop",
+    "exec",
+    "tsup",
+    "--config",
+    "tsup.dev.config.ts",
+  ], {
     ...process.env,
     CLASH_APP_NAME: "Clash Dev",
     CLASH_PROFILE: "dev",
@@ -157,7 +154,7 @@ async function main(): Promise<void> {
   });
 
   const firstExit = await Promise.race([
-    waitForChild(electron, "Electron").then((code) => ({ process: "electron", code })),
+    waitForChild(desktop, "Desktop watcher").then((code) => ({ process: "desktop", code })),
     waitForChild(renderer, "Renderer").then((code) => ({ process: "renderer", code })),
   ]);
   if (firstExit.process === "renderer" && !stopping) {

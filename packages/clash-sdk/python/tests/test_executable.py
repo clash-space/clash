@@ -34,11 +34,19 @@ def _parse(out):
 
 def test_completes_with_outputs_list():
     out = io.StringIO()
-    serve(
-        {"execute": lambda inv, broker: [
+
+    async def submit(invocation, context):
+        assert not callable(context)
+        assert not hasattr(context, "broker")
+        assert all(hasattr(context, name) for name in (
+            "store", "reference", "upload", "asset", "host_tools"))
+        return [
             {"slot": "media", "kind": "value",
-             "value": {"prompt": inv["input"]["values"]["prompt"]}},
-        ]},
+             "value": {"prompt": invocation["input"]["values"]["prompt"]}},
+        ]
+
+    serve(
+        {"execute": {"submit": submit}},
         stdin=_lines(_invoke(values={"prompt": "A paper moon"})),
         stdout=out,
     )
@@ -52,58 +60,62 @@ def test_completes_with_outputs_list():
     }
 
 
-def test_broker_roundtrip_matches_request_ids():
+def test_host_store_roundtrip_matches_request_ids():
     out = io.StringIO()
 
-    def execute(invocation, broker):
-        credential = broker({"kind": "credential.handle", "secretId": "provider:py"})
+    async def submit(_invocation, context):
+        account = await context.store.get("apiKey")
         return [{"slot": "media", "kind": "value",
-                 "value": {"handle": credential["handle"]}}]
+                 "value": {"configured": bool(account)}}]
 
-    # The broker response must be consumed by requestId, so serve() has to
+    # The Host response must be consumed by requestId, so serve() has to
     # write the request before reading the scripted response below.
     stdin_messages = [
         _invoke(),
         {"protocol": "clash.plugin.broker-response/v1",
          "requestId": "py-inv-1-1",
          "status": "ok",
-         "result": {"handle": "clash-secret://py-test"}},
+         "result": {"value": "py-test-key"}},
     ]
-    serve({"execute": execute}, stdin=_lines(*stdin_messages), stdout=out)
+    serve({"execute": {"submit": submit}}, stdin=_lines(*stdin_messages), stdout=out)
     request, result = _parse(out)
     assert request["protocol"] == "clash.plugin.broker-request/v1"
     assert request["requestId"] == "py-inv-1-1"
-    assert request["operation"] == {"kind": "credential.handle", "secretId": "provider:py"}
+    assert request["operation"] == {"kind": "store.get", "key": "apiKey"}
     assert result["status"] == "completed"
-    assert result["outputs"][0]["value"] == {"handle": "clash-secret://py-test"}
+    assert result["outputs"][0]["value"] == {"configured": True}
 
 
-def test_broker_error_fails_the_invocation():
+def test_host_dependency_error_fails_the_invocation():
     out = io.StringIO()
 
-    def execute(_invocation, broker):
-        return broker({"kind": "network.fetch", "url": "https://x", "method": "GET", "headers": {}})
+    async def submit(_invocation, context):
+        return await context.reference({"asset": {
+            "assetId": "asset-1", "uri": "clash-asset://asset-1", "kind": "image"}})
 
     serve(
-        {"execute": execute},
+        {"execute": {"submit": submit}},
         stdin=_lines(
             _invoke(),
             {"protocol": "clash.plugin.broker-response/v1",
              "requestId": "py-inv-1-1",
              "status": "error",
-             "error": {"code": "denied", "message": "Network domain x is not declared."}},
+             "error": {"code": "unavailable", "message": "Asset asset-1 is unavailable."}},
         ),
         stdout=out,
     )
     _request, result = _parse(out)
     assert result["status"] == "failed"
-    assert result["error"]["code"] == "denied"
-    assert "not declared" in result["error"]["message"]
+    assert result["error"]["code"] == "unavailable"
+    assert "unavailable" in result["error"]["message"]
 
 
 def test_unknown_export_fails_without_calling_handlers():
     out = io.StringIO()
-    serve({"execute": lambda inv, broker: []},
+    async def submit(_invocation, _context):
+        return []
+
+    serve({"execute": {"submit": submit}},
           stdin=_lines(_invoke(export_id="missing")), stdout=out)
     (result,) = _parse(out)
     assert result["status"] == "failed"
@@ -113,10 +125,74 @@ def test_unknown_export_fails_without_calling_handlers():
 def test_handler_exception_surfaces_as_failed_result():
     out = io.StringIO()
 
-    def execute(_invocation, _broker):
+    async def submit(_invocation, _context):
         raise ValueError("upstream rejected the request")
 
-    serve({"execute": execute}, stdin=_lines(_invoke()), stdout=out)
+    serve({"execute": {"submit": submit}}, stdin=_lines(_invoke()), stdout=out)
     (result,) = _parse(out)
     assert result["status"] == "failed"
     assert result["error"]["message"] == "upstream rejected the request"
+
+
+def test_dispatches_poll_to_the_declared_poll_handler():
+    out = io.StringIO()
+    invocation = _invoke()
+    invocation["operation"] = "poll"
+    invocation["pollState"] = {"taskId": "upstream-1"}
+
+    async def submit(_invocation, _context):
+        raise AssertionError("submit must not run for a poll invocation")
+
+    async def poll(current, _context):
+        return [{"slot": "state", "kind": "value", "value": current["pollState"]}]
+
+    serve(
+        {"execute": {"submit": submit, "poll": poll}},
+        stdin=_lines(invocation),
+        stdout=out,
+    )
+    (result,) = _parse(out)
+    assert result["status"] == "completed"
+    assert result["outputs"][0]["value"] == {"taskId": "upstream-1"}
+
+
+def test_typed_asset_and_host_tool_methods_hide_raw_operations():
+    out = io.StringIO()
+
+    async def submit(_invocation, context):
+        generated = await context.host_tools.codex_imagegen.generate({
+            "prompt": "A paper moon", "aspectRatio": "1:1", "slot": "image",
+            "references": [],
+        })
+        stored = await context.asset({
+            "slot": "copy", "kind": "image", "dataBase64": "AAAA",
+        })
+        return [
+            {"slot": "image", "kind": "asset", "asset": generated},
+            stored,
+        ]
+
+    serve(
+        {"execute": {"submit": submit}},
+        stdin=_lines(
+            _invoke(),
+            {"protocol": "clash.plugin.broker-response/v1",
+             "requestId": "py-inv-1-1", "status": "ok",
+             "result": {"assetId": "generated", "uri": "clash-asset://generated",
+                        "kind": "image"}},
+            {"protocol": "clash.plugin.broker-response/v1",
+             "requestId": "py-inv-1-2", "status": "ok",
+             "result": {"assetId": "copied", "uri": "clash-asset://copied",
+                        "kind": "image"}},
+        ),
+        stdout=out,
+    )
+    tool_request, asset_request, result = _parse(out)
+    assert tool_request["operation"]["kind"] == "codex.image.generate"
+    assert asset_request["operation"] == {
+        "kind": "asset.write", "slot": "copy", "assetKind": "image",
+        "dataBase64": "AAAA",
+    }
+    assert [entry["asset"]["assetId"] for entry in result["outputs"]] == [
+        "generated", "copied",
+    ]

@@ -7,7 +7,7 @@ import { useVideoEditor } from '../VideoEditorContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
-import { getItemSourceNodeId } from '@master-clash/remotion-core';
+import { getItemSourceNodeId } from '@clash/remotion-core';
 import { Button } from '../ui/button';
 import { listProjectTimelines, type ProjectTimeline } from '@clash/shared-types';
 import {

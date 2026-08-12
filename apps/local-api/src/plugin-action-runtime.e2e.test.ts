@@ -1,18 +1,110 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { ActionsHost } from "@clash-space/bridge/actions-host";
-import { PluginHostClient, startPluginHostIpcServer } from "@clash-space/bridge/plugin-host";
+import { ActionsHost } from "./runtime/host/lib/actions-loader.js";
 import {
-  activateExecutablePluginDraft,
-  checkoutExecutablePluginDraft,
-  rollbackDownloadedActionPackage,
-  scaffoldExecutablePluginDraft,
-} from "@clash-space/cli/actions";
+  PluginHostClient,
+  startPluginHostIpcServer,
+} from "./runtime/host/lib/plugin-host-ipc.js";
 import { expect, it } from "vitest";
 
-import { createBridgeExecutablePluginActionInvoker } from "./plugin-action-runtime";
+import { createExecutablePluginActionInvoker } from "./plugin-action-runtime";
+import {
+  activateHostExecutablePluginPackage,
+  type HostExecutablePluginPackage,
+} from "./runtime/plugin-package.js";
+
+function encodeDocument(value: unknown): string {
+  return Buffer.from(`${JSON.stringify(value, null, 2)}\n`).toString("base64");
+}
+
+function executableActionPackage(version: string, prefix = ""): HostExecutablePluginPackage {
+  const id = "test.caption-helper";
+  const cardPath = `cards/${id}.json`;
+  const contractPath = `contract-tests/${id}.json`;
+  const entrypoint = "handler.mjs";
+  const manifest = {
+    apiVersion: "clash.plugin/v1",
+    id,
+    version,
+    name: "Caption Helper",
+    runtime: {
+      kind: "local",
+      transport: "stdio",
+      language: "node",
+      entrypoint,
+    },
+    contributes: {
+      cards: [{ id, kind: "action-card", path: cardPath }],
+      functions: [{ id, kind: "action" }],
+    },
+    contractTests: [contractPath],
+  };
+  const card = {
+    apiVersion: "clash.card/v1",
+    kind: "action-card",
+    spec: {
+      id,
+      name: "Caption Helper",
+      parameters: [],
+      outputType: "text",
+      input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+      functionExportId: id,
+    },
+  };
+  const contract = {
+    apiVersion: "clash.plugin.contract-test/v1",
+    id: `${id}-basic`,
+    target: { exportId: id, kind: "action" },
+    input: { values: { prompt: "Describe the result" }, references: [] },
+    expect: {
+      status: "completed",
+      outputs: [{
+        slot: "result",
+        kind: "value",
+        value: { text: `${prefix}Describe the result` },
+      }],
+    },
+  };
+  const handler = [
+    'import { createInterface } from "node:readline";',
+    "",
+    'createInterface({ input: process.stdin }).on("line", (line) => {',
+    "  const invocation = JSON.parse(line);",
+    '  if (invocation.protocol !== "clash.plugin.invoke/v1") return;',
+    '  const prompt = typeof invocation.input?.values?.prompt === "string"',
+    "    ? invocation.input.values.prompt",
+    '    : "";',
+    "  const result = {",
+    '    protocol: "clash.plugin.result/v1",',
+    "    invocationId: invocation.invocationId,",
+    '    status: "completed",',
+    `    outputs: [{ slot: "result", kind: "value", value: { text: ${JSON.stringify(prefix)} + prompt } }],`,
+    "  };",
+    "  process.stdout.write(`${JSON.stringify(result)}\\n`);",
+    "});",
+    "",
+  ].join("\n");
+
+  return {
+    id,
+    manifest,
+    files: {
+      [cardPath]: encodeDocument(card),
+      [contractPath]: encodeDocument(contract),
+      [entrypoint]: Buffer.from(handler).toString("base64"),
+    },
+  };
+}
+
+async function replaceActivePackage(
+  actionsRoot: string,
+  pkg: HostExecutablePluginPackage,
+): Promise<void> {
+  await rm(join(actionsRoot, pkg.id), { recursive: true, force: true });
+  await activateHostExecutablePluginPackage(pkg, actionsRoot);
+}
 
 async function waitForBindingVersion(
   client: PluginHostClient,
@@ -23,7 +115,7 @@ async function waitForBindingVersion(
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {
-      const binding = await client.resolveBinding("caption-helper", "caption-helper", "action");
+      const binding = await client.resolveBinding("test.caption-helper", "test.caption-helper", "action");
       if (binding.version === version) return binding;
       lastError = new Error(`Expected ${version}, received ${binding.version}.`);
     } catch (error) {
@@ -36,21 +128,11 @@ async function waitForBindingVersion(
     : new Error(`Timed out waiting for caption-helper ${version}.`);
 }
 
-it("runs an agent-created action Card through activation, hot host discovery, and exact stdio ABI", async () => {
+it("runs a host-owned action Card through activation, hot discovery, and exact stdio ABI", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "clash-agent-action-e2e-"));
-  const pluginDir = join(workspace, "drafts", "caption-helper");
   const actionsRoot = join(workspace, "actions");
-  await scaffoldExecutablePluginDraft({
-    pluginDir,
-    id: "caption-helper",
-    name: "Caption Helper",
-    kind: "action",
-  });
-  await activateExecutablePluginDraft({
-    pluginDir,
-    root: actionsRoot,
-    approvePermissionIncrease: async () => true,
-  });
+  const v1 = executableActionPackage("0.1.0");
+  await activateHostExecutablePluginPackage(v1, actionsRoot);
 
   const host = new ActionsHost({
     serverUrl: "http://127.0.0.1:49321",
@@ -67,12 +149,12 @@ it("runs an agent-created action Card through activation, hot host discovery, an
     const client = new PluginHostClient({ socketPath });
     const [registration] = await client.listCards();
     expect(registration).toMatchObject({
-      pluginId: "caption-helper",
+      pluginId: "test.caption-helper",
       version: "0.1.0",
-      document: { kind: "action-card", spec: { id: "caption-helper" } },
+      document: { kind: "action-card", spec: { id: "test.caption-helper" } },
     });
-    const binding = await client.resolveBinding("caption-helper", "caption-helper", "action");
-    const result = await createBridgeExecutablePluginActionInvoker({ client })({
+    const binding = await client.resolveBinding("test.caption-helper", "test.caption-helper", "action");
+    const result = await createExecutablePluginActionInvoker({ client })({
       binding,
       taskId: "task-caption-e2e",
       projectId: "project-caption-e2e",
@@ -85,40 +167,11 @@ it("runs an agent-created action Card through activation, hot host discovery, an
       outputs: [{ slot: "result", kind: "value", value: { text: "Caption this" } }],
     });
 
-    const v2Draft = join(workspace, "drafts", "caption-helper-v2");
-    await checkoutExecutablePluginDraft({
-      id: "caption-helper",
-      pluginDir: v2Draft,
-      root: actionsRoot,
-    });
-    const manifestPath = join(v2Draft, "manifest.json");
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest.version = "0.2.0";
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-
-    // Edit the source the manifest declares, not the built entrypoint. The host compiles
-    // `runtime.build.source` during validation, so this also exercises that an edited
-    // draft is never checked against a stale bundle.
-    const sourcePath = join(v2Draft, "src", "stdio.ts");
-    const handler = await readFile(sourcePath, "utf8");
-    const edited = handler.replace("value: { text: prompt }", "value: { text: `v2:${prompt}` }");
-    if (edited === handler) {
-      throw new Error(`Scaffold output changed; update this edit. Source:\n${handler}`);
-    }
-    await writeFile(sourcePath, edited);
-    const contractPath = join(v2Draft, "contract-tests", "caption-helper.json");
-    const contract = JSON.parse(await readFile(contractPath, "utf8"));
-    contract.expect.outputs[0].value.text = "v2:Describe the result";
-    await writeFile(contractPath, `${JSON.stringify(contract, null, 2)}\n`);
-
-    await activateExecutablePluginDraft({
-      pluginDir: v2Draft,
-      root: actionsRoot,
-      approvePermissionIncrease: async () => true,
-    });
+    const v2 = executableActionPackage("0.2.0", "v2:");
+    await replaceActivePackage(actionsRoot, v2);
     const v2Binding = await waitForBindingVersion(client, "0.2.0");
     expect(v2Binding.schemaHash).not.toBe(binding.schemaHash);
-    const v2Result = await createBridgeExecutablePluginActionInvoker({ client })({
+    const v2Result = await createExecutablePluginActionInvoker({ client })({
       binding: v2Binding,
       taskId: "task-caption-v2",
       projectId: "project-caption-e2e",
@@ -133,10 +186,10 @@ it("runs an agent-created action Card through activation, hot host discovery, an
       { slot: "result", kind: "value", value: { text: "v2:Caption this" } },
     ]);
 
-    await rollbackDownloadedActionPackage(actionsRoot, "caption-helper");
+    await replaceActivePackage(actionsRoot, v1);
     const restoredBinding = await waitForBindingVersion(client, "0.1.0");
     expect(restoredBinding.schemaHash).toBe(binding.schemaHash);
-    const restoredResult = await createBridgeExecutablePluginActionInvoker({ client })({
+    const restoredResult = await createExecutablePluginActionInvoker({ client })({
       binding: restoredBinding,
       taskId: "task-caption-restored",
       projectId: "project-caption-e2e",

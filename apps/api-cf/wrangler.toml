@@ -38,10 +38,6 @@ name = "RENDER_CONTAINER"
 class_name = "RenderContainer"
 
 [[durable_objects.bindings]]
-name = "BYO_BRIDGE"
-class_name = "ByoBridgeRoom"
-
-[[durable_objects.bindings]]
 name = "RUNTIME_ROOM"
 class_name = "RuntimeRoom"
 
@@ -71,10 +67,6 @@ new_sqlite_classes = ["RenderContainer"]
 
 [[migrations]]
 tag = "v7"
-new_sqlite_classes = ["ByoBridgeRoom"]
-
-[[migrations]]
-tag = "v8"
 new_sqlite_classes = ["RuntimeRoom"]
 
 # Workers AI
@@ -105,9 +97,20 @@ bucket_name = "clash-r2"
 # BETTER_AUTH_ORIGIN
 # WORKER_PUBLIC_URL
 
+# Watch only authored source trees. Workspace dependencies resolve to source
+# through tsconfig paths, so changing a shared package restarts the worker
+# without first producing dist output. Keeping the list explicit still avoids
+# .wrangler/state sqlite reload loops.
+[build]
+watch_dir = [
+  "src",
+  "../../packages/shared-layout/src",
+  "../../packages/shared-types/src",
+  "../../packages/shared-runtime/src",
+  "../../packages/remotion-core/src",
+]
+
 [dev]
-# Only watch src/ to prevent .wrangler/state sqlite writes from triggering reload loops
-watch_dir = "src"
 # Containers off for local dev — thumbnail/render dispatch goes via
 # RENDER_SERVER_URL to a standalone tsx process on :8080 (see Makefile
 # dev-render target). Prod deploys without RENDER_SERVER_URL so the Worker
@@ -129,7 +132,7 @@ MEDIA_GATEWAY_URL = "http://localhost:3000"
 # ║  [env.staging] — lane-style staging.                             ║
 # ║  Staging worker carries the new code but DELEGATES all stateful  ║
 # ║  bindings (DOs, Container, Workflow, D1, R2) to the existing     ║
-# ║  PRODUCTION worker `master-clash-api`. No new DO classes are     ║
+# ║  PRODUCTION worker `clash-api`. No new DO classes are            ║
 # ║  declared here, so there's no migration, no container build,     ║
 # ║  no schema churn — wrangler just uploads the new worker code.    ║
 # ║                                                                   ║
@@ -153,41 +156,37 @@ binding = "AI"
 [[env.staging.durable_objects.bindings]]
 name = "ROOM"
 class_name = "ProjectRoom"
-script_name = "master-clash-api"
+script_name = "clash-api"
 
 [[env.staging.durable_objects.bindings]]
 name = "SUPERVISOR"
 class_name = "SupervisorAgent"
-script_name = "master-clash-api"
+script_name = "clash-api"
 
 [[env.staging.durable_objects.bindings]]
 name = "RENDER_CONTAINER"
 class_name = "RenderContainer"
-script_name = "master-clash-api"
+script_name = "clash-api"
 
-# BYO_BRIDGE and RUNTIME_ROOM omitted — those DO classes are NEW (added in
-# the runtime-multiplexing commits) and the prod worker hasn't been
-# redeployed since, so it doesn't export them yet. Staging requests to
-# byo/runtime endpoints will 503 until the prod worker catches up; the
-# timeline / video-editing surface this branch tests doesn't depend on
-# them.
+# RUNTIME_ROOM is omitted because staging delegates only the long-lived
+# classes already exported by the production worker.
 
 # Workflow lives in the prod worker too — bind by reference, no new instance.
 [[env.staging.workflows]]
 name = "generation-workflow"
 binding = "GENERATION_WORKFLOW"
 class_name = "GenerationWorkflow"
-script_name = "master-clash-api"
+script_name = "clash-api"
 
 # Same prod data. (D1 + R2 are account-scoped; bind by id/name.)
 [[env.staging.d1_databases]]
 binding = "DB"
-database_name = "master-clash-frontend"
+database_name = "clash-d1"
 database_id = "aab16eeb-a375-490b-ad1e-cd092cd9f4bb"
 
 [[env.staging.r2_buckets]]
 binding = "R2_BUCKET"
-bucket_name = "master-clash-assets"
+bucket_name = "clash-r2"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"

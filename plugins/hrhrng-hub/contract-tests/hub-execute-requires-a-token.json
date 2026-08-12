@@ -1,0 +1,38 @@
+{
+  "apiVersion": "clash.plugin.contract-test/v1",
+  "id": "hilo-hub-execute-requires-a-token",
+  "description": "A routable submit on an account with nothing stored names the missing key, not the vendor.",
+  "target": {
+    "exportId": "hilo-hub-execute",
+    "kind": "provider-executor"
+  },
+  "operation": "submit",
+  "input": {
+    "values": {
+      "modelId": "minimax-h3",
+      "upstreamModel": "MiniMax-H3",
+      "prompt": "A lighthouse in a storm"
+    },
+    "references": []
+  },
+  "expect": {
+    "status": "failed",
+    "error": {
+      "code": "execution_failed",
+      "message": "This MiniMax Hub account has no accessToken stored. Sign in, or paste a token into the account's Access token field.",
+      "retryable": false
+    }
+  },
+  "brokerFixtures": [
+    {
+      "operation": {
+        "kind": "store.get",
+        "key": "accessToken"
+      },
+      "response": {
+        "status": "ok",
+        "result": {}
+      }
+    }
+  ]
+}

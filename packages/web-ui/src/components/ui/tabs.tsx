@@ -1,1 +1,1 @@
-export { Tab, TabList, TabPanel, TabProvider } from "@ariakit/react";
+export * from "@clash/gui/components/ui/tabs";

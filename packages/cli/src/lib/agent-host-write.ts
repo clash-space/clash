@@ -12,7 +12,7 @@ export function assertAgentHostWritePath(options: {
     ok: false,
     error:
       `Agent ${options.operation} requires the local host to verify the cwd observation. ` +
-      "Start `clash canvas connect` or use the local-api host, " +
+      "Start the local-api host, " +
       `run \`${options.readCommand}\`, then retry the write.`,
   };
 }

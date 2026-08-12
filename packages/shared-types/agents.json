@@ -12,7 +12,7 @@
   },
   "key_files": {
     "src/index.ts": "Main entry point exporting all types.",
-    "src/executable-plugin.ts": "Versioned agent-editable plugin manifest, Card document/package validation, permission escalation diff, local/hosted invocation ABI, and immutable plugin bindings for persisted workflows.",
+    "src/executable-plugin.ts": "Versioned agent-editable plugin contribution manifest, Card document/package validation, SDK dependency operations, local/hosted invocation ABI, and immutable plugin bindings for persisted workflows.",
     "src/agent-annotation.ts": "Transient structured annotation blocks that address editable Canvas, Timeline, and Director Stage objects, including exact text-quote selections and viewport highlight hints.",
     "src/timeline-mask.ts": "Implementation-side clip-mask annotations that generate validation, defaults, UI bindings, runtime constants, DSL metadata, examples, and docs.",
     "src/timeline-keyframes.ts": "Item-local transform and mask animation channels plus structural validation.",

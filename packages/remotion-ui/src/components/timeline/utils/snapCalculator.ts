@@ -2,7 +2,7 @@
  * 吸附计算工具
  */
 
-import type { Item, Track } from '@master-clash/remotion-core';
+import type { Item, Track } from '@clash/remotion-core';
 import { timeline } from '../styles';
 
 export interface SnapTarget {

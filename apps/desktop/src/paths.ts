@@ -14,6 +14,7 @@ export interface ClashCliEntryPathInput {
 }
 
 export type AgentBundlePathInput = ClashCliEntryPathInput;
+export type ClashHostEntryPathInput = ClashCliEntryPathInput;
 
 export interface ClashSdkPythonPathInput {
   envPythonSdkPath?: string;
@@ -30,7 +31,9 @@ export interface DesktopStatePaths {
   crashDumps: string;
 }
 
-export function resolveDesktopStatePaths(localApiDataDir: string): DesktopStatePaths {
+export function resolveDesktopStatePaths(
+  localApiDataDir: string,
+): DesktopStatePaths {
   const clashHome = dirname(resolve(localApiDataDir));
   const root = join(clashHome, "desktop");
   return {
@@ -53,28 +56,61 @@ export function resolveAcpBinDir(dataDir: string): string {
 }
 
 export function resolveAgentBundleRoot(input: AgentBundlePathInput): string {
-  if (input.isPackaged) return join(input.resourcesPath, "agents");
-  return resolve(input.moduleDir, "../../../packages/clash-bridge/dist/agents");
+  if (input.isPackaged)
+    return join(input.resourcesPath, "clash-runtime", "agents");
+  return resolve(input.moduleDir, "../../../packages/cli/assets/agents");
 }
 
-export function resolveClashCliEntryPath(input: ClashCliEntryPathInput): string {
-  if (input.isPackaged) return join(input.resourcesPath, "clash-cli", "dist", "index.js");
-  return resolve(input.moduleDir, "../../../packages/cli/dist/index.js");
+export function resolveClashCliEntryPath(
+  input: ClashCliEntryPathInput,
+): string {
+  if (input.isPackaged)
+    return join(input.resourcesPath, "clash-runtime", "dispatcher.js");
+  return resolve(input.moduleDir, "../../../packages/cli/src/index.ts");
 }
 
-export function resolveClashCliNodePath(input: ClashCliEntryPathInput): string | undefined {
-  if (input.isPackaged) return join(input.resourcesPath, "clash-cli", "vendor");
-  return undefined;
+export function resolveClashCliNodePath(
+  input: ClashCliEntryPathInput,
+): string | undefined {
+  if (input.isPackaged)
+    return join(input.resourcesPath, "clash-runtime", "node_modules");
+  return resolve(input.moduleDir, "../../../node_modules");
 }
 
-export function resolveClashSdkPythonPath(input: ClashSdkPythonPathInput): string {
+export function resolveClashHostEntryPath(
+  input: ClashHostEntryPathInput,
+): string {
+  if (input.isPackaged)
+    return join(input.resourcesPath, "clash-runtime", "local-api.cjs");
+  return resolve(
+    input.moduleDir,
+    "../../../plugins/clash/src/local-api-entry.ts",
+  );
+}
+
+export function resolveClashDevTsconfigPath(moduleDir: string): string {
+  return resolve(moduleDir, "../../../plugins/clash/tsconfig.dev.json");
+}
+
+export function resolveClashBuiltinPluginRoot(moduleDir: string): string {
+  return resolve(moduleDir, "../../../plugins/clash");
+}
+
+export function resolveClashSdkPythonPath(
+  input: ClashSdkPythonPathInput,
+): string {
   if (input.envPythonSdkPath) return input.envPythonSdkPath;
   if (input.isPackaged) return join(input.resourcesPath, "clash-sdk", "python");
   return resolve(input.moduleDir, "../../../packages/clash-sdk/python");
 }
 
-export function prependPythonPath(existing: string | undefined, sdkPath: string): string {
+export function prependPythonPath(
+  existing: string | undefined,
+  sdkPath: string,
+): string {
   return [sdkPath, ...(existing?.split(delimiter) ?? [])]
-    .filter((entry, index, entries) => entry && entries.indexOf(entry) === index)
+    .filter(
+      (entry, index, entries) => entry && entries.indexOf(entry) === index,
+    )
     .join(delimiter);
 }

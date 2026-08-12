@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MODEL_CARDS } from './models';
+import { MODEL_CARDS } from './models.js';
 
 /**
  * Every model a route can serve must have a Card.

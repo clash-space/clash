@@ -16,6 +16,18 @@ const persistStatePath = process.env.CLASH_WEB_E2E_PERSIST_STATE?.trim()
 // ignore dist writes produced by tests/builds without serving stale modules.
 export const DEV_SOURCE_ALIASES = [
   {
+    find: /^@clash\/gui\/(.+)$/,
+    replacement: resolve(repoRoot, "packages/gui/src/$1"),
+  },
+  {
+    find: /^@clash\/gui$/,
+    replacement: resolve(repoRoot, "packages/gui/src/index.ts"),
+  },
+  {
+    find: /^@clash\/shared-layout$/,
+    replacement: resolve(repoRoot, "packages/shared-layout/src/index.ts"),
+  },
+  {
     find: /^@clash\/shared-types$/,
     replacement: resolve(repoRoot, "packages/shared-types/src/index.ts"),
   },
@@ -29,7 +41,7 @@ export const DEV_SOURCE_ALIASES = [
   },
   {
     find: /^@clash\/shared-runtime$/,
-    replacement: resolve(repoRoot, "packages/shared-runtime/src/index.ts"),
+    replacement: resolve(repoRoot, "packages/shared-runtime/src/browser.ts"),
   },
   {
     find: /^@clash\/shared-runtime\/local-paths$/,
@@ -118,7 +130,7 @@ export default defineConfig(async ({ command, isPreview }) => {
       ],
     },
     server: {
-      port: 3001,
+      port: 3000,
       host: "0.0.0.0",
       // Vite restricts dev fs to cwd by default; in our pnpm monorepo,
       // workspace packages (packages/web-ui, etc.) live above apps/web/.
@@ -130,7 +142,7 @@ export default defineConfig(async ({ command, isPreview }) => {
       watch: { ignored: DEV_WATCH_IGNORES },
     },
     preview: {
-      port: 3001,
+      port: 3000,
     },
     optimizeDeps: {
       // loro-crdt ships a .wasm alongside JS — exclude from esbuild prebundle so

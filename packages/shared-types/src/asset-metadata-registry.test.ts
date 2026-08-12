@@ -7,7 +7,7 @@ import {
   registerAssetMetadataKind,
   summarizeTranscript,
   transcriptContentHashInput,
-} from "./asset-metadata-registry";
+} from "./asset-metadata-registry.js";
 import { z } from "zod";
 
 const body = {

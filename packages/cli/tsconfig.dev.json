@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "paths": {
+      "@clash/shared-layout": ["../shared-layout/src/index.ts"],
+      "@clash/shared-types": ["../shared-types/src/index.ts"],
+      "@clash/shared-types/*": ["../shared-types/src/*.ts"],
+      "@clash/shared-runtime": ["../shared-runtime/src/index.ts"],
+      "@clash/shared-runtime/*": ["../shared-runtime/src/*.ts"],
+      "@clash/remotion-effects": ["../remotion-effects/src/index.ts"],
+      "@clash/remotion-effects/*": ["../remotion-effects/src/*.ts"]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-nano-banana-2",
+    "modelId": "nano-banana-2",
+    "upstreamModel": "nano_banana_2_flash"
+  }
+}

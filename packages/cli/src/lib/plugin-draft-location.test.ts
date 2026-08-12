@@ -10,7 +10,7 @@ import {
 } from "./plugin-draft-location";
 
 /**
- * `$CLASH_HOME` is product-internal storage. `clash action activate` copies a
+ * `$CLASH_HOME` is product-internal storage. `clash plugin activate` copies a
  * validated draft into `$CLASH_HOME/actions/<id>/` and owns that copy from then on:
  * it is content-hashed, recorded in `actions.activations/`, and rolled back through
  * `actions/.rollback/`.
@@ -69,7 +69,7 @@ describe("plugin draft location", () => {
       message = (error as Error).message;
     }
     assert.match(message, /my-plugin/, "must name the rejected path");
-    assert.match(message, /clash action activate/, "must point at the command that stores it");
+    assert.match(message, /clash plugin activate/, "must point at the command that stores it");
   });
 
   it("accepts an ordinary working directory", async () => {
@@ -88,7 +88,7 @@ describe("plugin draft location", () => {
 
   it("offers a hint that does not leak the internal layout", () => {
     const hint = managedStorageDraftHint();
-    assert.match(hint, /clash action init-plugin/);
+    assert.match(hint, /clash plugin create/);
     assert.doesNotMatch(hint, /\.rollback|actions\.activations/);
   });
 });

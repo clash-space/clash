@@ -772,7 +772,6 @@ export async function processPendingNodes(
             customActionSecrets: actionDef?.secrets,
             workerUrl,
             pluginBinding,
-            pluginPermissions: pluginBinding ? actionDef?.pluginPermissions : undefined,
             pluginReferences: pluginReferences.length > 0 ? pluginReferences : undefined,
             referenceImageR2Keys: customRefImageR2Keys.length > 0 ? customRefImageR2Keys : undefined,
             referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,

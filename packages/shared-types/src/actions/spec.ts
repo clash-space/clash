@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AssetKindSchema } from '../assets';
+import { AssetKindSchema } from '../assets.js';
 
 export const ActionFamilySchema = z.enum(['generate', 'edit', 'custom']);
 export type ActionFamily = z.infer<typeof ActionFamilySchema>;

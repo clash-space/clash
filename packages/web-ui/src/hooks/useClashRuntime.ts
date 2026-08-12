@@ -13,7 +13,7 @@ import {
   type RuntimeGoalState,
   type RuntimeSessionUsage,
 } from '@clash/web-ui/lib/acpEvents';
-import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import type { RuntimeResumeSession } from '@clash/web-ui/lib/runtimeResume';
 import { runtimeApiUrl, runtimeWebSocketUrl } from '../lib/runtimeConfig';
 import {
   HARNESS_UPDATED_EVENT,
@@ -33,8 +33,7 @@ import {
 /**
  * useClashRuntime — chat through a registered local-runtime daemon.
  *
- * Sister to useAgentByoBridge (one-shot pair-token flow). This hook drives
- * the persistent-daemon path: list runtimes the user has registered →
+ * This hook drives the persistent-runtime path: list runtimes the user has registered →
  * pick one → POST /api/v1/runtimes/:rid/sessions → open WS to
  * /api/v1/local-sessions/:sid/_stream → relay prompts ↔ events.
  *
@@ -269,7 +268,7 @@ export interface UseClashRuntimeReturn {
   /** RPC the daemon for resumeable local CC sessions. Returns [] if the
    *  runtime is offline or the daemon doesn't respond. Used by the
    *  picker dialog so the user can pick "Resume X" instead of fresh. */
-  loadResumeOptions: (runtimeId: string) => Promise<BridgeSession[]>;
+  loadResumeOptions: (runtimeId: string) => Promise<RuntimeResumeSession[]>;
   sendMessage: (text: string) => void;
   setPromptQueueEnabled: (enabled: boolean) => void;
   setPromptQueueMode: (mode: RuntimePromptQueueMode) => void;
@@ -1790,13 +1789,13 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setRuntimeStatus('idle');
   }, [replacePromptQueue, resetRuntimeState]);
 
-  const loadResumeOptions = useCallback(async (runtimeId: string): Promise<BridgeSession[]> => {
+  const loadResumeOptions = useCallback(async (runtimeId: string): Promise<RuntimeResumeSession[]> => {
     try {
       const res = await fetch(runtimeApiUrl(`${RUNTIMES_PATH}/${runtimeId}/local-sessions/scan`), {
         credentials: 'include',
       });
       if (!res.ok) return [];
-      const json = (await res.json()) as { sessions: BridgeSession[] };
+      const json = (await res.json()) as { sessions: RuntimeResumeSession[] };
       return json.sessions ?? [];
     } catch {
       return [];

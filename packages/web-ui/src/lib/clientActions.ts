@@ -449,19 +449,13 @@ export async function marketplaceUninstallAction(item: RegistryItem): Promise<vo
 }
 
 export async function marketplaceInstallSkill(item: RegistryItem): Promise<void> {
-  await installSkill({
-    id: item.id,
-    name: item.name,
-    description: item.description,
-    repository: item.repository,
-    version: item.version,
-    author: item.author,
-    icon: item.icon,
-    tags: item.tags,
-    linkedActionId: item.linkedActionId,
+  await jsonFetch(`/api/marketplace/skills/${encodeURIComponent(item.id)}/install`, {
+    method: "POST",
   });
 }
 
 export async function marketplaceUninstallSkill(skillId: string): Promise<void> {
-  await uninstallSkill(skillId);
+  await jsonFetch(`/api/marketplace/skills/${encodeURIComponent(skillId)}/install`, {
+    method: "DELETE",
+  });
 }

@@ -162,12 +162,22 @@ const EMPTY_METADATA_DB: LocalMetadataDb = {
 const METADATA_MIGRATION_ID = "metadata-sqlite-v1";
 const require = createRequire(import.meta.url);
 
+// `createRequire` rather than a bare `require`: this package is ESM (`"type": "module"`), and a
+// bare `require` in a file that also uses `import` leaves the module kind ambiguous. Node and tsx
+// both refuse it -- `tsx` reports ERR_AMBIGUOUS_MODULE_SYNTAX and will not load the file at all,
+// which is why a throwaway script that imported this module could not be run.
+//
+// Still lazy, which is the point: `node:sqlite` is loaded on the first call below, not at import
+// time. It is an experimental built-in, so paying for it only when a database is actually opened
+// keeps the cost off every consumer that merely imports this module.
+const nodeRequire = createRequire(import.meta.url);
+
 function sqlitePath(dataDir: string): string {
   return join(dataDir, "local.sqlite");
 }
 
 function openDatabase(path: string): SqliteDatabase {
-  const { DatabaseSync } = require("node:sqlite") as {
+  const { DatabaseSync } = nodeRequire("node:sqlite") as {
     DatabaseSync: new (path: string) => SqliteDatabase;
   };
   const db = new DatabaseSync(path);

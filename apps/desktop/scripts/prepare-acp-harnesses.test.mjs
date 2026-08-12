@@ -30,15 +30,15 @@ describe("prepare ACP harness wrappers", () => {
 
   it("keeps harness preparation out of the self-hosted desktop package build", async () => {
     const packageJson = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
-    const bridgePackageJson = JSON.parse(
-      await readFile(join(repoRoot, "packages", "clash-bridge", "package.json"), "utf8"),
+    const cliPackageJson = JSON.parse(
+      await readFile(join(repoRoot, "packages", "cli", "package.json"), "utf8"),
     );
 
     expect(packageJson.scripts["prepare:pack"]).not.toContain("pnpm prepare:harnesses");
     expect(packageJson.devDependencies["@agentclientprotocol/codex-acp"]).toBe("^1.1.7");
     expect(packageJson.devDependencies["@zed-industries/codex-acp"]).toBeUndefined();
     expect(packageJson.devDependencies["@agentclientprotocol/claude-agent-acp"]).toBeTruthy();
-    expect(bridgePackageJson.dependencies["@zed-industries/codex-acp"]).toBeUndefined();
+    expect(cliPackageJson.dependencies["@zed-industries/codex-acp"]).toBeUndefined();
   });
 
   it("runs node-based ACP packages from a Resources-owned bundle in packaged apps", () => {

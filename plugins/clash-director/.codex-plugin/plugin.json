@@ -2,7 +2,7 @@
   "name": "clash-director",
   "version": "0.1.0+codex.20260716",
   "description": "Compose Clash Director Stages through typed MCP tools.",
-  "author": { "name": "Clash Space" },
+  "author": { "name": "Clash" },
   "license": "MIT",
   "keywords": ["director", "3d", "blocking", "codex", "local-first"],
   "skills": "./skills/",
@@ -10,7 +10,7 @@
     "displayName": "Clash Director",
     "shortDescription": "Author agent-readable 3D blocking stages",
     "longDescription": "Inspect, create, block, animate, and save Clash Project Director Stages through typed MCP tools while preserving CLI read-proof and revision semantics. The embedded MCP App is temporarily unavailable.",
-    "developerName": "Clash Space",
+    "developerName": "Clash",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [

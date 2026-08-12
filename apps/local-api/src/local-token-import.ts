@@ -3,12 +3,31 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
-import type { ExecutablePluginProviderAuth } from "@clash/shared-types";
-
-export type LocalTokenImportAuth = Extract<
-  ExecutablePluginProviderAuth,
-  { type: "local-token-import" }
->;
+/**
+ * Where a desktop app keeps a token, and how to read it.
+ *
+ * Declared here rather than in `@clash/shared-types` because it is no longer part of the plugin
+ * protocol. It used to be a `local-token-import` member of a union over auth types, which a plugin
+ * wrote into its manifest and the host executed. That registry is gone: a union over auth types
+ * needs a member per vendor, and this one existed for a single installed client.
+ *
+ * The decryption itself is unchanged and still used by the host's own import endpoint. What moved
+ * is only where the recipe comes from -- this type, rather than a schema every plugin could write
+ * to. The traversal guard below is what makes that safe to keep: every path is resolved inside the
+ * application data root, and one that escapes throws rather than reading `~/.ssh`.
+ */
+export interface LocalTokenImportAuth {
+  type: "local-token-import";
+  id: string;
+  label?: string;
+  source: {
+    format: "electron-store-aes-256-gcm-v2";
+    appDataSubdirectory: string;
+    configFile: string;
+    keyFile: string;
+    tokenPath: readonly string[];
+  };
+}
 
 const ENCRYPTED_V2_PREFIX = "v2enc:";
 const KEY_LENGTH = 32;

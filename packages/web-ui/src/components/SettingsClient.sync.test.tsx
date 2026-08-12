@@ -104,7 +104,6 @@ const LOCAL_ASR_MODEL_CATALOG = [
       name: "SenseVoice Small",
       provider: "Local",
       kind: "asr",
-      task: "speech-to-text",
       defaultAspectRatio: "1:1",
       description: "Local microphone transcription.",
       parameters: [],
@@ -138,6 +137,7 @@ const LOCAL_ASR_MODEL_CATALOG = [
       priority: 1,
     },
     candidateProviders: ["local"],
+    unavailableParameterIds: [],
     missingCredentials: [],
     missingOAuth: [],
   },
@@ -174,7 +174,6 @@ const GLOBAL_VOICE_INPUT_MODEL_CATALOG = [
       name: "Gemini 3 Flash",
       provider: "Google",
       kind: "text",
-      task: "text-generation",
       defaultAspectRatio: "1:1",
       description: "Cloud multimodal text model with audio input.",
       parameters: [],
@@ -208,6 +207,7 @@ const GLOBAL_VOICE_INPUT_MODEL_CATALOG = [
       priority: 1,
     },
     candidateProviders: ["official"],
+    unavailableParameterIds: [],
     missingCredentials: [],
     missingOAuth: [],
   },
@@ -221,7 +221,6 @@ const LOCAL_SPEECH_MODEL_CATALOG = [
       name: "Piper Huayan",
       provider: "Local",
       kind: "audio",
-      task: "text-to-speech",
       defaultAspectRatio: "1:1",
       description: "Downloadable Mandarin voice running fully on-device.",
       parameters: [],
@@ -257,6 +256,7 @@ const LOCAL_SPEECH_MODEL_CATALOG = [
       priority: 1,
     },
     candidateProviders: ["local"],
+    unavailableParameterIds: [],
     missingCredentials: [],
     missingOAuth: [],
   },
@@ -298,6 +298,7 @@ const VIBEVOICE_MODEL_CATALOG = [{
     priority: 1,
   },
   candidateProviders: ["local"],
+  unavailableParameterIds: [],
   missingCredentials: [],
   missingOAuth: [],
 }] as any;
@@ -3696,6 +3697,7 @@ describe("SettingsClient model routing", () => {
               },
               routes: [],
               candidateProviders: ["fal"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -3746,11 +3748,9 @@ describe("SettingsClient model routing", () => {
       google: "/brand/providers/google.svg",
       fal: "/brand/providers/fal.svg",
       flux: "/brand/models/flux.svg",
-      kie: "/brand/providers/kie.png",
       replicate: "/brand/providers/replicate.svg",
       kling: "/brand/providers/kling.svg",
       minimax: "/brand/providers/minimax.svg",
-      jimeng: "/brand/providers/jimeng.svg",
       volcengine: "/brand/providers/volcengine.svg",
       elevenlabs: "/brand/providers/elevenlabs.svg",
     });
@@ -3799,7 +3799,16 @@ describe("SettingsClient model routing", () => {
     expect(screen.getByRole("button", { name: "Add custom provider" })).toBeTruthy();
   });
 
-  it("renders Google AI Studio and Google Cloud Agent Platform as separate BYOK providers", () => {
+  /**
+   * Reversed. Google is one Provider, and `service` is a setting on the account.
+   *
+   * This asserted the split that was measured away: both surfaces authenticate the same
+   * way -- `x-goog-api-key` against `:generateContent` -- and only the host differs. Same
+   * authentication method, same Provider. The surface became a declared `choice` on the account
+   * form, so two accounts on different services are two accounts of one Provider, not two
+   * Providers.
+   */
+  it("renders Google as one BYOK provider whose accounts choose a service", () => {
     render(
       <MemoryRouter>
         <SettingsClient
@@ -3823,7 +3832,7 @@ describe("SettingsClient model routing", () => {
               id: "google-agent-platform-primary",
               label: "Cloud primary",
               providerId: "official",
-              upstreamId: "google-agent-platform",
+              upstreamId: "google-ai-studio",
               region: "global",
               enabled: true,
               configuredCredentials: ["serviceAccountKey"],
@@ -3836,8 +3845,8 @@ describe("SettingsClient model routing", () => {
 
     const configuredProviders = screen.getByRole("list", { name: "Configured BYOK providers" });
     expect(within(configuredProviders).getByText("Google AI Studio")).toBeTruthy();
-    expect(within(configuredProviders).getByText("Google Cloud Agent Platform")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Open Google BYOK settings" })).toBeNull();
+    // No second entry: the two accounts differ by a setting, not by Provider.
+    expect(within(configuredProviders).queryByText("Google Cloud Agent Platform")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Open Google AI Studio BYOK settings" }));
     expect(screen.getByRole("heading", { name: "Google AI Studio" })).toBeTruthy();
@@ -3845,19 +3854,16 @@ describe("SettingsClient model routing", () => {
       .toBe("/settings?section=models&provider=official%3Agoogle-ai-studio%3Aglobal");
     fireEvent.click(screen.getByText("AI Studio primary"));
     expect(screen.getByLabelText("Google AI Studio API key")).toBeTruthy();
-    expect(screen.queryByLabelText("Google Cloud service account JSON")).toBeNull();
     expect(screen.queryByText(/Vertex/i)).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to BYOK" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open Google Cloud Agent Platform BYOK settings" }));
-    expect(screen.getByRole("heading", { name: "Google Cloud Agent Platform" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "View supported models" }).getAttribute("href"))
-      .toBe("/settings?section=models&provider=official%3Agoogle-agent-platform%3Aglobal");
-    fireEvent.click(screen.getByText("Cloud primary"));
-    expect(screen.getByLabelText("Google Cloud service account JSON")).toBeTruthy();
-    expect(screen.queryByLabelText("Google AI Studio API key")).toBeNull();
-    expect(screen.queryByText(/Model Garden/i)).toBeNull();
-    expect(screen.queryByText(/MaaS/i)).toBeNull();
+    // The second account is reached inside the same Provider, not behind a second one. There is
+    // no "Open Google Cloud Agent Platform BYOK settings" button to press any more, because the
+    // surface is a setting on the account rather than a Provider of its own.
+    expect(screen.queryByRole("button", { name: "Open Google Cloud Agent Platform BYOK settings" }))
+      .toBeNull();
+    // The account list lives inside the Provider, which is the point of the merge: two accounts on
+    // different services are two accounts of one Provider.
+    expect(screen.getAllByText(/AI Studio primary/).length).toBeGreaterThan(0);
   });
 
   it("renders the official Black Forest Labs FLUX provider setup", () => {
@@ -4442,68 +4448,6 @@ describe("SettingsClient model routing", () => {
     expect(screen.getByText("Secondary")).toBeTruthy();
   });
 
-  it("renders OAuth providers as account configs with scoped authorization controls", async () => {
-    const actions = await import("@clash/web-ui/lib/clientActions");
-    vi.mocked(actions.listProviderOAuth).mockResolvedValue([
-      {
-        providerId: "dreamina",
-        accountId: "jimeng-primary",
-        status: "authorized",
-        accountLabel: "Primary Dreamina",
-        hasAccessToken: true,
-      },
-    ]);
-
-    render(
-      <MemoryRouter>
-        <SettingsClient
-          initialTokens={[]}
-          initialVariables={[]}
-          initialActions={[]}
-          initialSkills={[]}
-          activeSection="providers"
-          embedded
-          initialModelProviders={[
-            {
-              id: "jimeng-primary",
-              label: "Primary Dreamina",
-              providerId: "jimeng",
-              upstreamId: "jimeng",
-              enabled: true,
-              priority: 10,
-              availableOAuth: ["dreamina"],
-            },
-          ]}
-          initialModelCatalog={[]}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole("button", { name: "Open Dreamina BYOK settings" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Open Dreamina BYOK settings" }));
-
-    expect(screen.getByText("Provider Accounts")).toBeTruthy();
-    expect(screen.queryByText("Provider Keys")).toBeNull();
-    expect(screen.getByRole("button", { name: "Add prioritized Dreamina account" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
-
-    const accounts = screen.getByRole("list", { name: "Dreamina prioritized accounts" });
-    const accountRow = within(accounts).getByText("Primary Dreamina").closest("li") as HTMLElement;
-    await waitFor(() => {
-      expect(within(accountRow).getByText("Connected: Primary Dreamina")).toBeTruthy();
-    });
-    expect(within(accountRow).getByRole("switch", { name: "Provider enabled for Primary Dreamina" })).toBeTruthy();
-
-    fireEvent.click(within(accountRow).getByText("Primary Dreamina"));
-
-    const editor = within(accountRow).getByRole("group", { name: "Primary Dreamina Dreamina account" });
-    expect(within(editor).getByText("Authorization")).toBeTruthy();
-    expect(within(editor).getByRole("button", { name: "Reconnect" })).toBeTruthy();
-    expect(within(editor).getByRole("combobox", { name: /Choose test model/i })).toBeTruthy();
-    expect(within(editor).getByRole("button", { name: "Run provider test" })).toBeTruthy();
-    expect(within(editor).queryByLabelText("Dreamina API key")).toBeNull();
-  });
-
   it("discovers a plugin Provider and completes its browser OAuth callback in the desktop window", async () => {
     const actions = await import("@clash/web-ui/lib/clientActions");
     vi.mocked((actions as any).listPluginProviders).mockResolvedValue([{
@@ -4677,183 +4621,6 @@ describe("SettingsClient model routing", () => {
         "Primary Hilo",
       );
       expect(within(accountRow).getAllByText("Connected: Primary Hilo").length).toBeGreaterThan(0);
-    });
-  });
-
-  it("creates a Dreamina account before starting OAuth for that account", async () => {
-    const actions = await import("@clash/web-ui/lib/clientActions");
-    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
-    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
-    vi.mocked(actions.startProviderOAuth).mockImplementation(async (providerId, accountId, accountLabel) => ({
-      providerId,
-      accountId,
-      accountLabel,
-      status: "pending",
-      verificationUri: "https://jimeng.example/device",
-      userCode: "AAAA-BBBB",
-      deviceCode: "device-code",
-      hasAccessToken: false,
-    }));
-
-    render(
-      <MemoryRouter>
-        <SettingsClient
-          initialTokens={[]}
-          initialVariables={[]}
-          initialActions={[]}
-          initialSkills={[]}
-          activeSection="providers"
-          embedded
-          initialModelProviders={[]}
-          initialModelCatalog={[]}
-        />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Open Dreamina BYOK settings" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add prioritized Dreamina account" }));
-    const newAccountEditor = screen.getByRole("group", { name: "New Dreamina account" });
-    fireEvent.change(within(newAccountEditor).getByLabelText("Dreamina account name"), {
-      target: { value: "Studio" },
-    });
-    fireEvent.click(within(newAccountEditor).getByRole("button", { name: "Save" }));
-
-    let savedAccountId = "";
-    await waitFor(() => {
-      const savedProviders = vi.mocked(actions.updateModelProviders).mock.calls.at(-1)?.[0] ?? [];
-      const savedAccount = savedProviders.find((provider) => provider.providerId === "jimeng" && provider.label === "Studio");
-      expect(savedAccount).toBeTruthy();
-      savedAccountId = savedAccount?.id ?? "";
-      expect(savedAccountId).toEqual(expect.any(String));
-    });
-
-    const accountRow = (await screen.findByText("Studio")).closest("li") as HTMLElement;
-    fireEvent.click(within(accountRow).getByText("Studio"));
-    fireEvent.click(within(accountRow).getByRole("button", { name: "Connect" }));
-
-    await waitFor(() => {
-      expect(actions.startProviderOAuth).toHaveBeenCalledWith("dreamina", savedAccountId, "Studio");
-    });
-  });
-
-  it("surfaces provider OAuth launch failures instead of silently dropping the action", async () => {
-    const actions = await import("@clash/web-ui/lib/clientActions");
-    vi.mocked(actions.listProviderOAuth).mockResolvedValue([]);
-    vi.mocked(actions.startProviderOAuth).mockRejectedValue(
-      new Error("Dreamina authorization is only available in the local desktop runtime."),
-    );
-
-    render(
-      <MemoryRouter>
-        <AppFeedbackProvider>
-          <SettingsClient
-            initialTokens={[]}
-            initialVariables={[]}
-            initialActions={[]}
-            initialSkills={[]}
-            activeSection="providers"
-            embedded
-            initialModelProviders={[
-              {
-                id: "jimeng-primary",
-                label: "Primary Dreamina",
-                providerId: "jimeng",
-                upstreamId: "jimeng",
-                enabled: true,
-                priority: 10,
-                availableOAuth: ["dreamina"],
-              },
-            ]}
-            initialModelCatalog={[]}
-          />
-        </AppFeedbackProvider>
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Open Dreamina BYOK settings" }));
-    const accounts = screen.getByRole("list", { name: "Dreamina prioritized accounts" });
-    const accountRow = within(accounts).getByText("Primary Dreamina").closest("li") as HTMLElement;
-    fireEvent.click(within(accountRow).getByText("Primary Dreamina"));
-
-    const editor = within(accountRow).getByRole("group", { name: "Primary Dreamina Dreamina account" });
-    const connectButton = within(editor).getByRole("button", { name: "Connect" });
-    fireEvent.click(connectButton);
-
-    await waitFor(() => {
-      expect(actions.startProviderOAuth).toHaveBeenCalledWith("dreamina", "jimeng-primary", "Primary Dreamina");
-    });
-    const toast = await screen.findByRole("alert");
-    expect(toast.textContent).toContain("Could not start Dreamina authorization");
-    expect(toast.textContent).toContain("Dreamina authorization is only available in the local desktop runtime.");
-    await waitFor(() => {
-      expect((connectButton as HTMLButtonElement).disabled).toBe(false);
-    });
-  });
-
-  it("surfaces provider OAuth completion failures on the edited account", async () => {
-    const actions = await import("@clash/web-ui/lib/clientActions");
-    vi.mocked(actions.listProviderOAuth).mockResolvedValue([
-      {
-        providerId: "dreamina",
-        accountId: "jimeng-primary",
-        accountLabel: "Primary Dreamina",
-        status: "pending",
-        verificationUri: "https://jimeng.example/device",
-        userCode: "FAIL-CODE",
-        deviceCode: "device-code-fails",
-        hasAccessToken: false,
-      },
-    ]);
-    vi.mocked(actions.completeProviderOAuth).mockRejectedValue(new Error("Dreamina device code expired"));
-
-    render(
-      <MemoryRouter>
-        <AppFeedbackProvider>
-          <SettingsClient
-            initialTokens={[]}
-            initialVariables={[]}
-            initialActions={[]}
-            initialSkills={[]}
-            activeSection="providers"
-            embedded
-            initialModelProviders={[
-              {
-                id: "jimeng-primary",
-                label: "Primary Dreamina",
-                providerId: "jimeng",
-                upstreamId: "jimeng",
-                enabled: true,
-                priority: 10,
-                availableOAuth: ["dreamina"],
-              },
-            ]}
-            initialModelCatalog={[]}
-          />
-        </AppFeedbackProvider>
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Open Dreamina BYOK settings" }));
-    const accounts = screen.getByRole("list", { name: "Dreamina prioritized accounts" });
-    const accountRow = within(accounts).getByText("Primary Dreamina").closest("li") as HTMLElement;
-    await waitFor(() => {
-      expect(within(accountRow).getByText("Authorization pending")).toBeTruthy();
-    });
-    fireEvent.click(within(accountRow).getByText("Primary Dreamina"));
-
-    const editor = within(accountRow).getByRole("group", { name: "Primary Dreamina Dreamina account" });
-    const completeButton = within(editor).getByRole("button", { name: "Complete" });
-    fireEvent.click(completeButton);
-
-    await waitFor(() => {
-      expect(actions.completeProviderOAuth).toHaveBeenCalledWith("dreamina", "device-code-fails", "jimeng-primary");
-    });
-    const toast = await screen.findByRole("alert");
-    expect(toast.textContent).toContain("Could not complete Dreamina authorization");
-    expect(toast.textContent).toContain("Dreamina device code expired");
-    expect(within(editor).getByText("Error: Dreamina device code expired")).toBeTruthy();
-    await waitFor(() => {
-      expect(within(editor).getByRole("button", { name: "Connect" })).toBeTruthy();
     });
   });
 
@@ -5649,6 +5416,7 @@ describe("SettingsClient model routing", () => {
               selectedRoute: null,
               routes: [],
               candidateProviders: ["official", "fal", "replicate"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -5676,6 +5444,7 @@ describe("SettingsClient model routing", () => {
               },
               routes: [],
               candidateProviders: ["official"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -5726,6 +5495,7 @@ describe("SettingsClient model routing", () => {
       selectedRoute: null,
       routes: [],
       candidateProviders: ["official"],
+      unavailableParameterIds: [],
       missingCredentials: [],
       missingOAuth: [],
     });
@@ -5826,6 +5596,7 @@ describe("SettingsClient model routing", () => {
                 },
               ],
               candidateProviders: ["official"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -5865,7 +5636,6 @@ describe("SettingsClient model routing", () => {
               name: "MiniMax TTS",
               provider: "MiniMax",
               kind: "audio",
-              task: "text-to-speech",
               description: "High-quality Chinese and English text-to-speech.",
               parameters: [],
               defaultParams: {},
@@ -5903,6 +5673,7 @@ describe("SettingsClient model routing", () => {
               },
             ],
             candidateProviders: ["minimax", "fal"],
+            unavailableParameterIds: [],
             missingCredentials: [],
             missingOAuth: [],
           }]}
@@ -6080,6 +5851,7 @@ describe("SettingsClient model routing", () => {
               selectedRoute: null,
               routes: [],
               candidateProviders: ["replicate"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -6099,6 +5871,7 @@ describe("SettingsClient model routing", () => {
               selectedRoute: null,
               routes: [],
               candidateProviders: ["official"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -6140,6 +5913,7 @@ describe("SettingsClient model routing", () => {
               selectedRoute: null,
               routes: [],
               candidateProviders: ["fal"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -6182,6 +5956,7 @@ describe("SettingsClient model routing", () => {
               selectedRoute: null,
               routes: [],
               candidateProviders: ["official"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -6209,6 +5984,7 @@ describe("SettingsClient model routing", () => {
               },
               routes: [],
               candidateProviders: ["official"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -6237,6 +6013,7 @@ describe("SettingsClient model routing", () => {
               },
               routes: [],
               candidateProviders: ["custom"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -6354,6 +6131,7 @@ describe("SettingsClient model routing", () => {
                 },
               ],
               candidateProviders: ["official", "replicate"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -6569,6 +6347,7 @@ describe("SettingsClient model routing", () => {
                 },
               ],
               candidateProviders: ["official", "replicate"],
+              unavailableParameterIds: [],
               missingCredentials: [],
               missingOAuth: [],
             },

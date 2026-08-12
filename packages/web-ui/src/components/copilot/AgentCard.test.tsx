@@ -164,13 +164,13 @@ describe("AgentCard", () => {
 
   it("renders persona variants without renaming the agent", () => {
     const { rerender } = render(
-      <AgentCard agentName="Master Clash" status="working" persona="masterClash" />
+      <AgentCard agentName="Clash" status="working" persona="clash" />
     );
-    expect(screen.getByText("Master Clash")).toBeInTheDocument();
+    expect(screen.getByText("Clash")).toBeInTheDocument();
 
     rerender(<AgentCard agentName="ScriptWriter" status="working" persona="scriptwriter" />);
     expect(screen.getByText("ScriptWriter")).toBeInTheDocument();
-    expect(screen.queryByText("Master Clash")).not.toBeInTheDocument();
+    expect(screen.queryByText("Clash")).not.toBeInTheDocument();
   });
 
   it("handles empty logs gracefully", () => {
@@ -203,7 +203,7 @@ describe("AgentCard", () => {
 
     const { container } = render(
       <div>
-        <AgentCard agentName="Master Clash" status="working" logs={logs} />
+        <AgentCard agentName="Clash" status="working" logs={logs} />
         <NodeProposalCard
           proposal={proposal}
           onAccept={vi.fn()}

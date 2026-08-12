@@ -1,4 +1,4 @@
-import type { ModelCard, ModelConstraintRule, ModelParameter } from "./models";
+import type { ModelCard, ModelConstraintRule, ModelParameter } from "./models.js";
 
 export interface ParameterConfigurationContract {
   parameters: readonly ModelParameter[];

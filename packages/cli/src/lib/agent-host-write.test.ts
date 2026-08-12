@@ -12,7 +12,7 @@ test("agent host write guard always rejects no-host writes", () => {
   assert.equal(rejected.ok, false);
   if (!rejected.ok) {
     assert.match(rejected.error, /local host.*cwd observation/);
-    assert.match(rejected.error, /clash canvas connect/);
+    assert.match(rejected.error, /Start the local-api host/);
     assert.match(rejected.error, /clash timeline pull --json/);
     assert.doesNotMatch(rejected.error, /readToken|with that token/i);
     assert.doesNotMatch(rejected.error, /--force/);

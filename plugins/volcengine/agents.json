@@ -1,0 +1,23 @@
+{
+  "summary": "First-party executable plugin contributing separate Volcengine ModelArk and Volcengine Speech Providers.",
+  "context_hints": [
+    "The plugin id is clash.volcengine; its Provider ids are volcengine and volcengine-speech",
+    "Each Provider has independent accounts; the Host exposes only the selected account's apiKey/baseUrl through context.store",
+    "Provider request translation, submission, and polling stay inside this plugin",
+    "Seedance uses the ModelArk executor and Bearer credentials; Seed Audio uses the OpenSpeech executor and X-Api-Key credentials"
+  ],
+  "subdirectories": {
+    "providers": "Independent ModelArk and Volcengine Speech Provider declarations and authentication forms.",
+    "src": "Typed stdio entrypoint plus separate ModelArk and OpenSpeech executors.",
+    "contract-tests": "Declarative activation-gating ABI fixtures."
+  },
+  "key_files": {
+    "manifest.json": "Versioned executable package and contribution declarations.",
+    "providers/volcengine.json": "ModelArk Provider metadata plus API-key and overrideable Base URL fields.",
+    "providers/volcengine-speech.json": "OpenSpeech Provider metadata plus its independent API-key and Base URL fields.",
+    "src/modelark.ts": "Seedance request translation and asynchronous submit/poll lifecycle.",
+    "src/speech.ts": "Seed Audio request translation and synchronous OpenSpeech lifecycle.",
+    "src/stdio.ts": "SDK-assembled standard plugin entrypoint."
+  },
+  "verification": ["pnpm --filter @clash-plugin/volcengine test"]
+}

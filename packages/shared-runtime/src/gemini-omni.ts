@@ -18,42 +18,90 @@ export interface GeminiOmniVideoOutput {
 }
 
 export interface CreateGeminiOmniInteractionInput {
+  /** The Developer API credential. Agent Platform refuses it; see `accessToken`. */
   apiKey?: string;
+  /**
+   * An OAuth2 access token. Not an api key -- this API answers one with 401 "API keys are not
+   * supported by this API", measured with a key that generateContent accepts.
+   */
+  accessToken?: string;
+  /** The Cloud project the interaction is billed to; it is part of the path, not a header. */
+  project?: string;
   baseUrl?: string;
   model: string;
   input: ReadonlyArray<GeminiOmniInputPart>;
   aspectRatio: "16:9" | "9:16";
+  /** Return immediately with `in_progress` and poll, instead of waiting for the video inline. */
+  background?: boolean;
+  /** A `gs://bucket/path` to write the video to, instead of receiving it as base64. */
+  gcsUri?: string;
   duration: number;
   fetch?: typeof fetch;
 }
 
 export interface GetGeminiOmniInteractionInput {
   apiKey?: string;
+  accessToken?: string;
+  project?: string;
   baseUrl?: string;
   interactionId: string;
   fetch?: typeof fetch;
 }
 
+/**
+ * Two surfaces serve Interactions, and they do not share a spelling.
+ *
+ * Agent Platform, as Google documents it:
+ *   POST https://aiplatform.googleapis.com/v1beta1/projects/{PROJECT}/locations/global/interactions
+ *   Authorization: Bearer <token>
+ *
+ * The Developer API, measured:
+ *   POST https://generativelanguage.googleapis.com/v1beta/interactions
+ *   x-goog-api-key: <key>
+ *
+ * Neither spelling works on the other host -- `/v1beta1/interactions` on generativelanguage is 404,
+ * `/v1/interactions` on aiplatform is 404 -- so the host decides the whole shape, including which
+ * credential it will take.
+ *
+ * What is measured and what is not: Agent Platform's refusal of api keys is measured (401, with a
+ * key that generateContent accepts). The Developer API's endpoint is measured to exist (403 "Gemini
+ * API has not been used in project", which is a routed request refused on project configuration,
+ * not a 404). A *successful* api-key call to Interactions has not been made here -- the only key
+ * available is a Cloud key whose project has the Gemini API switched off, and an AI Studio key was
+ * never in hand. The header choice below follows Google's documentation for that surface.
+ */
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+/** Whether this base url is Agent Platform, which alone needs a project and a token. */
+function isAgentPlatform(baseUrl: string): boolean {
+  return /aiplatform\.googleapis\.com/.test(baseUrl);
+}
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
 function apiBaseUrl(value?: string): string {
-  const baseUrl = trimTrailingSlash(value || DEFAULT_BASE_URL);
-  try {
-    const url = new URL(baseUrl);
-    if (
-      url.hostname === "gateway.ai.cloudflare.com"
-      && !/\/v\d+(?:beta\d*)?$/.test(url.pathname)
-    ) {
-      return `${baseUrl}/v1beta`;
-    }
-  } catch {
-    // Let fetch surface malformed custom URLs with its normal error.
+  return trimTrailingSlash(value || DEFAULT_BASE_URL);
+}
+
+/** The collection url. Agent Platform carries the project in its path; the Developer API does not. */
+function interactionsUrl(baseUrl: string, project: string | undefined): string {
+  if (!isAgentPlatform(baseUrl)) return `${baseUrl}/interactions`;
+  if (!project) {
+    throw new Error(
+      "Gemini Omni on Agent Platform needs the Cloud project id: it is a path segment, "
+      + "as /v1beta1/projects/{project}/locations/global/interactions. "
+      + "The Developer API needs no project.",
+    );
   }
-  return baseUrl;
+  return `${baseUrl}/projects/${project}/locations/global/interactions`;
+}
+
+
+/** Accepts a bare id or a `interactions/{id}` name, and yields the bare id. */
+function interactionId(value: string): string {
+  return value.trim().replace(/^interactions\//, "");
 }
 
 function interactionPath(value: string): string {
@@ -76,18 +124,36 @@ async function parseJsonResponse(response: Response, operation: string): Promise
 }
 
 function headers(
-  input: { apiKey?: string; baseUrl?: string },
+  input: { accessToken?: string; apiKey?: string; baseUrl?: string },
   contentType = false,
 ): Record<string, string> {
+  const json: Record<string, string> = contentType ? { "content-type": "application/json" } : {};
+  const baseUrl = apiBaseUrl(input.baseUrl);
+
+  if (isAgentPlatform(baseUrl)) {
+    const accessToken = input.accessToken?.trim();
+    if (!accessToken) {
+      throw new Error(
+        "Gemini Omni on Agent Platform requires an OAuth2 access token. That surface refuses api "
+        + "keys outright (401 \"API keys are not supported by this API\").",
+      );
+    }
+    return { authorization: `Bearer ${accessToken}`, ...json };
+  }
+
+  // No falling back to accessToken. The two are different kinds of credential, and accepting either
+  // would let a caller aim at one surface holding the other's secret -- failing at the vendor with a
+  // message about the credential rather than about the mix-up.
   const apiKey = input.apiKey?.trim();
   if (!apiKey) {
-    throw new Error("Gemini Omni requires a Google API key.");
+    throw new Error(
+      "Gemini Omni on the Developer API requires a Google API key. "
+      + "An access token belongs to Agent Platform, which is a different base url.",
+    );
   }
-  return {
-    "x-goog-api-key": apiKey,
-    ...(contentType ? { "content-type": "application/json" } : {}),
-  };
+  return { "x-goog-api-key": apiKey, ...json };
 }
+
 
 export async function createGeminiOmniInteraction(
   input: CreateGeminiOmniInteractionInput,
@@ -99,9 +165,10 @@ export async function createGeminiOmniInteraction(
     : input.input.map((part) => part.type === "text"
       ? { type: "text", text: part.text }
       : { type: "image", data: part.data, mime_type: part.mimeType });
-  const response = await fetchImpl(`${baseUrl}/interactions`, {
+  const requestHeaders = headers(input, true);
+  const response = await fetchImpl(interactionsUrl(baseUrl, input.project), {
     method: "POST",
-    headers: headers(input, true),
+    headers: requestHeaders,
     body: JSON.stringify({
       model: input.model,
       input: serializedInput,
@@ -109,9 +176,18 @@ export async function createGeminiOmniInteraction(
         type: "video",
         aspect_ratio: input.aspectRatio,
         duration: `${input.duration}s`,
-        delivery: "uri",
+        // Delivery to a bucket when one is named, bytes otherwise. The two fields travel together:
+        // `delivery: "uri"` alone answers 400 "Video delivery mode 'URI' requires a `gcs_uri`",
+        // which is what this request used to send unconditionally -- so every omni call was
+        // guaranteed to fail, and nothing could authenticate well enough to discover it.
+        //
+        // Inline costs a third more on the wire than the file: 3302376 characters of base64 for
+        // 2476780 bytes of MP4, measured on one generation.
+        ...(input.gcsUri ? { delivery: "uri", gcs_uri: input.gcsUri } : {}),
       },
-      background: true,
+      // Measured as real: `background: true` returns `in_progress` and must then be polled. Left
+      // opt-in, because the default is synchronous and answers with the video in one call.
+      ...(input.background ? { background: true } : {}),
       store: true,
       stream: false,
     }),
@@ -124,7 +200,11 @@ export async function getGeminiOmniInteraction(
 ): Promise<GeminiOmniInteraction> {
   const fetchImpl = input.fetch ?? fetch;
   const baseUrl = apiBaseUrl(input.baseUrl);
-  const response = await fetchImpl(`${baseUrl}/${interactionPath(input.interactionId)}`, {
+  // The same collection, addressed by id. Building it separately is how the create call ended up on
+  // one host and the poll on another.
+  const response = await fetchImpl(
+    `${interactionsUrl(baseUrl, input.project)}/${interactionId(input.interactionId)}`,
+    {
     method: "GET",
     headers: headers(input),
   });
@@ -184,6 +264,7 @@ export function geminiOmniInteractionStatus(interaction: GeminiOmniInteraction):
 
 export async function downloadGeminiOmniVideo(input: {
   apiKey?: string;
+  accessToken?: string;
   uri: string;
   baseUrl?: string;
   pollIntervalMs?: number;
@@ -246,10 +327,9 @@ export async function downloadGeminiOmniVideo(input: {
   let downloadHeaders: Record<string, string> = {};
   try {
     const uri = new URL(input.uri);
-    if (
-      uri.hostname === "gateway.ai.cloudflare.com"
-      || uri.hostname === "generativelanguage.googleapis.com"
-    ) {
+    // Google's own hosts want the credential on the download too; anywhere else is a signed url and
+    // sending it there would leak the token to whoever hosts the bytes.
+    if (uri.hostname.endsWith(".googleapis.com")) {
       downloadHeaders = headers(input);
     }
   } catch {

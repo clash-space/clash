@@ -53,7 +53,21 @@ export function buildMiniMaxH3Content(input: MiniMaxH3ContentInput): Array<Recor
   }
 
   if (input.orderedContentParts?.length && !input.startFrame) {
-    return input.orderedContentParts.map(orderedPartToWire);
+    // The prompt editor may place text around every @-mention, but MiniMax H3's
+    // wire accepts at most one text item (business error 2013). Keep the
+    // authored media order and carry the complete label-expanded prompt once.
+    const media = input.orderedContentParts
+      .filter((part) => part.type !== "text")
+      .map(orderedPartToWire);
+    const text = input.prompt || input.orderedContentParts
+      .filter((part): part is Extract<MiniMaxH3OrderedContentPart, { type: "text" }> =>
+        part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    return [
+      ...(text ? [{ type: "text", text }] : []),
+      ...media,
+    ];
   }
   return [
     { type: "text", text: input.prompt },

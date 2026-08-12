@@ -18,7 +18,7 @@
 # drift gets found -- pass `rg --no-ignore-dot`.
 plugins/*/runtime/
 
-# Emitted agent trees mirror the repo's own layout (`dist/agents/master-clash/plugins/clash/...`),
+# Emitted agent trees mirror the repo's own layout (`dist/agents/clash/plugins/clash/...`),
 # so a hit inside one reads as a hit in `plugins/clash`. `dist/` is gitignored and therefore
 # already skipped; this states the intent so a future emitter writing to a tracked path is not
 # silently searchable.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { GOOGLE_PLATFORMS, googleApiBaseUrl } from './google-platform';
+import { GOOGLE_PLATFORMS, googleApiBaseUrl } from './google-platform.js';
 
 /**
  * One Google credential, two places it can be spent.

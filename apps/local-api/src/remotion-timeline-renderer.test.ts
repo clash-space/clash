@@ -93,4 +93,38 @@ describe("daemon Remotion Timeline renderer", () => {
     await expect(second).resolves.toMatchObject({ contentType: "video/mp4" });
     expect(maximumActive).toBe(1);
   });
+
+  it("resolves the browser bundle for every render so workspace edits become visible", async () => {
+    const resolveServeUrl = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("/tmp/remotion-before")
+      .mockResolvedValueOnce("/tmp/remotion-after");
+    const renderMedia = vi.fn(async (options: Record<string, unknown>) => {
+      await writeFile(String(options.outputLocation), Buffer.from("rendered"));
+    });
+    const renderer = createRemotionTimelineRenderer({
+      resolveServeUrl,
+      loadRenderer: async () => ({
+        selectComposition: async () => ({ id: "VideoComposition" }),
+        renderMedia,
+      }),
+    });
+
+    await renderer.render({
+      projectId: "project-1",
+      taskId: "before",
+      timelineDsl: TIMELINE,
+    });
+    await renderer.render({
+      projectId: "project-1",
+      taskId: "after",
+      timelineDsl: TIMELINE,
+    });
+
+    expect(resolveServeUrl).toHaveBeenCalledTimes(2);
+    expect(renderMedia.mock.calls.map(([options]) => options.serveUrl)).toEqual([
+      "/tmp/remotion-before",
+      "/tmp/remotion-after",
+    ]);
+  });
 });

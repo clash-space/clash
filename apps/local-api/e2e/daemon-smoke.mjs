@@ -270,7 +270,7 @@ async function exerciseLocalSession(origin) {
   const created = await jsonFetch(`${origin}/api/v1/runtimes/desktop-local/sessions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ agent_template_id: "master-clash", project_id: "daemon-e2e-project", agent_id: "mock-acp" }),
+    body: JSON.stringify({ agent_template_id: "clash", project_id: "daemon-e2e-project", agent_id: "mock-acp" }),
   });
   assert(created.session_id, "local ACP session is created", created);
 
@@ -496,7 +496,7 @@ async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
 
   const agentEnv = {
     ...env,
-    CLASH_AGENT_MEMBER_ID: "local-master-clash",
+    CLASH_AGENT_MEMBER_ID: "local-clash",
     CLASH_PROJECT_ID: created.id,
   };
 
@@ -520,7 +520,7 @@ async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
         msg.clients?.some((client) =>
           client.clientType === "agent" &&
           client.userId === "local-user" &&
-          client.name === "local-master-clash"
+          client.name === "local-clash"
         )
       ),
       "agent CLI presence as local user surrogate",
@@ -537,7 +537,7 @@ async function exerciseAgentCliShim(origin, createLocalAgentToolEnv) {
     assert(node, "agent CLI canvas list can read the node it created", { added, listed });
     assert(node.data?.actorType === "agent", "agent CLI-created node is attributed to an agent", node);
     assert(node.data?.actorUserId === "local-user", "CLI-created node resolves the local user id", node);
-    assert(node.data?.actorAgentId === "local-master-clash", "agent CLI-created node keeps the agent member id", node);
+    assert(node.data?.actorAgentId === "local-clash", "agent CLI-created node keeps the agent member id", node);
     return {
       projectId: created.id,
       nodeId: added.node_id,
@@ -730,7 +730,7 @@ async function writeFakeCodexAcp(binDir) {
   const wrapper = path.join(binDir, "codex-acp");
   const agent = path.join(binDir, "fake-codex-acp.mjs");
   const sdkUrl = pathToFileURL(require.resolve("@agentclientprotocol/sdk", {
-    paths: [path.join(repoRoot, "packages", "clash-bridge")],
+    paths: [path.join(repoRoot, "packages", "cli")],
   })).href;
   await writeFile(
     wrapper,
@@ -1005,7 +1005,7 @@ async function exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocal
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        agent_member_id: "local-master-clash",
+        agent_member_id: "local-clash",
         project_id: project.id,
         agent_id: "codex-acp",
       }),
@@ -1097,7 +1097,7 @@ async function exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocal
     assert(node, "fake ACP child created a canvas node through clash CLI", nodes);
     assert(node.data?.actorType === "agent", "fake ACP CLI node is attributed to an agent", node);
     assert(node.data?.actorUserId === "local-user", "fake ACP CLI node is attributed to the local user", node);
-    assert(node.data?.actorAgentId === "local-master-clash", "fake ACP CLI node keeps the agent member id", node);
+    assert(node.data?.actorAgentId === "local-clash", "fake ACP CLI node keeps the agent member id", node);
 
     return {
       sessionId: session.session_id,
@@ -1187,7 +1187,7 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        agent_member_id: "local-master-clash",
+        agent_member_id: "local-clash",
         project_id: project.id,
         agent_id: "codex-acp",
       }),
@@ -1297,8 +1297,8 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
       "official codex ACP request includes the Clash operating contract",
     );
     assert(
-      requestText.includes("# You are Master Clash"),
-      "official codex ACP request includes the single Master Clash identity",
+      requestText.includes("# You are Clash"),
+      "official codex ACP request includes the single Clash identity",
     );
     assert(
       requestText.includes(project.id),

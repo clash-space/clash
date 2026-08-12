@@ -1,0 +1,8 @@
+{
+  "summary": "Desktop business/controller layer for Electron host setup, local-api runtime ownership, windows, protocol, menu, and IPC wiring.",
+  "architecture_notes": [
+    "Keep Electron, filesystem, local-api, session, and persistence wiring here rather than in GUI packages.",
+    "main.ts only composes controller lifecycles.",
+    "The renderer consumes injected runtime contracts and must not import these controllers."
+  ]
+}

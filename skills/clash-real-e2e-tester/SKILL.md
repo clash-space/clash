@@ -12,12 +12,12 @@ Use this skill to hand a Clash desktop/Copilot test task to a subagent or to run
 Always name the level being run:
 
 1. **Static startup**
-   - Command: `pnpm --filter @master-clash/desktop test:startup:static`
+   - Command: `pnpm --filter @clash/desktop test:startup:static`
    - Verifies bundled/local harness setup and registry invariants.
    - No UI claim is allowed from this level.
 
 2. **Stub UI smoke**
-   - Command: `pnpm --filter @master-clash/desktop test:startup:ui`
+   - Command: `pnpm --filter @clash/desktop test:startup:ui`
    - Starts Electron and a stub ACP agent.
    - Useful for deterministic UI regressions.
    - Must be reported as stub/mock, never as real agent validation.
@@ -34,7 +34,7 @@ When delegating, use this prompt shape:
 ```text
 You are testing Clash desktop Copilot as a real user.
 
-Use /Users/xiaoyang/Proj/clash-space/clash as the repo.
+Use the current Clash repository root as the repo.
 
 Rules:
 - Use agent-browser against the Electron dev window, not the previously installed app.
@@ -47,8 +47,8 @@ Rules:
 - Clean up spawned Electron/Vite/agent child processes at the end.
 
 Run:
-1. `pnpm --filter @master-clash/desktop test:startup:static` for deterministic startup/package coverage.
-2. `pnpm --filter @master-clash/desktop test:startup:ui` only if a stub UI smoke test is explicitly useful, and label it as stub.
+1. `pnpm --filter @clash/desktop test:startup:static` for deterministic startup/package coverage.
+2. `pnpm --filter @clash/desktop test:startup:ui` only if a stub UI smoke test is explicitly useful, and label it as stub.
 3. `pnpm test:startup:real-codex` for the real Codex path.
 
 For the real run, verify:

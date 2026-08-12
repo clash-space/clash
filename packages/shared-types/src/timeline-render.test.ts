@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { LoroDoc } from "loro-crdt";
-import { Canvas } from "./canvas-ops";
-import * as workspace from "./project-workspace";
-import * as timelineRender from "./timeline-render";
+import { Canvas } from "./canvas-ops.js";
+import * as workspace from "./project-workspace.js";
+import * as timelineRender from "./timeline-render.js";
 
 const timelineState = {
   compositionWidth: 1920,

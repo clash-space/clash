@@ -1,6 +1,6 @@
 import React, { useState, useCallback, CSSProperties } from 'react';
 import { useDraggable } from '../ui/dnd';
-import type { Item, BaseItem, Asset, Track } from '@master-clash/remotion-core';
+import type { Item, BaseItem, Asset, Track } from '@clash/remotion-core';
 import {
   AUDIO_GAIN_DB_MAX,
   AUDIO_GAIN_DB_MIN,
@@ -17,7 +17,7 @@ import {
   resolveAudioGainDb,
   useEditorDispatch,
   useEditorStaticState,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import { frameToPixels, secondsToFrames } from './utils/timeFormatter';
 import { getRendererForItem } from './items/registry';
 import { generateVideoThumbnailAtTime, thumbnailCache } from '../../utils/thumbnailCache';

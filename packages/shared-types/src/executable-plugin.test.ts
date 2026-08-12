@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import * as sharedTypes from "./index";
+import * as sharedTypes from "./index.js";
 
 describe("agent-editable executable plugin contract", () => {
   it("defines host-controlled form, dialog, and workspace Action presentations", () => {
@@ -75,11 +75,10 @@ describe("agent-editable executable plugin contract", () => {
     if (!schema) return;
 
     const registration = schema.parse({
-      pluginId: "caption-helper",
+      pluginId: "acme.caption-helper",
       version: "1.2.3",
       schemaHash: `sha256:${"a".repeat(64)}`,
       runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
-      permissions: {},
       document: {
         apiVersion: "clash.card/v1",
         kind: "action-card",
@@ -105,11 +104,10 @@ describe("agent-editable executable plugin contract", () => {
 
     const base = sharedTypes.MODEL_CARDS.find((card) => card.id === "minimax-h3")!;
     const registration = {
-      pluginId: "agent-media",
+      pluginId: "acme.agent-media",
       version: "2.0.0",
       schemaHash: `sha256:${"b".repeat(64)}`,
       runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
-      permissions: {},
       document: {
         apiVersion: "clash.card/v1",
         kind: "model-card",
@@ -130,10 +128,10 @@ describe("agent-editable executable plugin contract", () => {
     const composed = compose([base], [registration]);
     expect(composed).toHaveLength(1);
     expect(composed[0].name).toBe("Agent-edited H3");
-    expect(composed[0].providerImplementations[0].projectorPluginId).toBe("agent-media");
+    expect(composed[0].providerImplementations[0].projectorPluginId).toBe("acme.agent-media");
     expect(() => compose([base], [
       registration,
-      { ...registration, pluginId: "another-plugin" },
+      { ...registration, pluginId: "acme.another-plugin" },
     ])).toThrow(/both export model Card minimax-h3/);
   });
 
@@ -153,11 +151,11 @@ describe("agent-editable executable plugin contract", () => {
 
     const manifest = manifestSchema.parse({
       apiVersion: "clash.plugin/v1",
-      id: "hilo-hub-media",
+      id: "hilo.hub-media",
       version: "1.0.0",
       name: "Hilo Hub Media",
       runtime: { kind: "local", transport: "stdio", entrypoint: "dist/stdio.mjs" },
-      exports: {
+      contributes: {
         cards: [],
         providers: [{ id: "hilo-hub", kind: "provider", path: "providers/hilo-hub.json" }],
         modelBindings: [{
@@ -165,9 +163,8 @@ describe("agent-editable executable plugin contract", () => {
           kind: "model-provider-binding",
           path: "bindings/minimax-h3.json",
         }],
-        functions: [{ id: "hilo-hub-execute", kind: "provider-executor", handler: "executeHubModel" }],
+        functions: [{ id: "hilo-hub-execute", kind: "provider-executor" }],
       },
-      permissions: {},
     });
     const validated = validatePackage(manifest, {}, {}, {
       providers: {
@@ -180,14 +177,17 @@ describe("agent-editable executable plugin contract", () => {
             upstreamId: "hilo-hub",
             apiShape: "hilo-hub",
             executorExportId: "hilo-hub-execute",
-            auth: [{
-              type: "oauth",
-              id: "hilo-hub",
-              flow: "browser",
-              authorizationUrl: "https://hub.minimax.io/login",
-              callback: { type: "custom-scheme", scheme: "minimax-hub" },
-              accessTokenField: "accessToken",
-            }],
+            auth: {
+              methods: [{
+                id: "sign-in",
+                label: "Sign in to MiniMax Hub",
+                form: [{ kind: "button", key: "accessToken", label: "Sign in" }],
+                flow: {
+                  open: "https://hub.minimax.io/login",
+                  callback: { type: "scheme", scheme: "minimax-hub" },
+                },
+              }],
+            },
           },
         },
       },
@@ -213,34 +213,42 @@ describe("agent-editable executable plugin contract", () => {
     expect(validated.modelBindings["bindings/minimax-h3.json"].spec.modelId).toBe("minimax-h3");
   });
 
-  it("accepts an explicit local app token import source and rejects path traversal", () => {
-    const schema = (sharedTypes as Record<string, unknown>).ExecutablePluginProviderAuthSchema as
-      | { parse(value: unknown): any; safeParse(value: unknown): { success: boolean } }
-      | undefined;
-    expect(schema).toBeDefined();
-    if (!schema) return;
+  it("no longer parses a declared recipe for reading another app's token store", () => {
+    // Reversed. This asserted that a `local-token-import` auth entry parsed, and that path
+    // traversal in its `appDataSubdirectory` or `configFile` was rejected -- a recipe naming a
+    // path inside another desktop app's encrypted config, which the host then read and decrypted.
+    //
+    // The recipe is gone with the rest of the auth-type registry. It was a member added for one
+    // vendor's installed client, and a union over auth types needs a member per vendor: one signs
+    // with an access key and a secret, another wants a console token, and Google accepts several
+    // credential forms. Reading another app's store is plugin code now.
+    //
+    // The traversal guard is not lost, only moved. `importLocalProviderToken` in the local API still
+    // resolves every path inside the application data root and throws when one escapes; it takes its
+    // recipe from its own type rather than from this schema. What is given up is validating that
+    // recipe when a plugin is installed rather than when it runs.
+    expect((sharedTypes as Record<string, unknown>).ExecutablePluginProviderAuthSchema)
+      .toBeUndefined();
 
-    const auth = {
-      type: "local-token-import",
+    const provider = (sharedTypes as Record<string, unknown>)
+      .ExecutablePluginProviderDefinitionSchema as { safeParse(value: unknown): { success: boolean } };
+    expect(provider.safeParse({
       id: "hilo-hub",
-      label: "Reuse MiniMax Hub login",
-      source: {
-        format: "electron-store-aes-256-gcm-v2",
-        appDataSubdirectory: "@hilo/MiniMax Hub Global",
-        configFile: "hub-config-global.json",
-        keyFile: ".token-key",
-        tokenPath: ["tokens", "accessToken"],
-      },
-    };
-
-    expect(schema.parse(auth)).toEqual(auth);
-    expect(schema.safeParse({
-      ...auth,
-      source: { ...auth.source, appDataSubdirectory: "../../.ssh" },
-    }).success).toBe(false);
-    expect(schema.safeParse({
-      ...auth,
-      source: { ...auth.source, configFile: "../hub-config-global.json" },
+      name: "MiniMax Hub",
+      upstreamId: "hilo-hub",
+      apiShape: "hilo-hub",
+      executorExportId: "hilo-hub-execute",
+      auth: [{
+        type: "local-token-import",
+        id: "hilo-hub",
+        source: {
+          format: "electron-store-aes-256-gcm-v2",
+          appDataSubdirectory: "@hilo/MiniMax Hub Global",
+          configFile: "hub-config-global.json",
+          keyFile: ".token-key",
+          tokenPath: ["tokens", "accessToken"],
+        },
+      }],
     }).success).toBe(false);
   });
 
@@ -264,19 +272,17 @@ describe("agent-editable executable plugin contract", () => {
       constraints: [],
     };
     const cardRegistration = {
-      pluginId: "portable-card-pack",
+      pluginId: "acme.portable-card-pack",
       version: "1.0.0",
       schemaHash: `sha256:${"c".repeat(64)}`,
       runtime: { kind: "local", transport: "stdio", entrypoint: "stdio.mjs" },
-      permissions: {},
       document: { apiVersion: "clash.card/v1", kind: "model-card", spec: modelCard },
     };
     const bindingRegistration = {
-      pluginId: "hilo-hub-media",
+      pluginId: "hilo.hub-media",
       version: "1.0.0",
       schemaHash: `sha256:${"d".repeat(64)}`,
       runtime: { kind: "local", transport: "stdio", entrypoint: "stdio.mjs" },
-      permissions: {},
       document: {
         apiVersion: "clash.binding/v1",
         kind: "model-provider-binding",
@@ -307,7 +313,7 @@ describe("agent-editable executable plugin contract", () => {
         upstreamId: "hilo-hub",
         upstreamModel: "portable-image-v1",
         apiShape: "hilo-hub",
-        executorPluginId: "hilo-hub-media",
+        executorPluginId: "hilo.hub-media",
         executorExportId: "hilo-hub-execute",
         requiredOAuth: ["hilo-hub"],
       }],
@@ -323,7 +329,7 @@ describe("agent-editable executable plugin contract", () => {
 
     const manifest = schema.parse({
       apiVersion: "clash.plugin/v1",
-      id: "minimax-fal",
+      id: "acme.minimax-fal",
       version: "1.2.0",
       name: "MiniMax on fal",
       runtime: {
@@ -331,20 +337,15 @@ describe("agent-editable executable plugin contract", () => {
         transport: "stdio",
         entrypoint: "dist/handler.mjs",
       },
-      exports: {
+      contributes: {
         cards: [
           { id: "minimax-h3", kind: "model-card", path: "cards/minimax-h3.json" },
           { id: "music-generate", kind: "action-card", path: "cards/music-generate.json" },
         ],
         functions: [
-          { id: "fal-h3", kind: "provider-projector", handler: "projectFalH3" },
-          { id: "music-generate", kind: "action", handler: "generateMusic" },
+          { id: "fal-h3", kind: "provider-projector" },
+          { id: "music-generate", kind: "action" },
         ],
-      },
-      permissions: {
-        network: { domains: ["queue.fal.run"] },
-        secrets: ["provider:fal"],
-        assets: ["read", "write"],
       },
       contractTests: ["contract-tests/h3.json"],
     });
@@ -355,130 +356,59 @@ describe("agent-editable executable plugin contract", () => {
       entrypoint: "dist/handler.mjs",
       args: [],
     });
-    expect(manifest.permissions).toMatchObject({
-      network: { domains: ["queue.fal.run"] },
-      filesystem: { read: [], write: [] },
-      externalWrites: false,
-    });
-    expect(manifest.exports.cards).toHaveLength(2);
+    expect(manifest.contributes.cards).toHaveLength(2);
+    expect(schema.safeParse({
+      ...manifest,
+      contributes: {
+        ...manifest.contributes,
+        functions: [{ id: "fal-h3", kind: "provider-projector", handler: "projectFalH3" }],
+      },
+    }).success).toBe(false);
     expect(schema.safeParse({ ...manifest, runtime: { ...manifest.runtime, entrypoint: "../escape.mjs" } }).success)
       .toBe(false);
   });
 
-  it("reports every newly requested capability before an agent may activate an update", () => {
-    const diffPermissions = (sharedTypes as Record<string, unknown>)
-      .diffExecutablePluginPermissions as
-      | ((before: unknown, after: unknown) => {
-          networkDomains: string[];
-          secrets: string[];
-          assetCapabilities: string[];
-          hostTools: string[];
-          filesystem: { read: string[]; write: string[] };
-          externalWrites: boolean;
-          requiresApproval: boolean;
-        })
-      | undefined;
-    expect(diffPermissions).toBeDefined();
-    if (!diffPermissions) return;
-
-    const before = {
-      network: { domains: ["queue.fal.run"] },
-      secrets: ["provider:minimax"],
-      assets: ["read"],
-      hostTools: [],
-      filesystem: { read: ["workspace/assets"], write: [] },
-      externalWrites: false,
-    };
-    const after = {
-      network: { domains: ["queue.fal.run", "api.minimax.io"] },
-      secrets: ["provider:minimax", "provider:fal"],
-      assets: ["read", "write"],
-      hostTools: ["codex.imagegen"],
-      filesystem: {
-        read: ["workspace/assets", "workspace/references"],
-        write: ["workspace/generated"],
-      },
-      externalWrites: true,
-    };
-
-    expect(diffPermissions(before, after)).toEqual({
-      networkDomains: ["api.minimax.io"],
-      secrets: ["provider:fal"],
-      assetCapabilities: ["write"],
-      hostTools: ["codex.imagegen"],
-      filesystem: {
-        read: ["workspace/references"],
-        write: ["workspace/generated"],
-      },
-      externalWrites: true,
-      requiresApproval: true,
-    });
-
-    expect(diffPermissions(after, before)).toEqual({
-      networkDomains: [],
-      secrets: [],
-      assetCapabilities: [],
-      hostTools: [],
-      filesystem: { read: [], write: [] },
-      externalWrites: false,
-      requiresApproval: false,
-    });
-  });
-
-  it("applies the same broker capability policy in local and hosted kernels", () => {
-    const permissionError = (sharedTypes as Record<string, unknown>)
-      .executablePluginBrokerPermissionError as
+  it("derives injected dependencies from the contributed function kind", () => {
+    const dependencyError = (sharedTypes as Record<string, unknown>)
+      .executablePluginDependencyError as
       | ((manifest: unknown, request: unknown) => string | null)
       | undefined;
-    expect(permissionError).toBeDefined();
-    if (!permissionError) return;
+    expect(dependencyError).toBeTypeOf("function");
+    if (!dependencyError) return;
 
-    const manifest = {
+    const executor = {
       apiVersion: "clash.plugin/v1",
       id: "acme.media",
       version: "1.2.3",
       name: "Acme Media",
       runtime: { kind: "hosted", transport: "http", endpoint: "https://plugin.example.com/run" },
-      exports: { cards: [], functions: [{ id: "render", kind: "action", handler: "render" }] },
-      permissions: {
-        network: { domains: ["api.example.com"] },
-        secrets: ["provider:fal"],
-        assets: ["read"],
-        filesystem: { read: [], write: [] },
-        externalWrites: false,
-      },
+      contributes: { functions: [{ id: "run", kind: "provider-executor" }] },
     };
-    const baseRequest = {
+    const projector = {
+      ...executor,
+      contributes: { functions: [{ id: "map", kind: "provider-projector" }] },
+    };
+    const readAccountState = {
       protocol: "clash.plugin.broker-request/v1",
       requestId: "request-1",
       invocationId: "invocation-1",
+      operation: { kind: "store.get", key: "accessToken" },
     };
 
-    expect(permissionError(manifest, {
-      ...baseRequest,
-      operation: { kind: "network.fetch", url: "https://sub.api.example.com/status", method: "GET", headers: {} },
-    })).toBeNull();
-    expect(permissionError(manifest, {
-      ...baseRequest,
-      operation: { kind: "network.fetch", url: "https://api.example.com/jobs", method: "POST", headers: {} },
-    })).toContain("External writes");
-    expect(permissionError(manifest, {
-      ...baseRequest,
-      operation: { kind: "credential.handle", secretId: "provider:replicate" },
-    })).toContain("not declared");
+    expect(dependencyError(executor, readAccountState)).toBeNull();
+    expect(dependencyError(projector, readAccountState)).toContain("account state");
   });
 
   it("requires an explicit Codex ImageGen host-tool capability", () => {
     const manifest = {
       apiVersion: "clash.plugin/v1",
-      id: "codex-imagegen",
+      id: "clash.codex-imagegen",
       version: "1.0.0",
       name: "Codex ImageGen",
       runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
-      exports: { cards: [], functions: [{ id: "generate", kind: "action", handler: "generate" }] },
-      permissions: {
+      contributes: {
+        functions: [{ id: "generate", kind: "action" }],
         hostTools: ["codex.imagegen"],
-        assets: ["read", "write"],
       },
     };
     const request = {
@@ -499,53 +429,11 @@ describe("agent-editable executable plugin contract", () => {
       },
     };
 
-    expect(sharedTypes.executablePluginBrokerPermissionError(manifest, request)).toBeNull();
-    expect(sharedTypes.executablePluginBrokerPermissionError({
+    expect(sharedTypes.executablePluginDependencyError(manifest, request)).toBeNull();
+    expect(sharedTypes.executablePluginDependencyError({
       ...manifest,
-      permissions: { ...manifest.permissions, hostTools: [] },
+      contributes: { ...manifest.contributes, hostTools: [] },
     }, request)).toContain("Codex ImageGen");
-  });
-
-  it("validates short-lived hosted broker capabilities without embedding plugin inputs", () => {
-    const schema = (sharedTypes as Record<string, unknown>)
-      .HostedExecutablePluginCapabilitySchema as
-      | { parse(value: unknown): any; safeParse(value: unknown): { success: boolean } }
-      | undefined;
-    expect(schema).toBeDefined();
-    if (!schema) return;
-
-    const capability = schema.parse({
-      protocol: "clash.plugin.hosted-capability/v1",
-      capabilityId: "capability-1",
-      issuedAt: 1_785_840_000,
-      expiresAt: 1_785_840_900,
-      endpoint: "https://plugin.example.com/run",
-      ownerUserId: "user-1",
-      invocation: {
-        invocationId: "invocation-1",
-        taskId: "task-1",
-        projectId: "project-1",
-        nodeId: "node-1",
-        target: {
-          pluginId: "acme.media",
-          version: "1.2.3",
-          exportId: "render",
-          schemaHash: `sha256:${"a".repeat(64)}`,
-          kind: "action",
-        },
-        actor: { kind: "user", id: "user-1" },
-      },
-      permissions: {
-        network: { domains: ["api.example.com"] },
-        secrets: ["provider:fal"],
-        assets: ["read", "write"],
-        filesystem: { read: [], write: [] },
-        externalWrites: true,
-      },
-    });
-
-    expect(capability.invocation).not.toHaveProperty("input");
-    expect(schema.safeParse({ ...capability, expiresAt: capability.issuedAt - 1 }).success).toBe(false);
   });
 
   it("pins a Canvas invocation to one exact plugin export and schema", () => {
@@ -556,7 +444,7 @@ describe("agent-editable executable plugin contract", () => {
     if (!bindingSchema) return;
 
     const binding = {
-      pluginId: "minimax-fal",
+      pluginId: "acme.minimax-fal",
       version: "1.2.0",
       exportId: "fal-h3",
       schemaHash: `sha256:${"a".repeat(64)}`,
@@ -584,7 +472,7 @@ describe("agent-editable executable plugin contract", () => {
       projectId: "project-1",
       nodeId: "node-1",
       target: {
-        pluginId: "minimax-fal",
+        pluginId: "acme.minimax-fal",
         version: "1.2.0",
         exportId: "fal-h3",
         schemaHash: `sha256:${"a".repeat(64)}`,
@@ -643,7 +531,6 @@ describe("agent-editable executable plugin contract", () => {
         name: "Music 3",
         provider: "minimax",
         kind: "audio",
-        task: "music-generation",
         parameters: [{
           id: "duration",
           label: "Duration",
@@ -665,7 +552,11 @@ describe("agent-editable executable plugin contract", () => {
       },
     };
     const parsedModelCard = cardSchema.parse(modelCard);
-    expect(parsedModelCard.spec.task).toBe("music-generation");
+    // `musicInput` rather than a `task` of "music-generation". The card declares that it takes
+    // lyrics and where they go; the task field only asserted a label for the same fact, and the two
+    // could disagree -- `lyria-3-pro` was tagged music-generation while declaring no lyrics input
+    // at all, so the UI drew it a lyrics box that went nowhere.
+    expect(parsedModelCard.spec.musicInput).toMatchObject({ lyricsParam: "lyrics" });
     expect(parsedModelCard.spec.providerImplementations[0].projectorExportId).toBe("fal-music-3");
     expect(cardSchema.safeParse({
       ...modelCard,
@@ -704,21 +595,20 @@ describe("agent-editable executable plugin contract", () => {
 
     const manifest = {
       apiVersion: "clash.plugin/v1",
-      id: "first-party-media",
+      id: "clash.media",
       version: "1.0.0",
       name: "First-party media",
       runtime: { kind: "local", transport: "stdio", entrypoint: "dist/handler.mjs" },
-      exports: {
+      contributes: {
         cards: [
           { id: "music-3", kind: "model-card", path: "cards/music-3.json" },
           { id: "remove-background", kind: "action-card", path: "cards/remove-background.json" },
         ],
         functions: [
-          { id: "fal-music-3", kind: "provider-projector", handler: "projectFalMusic3" },
-          { id: "remove-background", kind: "action", handler: "removeBackground" },
+          { id: "fal-music-3", kind: "provider-projector" },
+          { id: "remove-background", kind: "action" },
         ],
       },
-      permissions: {},
     };
     const cards = {
       "cards/music-3.json": {
@@ -764,9 +654,9 @@ describe("agent-editable executable plugin contract", () => {
     })).toThrow(/does not match export id/);
     expect(() => validatePackage({
       ...manifest,
-      exports: {
-        ...manifest.exports,
-        functions: manifest.exports.functions.filter((entry) => entry.id !== "fal-music-3"),
+      contributes: {
+        ...manifest.contributes,
+        functions: manifest.contributes.functions.filter((entry) => entry.id !== "fal-music-3"),
       },
     }, cards)).toThrow(/projector export/);
   });
@@ -787,15 +677,14 @@ describe("agent-editable executable plugin contract", () => {
 
     const manifest = {
       apiVersion: "clash.plugin/v1",
-      id: "contract-plugin",
+      id: "acme.contract-plugin",
       version: "1.0.0",
       name: "Contract Plugin",
       runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
-      exports: {
+      contributes: {
         cards: [],
-        functions: [{ id: "fal-h3", kind: "provider-projector", handler: "projectFalH3" }],
+        functions: [{ id: "fal-h3", kind: "provider-projector" }],
       },
-      permissions: {},
       contractTests: ["contract-tests/fal-h3.json"],
     };
     const contractTest = {
@@ -833,33 +722,31 @@ describe("agent-editable executable plugin contract", () => {
     })).toThrow(/does not match function export/);
   });
 
-  it("brokers credentials and assets through opaque handles instead of raw secrets", () => {
+  it("accepts only typed store and asset broker operations", () => {
     const requestSchema = (sharedTypes as Record<string, unknown>).ExecutablePluginBrokerRequestSchema as
       | { parse(value: unknown): any; safeParse(value: unknown): { success: boolean } }
       | undefined;
-    const responseSchema = (sharedTypes as Record<string, unknown>).ExecutablePluginBrokerResponseSchema as
-      | { parse(value: unknown): any }
-      | undefined;
     expect(requestSchema).toBeDefined();
-    expect(responseSchema).toBeDefined();
-    if (!requestSchema || !responseSchema) return;
+    if (!requestSchema) return;
 
-    expect(requestSchema.parse({
+    expect(requestSchema.safeParse({
       protocol: "clash.plugin.broker-request/v1",
       requestId: "request-1",
       invocationId: "invocation-1",
       operation: { kind: "credential.handle", secretId: "provider:fal" },
-    }).operation.secretId).toBe("provider:fal");
+    }).success).toBe(false);
 
-    expect(requestSchema.safeParse({
+    expect(requestSchema.parse({
       protocol: "clash.plugin.broker-request/v1",
       requestId: "request-2",
       invocationId: "invocation-1",
-      operation: {
-        kind: "credential.handle",
-        secretId: "provider:fal",
-        value: "raw-secret-must-not-cross-stdio",
-      },
+      operation: { kind: "store.get", key: "accessToken" },
+    }).operation.key).toBe("accessToken");
+    expect(requestSchema.safeParse({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "request-3",
+      invocationId: "invocation-1",
+      operation: { kind: "store.get", key: "accessToken", accountId: "forged-account" },
     }).success).toBe(false);
 
     expect(requestSchema.parse({
@@ -886,12 +773,5 @@ describe("agent-editable executable plugin contract", () => {
         dataBase64: "AQID",
       },
     }).success).toBe(false);
-
-    expect(responseSchema.parse({
-      protocol: "clash.plugin.broker-response/v1",
-      requestId: "request-1",
-      status: "ok",
-      result: { handle: "clash-secret://invocation-1/provider%3Afal" },
-    }).result.handle).toMatch(/^clash-secret:\/\//);
   });
 });

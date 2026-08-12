@@ -4,7 +4,7 @@ import {
   type EditorAssetInput,
   type Item,
   type Track,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 
 export type TimelineAssetInsertRequest = {
   requestId: string;

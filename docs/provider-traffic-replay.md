@@ -1,28 +1,46 @@
 # Provider traffic record and replay
 
-Clash can record the provider HTTP traffic produced by normal local workflows, including actions executed from Canvas, then replay the same workflow without provider network access. Gemini Omni Gateway recordings also restore their routing endpoint from the fixture, so replay does not require real Google or Cloudflare credentials.
+The canonical user and plugin-author guide is
+[`apps/docs/plugins/traffic-replay.md`](../apps/docs/plugins/traffic-replay.md).
 
-## Record a workflow
+Provider plugins own their HTTP stack. The test runner instruments the plugin
+process before its entrypoint starts, records real upstream traffic with secret
+redaction, and can replay that traffic with real network egress disabled. The
+production SDK does not provide an HTTP client and provider business code does
+not branch for recording.
 
-Start the local desktop/runtime with a new absolute JSONL path:
+## Live capture
 
-```sh
-CLASH_PROVIDER_TRAFFIC_RECORDING_PATH=/absolute/path/provider-run.jsonl \
-  pnpm --filter @master-clash/desktop dev
-```
-
-Execute the target Canvas action once, then stop the runtime. Recording appends to the selected file, so use a fresh path for an isolated fixture.
-
-## Replay offline
-
-Restart with the recording path and no provider secrets:
+Use a private, ignored JSONL path and an explicit live configuration:
 
 ```sh
-env -u GOOGLE_API_KEY -u GEMINI_API_KEY -u CF_AIG_TOKEN -u GOOGLE_AI_STUDIO_BASE_URL \
-  CLASH_PROVIDER_TRAFFIC_REPLAY_PATH=/absolute/path/provider-run.jsonl \
-  pnpm --filter @master-clash/desktop dev
+CLASH_PROVIDER_E2E=live \
+CLASH_PROVIDER_E2E_CONFIG="$PWD/.clash-provider-traffic/provider-e2e.json" \
+pnpm --filter @clash/local-api exec vitest run \
+  src/real-generation-google.test.ts src/real-generation-minimax.test.ts
 ```
 
-Execute the same Canvas action again. Provider requests are matched by provider/model, method, normalized URL, and normalized request body. Recorded responses are returned locally; binary image, video, and audio bodies are restored byte-for-byte.
+The configuration selects the Host-owned provider account and recording path.
+Credentials remain in the encrypted local account store; do not copy them into
+fixtures or commands. Record each supported API family, including submit/poll,
+uploads, final media downloads, mixed references, and resume-after-restart.
 
-The recording and replay variables are mutually exclusive. Authentication headers, credential-shaped body fields, URL credentials, and secret query parameters are stored as `[redacted]`. Recordings still contain prompts, referenced media payloads, provider responses, and generated binary data, so treat the JSONL file as private project data.
+## Offline replay
+
+Checked-in fixtures run through the shared local-api backend with provider
+credentials removed:
+
+```sh
+env -u GOOGLE_API_KEY -u GEMINI_API_KEY -u CLASH_MINIMAX_API_KEY \
+  pnpm --filter @clash/local-api test
+```
+
+Replay matches normalized method, URL, and body in order. A missing request is
+an error and never falls through to the real network. The backend grader checks
+the final text revision or persisted media asset, not merely an upstream HTTP
+status.
+
+Before promoting a private recording, prove that replay passes without
+credentials and search it for authorization values, signed query parameters,
+private keys, and absolute local paths. Prompts, references, provider responses,
+and generated media remain test data and require normal fixture review.

@@ -1,0 +1,24 @@
+{
+  "summary": "Third-party executable Provider plugin hrhrng.hub for the overseas MiniMax Hub media catalog.",
+  "context_hints": [
+    "The plugin id is hrhrng.hub and its Provider declaration is providers/hilo-hub.json",
+    "Plugin code performs native upstream HTTP and uses only the Host-selected account state exposed through context.store",
+    "MiniMax H3 and Seedance references are uploaded through /api/v1/files/upload before submission",
+    "At the upload boundary, normalize audio/mpeg to audio/mp3 because Hub derives the file extension from the data-URI media type"
+  ],
+  "subdirectories": {
+    "providers": "Hilo Hub Provider declaration and supported sign-in methods.",
+    "bindings": "Provider-specific model routes, parameter overrides, defaults, and exclusions.",
+    "src": "Typed stdio entrypoint, native Hub adapter, executor, upload adaptation, and tests.",
+    "contract-tests": "Declarative activation-gating ABI fixtures."
+  },
+  "key_files": {
+    "manifest.json": "Versioned executable package and contributed Provider, bindings, and executor.",
+    "providers/hilo-hub.json": "Provider metadata, account flows, executor link, and binding defaults.",
+    "src/hub-adapter.ts": "Hub request and response shape translation.",
+    "src/hub-executor.ts": "Native Hub HTTP execution, reference upload, MIME adaptation, and polling."
+  },
+  "verification": [
+    "pnpm --filter @clash-plugin/hrhrng-hub test"
+  ]
+}

@@ -30,7 +30,7 @@ const CODEX_IMAGEGEN_MARKETPLACE_ITEM = {
     "Generate or edit images with Codex's built-in image generation tool and your ChatGPT subscription.",
   runtime: "local",
   outputType: "image",
-  packageId: "clash-codex-imagegen",
+  packageId: "clash.codex-imagegen",
   version: "0.1.0",
   author: "Clash",
   icon: "✨",
@@ -67,7 +67,7 @@ function mergeRegistry(remote: RegistryData | null): RegistryData {
   return {
     version: 1,
     marketplaceSemantics: FIRST_PARTY.marketplaceSemantics,
-    actions: [...firstPartyActions(), ...remote.actions],
+    actions: [...firstPartyActions(), ...(remote.actions ?? [])],
     skills,
     systemCapabilities: FIRST_PARTY.systemCapabilities,
     thirdPartyReferences: FIRST_PARTY.thirdPartyReferences,

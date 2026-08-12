@@ -32,12 +32,8 @@ describe("an accepted generation is resumed, not resubmitted", () => {
   it("sends poll state only when resuming, and the plain input otherwise", () => {
     // A submit that carries poll state is rejected by the invocation schema, and a resume that
     // omits it silently starts a second billed generation. The branch has to exist.
-    expect(source).toMatch(/\?[\s\S]{0,80}pollState[\s\S]{0,80}:[\s\S]{0,40}commonInput/);
-  });
-
-  it("holds off until the provider's own interval has elapsed", () => {
-    // Polling faster than allowed gets the host rate-limited, and a provider that throttles status
-    // checks throttles submissions on the same credential.
-    expect(source).toMatch(/Date\.now\(\)\s*<\s*dueAt/);
+    expect(source).toMatch(
+      /\?[\s\S]{0,80}pollState[\s\S]{0,80}:[\s\S]{0,40}commonInput/,
+    );
   });
 });

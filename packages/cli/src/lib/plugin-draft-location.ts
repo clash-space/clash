@@ -6,7 +6,7 @@ import { configDir } from "./config";
  * Where a plugin draft may live.
  *
  * The supported flow is: write the code in your own working directory, then
- * register it. `clash action activate <directory>` validates the draft, runs its
+ * register it. `clash plugin activate <directory>` validates the draft, runs its
  * contracts, approves any capability increase, and copies it into product-internal
  * storage, which owns the result from then on -- content-hashed, recorded as an
  * activation, and rollback-protected.
@@ -22,9 +22,9 @@ import { configDir } from "./config";
 export function managedStorageDraftHint(): string {
   return (
     "Keep plugin drafts in your own working directory, then register one with "
-    + "`clash action activate <directory>`; Clash stores and owns the activated copy. "
-    + "Start a new draft with `clash action init-plugin <directory>`, or pull an "
-    + "active plugin out to edit with `clash action checkout <id> <directory>`."
+    + "`clash plugin activate <directory>`; Clash stores and owns the activated copy. "
+    + "Start a new draft with `clash plugin create <directory>`, or pull an "
+    + "active plugin out to edit with `clash plugin checkout <id> <directory>`."
   );
 }
 

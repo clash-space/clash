@@ -33,9 +33,9 @@ export const textGenAdapter: GenerationAdapter = {
       "generate-text",
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "3 minutes" },
       async () => {
-        const provider = route.apiShape === "anthropic-compatible"
-          ? "anthropic-compatible"
-          : route.apiShape === "pika-chat" ? "pika" : "openai-compatible";
+        const providerLabel = route.apiShape === "pika-chat"
+          ? "pika"
+          : route.apiShape;
         const credentials = await credentialsForRoute(ctx, route);
         const systemPrompt =
           typeof params.modelParams?.system_prompt === "string"
@@ -49,7 +49,7 @@ export const textGenAdapter: GenerationAdapter = {
         log.info("Text generate started", {
           ...ctx.tag,
           model: configuredModelName || route.upstreamModel,
-          provider,
+          provider: providerLabel,
           parts: userMessage.content.length,
         });
         if (route.apiShape === "pika-chat") {
@@ -88,6 +88,9 @@ export const textGenAdapter: GenerationAdapter = {
             throw error;
           }
         }
+        const provider = route.apiShape === "anthropic-compatible"
+          ? "anthropic-compatible"
+          : "openai-compatible";
         const result = await generateTextCompletion({
           provider,
           apiKey: credentials.apiKey,

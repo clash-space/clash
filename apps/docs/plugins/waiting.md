@@ -32,9 +32,10 @@ The provider takes the work and gives you something to ask about later. Return t
 something as `pollState`; the host stores it and calls you back with it.
 
 This is the default for anything slow, and the one to implement first. It needs nothing from
-the host beyond a timer, works on a laptop with no public address, and authenticates in the
-safe direction — the host opens the connection to the provider using a credential it holds,
-so there is no inbound message to be fooled by.
+the host beyond durable scheduling and poll-state persistence, works on a laptop with no public
+address, and authenticates in the safe direction. The plugin reads the selected account's state
+through the Host-injected scoped store and opens the outbound connection to the provider itself,
+so there is no public inbound message to be fooled by.
 
 ### Callback
 
@@ -176,10 +177,10 @@ Verify before you translate. Check the timestamp too, or a captured message can 
 later.
 
 If you cannot verify, return `failed`. This does not strand the work: the poll path is
-still there, and polling authenticates in the other direction — the host calls the provider
-over a connection it opened and a credential it holds, which a forger cannot stand in the
-middle of. Refusing an unverified message costs one round trip. Believing one costs whatever
-the forger wanted.
+still there, and polling authenticates in the other direction — the Host invokes the plugin on a
+timer; the plugin reads its account-scoped state and calls the provider over an outbound
+authenticated connection, which a forger cannot stand in the middle of. Refusing an unverified
+message costs one round trip. Believing one costs whatever the forger wanted.
 
 ## Sizing the choice
 
@@ -194,7 +195,7 @@ mid-call would lose the work. If it would, the work needs a name the host can ke
 Whether a generation is still alive is your plugin's answer, written in code, next to the response
 it read. It cannot be a table of words somewhere else, because a status is rarely one word: Hub
 reports `message="success"` on the envelope while the task underneath has failed, MiniMax carries a
-second verdict in `base_resp.status_code`, and KIE and Suno bury application failures inside HTTP
+second verdict in `base_resp.status_code`, and some providers bury application failures inside HTTP
 200. A mapping from a flat string cannot describe any of those, and a plugin forced to fill one in
 would be answering a different question than the one being asked.
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useEditor, useEditorDispatch } from '@master-clash/remotion-core';
+import { useEditor, useEditorDispatch } from '@clash/remotion-core';
 import {
   TIMELINE_LIBRARY_CATEGORIES,
   TIMELINE_LIBRARY_GROUPS,

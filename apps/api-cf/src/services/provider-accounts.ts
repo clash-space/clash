@@ -121,11 +121,9 @@ function defaultUpstream(providerId: ProviderAccountId): ModelUpstreamId | undef
     providerId === "fal" ||
     providerId === "pika" ||
     providerId === "local" ||
-    providerId === "kie" ||
     providerId === "replicate" ||
     providerId === "kling" ||
     providerId === "minimax" ||
-    providerId === "jimeng" ||
     providerId === "volcengine" ||
     providerId === "elevenlabs" ||
     providerId === "suno" ||

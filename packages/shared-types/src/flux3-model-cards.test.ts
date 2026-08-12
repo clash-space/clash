@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { MODEL_CARDS } from "./models";
-import { validateRefs } from "./model-capabilities";
-import { listDeclaredModelUpstreamRoutes } from "./model-routing";
+import { MODEL_CARDS } from "./models.js";
+import { validateRefs } from "./model-capabilities.js";
+import { listDeclaredModelUpstreamRoutes } from "./model-routing.js";
 
 describe("FLUX 3 model cards", () => {
   it("declares text, keyframe, and continuation as three independent model cards", () => {

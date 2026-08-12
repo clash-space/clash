@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MODEL_CARDS } from "./models";
+import { MODEL_CARDS } from "./models.js";
 
 describe("Kling 3 model card", () => {
   it("publishes every fal-supported duration from 3 through 15 seconds", () => {

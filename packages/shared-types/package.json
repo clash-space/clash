@@ -1,7 +1,11 @@
 {
   "name": "@clash/shared-types",
   "version": "0.1.0",
-  "description": "Shared type definitions for Master Clash (TypeScript + Python generation)",
+  "private": true,
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "description": "Shared type definitions for Clash (TypeScript + Python generation)",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -41,7 +45,7 @@
     "generate:json-schema": "ts-node scripts/generate-json-schema.ts",
     "generate:python": "ts-node scripts/generate-python.ts",
     "generate:timeline-dsl-docs": "tsx scripts/generate-timeline-dsl-docs.ts",
-    "prepack": "pnpm generate:timeline-dsl-docs && pnpm build"
+    "prepack": "pnpm generate:timeline-dsl-docs"
   },
   "dependencies": {
     "@clash/shared-layout": "workspace:^",
@@ -62,8 +66,5 @@
     "dist",
     "python",
     "agents.json"
-  ],
-  "publishConfig": {
-    "access": "public"
-  }
+  ]
 }

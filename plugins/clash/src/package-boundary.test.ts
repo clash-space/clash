@@ -5,58 +5,155 @@ import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const pluginRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
+const pluginRoot = dirname(
+  fileURLToPath(new URL("../package.json", import.meta.url)),
+);
 
 test("plugin manifest starts one bundled MCP runtime and keeps product state in the shared local host", async () => {
-  const manifest = JSON.parse(await readFile(new URL("../.codex-plugin/plugin.json", import.meta.url), "utf8"));
-  const mcp = JSON.parse(await readFile(new URL("../.mcp.json", import.meta.url), "utf8"));
+  const manifest = JSON.parse(
+    await readFile(
+      new URL("../.codex-plugin/plugin.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const mcp = JSON.parse(
+    await readFile(new URL("../.mcp.json", import.meta.url), "utf8"),
+  );
 
   assert.equal(manifest.name, "clash");
   assert.equal(manifest.mcpServers, "./.mcp.json");
   assert.equal(manifest.interface.capabilities.includes("Interactive"), false);
   assert.equal(
-    manifest.interface.defaultPrompt.some((prompt: string) => /\bopen\b/i.test(prompt)),
+    manifest.interface.defaultPrompt.some((prompt: string) =>
+      /\bopen\b/i.test(prompt),
+    ),
     false,
   );
   assert.deepEqual(mcp.mcpServers.clash, {
     command: "node",
-    args: ["./runtime/index.js"],
+    args: ["./runtime/dispatcher.js", "mcp"],
     cwd: ".",
     env: { CLASH_PROFILE: "prod" },
   });
 });
 
+test("the public npm package is the single Clash distribution", async () => {
+  const [packageJson, workspace, cliPackage, mcpPackage, localApiPackage] =
+    await Promise.all([
+      readFile(new URL("../package.json", import.meta.url), "utf8").then(
+        JSON.parse,
+      ),
+      readFile(new URL("../../../package.json", import.meta.url), "utf8").then(
+        JSON.parse,
+      ),
+      readFile(
+        new URL("../../../packages/cli/package.json", import.meta.url),
+        "utf8",
+      ).then(JSON.parse),
+      readFile(
+        new URL("../../../packages/mcp-server/package.json", import.meta.url),
+        "utf8",
+      ).then(JSON.parse),
+      readFile(
+        new URL("../../../apps/local-api/package.json", import.meta.url),
+        "utf8",
+      ).then(JSON.parse),
+    ]);
+
+  assert.equal(packageJson.name, "clash");
+  assert.deepEqual(packageJson.bin, { clash: "./runtime/dispatcher.js" });
+  assert.deepEqual(packageJson.clashRuntime, {
+    dispatcher: "./runtime/dispatcher.js",
+    mcp: "./runtime/index.js",
+    cli: "./runtime/clash-cli.cjs",
+    localApi: "./runtime/local-api.cjs",
+    agents: "./runtime/agents",
+  });
+  assert.equal(packageJson.publishConfig?.access, "public");
+  assert.equal(workspace.name, "@clash/workspace");
+  assert.equal(
+    workspace.scripts?.dev,
+    "turbo run dev --filter=@clash/web --filter=@clash/render-server",
+  );
+  assert.match(
+    workspace.scripts?.["clash:dev"] ?? "",
+    /tsx --tsconfig tsconfig\.dev\.json src\/dispatcher\.ts --profile dev$/,
+  );
+  assert.match(
+    workspace.scripts?.["clash:prod"] ?? "",
+    /plugins\/clash\/runtime\/dispatcher\.js --profile prod$/,
+  );
+  assert.match(
+    workspace.scripts?.["mcp:dev"] ?? "",
+    /tsx --tsconfig tsconfig\.dev\.json src\/dispatcher\.ts --profile dev mcp$/,
+  );
+  assert.equal(cliPackage.private, true);
+  assert.equal(mcpPackage.private, true);
+  assert.equal(localApiPackage.private, true);
+  for (const internalName of [
+    "@clash/cli",
+    "@clash/mcp-server",
+    "@clash/local-api",
+  ]) {
+    assert.equal(packageJson.dependencies?.[internalName], undefined);
+    assert.equal(packageJson.devDependencies?.[internalName], "workspace:*");
+  }
+});
+
 test("the real runtime smoke keeps workspace location independent from CLASH_HOME", async () => {
-  const source = await readFile(new URL("./runtime-smoke.test.ts", import.meta.url), "utf8");
+  const source = await readFile(
+    new URL("./runtime-smoke.test.ts", import.meta.url),
+    "utf8",
+  );
 
   assert.match(source, /clash-plugin-workspace-/);
   assert.doesNotMatch(source, /join\(clashHome,\s*"workspace"\)/);
 });
 
 test("the base Clash skill teaches peer CLI and MCP navigation without AGENTS injection", async () => {
-  const markdown = await readFile(join(pluginRoot, "skills", "clash", "SKILL.md"), "utf8");
+  const markdown = await readFile(
+    join(pluginRoot, "skills", "clash", "SKILL.md"),
+    "utf8",
+  );
 
   assert.match(markdown, /name: clash/);
-  assert.match(markdown, /peer transports/i);
+  assert.match(markdown, /peer interfaces/i);
+  assert.match(markdown, /same capabilities and semantics/i);
+  assert.match(
+    markdown,
+    /Both call the\s+discovered `local-api` host directly/i,
+  );
   assert.match(markdown, /clash --help/);
   assert.match(markdown, /clash <command> --help/);
   assert.match(markdown, /clash init --json/);
   assert.match(markdown, /root `clash` tool/i);
   assert.match(markdown, /root `clash`[\s\S]*navigation/i);
   assert.match(markdown, /`clash_canvas`[\s\S]*Canvas operations/i);
-  assert.match(markdown, /`clash_composition`[\s\S]*temporal\s+composition[\s\S]*spatial\s+composition/i);
+  assert.match(
+    markdown,
+    /`clash_composition`[\s\S]*temporal\s+composition[\s\S]*spatial\s+composition/i,
+  );
   assert.match(markdown, /kind: "timeline"[\s\S]*kind: "director-stage"/i);
   assert.match(markdown, /dispatcher[\s\S]*operation[\s\S]*arguments/i);
   assert.match(markdown, /command-local short name/i);
   assert.match(markdown, /complete `clash_\*` leaf name[\s\S]*compatibility/i);
-  assert.doesNotMatch(markdown, /`clash_timeline`|`clash_director`|same `clash` tool/is);
+  assert.doesNotMatch(
+    markdown,
+    /`clash_timeline`|`clash_director`|same `clash` tool/is,
+  );
   assert.match(markdown, /clash_workspace_init/);
   assert.match(markdown, /daemon as a prerequisite/i);
-  assert.match(markdown, /normal CLI or MCP entry point[\s\S]*probe[\s\S]*start/i);
+  assert.match(
+    markdown,
+    /normal CLI or plugin MCP bootstrap[\s\S]*host discovery/i,
+  );
   assert.match(markdown, /ready\s+receipt[\s\S]*do not\s+run\s+init/i);
   assert.match(markdown, /reused: false[\s\S]*reused: true/i);
   assert.match(markdown, /stale[\s\S]*read[\s\S]*rebase[\s\S]*never force/i);
-  assert.match(markdown, /automatically pull[\s\S]*recovery[\s\S]*merge[\s\S]*retry/i);
+  assert.match(
+    markdown,
+    /automatically pull[\s\S]*recovery[\s\S]*merge[\s\S]*retry/i,
+  );
   assert.match(markdown, /never automatically (?:replay|resubmit)/i);
   assert.match(markdown, /never replace[\s\S]*direct FFmpeg render/i);
   assert.match(markdown, /no `clash_cli_\*` MCP namespace wrappers/i);
@@ -65,7 +162,8 @@ test("the base Clash skill teaches peer CLI and MCP navigation without AGENTS in
 
 test("production skills pair creative judgment with the supported product path", async () => {
   const expectedSkills: Record<string, RegExp> = {
-    "clash-director-production": /blocking|point of view|eyeline|screen direction/i,
+    "clash-director-production":
+      /blocking|point of view|eyeline|screen direction/i,
     "clash-timeline-production": /rhythm|editorial|continuity|audio/i,
     "clash-mg-character": /silhouette|anticipation|arc|follow-through/i,
     "clash-video-finishing": /coherence|color|sound|typography/i,
@@ -78,20 +176,37 @@ test("production skills pair creative judgment with the supported product path",
       readFile(join(skillRoot, "agents", "openai.yaml"), "utf8"),
     ]);
     assert.match(markdown, new RegExp(`name: ${skillName}`));
-    assert.match(markdown, creativeLanguage, `${skillName} needs domain craft guidance`);
-    assert.match(markdown, /base `clash` skill/i, `${skillName} should delegate mechanics to clash`);
+    assert.match(
+      markdown,
+      creativeLanguage,
+      `${skillName} needs domain craft guidance`,
+    );
+    assert.match(
+      markdown,
+      /base `clash` skill/i,
+      `${skillName} should delegate mechanics to clash`,
+    );
     assert.match(
       markdown,
       /ready\s+receipt[\s\S]*do not\s+(?:run\s+init|start\s+a\s+daemon)/i,
     );
-    assert.doesNotMatch(markdown, /CLASH_BENCH|exact[- ]argv|\.clash\/project\.toml/i);
+    assert.doesNotMatch(
+      markdown,
+      /CLASH_BENCH|exact[- ]argv|\.clash\/project\.toml/i,
+    );
     if (metadata) {
       assert.match(metadata, new RegExp(`\\$${skillName}`));
-      assert.match(metadata, /story|dramatic|motion|coherent|creative|pacing|rhythm/i);
+      assert.match(
+        metadata,
+        /story|dramatic|motion|coherent|creative|pacing|rhythm/i,
+      );
     }
   }
 
-  const mgSkill = await readFile(join(pluginRoot, "skills", "clash-mg-character", "SKILL.md"), "utf8");
+  const mgSkill = await readFile(
+    join(pluginRoot, "skills", "clash-mg-character", "SKILL.md"),
+    "utf8",
+  );
   assert.match(mgSkill, /default-exported, single-file Remotion TSX/i);
   assert.match(mgSkill, /clash canvas add --type remotion/);
   assert.match(mgSkill, /sourceNodeId/);
@@ -122,17 +237,14 @@ test("bundled self-host entry derives discovery from the canonical Clash home", 
     "utf8",
   );
 
-  assert.match(
-    source,
-    /join\(clashHomeForLocalDataDir\(dataDir\), "run"\)/,
-  );
+  assert.match(source, /join\(clashHomeForLocalDataDir\(dataDir\), "run"\)/);
   assert.doesNotMatch(source, /join\(dataDir, "\.\.", "run"\)/);
 });
 
 test("bundled self-host agents do not recursively embed the Clash plugin", async () => {
   const runtime = JSON.parse(
     await readFile(
-      new URL("../runtime/agents/master-clash/runtime.json", import.meta.url),
+      new URL("../runtime/agents/clash/runtime.json", import.meta.url),
       "utf8",
     ),
   );
@@ -141,22 +253,28 @@ test("bundled self-host agents do not recursively embed the Clash plugin", async
   await assert.rejects(
     access(
       new URL(
-        "../runtime/agents/master-clash/plugins/clash/runtime/index.js",
+        "../runtime/agents/clash/plugins/clash/runtime/index.js",
         import.meta.url,
       ),
     ),
   );
 });
 
-test("plugin packaging builds core, then bridge agents, then the non-recursive standalone bundle", async () => {
+test("plugin packaging consumes declared dependency outputs before creating the standalone bundle", async () => {
   const packageJson = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   ) as { scripts?: Record<string, string> };
-  const bridgePackage = JSON.parse(
-    await readFile(new URL("../../../packages/clash-bridge/package.json", import.meta.url), "utf8"),
+  const cliPackage = JSON.parse(
+    await readFile(
+      new URL("../../../packages/cli/package.json", import.meta.url),
+      "utf8",
+    ),
   ) as { scripts?: Record<string, string> };
   const localApiPackage = JSON.parse(
-    await readFile(new URL("../../../apps/local-api/package.json", import.meta.url), "utf8"),
+    await readFile(
+      new URL("../../../apps/local-api/package.json", import.meta.url),
+      "utf8",
+    ),
   ) as { scripts?: Record<string, string> };
   const hostCore = await readFile(
     new URL("../scripts/build-host-runtime.ts", import.meta.url),
@@ -167,19 +285,20 @@ test("plugin packaging builds core, then bridge agents, then the non-recursive s
     "utf8",
   );
 
-  assert.match(
-    packageJson.scripts?.build ?? "",
-    /build:core.*@clash-space\/bridge build.*bundle:agents/,
-  );
-  assert.match(bridgePackage.scripts?.build ?? "", /build:runtime.*bundle:agents/);
-  assert.match(localApiPackage.scripts?.["build:deps"] ?? "", /clash-bridge run build:runtime/);
+  assert.match(packageJson.scripts?.build ?? "", /build:core.*bundle:agents/);
+  assert.doesNotMatch(packageJson.scripts?.build ?? "", /--filter/);
+  assert.match(cliPackage.scripts?.build ?? "", /\btsup\b/);
+  assert.equal(localApiPackage.scripts?.["build:deps"], undefined);
   assert.equal(localApiPackage.scripts?.build, "tsc");
-  assert.match(localApiPackage.scripts?.["build:with-deps"] ?? "", /build:deps.*tsc/);
-  assert.match(packageJson.scripts?.["build:deps"] ?? "", /local-api build:with-deps/);
+  assert.equal(localApiPackage.scripts?.["build:with-deps"], undefined);
+  assert.equal(packageJson.scripts?.["build:deps"], undefined);
   assert.doesNotMatch(hostCore, /sourceAgentsDir/);
   assert.match(hostCore, /rm\(resolve\(runtimeDir, "agents"\)/);
-  assert.match(bundleAgents, /"packages",[\s\S]*"clash-bridge",[\s\S]*"dist",[\s\S]*"agents"/);
-  assert.match(bundleAgents, /recursivePluginDir/);
+  assert.match(
+    bundleAgents,
+    /"packages",[\s\S]*"cli",[\s\S]*"assets",[\s\S]*"agents"/,
+  );
+  assert.doesNotMatch(bundleAgents, /recursivePluginDir/);
 });
 
 test("the packaged MCP entry has no unresolved workspace package imports", async () => {
@@ -188,8 +307,6 @@ test("the packaged MCP entry has no unresolved workspace package imports", async
     "utf8",
   );
 
-  assert.doesNotMatch(runtime, /from\s+["']@master-clash\//);
-  assert.doesNotMatch(runtime, /from\s+["']@clash-space\//);
   assert.doesNotMatch(runtime, /from\s+["']@clash\//);
 });
 
@@ -200,16 +317,27 @@ test("the MCP host client uses the shared canonical Clash home helper, not the l
   );
   assert.match(source, /from "@clash\/shared-runtime\/local-paths"/);
   assert.match(source, /from "@clash\/shared-runtime\/local-daemon"/);
-  assert.doesNotMatch(source, /from "@master-clash\/local-api"/);
+  assert.doesNotMatch(source, /from "@clash\/local-api"/);
 });
 
 test("the bundled host is a persistent user daemon rather than an MCP-owned child", async () => {
-  const [entry, bootstrap, sharedBootstrap, localApiServer] = await Promise.all([
-    readFile(new URL("./local-api-entry.ts", import.meta.url), "utf8"),
-    readFile(new URL("./plugin-host.ts", import.meta.url), "utf8"),
-    readFile(new URL("../../../packages/shared-runtime/src/local-daemon.ts", import.meta.url), "utf8"),
-    readFile(new URL("../../../apps/local-api/src/server.ts", import.meta.url), "utf8"),
-  ]);
+  const [entry, bootstrap, sharedBootstrap, localApiServer] = await Promise.all(
+    [
+      readFile(new URL("./local-api-entry.ts", import.meta.url), "utf8"),
+      readFile(new URL("./plugin-host.ts", import.meta.url), "utf8"),
+      readFile(
+        new URL(
+          "../../../packages/shared-runtime/src/local-daemon.ts",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+      readFile(
+        new URL("../../../apps/local-api/src/server.ts", import.meta.url),
+        "utf8",
+      ),
+    ],
+  );
 
   assert.match(entry, /launchMode:\s*"user-service"/);
   assert.match(entry, /CLASH_DAEMON_STARTED_BY/);
@@ -220,24 +348,40 @@ test("the bundled host is a persistent user daemon rather than an MCP-owned chil
   assert.match(sharedBootstrap, /child\.unref\(\)/);
   assert.match(sharedBootstrap, /CLASH_LOCAL_API_WRAPPER_ENTRY/);
   assert.match(localApiServer, /!process\.env\.CLASH_LOCAL_API_WRAPPER_ENTRY/);
-  assert.doesNotMatch(localApiServer, /!process\.env\.CLASH_PLUGIN_OWNER_CLIENT_ID/);
+  assert.doesNotMatch(
+    localApiServer,
+    /!process\.env\.CLASH_PLUGIN_OWNER_CLIENT_ID/,
+  );
 });
 
 test("the persistent daemon owns a packaged Remotion renderer without a second service port", async () => {
   const [entry, hostBuild, packageJson, rootPackageJson] = await Promise.all([
     readFile(new URL("./local-api-entry.ts", import.meta.url), "utf8"),
-    readFile(new URL("../scripts/build-host-runtime.ts", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
-    readFile(new URL("../../../package.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(
+      new URL("../scripts/build-host-runtime.ts", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../package.json", import.meta.url), "utf8").then(
+      JSON.parse,
+    ),
+    readFile(new URL("../../../package.json", import.meta.url), "utf8").then(
+      JSON.parse,
+    ),
   ]);
 
   assert.match(entry, /createRemotionTimelineRenderer/);
   assert.match(entry, /timelineRenderer,/);
   assert.match(entry, /new URL\("\.\/remotion-bundle"/);
-  assert.doesNotMatch(entry, /RENDER_SERVER_(?:PORT|URL)|child_process|spawn\(/);
+  assert.doesNotMatch(
+    entry,
+    /RENDER_SERVER_(?:PORT|URL)|child_process|spawn\(/,
+  );
   assert.match(hostBuild, /\.remotion-bundle/);
   assert.match(hostBuild, /remotion-bundle/);
-  assert.match(hostBuild, /external:\s*\["@remotion\/renderer"\]/);
+  assert.match(
+    hostBuild,
+    /external:\s*\[[^\]]*"@remotion\/renderer"[^\]]*\]/,
+  );
   assert.equal(
     packageJson.dependencies?.["@remotion/renderer"],
     rootPackageJson.pnpm?.overrides?.["@remotion/*"],
@@ -245,20 +389,32 @@ test("the persistent daemon owns a packaged Remotion renderer without a second s
 });
 
 test("the bundled Clash CLI and stdio MCP are peer clients of the same daemon bootstrap", async () => {
-  const [cliEntry, hostRunner] = await Promise.all([
-    readFile(new URL("../../../packages/cli/src/plugin.ts", import.meta.url), "utf8"),
+  const [cliEntry, cliProgram, hostRunner] = await Promise.all([
+    readFile(
+      new URL("../../../packages/cli/src/plugin.ts", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../../packages/cli/src/program.ts", import.meta.url),
+      "utf8",
+    ),
     readFile(new URL("./host-runner.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(cliEntry, /ensureCliLocalDaemon/);
-  assert.match(cliEntry, /parseAsync/);
+  assert.match(cliEntry, /runCli/);
+  assert.match(cliProgram, /parseAsync/);
+  assert.match(cliProgram, /registerProviderCommands/);
   assert.match(hostRunner, /ensureHost/);
-  assert.match(hostRunner, /CLASH_API_URL:\s*host\.endpoint/);
+  assert.match(hostRunner, /createProjectHostClient/);
+  assert.match(hostRunner, /resolveConnection/);
+  assert.match(hostRunner, /endpoint:\s*host\.endpoint/);
+  assert.doesNotMatch(hostRunner, /@clash\/cli|child_process|spawn\(/);
 });
 
 test("the packaged MCP entry completes an initialize handshake in plain Node", async () => {
-  const entry = new URL("../runtime/index.js", import.meta.url);
-  const child = spawn(process.execPath, [entry.pathname], {
+  const dispatcher = new URL("../runtime/dispatcher.js", import.meta.url);
+  const child = spawn(process.execPath, [dispatcher.pathname, "mcp"], {
     cwd: new URL("../", import.meta.url),
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -272,42 +428,65 @@ test("the packaged MCP entry completes an initialize handshake in plain Node", a
   child.stderr.on("data", (chunk: string) => {
     stderr += chunk;
   });
-  child.stdin.write(`${JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: {
-      protocolVersion: "2025-06-18",
-      capabilities: {},
-      clientInfo: { name: "clash-package-boundary-test", version: "1" },
-    },
-  })}\n`);
+  child.stdin.write(
+    `${JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "clash-package-boundary-test", version: "1" },
+      },
+    })}\n`,
+  );
 
   try {
-    const response = await new Promise<Record<string, unknown>>((resolveResponse, rejectResponse) => {
-      const timeout = setTimeout(() => {
-        rejectResponse(new Error(`Timed out waiting for MCP initialize response.\n${stderr}`));
-      }, 10_000);
-      const inspect = () => {
-        const line = stdout.split("\n").find((candidate) => candidate.trim());
-        if (!line) return;
-        clearTimeout(timeout);
-        try {
-          resolveResponse(JSON.parse(line) as Record<string, unknown>);
-        } catch (error) {
-          rejectResponse(error);
-        }
-      };
-      child.stdout.on("data", inspect);
-      child.once("exit", (code) => {
-        clearTimeout(timeout);
-        rejectResponse(new Error(`MCP runtime exited with ${code} before initialize.\n${stderr}`));
-      });
-      inspect();
-    });
+    const response = await new Promise<Record<string, unknown>>(
+      (resolveResponse, rejectResponse) => {
+        const timeout = setTimeout(() => {
+          rejectResponse(
+            new Error(
+              `Timed out waiting for MCP initialize response.\n${stderr}`,
+            ),
+          );
+        }, 10_000);
+        const inspect = () => {
+          const line = stdout.split("\n").find((candidate) => candidate.trim());
+          if (!line) return;
+          clearTimeout(timeout);
+          try {
+            resolveResponse(JSON.parse(line) as Record<string, unknown>);
+          } catch (error) {
+            rejectResponse(error);
+          }
+        };
+        child.stdout.on("data", inspect);
+        child.once("exit", (code) => {
+          clearTimeout(timeout);
+          rejectResponse(
+            new Error(
+              `MCP runtime exited with ${code} before initialize.\n${stderr}`,
+            ),
+          );
+        });
+        inspect();
+      },
+    );
     assert.equal(response.jsonrpc, "2.0");
     assert.equal(response.id, 1);
     assert.ok(response.result && typeof response.result === "object");
+    const packageJson = JSON.parse(
+      await readFile(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    assert.equal(
+      (
+        response.result as {
+          serverInfo?: { name?: string; version?: string };
+        }
+      ).serverInfo?.version,
+      packageJson.version,
+    );
   } finally {
     child.kill("SIGTERM");
   }
@@ -320,6 +499,11 @@ test("the retired Claude-only plugin is not a second packaged skill source", asy
   );
   assert.doesNotMatch(workspace, /packages\/claude-code-plugin/);
   await assert.rejects(
-    access(new URL("../../../packages/claude-code-plugin/package.json", import.meta.url)),
+    access(
+      new URL(
+        "../../../packages/claude-code-plugin/package.json",
+        import.meta.url,
+      ),
+    ),
   );
 });

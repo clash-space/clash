@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CustomActionDefinitionSchema } from "@clash/shared-types";
+import {
+  CustomActionDefinitionSchema,
+  MODEL_CARDS,
+  type ModelCatalogEntry,
+  type ModelUpstreamRoute,
+} from "@clash/shared-types";
 
 import PromptActionNode, { planKeyframeInsertion } from "./ActionBadge";
 import { CanvasTransientUiProvider } from "../CanvasTransientUiContext";
@@ -30,6 +35,10 @@ const spawnAssetMock = vi.hoisted(() => ({
 const layoutMock = vi.hoisted(() => ({
   addNodeWithAutoLayout: vi.fn(),
   addNodeWithLayout: vi.fn(),
+}));
+
+const projectContextMock = vi.hoisted(() => ({
+  enabledModelCatalog: null as ModelCatalogEntry[] | null,
 }));
 
 vi.mock("@xyflow/react", () => ({
@@ -73,7 +82,8 @@ vi.mock("../ProjectContext", async () => {
     useProject: () => ({
       projectId: "project-1",
       modelCatalogReady: true,
-      enabledModelCatalog: MODEL_CARDS.map((model) => ({ model, tier: "available", selectedRoute: {} })),
+      enabledModelCatalog: projectContextMock.enabledModelCatalog
+        ?? MODEL_CARDS.map((model) => ({ model, tier: "available", selectedRoute: {} })),
     }),
   };
 });
@@ -174,6 +184,7 @@ describe("ActionBadge canvas subscriptions", () => {
 
   beforeEach(() => {
     cleanup();
+    Element.prototype.scrollIntoView = vi.fn();
     reactFlowMock.nodeConnections.splice(0);
     reactFlowMock.getEdges.mockReset();
     reactFlowMock.getEdges.mockReturnValue([]);
@@ -195,6 +206,92 @@ describe("ActionBadge canvas subscriptions", () => {
       position: { x: 320, y: 0 },
     }));
     layoutMock.addNodeWithLayout.mockReset();
+    projectContextMock.enabledModelCatalog = null;
+  });
+
+  it("disables a parameter only when every configured provider excludes it", () => {
+    const seedAudio = MODEL_CARDS.find((model) => model.id === "seed-audio-1")!;
+    const hiloRoute = {
+      modelCode: seedAudio.id,
+      kind: seedAudio.kind,
+      providerId: "hilo-hub",
+      upstreamId: "hilo-hub",
+      upstreamModel: "seed-audio-1.0",
+      apiShape: "hilo-hub",
+      priority: 1,
+      excludedParameterIds: ["voice_id"],
+      executorBinding: {
+        pluginId: "hilo.hub-media",
+        version: "1.0.0",
+        exportId: "hilo-hub-execute",
+        schemaHash: `sha256:${"a".repeat(64)}`,
+      },
+    } satisfies ModelUpstreamRoute;
+    const officialRoute = {
+      ...hiloRoute,
+      providerId: "volcengine-speech",
+      upstreamId: "volcengine-speech",
+      apiShape: "volcengine-speech",
+      excludedParameterIds: undefined,
+      executorBinding: {
+        pluginId: "clash.volcengine",
+        version: "1.0.0",
+        exportId: "volcengine-speech-execute",
+        schemaHash: `sha256:${"b".repeat(64)}`,
+      },
+    } satisfies ModelUpstreamRoute;
+    const catalogEntry = (
+      routes: ModelUpstreamRoute[],
+      unavailableParameterIds: string[],
+    ): ModelCatalogEntry => ({
+      model: seedAudio,
+      tier: "available",
+      routes,
+      selectedRoute: routes[0] ?? null,
+      candidateProviders: routes.flatMap((route) => route.providerId ? [route.providerId] : []),
+      unavailableParameterIds,
+      missingCredentials: [],
+      missingOAuth: [],
+    });
+    const renderEditor = () => render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="seed-audio-action"
+          type="action-badge"
+          data={{
+            actionType: "audio-gen",
+            content: "A calm narrator",
+            label: "Generate audio",
+            modelId: seedAudio.id,
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+    const openParameters = () => {
+      fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+      fireEvent.click(screen.getByRole("button", { name: /WAV/ }));
+    };
+
+    projectContextMock.enabledModelCatalog = [catalogEntry([hiloRoute], ["voice_id"])];
+    const first = renderEditor();
+    openParameters();
+    expect(screen.getByRole("button", { name: /Voice ID/i })).toBeDisabled();
+
+    first.unmount();
+    projectContextMock.enabledModelCatalog = [catalogEntry([hiloRoute, officialRoute], [])];
+    renderEditor();
+    openParameters();
+    const voiceIdControl = screen.getByRole("button", { name: /Voice ID/i });
+    expect(voiceIdControl).toBeEnabled();
+    fireEvent.click(voiceIdControl);
+    fireEvent.change(screen.getByRole("textbox", { name: "Voice ID" }), {
+      target: { value: "speaker-123" },
+    });
+    expect(spawnAssetMock.latestInput.pluginBinding).toMatchObject({
+      pluginId: "clash.volcengine",
+      exportId: "volcengine-speech-execute",
+    });
   });
 
   it("mounts from node-scoped connections without subscribing to every edge", () => {
@@ -389,6 +486,42 @@ describe("ActionBadge canvas subscriptions", () => {
     expect(screen.getByText("MP4 · up to 15s · 50 MB")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Choose source video" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add reference from canvas" })).toBeNull();
+  });
+
+  it("lets Seedance continuation collect videos up to the card's declared limit", () => {
+    const sourceVideo = {
+      id: "seedance-source-1",
+      type: "video",
+      data: { label: "Opening clip" },
+    };
+    reactFlowMock.nodeConnections.push({
+      edgeId: "seedance-source-1-seedance-extend-action",
+      source: sourceVideo.id,
+      target: "seedance-extend-action",
+    });
+    reactFlowMock.getNode.mockImplementation((id: string) => id === sourceVideo.id ? sourceVideo : undefined);
+
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="seedance-extend-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Bridge these source clips",
+            label: "Extend",
+            modelId: "seedance-2-extend",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    expect(screen.getByText("Source videos")).toBeTruthy();
+    expect(screen.getByText("1–3 videos · up to 15s total")).toBeTruthy();
+    expect(screen.getByText("Opening clip")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add source video" })).toBeTruthy();
   });
 
   it("labels and evenly times the first and last FLUX 3 keyframes", () => {
@@ -689,10 +822,15 @@ describe("ActionBadge canvas subscriptions", () => {
 
     const modelSelect = screen.getByRole("combobox", { name: "Model" });
     expect(modelSelect.hasAttribute("disabled")).toBe(false);
+    expect(modelSelect.textContent).toContain("Seedance 2.0 (全能参考)");
     fireEvent.click(modelSelect);
-    expect(screen.getAllByRole("option")).toHaveLength(2);
-    expect(screen.getByRole("option", { name: "Seedance 2.0 (全能参考)" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Seedance 2.5 (全能参考)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Seedance 2.0 Fast (全能参考)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Seedance 2.0 Mini (全能参考)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Kling Avatar" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "Sora 2" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Seedance 2.0 (Start/End)" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "MiniMax H3 (全能参考)" })).toBeNull();
   });
 
   it("selects a form Custom Action from the Image Gen model picker", async () => {

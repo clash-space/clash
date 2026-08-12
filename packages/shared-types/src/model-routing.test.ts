@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as modelRouting from "./model-routing";
+import * as modelRouting from "./model-routing.js";
 
 import {
   MODEL_UPSTREAM_ROUTES,
@@ -11,9 +11,9 @@ import {
   resolveModelUpstreamRoute,
   type ProviderAccountAvailability,
   type UpstreamAvailability,
-} from "./model-routing";
-import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard } from "./models";
-import { validateModelCardConfiguration } from "./model-constraints";
+} from "./model-routing.js";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard } from "./models.js";
+import { validateModelCardConfiguration } from "./model-constraints.js";
 
 describe("model upstream routing", () => {
   it("accepts plugin-defined Provider, upstream, API shape, and OAuth ids", () => {
@@ -21,6 +21,23 @@ describe("model upstream routing", () => {
     expect(modelRouting.ModelUpstreamIdSchema.parse("hilo-hub")).toBe("hilo-hub");
     expect(modelRouting.ModelUpstreamApiShapeSchema.parse("hilo-hub")).toBe("hilo-hub");
     expect(modelRouting.ProviderOAuthIdSchema.parse("hilo-hub")).toBe("hilo-hub");
+  });
+
+  it("does not advertise retired direct KIE or Dreamina providers", () => {
+    const retired = new Set(["kie", "jimeng"]);
+
+    expect(MODEL_PROVIDER_DEFINITIONS.some((provider) =>
+      retired.has(provider.providerId) || retired.has(provider.upstreamId)
+    )).toBe(false);
+    expect(MODEL_UPSTREAM_ROUTES.some((route) =>
+      retired.has(route.providerId ?? "") ||
+      retired.has(route.upstreamId) ||
+      route.apiShape === "kie" ||
+      route.apiShape === "dreamina-cli"
+    )).toBe(false);
+    expect(MODEL_CARDS.some((model) =>
+      model.availableProviders?.some((provider) => retired.has(provider))
+    )).toBe(false);
   });
 
   it("exposes Pika API Club as a configured media provider", () => {
@@ -130,21 +147,39 @@ describe("model upstream routing", () => {
     expect(volcengineRoute?.referenceBinding).toEqual({
       type: "positional-tokens",
       modalityScopedIndexes: true,
-      tokens: { image: "[Image {n}]", video: "[Video {n}]", audio: "[Audio {n}]" },
+      tokens: { image: "@图像{n}", video: "@视频{n}", audio: "@音频{n}" },
     });
+  });
+
+  it("does not rewrite H3 MIME types now that references use file upload", () => {
+    const routeFor = (providerId: "minimax" | "fal" | "pika") =>
+      resolveModelUpstreamRoute({
+        modelCode: "minimax-h3",
+        kind: "video",
+        configuredProviders: [{
+          id: `${providerId}-primary`,
+          providerId,
+          upstreamId: providerId,
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+        }],
+      });
+
+    expect(routeFor("minimax")?.inputAdaptation).toBeUndefined();
+    expect(routeFor("fal")?.inputAdaptation).toBeUndefined();
+    expect(routeFor("pika")?.inputAdaptation).toBeUndefined();
   });
 
   it("composes provider-specific parameter candidates into the effective catalog card", () => {
     const entryFor = (
-      providerId: "jimeng" | "fal" | "volcengine",
-      upstreamId: "jimeng" | "fal" | "volcengine",
+      providerId: "fal" | "volcengine",
+      upstreamId: "fal" | "volcengine",
       credentials: Omit<ProviderAccountAvailability, "providerId">,
     ) =>
       listModelCatalogEntries({
         configuredProviders: [{ providerId, upstreamId, enabled: true, ...credentials }],
       }).find((entry) => entry.model.id === "seedance-2-ref");
 
-    const dreamina = entryFor("jimeng", "jimeng", { availableOAuth: ["dreamina"] });
     const fal = entryFor("fal", "fal", { configuredCredentials: ["apiKey"] });
     const volcengine = entryFor("volcengine", "volcengine", {
       configuredCredentials: ["apiKey"],
@@ -152,19 +187,22 @@ describe("model upstream routing", () => {
     const options = (entry: typeof fal, id: string) =>
       entry?.model.parameters.find((parameter) => parameter.id === id)?.options?.map((option) => option.value);
 
-    expect(options(dreamina, "duration")).toEqual(["auto", 4, 6, 8, 10, 15]);
     expect(options(fal, "duration")).toEqual(["auto", 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     expect(fal?.model.parameters.some((parameter) => parameter.id === "seed")).toBe(true);
-    expect(options(volcengine, "duration")).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-    expect(options(volcengine, "resolution")).toEqual(["480p", "720p", "1080p"]);
-    expect(volcengine?.model.defaultParams).toMatchObject({ duration: 5, resolution: "720p" });
+    expect(options(volcengine, "duration")).toEqual([-1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(options(volcengine, "resolution")).toEqual(["480p", "720p", "1080p", "4k"]);
+    expect(volcengine?.model.defaultParams).toMatchObject({
+      duration: -1,
+      aspect_ratio: "adaptive",
+      resolution: "720p",
+    });
     expect(validateModelCardConfiguration(volcengine!.model, {
       prompt: "product reveal",
       modelParams: { duration: "auto", resolution: "720p" },
     })).toMatch(/duration.*candidate/i);
   });
 
-  it("composes the fal Music 3 card without MiniMax-only parameters", () => {
+  it("keeps the full Music 3 card and marks MiniMax-only controls unavailable for fal", () => {
     const entry = listModelCatalogEntries({
       configuredProviders: [{
         providerId: "fal",
@@ -181,7 +219,8 @@ describe("model upstream routing", () => {
       upstreamModel: "fal-ai/minimax-music/v3",
     });
     expect(entry?.model.availableProviders).toEqual(["minimax", "fal", "pika"]);
-    expect(entry?.model.parameters.map((parameter) => parameter.id)).not.toContain("aigc_watermark");
+    expect(entry?.model.parameters.map((parameter) => parameter.id)).toContain("aigc_watermark");
+    expect(entry?.unavailableParameterIds).toContain("aigc_watermark");
     expect(entry?.model.parameters.find((parameter) => parameter.id === "sample_rate")?.options?.map((option) => option.value))
       .toEqual([16000, 24000, 32000, 44100]);
     expect(entry?.model.musicInput).toMatchObject({
@@ -395,12 +434,12 @@ describe("model upstream routing", () => {
       kind: "video",
       parameters: [],
       defaultParams: {},
-      availableProviders: ["jimeng", "volcengine", "replicate", "kie", "mock"],
-      defaultProvider: "jimeng",
+      availableProviders: ["volcengine", "replicate", "fal", "mock"],
+      defaultProvider: "volcengine",
     });
 
-    expect(parsed.availableProviders).toEqual(["jimeng", "volcengine", "replicate", "kie", "mock"]);
-    expect(parsed.defaultProvider).toBe("jimeng");
+    expect(parsed.availableProviders).toEqual(["volcengine", "replicate", "fal", "mock"]);
+    expect(parsed.defaultProvider).toBe("volcengine");
   });
 
   it("allows model cards to own provider route implementations", () => {
@@ -652,7 +691,7 @@ describe("model upstream routing", () => {
   it("skips configured upstreams without required variables and falls back", () => {
     const upstreams: UpstreamAvailability[] = [
       { upstreamId: "fal", enabled: true, configuredCredentials: [] },
-      { upstreamId: "google-agent-platform", enabled: true, configuredCredentials: ["serviceAccountKey"] },
+      { upstreamId: "google-ai-studio", enabled: true, configuredCredentials: ["apiKey"] },
     ];
 
     const route = resolveModelUpstreamRoute({
@@ -662,7 +701,7 @@ describe("model upstream routing", () => {
     });
 
     expect(route).toMatchObject({
-      upstreamId: "google-agent-platform",
+      upstreamId: "google-ai-studio",
       upstreamModel: "gemini-3.1-flash-image",
     });
   });
@@ -673,11 +712,11 @@ describe("model upstream routing", () => {
       kind: "image",
       configuredUpstreams: [
         { upstreamId: "fal", enabled: true, configuredCredentials: ["apiKey"] },
-        { upstreamId: "google-agent-platform", enabled: true, configuredCredentials: ["serviceAccountKey"] },
+        { upstreamId: "google-ai-studio", enabled: true, configuredCredentials: ["apiKey"] },
       ],
     });
 
-    expect(routes.map((route) => route.upstreamId)).toEqual(["fal", "google-agent-platform"]);
+    expect(routes.map((route) => route.upstreamId)).toEqual(["fal", "google-ai-studio"]);
   });
 
   it("keeps mock routes out of hosted resolution unless explicitly allowed", () => {
@@ -772,7 +811,7 @@ describe("model upstream routing", () => {
       upstreamId: "google-ai-studio",
       upstreamModel: "gemini-3.1-flash-image",
       apiShape: "google-ai-studio",
-      requiredCredentials: ["apiKey"],
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     });
   });
 
@@ -797,7 +836,7 @@ describe("model upstream routing", () => {
   it("keeps local ASR model cards available without hosted provider setup", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "sensevoice-small-asr",
-      kind: "asr",
+      kind: "text",
       configuredProviders: [],
     });
 
@@ -860,9 +899,9 @@ describe("model upstream routing", () => {
   it("exposes a real local speech quality ladder with Whisper, VibeVoice, and Kokoro", () => {
     const entries = listModelCatalogEntries({ configuredProviders: [] });
     const expected = [
-      ["whisper-large-v3-turbo-asr", "asr", "local-asr", "mlx-community/whisper-large-v3-turbo"],
-      ["whisper-small-asr", "asr", "local-asr", "mlx-community/whisper-small-mlx"],
-      ["vibevoice-asr", "asr", "local-asr", "mlx-community/VibeVoice-ASR-4bit"],
+      ["whisper-large-v3-turbo-asr", "text", "local-asr", "mlx-community/whisper-large-v3-turbo"],
+      ["whisper-small-asr", "text", "local-asr", "mlx-community/whisper-small-mlx"],
+      ["vibevoice-asr", "text", "local-asr", "mlx-community/VibeVoice-ASR-4bit"],
       ["kokoro-82m-tts", "audio", "local-tts", "mlx-community/Kokoro-82M-4bit"],
     ] as const;
 
@@ -896,7 +935,7 @@ describe("model upstream routing", () => {
         id: "parakeet-tdt-0.6b-v3-asr",
         name: "Parakeet TDT 0.6B v3",
         provider: "NVIDIA",
-        kind: "asr",
+        kind: "text",
         defaultParams: {
           asr_model: "mlx-community/parakeet-tdt-0.6b-v3",
         },
@@ -947,19 +986,9 @@ describe("model upstream routing", () => {
       {
         modelCode: "seedance-2-ref",
         kind: "video" as const,
-        providerId: "jimeng",
-        upstreamId: "jimeng",
-        upstreamModel: "seedance2.0fast",
-        apiShape: "dreamina-cli",
-        credentials: [],
-        oauth: ["dreamina"],
-      },
-      {
-        modelCode: "seedance-2-ref",
-        kind: "video" as const,
         providerId: "volcengine",
         upstreamId: "volcengine",
-        upstreamModel: "doubao-seedance-2-0-pro",
+        upstreamModel: "doubao-seedance-2-0-260128",
         apiShape: "modelark",
         credentials: ["apiKey"],
       },
@@ -975,7 +1004,6 @@ describe("model upstream routing", () => {
             upstreamId: item.upstreamId,
             enabled: true,
             configuredCredentials: [...item.credentials],
-            availableOAuth: "oauth" in item ? [...item.oauth] : undefined,
           },
         ],
       });
@@ -989,55 +1017,7 @@ describe("model upstream routing", () => {
       });
       if (item.credentials.length) expect(route).toMatchObject({ requiredCredentials: [...item.credentials] });
       else expect(route?.requiredCredentials).toBeUndefined();
-      if ("oauth" in item) expect(route).toMatchObject({ requiredOAuth: [...item.oauth] });
     }
-  });
-
-  it("routes Dreamina through the official CLI adapter only when OAuth is connected", () => {
-    const route = resolveModelUpstreamRoute({
-      modelCode: "seedance-2-ref",
-      kind: "video",
-      configuredProviders: [
-        {
-          providerId: "jimeng",
-          upstreamId: "jimeng",
-          enabled: true,
-          availableOAuth: ["dreamina"],
-        } as any,
-      ],
-    });
-
-    expect(route).toMatchObject({
-      modelCode: "seedance-2-ref",
-      providerId: "jimeng",
-      upstreamId: "jimeng",
-      upstreamModel: "seedance2.0fast",
-      apiShape: "dreamina-cli",
-      requiredOAuth: ["dreamina"],
-    });
-    expect(route?.requiredCredentials).toBeUndefined();
-  });
-
-  it("keeps Dreamina model cards in the missing-provider tier until OAuth is connected", () => {
-    const entries = listModelCatalogEntries({
-      configuredProviders: [
-        {
-          providerId: "jimeng",
-          upstreamId: "jimeng",
-          enabled: true,
-          availableOAuth: [],
-        } as any,
-      ],
-    });
-
-    const seedance = entries.find((entry) => entry.model.id === "seedance-2-ref");
-    expect(seedance).toMatchObject({
-      tier: "configured-provider",
-      selectedRoute: null,
-      candidateProviders: ["jimeng"],
-      missingCredentials: [],
-    });
-    expect((seedance as any)?.missingOAuth).toEqual(["dreamina"]);
   });
 
   it("indexes provider-declared model support by provider", () => {
@@ -1067,7 +1047,6 @@ describe("model upstream routing", () => {
       models: [expect.objectContaining({ id: "elevenlabs-tts", apiShape: "elevenlabs" })],
       requiredCredentials: ["apiKey"],
     });
-    expect(byProvider.get("jimeng")?.models.map((model) => model.id)).toContain("seedance-2-ref");
     expect(byProvider.get("volcengine")?.models.map((model) => model.id)).toContain("seedance-2-ref");
     expect(byProvider.has("midjourney")).toBe(false);
   });
@@ -1118,39 +1097,22 @@ describe("model upstream routing", () => {
     ]);
   });
 
-  it("separates Google AI Studio from Google Cloud Agent Platform provider accounts", () => {
-    const aiStudio = listProviderModelSupport().find((support) =>
-      support.providerId === "official" &&
-      support.upstreamId === "google-ai-studio" &&
-      support.region === "global"
+  it("does not separate Google AI Studio from Agent Platform", () => {
+    // They were separate while Agent Platform required a service-account JSON exchanged for a
+    // scoped token. Asked directly with a real key, both surfaces answer :generateContent with
+    // x-goog-api-key and differ only by host -- so under the rule that the same authentication
+    // method means the same provider, they are one.
+    //
+    // The split was not free. A Google account was configured, nano-banana-2 was requested, our own
+    // gate demanded a service account, found none, and hilo-hub answered instead. The asset looked
+    // exactly like a successful Google generation.
+    const upstreams = new Set(
+      listProviderModelSupport()
+        .filter((support) => support.providerId === "official")
+        .map((support) => support.upstreamId),
     );
-    const agentPlatform = listProviderModelSupport().find((support) =>
-      support.providerId === "official" &&
-      support.upstreamId === "google-agent-platform" &&
-      support.region === "global"
-    );
-    const aiStudioFlashRoutes = aiStudio?.models.filter((model) => model.id === "nano-banana-2");
-    const agentPlatformFlashRoutes = agentPlatform?.models.filter((model) => model.id === "nano-banana-2");
-
-    expect(aiStudioFlashRoutes).toEqual([
-      expect.objectContaining({
-        apiShape: "google-ai-studio",
-        requiredCredentials: ["apiKey"],
-        requiredOAuth: [],
-      }),
-    ]);
-    expect(aiStudio?.requiredCredentials).toEqual(["apiKey"]);
-    expect(aiStudio?.models.some((model) => model.apiShape === "google-agent-platform")).toBe(false);
-
-    expect(agentPlatformFlashRoutes).toEqual([
-      expect.objectContaining({
-        apiShape: "google-agent-platform",
-        requiredCredentials: ["serviceAccountKey"],
-        requiredOAuth: [],
-      }),
-    ]);
-    expect(agentPlatform?.requiredCredentials).toEqual(["serviceAccountKey"]);
-    expect(agentPlatform?.models.some((model) => model.apiShape === "google-ai-studio")).toBe(false);
+    expect(upstreams.has("google-agent-platform")).toBe(false);
+    expect(upstreams.has("google-ai-studio")).toBe(true);
   });
 
   it("keeps provider definitions free of per-model support declarations", () => {
@@ -1180,10 +1142,10 @@ describe("model upstream routing", () => {
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google-agent-platform",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
-          configuredCredentials: ["serviceAccountKey"],
+          configuredCredentials: ["apiKey"],
           weight: 10,
         },
         {
@@ -1508,23 +1470,24 @@ describe("model upstream routing", () => {
     });
   });
 
-  it("does not use Google Cloud Agent Platform credentials for Google AI Studio routes", () => {
+  it("uses one Google credential for every Google route", () => {
+    // This used to assert the opposite: that an Agent Platform service account must not satisfy an
+    // AI Studio route. Both surfaces now take the same api key, so keeping them apart would mean
+    // asking for two credentials where the vendor asks for one.
     const route = resolveModelUpstreamRoute({
       modelCode: "gemini-3.1-flash-tts",
       kind: "audio",
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google-agent-platform",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
-          priority: 1,
-          configuredCredentials: ["serviceAccountKey"],
+          configuredCredentials: ["apiKey"],
         },
       ],
     });
-
-    expect(route).toBeNull();
+    expect(route?.upstreamId).toBe("google-ai-studio");
   });
 
   it("marks a model available when any configured key for its provider satisfies required credentials", () => {
@@ -1557,34 +1520,6 @@ describe("model upstream routing", () => {
         upstreamId: "openai",
       },
       missingCredentials: [],
-    });
-  });
-
-  it("routes KIE provider accounts through the KIE market API shape", () => {
-    const route = resolveModelUpstreamRoute({
-      modelCode: "nano-banana-2",
-      kind: "image",
-      configuredProviders: [
-        {
-          providerId: "kie",
-          upstreamId: "kie",
-          configuredCredentials: ["apiKey"],
-          weight: 100,
-        },
-        {
-          providerId: "fal",
-          upstreamId: "fal",
-          configuredCredentials: ["apiKey"],
-        },
-      ],
-    });
-
-    expect(route).toMatchObject({
-      providerId: "kie",
-      upstreamId: "kie",
-      upstreamModel: "nano-banana-2",
-      apiShape: "kie",
-      requiredCredentials: ["apiKey"],
     });
   });
 
@@ -1623,10 +1558,10 @@ describe("model upstream routing", () => {
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google-agent-platform",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
-          configuredCredentials: ["serviceAccountKey"],
+          configuredCredentials: ["apiKey"],
         },
       ],
     });
@@ -1636,10 +1571,10 @@ describe("model upstream routing", () => {
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google-agent-platform",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
-          configuredCredentials: ["serviceAccountKey"],
+          configuredCredentials: ["apiKey"],
         },
       ],
     });
@@ -1649,10 +1584,10 @@ describe("model upstream routing", () => {
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google-agent-platform",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
-          configuredCredentials: ["serviceAccountKey"],
+          configuredCredentials: ["apiKey"],
         },
       ],
     });
@@ -1662,10 +1597,10 @@ describe("model upstream routing", () => {
       configuredProviders: [
         {
           providerId: "official",
-          upstreamId: "google-agent-platform",
+          upstreamId: "google-ai-studio",
           region: "global",
           enabled: true,
-          configuredCredentials: ["serviceAccountKey"],
+          configuredCredentials: ["apiKey"],
         },
       ],
     });
@@ -1685,14 +1620,14 @@ describe("model upstream routing", () => {
     });
   });
 
-  it("routes current Google Agent Platform SOTA text models through official Agent Platform service-account credentials", () => {
+  it("routes current Google SOTA text models through the official Google account", () => {
     const configuredProviders: ProviderAccountAvailability[] = [
       {
         providerId: "official",
-        upstreamId: "google-agent-platform",
+        upstreamId: "google-ai-studio",
         region: "global",
         enabled: true,
-        configuredCredentials: ["serviceAccountKey"],
+        configuredCredentials: ["apiKey"],
       },
     ];
 
@@ -1707,31 +1642,31 @@ describe("model upstream routing", () => {
     ).toEqual([
       expect.objectContaining({
         modelCode: "gemini-3.5-flash",
-        upstreamId: "google-agent-platform",
+        upstreamId: "google-ai-studio",
         upstreamModel: "gemini-3.5-flash",
-        apiShape: "google-agent-platform",
-        requiredCredentials: ["serviceAccountKey"],
+        apiShape: "google-ai-studio",
+        credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
       }),
       expect.objectContaining({
         modelCode: "gemini-3.1-pro",
-        upstreamId: "google-agent-platform",
+        upstreamId: "google-ai-studio",
         upstreamModel: "gemini-3.1-pro-preview",
-        apiShape: "google-agent-platform",
-        requiredCredentials: ["serviceAccountKey"],
+        apiShape: "google-ai-studio",
+        credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
       }),
       expect.objectContaining({
         modelCode: "gemini-3-flash",
-        upstreamId: "google-agent-platform",
+        upstreamId: "google-ai-studio",
         upstreamModel: "gemini-3-flash-preview",
-        apiShape: "google-agent-platform",
-        requiredCredentials: ["serviceAccountKey"],
+        apiShape: "google-ai-studio",
+        credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
       }),
       expect.objectContaining({
         modelCode: "gemini-3.1-flash-lite",
-        upstreamId: "google-agent-platform",
+        upstreamId: "google-ai-studio",
         upstreamModel: "gemini-3.1-flash-lite",
-        apiShape: "google-agent-platform",
-        requiredCredentials: ["serviceAccountKey"],
+        apiShape: "google-ai-studio",
+        credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
       }),
     ]);
   });
@@ -1819,25 +1754,6 @@ describe("model upstream routing", () => {
     });
   });
 
-  it("does not treat an OAuth-backed provider account with omitted OAuth metadata as ready", () => {
-    const entries = listModelCatalogEntries({
-      configuredProviders: [
-        {
-          providerId: "jimeng",
-          upstreamId: "jimeng",
-          enabled: true,
-        },
-      ],
-    });
-
-    expect(entries.find((entry) => entry.model.id === "seedance-2-ref")).toMatchObject({
-      tier: "configured-provider",
-      selectedRoute: null,
-      missingOAuth: ["dreamina"],
-      candidateProviders: ["jimeng"],
-    });
-  });
-
   it("exposes one Seedream card that switches between fal generation and edit endpoints", () => {
     const seedreamCards = MODEL_CARDS.filter((model) => model.id.startsWith("seedream-4.5"));
     expect(seedreamCards).toHaveLength(1);
@@ -1883,7 +1799,6 @@ describe("model upstream routing", () => {
     const suno = MODEL_CARDS.find((model) => model.id === "suno-v5.5");
     expect(suno).toMatchObject({
       kind: "audio",
-      task: "music-generation",
       availableProviders: ["suno"],
       defaultProvider: "suno",
     });
@@ -1911,7 +1826,6 @@ describe("model upstream routing", () => {
     expect(MODEL_CARDS.find((model) => model.id === "minimax-music-3")).toMatchObject({
       name: "MiniMax Music 3.0",
       kind: "audio",
-      task: "music-generation",
       availableProviders: ["minimax", "fal", "pika"],
       defaultProvider: "minimax",
       musicInput: {
@@ -1930,7 +1844,6 @@ describe("model upstream routing", () => {
       ],
     });
     expect(MODEL_CARDS.find((model) => model.id === "suno-v5.5")).toMatchObject({
-      task: "music-generation",
       musicInput: {
         lyricsTarget: "prompt",
         descriptionParam: "style",
@@ -2025,18 +1938,22 @@ describe("model upstream routing", () => {
     });
   });
 
-  it("separates speech and music tasks from their output media kind", () => {
-    expect(MODEL_CARDS.find((model) => model.id === "sensevoice-small-asr")).toMatchObject({
-      kind: "asr",
-      task: "speech-to-text",
-    });
-    expect(MODEL_CARDS.find((model) => model.id === "piper-huayan-tts")).toMatchObject({
-      kind: "audio",
-      task: "text-to-speech",
-    });
+  it("names a card by what it produces, with no second axis", () => {
+    // This asserted the opposite: that `task` separated the job from the media kind, so
+    // transcription was `kind: "asr", task: "speech-to-text"`. Producing one class of output is one
+    // action and the rest is parameters, so transcription is text and speech is audio, said once.
+    // The old `asr` kind named a technique rather than an output, which is why it could not survive
+    // the rule while image, video, audio and text could.
+    expect(MODEL_CARDS.find((model) => model.id === "sensevoice-small-asr")?.kind).toBe("text");
+    expect(MODEL_CARDS.find((model) => model.id === "piper-huayan-tts")?.kind).toBe("audio");
+    expect(MODEL_CARDS.every((model) => !("task" in model))).toBe(true);
   });
 
-  it("accepts either direct Google credentials or the complete Gateway credential set for Gemini Omni", () => {
+  it("accepts whichever credential the chosen Omni surface takes", () => {
+    // Not an api key. The Interactions API answers one with 401 "API keys are not supported by this
+    // API", measured with a key that generateContent accepts -- so a token is the only way in, and a
+    // service account is the only unattended way to hold one. The name said "Gateway", which was
+    // removed some time ago.
     const direct = resolveModelUpstreamRoute({
       modelCode: "gemini-omni-flash",
       kind: "video",
@@ -2045,14 +1962,14 @@ describe("model upstream routing", () => {
         providerId: "official",
         upstreamId: "google-ai-studio",
         region: "global",
-        configuredCredentials: ["apiKey"],
+        configuredCredentials: ["serviceAccountKey"],
       }],
     });
     const gateway = resolveModelUpstreamRoute({
       modelCode: "gemini-omni-flash",
       kind: "video",
       configuredProviders: [{
-        id: "google-gateway",
+        id: "google-proxy",
         providerId: "official",
         upstreamId: "google-ai-studio",
         region: "global",
@@ -2073,9 +1990,9 @@ describe("model upstream routing", () => {
 
     expect(direct).toMatchObject({ accountId: "google-direct" });
     expect(gateway).toMatchObject({
-      accountId: "google-gateway",
+      accountId: "google-proxy",
       credentialRequirements: {
-        anyOf: [["apiKey"], ["baseUrl"]],
+        anyOf: [["serviceAccountKey"], ["apiKey"], ["baseUrl"]],
         exclusive: true,
       },
     });

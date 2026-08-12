@@ -23,14 +23,35 @@ export type LocalSpeechCatalogEntry = {
     description?: unknown;
     promptGuidance?: unknown;
     defaultParams?: unknown;
+    input?: unknown;
   };
   selectedRoute?: CatalogRoute | null;
   routes?: CatalogRoute[];
   candidateProviders?: unknown[];
 };
 
+/**
+ * Audio in, text out -- which is what transcription is.
+ *
+ * This used to read `kind === 'asr'`. That kind is gone: the other model kinds name what a card
+ * produces, `asr` named a technique, and all five cards under it produce text. Asking for the flag
+ * again under a new name would just move the problem.
+ *
+ * Both halves are load-bearing. Producing text alone is every chat model; accepting audio alone is
+ * also every Gemini card, which lists `['text','image','video','audio']` because it converses about
+ * a recording. Only a transcription card takes audio and offers no way to prompt it with text, and
+ * the difference matters here because callers of this predicate offer to download MLX weights.
+ */
+export function transcribesAudioToText(model: LocalSpeechCatalogEntry['model']): boolean {
+  if ((model.kind as string) !== 'text') return false;
+  const declared = (model.input as { promptModalities?: unknown } | undefined)?.promptModalities;
+  if (!Array.isArray(declared)) return false;
+  const modalities = declared.map(String);
+  return modalities.includes('audio') && !modalities.includes('text');
+}
+
 export function isLocalAsrModelEntry(entry: LocalSpeechCatalogEntry): boolean {
-  return (entry.model.kind as string) === 'asr' && (
+  return transcribesAudioToText(entry.model) && (
     (entry.selectedRoute?.apiShape as string | undefined) === 'local-asr' ||
     (entry.candidateProviders ?? []).map(String).includes('local')
   );

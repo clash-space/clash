@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -13,14 +14,20 @@ import { fileURLToPath } from "node:url";
  * which makes it load-bearing, not a convenience.
  */
 
-const cliEntry = fileURLToPath(new URL("../../dist/index.js", import.meta.url));
+const cliEntry = fileURLToPath(new URL("../index.ts", import.meta.url));
+const cliTsconfig = fileURLToPath(new URL("../../tsconfig.dev.json", import.meta.url));
+const tsxImport = createRequire(import.meta.url).resolve("tsx");
 const projection = "projections/metadata/asset-talk.media.description.json";
 
 function runCli(cwd: string, args: string[]) {
-  return spawnSync(process.execPath, [cliEntry, ...args], {
+  return spawnSync(process.execPath, ["--import", tsxImport, cliEntry, ...args], {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, CLASH_LOCAL_DATA_DIR: join(cwd, ".data") },
+    env: {
+      ...process.env,
+      CLASH_LOCAL_DATA_DIR: join(cwd, ".data"),
+      TSX_TSCONFIG_PATH: cliTsconfig,
+    },
   });
 }
 

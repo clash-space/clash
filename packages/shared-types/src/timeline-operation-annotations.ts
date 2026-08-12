@@ -5,7 +5,7 @@ import {
   TIMELINE_DSL_ITEM_TYPES,
   timelineDslAnnotatedObjectShape,
   type TimelineDslFieldAnnotation,
-} from "./timeline-field-annotations";
+} from "./timeline-field-annotations.js";
 
 /**
  * Executable operation annotations for every public Timeline surface.

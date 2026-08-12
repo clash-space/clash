@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalAudioConfigStore } from "./audio-config";
-import type { LocalAsrRuntime, LocalTtsRuntime } from "@clash-space/sdk";
+import type { LocalAsrRuntime, LocalTtsRuntime } from "@clash/sdk";
 
 let dataDir = "";
 

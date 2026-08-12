@@ -3,13 +3,13 @@ import {
   DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
   TIMELINE_KEYFRAME_INTERPOLATIONS,
   type TimelineKeyframeInterpolation,
-} from "./timeline-keyframe-annotations";
+} from "./timeline-keyframe-annotations.js";
 import {
   TIMELINE_MASK_ANIMATION_BINDINGS,
   TIMELINE_MASK_FIELD_ANNOTATIONS,
   type TimelineMaskField,
   type TimelineMaskKeyframeChannel,
-} from "./timeline-mask";
+} from "./timeline-mask.js";
 
 export {
   DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
@@ -18,7 +18,7 @@ export {
   TIMELINE_KEYFRAME_SAMPLING_POLICY,
   type TimelineKeyframeSampleEntry,
   type TimelineKeyframeInterpolation,
-} from "./timeline-keyframe-annotations";
+} from "./timeline-keyframe-annotations.js";
 
 export type TimelineVectorKeyframe = {
   frame: number;

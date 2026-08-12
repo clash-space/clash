@@ -1,27 +1,12 @@
 import { z } from "zod";
 
-import {
-  ExecutablePluginProviderAuthSchema,
-  type ExecutablePluginProviderAuth,
-} from "./executable-plugin";
+import type { PluginAuthDeclaration, PluginAuthFormItem } from "./plugin-auth.js";
 
 /**
  * Credential sources, normalized.
  *
- * A provider's `auth` array answers one question -- how does a credential for this
- * provider get here -- but each entry answers it in a different shape, so every
- * consumer re-derived the same distinctions. Settings did it by picking entries out
- * by type name:
- *
- *     const oauth = auth.find((a) => a.type === 'oauth');
- *     const localTokenImport = auth.find((a) => a.type === 'local-token-import');
- *     const apiKeyAuth = auth.filter((a) => a.type === 'api-key');
- *
- * Three `find`s producing three differently shaped fields, so a provider could not
- * offer two of the same kind (two regions, two installed clients), and every new
- * kind meant another branch in the UI.
- *
- * The distinctions consumers actually need are narrower than the wire types:
+ * A provider's auth declaration answers one question -- how does a credential for
+ * this provider get here -- and consumers need two distinctions from the answer:
  *
  *   - which control renders it: a field, a button that opens a window, or a button
  *     that calls the host
@@ -29,36 +14,44 @@ import {
  *     caller can use it at all
  *
  * That second axis is the one Kubernetes standardized as `interactiveMode` on exec
- * credential plugins, and it is the axis this product was missing: `hilo-hub`
- * declares two sources and *both* need either a window or an installed desktop app,
- * so no unattended path exists -- invisible until a CLI run fails.
+ * credential plugins, and it is the axis this product was missing: a provider whose
+ * only route to a credential is a browser window has no unattended path, which used
+ * to be invisible until a CLI run failed.
  *
- * Git and Docker credential helpers also settled on verbs (`get`/`store`/`erase`)
- * and, for Git and kubectl, an expiry field. Where this product differs from all of
- * them is trust: their helper commands are configured by the user, while these are
- * declared by a third-party plugin. That is why acquisition stays a closed set of
- * host-implemented kinds instead of an arbitrary command.
+ * What changed is where the distinctions come from. They used to be read off a union
+ * over auth *types* -- `api-key`, `oauth`, `derived-token`, `local-token-import` --
+ * and each new vendor needed a new member, which meant editing the host to add a
+ * provider. One vendor signs each request with an access key and a secret, another wants a
+ * token copied from a console, and Google accepts several credential forms; none
+ * of them is a type the host should have to learn.
+ *
+ * The declaration already carries both distinctions without naming any of that. A
+ * form item's `kind` says which control to draw, and the presence of a `flow` says a
+ * browser window is involved. So this file now reads the declaration rather than
+ * classifying vendors, and a new vendor is a new declaration rather than a new host
+ * release.
  */
 
 /** How a credential source is presented. */
 export type CredentialSourceControl = "field" | "button-window" | "button-action";
 
+/**
+ * What kind of control a form item renders as.
+ *
+ * These are the declaration's own form kinds, not a taxonomy of vendors. `choice` is
+ * a field with a fixed menu -- the region and service settings that used to be host
+ * columns -- and renders as one.
+ */
 export const CredentialSourceKindSchema = z.enum([
-  /** User supplies a static credential. */
-  "api-key",
-  /** Real authorization-code flow against an authorization server. */
-  "oauth",
-  /** Vendor-specific capture: complete a login page, read the token it redirects with. */
-  "login-page-capture",
-  /** Vendor-specific import: read the token an installed desktop app already holds. */
-  "local-app-store",
-  /** User supplies a signing secret; the wire credential is minted from it and expires. */
-  "derived-token",
+  "field",
+  "choice",
+  "button",
+  "display-code",
 ]);
 export type CredentialSourceKind = z.infer<typeof CredentialSourceKindSchema>;
 
 export interface CredentialSource {
-  /** Stable id for this source within its provider. */
+  /** Storage key this source populates. Stable within its provider. */
   id: string;
   kind: CredentialSourceKind;
   label: string;
@@ -68,134 +61,84 @@ export interface CredentialSource {
    * out rather than discover the failure by trying.
    */
   interactive: boolean;
-  /** Credential field this source populates. */
+  /** Storage key this source populates; the same value as `id`, named for its use. */
   credentialId: string;
   /**
-   * True when the stored secret is not the credential and cannot be sent as-is.
+   * True when the value must be stored encrypted and drawn masked.
    *
-   * The axis the taxonomy was missing. Four of the five kinds store the value they send, so "inject
-   * the stored credential" reads as one uniform rule -- and on the fifth that rule puts a private
-   * key on the wire. Host code branches on this rather than on the kind name, so a second
-   * derivation scheme does not mean revisiting every injection site.
+   * Replaces the old `derivesCredential`, which asked whether the stored secret could
+   * be sent as-is. The host no longer has an opinion on that: it stores opaque values
+   * and the plugin decides what to do with them, so there is nothing here for host
+   * code to get wrong about a signing key. What is left is a rendering and storage
+   * fact the host does own.
    *
-   * A derived credential is short-lived by construction, which is why nothing here holds one: this
-   * type describes how to obtain a credential and never carries the result. Code cannot persist
-   * into a slot that does not exist, and the slot is missing on purpose -- poll state lives beside
-   * the node in the canvas document, where a bearer token would be replicated and backed up with
-   * the project long after it stopped working.
+   * Nothing in this type holds a value. A resolved source describes how a credential
+   * is obtained and never carries the result, so code cannot persist a minted token
+   * into a slot that does not exist -- which matters because poll state lives beside
+   * the node in the canvas document, where a bearer token would be replicated and
+   * backed up with the project long after it stopped working.
    */
-  derivesCredential: boolean;
-  /** The originating wire entry, for host code that needs its kind-specific fields. */
-  auth: ExecutablePluginProviderAuth;
-}
-
-const CONTROL_BY_KIND: Readonly<Record<CredentialSourceKind, CredentialSourceControl>> = {
-  "api-key": "field",
-  oauth: "button-window",
-  "login-page-capture": "button-window",
-  "local-app-store": "button-action",
-  // A service account document is pasted in, the same gesture as a key.
-  "derived-token": "field",
-};
-
-const INTERACTIVE_BY_KIND: Readonly<Record<CredentialSourceKind, boolean>> = {
-  // A pasted key needs a human once, but it can be provisioned ahead of time, so an
-  // unattended caller is not blocked by it.
-  "api-key": false,
-  oauth: true,
-  "login-page-capture": true,
-  "local-app-store": false,
-  // The most unattended kind there is: a machine credential exists so that no human has to be
-  // present, and minting needs the stored secret rather than a person.
-  "derived-token": false,
-};
-
-/**
- * Kinds whose stored secret is not the credential.
- *
- * Separated from `CONTROL_BY_KIND` and `INTERACTIVE_BY_KIND` because it answers a different
- * question: those two decide how a credential is obtained from the user, this one decides what the
- * host may do with it afterwards.
- */
-const DERIVES_BY_KIND: Readonly<Record<CredentialSourceKind, boolean>> = {
-  "api-key": false,
-  oauth: false,
-  "login-page-capture": false,
-  "local-app-store": false,
-  "derived-token": true,
-};
-
-/**
- * Classify a wire auth entry.
- *
- * `oauth` with `flow: "browser"` is reported as `login-page-capture` rather than
- * `oauth`, because that is what it is. It carries no `response_type`, `client_id`, or
- * `token_type`, and its token field is configurable -- which only makes sense when
- * there is no standard to conform to, since RFC 6749 fixes that name as
- * `access_token`. Naming it accurately keeps `oauth` available for a real
- * authorization-code flow instead of spending it on one vendor's redirect.
- */
-export function credentialSourceKind(auth: ExecutablePluginProviderAuth): CredentialSourceKind {
-  if (auth.type === "api-key") return "api-key";
-  if (auth.type === "derived-token") return "derived-token";
-  if (auth.type === "local-token-import") return "local-app-store";
-  return auth.flow === "browser" ? "login-page-capture" : "oauth";
-}
-
-function defaultLabel(kind: CredentialSourceKind): string {
-  if (kind === "api-key") return "API key";
-  if (kind === "derived-token") return "Service account key";
-  if (kind === "local-app-store") return "Reuse local app login";
-  return "Sign in";
+  secret: boolean;
+  /** The originating form item, for host code that needs its kind-specific fields. */
+  item: PluginAuthFormItem;
 }
 
 /**
  * One uniform list of the ways a credential for this provider can be obtained.
  *
  * Order is preserved, so a provider controls which source it presents first, and
- * duplicates of a kind are kept -- two installed clients or two regions are two
- * sources, not one overwriting the other.
+ * duplicates of a kind are kept -- two regions or two keys are two sources, not one
+ * overwriting the other. `notice` items are dropped: they explain a field rather than
+ * carrying a value, so they are presentation with no credential behind them.
+ *
+ * A `button` is reported as `button-window` when the declaration carries a `flow`,
+ * and `button-action` otherwise. That is the whole of what the old five-member
+ * taxonomy decided, now read from the declaration instead of from a vendor's name.
  */
 export function resolveCredentialSources(
-  auth: readonly ExecutablePluginProviderAuth[],
+  declaration: PluginAuthDeclaration | undefined,
 ): CredentialSource[] {
-  return auth.map((entry, index) => {
-    const kind = credentialSourceKind(entry);
-    const id = entry.type === "api-key"
-      ? entry.credentialId
-      : entry.id;
-    const label = ("label" in entry && entry.label) ? entry.label : defaultLabel(kind);
-    return {
-      id: id || `${kind}-${index}`,
-      kind,
-      label,
-      control: CONTROL_BY_KIND[kind],
-      interactive: INTERACTIVE_BY_KIND[kind],
-      derivesCredential: DERIVES_BY_KIND[kind],
-      // Every source populates the same credential the broker injects; they differ
-      // only in how it is obtained. A derived token is the exception: its stored
-      // secret is a distinct document, and naming it `apiKey` would invite code to
-      // forward a signing key as one.
-      credentialId: entry.type === "api-key" || entry.type === "derived-token"
-        ? entry.credentialId
-        : "apiKey",
-      auth: entry,
-    };
-  });
+  if (!declaration) return [];
+  const sources: CredentialSource[] = [];
+  // Each method carries its own form and its own flow, and the flow consulted for a button is the
+  // one declared beside it. The old flat shape could not express that: there was a single `flow`
+  // for the whole declaration, so a button in one part of the form was reported as opening a window
+  // on the strength of a flow declared for an entirely different way of signing in.
+  for (const method of declaration.methods) {
+    const opensWindow = method.flow !== undefined;
+    for (const item of method.form ?? []) {
+      if (item.kind === "notice") continue;
+      const control: CredentialSourceControl = item.kind === "button"
+        ? (opensWindow ? "button-window" : "button-action")
+        : "field";
+      sources.push({
+        id: item.key,
+        kind: item.kind,
+        label: item.label,
+        control,
+        // Only a window needs someone at the keyboard. A typed key needs a human once,
+        // but it can be provisioned ahead of time, so an unattended caller is not
+        // blocked by it; a button that calls the host needs nobody at all.
+        interactive: control === "button-window",
+        credentialId: item.key,
+        secret: item.kind === "field" ? item.secret === true : false,
+        item,
+      });
+    }
+  }
+  return sources;
 }
 
 /** Sources usable without a human present. */
 export function unattendedCredentialSources(
-  auth: readonly ExecutablePluginProviderAuth[],
+  declaration: PluginAuthDeclaration | undefined,
 ): CredentialSource[] {
-  return resolveCredentialSources(auth).filter((source) => !source.interactive);
+  return resolveCredentialSources(declaration).filter((source) => !source.interactive);
 }
 
 /** True when the provider can be configured without a human present. */
 export function hasUnattendedCredentialSource(
-  auth: readonly ExecutablePluginProviderAuth[],
+  declaration: PluginAuthDeclaration | undefined,
 ): boolean {
-  return unattendedCredentialSources(auth).length > 0;
+  return unattendedCredentialSources(declaration).length > 0;
 }
-
-export { ExecutablePluginProviderAuthSchema };

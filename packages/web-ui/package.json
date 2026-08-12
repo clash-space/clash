@@ -2,6 +2,9 @@
   "name": "@clash/web-ui",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -24,6 +27,7 @@
   "dependencies": {
     "@ai-sdk/react": "^3.0.140",
     "@ariakit/react": "^0.4.31",
+    "@clash/gui": "workspace:*",
     "@clash/director-ui": "workspace:*",
     "@clash/shared-layout": "workspace:^",
     "@clash/shared-runtime": "workspace:*",
@@ -33,9 +37,9 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@master-clash/remotion-components": "workspace:*",
-    "@master-clash/remotion-core": "workspace:*",
-    "@master-clash/remotion-ui": "workspace:*",
+    "@clash/remotion-components": "workspace:*",
+    "@clash/remotion-core": "workspace:*",
+    "@clash/remotion-ui": "workspace:*",
     "@milkdown/core": "^7.17.2",
     "@milkdown/plugin-history": "^7.17.2",
     "@milkdown/plugin-listener": "^7.17.2",
@@ -86,7 +90,7 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
-    "@types/node": "^22.13.0",
+    "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "jsdom": "^29.0.2",

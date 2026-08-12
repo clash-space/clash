@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { createHash, randomUUID } from "node:crypto";
 import { delimiter, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { serve } from "@hono/node-server";
@@ -10,8 +10,11 @@ import {
   pluginHostSocketPath,
   startPluginHostIpcServer,
   type PluginHostIpcServer,
-} from "@clash-space/bridge/plugin-host";
-import { ActionsHost } from "@clash-space/bridge/actions-host";
+} from "./runtime/host/lib/plugin-host-ipc.js";
+import {
+  ActionsHost,
+  pruneOrphanActivationReceipts,
+} from "./runtime/host/lib/actions-loader.js";
 import {
   LOCAL_HOST_PROTOCOL_VERSION,
   type HostLaunchMode,
@@ -37,21 +40,27 @@ import { resolveMediaBaseUrl } from "./media-base-url.js";
 import { createMockExternalAigcService } from "./local-aigc.js";
 import {
   createJsonlProviderTestRecorder,
-  createProviderTestRecordingFetch,
   createProviderTestReplayFixtures,
   readJsonlProviderTestRecording,
-  type ProviderTestRecorder,
 } from "./provider-test-recorder.js";
-import { createBridgeProviderPluginProjector } from "./provider-plugin-projector.js";
-import { createBridgeProviderPluginExecutor } from "./provider-plugin-executor.js";
-import { createBridgeExecutablePluginActionInvoker } from "./plugin-action-runtime.js";
+import { createProviderPluginProjector } from "./provider-plugin-projector.js";
+import { createProviderPluginExecutor } from "./provider-plugin-executor.js";
+import { createExecutablePluginActionInvoker } from "./plugin-action-runtime.js";
 import {
   createCodexImagegenMarketplace,
-  ensureBundledFirstPartyMediaPlugin,
+  BUNDLED_PLUGINS,
+  ensureBundledPlugin,
 } from "./bundled-plugins.js";
+import {
+  activateOrUpdateHostExecutablePluginPackage,
+  listHostExecutablePluginPackages,
+  readHostExecutablePluginPackage,
+  removeHostExecutablePluginPackage,
+  rollbackHostExecutablePluginPackage,
+  validateHostExecutablePluginPackageContracts,
+  type HostExecutablePluginPackage,
+} from "./runtime/plugin-package.js";
 import { createCodexImageGenerator } from "./codex-imagegen.js";
-import { createDreaminaCliOAuthDriver } from "./dreamina-cli.js";
-import { createManagedDreaminaCliRun } from "./dreamina-cli-runtime.js";
 import {
   attachLocalAcpSessions,
   createLocalAcpCapabilityCacheStore,
@@ -72,14 +81,16 @@ import {
   publicProviderAccounts,
 } from "./provider-accounts.js";
 import { createLocalProviderStore } from "./local-provider-store.js";
+import { fetchIntoSlot } from "./upload-slot-fetch.js";
+import { openPluginStore } from "./plugin-store.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import { assetPathForRead, assetPathForWrite } from "./local-asset-paths.js";
 import {
   createLocalExecutablePluginBroker,
-  type LocalPluginBrokerTrafficContext,
 } from "./local-plugin-broker.js";
 import {
   attachLocalSync,
+  LocalLoroRoomHub,
   type RemoteLoroPersistenceSource,
 } from "./sync.js";
 import { createLocalSyncConfigStore } from "./sync-config.js";
@@ -94,9 +105,12 @@ import {
 } from "./local-paths.js";
 import { watchClashUserConfig } from "./user-config.js";
 import type { LocalDirectorStageRenderer } from "./director-stage-renderer.js";
+import { createNpxSkillsMarketplace } from "./marketplace-skills.js";
+import skillMarketplaceRegistry from "../../../skills/registry.json" with { type: "json" };
 
 export { createRemotionTimelineRenderer } from "./remotion-timeline-renderer.js";
 export { createHeadlessDirectorStageRenderer } from "./director-stage-renderer.js";
+export { prepareDevelopmentBundledPlugins } from "./development-bundled-plugins.js";
 
 export {
   clashHomeForLocalDataDir,
@@ -114,6 +128,29 @@ export interface LocalApiServerOptions {
   localAcp?: LocalAcpRuntimeAdapter;
   audioConfig?: LocalAudioConfigStore;
   remotePersistence?: RemoteLoroPersistenceSource | null;
+  /** Injectable download transport for completed provider media URLs. */
+  providerAssetFetch?: typeof fetch;
+  /** Optional JSONL capture path; production normally supplies the equivalent environment value. */
+  providerTrafficRecordingPath?: string;
+  /** Optional JSONL replay path; production normally supplies the equivalent environment value. */
+  providerTrafficReplayPath?: string;
+  /** Replay harness only: workflow scheduling cap; provider responses remain untouched. */
+  providerPollDelayCapMs?: number;
+  /** Test-only process-boundary instrumentation for ordinary plugin HTTP clients. */
+  providerHttpInstrumentation?: {
+    mode: "record" | "replay";
+    trafficPath: string;
+    activeStubPath?: string;
+    modulePath: string;
+    loaderPath?: string;
+  };
+  /**
+   * Development-only source roots for already-attested first-party plugin launchers.
+   * Omitted by the packaged host and every normal `startLocalApiServer` caller.
+   */
+  developmentPluginWatchRoots?: Readonly<
+    Record<string, readonly string[]>
+  >;
   discovery?: {
     enabled?: boolean;
     runDir?: string;
@@ -129,7 +166,13 @@ function shellQuote(value: string): string {
 
 function resolveClashCliEntry(env: Record<string, string | undefined>): string {
   if (env.CLASH_CLI_ENTRY_PATH) return env.CLASH_CLI_ENTRY_PATH;
-  return createRequire(import.meta.url).resolve("@clash-space/cli");
+  const workspaceSource = fileURLToPath(
+    new URL("../../../packages/cli/src/index.ts", import.meta.url),
+  );
+  if (existsSync(workspaceSource)) return workspaceSource;
+  throw new Error(
+    "CLASH_CLI_ENTRY_PATH is required when local-api is installed without the optional agent CLI resource.",
+  );
 }
 
 export function createLocalAgentToolEnv({
@@ -149,6 +192,13 @@ export function createLocalAgentToolEnv({
 
   const apiUrl = apiBaseUrl;
   const cliEntry = resolveClashCliEntry(env);
+  const cliLoader = cliEntry.endsWith(".ts")
+    ? createRequire(import.meta.url).resolve("tsx")
+    : undefined;
+  const cliInvocation = [
+    ...(cliLoader ? ["--import", cliLoader] : []),
+    cliEntry,
+  ].map(shellQuote).join(" ");
   const shim = join(binDir, "clash");
   writeFileSync(
     shim,
@@ -162,16 +212,19 @@ export function createLocalAgentToolEnv({
       ...(env.CLASH_CLI_NODE_PATH
         ? [`export CLASH_CLI_NODE_PATH=${shellQuote(env.CLASH_CLI_NODE_PATH)}`]
         : []),
+      ...(env.TSX_TSCONFIG_PATH
+        ? [`export TSX_TSCONFIG_PATH=${shellQuote(env.TSX_TSCONFIG_PATH)}`]
+        : []),
       `if [ -n "$CLASH_CLI_NODE_PATH" ]; then`,
       `  export NODE_PATH="$CLASH_CLI_NODE_PATH${"${NODE_PATH:+:$NODE_PATH}"}"`,
       "fi",
       `if [ -n "$CLASH_NODE_EXEC_PATH" ]; then`,
-      `  exec "$CLASH_NODE_EXEC_PATH" ${shellQuote(cliEntry)} "$@"`,
+      `  exec "$CLASH_NODE_EXEC_PATH" ${cliInvocation} "$@"`,
       "fi",
       "if command -v node >/dev/null 2>&1; then",
-      `  exec node ${shellQuote(cliEntry)} "$@"`,
+      `  exec node ${cliInvocation} "$@"`,
       "fi",
-      `exec ${shellQuote(process.execPath)} ${shellQuote(cliEntry)} "$@"`,
+      `exec ${shellQuote(process.execPath)} ${cliInvocation} "$@"`,
       "",
     ].join("\n"),
     "utf8",
@@ -186,6 +239,7 @@ export function createLocalAgentToolEnv({
     ...(env.CLASH_NODE_EXEC_PATH ? { CLASH_NODE_EXEC_PATH: env.CLASH_NODE_EXEC_PATH } : {}),
     ...(env.CLASH_CLI_ENTRY_PATH ? { CLASH_CLI_ENTRY_PATH: env.CLASH_CLI_ENTRY_PATH } : {}),
     ...(env.CLASH_CLI_NODE_PATH ? { CLASH_CLI_NODE_PATH: env.CLASH_CLI_NODE_PATH } : {}),
+    ...(env.TSX_TSCONFIG_PATH ? { TSX_TSCONFIG_PATH: env.TSX_TSCONFIG_PATH } : {}),
     PATH: [binDir, env.PATH].filter(Boolean).join(delimiter),
   };
 }
@@ -581,94 +635,48 @@ async function loadLocalModelCards(
 }
 
 /**
- * Records outbound executable-plugin provider traffic into the same JSONL
- * replay format used by the built-in provider routes, so plugin-backed
- * generations can be replayed offline without re-billing the upstream.
+ * Uploads a plugin has been offered a place for but not yet delivered.
+ *
+ * In memory and per process. A slot that survived a restart would name a URL nothing is listening
+ * on, and the plugin holding it would stream into a void and report success.
  */
-function createPluginBrokerTrafficFetch(options: {
-  recordingPath: string;
-  fetch: typeof fetch;
-}): (context: LocalPluginBrokerTrafficContext) => typeof fetch {
-  let recorder: Promise<ProviderTestRecorder> | undefined;
-  return (context) => (async (input: RequestInfo | URL, init?: RequestInit) => {
-    recorder ??= createJsonlProviderTestRecorder(options.recordingPath);
-    const providerId = context.providerId ?? context.pluginId;
-    const recording = createProviderTestRecordingFetch({
-      fetch: options.fetch,
-      recorder: await recorder,
-      stub: {
-        id: [context.pluginId, context.pluginVersion, providerId, context.accountId ?? ""].join(":"),
-        providerId,
-        upstreamId: providerId,
-        modelId: context.pluginId,
-        modelName: context.pluginId,
-        shape: "image",
-        apiShape: providerId,
-        requiredCredentials: [],
-        requiredOAuth: [],
-        input: { shape: "image", model: context.pluginId, prompt: "" },
-      },
-    });
-    return recording(input, init);
-  }) as typeof fetch;
+const pendingUploads = new Map<string, {
+  assetId: string;
+  slot: string;
+  /** Absent when the vendor answered with a link: there is no count until the fetch finishes. */
+  byteLength?: number;
+  bytes: Uint8Array | undefined;
+  mediaType?: string;
+}>();
+
+/**
+ * Receive bytes for a slot that was handed out.
+ *
+ * The token is the authorisation: minted for one upload, given to one plugin, forgotten once
+ * collected. An unknown or already-collected token is refused, so a leaked one names nothing.
+ */
+export function acceptPluginUpload(token: string, bytes: Uint8Array): boolean {
+  const pending = pendingUploads.get(token);
+  if (!pending || pending.bytes) return false;
+  pending.bytes = bytes;
+  return true;
 }
 
 export function createLocalPluginBrokerServices(options: {
   dataDir: string;
-  fetch?: typeof fetch;
-  providerTrafficRecordingPath?: string;
-  credentialHandleTtlMs?: number;
+  /**
+   * Where a plugin should PUT bytes it was given a slot for.
+   *
+   * Passed in rather than assembled here: this function does not know the port it is being served
+   * on, and a hosted deployment does not have one -- there the origin is object storage.
+   */
+  uploadOrigin?: string | (() => string);
+  assetFetch?: typeof fetch;
 }) {
   const providerStore = createLocalProviderStore(options.dataDir);
   const metadataStore = createLocalMetadataStore(options.dataDir);
   const clashRoot = clashHomeForLocalDataDir(options.dataDir);
-  return createLocalExecutablePluginBroker({
-    ...(options.credentialHandleTtlMs !== undefined
-      ? { credentialHandleTtlMs: options.credentialHandleTtlMs }
-      : {}),
-    loadProviderAccounts: async () => {
-      const [accounts, oauthRecords] = await Promise.all([
-        providerStore.loadProviderAccounts(),
-        providerStore.loadProviderOAuth(),
-      ]);
-      return providerAccountsForRuntime(accounts, "local-user", oauthRecords);
-    },
-    ...(options.fetch ? { fetch: options.fetch } : {}),
-    ...(options.providerTrafficRecordingPath ? {
-      providerTrafficFetch: createPluginBrokerTrafficFetch({
-        recordingPath: options.providerTrafficRecordingPath,
-        fetch: options.fetch ?? fetch,
-      }),
-    } : {}),
-    generateCodexImage: createCodexImageGenerator(),
-    readAsset: async ({ assetId, projectId }) => {
-      const metadata = await metadataStore.load();
-      const hasProjectRef = metadata.assetRefs.some(
-        (reference) => reference.assetId === assetId && reference.projectId === projectId,
-      );
-      const asset = metadata.assets.find((candidate) =>
-        candidate.id === assetId
-        && (candidate.projectId === projectId || (!candidate.projectId && hasProjectRef))
-      );
-      if (!asset?.srcR2Key) {
-        throw new Error(`Asset ${assetId} is not available in project ${projectId}.`);
-      }
-      const bytes = await readFile(
-        await assetPathForRead(options.dataDir, asset.srcR2Key, clashRoot),
-      );
-      const metadataRecord = asset.metadata && typeof asset.metadata === "object"
-        && !Array.isArray(asset.metadata)
-        ? asset.metadata as Record<string, unknown>
-        : {};
-      return {
-        kind: asset.kind,
-        ...(typeof metadataRecord.contentType === "string"
-          ? { mediaType: metadataRecord.contentType }
-          : {}),
-        bytes,
-      };
-    },
-    writeAsset: async ({
+  async function writeAssetBytes({
       pluginId,
       pluginVersion,
       projectId,
@@ -678,7 +686,10 @@ export function createLocalPluginBrokerServices(options: {
       kind,
       mediaType,
       bytes,
-    }) => {
+    }: {
+      pluginId: string; pluginVersion: string; projectId: string; invocationId: string;
+      taskId: string; slot: string; kind: "image" | "video" | "audio" | "model"; mediaType?: string; bytes: Uint8Array;
+    }) {
       const contentHash = createHash("sha256").update(bytes).digest("hex");
       const safe = (value: string) => value.replace(/[^a-zA-Z0-9._-]/g, "-");
       const extension = mediaType === "image/jpeg" ? "jpg"
@@ -730,13 +741,161 @@ export function createLocalPluginBrokerServices(options: {
         projectId,
         importedAt: at,
       });
+      const assetOrigin = typeof options.uploadOrigin === "function"
+        ? options.uploadOrigin()
+        : options.uploadOrigin;
       return {
         assetId,
         uri: `clash-asset://${assetId}`,
         kind,
         ...(mediaType ? { mediaType } : {}),
+        ...(assetOrigin
+          ? {
+              url: `${assetOrigin.replace(/\/+$/, "")}/assets/${storageKey}`,
+              reach: "private" as const,
+            }
+          : {}),
+      };
+  }
+
+  // Opened on first use rather than at construction: the table and the encryption key are created
+  // as a side effect, and a host that never runs a plugin should not create either.
+  let storePromise: Promise<Awaited<ReturnType<typeof openPluginStore>>> | undefined;
+  const pluginStore = () => (storePromise ??= openPluginStore({ dataDir: options.dataDir }));
+
+  return createLocalExecutablePluginBroker({
+    loadProviderAccounts: async () => {
+      const [accounts, oauthRecords] = await Promise.all([
+        providerStore.loadProviderAccounts(),
+        providerStore.loadProviderOAuth(),
+      ]);
+      return providerAccountsForRuntime(accounts, "local-user", oauthRecords);
+    },
+    generateCodexImage: createCodexImageGenerator(),
+    readAsset: async ({ assetId, projectId }) => {
+      const metadata = await metadataStore.load();
+      const hasProjectRef = metadata.assetRefs.some(
+        (reference) => reference.assetId === assetId && reference.projectId === projectId,
+      );
+      const asset = metadata.assets.find((candidate) =>
+        candidate.id === assetId
+        && (candidate.projectId === projectId || (!candidate.projectId && hasProjectRef))
+      );
+      if (!asset?.srcR2Key) {
+        throw new Error(`Asset ${assetId} is not available in project ${projectId}.`);
+      }
+      const bytes = await readFile(
+        await assetPathForRead(options.dataDir, asset.srcR2Key, clashRoot),
+      );
+      const metadataRecord = asset.metadata && typeof asset.metadata === "object"
+        && !Array.isArray(asset.metadata)
+        ? asset.metadata as Record<string, unknown>
+        : {};
+      return {
+        kind: asset.kind,
+        ...(typeof metadataRecord.contentType === "string"
+          ? { mediaType: metadataRecord.contentType }
+          : {}),
+        bytes,
       };
     },
+    /**
+     * This plugin's own stored values, for the account this invocation runs on.
+     *
+     * The store existed with its own tests and was referenced by nothing outside them, so a plugin
+     * asking for its credential got "Local plugin store is unavailable" -- built, tested, and
+     * unreachable. Both halves are lazy because opening the store creates a table and reads a key
+     * off disk, and a host that never runs a plugin should not pay for either.
+     */
+    storeGet: async ({ pluginId, accountId, key }) => {
+      const store = await pluginStore();
+      return await store.get({ pluginId, accountId, key });
+    },
+
+    storePut: async ({ pluginId, accountId, key, value, secret, expiresAt }) => {
+      const store = await pluginStore();
+      await store.put({
+        pluginId,
+        accountId,
+        key,
+        value,
+        ...(secret === undefined ? {} : { secret }),
+        ...(expiresAt === undefined ? {} : { expiresAt: Date.parse(expiresAt) }),
+      });
+    },
+
+    /**
+     * Somewhere to stream bytes, and the collection afterwards.
+     *
+     * Both halves are the host's business, which is the point: this host answers with a loopback
+     * URL and writes to the local store, a hosted one answers with presigned object storage. The
+     * plugin makes the same two calls either way.
+     */
+    openUploadSlot: async ({
+      pluginId,
+      pluginVersion,
+      projectId,
+      invocationId,
+      taskId,
+      slot,
+      kind,
+      byteLength,
+      mediaType,
+      url,
+    }) => {
+      const token = randomUUID();
+      const assetId = `upload-${token}`;
+
+      // A vendor that answered with a link has already produced the bytes; there is nobody left to
+      // upload them. Handing back a slot URL here would leave the plugin holding an address it was
+      // told to pass through, and the asset would never arrive -- which is where a completed,
+      // paid-for generation was being dropped.
+      if (url) {
+        const fetched = await fetchIntoSlot(url, {
+          ...(options.assetFetch ? { fetchImpl: options.assetFetch } : {}),
+          ...(mediaType ? { mediaType } : {}),
+        });
+        return writeAssetBytes({
+          pluginId,
+          pluginVersion,
+          projectId,
+          invocationId,
+          taskId,
+          slot,
+          kind,
+          ...(fetched.mediaType ? { mediaType: fetched.mediaType } : {}),
+          bytes: fetched.bytes,
+        });
+      }
+
+      pendingUploads.set(token, { assetId, slot, byteLength, bytes: undefined });
+      const uploadOrigin = typeof options.uploadOrigin === "function"
+        ? options.uploadOrigin()
+        : options.uploadOrigin;
+      return {
+        uploadUrl: `${uploadOrigin ?? ""}/api/v1/plugin-uploads/${token}`,
+        assetId,
+      };
+    },
+
+    finishUpload: async (input) => {
+      const token = input.assetId.replace(/^upload-/, "");
+      const pending = pendingUploads.get(token);
+      if (!pending?.bytes) {
+        // Naming an upload that never arrived would attach an empty asset to a finished node.
+        throw new Error(`No bytes were uploaded for ${input.slot}.`);
+      }
+      if (pending.bytes.byteLength !== pending.byteLength) {
+        throw new Error(
+          `${input.slot} was announced as ${pending.byteLength} bytes and arrived as `
+          + `${pending.bytes.byteLength}.`,
+        );
+      }
+      pendingUploads.delete(token);
+      return await writeAssetBytes({ ...input, pluginVersion: "", bytes: pending.bytes });
+    },
+
+    writeAsset: writeAssetBytes,
     audit: (record) => metadataStore.appendPluginBrokerAudit({
       id: randomUUID(),
       ...record,
@@ -746,50 +905,86 @@ export function createLocalPluginBrokerServices(options: {
 
 export function startLocalApiServer(options: LocalApiServerOptions) {
   const clashHome = clashHomeForLocalDataDir(options.dataDir);
+  const actionsRoot = join(clashHome, "actions");
   const discoveryEnabled = options.discovery?.enabled !== false;
   const pendingDiscoveryHostId = discoveryEnabled ? randomUUID() : undefined;
   const discoveryProfile = resolveClashProfile(process.env);
   const codexImagegenMarketplace = createCodexImagegenMarketplace({
-    actionsRoot: join(clashHome, "actions"),
+    actionsRoot,
+  });
+  const npxSkillsMarketplace = createNpxSkillsMarketplace({
+    registry: skillMarketplaceRegistry,
   });
   const providerStore = createLocalProviderStore(options.dataDir);
-  const pluginBrokerRecordingPath = process.env.CLASH_PROVIDER_TRAFFIC_RECORDING_PATH?.trim();
-  const configuredCredentialTtlMinutes = Number(
-    process.env.CLASH_PLUGIN_CREDENTIAL_TTL_MINUTES?.trim(),
-  );
+  let boundPort: number | undefined = options.port || undefined;
+  const localOrigin = () => boundPort ? `http://127.0.0.1:${boundPort}` : "";
+  const providerTrafficRecordingPath = options.providerTrafficRecordingPath
+    ?? process.env.CLASH_PROVIDER_TRAFFIC_RECORDING_PATH?.trim();
+  const providerTrafficReplayPath = options.providerTrafficReplayPath
+    ?? process.env.CLASH_PROVIDER_TRAFFIC_REPLAY_PATH?.trim();
+  if (providerTrafficRecordingPath && providerTrafficReplayPath) {
+    throw new Error(
+      "CLASH_PROVIDER_TRAFFIC_RECORDING_PATH and CLASH_PROVIDER_TRAFFIC_REPLAY_PATH are mutually exclusive.",
+    );
+  }
   const pluginBroker = createLocalPluginBrokerServices({
     dataDir: options.dataDir,
-    ...(pluginBrokerRecordingPath
-      ? { providerTrafficRecordingPath: pluginBrokerRecordingPath }
-      : {}),
-    ...(Number.isFinite(configuredCredentialTtlMinutes) && configuredCredentialTtlMinutes > 0
-      ? { credentialHandleTtlMs: configuredCredentialTtlMinutes * 60_000 }
-      : {}),
+    uploadOrigin: localOrigin,
+    ...(options.providerAssetFetch ? { assetFetch: options.providerAssetFetch } : {}),
   });
-  const pluginBrokerToken = `${randomUUID()}${randomUUID()}`;
-  let bundledPluginError: unknown;
-  const bundledPluginsReady = ensureBundledFirstPartyMediaPlugin({
-    actionsRoot: join(clashHome, "actions"),
-  }).catch((error) => {
-    bundledPluginError = error;
-    console.error(
-      "[local-api] bundled executable plugin seed degraded:",
-      error instanceof Error ? error.message : String(error),
-    );
-  });
+  // Every first-party Provider, not one of them. Seeding a single plugin is what left clash.google
+  // and clash.minimax invisible after the split: they were activated into ~/.clash/actions by hand,
+  // and the host seeds this list rather than reading that directory.
+  //
+  // Sequential, because each seed runs the plugin's contract tests and a failure has to name which
+  // Provider failed. One failing Provider does not stop the others -- a host that refuses to start
+  // because one plugin is broken is worse than one that starts without it and says so.
+  const bundledPluginsReady = (async () => {
+    // Before seeding, drop receipts whose plugin is gone. A receipt attests a contentHash for an
+    // id, so one left behind by a rename hands an unrelated plugin an attestation nobody issued for
+    // it. Two were found on a development machine, from `clash-first-party-media` and
+    // `hilo-hub-media`.
+    try {
+      const pruned = await pruneOrphanActivationReceipts(join(clashHome, "actions"));
+      if (pruned.length > 0) {
+        console.warn(`[local-api] pruned orphaned activation receipts: ${pruned.join(", ")}`);
+      }
+    } catch (error) {
+      console.error(
+        "[local-api] could not prune activation receipts:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
+    for (const plugin of BUNDLED_PLUGINS) {
+      try {
+        await ensureBundledPlugin({ id: plugin.id, actionsRoot: join(clashHome, "actions") });
+      } catch (error) {
+        console.error(
+          `[local-api] bundled plugin ${plugin.id} seed degraded:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+  })();
   const pluginHostClient = new PluginHostClient({
     socketPath: pluginHostSocketPath(process.env, clashHome),
   });
-  const bridgeProjector = createBridgeProviderPluginProjector({ client: pluginHostClient });
-  const bridgeProviderExecutor = createBridgeProviderPluginExecutor({ client: pluginHostClient });
-  const bridgeExecutablePluginAction = createBridgeExecutablePluginActionInvoker({
+  const pluginHostProjector = createProviderPluginProjector({ client: pluginHostClient });
+  const pluginHostProviderExecutor = createProviderPluginExecutor({
+    client: pluginHostClient,
+  });
+  const pluginHostExecutableAction = createExecutablePluginActionInvoker({
     client: pluginHostClient,
   });
   let embeddedPluginHost: ActionsHost | null = null;
   let embeddedPluginIpc: PluginHostIpcServer | null = null;
   let pluginRuntimeReady: Promise<void> | null = null;
   const ensurePluginRuntime = () => pluginRuntimeReady ??= bundledPluginsReady.then(async () => {
-    if (bundledPluginError) throw bundledPluginError;
+    // A broken package degrades only that Provider. The host still starts every
+    // successfully activated plugin, so Google work is not blocked by a bad
+    // MiniMax payload (and vice versa). Resolving a binding for the failed
+    // plugin will surface the provider-specific error at the operation boundary.
     const host = new ActionsHost({
       serverUrl: `http://127.0.0.1:${options.port}`,
       apiKey: "",
@@ -797,6 +992,12 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       actionsRoot: join(clashHome, "actions"),
       executablePluginsOnly: true,
       pluginBroker,
+      ...(options.providerHttpInstrumentation
+        ? { providerHttpInstrumentation: options.providerHttpInstrumentation }
+        : {}),
+      ...(options.developmentPluginWatchRoots
+        ? { developmentPluginWatchRoots: options.developmentPluginWatchRoots }
+        : {}),
     });
     await host.start();
     try {
@@ -811,20 +1012,20 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         && (error as { code?: unknown }).code === "EADDRINUSE")) {
         throw error;
       }
-      // A separately managed Clash Bridge already owns the socket.
+      // Another local-api host already owns the socket.
     }
   });
   const providerPluginProjector = (async (request) => {
     await ensurePluginRuntime();
-    return bridgeProjector(request);
+    return pluginHostProjector(request);
   }) satisfies import("./local-aigc.js").ProviderPluginProjector;
   const providerPluginExecutor = (async (request) => {
     await ensurePluginRuntime();
-    return bridgeProviderExecutor(request);
+    return pluginHostProviderExecutor(request);
   }) satisfies import("./local-aigc.js").ProviderPluginExecutor;
   const executablePluginAction = (async (request) => {
     await ensurePluginRuntime();
-    return bridgeExecutablePluginAction(request);
+    return pluginHostExecutableAction(request);
   }) satisfies import("./plugin-action-runtime.js").ExecutablePluginActionInvoker;
   const listPluginCards = async () => {
     await ensurePluginRuntime();
@@ -873,13 +1074,6 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     );
   });
   const falMock = createMockFalQueueService();
-  const providerTrafficRecordingPath = process.env.CLASH_PROVIDER_TRAFFIC_RECORDING_PATH?.trim();
-  const providerTrafficReplayPath = process.env.CLASH_PROVIDER_TRAFFIC_REPLAY_PATH?.trim();
-  if (providerTrafficRecordingPath && providerTrafficReplayPath) {
-    throw new Error(
-      "CLASH_PROVIDER_TRAFFIC_RECORDING_PATH and CLASH_PROVIDER_TRAFFIC_REPLAY_PATH are mutually exclusive.",
-    );
-  }
   const providerTraffic = providerTrafficRecordingPath
     ? {
         mode: "record" as const,
@@ -912,17 +1106,10 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     );
   });
   const localTts = createLocalTtsGenerationHandler(audioConfig);
-  const dreaminaRun = createManagedDreaminaCliRun({
-    dataDir: options.dataDir,
-    loadAuthState: async () => {
-      const records = await providerStore.loadProviderOAuth();
-      return records.find((record) =>
-        record.providerId === "dreamina" && record.status === "authorized"
-      )?.accessToken;
-    },
-  });
+  let roomHub: LocalLoroRoomHub | undefined;
   const app = createLocalApiApp({
     dataDir: options.dataDir,
+    acceptPluginUpload,
     hostIdentity: pendingDiscoveryHostId ? {
       hostId: pendingDiscoveryHostId,
       pid: process.pid,
@@ -934,23 +1121,42 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     falMock,
     syncConfig,
     audioConfig,
-    providerOAuth: {
-      dreamina: createDreaminaCliOAuthDriver({ run: dreaminaRun }),
-    },
     providerTestRecordingPath: process.env.CLASH_PROVIDER_TEST_RECORDING_PATH,
     providerTestOpenAiBaseUrl: process.env.OPENAI_BASE_URL,
     providerTestAnthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
     providerTestFalQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
     providerTestGoogleAiStudioBaseUrl: process.env.CLASH_GOOGLE_AI_STUDIO_URL,
     providerTestPikaBaseUrl: process.env.CLASH_PIKA_URL,
-    providerTestKieBaseUrl: process.env.CLASH_KIE_URL,
     providerTestReplicateBaseUrl: process.env.CLASH_REPLICATE_URL,
-    pluginBrokerToken,
-    executablePluginBroker: pluginBroker,
+    providerPluginExecutor,
+    processProjectWork: async (projectId) => {
+      if (!roomHub) {
+        throw new Error("Local project room hub is not ready.");
+      }
+      await roomHub.refresh(projectId);
+    },
     marketplaceActions: [...codexImagegenMarketplace.actions],
     listInstalledMarketplaceActions: () => codexImagegenMarketplace.listInstalled(),
     installMarketplaceAction: (packageId) => codexImagegenMarketplace.install(packageId),
     uninstallMarketplaceAction: (actionId) => codexImagegenMarketplace.uninstall(actionId),
+    marketplaceSkills: [...npxSkillsMarketplace.skills],
+    listInstalledMarketplaceSkills: () => npxSkillsMarketplace.listInstalled(),
+    installMarketplaceSkill: (skillId) => npxSkillsMarketplace.install(skillId),
+    uninstallMarketplaceSkill: (skillId) => npxSkillsMarketplace.uninstall(skillId),
+    pluginPackages: {
+      list: () => listHostExecutablePluginPackages(actionsRoot),
+      validate: (input) => validateHostExecutablePluginPackageContracts(
+        input as HostExecutablePluginPackage,
+        actionsRoot,
+      ),
+      activate: (input) => activateOrUpdateHostExecutablePluginPackage(
+        input as HostExecutablePluginPackage,
+        actionsRoot,
+      ),
+      read: (id) => readHostExecutablePluginPackage(actionsRoot, id),
+      rollback: (id) => rollbackHostExecutablePluginPackage(actionsRoot, id),
+      remove: (id) => removeHostExecutablePluginPackage(actionsRoot, id),
+    },
     resolvePluginBinding: async (pluginId, exportId, kind) => {
       await ensurePluginRuntime();
       return pluginHostClient.resolveBinding(pluginId, exportId, kind);
@@ -963,10 +1169,12 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   // Set once the socket is bound. `options.port` is normally 0, so anything that captured
   // it produced an unroutable `http://127.0.0.1:0` -- reads of a generated asset then
   // failed with a bare `fetch failed`.
-  let boundPort: number | undefined = options.port || undefined;
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
     mediaBaseUrl: resolveMediaBaseUrl(() => boundPort),
+    ...(options.providerPollDelayCapMs === undefined
+      ? {}
+      : { providerPollDelayCapMs: options.providerPollDelayCapMs }),
     modelCards: async () => loadLocalModelCards(
       options.dataDir,
       "local-user",
@@ -1017,13 +1225,17 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       providerTraffic,
       providerPluginProjector,
       providerPluginExecutor,
-      dreaminaRun,
       localTts,
     }),
   });
   const remotePersistence = options.remotePersistence === undefined
     ? () => syncConfig.resolveRemotePersistence()
     : options.remotePersistence ?? undefined;
+  roomHub = new LocalLoroRoomHub(
+    options.dataDir,
+    remotePersistence,
+    workflowProcessor,
+  );
   let resolveListening!: (server: ReturnType<typeof serve>) => void;
   let rejectListening!: (error: unknown) => void;
   let settled = false;
@@ -1053,7 +1265,6 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
           info.port,
           options,
           discoveryRunDir,
-          pluginBrokerToken,
           pendingDiscoveryHostId,
           discoveryProfile,
         );
@@ -1088,7 +1299,12 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     }
     rejectListening(error);
   });
-  attachLocalSync(server, { dataDir: options.dataDir, remotePersistence, workflowProcessor });
+  attachLocalSync(server, {
+    dataDir: options.dataDir,
+    remotePersistence,
+    workflowProcessor,
+    hub: roomHub,
+  });
   attachLocalAcpSessions(server, localAcp);
   return listening;
 }
@@ -1097,7 +1313,6 @@ async function writeServerDiscoveryRecord(
   actualPort: number,
   options: LocalApiServerOptions,
   runDir: string,
-  pluginBrokerToken: string,
   hostId: string,
   profile: "dev" | "prod",
 ): Promise<string> {
@@ -1108,7 +1323,6 @@ async function writeServerDiscoveryRecord(
     launchMode: options.discovery?.launchMode ?? "cli-once",
     startedBy: options.discovery?.startedBy ?? "cli",
     ownerClientId: options.discovery?.ownerClientId,
-    pluginBrokerToken,
     profile,
   });
   await writeHostDiscovery(record, { runDir });

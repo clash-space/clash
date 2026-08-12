@@ -343,7 +343,7 @@ test("project status exposes agent-readable project roots and protected local fi
       syncDefault: "local-only",
       agentWritable: false,
       files: {
-        bridgeCredentials: {
+        hostCredentials: {
           kind: "machine-credential-store",
           path: join(homeDir, ".clash", "credentials.json"),
           agentWritable: false,

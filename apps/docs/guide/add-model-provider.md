@@ -1,22 +1,26 @@
 # Tutorial: Add a Model, a Provider, or Both
 
-Three onboarding paths, from most common to least. All of them end at the same
-gate: `clash action validate` → `clash action activate` → verify in the
-composed catalog.
+All paths end at the same gate:
 
-## Path A — new provider for models Clash already has
+```sh
+clash plugin validate <dir>
+clash plugin activate <dir>
+```
 
-You run (or resell) a gateway that serves e.g. Kling or Seedream. The cards
-already exist; you ship **a provider + bindings + an executor**, zero cards.
+## Path A — add a provider for existing models
+
+Use this when a gateway serves models already present in Clash.
 
 ### 1. Scaffold
 
 ```sh
-clash action init-plugin ~/.clash/drafts/acme-media \
-  --id acme-media --name "Acme Media" --kind provider-projector
+clash plugin create ~/plugins/acme-media \
+  --id acme.media --name "Acme Media" --kind provider-executor
 ```
 
-### 2. Declare the provider (`providers/acme.json`)
+### 2. Declare account configuration
+
+Create `providers/acme.json`:
 
 ```json
 {
@@ -24,19 +28,37 @@ clash action init-plugin ~/.clash/drafts/acme-media \
   "kind": "provider",
   "spec": {
     "id": "acme",
-    "name": "Acme Gateway",
+    "name": "Acme",
     "upstreamId": "acme",
     "apiShape": "acme",
     "executorExportId": "acme-execute",
-    "auth": [{ "type": "oauth", "id": "acme", "flow": "browser",
-      "authorizationUrl": "https://acme.example/login",
-      "callback": { "type": "custom-scheme", "scheme": "acme" },
-      "accessTokenField": "accessToken" }]
+    "auth": {
+      "methods": [
+        {
+          "id": "token",
+          "label": "API token",
+          "form": [
+            {
+              "kind": "field",
+              "key": "apiKey",
+              "label": "API token",
+              "secret": true
+            }
+          ]
+        }
+      ]
+    }
   }
 }
 ```
 
-### 3. Bind existing cards (`bindings/<model>.json`, one per model)
+The Host stores these values for the selected account. The executor reads
+`await context.store.get("apiKey")`; it does not accept credentials in
+invocation values.
+
+### 3. Bind existing cards
+
+Create one `clash.binding/v1` document per supported model:
 
 ```json
 {
@@ -50,65 +72,91 @@ clash action init-plugin ~/.clash/drafts/acme-media \
     "upstreamModel": "kling-image-o1",
     "apiShape": "acme",
     "executorExportId": "acme-execute",
-    "requiredOAuth": ["acme"],
     "priority": 5
   }
 }
 ```
 
-Find existing card ids with `clash models catalog` or the
-`/api/v1/models/catalog` endpoint. Declare per-provider quirks in the binding
-(`parameterOverrides` / `defaultParamOverrides` / `excludedParameterIds` — see
-[Model Cards](/guide/model-cards)); never rewrite values inside the executor.
+Keep provider-specific parameter spellings in the binding or executor. Do not
+change shared card values to match one vendor.
 
-### 4. Wire the manifest
+### 4. Wire `contributes`
 
-`exports.providers` + `exports.modelBindings` + a
-`functions[kind=provider-executor]` whose `id` equals `executorExportId`, plus
-permissions (`secrets: ["provider:acme"]`, `network.domains`,
-`externalWrites`). Full example in [Manifest & Artifacts](/plugins/manifest).
-
-### 5. Executor, contracts, activate
-
-Write the stdio executor against broker fixtures
-([Authoring Workflow](/plugins/authoring) steps 3–6), add one contract test
-per API family, then:
-
-```sh
-clash action validate ~/.clash/drafts/acme-media
-clash action activate ~/.clash/drafts/acme-media
-curl "$HOST/api/v1/models/catalog"   # your provider now appears on each bound card
+```json
+{
+  "contributes": {
+    "providers": [
+      { "id": "acme", "kind": "provider", "path": "providers/acme.json" }
+    ],
+    "modelBindings": [
+      {
+        "id": "acme-kling-image-o1",
+        "kind": "model-provider-binding",
+        "path": "bindings/kling-image-o1.json"
+      }
+    ],
+    "functions": [
+      {
+        "id": "acme-execute",
+        "kind": "provider-executor",
+        "operations": ["submit", "poll"]
+      }
+    ]
+  }
+}
 ```
 
-## Path B — new model that no card covers yet
+The contribution declares the product shape. The plugin is ordinary installed
+code and owns its external I/O.
 
-Ship the card **inside your plugin** under the official model name:
+### 5. Implement the executor
 
-1. Create `cards/<official-model-id>.json` (`apiVersion: clash.card/v1`,
-   `kind: model-card`). Copy the structure from an existing card of the same
-   modality; source every enum from the model's official API docs.
-2. Declare it in `exports.cards`:
-   ```json
-   "cards": [{ "id": "official-model-id", "kind": "model-card", "path": "cards/official-model-id.json" }]
-   ```
-3. Add a binding from that card to your provider exactly as in Path A —
-   the binding is what makes the card runnable.
+Use the Action SDK's typed executor shape:
 
-Naming rules (enforced in review, not by schema): official model name only,
-no provider/gateway flavor in the id, no invented tiers — if the upstream has
-no "pro" variant, there is no "-pro" card.
+- read account state from `context.store`;
+- resolve Clash references with `context.reference`;
+- call the vendor with the runtime's normal HTTP library;
+- return typed text/media or stream large bytes through `context.upload`;
+- keep `pollState` credential-free and serializable.
 
-`clash action init-plugin --kind provider-projector` scaffolds a working
-card + provider + contract set to start from.
+### 6. Test and activate
 
-## Path C — first-party card (core catalog)
+Add deterministic contract cases for request/response projection. Then run a
+real backend case for every exposed family, record redacted traffic at the
+plugin process boundary, and commit the offline replay as a regression grader.
 
-Only for models Clash should ship by default: add the card to
-`plugins/first-party-media/cards/` (or `MODEL_CARDS` in
-`@clash/shared-types` for built-ins) in the main repo via PR. Third parties
-should always prefer Path B.
+```sh
+clash plugin validate ~/plugins/acme-media
+clash plugin activate ~/plugins/acme-media
+```
 
-## Verify any path landed
+## Path B — add a new model card
+
+If no existing card describes the model:
+
+1. Create `cards/<official-model-id>.json` using the upstream's official
+   values.
+2. Add it to `contributes.cards`.
+3. Add a binding from that card to the provider.
+
+```json
+{
+  "id": "official-model-id",
+  "kind": "model-card",
+  "path": "cards/official-model-id.json"
+}
+```
+
+Use official model names and published parameter values. Do not invent a
+shared resolution tier or provider-branded card id.
+
+## Path C — change the bundled catalog
+
+Only use the core catalog for models Clash should ship by default. Third-party
+packages should contribute their card and binding from the plugin so they can
+version and test the whole route together.
+
+## Verify the composed route
 
 ```sh
 clash models catalog | jq '.models[] | select(.model.id=="<card-id>")
@@ -116,5 +164,5 @@ clash models catalog | jq '.models[] | select(.model.id=="<card-id>")
      candidates: .candidateProviders, route: .selectedRoute.providerId}'
 ```
 
-Your provider must appear in `providers`; with credentials configured it
-should appear in `candidates`; with the best priority it becomes the `route`.
+The provider must appear in `providers`; after an account is configured it
+should appear in `candidates`; routing priority determines the selected route.

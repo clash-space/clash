@@ -1,27 +1,20 @@
-import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import {
-  buildTimelineCliArgs,
-  type TimelineEntity,
-  type TimelineToolInput,
-} from "./contract.js";
+  TIMELINE_DSL_DEFINITION,
+  validateTimelineDsl,
+} from "@clash/shared-types/timeline-contract";
+import type { ProjectHostCommand } from "@clash/shared-types";
+import { parse as parseYaml } from "yaml";
+import {
+  createProjectHostClient,
+  type ProjectHostClient,
+  type ProjectHostResponse,
+} from "@clash/shared-runtime/project-host-client";
+import type { TimelineEntity, TimelineToolInput } from "./contract.js";
 import { assertTimelineState } from "./timeline-contract-adapter.js";
 
-const execFileAsync = promisify(execFile);
-
-export type TimelineCommandRunner = (
-  args: string[],
-  cwd: string,
-) => Promise<unknown>;
-
-export type TimelineProjectionWriter = (
-  path: string,
-  content: string,
-) => Promise<void>;
+export type TimelineProjectionWriter = (path: string, content: string) => Promise<void>;
 
 export type TimelineAdapter = {
   schema(input: TimelineToolInput): Promise<Record<string, unknown>>;
@@ -37,70 +30,27 @@ export type TimelineAdapter = {
 };
 
 export function timelineWorkspaceCwd(input: TimelineToolInput): string {
-  const candidate =
-    input.cwd?.trim() ||
-    process.env.CLASH_WORKSPACE_ROOT ||
-    process.env.CODEX_WORKSPACE_ROOT ||
-    process.cwd();
+  const candidate = input.cwd?.trim()
+    || process.env.CLASH_WORKSPACE_ROOT
+    || process.env.CODEX_WORKSPACE_ROOT
+    || process.cwd();
   return isAbsolute(candidate) ? candidate : resolve(candidate);
 }
 
 function projectionSegment(timelineId: string): string {
-  return timelineId
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/^\.+/, "") || "timeline";
+  return timelineId.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^\.+/, "") || "timeline";
 }
 
-function timelineList(value: unknown): TimelineEntity[] {
-  const candidates = Array.isArray(value)
-    ? value
-    : value && typeof value === "object" && Array.isArray((value as { items?: unknown[] }).items)
-      ? (value as { items: unknown[] }).items
-      : [];
-  return candidates.filter((candidate): candidate is TimelineEntity => Boolean(
-    candidate &&
-    typeof candidate === "object" &&
-    typeof (candidate as { id?: unknown }).id === "string",
-  ));
+function required(input: TimelineToolInput, key: keyof TimelineToolInput): string {
+  const value = input[key];
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${String(key)} is required`);
+  return value.trim();
 }
 
-function objectResult(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : { value };
-}
-
-export function createClashTimelineRunner(options: {
-  command?: string;
-  argsPrefix?: string[];
-  env?: NodeJS.ProcessEnv;
-} = {}): TimelineCommandRunner {
-  const configuredCommand = (
-    options.command
-    ?? options.env?.CLASH_CLI_BIN
-    ?? process.env.CLASH_CLI_BIN
-  )?.trim();
-  const command = configuredCommand || process.execPath;
-  const prefix = options.argsPrefix ?? (
-    configuredCommand
-      ? []
-      : [fileURLToPath(new URL("../runtime/clash-cli.cjs", import.meta.url))]
-  );
-  return async (args, cwd) => {
-    const { stdout } = await execFileAsync(command, [...prefix, ...args], {
-      cwd,
-      env: options.env ?? process.env,
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    const text = stdout.trim();
-    if (!text) return {};
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      return { stdout: text };
-    }
-  };
+function hostValue(value: ProjectHostResponse): ProjectHostResponse {
+  if (!value.error) return value;
+  const code = typeof value.code === "string" ? `${value.code}: ` : "";
+  throw new Error(`${code}${value.error}`);
 }
 
 async function writeTimelineProjection(path: string, content: string): Promise<void> {
@@ -108,105 +58,226 @@ async function writeTimelineProjection(path: string, content: string): Promise<v
   await writeFile(path, content, "utf8");
 }
 
+/** Timeline MCP adapter backed directly by the neutral local-api client. */
 export function createTimelineAdapter(options: {
-  run?: TimelineCommandRunner;
+  client?: ProjectHostClient;
   writeProjection?: TimelineProjectionWriter;
 } = {}): TimelineAdapter {
-  const run = options.run ?? createClashTimelineRunner();
+  const client = options.client ?? createProjectHostClient();
   const writeProjection = options.writeProjection ?? writeTimelineProjection;
+  const observations = new Map<string, { receipt: string; revisionId?: string }>();
+  const context = (input: TimelineToolInput) => client.resolveContext({
+    cwd: input.cwd,
+    projectId: input.projectId,
+  });
+  const observationKey = (projectId: string, timelineId: string) => `${projectId}\0${timelineId}`;
+  const request = async (input: TimelineToolInput, command: ProjectHostCommand) => {
+    const result = await client.request({
+      cwd: input.cwd,
+      projectId: input.projectId,
+      command,
+    });
+    return { projectId: result.projectId, value: hostValue(result.value) };
+  };
+  const requireObservation = async (input: TimelineToolInput, timelineId: string) => {
+    const resolved = await context(input);
+    const observation = observations.get(observationKey(resolved.projectId, timelineId));
+    if (!observation) {
+      throw new Error(
+        `READ_REQUIRED: Read Timeline ${timelineId} with clash_timeline_get before mutating it.`,
+      );
+    }
+    return observation;
+  };
 
   const list = async (input: TimelineToolInput): Promise<TimelineEntity[]> => {
-    const value = await run(
-      buildTimelineCliArgs("clash_timeline_list", input),
-      timelineWorkspaceCwd(input),
-    );
-    return timelineList(value);
+    const { projectId, value } = await request(input, { action: "list_timelines" });
+    const timelines = Array.isArray(value.timelines)
+      ? value.timelines.filter((entry): entry is TimelineEntity => Boolean(
+          entry && typeof entry === "object" && typeof (entry as { id?: unknown }).id === "string",
+        ))
+      : [];
+    const versions = value.versions && typeof value.versions === "object"
+      ? value.versions as Record<string, unknown>
+      : {};
+    for (const timeline of timelines) {
+      const receipt = versions[timeline.id];
+      if (typeof receipt === "string") {
+        observations.set(observationKey(projectId, timeline.id), {
+          receipt,
+          ...(timeline.revisionId ? { revisionId: timeline.revisionId } : {}),
+        });
+      }
+    }
+    return input.standalone
+      ? timelines.filter((timeline) => timeline.owner?.kind === "project")
+      : timelines;
   };
 
   const get = async (input: TimelineToolInput): Promise<TimelineEntity> => {
-    const timelineId = input.timelineId?.trim();
-    if (!timelineId) throw new Error("timelineId is required");
+    const timelineId = required(input, "timelineId");
     const timeline = (await list(input)).find((candidate) => candidate.id === timelineId);
     if (!timeline) throw new Error(`Timeline ${timelineId} not found`);
     return timeline;
   };
 
-  const invoke = async (name: string, input: TimelineToolInput): Promise<unknown> => (
-    run(buildTimelineCliArgs(name, input), timelineWorkspaceCwd(input))
-  );
+  const mutation = async (
+    input: TimelineToolInput,
+    timelineId: string,
+    command: Record<string, unknown> & { action: ProjectHostCommand["action"] },
+  ) => {
+    const observed = await requireObservation(input, timelineId);
+    const result = await request(input, {
+      ...command,
+      actorClientType: "mcp",
+      observedVersion: observed.receipt,
+      ifMatch: observed.receipt,
+    } as ProjectHostCommand);
+    const receipt = typeof result.value.readToken === "string"
+      ? result.value.readToken
+      : typeof result.value.version === "string"
+        ? result.value.version
+        : undefined;
+    const entity = (result.value.timeline && typeof result.value.timeline === "object")
+      ? result.value.timeline as { revisionId?: unknown }
+      : undefined;
+    if (receipt) {
+      observations.set(observationKey(result.projectId, timelineId), {
+        receipt,
+        ...(typeof entity?.revisionId === "string" ? { revisionId: entity.revisionId } : {}),
+      });
+    }
+    return result.value;
+  };
 
   return {
-    schema: async (input) => objectResult(await run(
-      buildTimelineCliArgs("clash_timeline_schema", input),
-      timelineWorkspaceCwd(input),
-    )),
+    schema: async () => structuredClone(TIMELINE_DSL_DEFINITION) as unknown as Record<string, unknown>,
     async validate(input) {
       const document = input.document ?? input.state;
-      if (typeof document !== "string"
-        && (!document || typeof document !== "object" || Array.isArray(document))) {
+      let state: unknown = document;
+      if (typeof document === "string") {
+        if (input.format === "json") state = JSON.parse(document);
+        else {
+          try {
+            state = parseYaml(document);
+          } catch (error) {
+            throw new Error(
+              `TIMELINE_DSL_INVALID: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
+      if (!state || typeof state !== "object" || Array.isArray(state)) {
         throw new Error("document must be Timeline YAML, JSON, or an object");
       }
-      if (typeof document !== "string") assertTimelineState(document);
-      const cwd = timelineWorkspaceCwd(input);
-      const validationDirectory = await mkdtemp(join(tmpdir(), "clash-timeline-validate-"));
-      const filePath = join(
-        validationDirectory,
-        typeof document !== "string" || input.format === "json" || input.format === "object"
-          ? "timeline.json"
-          : "timeline.yaml",
-      );
-      try {
-        const content = typeof document === "string"
-          ? document
-          : JSON.stringify(document, null, 2);
-        await writeProjection(filePath, `${content}\n`);
-        return objectResult(await run(
-          ["timeline", "validate", "--file", filePath, "--json"],
-          cwd,
-        ));
-      } finally {
-        await rm(validationDirectory, { recursive: true, force: true });
+      assertTimelineState(state);
+      const validation = validateTimelineDsl(state);
+      if (!validation.ok) {
+        throw new Error(`TIMELINE_DSL_INVALID: ${validation.issues[0]?.message ?? "invalid Timeline"}`);
       }
+      return (await request(input, { action: "validate_timeline", document: state })).value;
     },
     list,
     get,
-    create: (input) => invoke("clash_timeline_create", input),
-    attach: (input) => invoke("clash_timeline_attach", input),
-    detach: (input) => invoke("clash_timeline_detach", input),
-    copy: (input) => invoke("clash_timeline_copy", input),
-    render: async (input) => objectResult(await invoke("clash_timeline_render", input)),
+    async create(input) {
+      const result = await request(input, {
+        action: "create_timeline",
+        timelineId: required(input, "timelineId"),
+        name: required(input, "name"),
+      });
+      return result.value;
+    },
     async save(input) {
-      const timelineId = input.timelineId?.trim();
-      if (!timelineId) throw new Error("timelineId is required");
+      const timelineId = required(input, "timelineId");
+      const baseRevisionId = required(input, "baseRevisionId");
       if (!input.state || typeof input.state !== "object" || Array.isArray(input.state)) {
         throw new Error("state must be a Timeline object");
       }
       assertTimelineState(input.state);
-
-      const baseRevisionId = input.baseRevisionId?.trim();
-      if (!baseRevisionId) {
-        throw new Error("baseRevisionId is required; read the Timeline before saving");
+      const observed = await requireObservation(input, timelineId);
+      if (observed.revisionId && observed.revisionId !== baseRevisionId) {
+        throw new Error(`STALE_READ: Timeline ${timelineId} was read at ${observed.revisionId}, not ${baseRevisionId}`);
       }
-      const cwd = timelineWorkspaceCwd(input);
       const filePath = join(
-        cwd,
+        timelineWorkspaceCwd(input),
         "timelines",
         `${projectionSegment(timelineId)}.timeline.yaml`,
       );
       await writeProjection(filePath, `${JSON.stringify(input.state, null, 2)}\n`);
-      const args = [
-        "timeline",
-        "apply",
-        "--timeline",
+      return mutation(input, timelineId, {
+        action: "update_timeline_state",
         timelineId,
-        "--file",
-        filePath,
-        "--base-revision",
-        baseRevisionId,
-      ];
-      if (input.projectId?.trim()) args.push("--project", input.projectId.trim());
-      args.push("--json");
-      return objectResult(await run(args, cwd));
+        state: input.state,
+      });
+    },
+    attach(input) {
+      const timelineId = required(input, "timelineId");
+      return mutation(input, timelineId, {
+        action: "attach_timeline",
+        timelineId,
+        canvasId: required(input, "canvasId"),
+        ...(input.nodeId?.trim() ? { actionNodeId: input.nodeId.trim() } : {}),
+        ...(input.position ? { position: input.position } : {}),
+      });
+    },
+    detach(input) {
+      const timelineId = required(input, "timelineId");
+      return mutation(input, timelineId, { action: "detach_timeline", timelineId });
+    },
+    copy(input) {
+      const timelineId = required(input, "timelineId");
+      return mutation(input, timelineId, {
+        action: "copy_timeline_action",
+        sourceTimelineId: timelineId,
+        targetCanvasId: required(input, "canvasId"),
+        ...(input.newTimelineId?.trim() ? { newTimelineId: input.newTimelineId.trim() } : {}),
+        ...(input.newNodeId?.trim() ? { newActionNodeId: input.newNodeId.trim() } : {}),
+        ...(input.position ? { position: input.position } : {}),
+      });
+    },
+    async render(input) {
+      const timelineId = required(input, "timelineId");
+      const submitted = await mutation(input, timelineId, {
+        action: "request_timeline_render",
+        timelineId,
+      });
+      if (
+        typeof submitted.renderNodeId !== "string"
+        || typeof submitted.sourceTimelineRevisionId !== "string"
+        || !submitted.target
+      ) throw new Error("Timeline render request failed");
+      const base = {
+        submitted: true,
+        timelineId,
+        sourceTimelineRevisionId: submitted.sourceTimelineRevisionId,
+        renderNodeId: submitted.renderNodeId,
+        target: submitted.target,
+      };
+      if (input.wait === false) return { ...base, completed: false, status: "pending" };
+      const deadline = Date.now() + (input.timeoutMs ?? 600_000);
+      while (true) {
+        const polled = await request(input, {
+          action: "get",
+          canvasId: "__project_assets__",
+          nodeId: submitted.renderNodeId,
+        });
+        const data = polled.value.node && typeof polled.value.node === "object"
+          ? (polled.value.node as { data?: Record<string, unknown> }).data ?? {}
+          : {};
+        if (data.status === "completed" && typeof data.assetId === "string") {
+          return { ...base, completed: true, status: "completed", asset: { id: data.assetId } };
+        }
+        if (data.status === "failed") {
+          return {
+            ...base,
+            completed: false,
+            status: "failed",
+            ...(typeof data.error === "string" ? { error: data.error } : {}),
+          };
+        }
+        if (Date.now() >= deadline) return { ...base, completed: false, status: "pending" };
+        await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 100));
+      }
     },
   };
 }

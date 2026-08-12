@@ -8,7 +8,7 @@ import {
   TimelineRuler,
   frameToPixels,
   getPixelsPerFrame,
-} from "@master-clash/remotion-ui";
+} from "@clash/remotion-ui";
 import { directorTokens } from "./tokens";
 
 export interface DirectorKeyframeTimelineProps {

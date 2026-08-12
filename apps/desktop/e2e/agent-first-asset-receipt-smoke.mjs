@@ -338,11 +338,11 @@ async function main() {
       },
     },
     providerOAuth: {
-      dreamina: {
+      "example-oauth": {
         start: async () => {
           oauthStartCount += 1;
           return {
-            verificationUri: "https://jimeng.jianying.com/device",
+            verificationUri: "https://example.jianying.com/device",
             userCode: `SMOKE-CODE-${oauthStartCount}`,
             deviceCode: `device-code-smoke-${oauthStartCount}`,
             expiresAt: "2026-06-26T03:00:00.000Z",
@@ -353,7 +353,7 @@ async function main() {
           accessToken: "access-token-smoke",
           refreshToken: "refresh-token-smoke",
           expiresAt: "2026-06-27T03:00:00.000Z",
-          accountLabel: "Smoke Dreamina",
+          accountLabel: "Smoke Example OAuth",
         }),
       },
     },
@@ -505,7 +505,7 @@ async function main() {
   recordCheck(
     "agents read returns derived built-in members",
     agentsResponse.status === 200 &&
-      agentsJson.agents?.some((agent) => agent.id === "local-master-clash" && agent.template_id === "master-clash"),
+      agentsJson.agents?.some((agent) => agent.id === "local-clash" && agent.template_id === "clash"),
     JSON.stringify(agentsJson),
   );
   const persistedAgentMembersAfterRead = sqliteCount("SELECT COUNT(*) AS count FROM agent_member");
@@ -1585,9 +1585,9 @@ async function main() {
     { providerIds: providerIdsAfterDelete },
   );
 
-  const oauthStartResponse = await request("/api/v1/provider-oauth/dreamina/start", {
+  const oauthStartResponse = await request("/api/v1/provider-oauth/example-oauth/start", {
     method: "POST",
-    body: JSON.stringify({ accountId: "jimeng-smoke", accountLabel: "Smoke Dreamina" }),
+    body: JSON.stringify({ accountId: "example-smoke", accountLabel: "Smoke Example OAuth" }),
   });
   const oauthStart = await parseJsonResponse(oauthStartResponse);
   recordCheck(
@@ -1600,7 +1600,7 @@ async function main() {
   const pendingOAuthResponse = await request("/api/v1/provider-oauth");
   const pendingOAuthList = await parseJsonResponse(pendingOAuthResponse);
   let pendingOAuth = pendingOAuthList.providers?.find((record) =>
-    record.providerId === "dreamina" && record.accountId === "jimeng-smoke"
+    record.providerId === "example-oauth" && record.accountId === "example-smoke"
   );
   recordCheck(
     "provider OAuth get returns receipt read token",
@@ -1608,10 +1608,10 @@ async function main() {
     pendingOAuth?.readToken ?? JSON.stringify(pendingOAuthList),
   );
 
-  const missingOAuthStart = await request("/api/v1/provider-oauth/dreamina/start", {
+  const missingOAuthStart = await request("/api/v1/provider-oauth/example-oauth/start", {
     method: "POST",
     headers: { "x-clash-client-type": "agent" },
-    body: JSON.stringify({ accountId: "jimeng-smoke", accountLabel: "Smoke Dreamina restart" }),
+    body: JSON.stringify({ accountId: "example-smoke", accountLabel: "Smoke Example OAuth restart" }),
   });
   const missingOAuthStartJson = await parseJsonResponse(missingOAuthStart);
   recordCheck(
@@ -1622,13 +1622,13 @@ async function main() {
     { mutation: missingOAuthStartJson.mutation },
   );
 
-  const bareOAuthStart = await request("/api/v1/provider-oauth/dreamina/start", {
+  const bareOAuthStart = await request("/api/v1/provider-oauth/example-oauth/start", {
     method: "POST",
     headers: {
       "x-clash-client-type": "agent",
       "x-clash-if-match": baseReadToken(pendingOAuth.readToken),
     },
-    body: JSON.stringify({ accountId: "jimeng-smoke", accountLabel: "Smoke Dreamina restart" }),
+    body: JSON.stringify({ accountId: "example-smoke", accountLabel: "Smoke Example OAuth restart" }),
   });
   const bareOAuthStartJson = await parseJsonResponse(bareOAuthStart);
   recordCheck(
@@ -1639,13 +1639,13 @@ async function main() {
     { mutation: bareOAuthStartJson.mutation },
   );
 
-  const oauthRestartResponse = await request("/api/v1/provider-oauth/dreamina/start", {
+  const oauthRestartResponse = await request("/api/v1/provider-oauth/example-oauth/start", {
     method: "POST",
     headers: {
       "x-clash-client-type": "agent",
       "x-clash-if-match": pendingOAuth.readToken,
     },
-    body: JSON.stringify({ accountId: "jimeng-smoke", accountLabel: "Smoke Dreamina restart" }),
+    body: JSON.stringify({ accountId: "example-smoke", accountLabel: "Smoke Example OAuth restart" }),
   });
   const oauthRestart = await parseJsonResponse(oauthRestartResponse);
   recordCheck(
@@ -1658,7 +1658,7 @@ async function main() {
     JSON.stringify(oauthRestart),
     { mutation: oauthRestart.mutation },
   );
-  const providerOAuthStartAuditResponse = await request("/api/v1/mutation-audit?operation=provider_oauth_start&entityId=dreamina%3Ajimeng-smoke");
+  const providerOAuthStartAuditResponse = await request("/api/v1/mutation-audit?operation=provider_oauth_start&entityId=example-oauth%3Aexample-smoke");
   const providerOAuthStartAudit = await parseJsonResponse(providerOAuthStartAuditResponse);
   const providerOAuthStartAuditAgentRecord = providerOAuthStartAudit.records?.find((record) => record.actorClientType === "agent");
   recordCheck(
@@ -1666,7 +1666,7 @@ async function main() {
     providerOAuthStartAuditResponse.status === 200 &&
       providerOAuthStartAudit.records?.length === 2 &&
       providerOAuthStartAuditAgentRecord?.operation === "provider_oauth_start" &&
-      providerOAuthStartAuditAgentRecord.entity?.id === "dreamina:jimeng-smoke" &&
+      providerOAuthStartAuditAgentRecord.entity?.id === "example-oauth:example-smoke" &&
       providerOAuthStartAuditAgentRecord.accepted === true &&
       providerOAuthStartAuditAgentRecord.actorClientType === "agent" &&
       providerOAuthStartAuditAgentRecord.reason === "provider OAuth start" &&
@@ -1679,13 +1679,13 @@ async function main() {
     { mutation: oauthRestart.mutation },
   );
 
-  const staleOAuthStart = await request("/api/v1/provider-oauth/dreamina/start", {
+  const staleOAuthStart = await request("/api/v1/provider-oauth/example-oauth/start", {
     method: "POST",
     headers: {
       "x-clash-client-type": "agent",
       "x-clash-if-match": pendingOAuth.readToken,
     },
-    body: JSON.stringify({ accountId: "jimeng-smoke", accountLabel: "Smoke Dreamina restart" }),
+    body: JSON.stringify({ accountId: "example-smoke", accountLabel: "Smoke Example OAuth restart" }),
   });
   const staleOAuthStartJson = await parseJsonResponse(staleOAuthStart);
   recordCheck(
@@ -1697,7 +1697,7 @@ async function main() {
   );
   pendingOAuth = { ...pendingOAuth, ...oauthRestart };
 
-  const missingOAuthDelete = await request("/api/v1/provider-oauth/dreamina?accountId=jimeng-smoke", {
+  const missingOAuthDelete = await request("/api/v1/provider-oauth/example-oauth?accountId=example-smoke", {
     method: "DELETE",
     headers: { "x-clash-client-type": "agent" },
   });
@@ -1710,7 +1710,7 @@ async function main() {
     { mutation: missingOAuthDeleteJson.mutation },
   );
 
-  const bareOAuthDelete = await request("/api/v1/provider-oauth/dreamina?accountId=jimeng-smoke", {
+  const bareOAuthDelete = await request("/api/v1/provider-oauth/example-oauth?accountId=example-smoke", {
     method: "DELETE",
     headers: {
       "x-clash-client-type": "agent",
@@ -1726,10 +1726,10 @@ async function main() {
     { mutation: bareOAuthDeleteJson.mutation },
   );
 
-  const missingOAuthComplete = await request("/api/v1/provider-oauth/dreamina/complete", {
+  const missingOAuthComplete = await request("/api/v1/provider-oauth/example-oauth/complete", {
     method: "POST",
     headers: { "x-clash-client-type": "agent" },
-    body: JSON.stringify({ accountId: "jimeng-smoke", deviceCode: pendingOAuth.deviceCode }),
+    body: JSON.stringify({ accountId: "example-smoke", deviceCode: pendingOAuth.deviceCode }),
   });
   const missingOAuthCompleteJson = await parseJsonResponse(missingOAuthComplete);
   recordCheck(
@@ -1740,13 +1740,13 @@ async function main() {
     { mutation: missingOAuthCompleteJson.mutation },
   );
 
-  const bareOAuthComplete = await request("/api/v1/provider-oauth/dreamina/complete", {
+  const bareOAuthComplete = await request("/api/v1/provider-oauth/example-oauth/complete", {
     method: "POST",
     headers: {
       "x-clash-client-type": "agent",
       "x-clash-if-match": baseReadToken(pendingOAuth.readToken),
     },
-    body: JSON.stringify({ accountId: "jimeng-smoke", deviceCode: pendingOAuth.deviceCode }),
+    body: JSON.stringify({ accountId: "example-smoke", deviceCode: pendingOAuth.deviceCode }),
   });
   const bareOAuthCompleteJson = await parseJsonResponse(bareOAuthComplete);
   recordCheck(
@@ -1757,13 +1757,13 @@ async function main() {
     { mutation: bareOAuthCompleteJson.mutation },
   );
 
-  const oauthCompleteResponse = await request("/api/v1/provider-oauth/dreamina/complete", {
+  const oauthCompleteResponse = await request("/api/v1/provider-oauth/example-oauth/complete", {
     method: "POST",
     headers: {
       "x-clash-client-type": "agent",
       "x-clash-if-match": pendingOAuth.readToken,
     },
-    body: JSON.stringify({ accountId: "jimeng-smoke", deviceCode: pendingOAuth.deviceCode }),
+    body: JSON.stringify({ accountId: "example-smoke", deviceCode: pendingOAuth.deviceCode }),
   });
   const oauthComplete = await parseJsonResponse(oauthCompleteResponse);
   recordCheck(
@@ -1776,7 +1776,7 @@ async function main() {
     JSON.stringify(oauthComplete),
     { mutation: oauthComplete.mutation },
   );
-  const providerOAuthCompleteAuditResponse = await request("/api/v1/mutation-audit?operation=provider_oauth_complete&entityId=dreamina%3Ajimeng-smoke");
+  const providerOAuthCompleteAuditResponse = await request("/api/v1/mutation-audit?operation=provider_oauth_complete&entityId=example-oauth%3Aexample-smoke");
   const providerOAuthCompleteAudit = await parseJsonResponse(providerOAuthCompleteAuditResponse);
   const providerOAuthCompleteAuditRecord = providerOAuthCompleteAudit.records?.[0];
   recordCheck(
@@ -1784,7 +1784,7 @@ async function main() {
     providerOAuthCompleteAuditResponse.status === 200 &&
       providerOAuthCompleteAudit.records?.length === 1 &&
       providerOAuthCompleteAuditRecord.operation === "provider_oauth_complete" &&
-      providerOAuthCompleteAuditRecord.entity?.id === "dreamina:jimeng-smoke" &&
+      providerOAuthCompleteAuditRecord.entity?.id === "example-oauth:example-smoke" &&
       providerOAuthCompleteAuditRecord.accepted === true &&
       providerOAuthCompleteAuditRecord.actorClientType === "agent" &&
       providerOAuthCompleteAuditRecord.reason === "provider OAuth complete" &&
@@ -1795,13 +1795,13 @@ async function main() {
     { mutation: oauthComplete.mutation },
   );
 
-  const staleOAuthComplete = await request("/api/v1/provider-oauth/dreamina/complete", {
+  const staleOAuthComplete = await request("/api/v1/provider-oauth/example-oauth/complete", {
     method: "POST",
     headers: {
       "x-clash-client-type": "agent",
       "x-clash-if-match": pendingOAuth.readToken,
     },
-    body: JSON.stringify({ accountId: "jimeng-smoke", deviceCode: pendingOAuth.deviceCode }),
+    body: JSON.stringify({ accountId: "example-smoke", deviceCode: pendingOAuth.deviceCode }),
   });
   const staleOAuthCompleteJson = await parseJsonResponse(staleOAuthComplete);
   recordCheck(
@@ -1812,7 +1812,7 @@ async function main() {
     { mutation: staleOAuthCompleteJson.mutation },
   );
 
-  const staleOAuthDelete = await request("/api/v1/provider-oauth/dreamina?accountId=jimeng-smoke", {
+  const staleOAuthDelete = await request("/api/v1/provider-oauth/example-oauth?accountId=example-smoke", {
     method: "DELETE",
     headers: {
       "x-clash-client-type": "agent",
@@ -1831,7 +1831,7 @@ async function main() {
   const authorizedOAuthResponse = await request("/api/v1/provider-oauth");
   const authorizedOAuthList = await parseJsonResponse(authorizedOAuthResponse);
   const authorizedOAuth = authorizedOAuthList.providers?.find((record) =>
-    record.providerId === "dreamina" && record.accountId === "jimeng-smoke"
+    record.providerId === "example-oauth" && record.accountId === "example-smoke"
   );
   recordCheck(
     "provider OAuth authorized get returns fresh receipt read token",
@@ -1839,7 +1839,7 @@ async function main() {
     authorizedOAuth?.readToken ?? JSON.stringify(authorizedOAuthList),
   );
 
-  const acceptedOAuthDelete = await request("/api/v1/provider-oauth/dreamina?accountId=jimeng-smoke", {
+  const acceptedOAuthDelete = await request("/api/v1/provider-oauth/example-oauth?accountId=example-smoke", {
     method: "DELETE",
     headers: {
       "x-clash-client-type": "agent",
@@ -1853,7 +1853,7 @@ async function main() {
     JSON.stringify(acceptedOAuthDeleteJson),
     { mutation: acceptedOAuthDeleteJson.mutation },
   );
-  const providerOAuthDeleteAuditResponse = await request("/api/v1/mutation-audit?operation=provider_oauth_delete&entityId=dreamina%3Ajimeng-smoke");
+  const providerOAuthDeleteAuditResponse = await request("/api/v1/mutation-audit?operation=provider_oauth_delete&entityId=example-oauth%3Aexample-smoke");
   const providerOAuthDeleteAudit = await parseJsonResponse(providerOAuthDeleteAuditResponse);
   const providerOAuthDeleteAuditRecord = providerOAuthDeleteAudit.records?.[0];
   recordCheck(
@@ -1861,7 +1861,7 @@ async function main() {
     providerOAuthDeleteAuditResponse.status === 200 &&
       providerOAuthDeleteAudit.records?.length === 1 &&
       providerOAuthDeleteAuditRecord.operation === "provider_oauth_delete" &&
-      providerOAuthDeleteAuditRecord.entity?.id === "dreamina:jimeng-smoke" &&
+      providerOAuthDeleteAuditRecord.entity?.id === "example-oauth:example-smoke" &&
       providerOAuthDeleteAuditRecord.accepted === true &&
       providerOAuthDeleteAuditRecord.actorClientType === "agent" &&
       providerOAuthDeleteAuditRecord.reason === "provider OAuth delete" &&
@@ -1871,13 +1871,13 @@ async function main() {
     JSON.stringify(providerOAuthDeleteAudit),
   );
 
-  const deletedRowOAuthStart = await request("/api/v1/provider-oauth/dreamina/start", {
+  const deletedRowOAuthStart = await request("/api/v1/provider-oauth/example-oauth/start", {
     method: "POST",
     headers: {
       "x-clash-client-type": "agent",
       "x-clash-if-match": authorizedOAuth.readToken,
     },
-    body: JSON.stringify({ accountId: "jimeng-smoke", accountLabel: "Smoke Dreamina restart" }),
+    body: JSON.stringify({ accountId: "example-smoke", accountLabel: "Smoke Example OAuth restart" }),
   });
   const deletedRowOAuthStartJson = await parseJsonResponse(deletedRowOAuthStart);
   recordCheck(
@@ -1893,7 +1893,7 @@ async function main() {
   recordCheck(
     "provider OAuth delete persists in host state",
     !oauthAfterDelete.providers?.some((record) =>
-      record.providerId === "dreamina" && record.accountId === "jimeng-smoke"
+      record.providerId === "example-oauth" && record.accountId === "example-smoke"
     ),
     JSON.stringify(oauthAfterDelete),
   );
@@ -4032,8 +4032,8 @@ async function main() {
       remainingProviderIds: providerIdsAfterDelete,
     },
     providerOAuth: {
-      providerId: "dreamina",
-      accountId: "jimeng-smoke",
+      providerId: "example-oauth",
+      accountId: "example-smoke",
       pendingReadToken: pendingOAuth.readToken,
       completedReadToken: oauthComplete.readToken,
       authorizedReadToken: authorizedOAuth.readToken,

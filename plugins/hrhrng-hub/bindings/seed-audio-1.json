@@ -1,0 +1,12 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-seed-audio-1",
+    "modelId": "seed-audio-1",
+    "upstreamModel": "seed-audio-1.0",
+    "excludedParameterIds": [
+      "voice_id"
+    ]
+  }
+}

@@ -5,10 +5,10 @@
  * flavor of `inputMode` the schema permits.
  */
 import { describe, it, expect } from "vitest";
-import { MODEL_CARDS, ModelInputModeSchema, type ModelCard } from "./models";
-import * as modelCapabilities from "./model-capabilities";
-import { capability, capabilityFromCustom, validateReferenceMedia, validateRefs, partitionRefs, pickDefaultModel } from "./model-capabilities";
-import { CustomActionDefinitionSchema } from "./canvas";
+import { MODEL_CARDS, ModelInputModeSchema, type ModelCard } from "./models.js";
+import * as modelCapabilities from "./model-capabilities.js";
+import { capability, capabilityFromCustom, validateReferenceMedia, validateRefs, partitionRefs, pickDefaultModel } from "./model-capabilities.js";
+import { CustomActionDefinitionSchema } from "./canvas.js";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────
 
@@ -436,5 +436,38 @@ describe("reference media constraints", () => {
     expect(validateReferenceMedia(h3, [
       { modality: "image" },
     ])).toBeNull();
+  });
+
+  it("enforces H3 reference-audio formats, duration, and visual companion", () => {
+    expect(validateRefs(h3, { audio: 1 }, { prompt: "go" })).toMatch(
+      /requires at least one reference image or video/i,
+    );
+    expect(validateRefs(h3, { image: 1, audio: 1 }, { prompt: "go" })).toBeNull();
+
+    expect(validateReferenceMedia(h3, [{
+      modality: "audio",
+      contentType: "audio/wav",
+      durationMs: 2_000,
+    }])).toBeNull();
+    expect(validateReferenceMedia(h3, [{
+      modality: "audio",
+      contentType: "audio/mpeg",
+      durationMs: 15_000,
+    }])).toBeNull();
+    expect(validateReferenceMedia(h3, [{
+      modality: "audio",
+      contentType: "audio/mp4",
+      durationMs: 2_000,
+    }])).toMatch(/format/i);
+    expect(validateReferenceMedia(h3, [{
+      modality: "audio",
+      contentType: "audio/wav",
+      durationMs: 1_999,
+    }])).toMatch(/at least 2 seconds/i);
+    expect(validateReferenceMedia(h3, [{
+      modality: "audio",
+      contentType: "audio/wav",
+      durationMs: 15_001,
+    }])).toMatch(/at most 15 seconds/i);
   });
 });

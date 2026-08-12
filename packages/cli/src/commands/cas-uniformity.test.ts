@@ -24,6 +24,12 @@ const projectionSource = readFileSync(
   fileURLToPath(new URL("./projection.ts", import.meta.url)),
   "utf8",
 );
+const projectHostSource = readFileSync(
+  fileURLToPath(
+    new URL("../../../../apps/local-api/src/project-command-host.ts", import.meta.url),
+  ),
+  "utf8",
+);
 
 test("observation record and require are not gated on the client being agent-tagged", () => {
   // An observation is concurrency evidence, not a permission. Gating it on the
@@ -48,10 +54,11 @@ test("every transport requires proof of read before mutating", () => {
   assert.match(projectionSource, /requireProjectionObservation/);
 });
 
-test("the direct replica path compares the proof instead of forwarding it only", () => {
-  // Without a daemon there is no server-side check, so a supplied version has to
-  // be verified locally or it is decoration.
-  assert.match(textSource, /requireCurrentTextVersion/);
+test("the local-api host compares forwarded text read proof", () => {
+  assert.match(textSource, /ifMatch: cas\.observedVersion/);
+  assert.match(projectHostSource, /case "text_cas_update"/);
+  assert.match(projectHostSource, /validateAgentReadProof/);
+  assert.match(projectHostSource, /currentReadToken: beforeReadToken/);
 });
 
 test("no transport offers a force or bypass flag", () => {

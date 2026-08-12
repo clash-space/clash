@@ -1,4 +1,4 @@
--- Account-scoped OAuth state for providers such as Dreamina/Jimeng.
+-- Account-scoped OAuth state for plugin providers.
 --
 -- Token payloads are stored encrypted and never returned by public settings
 -- APIs. account_id ties the authorization to a provider_account row so two

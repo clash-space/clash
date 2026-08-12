@@ -44,8 +44,10 @@ describe("daemon-owned Director Stage renderer", () => {
       newPage: vi.fn(async () => page),
       close: vi.fn(async () => undefined),
     };
+    const prepareBundle = vi.fn(async () => undefined);
     const renderer = module.createHeadlessDirectorStageRenderer({
       bundleDir,
+      prepareBundle,
       openBrowser: vi.fn(async () => browser),
     });
 
@@ -77,6 +79,7 @@ describe("daemon-owned Director Stage renderer", () => {
       timeSeconds: 1.25,
       state,
     }));
+    expect(prepareBundle).toHaveBeenCalledOnce();
 
     await renderer.dispose();
     expect(browser.close).toHaveBeenCalledOnce();

@@ -1,12 +1,12 @@
 import { basename, join, resolve } from "node:path";
 import { Command, InvalidArgumentError } from "commander";
-import type { EffectKind } from "@master-clash/remotion-effects";
+import type { EffectKind } from "@clash/remotion-effects";
 import {
   installEffectPackage,
   packEffectPackage,
   scaffoldEffectPackage,
   validateEffectPackage,
-} from "@master-clash/remotion-effects/authoring";
+} from "@clash/remotion-effects/authoring";
 import { resolveClashRoot } from "../lib/clash-home";
 import { isJsonMode, printJson } from "../lib/output";
 

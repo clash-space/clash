@@ -1,0 +1,461 @@
+import type { Readable, Writable } from "node:stream";
+
+import type {
+  ExecutablePluginAssetHandle,
+  ExecutablePluginBrokerOperation,
+  ExecutablePluginInvocation,
+  ExecutablePluginJsonValue,
+  ExecutablePluginOutput,
+  ExecutablePluginResult,
+} from "@clash/shared-types/executable-plugin";
+
+import { defineStdioExecutablePlugin, type StdioExecutablePluginOptions } from "./stdio-plugin.js";
+
+/**
+ * What a plugin is: a set of executors, declared.
+ *
+ * The entry file used to read stdin, parse lines, match `target.exportId` against a table, split
+ * submit from poll, normalise a step into a result, and write frames. first-party-media,
+ * codex-imagegen and hilo-hub-media each carried a version of that, and they had already drifted --
+ * one answered malformed input with a failure frame, another built a sentinel object and handed it
+ * to the handler.
+ *
+ * None of that is the author's subject. What they know is which executors exist and how each one
+ * talks to a vendor, so that is all this asks for.
+ */
+
+/**
+ * One file a generation produced, in whichever form the vendor gave it.
+ *
+ * Three, because that is what vendors return: Google answers `:generateContent` with base64, fal
+ * publishes a url, and an SDK client hands back bytes. Normalising them in the plugin would mean
+ * downloading a url to produce bytes -- paying for a round trip to satisfy a shape.
+ */
+export type MediaData =
+  | { bytes: Uint8Array; mediaType?: string; kind?: AssetKindName }
+  | { base64: string; mediaType?: string; kind?: AssetKindName }
+  | { url: string; mediaType?: string; kind?: AssetKindName };
+
+export type AssetKindName = "image" | "video" | "audio" | "model";
+
+/**
+ * One reference, resolved into the same three forms an output takes.
+ *
+ * A reference used to arrive as a handle the plugin resolved itself by sending a raw frame, so
+ * one plugin had two idioms: return data, but fetch data. An executor that forgot to resolve
+ * produced a request carrying `clash-asset://...` where a vendor expected an image.
+ *
+ * `url` is only handed back when the address is one the vendor can actually fetch. A private
+ * asset's URL answers 403, and the generation then fails for a reason naming the vendor rather
+ * than the reach.
+ */
+export type ResolvedReference =
+  | { form: "url"; url: string; mediaType?: string; kind?: AssetKindName }
+  | { form: "bytes"; bytes: Uint8Array; mediaType?: string; kind?: AssetKindName }
+  | { form: "text"; text: string };
+
+/**
+ * One step of work, as an executor reports it.
+ *
+ * `pollState` is whatever the executor needs to find this task again -- the host stores it opaquely
+ * and hands it back unread. Typed loosely on purpose: a provider's task id, cursor and phase are
+ * its own business, and narrowing this would make every plugin cast.
+ *
+ * `retryAfterMs` is the provider's own pacing when it states one. Without it the host polls on its
+ * own schedule, which is either too eager for the provider or too slow for the user.
+ */
+export type ExecutorStep =
+  | { status: "completed"; outputs: ExecutablePluginOutput[] }
+  /** Files, named by the plugin. The SDK uploads them and builds the outputs. */
+  | { status: "completed"; media: Record<string, MediaData> }
+  | { status: "accepted"; pollState: object; retryAfterMs?: number };
+
+/**
+ * What a plugin keeps, already bound to this plugin and this account.
+ *
+ * Injected rather than imported. An imported store would be ambient -- initialised somewhere,
+ * addressed by an id from somewhere, reachable by any code in the process. This one takes a key and
+ * nothing else, because the two components that decide whose data it is were fixed by the host when
+ * it spawned the process. There is no argument through which an executor could name another plugin.
+ */
+export interface PluginStoreHandle {
+  get(key: string): Promise<string | undefined>;
+  put(key: string, value: string, options?: { secret?: boolean; expiresAt?: number }): Promise<void>;
+  remove(key: string): Promise<void>;
+}
+
+/** Bytes on their way to becoming an asset the protocol can carry. */
+export interface AssetWriteRequest {
+  slot: string;
+  kind: "image" | "video" | "audio" | "model";
+  mediaType?: string;
+  /** The bytes, when the plugin holds them. */
+  dataBase64?: string;
+  /** Where they already live, when the upstream published a url the host can fetch itself. */
+  url?: string;
+}
+
+/** Bytes too large to enclose, on their way to storage the host names. */
+export interface AssetUploadRequest {
+  slot: string;
+  kind: "image" | "video" | "audio" | "model";
+  mediaType?: string;
+  bytes?: Uint8Array;
+  /** A vendor-published result the Host should ingest directly. */
+  url?: string;
+}
+
+export interface CodexImageGenerateRequest {
+  prompt: string;
+  aspectRatio: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "21:9";
+  slot: string;
+  references?: ExecutablePluginAssetHandle[];
+}
+
+export interface PluginHostTools {
+  codexImagegen: {
+    generate(request: CodexImageGenerateRequest): Promise<ExecutablePluginAssetHandle>;
+  };
+}
+
+/**
+ * Host dependencies visible to plugin business code.
+ *
+ * The stdio request/response operation is deliberately absent. Authors receive the contribution
+ * shapes they use; only the transport layer knows how those methods become protocol frames.
+ */
+export interface ExecutorContext {
+  /**
+   * Store large bytes without enclosing them.
+   *
+   * The host names a place, the plugin streams to it, and the frame carries only the handle. One
+   * 30-second video is 3,470,456 characters as base64 inside a frame, held simultaneously by the
+   * plugin, the pipe and the host while it is parsed.
+   *
+   * The same call is a presigned object-storage URL in a hosted deployment, so this is not a local
+   * shortcut -- it is the shape that works in both.
+   */
+  upload(request: AssetUploadRequest): Promise<ExecutablePluginOutput>;
+  /**
+   * Store bytes and get back the handle an output is made of.
+   *
+   * The protocol's output is `{ assetId, uri: "clash-asset://…", kind, mediaType }`. Executors were
+   * returning `{ kind: "inline", dataBase64 }`, which is not that shape, and only type-checked
+   * because the plugin had declared a looser contract of its own.
+   */
+  asset(request: AssetWriteRequest): Promise<ExecutablePluginOutput>;
+  /** Credentials and settings this account stored. Bound; see PluginStoreHandle. */
+  store: PluginStoreHandle;
+  /** Turn one of `invocation.input.references` into bytes, a fetchable url, or text. */
+  reference(reference: unknown): Promise<ResolvedReference>;
+  /** Host tools named by the plugin's contributions. */
+  hostTools: PluginHostTools;
+}
+
+export interface Executor {
+  submit(invocation: ExecutablePluginInvocation, context: ExecutorContext): Promise<ExecutorStep>;
+  /** Only for providers that answer later. Omitting it says this one answers at once. */
+  poll?(invocation: ExecutablePluginInvocation, context: ExecutorContext): Promise<ExecutorStep>;
+}
+
+export interface PluginDefinition {
+  executors: Record<string, Executor>;
+  /** Built once per process; executors receive it on every call. */
+  context?: Partial<ExecutorContext> | (() => Partial<ExecutorContext>);
+}
+
+export interface DefinedPlugin {
+  readonly executors: Record<string, Executor>;
+  /** Begin reading invocations. Resolves when the input ends and everything in flight has answered. */
+  start(options?: StdioExecutablePluginOptions): Promise<void>;
+}
+
+/** What kind of asset this is, from the media type when the plugin did not say. */
+function assetKindOf(media: MediaData): AssetKindName {
+  if (media.kind) return media.kind;
+  const mediaType = media.mediaType ?? "";
+  if (mediaType.startsWith("video/")) return "video";
+  if (mediaType.startsWith("audio/")) return "audio";
+  return "image";
+}
+
+/**
+ * Exported because two assemblers reach the host.
+ *
+ * `assemblePlugin` had its own normalisation that read `"outputs" in step` and answered `[]` for
+ * anything else, so a media step went up as a completed frame with nothing in it -- no upload
+ * attempted, the generation already paid for, and the node left with no asset. One function now,
+ * rather than a second copy free to disagree with this one.
+ */
+export async function outputsFor(
+  media: Record<string, MediaData>,
+  context: ExecutorContext,
+): Promise<ExecutablePluginOutput[]> {
+  const outputs: ExecutablePluginOutput[] = [];
+  // Sequential, so the outputs arrive in the order the plugin named them. A generation's frames are
+  // an ordered thing, and a caller that has to re-sort them needs a rule nobody wrote down.
+  for (const [slot, file] of Object.entries(media)) {
+    const request = {
+      slot,
+      kind: assetKindOf(file),
+      ...(file.mediaType ? { mediaType: file.mediaType } : {}),
+    };
+
+    if ("url" in file && file.url) {
+      outputs.push(await context.upload!({ ...request, url: file.url } as never));
+      continue;
+    }
+    if ("bytes" in file && file.bytes) {
+      outputs.push(await context.upload!({ ...request, bytes: file.bytes }));
+      continue;
+    }
+    if ("base64" in file && file.base64) {
+      outputs.push(await context.upload!({
+        ...request,
+        bytes: Uint8Array.from(Buffer.from(file.base64, "base64")),
+      }));
+      continue;
+    }
+    // A name with nothing behind it would upload an empty asset and report success.
+    throw new Error(`${slot} declares no bytes, base64 or url.`);
+  }
+  return outputs;
+}
+
+async function resultFor(
+  invocation: ExecutablePluginInvocation,
+  step: ExecutorStep,
+  context: ExecutorContext,
+): Promise<ExecutablePluginResult> {
+  if (step.status === "accepted") {
+    return {
+      invocationId: invocation.invocationId,
+      status: "accepted",
+      pollState: step.pollState,
+      ...(step.retryAfterMs === undefined ? {} : { retryAfterMs: step.retryAfterMs }),
+    } as ExecutablePluginResult;
+  }
+  return {
+    invocationId: invocation.invocationId,
+    status: "completed",
+    outputs: "media" in step ? await outputsFor(step.media, context) : step.outputs,
+  } as ExecutablePluginResult;
+}
+
+
+/**
+ * Build the runtime context an executor sees, from whatever the host handed in.
+ *
+ * `store`, `reference` and the upload path are all derived from the private Host transport, so anything that hands
+ * an executor a context has to build them the same way. It lives here rather than being written
+ * twice because `assemblePlugin` wrote the second copy by omission -- it passed `options.context`
+ * straight through and dropped the transport, leaving assembled executors with no `context.store` at
+ * all, which surfaced as a message about an unconfigured account.
+ */
+type HostDependencyRequest = (
+  operation: ExecutablePluginBrokerOperation,
+) => Promise<ExecutablePluginJsonValue>;
+
+export function executorContextFrom(
+  merged: Partial<ExecutorContext> = {},
+  requestHost?: HostDependencyRequest,
+): ExecutorContext {
+  const host = requestHost ?? (async () => {
+    throw new Error("This invocation arrived without injected Host dependencies.");
+  });
+
+  return {
+        ...merged,
+        reference: merged.reference ?? (async (input) => {
+          const entry = input as {
+            text?: { value: string };
+            asset?: { assetId: string; url?: string; reach?: string; mediaType?: string; kind?: AssetKindName };
+          };
+          if (entry.text) return { form: "text", text: entry.text.value };
+
+          const asset = entry.asset;
+          if (!asset) throw new Error("This reference carries neither text nor an asset.");
+
+          // Only a public address is worth handing on. Anything else the vendor cannot read, and
+          // passing it produces a 403 attributed to the vendor.
+          if (asset.url && asset.reach === "public") {
+            return {
+              form: "url",
+              url: asset.url,
+              ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
+              ...(asset.kind ? { kind: asset.kind } : {}),
+            };
+          }
+
+          const read = await host({ kind: "asset.read", asset } as never) as unknown as {
+            dataBase64?: string;
+            mediaType?: string;
+            kind?: AssetKindName;
+          };
+          if (!read?.dataBase64) {
+            throw new Error(`The host returned no bytes for asset ${asset.assetId}.`);
+          }
+          return {
+            form: "bytes",
+            bytes: Uint8Array.from(Buffer.from(read.dataBase64, "base64")),
+            ...(read.mediaType ?? asset.mediaType ? { mediaType: read.mediaType ?? asset.mediaType } : {}),
+            ...(read.kind ?? asset.kind ? { kind: read.kind ?? asset.kind } : {}),
+          };
+        }),
+        // Two calls, keyed by nothing but a key. Which plugin and which account is decided by the
+        // spawn, so there is no field here for one to name another's credentials.
+        store: merged.store ?? {
+          get: async (key) => {
+            const answer = await host({ kind: "store.get", key } as never) as
+              unknown as { value?: string };
+            // Missing stays missing. Turning it into "" is how an unset credential used to reach a
+            // vendor and come back as a 401 that named the wrong problem.
+            return answer?.value;
+          },
+          remove: async (key) => {
+            await host({ kind: "store.put", key, value: "" } as never);
+          },
+          put: async (key, value, options) => {
+            await host({
+              kind: "store.put",
+              key,
+              value,
+              ...(options?.secret === undefined ? {} : { secret: options.secret }),
+              ...(options?.expiresAt === undefined
+                ? {}
+                : { expiresAt: new Date(options.expiresAt).toISOString() }),
+            } as never);
+          },
+        },
+        upload: merged.upload ?? (async (request) => {
+          // A vendor that answers with a link never hands over bytes, so there is nothing to count.
+          // Announcing `request.bytes.byteLength` unconditionally is what made the url form die on
+          // "Cannot read properties of undefined (reading 'byteLength')" -- after a real generation
+          // had completed upstream, so the work was done and the result dropped on the way home.
+          const bytes = (request as { bytes?: Uint8Array }).bytes;
+          const url = (request as { url?: string }).url;
+
+          const slot = await host({
+            kind: "asset.upload-slot",
+            slot: request.slot,
+            assetKind: request.kind,
+            ...(request.mediaType ? { mediaType: request.mediaType } : {}),
+            ...(bytes ? { byteLength: bytes.byteLength } : {}),
+            // Passed through rather than fetched. Downloading it to hand the host something it can
+            // fetch itself pays for the transfer twice, and the host is the side that knows whether
+            // it wants a copy.
+            ...(url ? { url } : {}),
+          } as never) as unknown as {
+            uploadUrl?: string;
+            assetId?: string;
+            uri?: string;
+            kind?: AssetKindName;
+            mediaType?: string;
+            url?: string;
+            reach?: "public" | "private";
+          };
+
+          if (url && slot.assetId) {
+            // The host fetched it, stored it, and returned the complete handle. Preserve that
+            // descriptor verbatim: its url is the storage adapter's current projection, not a path
+            // the SDK can reconstruct from assetId.
+            return {
+              slot: request.slot,
+              kind: "asset",
+              asset: slot,
+            } as never;
+          }
+
+          if (!slot.uploadUrl || !slot.assetId) {
+            throw new Error("The host did not provide an upload slot for this asset.");
+          }
+
+          if (!request.bytes) {
+            throw new Error(`Uploading ${request.slot} requires bytes or a provider URL.`);
+          }
+          const response = await globalThis.fetch(slot.uploadUrl, {
+            method: "PUT",
+            headers: {
+              "content-type": request.mediaType ?? "application/octet-stream",
+              "content-length": String(request.bytes.byteLength),
+            },
+            body: request.bytes as unknown as BodyInit,
+          });
+          if (!response.ok) {
+            // A refused upload reported as completed would attach an empty asset and close a task
+            // the provider has already been paid for.
+            throw new Error(
+              `Uploading ${request.slot} failed: ${response.status} ${response.statusText}.`,
+            );
+          }
+
+          const handle = await host({
+            kind: "asset.write",
+            slot: request.slot,
+            assetKind: request.kind,
+            ...(request.mediaType ? { mediaType: request.mediaType } : {}),
+            assetId: slot.assetId,
+          } as never) as unknown as Record<string, unknown>;
+          return { slot: request.slot, kind: "asset", asset: handle } as ExecutablePluginOutput;
+        }),
+
+        asset: merged.asset ?? (async (request) => {
+          const handle = await host({
+            kind: "asset.write",
+            slot: request.slot,
+            assetKind: request.kind,
+            ...(request.mediaType ? { mediaType: request.mediaType } : {}),
+            ...(request.dataBase64 ? { dataBase64: request.dataBase64 } : {}),
+            ...(request.url ? { url: request.url } : {}),
+          } as never) as unknown as Record<string, unknown>;
+          return { slot: request.slot, kind: "asset", asset: handle } as ExecutablePluginOutput;
+        }),
+
+        hostTools: {
+          ...merged.hostTools,
+          codexImagegen: merged.hostTools?.codexImagegen ?? {
+            generate: async (request) => await host({
+              kind: "codex.image.generate",
+              prompt: request.prompt,
+              aspectRatio: request.aspectRatio,
+              slot: request.slot,
+              references: request.references ?? [],
+            } as never) as unknown as ExecutablePluginAssetHandle,
+          },
+        },
+      };
+}
+
+export function definePlugin(definition: PluginDefinition): DefinedPlugin {
+  const handlers: Record<string, (invocation: ExecutablePluginInvocation, ctx: ExecutorContext) => Promise<ExecutablePluginResult>> = {};
+
+  for (const [exportId, executor] of Object.entries(definition.executors)) {
+    handlers[exportId] = async (invocation, hostContext) => {
+      const declared = typeof definition.context === "function"
+        ? definition.context()
+        : definition.context ?? {};
+      const context = executorContextFrom({ ...hostContext, ...declared });
+
+      if (invocation.operation === "poll") {
+        if (!executor.poll) {
+          // Answering "still running" here would wait forever. The host has already recorded an
+          // acceptance this executor never returned, and hiding that once left a paid-for
+          // generation uncollectable.
+          throw new Error(
+            `${exportId} answers at once and has no poll operation, but the host asked it to poll.`,
+          );
+        }
+        return resultFor(invocation, await executor.poll(invocation, context), context);
+      }
+
+      return resultFor(invocation, await executor.submit(invocation, context), context);
+    };
+  }
+
+  return {
+    executors: definition.executors,
+    start: (options) => defineStdioExecutablePlugin(handlers, options).done,
+  };
+}
+
+export type { Readable, Writable };

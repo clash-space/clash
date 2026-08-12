@@ -161,11 +161,11 @@ describe("application theme contract", () => {
 
   it("keeps shared popup primitives on the centralized overlay contract", () => {
     const primitivePaths = [
-      "packages/web-ui/src/components/ui/dropdown-menu.tsx",
-      "packages/web-ui/src/components/ui/popover.tsx",
-      "packages/web-ui/src/components/ui/context-menu.tsx",
-      "packages/web-ui/src/components/ui/searchable-select.tsx",
-      "packages/web-ui/src/components/ui/select.tsx",
+      "packages/gui/src/components/ui/dropdown-menu.tsx",
+      "packages/gui/src/components/ui/popover.tsx",
+      "packages/gui/src/components/ui/context-menu.tsx",
+      "packages/gui/src/components/ui/searchable-select.tsx",
+      "packages/gui/src/components/ui/select.tsx",
     ];
 
     for (const path of primitivePaths) {

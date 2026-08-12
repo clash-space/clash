@@ -5,7 +5,7 @@ import {
   BUILT_IN_ASSET_ACTION_SPECS,
   createAssetActionInvocation,
   resolveAssetActionOutputKind,
-} from './asset-edit';
+} from './asset-edit.js';
 
 describe('asset edit action specs', () => {
   it('declares edit capabilities as serializable action specs', () => {

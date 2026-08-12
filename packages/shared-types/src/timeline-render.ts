@@ -1,10 +1,10 @@
 import type { LoroDoc } from "loro-crdt";
-import { Canvas } from "./canvas-ops";
+import { Canvas } from "./canvas-ops.js";
 import {
   readProjectTimeline,
   resolveTimelineRenderTarget,
   type TimelineRenderTarget,
-} from "./project-workspace";
+} from "./project-workspace.js";
 
 export const PROJECT_ASSET_RENDER_CANVAS_ID = "__project-asset-renders__";
 

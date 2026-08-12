@@ -2,7 +2,7 @@ import { TIMELINE_DSL_FIELD_ANNOTATIONS } from '@clash/shared-types';
 import {
   TIMELINE_SHARED_DEFAULTS,
   type Item,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 
 export type ResolvedTimelineItem = Item & {
   naturalWidth?: number;

@@ -5,7 +5,7 @@
  * "transition flashes ghost copy of underlying clip".
  */
 import { describe, it, expect } from 'vitest';
-import type { Track, VideoItem, TransitionItem } from '@master-clash/remotion-core';
+import type { Track, VideoItem, TransitionItem } from '@clash/remotion-core';
 import { buildObscuredWindowsByItemId, isFrameObscured } from './VideoComposition';
 
 const makeVideo = (id: string, from: number, dur: number): VideoItem => ({

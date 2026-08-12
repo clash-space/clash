@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ClashStaleRecovery } from '@clash/shared-mcp';
-import { a as DirectorAdapter } from './adapter-sbJuaJaM.js';
-export { D as DIRECTOR_PLUGIN_TOOL_NAMES } from './adapter-sbJuaJaM.js';
+import { a as DirectorAdapter } from './adapter-BJBHIdFm.js';
+export { D as DIRECTOR_PLUGIN_TOOL_NAMES } from './adapter-BJBHIdFm.js';
+import '@clash/shared-runtime/project-host-client';
 
 type DirectorToolErrorPayload = {
     code: string;

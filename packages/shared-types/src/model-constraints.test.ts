@@ -5,8 +5,8 @@ import {
   coerceModelParameterInput,
   normalizeModelParametersForCard,
   validateModelCardConfiguration,
-} from "./model-constraints";
-import { MODEL_CARDS, ModelCardSchema } from "./models";
+} from "./model-constraints.js";
+import { MODEL_CARDS, ModelCardSchema } from "./models.js";
 
 function card(id: string) {
   const value = MODEL_CARDS.find((candidate) => candidate.id === id);

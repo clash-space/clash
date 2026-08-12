@@ -1,1 +1,2 @@
-export { a as DirectorAdapter, b as DirectorCommandRunner, e as DirectorProjectionWriter, h as createClashDirectorRunner, i as createDirectorAdapter, j as directorWorkspaceCwd } from './adapter-sbJuaJaM.js';
+import '@clash/shared-runtime/project-host-client';
+export { a as DirectorAdapter, d as DirectorProjectionWriter, g as createDirectorAdapter, h as directorWorkspaceCwd } from './adapter-BJBHIdFm.js';

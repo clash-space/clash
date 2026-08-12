@@ -1,5 +1,5 @@
 import React from 'react';
-import type { TransitionItem } from '@master-clash/remotion-core';
+import type { TransitionItem } from '@clash/remotion-core';
 import type { ItemRenderProps } from '../registry';
 
 /**

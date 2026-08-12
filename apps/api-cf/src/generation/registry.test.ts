@@ -46,7 +46,7 @@ describe("generation provider registry", () => {
       kind: "video",
       providerId: "volcengine",
       upstreamId: "volcengine",
-      upstreamModel: "doubao-seedance-2-0-pro",
+      upstreamModel: "doubao-seedance-2-0-260128",
       apiShape: "modelark",
       priority: 9,
     })).name).toBe("volcengine-video");

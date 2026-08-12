@@ -3,7 +3,7 @@ import {
   TIMELINE_DSL_ITEM_TYPES,
 } from '@clash/shared-types';
 import { describe, expect, it } from 'vitest';
-import { TIMELINE_SHARED_DEFAULTS } from '@master-clash/remotion-core';
+import { TIMELINE_SHARED_DEFAULTS } from '@clash/remotion-core';
 import * as ui from './index';
 
 type Classification = {

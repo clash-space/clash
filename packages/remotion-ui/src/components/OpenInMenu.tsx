@@ -1,6 +1,6 @@
 import * as Ariakit from '@ariakit/react';
 import React from 'react';
-import type { NleAvailability, NleTarget } from '@master-clash/remotion-core';
+import type { NleAvailability, NleTarget } from '@clash/remotion-core';
 
 const targets: Array<{ id: NleTarget; label: string }> = [
   { id: 'premiere-pro', label: 'Adobe Premiere Pro' },

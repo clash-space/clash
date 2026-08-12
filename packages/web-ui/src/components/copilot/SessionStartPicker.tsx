@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
+import type { RuntimeResumeSession } from '@clash/web-ui/lib/runtimeResume';
 import { Button } from '../ui/button';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 
@@ -52,7 +52,7 @@ export function SessionStartPicker({
   startLabel = 'Start chat',
 }: {
   agentTemplates: AgentTemplate[];
-  sessions: BridgeSession[];
+  sessions: RuntimeResumeSession[];
   agents?: RuntimeAgentOption[];
   preferredAgentId?: string;
   onStart: (agentTemplateId: string | null, resumeSessionId?: string, agentId?: string) => void;

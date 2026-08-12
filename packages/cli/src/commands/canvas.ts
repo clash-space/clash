@@ -1,24 +1,16 @@
 import { Command } from "commander";
-import WebSocket from "ws";
 import { chmodSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
-  LoroSyncClient, DEFAULT_CANVAS_ID,
-  parsePromptParts, extractAssetRefs,
-  createMediaAssetCowNodeData,
-  ExecutablePluginBindingSchema,
-  MODEL_CARDS,
-  coerceModelParameterInput,
-  normalizeModelId,
-  isMediaNodeType,
+  DEFAULT_CANVAS_ID,
+  type ProjectHostCommand,
 } from "@clash/shared-types";
-import { requireApiKey, getServerUrl } from "../lib/config";
+import { getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
-import { isDaemonRunning, sendCommand, startDaemon, getSocketPath, getDaemonMcpEndpoint } from "../lib/daemon";
+import { sendProjectCommand } from "../lib/project-host-client";
 import { apiFetch, apiJson } from "../lib/api";
 import { resolveClashRoot } from "../lib/clash-home";
 import { resolveProjectContext, type ResolvedProjectContext } from "../lib/project-context";
-import { assertAgentHostWritePath } from "../lib/agent-host-write";
 import { publicAgentCommandResult } from "../lib/agent-worktree-observation";
 import {
   forgetWorktreeObservation,
@@ -26,20 +18,7 @@ import {
   requireWorktreeObservation,
 } from "../lib/worktree-observations";
 import {
-  canvasBatchDeleteReadToken,
-  canvasEdgesReadToken,
-  canvasNodeReadToken,
-  isCanvasNodeImmutable,
-  validateCanvasBatchDelete,
-  validateCanvasBatchDeleteReadProof,
-  validateCanvasCheckpointPatch,
-  validateCanvasDelete,
-  validateCanvasContentPatch,
-  validateCanvasMediaAssetPatch,
-  validateCanvasReadProof,
   validateCanvasUpdateDataFields,
-  type CanvasReadProofEdgeLike,
-  type CanvasReadProofNodeLike,
 } from "../lib/canvas-update-guardrails";
 import { requireDestructiveConfirmation } from "../lib/destructive-guardrails";
 
@@ -55,46 +34,6 @@ export type CanvasActor = {
   actorUserId: string;
   actorAgentId?: string;
 };
-
-export async function resolveInstalledPluginAction(options: {
-  actionId: string;
-  serverUrl?: string;
-  apiKey?: string;
-  request?: typeof fetch;
-}): Promise<{
-  id: string;
-  outputType?: "image" | "video" | "audio" | "text";
-  pluginBinding: ReturnType<typeof ExecutablePluginBindingSchema.parse>;
-  pluginPermissions?: unknown;
-  definition: Record<string, unknown>;
-} | null> {
-  const serverUrl = options.serverUrl ?? getServerUrl();
-  const apiKey = options.apiKey ?? requireApiKey(serverUrl);
-  const response = await (options.request ?? fetch)(`${serverUrl}/api/v1/plugin-actions`, {
-    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-  });
-  if (!response.ok) return null;
-  const body = await response.json() as { actions?: unknown[] };
-  for (const value of body.actions ?? []) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-    const action = value as Record<string, unknown>;
-    if (action.id !== options.actionId) continue;
-    const binding = ExecutablePluginBindingSchema.safeParse(action.pluginBinding);
-    if (!binding.success) continue;
-    const outputType = action.outputType === "image" || action.outputType === "video"
-      || action.outputType === "audio" || action.outputType === "text"
-      ? action.outputType
-      : undefined;
-    return {
-      id: options.actionId,
-      ...(outputType ? { outputType } : {}),
-      pluginBinding: binding.data,
-      ...(action.pluginPermissions ? { pluginPermissions: action.pluginPermissions } : {}),
-      definition: action,
-    };
-  }
-  return null;
-}
 
 let activeCanvasId = DEFAULT_CANVAS_ID;
 
@@ -129,8 +68,8 @@ export function resolveCanvasPresenceOptions(
  *
  *   - User-driven (default): resolve the local/remote product user through
  *     /api/v1/me, then stamp `{actorType:'user', actorUserId:<user>}`.
- *   - Agent-driven: the CLI was launched by the bridge daemon as the
- *     subprocess of an ACP agent. Bridge stamps
+ *   - Agent-driven: the CLI was launched by the local-api host as the
+ *     subprocess of an ACP agent. The local-api host stamps
  *     CLASH_AGENT_MEMBER_ID into the env. We stamp `{actorType:'agent',
  *     actorAgentId:<cm>, actorUserId:<owner>}` so the resulting node
  *     attributes back to the human accountable for it.
@@ -245,49 +184,10 @@ function publicMutationResult(value: Record<string, unknown>): Record<string, un
 }
 
 /**
- * Create a one-shot connected LoroSyncClient (fallback when no daemon).
+ * Run a command through the local-api project authority.
  */
-async function connectToProject(projectId: string): Promise<LoroSyncClient> {
-  const apiKey = requireApiKey();
-  const serverUrl = getServerUrl();
-  const wsUrl = serverUrl.replace(/^http/, "ws");
-
-  const client = new LoroSyncClient({
-    serverUrl: wsUrl,
-    projectId,
-    canvasId: activeCanvasId,
-    token: apiKey,
-    ...resolveCanvasPresenceOptions(),
-    WebSocket: WebSocket as any,
-  });
-
-  await client.connect();
-  client.selectCanvas(activeCanvasId);
-  return client;
-}
-
-async function registerInstalledPluginAction(
-  projectId: string,
-  action: { id: string; definition: Record<string, unknown> },
-): Promise<void> {
-  const client = await connectToProject(projectId);
-  try {
-    client.doc.getMap("customActions").set(action.id, action.definition);
-    client.doc.commit({ origin: "cli:install-plugin-action" });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  } finally {
-    await client.disconnect();
-  }
-}
-
-/**
- * Run a command via daemon if running, otherwise fall back to one-shot connection.
- */
-async function runCommand(projectId: string, cmd: object): Promise<any> {
-  if (isDaemonRunning(projectId)) {
-    return sendCommand(projectId, { ...cmd, canvasId: activeCanvasId });
-  }
-  return null; // caller should fall back
+async function runCommand(projectId: string, cmd: ProjectHostCommand): Promise<any> {
+  return sendProjectCommand(projectId, { ...cmd, canvasId: activeCanvasId });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -302,54 +202,6 @@ function normalizeNodeIds(nodeIds: unknown): string[] {
   return [...new Set((Array.isArray(nodeIds) ? nodeIds : [])
     .map((nodeId) => String(nodeId ?? "").trim())
     .filter(Boolean))];
-}
-
-function listCanvasReadProofEdges(client: LoroSyncClient): CanvasReadProofEdgeLike[] {
-  return client.canvas.listEdges().map((edge) => ({ ...edge }));
-}
-
-function listCanvasEdgesWithVersion(client: LoroSyncClient): { edges: CanvasReadProofEdgeLike[]; version: string } {
-  const baseEdges = listCanvasReadProofEdges(client);
-  return { edges: baseEdges, version: canvasEdgesReadToken(baseEdges) };
-}
-
-function readCanvasBatchDeletePlan(client: LoroSyncClient, requestedNodeIds: string[]): {
-  nodeIds: string[];
-  nodes: CanvasReadProofNodeLike[];
-  edges: CanvasReadProofEdgeLike[];
-  readToken: string;
-} {
-  const nodeIds = normalizeNodeIds(requestedNodeIds);
-  if (nodeIds.length === 0) throw new Error("delete batch requires at least one node id");
-  const nodes: CanvasReadProofNodeLike[] = [];
-  const missing: string[] = [];
-  for (const nodeId of nodeIds) {
-    const node = client.readNode(nodeId);
-    if (!node) {
-      missing.push(nodeId);
-      continue;
-    }
-    nodes.push(node);
-  }
-  if (missing.length > 0) throw new Error(`Node(s) not found: ${missing.join(", ")}`);
-  const edges = listCanvasReadProofEdges(client);
-  return {
-    nodeIds,
-    nodes,
-    edges,
-    readToken: canvasBatchDeleteReadToken({ nodes, edges }),
-  };
-}
-
-function canvasGuardrailEdgesFromReadProof(
-  edges: CanvasReadProofEdgeLike[],
-): Array<{ source: string; target: string }> {
-  return edges
-    .map((edge) => ({
-      source: typeof edge.source === "string" ? edge.source : "",
-      target: typeof edge.target === "string" ? edge.target : "",
-    }))
-    .filter((edge) => edge.source && edge.target);
 }
 
 export async function replaceCanvasAssetNode(options: {
@@ -369,7 +221,7 @@ export async function replaceCanvasAssetNode(options: {
     entityId: options.nodeId,
   });
 
-  const daemonResult = await runCommand(projectId, {
+  const hostResult = await runCommand(projectId, {
     action: "asset_cow_replace",
     nodeId: options.nodeId,
     assetId,
@@ -379,113 +231,23 @@ export async function replaceCanvasAssetNode(options: {
     observedVersion,
     ifMatch: observedVersion,
   });
-  if (daemonResult) {
-    if (daemonResult.error) throw new Error(daemonResult.error);
-    await recordCanvasObservation({
-      context,
-      entityKind: "canvas-node",
-      entityId: String(daemonResult.newNodeId ?? daemonResult.nodeId),
-      revision: daemonResult.readToken ?? daemonResult.version,
-    });
-    return publicMutationResult(daemonResult);
-  }
-  const hostWrite = assertAgentHostWritePath({
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    operation: "canvas media replacement",
-    readCommand: "clash canvas get --json",
+  if (hostResult.error) throw new Error(hostResult.error);
+  await recordCanvasObservation({
+    context,
+    entityKind: "canvas-node",
+    entityId: String(hostResult.newNodeId ?? hostResult.nodeId),
+    revision: hostResult.readToken ?? hostResult.version,
   });
-  if (!hostWrite.ok) throw new Error(hostWrite.error);
-
-  const client = await connectToProject(projectId);
-  try {
-    const node = client.readNode(options.nodeId);
-    if (!node) throw new Error(`Node not found: ${options.nodeId}`);
-    if (!isMediaNodeType(node.type)) {
-      throw new Error(`Node ${options.nodeId} has type "${node.type}", expected image, video, or audio`);
-    }
-    const newNodeId = typeof options.newNode === "string" && options.newNode.trim()
-      ? options.newNode.trim()
-      : crypto.randomUUID().slice(0, 8);
-    const sourceAssetId = typeof node.data?.assetId === "string" ? node.data.assetId : undefined;
-    const data = createMediaAssetCowNodeData({
-      sourceNodeId: options.nodeId,
-      sourceLabel: typeof node.data?.label === "string" ? node.data.label : undefined,
-      sourceAssetId,
-      assetId,
-      label: typeof options.label === "string" ? options.label : undefined,
-    });
-    client.canvas.createLinkedNode({
-      nodeId: newNodeId,
-      nodeType: node.type,
-      data,
-      parentId: node.parent_id ?? null,
-      sourceNodeId: options.nodeId,
-      edgeId: `${options.nodeId}-${newNodeId}`,
-      edgeType: "copy-on-write",
-    });
-    const newNode = client.readNode(newNodeId);
-    return {
-      replaced: true,
-      copyOnWrite: true,
-      sourceNodeId: options.nodeId,
-      newNodeId,
-      nodeId: newNodeId,
-      sourceAssetId,
-      assetId,
-      lineageEdge: { source: options.nodeId, target: newNodeId, type: "copy-on-write" },
-    };
-  } finally {
-    await client.disconnect();
-  }
+  return publicMutationResult(hostResult);
 }
 
 export const canvasCommand = new Command("canvas")
-  .description(`Canvas node operations (via Loro CRDT sync)
+  .description(`Canvas node operations through the local-api project host
 
 Node types: text, group, image, video, audio, image_gen, video_gen, audio_gen, text_gen
 
-Daemon mode (recommended for multi-command sessions):
   clash init --project <id>       # one-time workspace setup
-  clash canvas connect            # start persistent connection
-  clash canvas list --json        # uses cwd marker automatically
-  clash canvas disconnect         # stop (auto-exits after 10min idle)`);
-
-// ─── connect ─────────────────────────────────────────────
-
-canvasCommand
-  .command("connect")
-  .description("Start persistent connection to a project (daemon mode)")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
-    if (isDaemonRunning(projectId)) {
-      console.log(JSON.stringify({
-        status: "already_running",
-        socket: getSocketPath(projectId),
-        mcp: getDaemonMcpEndpoint(projectId),
-      }));
-      return;
-    }
-    const apiKey = requireApiKey();
-    const serverUrl = getServerUrl();
-    await startDaemon(projectId, serverUrl, apiKey, resolveCanvasPresenceOptions());
-  });
-
-// ─── disconnect ──────────────────────────────────────────
-
-canvasCommand
-  .command("disconnect")
-  .description("Stop persistent connection")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
-    if (!isDaemonRunning(projectId)) {
-      console.log("No daemon running.");
-      return;
-    }
-    const result = await sendCommand(projectId, { action: "disconnect" });
-    console.log(JSON.stringify(result));
-  });
+  clash canvas list --json        # uses cwd marker automatically`);
 
 // ─── list ─────────────────────────────────────────────────
 
@@ -497,35 +259,14 @@ canvasCommand
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const projectId = await resolveCanvasProjectId(options);
-    const daemonResult = await runCommand(projectId, { action: "list", type: options.type });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      if (isJsonMode(options)) { printJson(daemonResult.nodes); }
-      else {
-        for (const node of daemonResult.nodes) {
+    const hostResult = await runCommand(projectId, { action: "list", type: options.type });
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    if (isJsonMode(options)) { printJson(hostResult.nodes); }
+    else {
+        for (const node of hostResult.nodes) {
           console.log(`${node.id}  ${node.type.padEnd(14)}  ${(node.data?.label as string) || ""}`);
         }
-        console.log(`\n${daemonResult.nodes.length} node(s)`);
-      }
-      return;
-    }
-
-    const client = await connectToProject(projectId);
-    try {
-      const nodes = client.listNodes(options.type);
-      if (isJsonMode(options)) {
-        printJson(nodes);
-      } else if (nodes.length === 0) {
-        console.log("No nodes found.");
-      } else {
-        for (const node of nodes) {
-          const label = (node.data.label as string) || "";
-          console.log(`${node.id}  ${node.type.padEnd(14)}  ${label}`);
-        }
-        console.log(`\n${nodes.length} node(s)`);
-      }
-    } finally {
-      await client.disconnect();
+        console.log(`\n${hostResult.nodes.length} node(s)`);
     }
   });
 
@@ -537,47 +278,21 @@ canvasCommand
   .action(async (options) => {
     const context = await resolveCanvasProjectContext(options);
     const projectId = context.projectId;
-    const daemonResult = await runCommand(projectId, { action: "edges" });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      const edges = Array.isArray(daemonResult.edges) ? daemonResult.edges : [];
-      await recordCanvasObservation({
-        context,
-        entityKind: "canvas-edges",
-        entityId: "graph",
-        revision: daemonResult.readToken ?? daemonResult.version,
-      });
-      if (isJsonMode(options)) { printJson(edges); }
-      else {
-        for (const edge of edges) {
-          console.log(`${edge.id}  ${edge.source} -> ${edge.target}`);
-        }
-        console.log(`\n${edges.length} edge(s)`);
+    const hostResult = await runCommand(projectId, { action: "edges" });
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    const edges = Array.isArray(hostResult.edges) ? hostResult.edges : [];
+    await recordCanvasObservation({
+      context,
+      entityKind: "canvas-edges",
+      entityId: "graph",
+      revision: hostResult.readToken ?? hostResult.version,
+    });
+    if (isJsonMode(options)) { printJson(edges); }
+    else {
+      for (const edge of edges) {
+        console.log(`${edge.id}  ${edge.source} -> ${edge.target}`);
       }
-      return;
-    }
-
-    const client = await connectToProject(projectId);
-    try {
-      const { edges, version } = listCanvasEdgesWithVersion(client);
-      await recordCanvasObservation({
-        context,
-        entityKind: "canvas-edges",
-        entityId: "graph",
-        revision: version,
-      });
-      if (isJsonMode(options)) {
-        printJson(edges);
-      } else if (edges.length === 0) {
-        console.log("No edges found.");
-      } else {
-        for (const edge of edges) {
-          console.log(`${edge.id}  ${edge.source} -> ${edge.target}`);
-        }
-        console.log(`\n${edges.length} edge(s)`);
-      }
-    } finally {
-      await client.disconnect();
+      console.log(`\n${edges.length} edge(s)`);
     }
   });
 
@@ -597,47 +312,21 @@ canvasCommand
     const context = await resolveCanvasProjectContext(options);
     const projectId = context.projectId;
     const batchId = nodeIds.join(",");
-    const daemonResult = await runCommand(projectId, {
+    const hostResult = await runCommand(projectId, {
       action: "batch_delete_plan",
       nodeIds,
       actorClientType: resolveCanvasPresenceOptions().clientType,
     });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      await recordCanvasObservation({
-        context,
-        entityKind: "canvas-node-batch",
-        entityId: batchId,
-        revision: daemonResult.readToken ?? daemonResult.version,
-      });
-      if (isJsonMode(options)) printJson(publicMutationResult(daemonResult));
-      else {
-        console.log(`Batch delete plan: ${daemonResult.nodeIds?.join(", ") ?? nodeIds.join(", ")}`);
-      }
-      return;
-    }
-
-    const client = await connectToProject(projectId);
-    try {
-      const plan = readCanvasBatchDeletePlan(client, nodeIds);
-      await recordCanvasObservation({
-        context,
-        entityKind: "canvas-node-batch",
-        entityId: batchId,
-        revision: plan.readToken,
-      });
-      if (isJsonMode(options)) {
-        const { readToken: _readToken, ...publicPlan } = plan;
-        printJson(publicPlan);
-      }
-      else {
-        console.log(`Batch delete plan: ${plan.nodeIds.join(", ")}`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    } finally {
-      await client.disconnect();
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    await recordCanvasObservation({
+      context,
+      entityKind: "canvas-node-batch",
+      entityId: batchId,
+      revision: hostResult.readToken ?? hostResult.version,
+    });
+    if (isJsonMode(options)) printJson(publicMutationResult(hostResult));
+    else {
+      console.log(`Batch delete plan: ${hostResult.nodeIds?.join(", ") ?? nodeIds.join(", ")}`);
     }
   });
 
@@ -719,32 +408,21 @@ canvasCommand
 
     const context = await resolveCanvasProjectContext(options);
     const projectId = context.projectId;
-    const daemonResult = await runCommand(projectId, {
+    const hostResult = await runCommand(projectId, {
       action: "get",
       projectId,
       nodeId: options.node,
       actorClientType: agentClientType(),
     });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      node = daemonResult.node;
-      immutable = daemonResult.immutable === true;
-      observation = typeof daemonResult.readToken === "string"
-        ? daemonResult.readToken
-        : typeof daemonResult.version === "string"
-          ? daemonResult.version
-          : null;
-    } else {
-      const client = await connectToProject(projectId);
-      try {
-        node = client.readNode(options.node);
-        if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
-        immutable = isCanvasNodeImmutable({ nodeId: options.node, edges: client.canvas.listEdges() });
-      } finally {
-        await client.disconnect();
-      }
-    }
-    observation = observation ?? canvasNodeReadToken(node);
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    node = hostResult.node;
+    immutable = hostResult.immutable === true;
+    observation = typeof hostResult.readToken === "string"
+      ? hostResult.readToken
+      : typeof hostResult.version === "string"
+        ? hostResult.version
+        : null;
+    if (!observation) throw new Error("Host read did not return an entity version.");
     await recordCanvasObservation({
       context,
       entityKind: "canvas-node",
@@ -773,137 +451,10 @@ canvasCommand
 
 // ─── add ──────────────────────────────────────────────────
 //
-// One unified surface for every kind of `*_gen` action-badge node (image,
-// video, audio, text) plus plain text/group. The shape mirrors what the
-// web UI persists on a fresh action-badge:
-//
-//   prompt        — text, supports inline `@[label](node:<id>)` references
-//                   to canvas asset nodes (same syntax the chat composer
-//                   emits). The mentions are *not* a separate input
-//                   modality — the system partitions them by the
-//                   referenced asset's `kind` (image / video / audio).
-//   model         — modelId (--model). Defaults per node type if omitted.
-//   modelParams   — model-specific knobs (--param k=v, repeatable). The
-//                   model card validates which keys are accepted.
-//   references    — explicit asset/node references (--ref, repeatable).
-//                   Same partitioning as prompt mentions; useful when
-//                   you want the ref WITHOUT cluttering the prompt text.
-//
-// Refs (both from --ref and from prompt @-mentions) are resolved at
-// CLI submit time:
-//   1. If the value looks like a canvas node id and the project's canvas
-//      has that node, take `node.data.assetId`.
-//   2. Otherwise assume it's already an asset id.
-//   3. Fetch `/api/v1/assets/:id` for each to discover `kind`, then
-//      partition into referenceImageAssetIds / referenceVideoAssetIds /
-//      referenceAudioAssetIds.
-
-/** Build the dash-form actionType + default modelId map for *_gen nodes.
- *  These have to match what the web UI's ActionBadge writes on create,
- *  otherwise the agent's nodes look "different" and the executor's
- *  provider-routing breaks. */
-const ACTION_TYPE_BY_NODE_TYPE: Record<string, string> = {
-  image_gen: "image-gen",
-  video_gen: "video-gen",
-  audio_gen: "audio-gen",
-  text_gen: "text-gen",
-};
-const DEFAULT_MODEL_BY_NODE_TYPE: Record<string, string> = {
-  image_gen: "nano-banana-2",
-  video_gen: "veo-3.1-fast",
-  audio_gen: "gemini-3.1-flash-tts",
-  text_gen: "gemini-3-flash",
-};
-
-/** Parse a `--param k=v` value into a tuple. Numbers and booleans
- *  pass through as their primitive types; everything else stays a
- *  string. Mirrors the modelParams shape declared in shared-types
- *  (`Record<string, string | number | boolean>`). */
-function coerceParamValue(raw: string): string | number | boolean {
-  if (raw === "true") return true;
-  if (raw === "false") return false;
-  // Only treat as number if the entire string is numeric. `"123abc"`
-  // stays a string; agents pass strings like "16:9" that would
-  // otherwise be lost to the parseFloat short-circuit.
-  if (/^-?\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
-  return raw;
-}
-
-export function modelParamsFromEntries(
-  modelId: string | undefined,
-  entries: Array<[string, string]>,
-): Record<string, string | number | boolean> {
-  const normalizedModelId = normalizeModelId(modelId) ?? modelId;
-  const card = MODEL_CARDS.find((candidate) => candidate.id === normalizedModelId);
-  const params: Record<string, string | number | boolean> = {};
-  for (const [key, raw] of entries) {
-    const value = coerceParamValue(raw);
-    params[key] = card ? coerceModelParameterInput(card, key, value) : value;
-  }
-  return params;
-}
-
-/**
- * Resolve a list of `(nodeOrAssetIds)` to canvas node ids. References
- * on the canvas are expressed as **edges** — the web UI's ActionBadge
- * derives `refNodeIds` from incoming edges, not from any data field
- * the action-badge node carries. So the only thing we need from each
- * --ref or @-mention is the source node id; the kind partitioning
- * happens later, at execute time (`useSpawnPendingAsset.buildShape`),
- * when the pending asset node is being built and the model card is
- * known.
- *
- * Each input ref can be a canvas node id (kept as-is) or a bare asset
- * id (reverse-resolved by finding the node whose `data.assetId`
- * matches). Anything we can't resolve goes into `missing` so the CLI
- * can warn instead of silently dropping a reference.
- */
-async function resolveReferences(
-  projectId: string,
-  refs: string[],
-): Promise<{ refNodeIds: string[]; missing: string[] }> {
-  const out = { refNodeIds: [] as string[], missing: [] as string[] };
-  if (refs.length === 0) return out;
-
-  // Cache the canvas listing once per `add` call. Daemon path is the
-  // fast path; the one-shot LoroSyncClient fallback matters because
-  // canvas daemons auto-exit after 10 minutes of idle — without it a
-  // stale socket would silently drop every ref into `missing`.
-  const nodesById = new Map<string, { id: string; data?: Record<string, unknown> }>();
-  if (isDaemonRunning(projectId)) {
-    const res = (await sendCommand(projectId, { action: "list" })) as
-      | { nodes?: Array<{ id: string; data?: Record<string, unknown> }> }
-      | null;
-    for (const n of res?.nodes ?? []) nodesById.set(n.id, n);
-  } else {
-    const client = await connectToProject(projectId);
-    try {
-      for (const n of client.listNodes()) {
-        nodesById.set(n.id, { id: n.id, data: n.data as Record<string, unknown> });
-      }
-    } finally {
-      await client.disconnect();
-    }
-  }
-
-  // Build a reverse index assetId → nodeId for the bare-asset-id path.
-  const nodeIdByAssetId = new Map<string, string>();
-  for (const [nid, n] of nodesById) {
-    const aid = n.data?.assetId;
-    if (typeof aid === "string") nodeIdByAssetId.set(aid, nid);
-  }
-
-  for (const ref of refs) {
-    if (nodesById.has(ref)) {
-      out.refNodeIds.push(ref);                       // direct node-id hit
-    } else if (nodeIdByAssetId.has(ref)) {
-      out.refNodeIds.push(nodeIdByAssetId.get(ref)!); // bare asset id → reverse-resolve
-    } else {
-      out.missing.push(ref);
-    }
-  }
-  return out;
-}
+// `add` deliberately keeps only CLI syntax and local identity resolution here.
+// Defaults, model-card parameter coercion, prompt mention parsing, reference
+// resolution, and edge creation belong to local-api so every peer client gets
+// one product behavior from the typed host command.
 
 canvasCommand
   .command("add")
@@ -941,206 +492,29 @@ canvasCommand
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const projectId = await resolveCanvasProjectId(options);
-    // Phase 0 attribution: every node landed via the CLI gets stamped
-    // with the actor that's running it. NodeProcessor refuses to
-    // dispatch generations without these fields, so they're mandatory
-    // for *_gen nodes; we attach them to text / group nodes too so
-    // the inspector can show "Made by X" uniformly.
-    const actor = await resolveCanvasActor();
-    const extraData: Record<string, unknown> = {
-      actorType: actor.actorType,
-      actorUserId: actor.actorUserId,
-      ...(actor.actorAgentId ? { actorAgentId: actor.actorAgentId } : {}),
-    };
-    const isGenNode = !!ACTION_TYPE_BY_NODE_TYPE[options.type];
-
-    const isCustomAction = isGenNode && typeof options.action === "string" && options.action.length > 0;
-    const installedPluginAction = isCustomAction
-      ? await resolveInstalledPluginAction({ actionId: options.action })
-      : null;
-    if (installedPluginAction) {
-      await registerInstalledPluginAction(projectId, installedPluginAction);
-    }
-
-    if (isGenNode) {
-      if (isCustomAction) {
-        // Custom action: actionType becomes `custom:<id>`, and the
-        // executor reads customActionId / customActionParams / outputType
-        // instead of modelId / modelParams. The output kind follows the
-        // node type — `image_gen + --action grid-split` produces an
-        // image-kinded pending child.
-        extraData.actionType = `custom:${options.action}`;
-        extraData.customActionId = options.action;
-        const outputType = installedPluginAction?.outputType ?? (
-          options.type === "video_gen" ? "video" :
-          options.type === "audio_gen" ? "audio" :
-          options.type === "text_gen"  ? "text"  : "image"
-        );
-        extraData.outputType = outputType;
-        if (installedPluginAction) {
-          extraData.pluginBinding = installedPluginAction.pluginBinding;
-          if (installedPluginAction.pluginPermissions) {
-            extraData.pluginPermissions = installedPluginAction.pluginPermissions;
-          }
-        }
-      } else {
-        extraData.actionType = ACTION_TYPE_BY_NODE_TYPE[options.type];
-        extraData.modelId = options.model ?? DEFAULT_MODEL_BY_NODE_TYPE[options.type];
-      }
-    } else if (options.model) {
-      extraData.modelId = options.model;
-    }
-
-    // --param k=v lands under data.modelParams for built-in models, and
-    // under data.customActionParams for custom actions. Both shapes are
-    // `Record<string, string | number | boolean>`.
-    if ((options.param ?? []).length > 0) {
-      const params = modelParamsFromEntries(options.model, options.param);
-      if (isCustomAction) extraData.customActionParams = params;
-      else extraData.modelParams = params;
-    }
-
-    // For *_gen nodes, write the prompt to BOTH `data.content` and
-    // `data.prompt`. They map to different consumers in the web stack
-    // and silently diverged on us once already:
-    //   - ActionBadge's prompt editor seeds itself from `data.content`
-    //     (the raw markdown the user typed, with `@[Label](node:id)`
-    //     mentions preserved). Without it the UI renders an empty
-    //     editor even when the node has a real prompt.
-    //   - The generation executor reads `data.prompt` at run time as
-    //     the cleaned plain-text payload to send to the provider.
-    // The web UI keeps them in lockstep on every keystroke; we mirror
-    // that here so CLI-created nodes are indistinguishable from
-    // UI-created ones.
-    const promptText: string | undefined = options.prompt;
-    if (promptText && isGenNode) {
-      extraData.prompt = promptText;
-      extraData.content = promptText;
-    }
-
-    // Collect refs: explicit --ref values + any @-mentions inside the
-    // prompt. Dedupe so a ref typed both ways doesn't get wired twice.
-    const promptMentionIds = promptText
-      ? extractAssetRefs(parsePromptParts(promptText)).map((r) => r.nodeId)
-      : [];
-    const allRefIds = [...new Set([...(options.ref ?? []), ...promptMentionIds])];
-
-    // Resolve every input to a canvas node id. The action-badge data
-    // doesn't carry the asset-id arrays (referenceImage/Video/AudioAssetIds);
-    // those live on the *pending asset child* spawned at execute time
-    // (see `useSpawnPendingAsset.buildShape` — it partitions refs by
-    // model card capability at that moment). What the action-badge
-    // does carry is `referenceImageOrder` — a positional list of
-    // source node ids that the web UI uses to render the inline ref
-    // chips inside the prompt editor in a stable order. The actual
-    // ref edges are the source of truth, mirroring how the web
-    // creates them (ActionBadge.addRefNode does the same).
-    let refNodeIds: string[] = [];
-    let unresolvedReferences: string[] = [];
-    if (isGenNode && allRefIds.length > 0) {
-      const resolved = await resolveReferences(projectId, allRefIds);
-      refNodeIds = resolved.refNodeIds;
-      if (refNodeIds.length > 0) extraData.referenceImageOrder = refNodeIds;
-      // Report unresolved references in both modes. This warning used to be suppressed under
-      // `--json`, which is the one caller that cannot read stderr scrollback: an agent saw a node
-      // created successfully with no ref edges, and learned about it much later as a capability
-      // error naming the prompt it had written correctly.
-      if (resolved.missing.length > 0) {
-        unresolvedReferences = resolved.missing;
-        console.error(
-          `warning: ${resolved.missing.length} reference(s) couldn't be resolved (no canvas node or asset row found): ${resolved.missing.join(", ")}`,
-        );
-      }
-    }
-
-    // For non-*_gen nodes (text / group) the daemon's `add` handler
-    // sets `data.content` from this top-level field. For *_gen nodes
-    // we've already populated data.content from --prompt above, so
-    // don't double-write.
-    const persistedNodeType = options.type === "remotion" ? "remotion-component" : options.type;
-    const daemonResult = await runCommand(projectId, {
-      action: "add", type: persistedNodeType, label: options.label,
-      content: isGenNode ? undefined : options.content,
+    const presence = resolveCanvasPresenceOptions();
+    const params = Object.fromEntries(options.param ?? []) as Record<string, string>;
+    const hostResult = await runCommand(projectId, {
+      action: "add",
+      type: options.type,
+      label: options.label,
+      content: options.content,
+      prompt: options.prompt,
       parentId: options.parent,
-      data: Object.keys(extraData).length ? extraData : undefined,
+      modelId: options.model,
+      actionId: options.action,
+      refs: options.ref?.length > 0 ? options.ref : undefined,
+      params: Object.keys(params).length > 0 ? params : undefined,
+      actorClientType: presence.clientType,
+      actorAgentId: process.env.CLASH_AGENT_MEMBER_ID?.trim() || undefined,
     });
-
-    /** After the node lands, wire each ref through `ensure_edge` (daemon)
-     *  or directly via the LoroSyncClient. Each edge fans out via
-     *  Loro to every connected browser, where ActionBadge's
-     *  `refNodeIds` recomputes from `edges.filter(e => e.target === id)`
-     *  and the prompt editor's mention chips resolve their thumbnails. */
-    async function wireRefEdges(newNodeId: string): Promise<void> {
-      if (refNodeIds.length === 0) return;
-      if (isDaemonRunning(projectId)) {
-        for (const sourceId of refNodeIds) {
-          await sendCommand(projectId, { action: "ensure_edge", source: sourceId, target: newNodeId });
-        }
-        return;
-      }
-      // No daemon — open a one-shot client. Note: this path means we
-      // open *two* clients in the no-daemon code branch (one here, one
-      // in the createNode fallback below), each with its own connect /
-      // disconnect. Not ideal but matches the existing one-shot pattern
-      // elsewhere in this file. Daemon mode (recommended) avoids it.
-      const client = await connectToProject(projectId);
-      try {
-        const existing = client.canvas.listEdges();
-        for (const sourceId of refNodeIds) {
-          const dup = existing.find((e) => e.source === sourceId && e.target === newNodeId);
-          if (dup) continue;
-          client.canvas.insertEdge(`${sourceId}-${newNodeId}`, sourceId, newNodeId, "default");
-        }
-      } finally {
-        await client.disconnect();
-      }
-    }
-
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      await wireRefEdges(daemonResult.node_id as string);
-      if (isJsonMode(options)) {
-        printJson({
-          ...daemonResult,
-          refNodeIds,
-          ...(unresolvedReferences.length > 0 ? { unresolvedReferences } : {}),
-        });
-      }
-      else {
-        console.log(`Created node: ${daemonResult.node_id} (${persistedNodeType})`);
-        if (daemonResult.asset_id) console.log(`Asset ID:    ${daemonResult.asset_id}`);
-        if (refNodeIds.length > 0) console.log(`Refs wired:  ${refNodeIds.join(", ")}`);
-      }
-      return;
-    }
-
-    const client = await connectToProject(projectId);
-    try {
-      const nodeId = crypto.randomUUID().slice(0, 8);
-      const data: Record<string, unknown> = { ...extraData, label: options.label };
-      if (options.content && !isGenNode) { data.content = options.content; }
-
-      const result = client.createNode(nodeId, persistedNodeType, data, null, options.parent ?? null);
-      if (result.error) { console.error(`Error: ${result.error}`); process.exit(1); }
-      const existing = client.canvas.listEdges();
-      for (const sourceId of refNodeIds) {
-        const dup = existing.find((e) => e.source === sourceId && e.target === nodeId);
-        if (dup) continue;
-        client.canvas.insertEdge(`${sourceId}-${nodeId}`, sourceId, nodeId, "default");
-      }
-      if (isJsonMode(options)) {
-        printJson({
-          ...result,
-          refNodeIds,
-          ...(unresolvedReferences.length > 0 ? { unresolvedReferences } : {}),
-        });
-      } else {
-        console.log(`Created node: ${result.node_id} (${persistedNodeType})`);
-        if (result.asset_id) console.log(`Asset ID:    ${result.asset_id}`);
-        if (refNodeIds.length > 0) console.log(`Refs wired:  ${refNodeIds.join(", ")}`);
-      }
-    } finally {
-      await client.disconnect();
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    const refNodeIds = Array.isArray(hostResult.refNodeIds) ? hostResult.refNodeIds as string[] : [];
+    if (isJsonMode(options)) printJson(publicMutationResult(hostResult));
+    else {
+      console.log(`Created node: ${hostResult.node_id} (${hostResult.node?.type ?? options.type})`);
+      if (hostResult.asset_id) console.log(`Asset ID:    ${hostResult.asset_id}`);
+      if (refNodeIds.length > 0) console.log(`Refs wired:  ${refNodeIds.join(", ")}`);
     }
   });
 
@@ -1153,6 +527,10 @@ canvasCommand
   )
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .requiredOption("--node <id>", "Node ID (action-badge or video-editor)")
+  .option(
+    "--provider <accountId>",
+    "Answer with this provider account only. Fails if it cannot serve the model, rather than using another",
+  )
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const projectId = await resolveCanvasProjectId(options);
@@ -1166,45 +544,24 @@ canvasCommand
       }
     };
 
-    const daemonResult = await runCommand(projectId, { action: "execute", nodeId: options.node });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      if (isJsonMode(options)) printJson(daemonResult);
-      else printExecuteResult(daemonResult.kind, daemonResult.childNodeId, daemonResult.childNodeType);
-      return;
-    }
-
-    const client = await connectToProject(projectId);
-    try {
-      const r = client.canvas.execute(options.node, () => crypto.randomUUID().slice(0, 8));
-      if (r.error) { console.error(`Error: ${r.error}`); process.exit(1); }
-      if (isJsonMode(options)) {
-        printJson({ executed: true, kind: r.kind, childNodeId: r.childNodeId, childNodeType: r.childNodeType });
-      } else {
-        printExecuteResult(r.kind, r.childNodeId, r.childNodeType);
-      }
-    } finally {
-      await client.disconnect();
-    }
+    const hostResult = await runCommand(projectId, {
+      action: "execute",
+      nodeId: options.node,
+      ...(options.provider ? { providerAccountId: options.provider } : {}),
+    });
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    if (isJsonMode(options)) printJson(publicMutationResult(hostResult));
+    else printExecuteResult(hostResult.kind, hostResult.childNodeId, hostResult.childNodeType);
   });
 
-/** Read one node via daemon if possible, otherwise one-shot LoroSync. */
+/** Read one node through local-api. */
 async function readNode(
   projectId: string,
   nodeId: string,
 ): Promise<{ type: string; data: Record<string, unknown> } | null> {
-  const daemonResult = await runCommand(projectId, { action: "get", nodeId });
-  if (daemonResult) {
-    if (daemonResult.error) return null;
-    return daemonResult.node ?? null;
-  }
-  const client = await connectToProject(projectId);
-  try {
-    const node = client.readNode(nodeId);
-    return node ? { type: node.type, data: node.data as Record<string, unknown> } : null;
-  } finally {
-    await client.disconnect();
-  }
+  const hostResult = await runCommand(projectId, { action: "get", nodeId });
+  if (hostResult.error) return null;
+  return hostResult.node ?? null;
 }
 
 // ─── update ───────────────────────────────────────────────
@@ -1259,7 +616,7 @@ canvasCommand
       process.exit(1);
     }
 
-    const daemonResult = await runCommand(projectId, {
+    const hostResult = await runCommand(projectId, {
       action: "update",
       nodeId: options.node,
       label: options.label,
@@ -1269,79 +626,15 @@ canvasCommand
       observedVersion,
       ifMatch: observedVersion,
     });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      await recordCanvasObservation({
-        context,
-        entityKind: "canvas-node",
-        entityId: options.node,
-        revision: daemonResult.readToken ?? daemonResult.version,
-      });
-      if (isJsonMode(options)) { printJson(publicMutationResult(daemonResult)); }
-      else console.log(`Updated node: ${options.node}`);
-      return;
-    }
-    const hostWrite = assertAgentHostWritePath({
-      actorClientType: resolveCanvasPresenceOptions().clientType,
-      operation: "canvas update",
-      readCommand: "clash canvas get --json",
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    await recordCanvasObservation({
+      context,
+      entityKind: "canvas-node",
+      entityId: options.node,
+      revision: hostResult.readToken ?? hostResult.version,
     });
-    if (!hostWrite.ok) { console.error(hostWrite.error); process.exit(1); }
-
-    const client = await connectToProject(projectId);
-    try {
-      const updates: Record<string, unknown> = { ...extraData };
-      if (typeof options.label === "string") updates.label = options.label;
-      if (typeof options.content === "string") updates.content = options.content;
-      const node = client.readNode(options.node);
-      if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
-      // The daemon checks CAS server-side; without one the supplied proof has to
-      // be verified here or it is decoration.
-      if (observedVersion) {
-        const currentVersion = canvasNodeReadToken(node as CanvasReadProofNodeLike);
-        if (currentVersion !== observedVersion) {
-          console.error(
-            "STALE_READ: This node changed after it was read. Read it again, reconcile, then write.",
-          );
-          process.exit(1);
-        }
-      }
-      const edges = client.canvas.listEdges();
-      const contentGuard = validateCanvasContentPatch({
-        nodeId: options.node,
-        node: { type: node.type },
-        nodes: client.listNodes(),
-        edges,
-        hasContentPatch: typeof updates.content === "string",
-      });
-      if (!contentGuard.ok) { console.error(contentGuard.error); process.exit(1); }
-      const mediaGuard = validateCanvasMediaAssetPatch({
-        nodeId: options.node,
-        node: { type: node.type, data: node.data as Record<string, unknown> },
-        edges,
-        hasAssetIdPatch: Object.prototype.hasOwnProperty.call(updates, "assetId"),
-        nextAssetId: updates.assetId,
-      });
-      if (!mediaGuard.ok) { console.error(mediaGuard.error); process.exit(1); }
-      const checkpointGuard = validateCanvasCheckpointPatch({
-        nodeId: options.node,
-        node: { type: node.type, data: node.data as Record<string, unknown> },
-        nodes: client.listNodes(),
-        edges,
-        fields: Object.keys(updates),
-      });
-      if (!checkpointGuard.ok) { console.error(checkpointGuard.error); process.exit(1); }
-      const ok = client.updateNode(options.node, updates);
-      if (!ok) { console.error(`Node not found: ${options.node}`); process.exit(1); }
-      const updatedNode = client.readNode(options.node);
-      if (isJsonMode(options)) printJson({
-        updated: true,
-        nodeId: options.node,
-      });
-      else console.log(`Updated node: ${options.node}`);
-    } finally {
-      await client.disconnect();
-    }
+    if (isJsonMode(options)) { printJson(publicMutationResult(hostResult)); }
+    else console.log(`Updated node: ${options.node}`);
   });
 
 canvasCommand
@@ -1357,30 +650,30 @@ canvasCommand
       console.error("Canvas move requires finite x and y coordinates");
       process.exit(1);
     }
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const observedVersion = await requireCanvasObservation({
+      context,
+      entityKind: "canvas-node",
+      entityId: options.node,
+    });
     const position = { x: options.x, y: options.y };
-    const daemonResult = await runCommand(projectId, {
+    const hostResult = await runCommand(context.projectId, {
       action: "move",
       nodeId: options.node,
       position,
+      actorClientType: agentClientType(),
+      observedVersion,
+      ifMatch: observedVersion,
     });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      if (isJsonMode(options)) printJson(daemonResult);
-      else console.log(`Moved node: ${options.node} (${options.x}, ${options.y})`);
-      return;
-    }
-
-    const client = await connectToProject(projectId);
-    try {
-      const moved = client.canvas.moveNode(options.node, position);
-      if (!moved) { console.error(`Node not found: ${options.node}`); process.exit(1); }
-      const result = { moved: true, nodeId: options.node, position };
-      if (isJsonMode(options)) printJson(result);
-      else console.log(`Moved node: ${options.node} (${options.x}, ${options.y})`);
-    } finally {
-      await client.disconnect();
-    }
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    await recordCanvasObservation({
+      context,
+      entityKind: "canvas-node",
+      entityId: options.node,
+      revision: hostResult.readToken ?? hostResult.version,
+    });
+    if (isJsonMode(options)) printJson(publicMutationResult(hostResult));
+    else console.log(`Moved node: ${options.node} (${options.x}, ${options.y})`);
   });
 
 // ─── replace asset ────────────────────────────────────────
@@ -1425,7 +718,7 @@ canvasCommand
       entityKind: "canvas-node",
       entityId: options.node,
     });
-    const daemonResult = await runCommand(context.projectId, {
+    const hostResult = await runCommand(context.projectId, {
       action: "copy_node",
       nodeId: options.node,
       newNodeId: options.newNode,
@@ -1433,29 +726,18 @@ canvasCommand
       observedVersion,
       ifMatch: observedVersion,
     });
-    if (daemonResult) {
-      if (daemonResult.error) {
-        console.error(daemonResult.error);
-        process.exit(1);
-      }
-      await recordCanvasObservation({
-        context,
-        entityKind: "canvas-node",
-        entityId: String(daemonResult.newNodeId ?? daemonResult.nodeId),
-        revision: daemonResult.readToken ?? daemonResult.version,
-      });
-      if (isJsonMode(options)) printJson(publicMutationResult(daemonResult));
-      else console.log(`Created copy-on-write node: ${daemonResult.newNodeId}`);
-      return;
+    if (hostResult.error) {
+      console.error(hostResult.error);
+      process.exit(1);
     }
-
-    const hostWrite = assertAgentHostWritePath({
-      actorClientType: agentClientType(),
-      operation: "canvas copy",
-      readCommand: "clash canvas get --json",
+    await recordCanvasObservation({
+      context,
+      entityKind: "canvas-node",
+      entityId: String(hostResult.newNodeId ?? hostResult.nodeId),
+      revision: hostResult.readToken ?? hostResult.version,
     });
-    console.error(hostWrite.ok ? "Canvas copy requires the local host daemon." : hostWrite.error);
-    process.exit(1);
+    if (isJsonMode(options)) printJson(publicMutationResult(hostResult));
+    else console.log(`Created copy-on-write node: ${hostResult.newNodeId}`);
   });
 
 // ─── delete ───────────────────────────────────────────────
@@ -1496,62 +778,21 @@ canvasCommand
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
-    const daemonResult = await runCommand(projectId, {
+    const hostResult = await runCommand(projectId, {
       action: "delete_batch",
       nodeIds,
       actorClientType: agentClientType(),
       observedVersion,
       ifMatch: observedVersion,
     });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      await forgetCanvasObservation({ context, entityKind: "canvas-node-batch", entityId: batchId });
-      for (const nodeId of nodeIds) {
-        await forgetCanvasObservation({ context, entityKind: "canvas-node", entityId: nodeId });
-      }
-      if (isJsonMode(options)) printJson(publicMutationResult(daemonResult));
-      else {
-        console.log(`Deleted node batch: ${nodeIds.join(", ")}`);
-      }
-      return;
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    await forgetCanvasObservation({ context, entityKind: "canvas-node-batch", entityId: batchId });
+    for (const nodeId of nodeIds) {
+      await forgetCanvasObservation({ context, entityKind: "canvas-node", entityId: nodeId });
     }
-
-    const hostWrite = assertAgentHostWritePath({
-      actorClientType: resolveCanvasPresenceOptions().clientType,
-      operation: "canvas batch delete",
-      readCommand: "clash canvas delete-plan --node <id> --node <id> --json",
-    });
-    if (!hostWrite.ok) { console.error(hostWrite.error); process.exit(1); }
-
-    const client = await connectToProject(projectId);
-    try {
-      const plan = readCanvasBatchDeletePlan(client, nodeIds);
-      const guardrailEdges = canvasGuardrailEdgesFromReadProof(plan.edges);
-      const deleteGuard = validateCanvasBatchDelete({
-        nodeIds: plan.nodeIds,
-        edges: guardrailEdges,
-      });
-      if (!deleteGuard.ok) { console.error(deleteGuard.error); process.exit(1); }
-      const result = client.deleteNodes(plan.nodeIds);
-      if (result.deletedNodeIds.length === 0) {
-        console.error(`Node(s) not found: ${plan.nodeIds.join(", ")}`);
-        process.exit(1);
-      }
-      const payload = {
-        deleted: true,
-        nodeIds: plan.nodeIds,
-        deletedNodeIds: result.deletedNodeIds,
-        deletedEdgeIds: result.deletedEdgeIds,
-      };
-      if (isJsonMode(options)) printJson(payload);
-      else {
-        console.log(`Deleted node batch: ${plan.nodeIds.join(", ")}`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    } finally {
-      await client.disconnect();
+    if (isJsonMode(options)) printJson(publicMutationResult(hostResult));
+    else {
+      console.log(`Deleted node batch: ${nodeIds.join(", ")}`);
     }
   });
 
@@ -1585,51 +826,18 @@ canvasCommand
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
-    const daemonResult = await runCommand(projectId, {
+    const hostResult = await runCommand(projectId, {
       action: "delete",
       nodeId: options.node,
       actorClientType: agentClientType(),
       observedVersion,
       ifMatch: observedVersion,
     });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      await forgetCanvasObservation({ context, entityKind: "canvas-node", entityId: options.node });
-      if (isJsonMode(options)) { printJson(publicMutationResult(daemonResult)); }
-      else {
-        console.log(`Deleted node: ${options.node}`);
-      }
-      return;
-    }
-    const hostWrite = assertAgentHostWritePath({
-      actorClientType: resolveCanvasPresenceOptions().clientType,
-      operation: "canvas delete",
-      readCommand: "clash canvas get --json",
-    });
-    if (!hostWrite.ok) { console.error(hostWrite.error); process.exit(1); }
-
-    const client = await connectToProject(projectId);
-    try {
-      const node = client.readNode(options.node);
-      if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
-      const edges = client.canvas.listEdges();
-      const deleteGuard = validateCanvasDelete({
-        nodeId: options.node,
-        edges,
-      });
-      if (!deleteGuard.ok) { console.error(deleteGuard.error); process.exit(1); }
-      const ok = client.deleteNode(options.node);
-      if (!ok) { console.error(`Node not found: ${options.node}`); process.exit(1); }
-      const payload = {
-        deleted: true,
-        nodeId: options.node,
-      };
-      if (isJsonMode(options)) printJson(payload);
-      else {
-        console.log(`Deleted node: ${options.node}`);
-      }
-    } finally {
-      await client.disconnect();
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    await forgetCanvasObservation({ context, entityKind: "canvas-node", entityId: options.node });
+    if (isJsonMode(options)) { printJson(publicMutationResult(hostResult)); }
+    else {
+      console.log(`Deleted node: ${options.node}`);
     }
   });
 
@@ -1644,38 +852,16 @@ canvasCommand
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const projectId = await resolveCanvasProjectId(options);
-    const daemonResult = await runCommand(projectId, {
+    const hostResult = await runCommand(projectId, {
       action: "search", query: options.query, types: options.type?.split(",") ?? null,
     });
-    if (daemonResult) {
-      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      if (isJsonMode(options)) { printJson(daemonResult.nodes); }
-      else {
-        for (const node of daemonResult.nodes) {
+    if (hostResult.error) { console.error(hostResult.error); process.exit(1); }
+    if (isJsonMode(options)) { printJson(hostResult.nodes); }
+    else {
+        for (const node of hostResult.nodes) {
           console.log(`${node.id}  ${node.type.padEnd(14)}  ${(node.data?.label as string) || ""}`);
         }
-        console.log(`\n${daemonResult.nodes.length} result(s)`);
-      }
-      return;
-    }
-
-    const client = await connectToProject(projectId);
-    try {
-      const nodeTypes = options.type?.split(",") ?? null;
-      const nodes = client.searchNodes(options.query, nodeTypes);
-      if (isJsonMode(options)) {
-        printJson(nodes);
-      } else if (nodes.length === 0) {
-        console.log(`No nodes matching '${options.query}'.`);
-      } else {
-        for (const node of nodes) {
-          const label = (node.data.label as string) || "";
-          console.log(`${node.id}  ${node.type.padEnd(14)}  ${label}`);
-        }
-        console.log(`\n${nodes.length} result(s)`);
-      }
-    } finally {
-      await client.disconnect();
+        console.log(`\n${hostResult.nodes.length} result(s)`);
     }
   });
 

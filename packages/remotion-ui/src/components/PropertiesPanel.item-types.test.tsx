@@ -14,7 +14,7 @@ import {
   type TextItem,
   type VideoItem,
   type Asset,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import {
   TIMELINE_MASK_ANIMATION_BINDINGS,
 } from '@clash/shared-types';

@@ -1,3 +1,4 @@
+import { nodeRequire } from "../lib/node-require.js";
 import { Command } from "commander";
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
@@ -590,8 +591,8 @@ function validateLocalSecretsContract(
 
   const expectedFiles = [
     {
-      label: "bridge credentials",
-      file: localSecrets.files?.bridgeCredentials,
+      label: "local host credentials",
+      file: localSecrets.files?.hostCredentials,
       kind: "machine-credential-store",
       path: join(status.clashHome, "credentials.json"),
     },
@@ -1995,7 +1996,7 @@ async function repairLocalSqliteSchema(sqlitePath: string): Promise<StorageDocto
   await mkdir(dirname(sqlitePath), { recursive: true });
   let db: SqliteDatabase | undefined;
   try {
-    const { DatabaseSync } = require("node:sqlite") as {
+    const { DatabaseSync } = nodeRequire()("node:sqlite") as {
       DatabaseSync: new (path: string) => SqliteDatabase;
     };
     db = new DatabaseSync(sqlitePath);
@@ -2595,7 +2596,7 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
 
   let db: SqliteDatabase | undefined;
   try {
-    const { DatabaseSync } = require("node:sqlite") as {
+    const { DatabaseSync } = nodeRequire()("node:sqlite") as {
       DatabaseSync: new (path: string) => SqliteDatabase;
     };
     db = new DatabaseSync(sqlitePath);

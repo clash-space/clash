@@ -1,8 +1,12 @@
 {
-  "name": "@clash-space/action-sdk",
+  "name": "@clash/action-sdk",
   "version": "0.1.0-beta.1",
+  "private": true,
   "description": "SDK for building Clash canvas actions \u2014 types and utilities for action authors",
   "type": "module",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -15,9 +19,6 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "dist",

@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -7,19 +6,15 @@ import {
   TIMELINE_DSL_DEFINITION,
   TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE,
   TIMELINE_OPERATION_CATALOG,
-  LoroSyncClient,
-  readProjectTimeline,
-  requestTimelineRender,
   projectTimelineReadToken,
   timelineDslToYaml,
   type TimelineAgentOperationId,
   type ProjectTimeline,
+  type ProjectHostCommand,
   type ResolvedTimelineDsl,
 } from "@clash/shared-types";
-import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson, printTable } from "../lib/output";
-import { isDaemonRunning, sendCommand } from "../lib/daemon";
-import { assertAgentHostWritePath } from "../lib/agent-host-write";
+import { sendProjectCommand } from "../lib/project-host-client";
 import { type ResolvedProjectContext } from "../lib/project-context";
 import {
   recordWorktreeObservation,
@@ -124,106 +119,14 @@ export type TimelineRenderReceipt = {
   error?: string;
 };
 
-type TimelineRenderClient = Pick<LoroSyncClient, "doc" | "flush">;
-
-function renderNodeReadback(
-  client: TimelineRenderClient,
-  renderNodeId: string,
-): { status: TimelineRenderReceipt["status"]; assetId?: string; error?: string } {
-  const raw = client.doc.getMap("nodes").get(renderNodeId) as Record<string, any> | undefined;
-  const data = raw?.data && typeof raw.data === "object" ? raw.data : {};
-  const status = data.status === "completed" || data.status === "failed"
-    ? data.status
-    : "pending";
-  return {
-    status,
-    ...(typeof data.assetId === "string" && data.assetId.trim()
-      ? { assetId: data.assetId.trim() }
-      : {}),
-    ...(typeof data.error === "string" && data.error.trim()
-      ? { error: data.error.trim() }
-      : {}),
-  };
-}
-
-export async function requestTimelineRenderWithReadback(options: {
-  client: TimelineRenderClient;
-  timelineId: string;
-  actor: { actorUserId: string; actorAgentId?: string };
-  wait: boolean;
-  timeoutMs: number;
-  generateId?: () => string;
-  loadAsset?: (assetId: string) => Promise<AssetRecordResult>;
-  now?: () => number;
-  delay?: () => Promise<void>;
-}): Promise<TimelineRenderReceipt> {
-  const current = readProjectTimeline(options.client.doc, options.timelineId);
-  if (!current) throw new Error(`Timeline ${options.timelineId} not found`);
-  const requested = requestTimelineRender(options.client.doc, {
-    timelineId: options.timelineId,
-    actorUserId: options.actor.actorUserId,
-    ...(options.actor.actorAgentId ? { actorAgentId: options.actor.actorAgentId } : {}),
-    generateId: options.generateId ?? (() => randomUUID().slice(0, 8)),
-  });
-  if (!requested.ok) throw new Error(requested.error);
-  options.client.doc.commit({ origin: "agent:timeline-render" });
-  await options.client.flush();
-
-  const base = {
-    submitted: true as const,
-    timelineId: options.timelineId,
-    sourceTimelineRevisionId: current.revisionId,
-    renderNodeId: requested.renderNodeId,
-    target: requested.target,
-  };
-  const loadAsset = options.loadAsset ?? ((assetId: string) => fetchAssetRecord({ assetId }));
-  const now = options.now ?? Date.now;
-  const delay = options.delay ?? (() => new Promise<void>((resolveDelay) => {
-    setTimeout(resolveDelay, 100);
-  }));
-  const deadline = now() + options.timeoutMs;
-
-  while (true) {
-    const node = renderNodeReadback(options.client, requested.renderNodeId);
-    if (node.status === "completed") {
-      if (!node.assetId) {
-        return {
-          ...base,
-          completed: false,
-          status: "failed",
-          error: "Timeline render completed without an immutable Asset id",
-        };
-      }
-      return {
-        ...base,
-        completed: true,
-        status: "completed",
-        asset: await loadAsset(node.assetId),
-      };
-    }
-    if (node.status === "failed") {
-      return {
-        ...base,
-        completed: false,
-        status: "failed",
-        ...(node.error ? { error: node.error } : {}),
-      };
-    }
-    if (!options.wait || now() >= deadline) {
-      return { ...base, completed: false, status: "pending" };
-    }
-    await delay();
-  }
-}
-
-export type TimelineDaemonTransport = {
+export type TimelineHostTransport = {
   isRunning(projectId: string): boolean;
-  send(projectId: string, command: object): Promise<object>;
+  send(projectId: string, command: ProjectHostCommand): Promise<object>;
 };
 
-const defaultTimelineDaemonTransport: TimelineDaemonTransport = {
-  isRunning: isDaemonRunning,
-  send: sendCommand,
+const defaultTimelineHostTransport: TimelineHostTransport = {
+  isRunning: () => true,
+  send: sendProjectCommand,
 };
 
 timelineCommand
@@ -286,56 +189,28 @@ export async function applyTimelineProjection(options: {
 }): Promise<{ version: string }> {
   const parsed = parseTimelineFileForApply(options.content);
   if (!parsed.ok) throw new Error(parsed.error);
-  let result: TimelineWorkspaceResult;
-  if (isDaemonRunning(options.context.projectId)) {
-    result = await sendCommand(options.context.projectId, {
-      action: "update_timeline_state",
-      timelineId: options.timelineId,
-      state: parsed.dsl,
-      sourceNodeIds: parsed.sources,
-      actorClientType: resolveCanvasPresenceOptions().clientType,
-      observedVersion: options.observedVersion,
-      ifMatch: options.observedVersion,
-    }) as TimelineWorkspaceResult;
-  } else {
-    assertTimelineEntityHostWrite("Timeline apply");
-    const client = await connectToProject(options.context.projectId);
-    try {
-      const updated = client.updateTimelineState(options.timelineId, parsed.dsl);
-      result = updated.ok
-        ? { timeline: updated.timeline, version: projectTimelineReadToken(updated.timeline) }
-        : { error: updated.error };
-    } finally {
-      await client.disconnect();
-    }
-  }
+  const result = await sendProjectCommand<TimelineWorkspaceResult>(options.context.projectId, {
+    action: "update_timeline_state",
+    timelineId: options.timelineId,
+    state: parsed.dsl,
+    sourceNodeIds: parsed.sources,
+    actorClientType: resolveCanvasPresenceOptions().clientType,
+    observedVersion: options.observedVersion,
+    ifMatch: options.observedVersion,
+  });
   if (result.error) throw new Error(result.error);
   return { version: result.version ?? "" };
 }
 
 export async function listTimelineEntities(
   context: ResolvedProjectContext,
-  transport: TimelineDaemonTransport = defaultTimelineDaemonTransport,
+  transport: TimelineHostTransport = defaultTimelineHostTransport,
 ): Promise<{ timelines: ProjectTimeline[]; versions: Record<string, string> }> {
-  if (transport.isRunning(context.projectId)) {
-    const result = await transport.send(context.projectId, {
-      action: "list_timelines",
-    }) as TimelineWorkspaceResult;
-    if (result.error) throw new Error(result.error);
-    return { timelines: result.timelines ?? [], versions: result.versions ?? {} };
-  }
-  const client = await connectToProject(context.projectId);
-  try {
-    const timelines = client.listTimelines();
-    return {
-      timelines,
-      versions: Object.fromEntries(
-        timelines.map((timeline) => [timeline.id, projectTimelineReadToken(timeline)]),
-      ),
-    };
-  } finally {
-    await client.disconnect();
-  }
+  const result = await transport.send(context.projectId, {
+    action: "list_timelines",
+  }) as TimelineWorkspaceResult;
+  if (result.error) throw new Error(result.error);
+  return { timelines: result.timelines ?? [], versions: result.versions ?? {} };
 }
 
 export async function readTimelineEntityForProjection(
@@ -355,7 +230,7 @@ export async function readTimelineEntityForProjection(
 
 /**
  * Publish a generated, schema-valid Timeline state through the authoritative
- * Project Timeline entity. The daemon path performs its own fresh list read
+ * Project Timeline entity. The local-api host path performs its own fresh list read
  * and sends the returned host receipt back as the mutation CAS proof, so a
  * one-shot production command cannot silently overwrite a concurrently edited
  * Timeline.
@@ -364,7 +239,7 @@ export async function publishTimelineState(
   context: ResolvedProjectContext,
   timelineId: string,
   state: ResolvedTimelineDsl,
-  transport: TimelineDaemonTransport = defaultTimelineDaemonTransport,
+  transport: TimelineHostTransport = defaultTimelineHostTransport,
 ): Promise<ProjectTimeline> {
   const listed = await listTimelineEntities(context, transport);
   const current = listed.timelines.find((candidate) => candidate.id === timelineId);
@@ -372,27 +247,13 @@ export async function publishTimelineState(
   const readProof = listed.versions[timelineId] ?? projectTimelineReadToken(current);
   await recordTimelineObservation(context, timelineId, readProof);
 
-  let result: TimelineWorkspaceResult;
-  if (transport.isRunning(context.projectId)) {
-    result = await transport.send(context.projectId, {
-      action: "update_timeline_state",
-      timelineId,
-      state,
-      actorClientType: resolveCanvasPresenceOptions().clientType,
-      ifMatch: readProof,
-    }) as TimelineWorkspaceResult;
-  } else {
-    assertTimelineEntityHostWrite("Timeline production publish");
-    const client = await connectToProject(context.projectId);
-    try {
-      const updated = client.updateTimelineState(timelineId, state);
-      result = updated.ok
-        ? { timeline: updated.timeline, version: projectTimelineReadToken(updated.timeline) }
-        : { error: updated.error };
-    } finally {
-      await client.disconnect();
-    }
-  }
+  const result = await transport.send(context.projectId, {
+    action: "update_timeline_state",
+    timelineId,
+    state,
+    actorClientType: resolveCanvasPresenceOptions().clientType,
+    ifMatch: readProof,
+  }) as TimelineWorkspaceResult;
   if (result.error || !result.timeline) {
     throw new Error(result.error ?? "Timeline production publish failed");
   }
@@ -417,11 +278,11 @@ async function recoverStaleTimelineApply(options: {
   context: ResolvedProjectContext;
   timelineId: string;
   editedProjectionPath: string;
-  transport?: TimelineDaemonTransport;
+  transport?: TimelineHostTransport;
 }): Promise<never> {
   const listed = await listTimelineEntities(
     options.context,
-    options.transport ?? defaultTimelineDaemonTransport,
+    options.transport ?? defaultTimelineHostTransport,
   );
   const latest = listed.timelines.find((candidate) => candidate.id === options.timelineId);
   if (!latest) throw new Error(`Timeline ${options.timelineId} not found after the stale write was rejected`);
@@ -444,13 +305,13 @@ export async function prepareTimelineApplyObservation(options: {
   timelineId: string;
   editedProjectionPath: string;
   baseRevisionId?: string;
-  transport?: TimelineDaemonTransport;
+  transport?: TimelineHostTransport;
 }): Promise<string | undefined> {
   const baseRevisionId = options.baseRevisionId?.trim() ?? "";
   if (!baseRevisionId) {
     return requireTimelineObservation(options.context, options.timelineId);
   }
-  const transport = options.transport ?? defaultTimelineDaemonTransport;
+  const transport = options.transport ?? defaultTimelineHostTransport;
   const listed = await listTimelineEntities(options.context, transport);
   const latest = listed.timelines.find((candidate) => candidate.id === options.timelineId);
   if (!latest) throw new Error(`Timeline ${options.timelineId} not found`);
@@ -465,15 +326,6 @@ export async function prepareTimelineApplyObservation(options: {
   const observedVersion = listed.versions[latest.id] ?? projectTimelineReadToken(latest);
   await recordTimelineObservation(options.context, latest.id, observedVersion);
   return observedVersion;
-}
-
-function assertTimelineEntityHostWrite(operation: string): void {
-  const hostWrite = assertAgentHostWritePath({
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    operation,
-    readCommand: "clash timeline list --json",
-  });
-  if (!hostWrite.ok) throw new Error(hostWrite.error);
 }
 
 timelineCommand
@@ -517,29 +369,12 @@ timelineCommand
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     const context = await resolveCanvasProjectContext(options);
-    let result: TimelineWorkspaceResult;
-    if (isDaemonRunning(context.projectId)) {
-      result = await sendCommand(context.projectId, {
-        action: "create_timeline",
-        timelineId: options.id,
-        name: options.name,
-        state: { tracks: [] },
-      }) as TimelineWorkspaceResult;
-    } else {
-      const client = await connectToProject(context.projectId);
-      try {
-        const created = client.createTimeline({
-          id: options.id,
-          name: options.name,
-          state: { tracks: [] },
-        });
-        result = created.ok
-          ? { timeline: created.timeline, version: projectTimelineReadToken(created.timeline) }
-          : { error: created.error };
-      } finally {
-        await client.disconnect();
-      }
-    }
+    const result = await sendProjectCommand<TimelineWorkspaceResult>(context.projectId, {
+      action: "create_timeline",
+      timelineId: options.id,
+      name: options.name,
+      state: { tracks: [] },
+    });
     if (result.error || !result.timeline) throw new Error(result.error ?? "Timeline create failed");
     await recordTimelineObservation(
       context,
@@ -565,41 +400,19 @@ timelineCommand
     const timelineId = String(options.timeline);
     const observedVersion = await requireTimelineObservation(context, timelineId);
     const actionNodeId = options.node?.trim() || randomUUID().slice(0, 8);
-    let result: TimelineWorkspaceResult;
-    if (isDaemonRunning(context.projectId)) {
-      result = await sendCommand(context.projectId, {
-        action: "attach_timeline",
-        timelineId,
-        canvasId: options.canvas,
-        actionNodeId,
-        position: {
-          x: timelinePosition(options.x, "--x"),
-          y: timelinePosition(options.y, "--y"),
-        },
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        observedVersion,
-        ifMatch: observedVersion,
-      }) as TimelineWorkspaceResult;
-    } else {
-      assertTimelineEntityHostWrite("Timeline attach");
-      const client = await connectToProject(context.projectId);
-      try {
-        const attached = client.attachTimeline({
-          timelineId,
-          canvasId: options.canvas,
-          actionNodeId,
-          position: {
-            x: timelinePosition(options.x, "--x"),
-            y: timelinePosition(options.y, "--y"),
-          },
-        });
-        result = attached.ok
-          ? { timeline: attached.timeline, version: projectTimelineReadToken(attached.timeline) }
-          : { error: attached.error };
-      } finally {
-        await client.disconnect();
-      }
-    }
+    const result = await sendProjectCommand<TimelineWorkspaceResult>(context.projectId, {
+      action: "attach_timeline",
+      timelineId,
+      canvasId: options.canvas,
+      actionNodeId,
+      position: {
+        x: timelinePosition(options.x, "--x"),
+        y: timelinePosition(options.y, "--y"),
+      },
+      actorClientType: resolveCanvasPresenceOptions().clientType,
+      observedVersion,
+      ifMatch: observedVersion,
+    });
     if (result.error || !result.timeline) throw new Error(result.error ?? "Timeline attach failed");
     await recordTimelineObservation(
       context,
@@ -620,27 +433,13 @@ timelineCommand
     const context = await resolveCanvasProjectContext(options);
     const timelineId = String(options.timeline);
     const observedVersion = await requireTimelineObservation(context, timelineId);
-    let result: TimelineWorkspaceResult;
-    if (isDaemonRunning(context.projectId)) {
-      result = await sendCommand(context.projectId, {
-        action: "detach_timeline",
-        timelineId,
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        observedVersion,
-        ifMatch: observedVersion,
-      }) as TimelineWorkspaceResult;
-    } else {
-      assertTimelineEntityHostWrite("Timeline detach");
-      const client = await connectToProject(context.projectId);
-      try {
-        const detached = client.detachTimeline(timelineId);
-        result = detached.ok
-          ? { timeline: detached.timeline, version: projectTimelineReadToken(detached.timeline) }
-          : { error: detached.error };
-      } finally {
-        await client.disconnect();
-      }
-    }
+    const result = await sendProjectCommand<TimelineWorkspaceResult>(context.projectId, {
+      action: "detach_timeline",
+      timelineId,
+      actorClientType: resolveCanvasPresenceOptions().clientType,
+      observedVersion,
+      ifMatch: observedVersion,
+    });
     if (result.error || !result.timeline) throw new Error(result.error ?? "Timeline detach failed");
     await recordTimelineObservation(
       context,
@@ -668,46 +467,20 @@ timelineCommand
     const observedVersion = await requireTimelineObservation(context, timelineId);
     const newTimelineId = options.newTimeline?.trim() || randomUUID().slice(0, 8);
     const newActionNodeId = options.newNode?.trim() || randomUUID().slice(0, 8);
-    let result: TimelineWorkspaceResult;
-    if (isDaemonRunning(context.projectId)) {
-      result = await sendCommand(context.projectId, {
-        action: "copy_timeline_action",
-        sourceTimelineId: timelineId,
-        targetCanvasId: options.canvas,
-        newTimelineId,
-        newActionNodeId,
-        position: {
-          x: timelinePosition(options.x, "--x"),
-          y: timelinePosition(options.y, "--y"),
-        },
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        observedVersion,
-        ifMatch: observedVersion,
-      }) as TimelineWorkspaceResult;
-    } else {
-      assertTimelineEntityHostWrite("Timeline Action copy");
-      const client = await connectToProject(context.projectId);
-      try {
-        const copied = client.copyTimelineAction({
-          sourceTimelineId: timelineId,
-          targetCanvasId: options.canvas,
-          newTimelineId,
-          newActionNodeId,
-          position: {
-            x: timelinePosition(options.x, "--x"),
-            y: timelinePosition(options.y, "--y"),
-          },
-        });
-        result = copied.ok
-          ? {
-              timeline: copied.timeline,
-              version: projectTimelineReadToken(copied.timeline),
-            }
-          : { error: copied.error };
-      } finally {
-        await client.disconnect();
-      }
-    }
+    const result = await sendProjectCommand<TimelineWorkspaceResult>(context.projectId, {
+      action: "copy_timeline_action",
+      sourceTimelineId: timelineId,
+      targetCanvasId: options.canvas,
+      newTimelineId,
+      newActionNodeId,
+      position: {
+        x: timelinePosition(options.x, "--x"),
+        y: timelinePosition(options.y, "--y"),
+      },
+      actorClientType: resolveCanvasPresenceOptions().clientType,
+      observedVersion,
+      ifMatch: observedVersion,
+    });
     if (result.error || !result.timeline) throw new Error(result.error ?? "Timeline copy failed");
     await recordTimelineObservation(
       context,
@@ -733,35 +506,70 @@ timelineCommand
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 900_000) {
       throw new Error("--timeout-ms must be an integer between 1000 and 900000");
     }
-    const [actor, client] = await Promise.all([
-      resolveCanvasActor(),
-      connectToProject(context.projectId),
-    ]);
-    try {
-      const receipt = await requestTimelineRenderWithReadback({
-        client,
-        timelineId,
-        actor: {
-          actorUserId: actor.actorUserId,
-          ...(actor.actorAgentId ? { actorAgentId: actor.actorAgentId } : {}),
-        },
-        wait: options.wait !== false,
-        timeoutMs,
-      });
-      await recordTimelineObservation(
-        context,
-        timelineId,
-        receipt.sourceTimelineRevisionId,
-      );
-      if (isJsonMode(options)) printJson(receipt);
-      else console.log(
-        receipt.completed
-          ? `Rendered Timeline ${timelineId}: ${receipt.asset?.id ?? receipt.renderNodeId}`
-          : `Timeline render ${receipt.renderNodeId}: ${receipt.status}`,
-      );
-    } finally {
-      await client.disconnect();
+    const actor = await resolveCanvasActor();
+    const submitted = await sendProjectCommand<{
+      submitted?: boolean;
+      timelineId?: string;
+      sourceTimelineRevisionId?: string;
+      renderNodeId?: string;
+      target?: TimelineRenderReceipt["target"];
+      error?: string;
+    }>(context.projectId, {
+      action: "request_timeline_render",
+      timelineId,
+      actorUserId: actor.actorUserId,
+      ...(actor.actorAgentId ? { actorAgentId: actor.actorAgentId } : {}),
+    });
+    if (submitted.error || !submitted.renderNodeId || !submitted.sourceTimelineRevisionId || !submitted.target) {
+      throw new Error(submitted.error ?? "Timeline render request failed");
     }
+    const base = {
+      submitted: true as const,
+      timelineId,
+      sourceTimelineRevisionId: submitted.sourceTimelineRevisionId,
+      renderNodeId: submitted.renderNodeId,
+      target: submitted.target,
+    };
+    const deadline = Date.now() + timeoutMs;
+    let receipt: TimelineRenderReceipt = { ...base, completed: false, status: "pending" };
+    while (true) {
+      const result = await sendProjectCommand<{
+        node?: { data?: Record<string, unknown> };
+        error?: string;
+      }>(context.projectId, {
+        action: "get",
+        canvasId: "__project_assets__",
+        nodeId: submitted.renderNodeId,
+      });
+      if (result.error) throw new Error(result.error);
+      const data = result.node?.data ?? {};
+      if (data.status === "completed") {
+        if (typeof data.assetId !== "string" || !data.assetId.trim()) {
+          receipt = { ...base, completed: false, status: "failed", error: "Timeline render completed without an immutable Asset id" };
+        } else {
+          receipt = { ...base, completed: true, status: "completed", asset: await fetchAssetRecord({ assetId: data.assetId.trim() }) };
+        }
+        break;
+      }
+      if (data.status === "failed") {
+        receipt = {
+          ...base,
+          completed: false,
+          status: "failed",
+          ...(typeof data.error === "string" ? { error: data.error } : {}),
+        };
+        break;
+      }
+      if (options.wait === false || Date.now() >= deadline) break;
+      await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 100));
+    }
+    await recordTimelineObservation(context, timelineId, receipt.sourceTimelineRevisionId);
+    if (isJsonMode(options)) printJson(receipt);
+    else console.log(
+      receipt.completed
+        ? `Rendered Timeline ${timelineId}: ${receipt.asset?.id ?? receipt.renderNodeId}`
+        : `Timeline render ${receipt.renderNodeId}: ${receipt.status}`,
+    );
   });
 
 timelineCommand
@@ -850,29 +658,15 @@ timelineCommand
       editedProjectionPath: filePath,
       ...(baseRevisionId ? { baseRevisionId } : {}),
     });
-    let result: TimelineWorkspaceResult;
-    if (isDaemonRunning(context.projectId)) {
-      result = await sendCommand(context.projectId, {
-        action: "update_timeline_state",
-        timelineId,
-        state: parsed.dsl,
-        sourceNodeIds: parsed.sources,
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        observedVersion,
-        ifMatch: observedVersion,
-      }) as TimelineWorkspaceResult;
-    } else {
-      assertTimelineEntityHostWrite("Timeline apply");
-      const client = await connectToProject(context.projectId);
-      try {
-        const updated = client.updateTimelineState(timelineId, parsed.dsl);
-        result = updated.ok
-          ? { timeline: updated.timeline, version: projectTimelineReadToken(updated.timeline) }
-          : { error: updated.error };
-      } finally {
-        await client.disconnect();
-      }
-    }
+    const result = await sendProjectCommand<TimelineWorkspaceResult>(context.projectId, {
+      action: "update_timeline_state",
+      timelineId,
+      state: parsed.dsl,
+      sourceNodeIds: parsed.sources,
+      actorClientType: resolveCanvasPresenceOptions().clientType,
+      observedVersion,
+      ifMatch: observedVersion,
+    });
     if (result.error || !result.timeline) {
       if (result.code === "STALE_READ") {
         await recoverStaleTimelineApply({
@@ -969,22 +763,6 @@ export const TIMELINE_CLI_OPERATION_EXECUTORS = Object.freeze({
   },
 } satisfies Partial<Record<TimelineAgentOperationId, TimelineCliOperationExecutor>>);
 
-async function connectToProject(projectId: string): Promise<LoroSyncClient> {
-  const apiKey = requireApiKey();
-  const serverUrl = getServerUrl();
-  const wsUrl = serverUrl.replace(/^http/, "ws");
-  const client = new LoroSyncClient({
-    serverUrl: wsUrl,
-    projectId,
-    token: apiKey,
-    ...resolveCanvasPresenceOptions(),
-    WebSocket: WebSocket as any,
-  });
-  await client.connect();
-  return client;
-}
-
-async function runCommand(projectId: string, cmd: object): Promise<any> {
-  if (!isDaemonRunning(projectId)) return null;
-  return sendCommand(projectId, cmd);
+async function runCommand(projectId: string, cmd: ProjectHostCommand): Promise<any> {
+  return sendProjectCommand(projectId, cmd);
 }

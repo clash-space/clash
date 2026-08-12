@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import { agentReadToken } from './agent-read-proof';
+import { agentReadToken } from './agent-read-proof.js';
 
 export const AssetKindSchema = z.enum(['image', 'video', 'audio', 'model']);
 export type AssetKind = z.infer<typeof AssetKindSchema>;

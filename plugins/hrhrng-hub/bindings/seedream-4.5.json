@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-seedream-4.5",
+    "modelId": "seedream-4.5",
+    "upstreamModel": "doubao-seedream-4-5-251128"
+  }
+}

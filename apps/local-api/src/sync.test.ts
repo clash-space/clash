@@ -1,9 +1,19 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+} from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
+
+import { createMockExternalAigcService } from "./local-aigc.js";
 import { Canvas, MODEL_CARDS } from "@clash/shared-types";
 import WebSocket from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +25,7 @@ import {
 } from "./sync";
 import { createLocalWorkflowProcessor } from "./local-processor";
 import { createLocalMetadataStore } from "./local-metadata-store";
+import { FileReplicaStore } from "./loro/file-replica-store";
 
 let dataDir = "";
 
@@ -37,6 +48,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
 });
 
@@ -44,7 +56,8 @@ function countUpdateLogRecords(log: Buffer): number {
   let count = 0;
   let offset = 0;
   while (offset < log.byteLength) {
-    if (offset + 4 > log.byteLength) throw new Error("truncated update log header");
+    if (offset + 4 > log.byteLength)
+      throw new Error("truncated update log header");
     const length = log.readUInt32BE(offset);
     offset += 4 + length;
     if (offset > log.byteLength) throw new Error("truncated update log record");
@@ -63,6 +76,30 @@ function updateId(update: Uint8Array): string {
 }
 
 describe("LocalLoroRoom", () => {
+  /**
+   * A generator the test names, rather than one the host falls into.
+   *
+   * These cases are about the room -- that a pending node is processed, that a generated path cannot
+   * escape the asset store through a symlink -- and neither needs a vendor. The host no longer
+   * reaches a placeholder on its own, so the stand-in has to be handed in here, where it is visible.
+   */
+  function testAigc() {
+    return createLocalWorkflowProcessor({
+      dataDir,
+      aigc: createMockExternalAigcService({
+        // Named here, in the test, rather than reached by default. The host refuses a route that
+        // resolves to nothing, so the stand-in has to be selected like any other provider.
+        providerAccounts: async () => [
+          {
+            id: "mock-primary",
+            providerId: "mock",
+            upstreamId: "mock",
+            enabled: true,
+          },
+        ],
+      }),
+    });
+  }
   it("acknowledges a peer update after persisting it", async () => {
     const room = await LocalLoroRoom.open({
       dataDir,
@@ -84,21 +121,34 @@ describe("LocalLoroRoom", () => {
     const update = clientDoc.export({ mode: "snapshot" });
     await room.receive(peer, update);
 
-    expect(sideband).toContainEqual({ type: "sync_ack", updateId: updateId(update) });
-    expect(countUpdateLogRecords(await readFile(join(
-      dataDir,
-      "projects",
-      encodeURIComponent("project/sync-ack"),
-      "loro",
-      "updates.log",
-    )))).toBe(1);
+    expect(sideband).toContainEqual({
+      type: "sync_ack",
+      updateId: updateId(update),
+    });
+    expect(
+      countUpdateLogRecords(
+        await readFile(
+          join(
+            dataDir,
+            "projects",
+            encodeURIComponent("project/sync-ack"),
+            "loro",
+            "updates.log",
+          ),
+        ),
+      ),
+    ).toBe(1);
   });
 
   it("serializes concurrent pending-work scans so one Canvas execute submits once", async () => {
     let releaseGeneration!: () => void;
     let markStarted!: () => void;
-    const generationStarted = new Promise<void>((resolve) => { markStarted = resolve; });
-    const generationGate = new Promise<void>((resolve) => { releaseGeneration = resolve; });
+    const generationStarted = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const generationGate = new Promise<void>((resolve) => {
+      releaseGeneration = resolve;
+    });
     const generateVideo = vi.fn(async () => {
       markStarted();
       await generationGate;
@@ -139,13 +189,19 @@ describe("LocalLoroRoom", () => {
       },
     });
 
-    const firstReceive = room.receive(firstPeer, executeDoc.export({ mode: "snapshot" }));
+    const firstReceive = room.receive(
+      firstPeer,
+      executeDoc.export({ mode: "snapshot" }),
+    );
     await generationStarted;
 
     const concurrentDoc = new LoroDoc();
     concurrentDoc.import(room.snapshot());
     concurrentDoc.getMap("e2e").set("heartbeat", Date.now());
-    const secondReceive = room.receive(secondPeer, concurrentDoc.export({ mode: "snapshot" }));
+    const secondReceive = room.receive(
+      secondPeer,
+      concurrentDoc.export({ mode: "snapshot" }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 25));
 
     expect(generateVideo).toHaveBeenCalledTimes(1);
@@ -154,8 +210,179 @@ describe("LocalLoroRoom", () => {
     expect(generateVideo).toHaveBeenCalledTimes(1);
   });
 
+  it("does not schedule another poll for a terminal node carrying legacy poll state", async () => {
+    vi.useFakeTimers();
+    const projectId = "project/terminal-provider-poll";
+    const seedRoom = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    const seedPeer = seedRoom.addPeer(() => {});
+    const seed = new LoroDoc();
+    seed.getMap("nodes").set("completed-provider-node", {
+      id: "completed-provider-node",
+      type: "video",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "completed",
+        actionType: "video-gen",
+        assetId: "asset-complete",
+        providerPollState: { taskId: "legacy-task" },
+        providerPollAt: Date.now(),
+      },
+    });
+    await seedRoom.receive(seedPeer, seed.export({ mode: "snapshot" }));
+
+    const process = vi.fn(async () => false);
+    await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: { process },
+    });
+    await vi.advanceTimersByTimeAsync(1_100);
+
+    expect(process).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists the final-poll marker before invoking the expired upstream task", async () => {
+    const projectId = "project/final-poll-checkpoint";
+    const now = Date.now();
+    const seedRoom = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    const seedPeer = seedRoom.addPeer(() => {});
+    const seed = new LoroDoc();
+    seed.getMap("nodes").set("expired-provider-node", {
+      id: "expired-provider-node",
+      type: "image",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "generating",
+        actionType: "image-gen",
+        prompt: "final poll persistence",
+        modelId: "checkpoint-image",
+        providerPollState: { taskId: "paid-task" },
+        providerStartedAt: now - 30 * 60 * 1_000 - 1,
+        providerDeadlineAt: now - 1,
+        providerPollAt: now + 60_000,
+      },
+    });
+    await seedRoom.receive(seedPeer, seed.export({ mode: "snapshot" }));
+
+    let markStarted!: () => void;
+    let releasePoll!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releasePoll = resolve;
+    });
+    const generateImage = vi.fn(async () => {
+      markStarted();
+      await gate;
+      return {
+        status: "accepted" as const,
+        pollState: { taskId: "paid-task" },
+      };
+    });
+    const opening = LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        modelCards: async () => [],
+        aigc: {
+          generateImage,
+          generateVideo: vi.fn(),
+          generateAudio: vi.fn(),
+          generateText: vi.fn(),
+        },
+      }),
+    });
+
+    await started;
+    const persistedDuringPoll = await new FileReplicaStore(
+      join(dataDir, "projects"),
+    ).recover(projectId);
+    const persistedNode = persistedDuringPoll
+      .getMap("nodes")
+      .get("expired-provider-node") as { data: Record<string, unknown> };
+    releasePoll();
+    await opening;
+
+    expect(persistedNode.data.providerFinalPolledAt).toEqual(
+      expect.any(Number),
+    );
+    expect(generateImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pollState: { taskId: "paid-task" },
+      }),
+    );
+  });
+
+  it("reuses the persisted provider account when a restarted room polls accepted work", async () => {
+    const projectId = "project/account-bound-provider-poll";
+    const seedRoom = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    const seedPeer = seedRoom.addPeer(() => {});
+    const seed = new LoroDoc();
+    seed.getMap("nodes").set("account-bound-node", {
+      id: "account-bound-node",
+      type: "image",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "generating",
+        actionType: "image-gen",
+        prompt: "resume with the billed account",
+        modelId: "account-bound-image",
+        providerAccountId: "provider-account-original",
+        providerPollState: { taskId: "paid-task" },
+        providerPollAt: 0,
+      },
+    });
+    await seedRoom.receive(seedPeer, seed.export({ mode: "snapshot" }));
+
+    const generateImage = vi.fn(async () => ({
+      status: "completed" as const,
+      bytes: new Uint8Array([137, 80, 78, 71]),
+      contentType: "image/png",
+    }));
+    await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        modelCards: async () => [],
+        aigc: {
+          generateImage,
+          generateVideo: vi.fn(),
+          generateAudio: vi.fn(),
+          generateText: vi.fn(),
+        },
+      }),
+    });
+
+    expect(generateImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pollState: { taskId: "paid-task" },
+        modelParams: expect.objectContaining({
+          provider_id: "provider-account-original",
+        }),
+      }),
+    );
+  });
+
   it("flattens authored inline references only at the local provider boundary", async () => {
-    const generateText = vi.fn(async () => ({ text: "Compared", provider: "mock" }));
+    const generateText = vi.fn(async () => ({
+      text: "Compared",
+      provider: "mock",
+    }));
     const room = await LocalLoroRoom.open({
       dataDir,
       projectId: "project/local-interleaved-text",
@@ -186,9 +413,11 @@ describe("LocalLoroRoom", () => {
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    expect(generateText).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: "Compare First, then Second.",
-    }));
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "Compare First, then Second.",
+      }),
+    );
   });
 
   it("maps the unified H3 start/end card slots before calling the desktop provider", async () => {
@@ -231,14 +460,18 @@ describe("LocalLoroRoom", () => {
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    expect(generateVideo).toHaveBeenCalledWith(expect.objectContaining({
-      model: "minimax-h3-startend",
-      startFrameUrl: "https://media.clash.test/start.png",
-      endFrameUrl: "https://media.clash.test/end.png",
-    }));
-    expect(generateVideo).toHaveBeenCalledWith(expect.not.objectContaining({
-      referenceImageUrls: expect.anything(),
-    }));
+    expect(generateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "minimax-h3-startend",
+        startFrameUrl: "https://media.clash.test/start.png",
+        endFrameUrl: "https://media.clash.test/end.png",
+      }),
+    );
+    expect(generateVideo).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        referenceImageUrls: expect.anything(),
+      }),
+    );
   });
 
   it("uses a hot-loaded plugin model Card when interpreting pending Canvas inputs", async () => {
@@ -248,7 +481,9 @@ describe("LocalLoroRoom", () => {
       provider: "agent-provider",
       modelEndpoint: "agent/start-end",
     }));
-    const baseStartEnd = MODEL_CARDS.find((model) => model.id === "minimax-h3-startend")!;
+    const baseStartEnd = MODEL_CARDS.find(
+      (model) => model.id === "minimax-h3-startend",
+    )!;
     const pluginCard = {
       ...baseStartEnd,
       id: "agent-start-end",
@@ -289,16 +524,18 @@ describe("LocalLoroRoom", () => {
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    expect(generateVideo).toHaveBeenCalledWith(expect.objectContaining({
-      model: "agent-start-end",
-      startFrameUrl: "https://media.clash.test/start.png",
-      endFrameUrl: "https://media.clash.test/end.png",
-    }));
+    expect(generateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "agent-start-end",
+        startFrameUrl: "https://media.clash.test/start.png",
+        endFrameUrl: "https://media.clash.test/end.png",
+      }),
+    );
   });
 
   it("executes a pinned local action plugin directly without legacy runtime registration", async () => {
     const binding = {
-      pluginId: "agent-caption-actions",
+      pluginId: "test.agent-caption-actions",
       version: "1.2.0",
       exportId: "run-caption-helper",
       schemaHash: `sha256:${"c".repeat(64)}`,
@@ -307,7 +544,9 @@ describe("LocalLoroRoom", () => {
       protocol: "clash.plugin.result/v1" as const,
       invocationId: "result-action-1",
       status: "completed" as const,
-      outputs: [{ slot: "result", kind: "value" as const, value: { text: "Done" } }],
+      outputs: [
+        { slot: "result", kind: "value" as const, value: { text: "Done" } },
+      ],
     }));
     const room = await LocalLoroRoom.open({
       dataDir,
@@ -332,7 +571,7 @@ describe("LocalLoroRoom", () => {
       data: {
         status: "pending",
         actionType: "custom:caption-helper",
-        customActionId: "caption-helper",
+        customActionId: "test.caption-helper",
         customActionParams: { tone: "concise" },
         outputType: "text",
         prompt: "Caption this",
@@ -344,17 +583,19 @@ describe("LocalLoroRoom", () => {
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    expect(executablePluginAction).toHaveBeenCalledWith(expect.objectContaining({
-      binding,
-      taskId: "local-custom-plugin-action-node",
-      projectId: "project/plugin-action",
-      nodeId: "plugin-action-node",
-      input: {
-        values: { prompt: "Caption this", tone: "concise" },
-        references: [],
-      },
-      actor: { kind: "user", id: "local-user" },
-    }));
+    expect(executablePluginAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        binding,
+        taskId: "local-custom-plugin-action-node",
+        projectId: "project/plugin-action",
+        nodeId: "plugin-action-node",
+        input: {
+          values: { prompt: "Caption this", tone: "concise" },
+          references: [],
+        },
+        actor: { kind: "user", id: "local-user" },
+      }),
+    );
     const finalDoc = new LoroDoc();
     finalDoc.import(room.snapshot());
     expect(finalDoc.getMap("nodes").get("plugin-action-node")).toMatchObject({
@@ -364,9 +605,9 @@ describe("LocalLoroRoom", () => {
 
   it("pins the exact executable provider plugin binding on the generated Canvas node", async () => {
     const authoredBinding = {
-      pluginId: "clash-first-party-media",
+      pluginId: "clash.minimax",
       version: "0.1.0",
-      exportId: "fal-h3",
+      exportId: "minimax-execute",
       schemaHash: `sha256:${"b".repeat(64)}`,
     } as const;
     const generateVideo = vi.fn(async () => ({
@@ -406,11 +647,13 @@ describe("LocalLoroRoom", () => {
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    expect(generateVideo).toHaveBeenCalledWith(expect.objectContaining({
-      projectId: "project/plugin-binding",
-      nodeId: "h3-plugin-node",
-      pluginBinding: authoredBinding,
-    }));
+    expect(generateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project/plugin-binding",
+        nodeId: "h3-plugin-node",
+        pluginBinding: authoredBinding,
+      }),
+    );
     const finalDoc = new LoroDoc();
     finalDoc.import(room.snapshot());
     expect(finalDoc.getMap("nodes").get("h3-plugin-node")).toMatchObject({
@@ -459,7 +702,8 @@ describe("LocalLoroRoom", () => {
       data: {
         status: "pending",
         actionType: "video-gen",
-        prompt: "Use @[Subject](node:image-ref), then @[Motion](node:video-ref).",
+        prompt:
+          "Use @[Subject](node:image-ref), then @[Motion](node:video-ref).",
         modelId: "minimax-h3-ref",
         referenceImageAssetIds: ["asset-image"],
         referenceVideoAssetIds: ["asset-video"],
@@ -472,16 +716,18 @@ describe("LocalLoroRoom", () => {
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    expect(generateVideo).toHaveBeenCalledWith(expect.objectContaining({
-      orderedContentParts: [
-        { type: "text", text: "Use " },
-        { type: "image", url: "https://media.clash.test/subject.png" },
-        { type: "text", text: ", then " },
-        { type: "video", url: "https://media.clash.test/motion.mp4" },
-        { type: "text", text: "." },
-        { type: "audio", url: "https://media.clash.test/ambience.mp3" },
-      ],
-    }));
+    expect(generateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderedContentParts: [
+          { type: "text", text: "Use " },
+          { type: "image", url: "https://media.clash.test/subject.png" },
+          { type: "text", text: ", then " },
+          { type: "video", url: "https://media.clash.test/motion.mp4" },
+          { type: "text", text: "." },
+          { type: "audio", url: "https://media.clash.test/ambience.mp3" },
+        ],
+      }),
+    );
   });
 
   it("broadcasts structured agent node add and update activity with its Canvas target", async () => {
@@ -539,7 +785,10 @@ describe("LocalLoroRoom", () => {
       data: { label: "Agent shot revised" },
       position: { x: 1100, y: 520 },
     });
-    await room.receive(agent, agentDoc.export({ mode: "update", from: updateFrom }));
+    await room.receive(
+      agent,
+      agentDoc.export({ mode: "update", from: updateFrom }),
+    );
 
     expect(browserSideband).toContainEqual({
       type: "activity",
@@ -555,19 +804,28 @@ describe("LocalLoroRoom", () => {
 
   it("persists and broadcasts graph repair updates after importing an orphan edge", async () => {
     const projectId = "project/orphan-repair";
-    const room = await LocalLoroRoom.open({ dataDir, projectId, workflowProcessor: null });
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
     const sender = room.addPeer(() => {});
     const peerUpdates: Uint8Array[] = [];
     room.addPeer((update) => peerUpdates.push(update));
     peerUpdates.length = 0;
 
     const clientDoc = new LoroDoc();
-    clientDoc.getMap("nodes").set("target", { canvasId: "main", type: "image_gen", data: {} });
-    clientDoc.getMap("nodeUpstreams").ensureMergeableMap("target").set("orphan", {
-      nodeId: "missing-source",
-      edgeId: "orphan",
-      type: "default",
-    });
+    clientDoc
+      .getMap("nodes")
+      .set("target", { canvasId: "main", type: "image_gen", data: {} });
+    clientDoc
+      .getMap("nodeUpstreams")
+      .ensureMergeableMap("target")
+      .set("orphan", {
+        nodeId: "missing-source",
+        edgeId: "orphan",
+        type: "default",
+      });
     clientDoc.getMap("edgeIdentity").set("orphan", { target: "target" });
 
     await room.receive(sender, clientDoc.export({ mode: "snapshot" }));
@@ -576,13 +834,21 @@ describe("LocalLoroRoom", () => {
     const peerDoc = new LoroDoc();
     for (const update of peerUpdates) peerDoc.import(update);
     expect(new Canvas(peerDoc, () => {}, "main").listEdges()).toEqual([]);
-    expect(peerDoc.getMap("edgeIdentity").get("orphan")).toEqual({ deleted: true });
+    expect(peerDoc.getMap("edgeIdentity").get("orphan")).toEqual({
+      deleted: true,
+    });
 
-    const reopened = await LocalLoroRoom.open({ dataDir, projectId, workflowProcessor: null });
+    const reopened = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
     const persisted = new LoroDoc();
     persisted.import(reopened.snapshot());
     expect(new Canvas(persisted, () => {}, "main").listEdges()).toEqual([]);
-    expect(persisted.getMap("edgeIdentity").get("orphan")).toEqual({ deleted: true });
+    expect(persisted.getMap("edgeIdentity").get("orphan")).toEqual({
+      deleted: true,
+    });
   });
 
   it("registers local custom actions from JSON sideband messages", async () => {
@@ -591,7 +857,10 @@ describe("LocalLoroRoom", () => {
       projectId: "project/custom-register",
       workflowProcessor: null,
     });
-    const peer = room.addPeer(() => {}, { runtimeId: "runtime-1", sendJson: () => {} });
+    const peer = room.addPeer(() => {}, {
+      runtimeId: "runtime-1",
+      sendJson: () => {},
+    });
 
     await room.receiveJson(peer, {
       type: "register_custom_actions",
@@ -615,7 +884,10 @@ describe("LocalLoroRoom", () => {
   });
 
   it("dispatches pending local custom action nodes over JSON sideband", async () => {
-    const room = await LocalLoroRoom.open({ dataDir, projectId: "project/custom-dispatch" });
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/custom-dispatch",
+    });
     const sideband: Record<string, unknown>[] = [];
     const peer = room.addPeer(() => {}, {
       runtimeId: "runtime-1",
@@ -646,7 +918,9 @@ describe("LocalLoroRoom", () => {
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    const assigned = sideband.find((msg) => msg.type === "custom_task_assigned") as any;
+    const assigned = sideband.find(
+      (msg) => msg.type === "custom_task_assigned",
+    ) as any;
     expect(assigned?.task).toMatchObject({
       nodeId: "custom-child",
       customActionId: "grid-split",
@@ -656,7 +930,9 @@ describe("LocalLoroRoom", () => {
 
     const doc = new LoroDoc();
     doc.import(room.snapshot());
-    expect((doc.getMap("nodes").get("custom-child") as any).data.status).toBe("generating");
+    expect((doc.getMap("nodes").get("custom-child") as any).data.status).toBe(
+      "generating",
+    );
     expect(doc.getMap("tasks").get(assigned.task.taskId)).toMatchObject({
       customActionId: "grid-split",
       registeredByRuntime: "runtime-1",
@@ -664,7 +940,10 @@ describe("LocalLoroRoom", () => {
   });
 
   it("imports a client update, broadcasts it to peers, and persists a snapshot", async () => {
-    const room = await LocalLoroRoom.open({ dataDir, projectId: "project/one" });
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/one",
+    });
     const peerA: Uint8Array[] = [];
     const peerB: Uint8Array[] = [];
     const a = room.addPeer((data) => peerA.push(data));
@@ -673,7 +952,9 @@ describe("LocalLoroRoom", () => {
     peerB.length = 0;
 
     const clientDoc = new LoroDoc();
-    clientDoc.getMap("nodes").set("node-1", { type: "text", data: { label: "Local" } });
+    clientDoc
+      .getMap("nodes")
+      .set("node-1", { type: "text", data: { label: "Local" } });
     const update = clientDoc.export({ mode: "snapshot" });
 
     await room.receive(a, update);
@@ -681,17 +962,28 @@ describe("LocalLoroRoom", () => {
     expect(peerB).toHaveLength(1);
     const peerDoc = new LoroDoc();
     peerDoc.import(peerB[0]);
-    expect((peerDoc.getMap("nodes").get("node-1") as any).data.label).toBe("Local");
+    expect((peerDoc.getMap("nodes").get("node-1") as any).data.label).toBe(
+      "Local",
+    );
 
-    const reopened = await LocalLoroRoom.open({ dataDir, projectId: "project/one" });
+    const reopened = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/one",
+    });
     const snapshot = reopened.snapshot();
     const persisted = new LoroDoc();
     persisted.import(snapshot);
-    expect((persisted.getMap("nodes").get("node-1") as any).data.label).toBe("Local");
+    expect((persisted.getMap("nodes").get("node-1") as any).data.label).toBe(
+      "Local",
+    );
   });
 
   it("processes pending image generation nodes through the local mock fal service", async () => {
-    const room = await LocalLoroRoom.open({ dataDir, projectId: "project/local-gen" });
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/local-gen",
+      workflowProcessor: testAigc(),
+    });
     const peerUpdates: Uint8Array[] = [];
     const peer = room.addPeer((data) => peerUpdates.push(data));
     peerUpdates.length = 0;
@@ -724,7 +1016,11 @@ describe("LocalLoroRoom", () => {
     const sqlite = openSqlite();
     let srcR2Key = "";
     try {
-      const asset = sqlite.prepare("select id, kind, src_r2_key, source_model, source_prompt, source_task_id, metadata from assets").get();
+      const asset = sqlite
+        .prepare(
+          "select id, kind, src_r2_key, source_model, source_prompt, source_task_id, metadata from assets",
+        )
+        .get();
       expect(asset).toMatchObject({
         id: imageNode.data.assetId,
         kind: "image",
@@ -737,14 +1033,17 @@ describe("LocalLoroRoom", () => {
         requestId: expect.stringMatching(/^fal-mock-/),
         modelEndpoint: expect.stringContaining("fal-ai/"),
       });
-      expect(sqlite.prepare("select asset_id, project_id from asset_refs").get()).toMatchObject({
+      expect(
+        sqlite.prepare("select asset_id, project_id from asset_refs").get(),
+      ).toMatchObject({
         asset_id: imageNode.data.assetId,
         project_id: "project/local-gen",
       });
-      const audit = sqlite.prepare("select operation, entity_kind, entity_id, actor_client_type, accepted, reason, result_entity_id, mutation_json from mutation_audit where operation = ? and entity_id = ?").get(
-        "asset_generate",
-        imageNode.data.assetId,
-      );
+      const audit = sqlite
+        .prepare(
+          "select operation, entity_kind, entity_id, actor_client_type, accepted, reason, result_entity_id, mutation_json from mutation_audit where operation = ? and entity_id = ?",
+        )
+        .get("asset_generate", imageNode.data.assetId);
       expect(audit).toMatchObject({
         operation: "asset_generate",
         entity_kind: "asset",
@@ -777,27 +1076,30 @@ describe("LocalLoroRoom", () => {
 
   it("renders pending Timeline video nodes through the local backend renderer", async () => {
     const importedAt = Math.floor(Date.now() / 1000);
-    await createLocalMetadataStore(dataDir).upsertAsset({
-      id: "music-asset-1",
-      userId: "local-user",
-      kind: "audio",
-      srcR2Key: "uploads/music.wav",
-      coverR2Key: null,
-      metadata: { contentType: "audio/wav", durationMs: 2000 },
-      sourceModel: null,
-      sourcePrompt: null,
-      sourceTaskId: null,
-      sources: null,
-      signedUrl: "http://127.0.0.1:49431/assets/uploads/music.wav",
-      signedUrlExp: importedAt + 3600,
-      createdAt: importedAt,
-      updatedAt: importedAt,
-      projectId: "project/local-render",
-    }, {
-      assetId: "music-asset-1",
-      projectId: "project/local-render",
-      importedAt,
-    });
+    await createLocalMetadataStore(dataDir).upsertAsset(
+      {
+        id: "music-asset-1",
+        userId: "local-user",
+        kind: "audio",
+        srcR2Key: "uploads/music.wav",
+        coverR2Key: null,
+        metadata: { contentType: "audio/wav", durationMs: 2000 },
+        sourceModel: null,
+        sourcePrompt: null,
+        sourceTaskId: null,
+        sources: null,
+        signedUrl: "http://127.0.0.1:49431/assets/uploads/music.wav",
+        signedUrlExp: importedAt + 3600,
+        createdAt: importedAt,
+        updatedAt: importedAt,
+        projectId: "project/local-render",
+      },
+      {
+        assetId: "music-asset-1",
+        projectId: "project/local-render",
+        importedAt,
+      },
+    );
     const renderTimeline = vi.fn(async () => ({
       bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
       contentType: "video/mp4",
@@ -829,37 +1131,55 @@ describe("LocalLoroRoom", () => {
           compositionHeight: 1080,
           fps: 30,
           durationInFrames: 60,
-          tracks: [{
-            id: "music",
-            role: "music",
-            items: [{
-              id: "music-1",
-              type: "audio",
-              from: 0,
-              durationInFrames: 60,
-              assetId: "music-asset-1",
-              audioDucking: { amountDb: -18, attackFrames: 6, releaseFrames: 12 },
-            }],
-          }],
+          tracks: [
+            {
+              id: "music",
+              role: "music",
+              items: [
+                {
+                  id: "music-1",
+                  type: "audio",
+                  from: 0,
+                  durationInFrames: 60,
+                  assetId: "music-asset-1",
+                  audioDucking: {
+                    amountDb: -18,
+                    attackFrames: 6,
+                    releaseFrames: 12,
+                  },
+                },
+              ],
+            },
+          ],
         },
       },
     });
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
 
-    expect(renderTimeline).toHaveBeenCalledWith(expect.objectContaining({
-      projectId: "project/local-render",
-      taskId: "local-render-render-node-1",
-      timelineDsl: expect.objectContaining({
-        durationInFrames: 60,
-        tracks: [expect.objectContaining({
-          items: [expect.objectContaining({
-            src: "http://127.0.0.1:49321/assets/uploads/music.wav",
-            audioDucking: { amountDb: -18, attackFrames: 6, releaseFrames: 12 },
-          })],
-        })],
+    expect(renderTimeline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project/local-render",
+        taskId: "local-render-render-node-1",
+        timelineDsl: expect.objectContaining({
+          durationInFrames: 60,
+          tracks: [
+            expect.objectContaining({
+              items: [
+                expect.objectContaining({
+                  src: "http://127.0.0.1:49321/assets/uploads/music.wav",
+                  audioDucking: {
+                    amountDb: -18,
+                    attackFrames: 6,
+                    releaseFrames: 12,
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
       }),
-    }));
+    );
     const finalDoc = new LoroDoc();
     finalDoc.import(room.snapshot());
     expect(finalDoc.getMap("nodes").get("render-node-1")).toMatchObject({
@@ -871,11 +1191,17 @@ describe("LocalLoroRoom", () => {
   });
 
   it("rejects generated asset writes when the generated storage parent escapes through a symlink", async () => {
-    const outsideDir = await mkdtemp(join(tmpdir(), "clash-local-sync-outside-generated-"));
+    const outsideDir = await mkdtemp(
+      join(tmpdir(), "clash-local-sync-outside-generated-"),
+    );
     try {
       await mkdir(join(dataDir, "assets"), { recursive: true });
       await symlink(outsideDir, join(dataDir, "assets", "generated"));
-      const room = await LocalLoroRoom.open({ dataDir, projectId: "project/local-gen-symlink" });
+      const room = await LocalLoroRoom.open({
+        dataDir,
+        projectId: "project/local-gen-symlink",
+        workflowProcessor: testAigc(),
+      });
       const peer = room.addPeer(() => {});
 
       const clientDoc = new LoroDoc();
@@ -895,19 +1221,29 @@ describe("LocalLoroRoom", () => {
 
       const finalDoc = new LoroDoc();
       finalDoc.import(room.snapshot());
-      const imageNode = finalDoc.getMap("nodes").get("image-node-symlink") as any;
+      const imageNode = finalDoc
+        .getMap("nodes")
+        .get("image-node-symlink") as any;
       expect(imageNode.data.status).toBe("failed");
       expect(imageNode.data.assetId).toBeUndefined();
-      expect(imageNode.data.error).toBe("Asset path escapes local asset storage");
+      expect(imageNode.data.error).toBe(
+        "Asset path escapes local asset storage",
+      );
       await expect(readdir(outsideDir)).resolves.toEqual([]);
-      await expect(stat(join(dataDir, "local.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(stat(join(dataDir, "local.sqlite"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
     } finally {
       await rm(outsideDir, { recursive: true, force: true });
     }
   });
 
   it("processes pending video and audio generation nodes with media-aware mock outputs", async () => {
-    const room = await LocalLoroRoom.open({ dataDir, projectId: "project/local-media-gen" });
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/local-media-gen",
+      workflowProcessor: testAigc(),
+    });
     const peer = room.addPeer(() => {});
 
     const clientDoc = new LoroDoc();
@@ -953,8 +1289,16 @@ describe("LocalLoroRoom", () => {
     let videoAsset: Record<string, unknown> | undefined;
     let audioAsset: Record<string, unknown> | undefined;
     try {
-      videoAsset = sqlite.prepare("select id, kind, source_prompt, source_task_id, metadata, src_r2_key from assets where id = ?").get(videoNode.data.assetId);
-      audioAsset = sqlite.prepare("select id, kind, source_prompt, source_task_id, metadata, src_r2_key from assets where id = ?").get(audioNode.data.assetId);
+      videoAsset = sqlite
+        .prepare(
+          "select id, kind, source_prompt, source_task_id, metadata, src_r2_key from assets where id = ?",
+        )
+        .get(videoNode.data.assetId);
+      audioAsset = sqlite
+        .prepare(
+          "select id, kind, source_prompt, source_task_id, metadata, src_r2_key from assets where id = ?",
+        )
+        .get(audioNode.data.assetId);
     } finally {
       sqlite.close();
     }
@@ -964,13 +1308,13 @@ describe("LocalLoroRoom", () => {
       source_task_id: expect.stringMatching(/^fal-mock-/),
     });
     expect(JSON.parse(String(videoAsset?.metadata))).toMatchObject({
-        provider: "fal-mock",
-        width: 720,
-        height: 1280,
-        durationMs: 4000,
-        contentType: "video/mp4",
-        modelEndpoint: expect.stringContaining("fal-ai/"),
-        mockText: "竖屏小狗视频",
+      provider: "fal-mock",
+      width: 720,
+      height: 1280,
+      durationMs: 4000,
+      contentType: "video/mp4",
+      modelEndpoint: expect.stringContaining("fal-ai/"),
+      mockText: "竖屏小狗视频",
     });
     expect(audioAsset).toMatchObject({
       kind: "audio",
@@ -979,19 +1323,26 @@ describe("LocalLoroRoom", () => {
     });
     const audioMetadata = JSON.parse(String(audioAsset?.metadata));
     expect(audioMetadata).toMatchObject({
-        provider: "fal-mock",
-        durationMs: 3000,
-        contentType: "audio/wav",
-        transcript: "这是一段三秒 mock 音频",
+      provider: "fal-mock",
+      durationMs: 3000,
+      contentType: "audio/wav",
+      transcript: "这是一段三秒 mock 音频",
     });
     expect(audioMetadata.waveform).toHaveLength(128);
 
-    const audioBytes = await readFile(join(dataDir, "assets", String(audioAsset?.src_r2_key)), "utf8");
+    const audioBytes = await readFile(
+      join(dataDir, "assets", String(audioAsset?.src_r2_key)),
+      "utf8",
+    );
     expect(audioBytes).toContain("这是一段三秒 mock 音频");
   });
 
   it("processes pending text generation nodes in place", async () => {
-    const room = await LocalLoroRoom.open({ dataDir, projectId: "project/local-text-gen" });
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/local-text-gen",
+      workflowProcessor: testAigc(),
+    });
     const peer = room.addPeer(() => {});
 
     const clientDoc = new LoroDoc();
@@ -1035,7 +1386,9 @@ describe("LocalLoroRoom", () => {
       hashAlgorithm: "sha256-64",
       sourceFilePath: "workflow/text-node-1.md",
     });
-    expect(revision.revisionId).toEqual(expect.stringMatching(/^txrev-[a-f0-9]{16}-/));
+    expect(revision.revisionId).toEqual(
+      expect.stringMatching(/^txrev-[a-f0-9]{16}-/),
+    );
     expect(revision.contentHash).toBe(revision.sourceFileHash);
     const revisionBodyPath = join(
       dataDir,
@@ -1043,7 +1396,9 @@ describe("LocalLoroRoom", () => {
       revision.contentHash.slice(0, 2),
       `${revision.contentHash}.md`,
     );
-    expect(await readFile(revisionBodyPath, "utf8")).toBe(textNode.data.content);
+    expect(await readFile(revisionBodyPath, "utf8")).toBe(
+      textNode.data.content,
+    );
     expect((await stat(revisionBodyPath)).mode & 0o222).toBe(0);
     const audits = await metadataStore.listMutationAudit({
       operation: "text_generate",
@@ -1110,14 +1465,18 @@ describe("LocalLoroRoom", () => {
       provider: "local-acp",
       modelEndpoint: "codex-acp",
     });
-    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
-      modelId: "local-acp",
-      modelParams: { acp_model: "gpt-5.4" },
-    }));
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: "local-acp",
+        modelParams: { acp_model: "gpt-5.4" },
+      }),
+    );
   });
 
   it("mirrors received updates to optional remote persistence", async () => {
-    const appendUpdate = vi.fn(async (_projectId: string, _update: Uint8Array) => {});
+    const appendUpdate = vi.fn(
+      async (_projectId: string, _update: Uint8Array) => {},
+    );
     const room = await LocalLoroRoom.open({
       dataDir,
       projectId: "project/remote",
@@ -1126,19 +1485,30 @@ describe("LocalLoroRoom", () => {
     const peer = room.addPeer(() => {});
 
     const clientDoc = new LoroDoc();
-    clientDoc.getMap("nodes").set("node-remote", { type: "text", data: { label: "Mirror" } });
+    clientDoc
+      .getMap("nodes")
+      .set("node-remote", { type: "text", data: { label: "Mirror" } });
     const update = clientDoc.export({ mode: "snapshot" });
 
     await room.receive(peer, update);
 
     expect(appendUpdate).toHaveBeenCalledTimes(1);
-    expect(appendUpdate).toHaveBeenCalledWith("project/remote", expect.any(Uint8Array));
-    expect(Array.from(appendUpdate.mock.calls[0][1])).toEqual(Array.from(update));
+    expect(appendUpdate).toHaveBeenCalledWith(
+      "project/remote",
+      expect.any(Uint8Array),
+    );
+    expect(Array.from(appendUpdate.mock.calls[0][1])).toEqual(
+      Array.from(update),
+    );
   });
 
   it("resolves remote persistence dynamically for later mirrored updates", async () => {
-    const appendUpdate = vi.fn(async (_projectId: string, _update: Uint8Array) => {});
-    let remotePersistence: { appendUpdate(projectId: string, update: Uint8Array): Promise<void> } | undefined;
+    const appendUpdate = vi.fn(
+      async (_projectId: string, _update: Uint8Array) => {},
+    );
+    let remotePersistence:
+      | { appendUpdate(projectId: string, update: Uint8Array): Promise<void> }
+      | undefined;
     const room = await LocalLoroRoom.open({
       dataDir,
       projectId: "project/dynamic-remote",
@@ -1148,24 +1518,33 @@ describe("LocalLoroRoom", () => {
     const peer = room.addPeer(() => {});
 
     const firstDoc = new LoroDoc();
-    firstDoc.getMap("nodes").set("node-local-only", { type: "text", data: { label: "Local only" } });
+    firstDoc
+      .getMap("nodes")
+      .set("node-local-only", { type: "text", data: { label: "Local only" } });
     await room.receive(peer, firstDoc.export({ mode: "snapshot" }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(appendUpdate).not.toHaveBeenCalled();
 
     remotePersistence = { appendUpdate };
     const secondDoc = new LoroDoc();
-    secondDoc.getMap("nodes").set("node-cloud-sync", { type: "text", data: { label: "Cloud sync" } });
+    secondDoc
+      .getMap("nodes")
+      .set("node-cloud-sync", { type: "text", data: { label: "Cloud sync" } });
     const secondUpdate = secondDoc.export({ mode: "snapshot" });
     await room.receive(peer, secondUpdate);
     await vi.waitFor(() => expect(appendUpdate).toHaveBeenCalledTimes(1));
-    expect(appendUpdate).toHaveBeenCalledWith("project/dynamic-remote", expect.any(Uint8Array));
+    expect(appendUpdate).toHaveBeenCalledWith(
+      "project/dynamic-remote",
+      expect.any(Uint8Array),
+    );
   });
 
   it("keeps local persistence and peer broadcast when remote persistence fails", async () => {
-    const appendUpdate = vi.fn(async (_projectId: string, _update: Uint8Array) => {
-      throw new Error("remote unavailable");
-    });
+    const appendUpdate = vi.fn(
+      async (_projectId: string, _update: Uint8Array) => {
+        throw new Error("remote unavailable");
+      },
+    );
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const room = await LocalLoroRoom.open({
       dataDir,
@@ -1180,17 +1559,24 @@ describe("LocalLoroRoom", () => {
     peerB.length = 0;
 
     const clientDoc = new LoroDoc();
-    clientDoc.getMap("nodes").set("node-local", { type: "text", data: { label: "Offline" } });
+    clientDoc
+      .getMap("nodes")
+      .set("node-local", { type: "text", data: { label: "Offline" } });
     const update = clientDoc.export({ mode: "snapshot" });
 
     await room.receive(a, update);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(peerB).toHaveLength(1);
-    const reopened = await LocalLoroRoom.open({ dataDir, projectId: "project/offline" });
+    const reopened = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/offline",
+    });
     const persisted = new LoroDoc();
     persisted.import(reopened.snapshot());
-    expect((persisted.getMap("nodes").get("node-local") as any).data.label).toBe("Offline");
+    expect(
+      (persisted.getMap("nodes").get("node-local") as any).data.label,
+    ).toBe("Offline");
     expect(errorSpy).toHaveBeenCalledWith(
       "[local-sync] failed to mirror update to remote persistence",
       expect.any(Error),
@@ -1199,46 +1585,77 @@ describe("LocalLoroRoom", () => {
 
   it("imports remote snapshots on open and writes the merged state locally", async () => {
     const remoteDoc = new LoroDoc();
-    remoteDoc.getMap("nodes").set("node-cloud", { type: "text", data: { label: "Cloud" } });
+    remoteDoc
+      .getMap("nodes")
+      .set("node-cloud", { type: "text", data: { label: "Cloud" } });
     const room = await LocalLoroRoom.open({
       dataDir,
       projectId: "project/hybrid",
       remotePersistence: {
         loadSnapshot: vi.fn(async () => remoteDoc.export({ mode: "snapshot" })),
-        appendUpdate: vi.fn(async (_projectId: string, _update: Uint8Array) => {}),
+        appendUpdate: vi.fn(
+          async (_projectId: string, _update: Uint8Array) => {},
+        ),
       },
     });
 
     const opened = new LoroDoc();
     opened.import(room.snapshot());
-    expect((opened.getMap("nodes").get("node-cloud") as any).data.label).toBe("Cloud");
+    expect((opened.getMap("nodes").get("node-cloud") as any).data.label).toBe(
+      "Cloud",
+    );
 
-    const reopened = await LocalLoroRoom.open({ dataDir, projectId: "project/hybrid" });
+    const reopened = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/hybrid",
+    });
     const persisted = new LoroDoc();
     persisted.import(reopened.snapshot());
-    expect((persisted.getMap("nodes").get("node-cloud") as any).data.label).toBe("Cloud");
+    expect(
+      (persisted.getMap("nodes").get("node-cloud") as any).data.label,
+    ).toBe("Cloud");
   });
 
   it("periodically compacts local update log records instead of keeping one record per edit", async () => {
     const projectId = "project/compact-log";
-    const room = await LocalLoroRoom.open({ dataDir, projectId, workflowProcessor: null });
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
     const peer = room.addPeer(() => {});
 
     for (let i = 0; i < 40; i += 1) {
       const clientDoc = new LoroDoc();
-      clientDoc.getMap("nodes").set(`node-${i}`, { type: "text", data: { label: `Edit ${i}` } });
+      clientDoc
+        .getMap("nodes")
+        .set(`node-${i}`, { type: "text", data: { label: `Edit ${i}` } });
       await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
     }
 
-    const logPath = join(dataDir, "projects", encodeURIComponent(projectId), "loro", "updates.log");
+    const logPath = join(
+      dataDir,
+      "projects",
+      encodeURIComponent(projectId),
+      "loro",
+      "updates.log",
+    );
     const log = await readFile(logPath);
     expect(countUpdateLogRecords(log)).toBeLessThan(40);
 
-    const reopened = await LocalLoroRoom.open({ dataDir, projectId, workflowProcessor: null });
+    const reopened = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
     const persisted = new LoroDoc();
     persisted.import(reopened.snapshot());
-    expect((persisted.getMap("nodes").get("node-0") as any).data.label).toBe("Edit 0");
-    expect((persisted.getMap("nodes").get("node-39") as any).data.label).toBe("Edit 39");
+    expect((persisted.getMap("nodes").get("node-0") as any).data.label).toBe(
+      "Edit 0",
+    );
+    expect((persisted.getMap("nodes").get("node-39") as any).data.label).toBe(
+      "Edit 39",
+    );
   });
 });
 
@@ -1247,15 +1664,22 @@ describe("attachLocalSync", () => {
     const server = createServer();
     attachLocalSync(server, { dataDir });
 
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
     const port = (server.address() as { port: number }).port;
-    const browser = new WebSocket(`ws://127.0.0.1:${port}/sync/${encodeURIComponent("project/presence")}`);
-    const agent = new WebSocket(`ws://127.0.0.1:${port}/sync/${encodeURIComponent("project/presence")}`, {
-      headers: {
-        "x-client-type": "agent",
-        "x-agent-name": "Mock ACP",
+    const browser = new WebSocket(
+      `ws://127.0.0.1:${port}/sync/${encodeURIComponent("project/presence")}`,
+    );
+    const agent = new WebSocket(
+      `ws://127.0.0.1:${port}/sync/${encodeURIComponent("project/presence")}`,
+      {
+        headers: {
+          "x-client-type": "agent",
+          "x-agent-name": "Mock ACP",
+        },
       },
-    });
+    );
     const browserPresence: any[] = [];
     const browserActivity: any[] = [];
 
@@ -1337,9 +1761,13 @@ describe("attachLocalSync", () => {
     attachLocalSync(server, { dataDir });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
     const port = (server.address() as { port: number }).port;
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/sync/${encodeURIComponent("project/one")}`);
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/sync/${encodeURIComponent("project/one")}`,
+    );
 
     await new Promise<void>((resolve, reject) => {
       ws.once("open", resolve);
@@ -1361,12 +1789,16 @@ describe("attachLocalSync", () => {
 
 describe("createHttpRemoteLoroPersistence", () => {
   it("loads remote snapshots over HTTP with optional bearer auth", async () => {
-    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      expect(String(input)).toBe("https://remote.example/loro/project%2Fone/snapshot");
-      expect(init?.method).toBe("GET");
-      expect(init?.headers).toMatchObject({ authorization: "Bearer secret" });
-      return new Response(new Uint8Array([1, 2, 3]));
-    });
+    const fetchImpl = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        expect(String(input)).toBe(
+          "https://remote.example/loro/project%2Fone/snapshot",
+        );
+        expect(init?.method).toBe("GET");
+        expect(init?.headers).toMatchObject({ authorization: "Bearer secret" });
+        return new Response(new Uint8Array([1, 2, 3]));
+      },
+    );
     const persistence = createHttpRemoteLoroPersistence({
       baseUrl: "https://remote.example/",
       token: "secret",
@@ -1390,13 +1822,19 @@ describe("createHttpRemoteLoroPersistence", () => {
 
   it("appends exact update bytes over HTTP", async () => {
     let postedBody: BodyInit | null = null;
-    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      expect(String(input)).toBe("https://remote.example/loro/project%2Fone/updates");
-      expect(init?.method).toBe("POST");
-      expect(init?.headers).toMatchObject({ "content-type": "application/octet-stream" });
-      postedBody = init?.body ?? null;
-      return new Response(null, { status: 204 });
-    });
+    const fetchImpl = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        expect(String(input)).toBe(
+          "https://remote.example/loro/project%2Fone/updates",
+        );
+        expect(init?.method).toBe("POST");
+        expect(init?.headers).toMatchObject({
+          "content-type": "application/octet-stream",
+        });
+        postedBody = init?.body ?? null;
+        return new Response(null, { status: 204 });
+      },
+    );
     const persistence = createHttpRemoteLoroPersistence({
       baseUrl: "https://remote.example",
       fetch: fetchImpl,
@@ -1418,7 +1856,9 @@ describe("createRemoteLoroPersistenceFromEnv", () => {
 
   it("creates an HTTP persistence adapter from environment configuration", async () => {
     const fetchImpl = vi.fn(async (_input: string, init?: RequestInit) => {
-      expect(init?.headers).toMatchObject({ authorization: "Bearer env-token" });
+      expect(init?.headers).toMatchObject({
+        authorization: "Bearer env-token",
+      });
       return new Response(null, { status: 204 });
     });
     const persistence = createRemoteLoroPersistenceFromEnv(

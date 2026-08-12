@@ -21,11 +21,11 @@
  *   - CLASH_API_KEY + CLASH_API_URL exported
  *   - CLASH_TEST_PROJECT_ID points at a project with at least one
  *     existing `image` action-badge node we can reference
- *   - The canvas daemon for that project doesn't need to be running —
- *     the CLI falls back to a one-shot LoroSyncClient when it's down.
+ *   - The configured local-api host is running. The CLI is only a protocol
+ *     client and never opens its own Loro replica.
  *
  * Run:
- *   pnpm --filter @clash-space/cli test:e2e
+ *   pnpm --filter @clash/cli test:e2e
  *   # or directly:
  *   node packages/cli/e2e/canvas-add-refs.test.mjs
  */
@@ -86,15 +86,15 @@ function findReferenceableImageNode() {
 }
 
 /** Helper: list edges incoming to a node by walking `canvas list` and
- *  asking the daemon's data. node:test's CLI subprocess doesn't have a
+ *  asking the host's data. node:test's CLI subprocess doesn't have a
  *  dedicated `edges` subcommand yet, so we read the node's incoming
- *  references via the daemon's `list_edges` if present; otherwise fall
+ *  references via the host's `list_edges` if present; otherwise fall
  *  back to inferring via `referenceImageOrder` (the positional list).
  *  For verification we want the EDGES — there's also a debug listing in
- *  the daemon over the socket but going through the CLI keeps this test
+ *  the host protocol, but going through the CLI keeps this test
  *  parallel to how an agent would interact. */
 function getRefNodeIdsFor(targetNodeId) {
-  // The daemon stores `referenceImageOrder` as the positional list of
+  // The local-api host stores `referenceImageOrder` as the positional list of
   // incoming refs (mirror of incoming edges). The list maps 1:1 to
   // edges when refs are added through the canonical writers, which
   // the CLI uses, so this is sufficient for end-to-end verification.

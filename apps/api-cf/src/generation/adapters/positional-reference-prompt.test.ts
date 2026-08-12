@@ -46,15 +46,15 @@ describe("positionalReferencePrompt", () => {
         kind: "video",
         providerId: "volcengine",
         upstreamId: "volcengine",
-        upstreamModel: "doubao-seedance-2-5",
+        upstreamModel: "doubao-seedance-2-5-260628",
         apiShape: "modelark",
         priority: 9,
         referenceBinding: {
           type: "positional-tokens",
           modalityScopedIndexes: true,
-          tokens: { image: "[Image {n}]", video: "[Video {n}]", audio: "[Audio {n}]" },
+          tokens: { image: "@图像{n}", video: "@视频{n}", audio: "@音频{n}" },
         },
       },
-    } as never)).toBe("Use [Image 2][Image 1][Video 1][Audio 1]");
+    } as never)).toBe("Use @图像2@图像1@视频1@音频1");
   });
 });

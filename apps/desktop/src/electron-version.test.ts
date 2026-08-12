@@ -8,6 +8,7 @@ interface DesktopPackage {
 }
 
 interface RootPackage {
+  scripts?: Record<string, string>;
   pnpm?: {
     overrides?: Record<string, string>;
   };
@@ -77,13 +78,28 @@ describe("desktop Electron runtime", () => {
       "--linux AppImage --x64",
     );
     expect(manifest.dependencies ?? {}).not.toHaveProperty("@remotion/bundler");
-    expect(manifest.devDependencies?.["@remotion/bundler"]).toBe("4.0.370");
-    expect(manifest.scripts?.["prepare:pack"] ?? "").toContain(
-      "pnpm --filter @master-clash/web... build",
+    expect(manifest.devDependencies?.["@remotion/bundler"]).toBe("4.0.507");
+    expect(manifest.devDependencies?.["@clash/render-server"]).toBe(
+      "workspace:*",
     );
-    expect(manifest.scripts?.["prepare:pack"] ?? "").toContain(
-      "pnpm --filter @master-clash/local-api... build",
+    expect(manifest.devDependencies?.clash).toBe("workspace:*");
+    expect(manifest.scripts?.["prepare:pack"] ?? "").not.toContain("--filter");
+    expect(rootManifest.scripts?.["prepare:desktop-pack"] ?? "").toContain(
+      "turbo run build",
     );
+    expect(rootManifest.scripts?.["prepare:desktop-pack"] ?? "").toContain(
+      "pnpm --filter @clash/desktop prepare:pack",
+    );
+    for (const script of [
+      "pack:desktop:mac:arm64",
+      "pack:desktop:mac:x64",
+      "pack:desktop:win",
+      "pack:desktop:linux",
+    ]) {
+      expect(rootManifest.scripts?.[script] ?? "").toContain(
+        "pnpm prepare:desktop-pack",
+      );
+    }
     expect(manifest.devDependencies?.["electron-builder"]).toBe("26.15.3");
     expect(rootManifest.pnpm?.overrides?.["@electron/get"]).toBe("5.0.0");
     expect(builderConfig).toContain(
@@ -156,9 +172,9 @@ describe("desktop Electron runtime", () => {
       expect(workflow).toContain("actions/upload-artifact@v4");
       expect(workflow).toContain("Clash-Desktop-${{ matrix.platform }}");
     }
-    expect(ci).toContain(
-      "pnpm --filter @master-clash/desktop run ${{ matrix.script }}",
-    );
+    expect(ci).toContain("pnpm run ${{ matrix.script }}");
+    expect(ci).toContain("script: pack:desktop:mac:arm64");
+    expect(release).toContain("pnpm run ${{ matrix.script }}");
     expect(release).toContain("publish-desktop-preview:");
     expect(release).toContain("actions/download-artifact@v4");
     expect(release).toContain("gh release upload desktop-preview");

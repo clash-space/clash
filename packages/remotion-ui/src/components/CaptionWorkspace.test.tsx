@@ -7,7 +7,7 @@ import {
   useEditor,
   type EditorAssetTranscript,
   type EditorState,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import { CaptionWorkspace } from './CaptionWorkspace';
 
 const StateProbe = ({ onState }: { onState: (state: EditorState) => void }) => {

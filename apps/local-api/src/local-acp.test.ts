@@ -2,7 +2,7 @@ import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { SessionPermissionBroker } from "@clash-space/bridge/session-manager";
+import type { SessionPermissionBroker } from "./runtime/host/lib/session-manager.js";
 import {
   createLocalAcpAdapter as createLocalAcpAdapterImpl,
   createLocalHarnessConfigStore,
@@ -437,7 +437,7 @@ describe("local ACP adapter", () => {
     const listResumeSessions = vi.fn(async () => [{
       id: "claude-file-history",
       title: "Old Claude file",
-      cwd: "master-clash/project",
+      cwd: "clash/project",
       modifiedAt: 1,
     }]);
     const adapter = createLocalAcpAdapter({
@@ -501,7 +501,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     expect(start).toHaveBeenCalledWith(expect.objectContaining({
@@ -555,7 +555,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     expect(start).toHaveBeenCalledWith(expect.objectContaining({
@@ -2228,7 +2228,7 @@ describe("local ACP adapter", () => {
 
     await expect(adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       projectId: "project-1",
       resumeAcpSessionId: "acp-existing",
       permissionMode: "codex:full-access",
@@ -2236,7 +2236,7 @@ describe("local ACP adapter", () => {
 
     expect(start).toHaveBeenCalledWith({
       session_id: "local-acp-session-1",
-      agent_template_id: "master-clash",
+      agent_template_id: "clash",
       agent_id: "codex-acp",
       agent_spec: { command: "codex-acp" },
       permission_mode: "codex:full-access",
@@ -2267,7 +2267,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const firstSocket = new FakeSocket();
@@ -2317,7 +2317,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -2415,8 +2415,8 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
-      agentMemberId: "local-master-clash",
+      agentTemplateId: "clash",
+      agentMemberId: "local-clash",
     });
 
     const socket = new FakeSocket();
@@ -2449,7 +2449,7 @@ describe("local ACP adapter", () => {
       expect(store.appendAgentEvent).toHaveBeenCalledWith("local-acp-store", {
         id: "turn-store-agent",
         sender_kind: "agent",
-        sender_id: "local-master-clash",
+        sender_id: "local-clash",
         turn_id: "turn-store",
         events: [{ type: "agent_message_chunk", content: { type: "text", text: "hi" } }],
         created_at: 1_700_000_000,
@@ -2490,8 +2490,8 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
-      agentMemberId: "local-master-clash",
+      agentTemplateId: "clash",
+      agentMemberId: "local-clash",
     });
 
     const socket = new FakeSocket();
@@ -2612,7 +2612,7 @@ describe("local ACP adapter", () => {
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentId: "codex-acp",
-      agentMemberId: "local-master-clash",
+      agentMemberId: "local-clash",
     });
 
     const socket = new FakeSocket();
@@ -2639,7 +2639,7 @@ describe("local ACP adapter", () => {
       expect(store.appendAgentEvent).toHaveBeenCalledWith("local-acp-load-replay", {
         id: "local-acp-load-replay-acp-replay",
         sender_kind: "agent",
-        sender_id: "local-master-clash",
+        sender_id: "local-clash",
         turn_id: null,
         events: [{
           sessionUpdate: "agent_message_chunk",
@@ -2679,7 +2679,7 @@ describe("local ACP adapter", () => {
         messages: [{
           id: "turn-existing-agent",
           sender_kind: "agent" as const,
-          sender_id: "local-master-clash",
+          sender_id: "local-clash",
           turn_id: "turn-existing",
           events: [{ type: "text", text: "already here" }],
           created_at: 1_700_000_000,
@@ -2710,7 +2710,7 @@ describe("local ACP adapter", () => {
     await adapter.createSession({
       runtimeId: "desktop-local",
       agentId: "codex-acp",
-      agentMemberId: "local-master-clash",
+      agentMemberId: "local-clash",
     });
 
     const socket = new FakeSocket();
@@ -2963,7 +2963,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3015,7 +3015,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3079,7 +3079,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3175,7 +3175,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3245,7 +3245,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3315,7 +3315,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3393,7 +3393,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3474,7 +3474,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3575,7 +3575,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3702,7 +3702,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
     });
 
     const socket = new FakeSocket();
@@ -3796,7 +3796,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       projectId: "project-1",
     });
 
@@ -3904,8 +3904,8 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
-      agentMemberId: "local-master-clash",
+      agentTemplateId: "clash",
+      agentMemberId: "local-clash",
       projectId: "project-env",
     });
 
@@ -3914,7 +3914,7 @@ describe("local ACP adapter", () => {
     });
     expect(start).toHaveBeenCalledWith(expect.objectContaining({
       agent_id: "codex-acp",
-      agent_member_id: "local-master-clash",
+      agent_member_id: "local-clash",
       project_id: "project-env",
     }));
   });
@@ -3935,8 +3935,8 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
-      agentMemberId: "local-master-clash",
+      agentTemplateId: "clash",
+      agentMemberId: "local-clash",
       projectId: "project-room",
     });
 
@@ -3951,12 +3951,12 @@ describe("local ACP adapter", () => {
     adapter.bindSessionSocket("local-acp-session-mentioned", ws);
     send.mockClear();
 
-    await expect(adapter.pushRoomMention("project-room", "local-master-clash", {
+    await expect(adapter.pushRoomMention("project-room", "local-clash", {
       message_id: "room-msg-1",
       from_kind: "user",
       from_id: "local-user",
       from_user_id: "local-user",
-      text: "hello master-clash",
+      text: "hello clash",
     })).resolves.toBe(true);
 
     expect(send).toHaveBeenCalledWith(JSON.stringify({
@@ -3965,7 +3965,7 @@ describe("local ACP adapter", () => {
       from_kind: "user",
       from_id: "local-user",
       from_user_id: "local-user",
-      text: "hello master-clash",
+      text: "hello clash",
     }));
   });
 
@@ -4000,8 +4000,8 @@ describe("local ACP adapter", () => {
     });
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
-      agentMemberId: "local-master-clash",
+      agentTemplateId: "clash",
+      agentMemberId: "local-clash",
       projectId: "project-history",
     });
 
@@ -4036,7 +4036,7 @@ describe("local ACP adapter", () => {
         {
           id: "turn-1-agent",
           sender_kind: "agent",
-          sender_id: "local-master-clash",
+          sender_id: "local-clash",
           turn_id: "turn-1",
           events: [{ type: "text", text: "agent reply" }],
           created_at: 1_700_000_001,
@@ -4065,8 +4065,8 @@ describe("local ACP adapter", () => {
     });
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
-      agentMemberId: "local-master-clash",
+      agentTemplateId: "clash",
+      agentMemberId: "local-clash",
       projectId: "project-owned-child",
     });
 
@@ -4085,7 +4085,7 @@ describe("local ACP adapter", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(dispose).not.toHaveBeenCalled();
-    await expect(adapter.pushRoomMention("project-owned-child", "local-master-clash", {
+    await expect(adapter.pushRoomMention("project-owned-child", "local-clash", {
       message_id: "room-msg-after-close",
       text: "still there?",
     })).resolves.toBe(true);
@@ -4136,8 +4136,8 @@ describe("local ACP adapter", () => {
     });
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
-      agentMemberId: "local-master-clash",
+      agentTemplateId: "clash",
+      agentMemberId: "local-clash",
       projectId: "project-background-turn",
     });
 
@@ -4172,7 +4172,7 @@ describe("local ACP adapter", () => {
         {
           id: "turn-bg-agent",
           sender_kind: "agent",
-          sender_id: "local-master-clash",
+          sender_id: "local-clash",
           turn_id: "turn-bg",
           events: [{ type: "text", text: "background reply" }],
           created_at: 1_700_000_101,
@@ -4225,7 +4225,7 @@ describe("local ACP adapter", () => {
     });
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       projectId: "project-no-replay",
     });
 
@@ -4322,7 +4322,7 @@ describe("local ACP adapter", () => {
     });
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       projectId: "project-config",
     });
 
@@ -4396,7 +4396,7 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       projectId: "project-initial-config",
       configValues: {
         mode: "agent",
@@ -4440,7 +4440,7 @@ describe("local ACP adapter", () => {
     });
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       projectId: "project-mode",
     });
 
@@ -4511,7 +4511,7 @@ describe("local ACP adapter", () => {
     });
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       projectId: "project-permission",
     });
 
@@ -4653,8 +4653,8 @@ describe("local ACP adapter", () => {
 
     await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
-      agentMemberId: "local-master-clash",
+      agentTemplateId: "clash",
+      agentMemberId: "local-clash",
       agentId: "codex-acp",
       projectId: "project-restart",
     });

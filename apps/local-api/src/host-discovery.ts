@@ -51,7 +51,6 @@ export function createHostDiscoveryRecord(options: {
   profile?: ClashRuntimeProfile;
   agentCliPath?: string;
   ownerClientId?: string;
-  pluginBrokerToken?: string;
   pid?: number;
   hostId?: string;
   now?: Date;
@@ -69,7 +68,6 @@ export function createHostDiscoveryRecord(options: {
     profile: options.profile ?? resolveClashProfile(),
     agentCliPath: options.agentCliPath,
     ownerClientId: options.ownerClientId,
-    pluginBrokerToken: options.pluginBrokerToken,
     startedAt: now,
     updatedAt: now,
   };

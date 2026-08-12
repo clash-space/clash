@@ -56,9 +56,8 @@ type ProviderOAuthRow = {
   updated_at: number | null;
 };
 
-function providerAccountForOAuth(providerId: ProviderOAuthId): { providerId: ProviderAccountId; upstreamId: ModelUpstreamId } | null {
-  if (providerId === "dreamina") return { providerId: "jimeng", upstreamId: "jimeng" };
-  return null;
+function providerAccountForOAuth(providerId: ProviderOAuthId): { providerId: ProviderAccountId; upstreamId: ModelUpstreamId } {
+  return { providerId, upstreamId: providerId };
 }
 
 function statusValue(value: string): ProviderOAuthRecord["status"] {

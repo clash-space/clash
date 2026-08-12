@@ -239,7 +239,7 @@ export function GroupChatPanel({
   );
 
   // Mention name resolution: try invited agent display_name first, then
-  // fall back to template id (lets `@master-clash` work as a shortcut
+  // fall back to template id (lets `@clash` work as a shortcut
   // when there's exactly one matching agent invited). Returns the matching
   // claim id (= agent_member.id) or null.
   const resolveMention = useCallback(
@@ -321,7 +321,7 @@ export function GroupChatPanel({
 
       // Fall back to legacy plain `@<handle>` syntax if no
       // structured agent mention found (lets a user typing a bare
-      // @master-clash still address an agent).
+      // @clash still address an agent).
       if (agentMentions.length === 0) {
         const { agentMemberId: handle } = parseMention(value);
         const target = handle ? resolveMention(handle) : null;

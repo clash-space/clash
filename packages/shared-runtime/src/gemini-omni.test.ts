@@ -8,7 +8,7 @@ import {
 } from "./gemini-omni.js";
 
 describe("Gemini Omni Interactions transport", () => {
-  it("takes a Google key and nothing else", async () => {
+  it("takes the credential its surface accepts and nothing else", async () => {
     // Routing Gemini through Cloudflare's AI Gateway was removed. It was the only credential in the
     // product whose validity was decided by inspecting another credential's value -- a gateway
     // token was accepted only when the base url's hostname was literally gateway.ai.cloudflare.com,
@@ -18,7 +18,6 @@ describe("Gemini Omni Interactions transport", () => {
     // party's credential wearing Google's account.
     await expect(createGeminiOmniInteraction({
       apiKey: "",
-      baseUrl: "https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio",
       model: "gemini-omni-flash-preview",
       input: [],
       aspectRatio: "16:9",
@@ -36,25 +35,26 @@ describe("Gemini Omni Interactions transport", () => {
     }), { status: 200, headers: { "content-type": "application/json" } }));
 
     await expect(createGeminiOmniInteraction({
-      apiKey: "gemini-key",
-      baseUrl: "https://generativelanguage.googleapis.com/v1beta/",
+      accessToken: "gemini-key", project: "p-1",
+      baseUrl: "https://aiplatform.googleapis.com/v1beta1/",
       model: "gemini-omni-flash-preview",
       input: [
         { type: "text", text: "Use " },
         { type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
         { type: "text", text: " as the jacket reference" },
       ],
+      background: true,
       aspectRatio: "9:16",
       duration: 7,
       fetch: fetchImpl,
     })).resolves.toEqual(expect.objectContaining({ id: "interactions/omni-1" }));
 
     expect(fetchImpl).toHaveBeenCalledWith(
-      "https://generativelanguage.googleapis.com/v1beta/interactions",
+      "https://aiplatform.googleapis.com/v1beta1/projects/p-1/locations/global/interactions",
       expect.objectContaining({
         method: "POST",
         headers: {
-          "x-goog-api-key": "gemini-key",
+          authorization: "Bearer gemini-key",
           "content-type": "application/json",
         },
       }),
@@ -70,7 +70,6 @@ describe("Gemini Omni Interactions transport", () => {
         type: "video",
         aspect_ratio: "9:16",
         duration: "7s",
-        delivery: "uri",
       },
       background: true,
       store: true,
@@ -78,7 +77,7 @@ describe("Gemini Omni Interactions transport", () => {
     });
   });
 
-  it("gets a stored interaction and extracts URI or inline video output", async () => {
+  it("gets a stored interaction from the developer api and extracts URI or inline video output", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       id: "interactions/omni-1",
       status: "completed",

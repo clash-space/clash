@@ -1,36 +1,37 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": [
-    "**/.env.*local"
-  ],
+  "globalDependencies": ["**/.env.*local"],
   "tasks": {
     "build": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": [
         ".next/**",
         "!.next/cache/**",
-        "dist/**"
-      ]
+        ".remotion-bundle/**",
+        "dist/**",
+        "runtime/**"
+      ],
+      "outputLogs": "new-only"
     },
     "dev": {
       "cache": false,
       "persistent": true
     },
     "test": {
-      "dependsOn": [
-        "^test",
-        "build"
-      ],
-      "outputs": [
-        "coverage/**"
-      ],
+      "dependsOn": ["^test", "build"],
+      "outputs": ["coverage/**"],
       "inputs": [
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.jsonl",
+        "src/**/*.png",
+        "src/**/*.jpg",
+        "src/**/*.wav",
+        "src/**/*.mp3",
+        "src/**/*.mp4",
         "test/**/*.ts",
         "test/**/*.tsx",
+        "test/**/*.jsonl",
         "app/**/*.ts",
         "app/**/*.tsx",
         "lib/**/*.ts",
@@ -42,16 +43,15 @@
         "package.json"
       ]
     },
-    "lint": {
-      "dependsOn": [
-        "^build"
-      ],
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "cache": false,
       "outputs": []
     },
-    "type-check": {
-      "dependsOn": [
-        "^build"
-      ],
+    "lint": {
+      "outputs": []
+    },
+    "typecheck": {
       "outputs": []
     },
     "clean": {

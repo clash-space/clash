@@ -20,8 +20,10 @@ on:
       - 'packages/remotion-core/**'
       - 'packages/remotion-effects/**'
       - 'packages/remotion-components/**'
+      - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
+      - 'turbo.json'
       - '.github/workflows/build-render-image.yml'
 
 env:

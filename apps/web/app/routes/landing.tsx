@@ -1,4 +1,4 @@
-import Background from "@clash/web-ui/components/Background";
+import Background from "@clash/gui/components/Background";
 import LandingNav from "@clash/web-ui/components/landing/LandingNav";
 import LandingHero from "@clash/web-ui/components/landing/LandingHero";
 import FeatureGrid from "@clash/web-ui/components/landing/FeatureGrid";

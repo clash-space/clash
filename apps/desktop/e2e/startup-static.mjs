@@ -64,7 +64,7 @@ await access(path.join(clashCliVendorDir, "loro-crdt"), constants.R_OK).catch((e
 });
 
 const registrySource = await readFile(
-  path.join(repoRoot, "packages", "clash-bridge", "src", "_acp-runtime", "registry.ts"),
+  path.join(repoRoot, "packages", "cli", "src", "runtime", "bridge", "_acp-runtime", "registry.ts"),
   "utf8",
 );
 assert(!registrySource.includes("claude-code-acp"), "registry still references claude-code-acp");

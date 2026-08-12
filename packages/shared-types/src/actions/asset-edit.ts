@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AssetKindSchema, type AssetKind } from '../assets';
+import { AssetKindSchema, type AssetKind } from '../assets.js';
 import {
   ACTION_INVOCATION_MODE,
   ActionInvocationModeSchema,
@@ -8,9 +8,9 @@ import {
   invocationModeForSurface,
   type ActionSpec,
   type ActionSurface,
-} from './spec';
+} from './spec.js';
 
-export { ACTION_INVOCATION_MODE } from './spec';
+export { ACTION_INVOCATION_MODE } from './spec.js';
 
 export const ASSET_ACTION_ID = {
   ImageEditor: 'image-editor',

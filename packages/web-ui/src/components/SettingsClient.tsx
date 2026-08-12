@@ -10,9 +10,11 @@ import {
     isLocalSpeechModelEntry,
     isLocalTtsModelEntry,
     localSpeechCapability,
+    transcribesAudioToText,
     type LocalSpeechCapability,
 } from '@clash/shared-types';
-import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, MODEL_CARDS, listModelCatalogEntries, resolveCredentialSources, listProviderModelSupport, normalizeActionProviderId, type ProviderCredentialRequirements, type ProviderOAuthId, type UserModelCardConfig } from '@clash/shared-types';
+import { authFormControls, type AuthFormControl } from '@clash/shared-types';
+import { ACCOUNT_SETTINGS, ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, MODEL_CARDS, listModelCatalogEntries, resolveCredentialSources, listProviderModelSupport, normalizeActionProviderId, type ProviderCredentialRequirements, type ProviderOAuthId, type UserModelCardConfig } from '@clash/shared-types';
 import {
     createApiToken, revokeApiToken, type ApiTokenInfo,
     setVariable, deleteVariable, type VariableInfo,
@@ -1631,7 +1633,7 @@ export default function SettingsClient({
                         <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">CLI</h2>
                     </div>
                     <code className="block rounded-xl bg-warm-muted border border-warm-border px-4 py-3 text-sm font-mono text-stone-700 dark:text-stone-200">
-                        npm install -g @clash-space/cli
+                        npm install -g @clash/cli
                     </code>
                 </section>
                 )}
@@ -1667,11 +1669,9 @@ const MODEL_PROVIDER_PRESETS: ModelProviderAccountInfo[] = [
     { providerId: 'official', upstreamId: 'bfl', region: 'global', enabled: false, priority: 27 },
     { providerId: 'fal', upstreamId: 'fal', enabled: false, priority: 30 },
     { providerId: 'pika', upstreamId: 'pika', enabled: false, priority: 35 },
-    { providerId: 'kie', upstreamId: 'kie', enabled: false, priority: 40 },
     { providerId: 'replicate', upstreamId: 'replicate', enabled: false, priority: 50 },
     { providerId: 'kling', upstreamId: 'kling', enabled: false, priority: 60 },
     { providerId: 'minimax', upstreamId: 'minimax', enabled: false, priority: 70 },
-    { providerId: 'jimeng', upstreamId: 'jimeng', enabled: false, priority: 80 },
     { providerId: 'volcengine', upstreamId: 'volcengine', enabled: false, priority: 90 },
     { providerId: 'elevenlabs', upstreamId: 'elevenlabs', enabled: false, priority: 100 },
     { providerId: 'suno', upstreamId: 'suno', enabled: false, priority: 110 },
@@ -1694,10 +1694,6 @@ function modelProviderLabel(provider: Pick<ModelProviderAccountInfo, 'providerId
     ].filter(Boolean).join('/');
 }
 
-function isGoogleCloudAgentPlatform(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): boolean {
-    return provider.providerId === 'official' && provider.upstreamId === 'google-agent-platform';
-}
-
 function isGoogleAiStudio(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): boolean {
     return provider.providerId === 'official' && provider.upstreamId === 'google-ai-studio';
 }
@@ -1706,19 +1702,20 @@ function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInf
     if (provider.providerId === 'custom') return ['apiKey', 'baseUrl'];
     if (provider.providerId === 'fal') return ['apiKey'];
     if (provider.providerId === 'pika') return ['apiKey'];
-    if (provider.providerId === 'kie') return ['apiKey'];
     if (provider.providerId === 'replicate') return ['apiKey'];
     if (provider.providerId === 'kling') return ['accessKey', 'secretKey'];
     if (provider.providerId === 'minimax') return ['apiKey'];
-    if (provider.providerId === 'jimeng') return [];
     if (provider.providerId === 'volcengine') return ['apiKey'];
     if (provider.providerId === 'elevenlabs') return ['apiKey'];
     if (provider.providerId === 'suno') return ['apiKey', 'callbackUrl'];
     if (provider.providerId === 'official' && provider.upstreamId === 'openai') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'anthropic') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'bfl') return ['apiKey'];
-    if (isGoogleAiStudio(provider)) return ['apiKey'];
-    if (isGoogleCloudAgentPlatform(provider)) return ['apiKey'];
+    // One credential is required, but which one depends on the account's `service`: an api key
+    // answers on the Developer API and returns 401 "API keys are not supported by this API" on
+    // Agent Platform, where a service account is what works. Requiring both would block an account
+    // that is correctly configured for one surface.
+    if (isGoogleAiStudio(provider)) return [];
     return [];
 }
 
@@ -1736,6 +1733,8 @@ type ModelProviderCredentialField = {
      * typo in the character that distinguishes them, and tells nobody the alternative exists.
      */
     options?: { value: string; label: string }[];
+    /** Pre-selected when the account has no stored value. Comes from the shared declaration. */
+    defaultValue?: string;
 };
 
 type ModelProviderSetup = {
@@ -1788,13 +1787,23 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
         // two sources of one kind -- two regions, two installed clients -- silently lost
         // one, and every new kind meant another branch here.
         const sources = resolveCredentialSources(provider.pluginProvider.auth);
+        // Every control the Provider declared, in the order it declared them. The previous version
+        // read only `field` entries, so a `choice` -- Google's service and region, MiniMax's host --
+        // was dropped from the form while the host still required it, and the account failed later
+        // for a field the user was never shown.
+        const declared = authFormControls(provider.pluginProvider.auth);
+        const credentials = declared
+            .filter((control): control is Extract<AuthFormControl, { control: 'text' | 'select' }> =>
+                control.control === 'text' || control.control === 'select')
+            .map((control) => ({
+                key: control.key,
+                label: control.label,
+                ariaLabel: `${provider.pluginProvider!.name} ${control.label}`,
+                allowMultiple: false,
+                ...(control.control === 'select' ? { options: control.options } : {}),
+                ...(control.value ? { defaultValue: control.value } : {}),
+            }));
         const fields = sources.filter((source) => source.control === 'field');
-        const credentials = fields.map((source) => ({
-            key: source.credentialId,
-            label: source.label,
-            ariaLabel: `${provider.pluginProvider!.name} ${source.label}`,
-            allowMultiple: false,
-        }));
         const windowSource = sources.find((source) => source.control === 'button-window');
         const actionSource = sources.find((source) => source.control === 'button-action');
         return {
@@ -1858,13 +1867,6 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
             apiKey: 'apiKey',
         };
     }
-    if (provider.providerId === 'kie') {
-        return {
-            title: 'KIE',
-            description: 'Alternative image/video provider for supported generation models.',
-            apiKey: 'apiKey',
-        };
-    }
     if (provider.providerId === 'replicate') {
         return {
             title: 'Replicate',
@@ -1909,27 +1911,18 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
                     allowMultiple: true,
                 },
                 {
-                    // Not a preference. A key issued by one service is unknown to the other, and the
-                    // rejection arrives as an authentication error naming neither, so the wrong
-                    // answer here looks exactly like a bad key.
-                    key: 'region',
-                    label: 'Service',
-                    ariaLabel: 'MiniMax service region',
-                    options: [
-                        { value: 'global', label: 'International (api.minimax.io)' },
-                        { value: 'cn', label: 'Mainland China (api.minimaxi.com)' },
-                    ],
+                    // Rendered from the shared declaration rather than spelled out here, so the
+                    // options and the default cannot drift from what the host resolves against.
+                    key: 'service',
+                    label: ACCOUNT_SETTINGS.minimax?.[0]?.label ?? 'Service',
+                    ariaLabel: 'MiniMax service',
+                    options: (ACCOUNT_SETTINGS.minimax?.[0]?.options ?? []).map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                    })),
+                    defaultValue: ACCOUNT_SETTINGS.minimax?.[0]?.defaultValue,
                 },
             ],
-        };
-    }
-    if (provider.providerId === 'jimeng') {
-        return {
-            title: 'Dreamina',
-            description: 'Official Dreamina generation through the local dreamina CLI adapter.',
-            apiKey: '',
-            credentials: [],
-            oauthProviderId: 'dreamina',
         };
     }
     if (provider.providerId === 'volcengine') {
@@ -2008,22 +2001,6 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
             ],
             baseUrlKey: 'baseUrl',
             baseUrlPlaceholder: 'https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/google-ai-studio',
-        };
-    }
-    if (isGoogleCloudAgentPlatform(provider)) {
-        return {
-            title: 'Google Cloud Agent Platform',
-            description: 'Google Cloud-hosted Gemini, Veo, image, video, and text models through service account credentials.',
-            apiKey: 'serviceAccountKey',
-            credentials: [
-                {
-                    key: 'serviceAccountKey',
-                    label: 'Service account JSON',
-                    ariaLabel: 'Google Cloud service account JSON',
-                    placeholder: 'Paste service account JSON',
-                    allowMultiple: false,
-                },
-            ],
         };
     }
     return null;
@@ -2288,7 +2265,6 @@ function providerOAuthStatusText(oauth?: ProviderOAuthInfo): string {
 }
 
 function providerOAuthDisplayName(providerId: string): string {
-    if (providerId === 'dreamina') return 'Dreamina';
     return providerId;
 }
 
@@ -2441,21 +2417,20 @@ function providerSettingsHref(providerKey: string): string {
     return `/settings?section=providers&provider=${encodeURIComponent(providerKey)}`;
 }
 
-const DECLARED_MODEL_TASK_BY_ID = new Map(
-    MODEL_CARDS.flatMap((model) => model.task ? [[model.id, model.task] as const] : []),
-);
-
-function modelTaskKey(entry: ModelCatalogEntryInfo): string {
-    return entry.model.task
-        ?? DECLARED_MODEL_TASK_BY_ID.get(entry.model.id)
-        ?? entry.model.kind;
+/**
+ * Group and label models by what they produce.
+ *
+ * This used to read a `task` field, falling back to a lookup table and only then to `kind`. The
+ * field held `speech-to-text`, `text-to-speech` or `music-generation` on 8 of 50 cards, so the
+ * filter menu offered a mixture of two vocabularies: TTS and Music beside Image and Video. It is
+ * one vocabulary now -- producing one class of output is one action, and the rest is parameters.
+ */
+function modelKindKey(entry: ModelCatalogEntryInfo): string {
+    return entry.model.kind;
 }
 
-function modelTaskLabel(task: string): string {
-    if (task === 'speech-to-text' || task === 'asr') return 'ASR';
-    if (task === 'text-to-speech') return 'TTS';
-    if (task === 'music-generation') return 'Music';
-    return `${task.slice(0, 1).toUpperCase()}${task.slice(1)}`;
+function modelKindLabel(kind: string): string {
+    return `${kind.slice(0, 1).toUpperCase()}${kind.slice(1)}`;
 }
 
 function supportForProvider(
@@ -2483,11 +2458,9 @@ function providerIdForModelRoute(route: NonNullable<ModelCatalogEntryInfo['selec
         route.upstreamId === 'mock' ||
         route.upstreamId === 'fal' ||
         route.upstreamId === 'pika' ||
-        route.upstreamId === 'kie' ||
         route.upstreamId === 'replicate' ||
         route.upstreamId === 'kling' ||
         route.upstreamId === 'minimax' ||
-        route.upstreamId === 'jimeng' ||
         route.upstreamId === 'volcengine' ||
         route.upstreamId === 'elevenlabs' ||
         route.upstreamId === 'suno'
@@ -2512,7 +2485,6 @@ type ModelProviderLogoId =
     | 'google'
     | 'fal'
     | 'flux'
-    | 'kie'
     | 'replicate'
     | 'kling'
     | 'minimax'
@@ -2542,9 +2514,6 @@ function modelProviderLogo(provider: Pick<ModelProviderAccountInfo, 'providerId'
     if (provider.providerId === 'official' && provider.upstreamId === 'bfl') {
         return { id: 'flux', src: '/brand/models/flux.svg' };
     }
-    if (provider.providerId === 'kie') {
-        return { id: 'kie', src: '/brand/providers/kie.png' };
-    }
     if (provider.providerId === 'replicate') {
         return { id: 'replicate', src: '/brand/providers/replicate.svg' };
     }
@@ -2553,9 +2522,6 @@ function modelProviderLogo(provider: Pick<ModelProviderAccountInfo, 'providerId'
     }
     if (provider.providerId === 'minimax') {
         return { id: 'minimax', src: '/brand/providers/minimax.svg' };
-    }
-    if (provider.providerId === 'jimeng') {
-        return { id: 'jimeng', src: '/brand/providers/jimeng.svg' };
     }
     if (provider.providerId === 'volcengine') {
         return { id: 'volcengine', src: '/brand/providers/volcengine.svg' };
@@ -2574,7 +2540,6 @@ function modelProviderFilterLabel(id: string, fallback?: string): string {
         fal: 'fal.ai',
         bfl: 'Black Forest Labs',
         flux: 'Black Forest Labs',
-        kie: 'KIE',
         replicate: 'Replicate',
         kling: 'Kling',
         minimax: 'MiniMax',
@@ -2656,9 +2621,6 @@ function modelCardBrand(model: ModelCatalogEntryInfo['model']): ModelBrand {
     }
     if (/(fal\\.ai|\\bfal\\b)/.test(identity)) {
         return { id: 'fal', label: 'fal', src: '/brand/providers/fal.svg' };
-    }
-    if (/(\\bkie\\b)/.test(identity)) {
-        return { id: 'kie', label: 'KIE', src: '/brand/providers/kie.png' };
     }
     if (/(local|mlx|whisper|kokoro|piper)/.test(identity)) {
         if (/(local agent)/.test(identity)) {
@@ -3067,11 +3029,11 @@ function ModelRoutingSection({
             () => new Set(focusedProviderRow?.support?.models.map((model) => model.id) ?? []),
             [focusedProviderRow],
         );
-    const modelTaskOptions = useMemo(() => [...new Set(catalog.map(modelTaskKey))].sort(), [catalog]);
+    const modelTaskOptions = useMemo(() => [...new Set(catalog.map(modelKindKey))].sort(), [catalog]);
     const modelTaskSelectOptions = useMemo<SelectOption<string>[]>(
         () => [
             { value: 'all', label: 'All model types' },
-            ...modelTaskOptions.map((task) => ({ value: task, label: modelTaskLabel(task) })),
+            ...modelTaskOptions.map((kind) => ({ value: kind, label: modelKindLabel(kind) })),
         ],
         [modelTaskOptions],
     );
@@ -3115,7 +3077,7 @@ function ModelRoutingSection({
             ].join(' ').toLowerCase();
             return text.includes(modelQuery.trim().toLowerCase());
         })
-        .filter((entry) => modelTaskFilter === 'all' || modelTaskKey(entry) === modelTaskFilter)
+        .filter((entry) => modelTaskFilter === 'all' || modelKindKey(entry) === modelTaskFilter)
         .filter((entry) => {
             if (modelAvailabilityFilter === 'enabled') return modelIsEnabled(entry);
             if (modelAvailabilityFilter === 'unavailable') return !modelIsEnabled(entry);
@@ -3213,8 +3175,7 @@ function ModelRoutingSection({
         const localSpeechInstalled = !!localSpeechCapabilityValue &&
             localSpeechModelStatuses[entry.model.id] === true;
         const localSpeechIsAsr = localSpeechCapabilityValue === 'speech-to-text';
-        const task = modelTaskKey(entry);
-        const KindIcon = task === 'speech-to-text'
+        const KindIcon = transcribesAudioToText(entry.model)
             ? Microphone
             : entry.model.kind === 'image'
             ? ImageSquare
@@ -3319,7 +3280,7 @@ function ModelRoutingSection({
                             )}
                             <span className="flex items-center gap-1.5 rounded-full bg-warm-muted px-2 py-1 text-[10px] font-medium capitalize text-stone-600 dark:text-stone-300">
                                 <KindIcon className="h-3 w-3" aria-hidden="true" />
-                                {modelTaskLabel(task)}
+                                {modelKindLabel(entry.model.kind)}
                             </span>
                         </span>
                     </div>
@@ -3733,7 +3694,7 @@ function ModelRoutingSection({
                                 // one character that separates two services.
                                 <SelectMenu
                                     ariaLabel={credential.ariaLabel ?? `${setup.title} ${credential.label}`}
-                                    value={draft.apiKeys?.[credential.key] ?? credential.options[0]?.value ?? ''}
+                                    value={draft.apiKeys?.[credential.key] ?? credential.defaultValue ?? credential.options[0]?.value ?? ''}
                                     onValueChange={(value) => updateCredentialDraft(credential.key, value)}
                                     options={credential.options}
                                     variant="field"
@@ -4465,7 +4426,7 @@ function ModelRoutingSection({
                     )}
                     <div className="min-w-0 flex-1">
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
-                            {creating ? 'Text model' : `${modelTaskLabel(modelTaskKey(entry!))} model`}
+                            {creating ? 'Text model' : `${modelKindLabel(modelKindKey(entry!))} model`}
                         </p>
                         <h2 className="mt-1 font-display text-xl font-bold text-slate-900 dark:text-slate-50">
                             {creating ? 'New text model' : entry!.model.name}

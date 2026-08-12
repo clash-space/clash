@@ -16,7 +16,6 @@ import {
 import * as serverModule from "./server";
 import { createLocalAudioConfigStore } from "./audio-config";
 import { createLocalMetadataStore } from "./local-metadata-store";
-import { createLocalProviderStore } from "./local-provider-store";
 import { createClashUserConfigStore } from "./user-config";
 
 const execFileAsync = promisify(execFile);
@@ -64,274 +63,31 @@ async function listenOnLoopback(server: ReturnType<typeof createServer>, port = 
 }
 
 describe("local API server configuration", () => {
-  it("wires encrypted provider accounts and SQLite audit into the local plugin broker", async () => {
-    const createBroker = (serverModule as Record<string, unknown>)
-      .createLocalPluginBrokerServices as
-      | ((options: { dataDir: string; fetch: typeof fetch }) => any)
-      | undefined;
-    expect(createBroker).toBeDefined();
-    if (!createBroker) return;
-
-    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-plugin-broker-"));
-    await createLocalProviderStore(dataDir).saveProviderAccounts([{
-      id: "fal-primary",
-      providerId: "fal",
-      upstreamId: "fal",
-      enabled: true,
-      credentials: { apiKey: "fal-encrypted-key" },
-    }]);
-    const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
-      expect(new Headers(init?.headers).get("authorization")).toBe("Key fal-encrypted-key");
-      return Response.json({ ok: true });
-    });
-    const broker = createBroker({ dataDir, fetch });
-    const context = {
-      manifest: {
-        apiVersion: "clash.plugin/v1",
-        id: "server-broker-plugin",
-        version: "1.0.0",
-        name: "Server Broker Plugin",
-        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
-        exports: { cards: [], functions: [] },
-        permissions: {
-          secrets: ["provider:fal"],
-          network: { domains: ["queue.fal.run"] },
-        },
-      },
-      invocation: {
-        protocol: "clash.plugin.invoke/v1",
-        invocationId: "invocation-server-1",
-        taskId: "task-1",
-        projectId: "project-1",
-        target: {
-          pluginId: "server-broker-plugin",
-          version: "1.0.0",
-          exportId: "project",
-          schemaHash: `sha256:${"b".repeat(64)}`,
-          kind: "provider-projector",
-        },
-        input: { values: {}, references: [] },
-        actor: { kind: "agent", id: "agent-1" },
-      },
-    };
-    const credential = await broker({
-      protocol: "clash.plugin.broker-request/v1",
-      requestId: "credential-server-1",
-      invocationId: "invocation-server-1",
-      operation: { kind: "credential.handle", secretId: "provider:fal" },
-    }, context) as { handle: string };
-    await broker({
-      protocol: "clash.plugin.broker-request/v1",
-      requestId: "network-server-1",
-      invocationId: "invocation-server-1",
-      operation: {
-        kind: "network.fetch",
-        url: "https://queue.fal.run/models/test",
-        method: "GET",
-        headers: {},
-        credentialHandle: credential.handle,
-      },
-    }, context);
-
-    const audit = await createLocalMetadataStore(dataDir).listPluginBrokerAudit({
-      pluginId: "server-broker-plugin",
-    });
-    expect(audit.map((record) => record.operation)).toEqual([
-      "network.fetch",
-      "credential.handle",
-    ]);
-    expect(JSON.stringify(audit)).not.toContain("fal-encrypted-key");
-  });
-
-  it("redeems an authorized plugin OAuth token through the local broker without a stored account", async () => {
-    const createBroker = (serverModule as Record<string, unknown>)
-      .createLocalPluginBrokerServices as
-      | ((options: { dataDir: string; fetch: typeof fetch }) => any)
-      | undefined;
-    expect(createBroker).toBeDefined();
-    if (!createBroker) return;
-    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-plugin-oauth-broker-"));
-    await createLocalProviderStore(dataDir).saveProviderOAuth([{
-      userId: "local-user",
-      providerId: "hilo-hub",
-      accountId: "hilo-hub-primary",
-      status: "authorized",
-      accessToken: "hub-oauth-token",
-    }]);
-    const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      expect(headers.get("authorization")).toBe("Bearer hub-oauth-token");
-      expect(headers.get("token")).toBe("hub-oauth-token");
-      return Response.json({ ok: true });
-    });
-    const broker = createBroker({ dataDir, fetch });
-    const context = {
-      manifest: {
-        apiVersion: "clash.plugin/v1",
-        id: "hilo-hub-media",
-        version: "1.0.0",
-        name: "Hilo Hub Media",
-        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
-        exports: { cards: [], functions: [] },
-        permissions: {
-          secrets: ["provider:hilo-hub"],
-          network: { domains: ["hub.minimax.io"] },
-        },
-      },
-      invocation: {
-        protocol: "clash.plugin.invoke/v1",
-        invocationId: "invocation-hilo-oauth",
-        taskId: "task-hilo-oauth",
-        projectId: "project-hilo-oauth",
-        target: {
-          pluginId: "hilo-hub-media",
-          version: "1.0.0",
-          exportId: "execute",
-          schemaHash: `sha256:${"d".repeat(64)}`,
-          kind: "provider-executor",
-        },
-        input: { values: {}, references: [] },
-        actor: { kind: "system", id: "local-aigc" },
-      },
-    };
-    const credential = await broker({
-      protocol: "clash.plugin.broker-request/v1",
-      requestId: "credential-hilo-oauth",
-      invocationId: "invocation-hilo-oauth",
-      operation: { kind: "credential.handle", secretId: "provider:hilo-hub" },
-    }, context) as { handle: string };
-
-    await broker({
-      protocol: "clash.plugin.broker-request/v1",
-      requestId: "network-hilo-oauth",
-      invocationId: "invocation-hilo-oauth",
-      operation: {
-        kind: "network.fetch",
-        url: "https://hub.minimax.io/api/v1/video/minimax-v3/tasks/hub-task-1",
-        method: "GET",
-        headers: {},
-        credentialHandle: credential.handle,
-      },
-    }, context);
-  });
-
-  it("records plugin broker provider traffic into the replay recording", async () => {
-    const createBroker = (serverModule as Record<string, unknown>)
-      .createLocalPluginBrokerServices as
-      | ((options: {
-        dataDir: string;
-        fetch: typeof fetch;
-        providerTrafficRecordingPath: string;
-      }) => any)
-      | undefined;
-    expect(createBroker).toBeDefined();
-    if (!createBroker) return;
-    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-plugin-record-broker-"));
-    const recordingPath = join(dataDir, "provider-run.jsonl");
-    await createLocalProviderStore(dataDir).saveProviderOAuth([{
-      userId: "local-user",
-      providerId: "hilo-hub",
-      accountId: "hilo-hub-primary",
-      status: "authorized",
-      accessToken: "hub-oauth-token",
-    }]);
-    const fetch = vi.fn(async (_url: string, _init?: RequestInit) =>
-      Response.json({ taskId: "hub-task-record" }, { status: 201 }));
-    const broker = createBroker({
-      dataDir,
-      fetch,
-      providerTrafficRecordingPath: recordingPath,
-    });
-    const context = {
-      manifest: {
-        apiVersion: "clash.plugin/v1",
-        id: "hilo-hub-media",
-        version: "1.1.1",
-        name: "Hilo Hub Media",
-        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
-        exports: { cards: [], functions: [] },
-        permissions: {
-          secrets: ["provider:hilo-hub"],
-          network: { domains: ["hub.minimax.io"] },
-          externalWrites: true,
-        },
-      },
-      invocation: {
-        protocol: "clash.plugin.invoke/v1",
-        invocationId: "invocation-hilo-record",
-        taskId: "task-hilo-record",
-        projectId: "project-hilo-record",
-        target: {
-          pluginId: "hilo-hub-media",
-          version: "1.1.1",
-          exportId: "execute",
-          schemaHash: `sha256:${"e".repeat(64)}`,
-          kind: "provider-executor",
-        },
-        input: { values: {}, references: [] },
-        actor: { kind: "system", id: "local-aigc" },
-      },
-    };
-    const credential = await broker({
-      protocol: "clash.plugin.broker-request/v1",
-      requestId: "credential-hilo-record",
-      invocationId: "invocation-hilo-record",
-      operation: { kind: "credential.handle", secretId: "provider:hilo-hub" },
-    }, context) as { handle: string };
-
-    await broker({
-      protocol: "clash.plugin.broker-request/v1",
-      requestId: "network-hilo-record",
-      invocationId: "invocation-hilo-record",
-      operation: {
-        kind: "network.fetch",
-        url: "https://hub.minimax.io/api/v2/image/nano_banana/generate",
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: { prompt: "A lighthouse", aspect_ratio: "1:1" },
-        credentialHandle: credential.handle,
-      },
-    }, context);
-
-    const events = (await readFile(recordingPath, "utf8"))
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, any>);
-    const request = events.find((event) => event.type === "request");
-    const response = events.find((event) => event.type === "response");
-
-    expect(request).toBeDefined();
-    expect(response).toBeDefined();
-    expect(request?.request.url).toBe("https://hub.minimax.io/api/v2/image/nano_banana/generate");
-    expect(request?.request.method).toBe("POST");
-    expect(request?.request.body).toEqual({ prompt: "A lighthouse", aspect_ratio: "1:1" });
-    expect(request?.stub.providerId).toBe("hilo-hub");
-    expect(response?.response.status).toBe(201);
-    expect(response?.response.body).toEqual({ taskId: "hub-task-record" });
-    // The Hub token must never reach the recording.
-    expect(request?.request.headers.authorization).toBe("[redacted]");
-    expect(request?.request.headers.token).toBe("[redacted]");
-    expect(await readFile(recordingPath, "utf8")).not.toContain("hub-oauth-token");
-  });
-
   it("persists plugin asset writes as immutable project-scoped Clash assets", async () => {
     const createBroker = (serverModule as Record<string, unknown>)
       .createLocalPluginBrokerServices as
-      | ((options: { dataDir: string; fetch: typeof fetch }) => any)
+      | ((options: { dataDir: string; uploadOrigin?: string }) => any)
       | undefined;
     expect(createBroker).toBeDefined();
     if (!createBroker) return;
     const dataDir = await mkdtemp(join(tmpdir(), "clash-local-plugin-output-"));
-    const broker = createBroker({ dataDir, fetch: vi.fn() as any });
+    const broker = createBroker({
+      dataDir,
+      uploadOrigin: "http://127.0.0.1:8787",
+    });
     const context = {
       manifest: {
         apiVersion: "clash.plugin/v1",
-        id: "asset-writer-plugin",
+        id: "test.asset-writer-plugin",
         version: "1.0.0",
         name: "Asset Writer Plugin",
         runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
-        exports: { cards: [], functions: [] },
-        permissions: { assets: ["write"] },
+        contributes: {
+          cards: [],
+          providers: [],
+          modelBindings: [],
+          functions: [{ id: "run", kind: "provider-executor" as const }],
+        },
       },
       invocation: {
         protocol: "clash.plugin.invoke/v1",
@@ -339,7 +95,7 @@ describe("local API server configuration", () => {
         taskId: "task-output-1",
         projectId: "project-output-1",
         target: {
-          pluginId: "asset-writer-plugin",
+          pluginId: "test.asset-writer-plugin",
           version: "1.0.0",
           exportId: "write",
           schemaHash: `sha256:${"c".repeat(64)}`,
@@ -360,15 +116,28 @@ describe("local API server configuration", () => {
         mediaType: "image/png",
         dataBase64: "AQID",
       },
-    }, context) as { assetId: string; uri: string };
+    }, context) as {
+      assetId: string;
+      uri: string;
+      url?: string;
+      reach?: string;
+    };
 
     expect(output.uri).toBe(`clash-asset://${output.assetId}`);
+    expect(output).toMatchObject({
+      url: expect.stringMatching(
+        /^http:\/\/127\.0\.0\.1:8787\/assets\/projects\/project-output-1\/plugins\//,
+      ),
+      reach: "private",
+    });
     const metadata = await createLocalMetadataStore(dataDir).load();
     const asset = metadata.assets.find((candidate) => candidate.id === output.assetId);
     expect(asset).toMatchObject({
       projectId: "project-output-1",
       kind: "image",
-      sourceModel: "plugin:asset-writer-plugin@1.0.0",
+      // The id carries its publisher. A bare name is not a plugin id any more -- two authors can both
+      // write an "asset-writer", and the receipt that attests one would attest the other.
+      sourceModel: "plugin:test.asset-writer-plugin@1.0.0",
       sourceTaskId: "task-output-1",
       metadata: { contentType: "image/png", bytes: 3 },
     });
@@ -378,20 +147,113 @@ describe("local API server configuration", () => {
     }));
   });
 
-  it("keeps local package scripts reproducible without pnpm install checks", async () => {
+  it("stores a provider URL before returning its asset handle to a third-party plugin", async () => {
+    const createBroker = (serverModule as Record<string, unknown>)
+      .createLocalPluginBrokerServices as
+      | ((options: {
+          dataDir: string;
+          assetFetch: typeof fetch;
+          uploadOrigin?: string;
+        }) => any)
+      | undefined;
+    expect(createBroker).toBeDefined();
+    if (!createBroker) return;
+
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-plugin-url-output-"));
+    try {
+      const assetFetch = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
+        headers: { "content-type": "video/mp4" },
+      }));
+      const broker = createBroker({
+        dataDir,
+        assetFetch,
+        uploadOrigin: "http://127.0.0.1:8787",
+      });
+      const output = await broker({
+        protocol: "clash.plugin.broker-request/v1",
+        requestId: "asset-url-1",
+        invocationId: "invocation-url-1",
+        operation: {
+          kind: "asset.upload-slot",
+          slot: "media",
+          assetKind: "video",
+          mediaType: "video/mp4",
+          url: "https://cdn.example.test/output.mp4",
+        },
+      }, {
+        manifest: {
+          apiVersion: "clash.plugin/v1",
+          id: "third-party.video-plugin",
+          version: "2.1.0",
+          name: "Third-party Video Plugin",
+          runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
+          contributes: {
+            cards: [],
+            providers: [],
+            modelBindings: [],
+            functions: [{ id: "run", kind: "provider-executor" }],
+          },
+        },
+        invocation: {
+          protocol: "clash.plugin.invoke/v1",
+          invocationId: "invocation-url-1",
+          taskId: "task-url-1",
+          projectId: "project-url-1",
+          target: {
+            pluginId: "third-party.video-plugin",
+            version: "2.1.0",
+            exportId: "run",
+            schemaHash: `sha256:${"d".repeat(64)}`,
+            kind: "provider-executor",
+          },
+          input: { values: {}, references: [] },
+          actor: { kind: "system", id: "test" },
+        },
+      }) as {
+        assetId: string;
+        uri: string;
+        kind: string;
+        mediaType?: string;
+        url?: string;
+        reach?: string;
+      };
+
+      expect(output).toMatchObject({
+        assetId: expect.not.stringMatching(/^upload-/),
+        uri: `clash-asset://${output.assetId}`,
+        kind: "video",
+        mediaType: "video/mp4",
+        url: expect.stringMatching(
+          /^http:\/\/127\.0\.0\.1:8787\/assets\/projects\/project-url-1\/plugins\//,
+        ),
+        reach: "private",
+      });
+      expect(assetFetch).toHaveBeenCalledWith("https://cdn.example.test/output.mp4");
+      const metadata = await createLocalMetadataStore(dataDir).load();
+      expect(metadata.assets).toContainEqual(expect.objectContaining({
+        id: output.assetId,
+        projectId: "project-url-1",
+        sourceModel: "plugin:third-party.video-plugin@2.1.0",
+        sourceTaskId: "task-url-1",
+        metadata: expect.objectContaining({ bytes: 3, contentType: "video/mp4" }),
+      }));
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps package scripts local and leaves dependency orchestration to the root", async () => {
     const packageJson = JSON.parse(
       await readFile(new URL("../package.json", import.meta.url), "utf8"),
     ) as { scripts?: Record<string, string> };
     const scripts = packageJson.scripts ?? {};
 
-    expect(scripts["build:deps"]).toContain("npm --prefix ../../packages/shared-types run build");
-    expect(scripts["build:deps"]).toContain("npm --prefix ../../packages/cli run build");
-    expect(scripts["build:deps"]).toContain("npm --prefix ../../packages/clash-bridge run build");
+    expect(scripts["build:deps"]).toBeUndefined();
+    expect(scripts["build:with-deps"]).toBeUndefined();
     expect(scripts.build).toBe("tsc");
-    expect(scripts["build:with-deps"]).toBe("npm run build:deps && tsc");
-    expect(scripts.test).toBe("npm run build:deps && vitest run src");
-    expect(scripts["test:e2e"]).toBe("npm run build:with-deps && node e2e/daemon-smoke.mjs");
-    expect(`${scripts.build} ${scripts.test} ${scripts["test:e2e"]}`).not.toContain("pnpm");
+    expect(scripts.typecheck).toBe("tsc --noEmit");
+    expect(scripts.test).toBe("vitest run src");
+    expect(scripts["test:e2e"]).toBe("node e2e/daemon-smoke.mjs");
   });
 
   it("uses CLASH_HOME for the default local data dir when CLASH_LOCAL_DATA_DIR is absent", () => {
@@ -787,7 +649,25 @@ describe("local API server configuration", () => {
       "export CLASH_CLI_NODE_PATH='/Applications/Clash.app/Contents/Resources/clash-cli/vendor'",
     );
     expect(childEnv.CLASH_CLI_NODE_PATH).toBe("/Applications/Clash.app/Contents/Resources/clash-cli/vendor");
-    expect(shimText).not.toContain("app.asar/node_modules/@clash-space/cli");
+    expect(shimText).not.toContain("app.asar/node_modules/@clash/cli");
+  });
+
+  it("preserves the CLI source tsconfig when the development shim runs from a clean shell", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-agent-tools-"));
+    const tsconfigPath = "/workspace/packages/cli/tsconfig.dev.json";
+    const childEnv = createLocalAgentToolEnv({
+      dataDir,
+      apiBaseUrl: "http://127.0.0.1:49397",
+      env: {
+        PATH: "/usr/bin:/bin",
+        CLASH_CLI_ENTRY_PATH: "/workspace/packages/cli/src/index.ts",
+        TSX_TSCONFIG_PATH: tsconfigPath,
+      },
+    });
+
+    const shimText = await readFile(join(dataDir, "agent-bin", "clash"), "utf8");
+    expect(shimText).toContain(`export TSX_TSCONFIG_PATH='${tsconfigPath}'`);
+    expect(childEnv.TSX_TSCONFIG_PATH).toBe(tsconfigPath);
   });
 
   it("keeps the packaged CLI vendor path when the shim runs from a clean shell", async () => {
@@ -832,7 +712,7 @@ describe("local API server configuration", () => {
 
     const created = await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       agentMemberId: "mock-agent",
       projectId: "mock-project",
     });
@@ -975,7 +855,7 @@ describe("local API server configuration", () => {
 
     const created = await adapter.createSession({
       runtimeId: "desktop-local",
-      agentTemplateId: "master-clash",
+      agentTemplateId: "clash",
       projectId: "mock-project",
     });
     await adapter.upgradeHarness("mock-acp");

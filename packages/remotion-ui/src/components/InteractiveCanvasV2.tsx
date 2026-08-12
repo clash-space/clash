@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Player, PlayerRef } from '@remotion/player';
-import { VideoComposition } from '@master-clash/remotion-components';
+import { VideoComposition } from '@clash/remotion-components';
 import {
   applyCanvasTransformEdit,
   getItemLookupIds,
@@ -8,7 +8,7 @@ import {
   type Track,
   type Item,
   type ItemProperties,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 import { getPlaybackSyncAction, getTimelineEndDisplayFrame } from './playbackSync';
 import { useDragGesture } from './ui/gesture';
 import { colors, shadows } from './timeline/styles';

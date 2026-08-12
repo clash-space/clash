@@ -8,7 +8,7 @@ import { mediaFromResult } from "./provider-plugin-executor";
  * `kind: "asset"` is the typed channel: its media type is a declared field, its URL carries a
  * stated reach, and zod checks both. Before the write contract had a `url`, a plugin whose upstream
  * published the result had no way to say so there, so it used `kind: "value"` and hand-rolled the
- * payload -- which is why `hilo-hub-media` guesses the media type from the model kind:
+ * payload -- which is why `hilo.hub-media` guesses the media type from the model kind:
  *
  *   contentType: route.kind === "audio" ? "audio/mpeg" : ...
  *
@@ -44,7 +44,24 @@ describe("provider plugin media output", () => {
     expect(media.contentType).toBe("video/mp4");
   });
 
-  it("refuses a URL the host cannot reach", () => {
+  it("uses the private projection returned by the local storage adapter", () => {
+    const media = mediaFromResult(result([{
+      slot: "media",
+      kind: "asset",
+      asset: {
+        assetId: "upstream-2",
+        uri: "clash-asset://upstream-2",
+        kind: "video",
+        url: "http://127.0.0.1:8787/assets/projects/p/plugins/out.mp4",
+        reach: "private",
+      },
+    }]));
+    expect(media.url).toBe(
+      "http://127.0.0.1:8787/assets/projects/p/plugins/out.mp4",
+    );
+  });
+
+  it("refuses a stored asset handle without a storage projection", () => {
     expect(() => mediaFromResult(result([{
       slot: "media",
       kind: "asset",
@@ -52,10 +69,8 @@ describe("provider plugin media output", () => {
         assetId: "upstream-2",
         uri: "clash-asset://upstream-2",
         kind: "video",
-        url: "http://127.0.0.1:9/out.mp4",
-        reach: "private",
       },
-    }]))).toThrow(/reach|private/i);
+    }]))).toThrow(/projection|url/i);
   });
 
   it("still accepts the value channel so installed plugins keep working", () => {

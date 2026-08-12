@@ -1,8 +1,11 @@
 {
-  "name": "@master-clash/local-api",
+  "name": "@clash/local-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
   "exports": {
@@ -18,34 +21,36 @@
     }
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts",
-    "build:deps": "npm --prefix ../../packages/shared-runtime run build && npm --prefix ../../packages/shared-types run build && npm --prefix ../../packages/clash-sdk/js run build && npm --prefix ../../packages/cli run build && npm --prefix ../../plugins/first-party-media run build && npm --prefix ../../plugins/codex-imagegen run build && npm --prefix ../../packages/clash-bridge run build:runtime",
+    "dev": "tsx watch --tsconfig tsconfig.dev.json src/dev.ts",
+    "start": "tsx --tsconfig tsconfig.dev.json src/server.ts",
     "build": "tsc",
-    "build:with-deps": "npm run build:deps && tsc",
-    "type-check": "npm run build:deps && tsc --noEmit",
-    "test": "npm run build:deps && vitest run src",
-    "test:e2e": "npm run build:with-deps && node e2e/daemon-smoke.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run src",
+    "test:e2e": "node e2e/daemon-smoke.mjs",
     "test:providers": "tsx scripts/provider-conformance.ts",
     "test:google-agent-platform": "tsx scripts/google-agent-platform-conformance.ts",
     "test:watch": "vitest src"
   },
   "dependencies": {
-    "@clash-plugin/first-party-media": "workspace:*",
+    "@agentclientprotocol/claude-agent-acp": "^0.47.0",
+    "@agentclientprotocol/sdk": "^0.28.1",
     "@clash-plugin/codex-imagegen": "workspace:*",
-    "@clash-space/bridge": "workspace:*",
-    "@clash-space/cli": "workspace:*",
-    "@clash-space/sdk": "workspace:*",
+    "@clash-plugin/google": "workspace:*",
+    "@clash-plugin/minimax": "workspace:*",
+    "@clash-plugin/volcengine": "workspace:*",
+    "@clash/sdk": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
     "@clash/shared-types": "workspace:*",
     "@hono/node-server": "^1.13.0",
+    "@openma/common": "github:openma-ai/openma-common#codex/acp-lifecycle-v05",
     "hono": "^4.7.10",
     "loro-crdt": "^1.10.3",
-    "yaml": "^2.6.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "yaml": "^2.6.0"
   },
   "devDependencies": {
-    "@types/node": "^22.13.0",
+    "@mswjs/interceptors": "^0.42.3",
+    "@types/node": "^24.0.0",
     "@types/ws": "^8.5.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.0",

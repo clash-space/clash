@@ -7,7 +7,7 @@
  *   CLASH_PROJECT_ID=... CLASH_RUNTIME_ID=...  \
  *   tsx packages/clash-sdk/js/examples/echo.ts
  *
- * Or after `pnpm --filter @clash-space/sdk build`:
+ * Or after `pnpm build:package @clash/sdk` from the repository root:
  *   node --import tsx packages/clash-sdk/js/examples/echo.ts
  */
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Asset, Track } from '@master-clash/remotion-core';
+import type { Asset, Track } from '@clash/remotion-core';
 import { hydrateTimelineTracksForNle } from './nleHandoff';
 
 describe('web NLE handoff', () => {

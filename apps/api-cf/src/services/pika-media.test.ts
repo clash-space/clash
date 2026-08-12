@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { generatePikaMedia } from "./pika-media";
+import { generatePikaMedia, type PikaUsageLifecycleEvent } from "./pika-media";
 
 describe("generatePikaMedia", () => {
   it("executes a Pika-routed image generation", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const usageEvents: Array<Record<string, unknown>> = [];
+    const usageEvents: PikaUsageLifecycleEvent[] = [];
     const result = await generatePikaMedia("pk_live_hosted", {
       taskId: "hosted-pika-1",
       kind: "image",

@@ -24,8 +24,6 @@ import { projectsD1Routes } from "./routes/projects-d1";
 import { internalProjectsContextRoutes } from "./routes/internal-projects-context";
 import { settingsD1Routes } from "./routes/settings-d1";
 import { marketplaceRoutes } from "./routes/marketplace";
-import { byoBridgeRoutes } from "./routes/byo-bridge";
-import { runtimeDaemonRoutes } from "./routes/v1/runtimes";
 import { authenticateRuntimeToken } from "./routes/v1/runtimes";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
@@ -166,25 +164,6 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
     req.headers.set("x-partykit-namespace", "SUPERVISOR");
     return c.env.SUPERVISOR.get(id).fetch(req);
   });
-
-  // ─── BYO local agent bridge ────────────────────────────────
-  // Browser-side bridge requests use the same validated identity boundary.
-  // CLI-side pair credentials are handled inside the bridge route itself.
-  app.use("/agents/byo-bridge/pair", async (c, next) => {
-    await applyValidatedPublicIdentity(c);
-    await next();
-  });
-  app.use("/agents/byo-bridge/browser", async (c, next) => {
-    await applyValidatedPublicIdentity(c);
-    await next();
-  });
-  app.route("/agents/byo-bridge", byoBridgeRoutes);
-
-  // ─── Local runtime daemon ──────────────────────────────────
-  // Daemon-side endpoints — auth is in the request body/header (one-time
-  // code or sk_machine_* bearer token), NOT a session cookie. Mounted
-  // outside /api/v1/ so the gateway doesn't enforce user auth.
-  app.route("/agents/runtime", runtimeDaemonRoutes);
 
   // WS attach for the long-running daemon ↔ RuntimeRoom DO link.
   // Bearer token in Authorization header → identifies which runtime row.

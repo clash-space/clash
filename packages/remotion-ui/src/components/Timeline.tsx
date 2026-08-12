@@ -22,8 +22,8 @@ import {
   useEditorPlayback,
   useEditorPlaybackRefs,
   useEditorStaticState,
-} from '@master-clash/remotion-core';
-import type { EditorState, Item, TrackCategory } from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
+import type { EditorState, Item, TrackCategory } from '@clash/remotion-core';
 import type { AgentAnnotationObjectRef } from '@clash/shared-types';
 import { TimelineHeader } from './timeline/TimelineHeader';
 import { TimelineRuler } from './timeline/TimelineRuler';

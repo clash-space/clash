@@ -1,11 +1,11 @@
 import { LoroMap, type LoroDoc } from "loro-crdt";
-import { agentReadToken } from "./agent-read-proof";
-import { Canvas } from "./canvas-ops";
+import { agentReadToken } from "./agent-read-proof.js";
+import { Canvas } from "./canvas-ops.js";
 import {
   clearNodeUpstreamRefs,
   deleteNodeUpstreamRef,
   readNodeUpstreamRefs,
-} from "./node-upstreams";
+} from "./node-upstreams.js";
 
 export const DEFAULT_CANVAS_ID = "main";
 

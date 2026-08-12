@@ -42,7 +42,7 @@ async function publish(runDir: string, value: HostRecord): Promise<void> {
 
 async function loadHostModule(): Promise<Record<string, unknown>> {
   try {
-    return await import("./plugin-host.js") as Record<string, unknown>;
+    return (await import("./plugin-host.js")) as Record<string, unknown>;
   } catch {
     return {};
   }
@@ -65,6 +65,67 @@ test("daemon discovery refuses a different runtime profile", async () => {
     profile: "dev" | "prod",
   ) => Promise<HostRecord | undefined>;
   assert.equal(await read(runDir, "dev"), undefined);
+});
+
+test("development resolves the host, CLI, and agents from workspace source", async () => {
+  const module = await loadHostModule();
+  const resolveLayout = module.resolvePluginHostRuntimeLayout as (options: {
+    moduleUrl: string;
+    env: Record<string, string>;
+    tsxCliPath: string;
+  }) => {
+    source: boolean;
+    localApiEntry: string;
+    cliEntry: string;
+    agentBundleRoot: string;
+    builtinPluginRoot: string;
+    nodeArgs?: readonly string[];
+  };
+  assert.deepEqual(
+    resolveLayout({
+      moduleUrl: "file:///repo/plugins/clash/src/plugin-host.ts",
+      env: { CLASH_SOURCE_RUNTIME: "1" },
+      tsxCliPath: "/repo/node_modules/tsx/cli.mjs",
+    }),
+    {
+      source: true,
+      localApiEntry: "/repo/plugins/clash/src/local-api-entry.ts",
+      cliEntry: "/repo/packages/cli/src/index.ts",
+      agentBundleRoot: "/repo/packages/cli/assets/agents",
+      builtinPluginRoot: "/repo/plugins/clash",
+      nodeArgs: [
+        "/repo/node_modules/tsx/cli.mjs",
+        "watch",
+        "--tsconfig",
+        "/repo/plugins/clash/tsconfig.dev.json",
+      ],
+      daemonEnv: {
+        CLASH_SOURCE_RUNTIME: "1",
+        TSX_TSCONFIG_PATH: "/repo/plugins/clash/tsconfig.dev.json",
+      },
+    },
+  );
+});
+
+test("production resolves only colocated unified runtime artifacts", async () => {
+  const module = await loadHostModule();
+  const resolveLayout = module.resolvePluginHostRuntimeLayout as (options: {
+    moduleUrl: string;
+    env: Record<string, string>;
+  }) => Record<string, unknown>;
+  assert.deepEqual(
+    resolveLayout({
+      moduleUrl: "file:///opt/clash/runtime/index.js",
+      env: {},
+    }),
+    {
+      source: false,
+      localApiEntry: "/opt/clash/runtime/local-api.cjs",
+      cliEntry: "/opt/clash/runtime/clash-cli.cjs",
+      agentBundleRoot: "/opt/clash/runtime/agents",
+      builtinPluginRoot: "/opt/clash",
+    },
+  );
 });
 
 test("MCP reuses a healthy daemon without launching another", async () => {
@@ -99,11 +160,19 @@ test("one client starts the persistent daemon once under concurrent demand", asy
     startHost: async () => {
       starts += 1;
       await publish(runDir, started);
-      return { pid: started.pid, stop: async () => { stops += 1; } };
+      return {
+        pid: started.pid,
+        stop: async () => {
+          stops += 1;
+        },
+      };
     },
   });
 
-  const [first, second] = await Promise.all([manager.ensureHost(), manager.ensureHost()]);
+  const [first, second] = await Promise.all([
+    manager.ensureHost(),
+    manager.ensureHost(),
+  ]);
   assert.equal(first.hostId, started.hostId);
   assert.equal(second.hostId, started.hostId);
   assert.equal(starts, 1);
@@ -130,7 +199,10 @@ test("separate MCP clients coordinate one persistent daemon startup", async () =
   const first = create(options);
   const second = create(options);
 
-  const [firstHost, secondHost] = await Promise.all([first.ensureHost(), second.ensureHost()]);
+  const [firstHost, secondHost] = await Promise.all([
+    first.ensureHost(),
+    second.ensureHost(),
+  ]);
   assert.equal(starts, 1);
   assert.equal(firstHost.hostId, secondHost.hostId);
   await first.close();
@@ -140,7 +212,9 @@ test("separate MCP clients coordinate one persistent daemon startup", async () =
 test("daemon bootstrap derives discovery from the authoritative local-api data directory", async () => {
   const module = await loadHostModule();
   const staleRoot = await mkdtemp(join(tmpdir(), "clash-daemon-stale-root-"));
-  const canonicalRoot = await mkdtemp(join(tmpdir(), "clash-daemon-canonical-root-"));
+  const canonicalRoot = await mkdtemp(
+    join(tmpdir(), "clash-daemon-canonical-root-"),
+  );
   const dataDir = join(canonicalRoot, "local-api");
   let startedWith: { runDir: string; dataDir: string } | undefined;
   const started: HostRecord = { ...existingHost, hostId: "daemon-canonical" };

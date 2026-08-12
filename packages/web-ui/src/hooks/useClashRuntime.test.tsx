@@ -2054,7 +2054,7 @@ describe("useClashRuntime", () => {
   });
 
   it("does not treat project-scoped runtime cache as Clash session history", async () => {
-    window.localStorage.setItem("clash:runtimeSession:project-one:desktop-local:master-clash:codex-acp", JSON.stringify({
+    window.localStorage.setItem("clash:runtimeSession:project-one:desktop-local:clash:codex-acp", JSON.stringify({
       acpSessionId: "acp-thread-stale",
       messages: [{ id: "stale-user", role: "user", parts: [{ type: "text", text: "old prompt" }] }],
       updatedAt: Date.now(),
@@ -2116,7 +2116,7 @@ describe("useClashRuntime", () => {
             {
               id: "agent-row",
               sender_kind: "agent",
-              sender_id: "master-clash",
+              sender_id: "clash",
               turn_id: "turn-old",
               events: [{
                 sessionUpdate: "agent_message_chunk",

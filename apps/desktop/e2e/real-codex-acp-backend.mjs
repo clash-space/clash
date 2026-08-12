@@ -75,7 +75,7 @@ async function copyCodexAuthContext() {
 
 async function main() {
   const { AcpRuntimeImpl, NodeSpawner, detect } = await import(
-    pathToFileURL(path.join(repoRoot, "packages", "clash-bridge", "dist", "acp-runtime.js")).href
+    pathToFileURL(path.join(repoRoot, "packages", "cli", "dist", "acp-runtime.mjs")).href
   );
 
   await rm(runRoot, { recursive: true, force: true });

@@ -6,8 +6,8 @@ import {
   type TimelineDslItemType,
   type TimelineDslTrackCategory,
   type TimelineDslTrackRole,
-} from "./timeline-field-annotations";
-import { parseFromExpression } from "./timeline-from-expression";
+} from "./timeline-field-annotations.js";
+import { parseFromExpression } from "./timeline-from-expression.js";
 
 export type TimelineDslSemanticIssue = {
   ruleId: string;

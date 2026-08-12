@@ -89,7 +89,7 @@ describe("TopNavigation desktop chrome", () => {
       resolve(process.cwd(), "packages/web-ui/src/components/TopNavigation.tsx"),
       "utf8",
     );
-    const tabsPath = resolve(process.cwd(), "packages/web-ui/src/components/ui/tabs.tsx");
+    const tabsPath = resolve(process.cwd(), "packages/gui/src/components/ui/tabs.tsx");
     const tabsSource = existsSync(tabsPath) ? readFileSync(tabsPath, "utf8") : "";
 
     expect(existsSync(tabsPath)).toBe(true);
@@ -119,7 +119,7 @@ describe("TopNavigation desktop chrome", () => {
       "utf8",
     );
     const tooltipSource = readFileSync(
-      resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
+      resolve(process.cwd(), "packages/gui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
     const start = source.indexOf('data-desktop-toolbar="true"');

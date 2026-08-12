@@ -46,7 +46,7 @@ async function assertWebServer() {
     await sleep(250);
   }
   throw new Error(
-    `Web app is not reachable at ${webUrl}. Start it first: pnpm --filter @master-clash/web dev\n` +
+    `Web app is not reachable at ${webUrl}. Start it first: pnpm --filter @clash/web dev\n` +
       `Reason: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
   );
 }
@@ -236,7 +236,7 @@ async function writeFakeCodexAcp(binDir) {
   const wrapper = path.join(binDir, "codex-acp");
   const agent = path.join(binDir, "fake-codex-acp.mjs");
   const sdkUrl = pathToFileURL(require.resolve("@agentclientprotocol/sdk", {
-    paths: [path.join(repoRoot, "packages", "clash-bridge")],
+    paths: [path.join(repoRoot, "packages", "cli")],
   })).href;
   await writeFile(
     wrapper,
@@ -615,7 +615,7 @@ async function exerciseLocalAcpSessionHistory(cdp) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        agent_template_id: "master-clash",
+        agent_template_id: "clash",
         project_id: "desktop-smoke-agent"
       })
     });
@@ -762,7 +762,7 @@ async function exerciseRealAcpSessionThroughDesktopRuntime(cdp, apiPort) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        agent_member_id: "local-master-clash",
+        agent_member_id: "local-clash",
         project_id: project.id,
         agent_id: "codex-acp"
       })
@@ -870,7 +870,7 @@ async function exerciseRealAcpSessionThroughDesktopRuntime(cdp, apiPort) {
   if (
     node.data?.actorType !== "agent" ||
     node.data?.actorUserId !== "local-user" ||
-    node.data?.actorAgentId !== "local-master-clash"
+    node.data?.actorAgentId !== "local-clash"
   ) {
     throw new Error(`Desktop real ACP CLI node attribution mismatch: ${JSON.stringify(node)}`);
   }
@@ -1009,8 +1009,6 @@ async function stopProcess(child) {
 async function main() {
   let webChild = null;
   if (!usePackagedApp) {
-    run("pnpm", ["--filter", "@master-clash/local-api", "build"]);
-    run("pnpm", ["--filter", "@master-clash/desktop", "build"]);
     webChild = await startWebServerIfNeeded();
   }
 

@@ -27,7 +27,7 @@ function now() {
   return new Date().toISOString();
 }
 
-function shortSocketHome(label) {
+function temporaryClashHome(label) {
   const root = process.platform === "win32" ? tmpdir() : "/tmp";
   return path.join(root, `cl-${label}-${process.pid}-${Date.now().toString(36)}`);
 }
@@ -151,15 +151,16 @@ function runTsxEval(source) {
   return JSON.parse(result.stdout);
 }
 
-async function startCliDaemonSocket(options) {
-  const daemonModule = pathToFileURL(path.join(repoRoot, "packages", "cli", "src", "lib", "daemon.ts")).href;
+async function startLocalApiHost(options) {
+  const localApiModule = pathToFileURL(path.join(repoRoot, "apps", "local-api", "src", "server.ts")).href;
+  const replicaStoreModule = pathToFileURL(path.join(repoRoot, "apps", "local-api", "src", "loro", "file-replica-store.ts")).href;
   const sharedTypesModule = pathToFileURL(path.join(repoRoot, "packages", "shared-types", "src", "index.ts")).href;
   const source = `
-    import { createServer } from "node:net";
-    import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+    import { mkdirSync, writeFileSync } from "node:fs";
     import { join } from "node:path";
     import { LoroSyncClient } from ${JSON.stringify(sharedTypesModule)};
-    import daemon from ${JSON.stringify(daemonModule)};
+    import { FileReplicaStore } from ${JSON.stringify(replicaStoreModule)};
+    import { startLocalApiServer } from ${JSON.stringify(localApiModule)};
 
     const projectId = ${JSON.stringify(options.projectId)};
     const timelineId = ${JSON.stringify(options.timelineId ?? "timeline-cli")};
@@ -171,64 +172,49 @@ async function startCliDaemonSocket(options) {
       tracks: [{ id: "main", items: [] }],
     })};
     const clashHome = ${JSON.stringify(options.clashHome)};
-    const { getSocketPath, handleCommandForTest } = daemon;
-    if (typeof handleCommandForTest !== "function") {
-      throw new Error("daemon handleCommandForTest export missing");
-    }
+    const dataDir = join(clashHome, "local-api");
+    const runDir = join(clashHome, "run");
+    const commandLogPath = join(clashHome, "host-command-log.jsonl");
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(commandLogPath, "");
 
-    const socketDir = join(clashHome, "sockets");
-    const commandLogPath = join(clashHome, "daemon-command-log.jsonl");
-    mkdirSync(socketDir, { recursive: true });
-    const sockPath = getSocketPath(projectId, { CLASH_HOME: clashHome });
-    const pidPath = sockPath.replace(/\.sock$/, ".pid");
-    rmSync(sockPath, { force: true });
-    writeFileSync(pidPath, String(process.pid));
-
-    const client = new LoroSyncClient({
-      serverUrl: "http://localhost:0",
-      projectId,
-      token: "test",
-    });
-    client.createNode("text-cli", "text", { label: "CLI Text", content: "before" });
-    client.createTimeline({
-      id: timelineId,
-      name: "CLI Timeline",
-      state: timelineState,
-    });
-    client.createNode("delete-cli", "text", { label: "Delete CLI", content: "before" });
-    client.createNode("immutable-cli", "text", { label: "Immutable CLI", content: "before" });
-    client.createNode("immutable-consumer", "text", { label: "Immutable Consumer", content: "consumer" });
-    client.canvas.insertEdge("immutable-cli-consumer", "immutable-cli", "immutable-consumer", "default");
-
-    const server = createServer((conn) => {
-      let buf = "";
-      conn.on("data", (chunk) => {
-        buf += chunk.toString();
-        const newline = buf.indexOf("\\n");
-        if (newline === -1) return;
-        const line = buf.slice(0, newline);
-        try {
-          const cmd = JSON.parse(line);
-          appendFileSync(commandLogPath, JSON.stringify({ action: cmd.action, nodeId: cmd.nodeId, actorClientType: cmd.actorClientType }) + "\\n");
-          const result = handleCommandForTest(client, cmd);
-          conn.end(JSON.stringify(result) + "\\n");
-        } catch (error) {
-          conn.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }) + "\\n");
-        }
+    const store = new FileReplicaStore(join(dataDir, "projects"));
+    await store.updateSnapshotAtomic(projectId, (doc) => {
+      const client = new LoroSyncClient({
+        serverUrl: "http://127.0.0.1",
+        projectId,
+        doc,
       });
+      client.createNode("text-cli", "text", { label: "CLI Text", content: "before" });
+      client.createTimeline({
+        id: timelineId,
+        name: "CLI Timeline",
+        state: timelineState,
+      });
+      client.createNode("delete-cli", "text", { label: "Delete CLI", content: "before" });
+      client.createNode("immutable-cli", "text", { label: "Immutable CLI", content: "before" });
+      client.createNode("immutable-consumer", "text", { label: "Immutable Consumer", content: "consumer" });
+      client.canvas.insertEdge("immutable-cli-consumer", "immutable-cli", "immutable-consumer", "default");
+      return { value: null };
     });
 
-    function cleanup() {
-      try { server.close(); } catch {}
-      try { rmSync(sockPath, { force: true }); } catch {}
-      try { rmSync(pidPath, { force: true }); } catch {}
-    }
-    process.on("SIGTERM", () => { cleanup(); process.exit(0); });
-    process.on("SIGINT", () => { cleanup(); process.exit(0); });
-    server.listen(sockPath, () => {
-      process.stdout.write(JSON.stringify({ ready: true, projectId, sockPath, commandLogPath }) + "\\n");
+    const server = await startLocalApiServer({
+      port: 0,
+      dataDir,
+      discovery: {
+        enabled: true,
+        runDir,
+        launchMode: "user-service",
+        startedBy: "cli",
+      },
     });
-    setInterval(() => {}, 30_000);
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("local-api did not bind");
+    const endpoint = \`http://127.0.0.1:\${address.port}\`;
+    const close = () => server.close(() => process.exit(0));
+    process.on("SIGTERM", close);
+    process.on("SIGINT", close);
+    process.stdout.write(JSON.stringify({ ready: true, projectId, endpoint, commandLogPath }) + "\\n");
   `;
 
   const child = spawn(
@@ -244,8 +230,8 @@ async function startCliDaemonSocket(options) {
   const logs = { stdout: "", stderr: "" };
   const ready = await new Promise((resolveReady, rejectReady) => {
     const timeout = setTimeout(() => {
-      rejectReady(new Error(`daemon socket did not become ready. stdout=${logs.stdout} stderr=${logs.stderr}`));
-    }, 10_000);
+      rejectReady(new Error(`local-api host did not become ready. stdout=${logs.stdout} stderr=${logs.stderr}`));
+    }, 30_000);
     child.stdout.on("data", (chunk) => {
       logs.stdout += chunk.toString();
       for (const line of logs.stdout.split("\n")) {
@@ -269,7 +255,7 @@ async function startCliDaemonSocket(options) {
     });
     child.on("exit", (code, signal) => {
       clearTimeout(timeout);
-      rejectReady(new Error(`daemon socket exited before ready: code=${code} signal=${signal} stdout=${logs.stdout} stderr=${logs.stderr}`));
+      rejectReady(new Error(`local-api host exited before ready: code=${code} signal=${signal} stdout=${logs.stdout} stderr=${logs.stderr}`));
     });
   });
 
@@ -291,7 +277,7 @@ async function startCliDaemonSocket(options) {
   };
 }
 
-async function startTextRevisionIndexHost() {
+async function startTextRevisionIndexHost(targetHostUrl) {
   const hostDir = path.join(artifactRoot, "text-revision-index-host");
   const requestsPath = path.join(hostDir, "requests.jsonl");
   const revisionsPath = path.join(hostDir, "revisions.json");
@@ -302,6 +288,7 @@ async function startTextRevisionIndexHost() {
 
     const requestsPath = ${JSON.stringify(requestsPath)};
     const revisionsPath = ${JSON.stringify(revisionsPath)};
+    const targetHostUrl = ${JSON.stringify(targetHostUrl)};
     const revisions = [];
     const revisionContents = new Map();
     mkdirSync(dirname(requestsPath), { recursive: true });
@@ -365,6 +352,23 @@ async function startTextRevisionIndexHost() {
       try {
         const url = new URL(request.url || "/", "http://127.0.0.1");
         appendFileSync(requestsPath, JSON.stringify({ method: request.method, path: url.pathname, search: url.search }) + "\\n");
+        if (request.method === "POST" && /\\/api\\/v1\\/projects\\/[^/]+\\/host-command$/.test(url.pathname)) {
+          let raw = "";
+          for await (const chunk of request) raw += chunk.toString();
+          const upstream = await fetch(targetHostUrl + url.pathname + url.search, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: raw,
+          });
+          const body = Buffer.from(await upstream.arrayBuffer());
+          response.writeHead(upstream.status, {
+            "content-type": upstream.headers.get("content-type") || "application/json",
+            "content-length": body.byteLength,
+            connection: "close",
+          });
+          response.end(body);
+          return;
+        }
         if (request.method === "GET" && url.pathname === "/api/v1/me") {
           sendJson(response, 200, { id: "agent-first-cas-user" });
           return;
@@ -529,15 +533,14 @@ async function seedWorkspace() {
   });
 }
 
-function runLegacyDaemonReceiptCompatibility() {
-  const daemonModule = pathToFileURL(path.join(repoRoot, "packages", "cli", "src", "lib", "daemon.ts")).href;
+function runLocalApiReceiptCompatibility() {
+  const hostModule = pathToFileURL(path.join(repoRoot, "apps", "local-api", "src", "project-command-host.ts")).href;
   const sharedTypesModule = pathToFileURL(path.join(repoRoot, "packages", "shared-types", "src", "index.ts")).href;
   const result = runTsxEval(`
     import { LoroSyncClient } from ${JSON.stringify(sharedTypesModule)};
-    import daemon from ${JSON.stringify(daemonModule)};
-    const { handleCommandForTest } = daemon;
+    import { handleCommandForTest } from ${JSON.stringify(hostModule)};
     if (typeof handleCommandForTest !== "function") {
-      throw new Error("daemon handleCommandForTest export missing");
+      throw new Error("local-api handleCommandForTest export missing");
     }
 
     const client = new LoroSyncClient({
@@ -590,26 +593,26 @@ function runLegacyDaemonReceiptCompatibility() {
   `);
 
   recordCheck(
-    "legacy daemon receipt path rejects missing read",
+    "local-api receipt path rejects missing read",
     /READ_REQUIRED/i.test(JSON.stringify(result.missingUpdate)) &&
       result.finalLabel !== "missing read token",
     JSON.stringify(result.missingUpdate),
   );
   recordCheck(
-    "legacy daemon receipt path rejects stale receipt",
+    "local-api receipt path rejects stale receipt",
     /Stale canvas update rejected/i.test(JSON.stringify(result.staleUpdate)) &&
       result.finalLabel === "fresh read token",
     JSON.stringify(result.staleUpdate),
   );
   recordCheck(
-    "legacy daemon receipt path accepts fresh receipt",
+    "local-api receipt path accepts fresh receipt",
     result.freshUpdate?.updated === true &&
       typeof result.freshUpdate?.readToken === "string" &&
       result.finalLabel === "fresh read token",
     JSON.stringify(result.freshUpdate),
   );
   recordCheck(
-    "legacy daemon receipt mutation envelope recorded",
+    "local-api receipt mutation envelope recorded",
     result.freshUpdate?.mutation?.operation === "canvas_update" &&
       result.freshUpdate?.mutation?.entity?.kind === "canvas-node" &&
       result.freshUpdate?.mutation?.entity?.id === "text-1" &&
@@ -621,7 +624,7 @@ function runLegacyDaemonReceiptCompatibility() {
     JSON.stringify(result.freshUpdate?.mutation),
   );
   recordCheck(
-    "legacy daemon receipt path rejects unread delete",
+    "local-api receipt path rejects unread delete",
     /READ_REQUIRED/i.test(JSON.stringify(result.missingDelete)) &&
       result.deleteStillExists === true,
     JSON.stringify(result.missingDelete),
@@ -774,7 +777,7 @@ function runProjectionPathGuards() {
 
 async function runDirectCanvasCliImplicitCas() {
   const projectId = "project-agent-first-cas-cli";
-  const clashHome = shortSocketHome("canvas");
+  const clashHome = temporaryClashHome("canvas");
   const observationPath = path.join(workspace, ".clash", "observed.json");
   const env = {
     CLASH_HOME: clashHome,
@@ -803,7 +806,7 @@ async function runDirectCanvasCliImplicitCas() {
     `schema_version = 1\nproject_id = ${JSON.stringify(projectId)}\n`,
     "utf8",
   );
-  const daemon = await startCliDaemonSocket({ projectId, clashHome });
+  const host = await startLocalApiHost({ projectId, clashHome });
   try {
     const missingUpdate = runCanvas([
       "update",
@@ -819,7 +822,7 @@ async function runDirectCanvasCliImplicitCas() {
       "direct canvas CLI rejects write before read",
       missingUpdate.status === 1 && /READ_REQUIRED/i.test(missingUpdate.stderr),
       missingUpdate.stderr || missingUpdate.stdout,
-      { command: missingUpdate.command, daemon: daemon.ready },
+      { command: missingUpdate.command, host: host.ready },
     );
 
     const firstRead = runCanvas([
@@ -1046,7 +1049,7 @@ async function runDirectCanvasCliImplicitCas() {
       { command: missingDelete.command },
     );
 
-    const revisionHost = await startTextRevisionIndexHost();
+    const revisionHost = await startTextRevisionIndexHost(host.ready.endpoint);
     let textPullPayload = null;
     let textApplyPayload = null;
     let textHistoryPayload = null;
@@ -1116,7 +1119,7 @@ async function runDirectCanvasCliImplicitCas() {
           command: textApply.command,
           revisionHostUrl: revisionHost.url,
           revisionHostRequests: revisionHost.requests,
-          daemonCommandLog: readOptionalText(daemon.ready.commandLogPath),
+          hostCommandLog: readOptionalText(host.ready.commandLogPath),
         },
       );
       const textHistory = runText([
@@ -1218,7 +1221,7 @@ async function runDirectCanvasCliImplicitCas() {
           command: textRestore.command,
           textRestorePayload,
           revisionHostRequests: revisionHost.requests,
-          daemonCommandLog: readOptionalText(daemon.ready.commandLogPath),
+          hostCommandLog: readOptionalText(host.ready.commandLogPath),
         },
       );
 
@@ -1304,7 +1307,7 @@ async function runDirectCanvasCliImplicitCas() {
     return {
       projectId,
       clashHome,
-      daemon: daemon.ready,
+      host: host.ready,
       firstRead: firstReadPayload,
       missingUpdate: { status: missingUpdate.status, stderr: missingUpdate.stderr },
       concurrent: parseStdoutJson(concurrent),
@@ -1334,7 +1337,7 @@ async function runDirectCanvasCliImplicitCas() {
       },
     };
   } finally {
-    await daemon.stop();
+    await host.stop();
   }
 }
 
@@ -1346,12 +1349,12 @@ async function main() {
   // The production workflow family is retired; CAS coverage for the surviving
   // valve lives in packages/cli asset-metadata tests.
   let projectionPathGuards = null;
-  let legacyDaemonReceipt = null;
+  let localApiReceipt = null;
   let directCanvasCli = null;
   try {
     await seedWorkspace();
     projectionPathGuards = runProjectionPathGuards();
-    legacyDaemonReceipt = runLegacyDaemonReceiptCompatibility();
+    localApiReceipt = runLocalApiReceiptCompatibility();
     directCanvasCli = await runDirectCanvasCliImplicitCas();
     requireCheckPassed("text history reads host revision index");
     requireCheckPassed("text revision history exposes non-media revision content storage");
@@ -1383,11 +1386,11 @@ async function main() {
       ),
       unreadCopiedReviewGateRejected: checks.some((check) => check.name === "unread copied review gate rejected" && check.status === "pass"),
       copyOnWritePreservedSource: checks.some((check) => check.name === "copy-on-write preserved source projection" && check.status === "pass"),
-      legacyDaemonReceiptMissingReadRejected: checks.some((check) => check.name === "legacy daemon receipt path rejects missing read" && check.status === "pass"),
-      legacyDaemonReceiptStaleRejected: checks.some((check) => check.name === "legacy daemon receipt path rejects stale receipt" && check.status === "pass"),
-      legacyDaemonReceiptFreshAccepted: checks.some((check) => check.name === "legacy daemon receipt path accepts fresh receipt" && check.status === "pass"),
-      legacyDaemonReceiptMutationEnvelopeRecorded: checks.some((check) => check.name === "legacy daemon receipt mutation envelope recorded" && check.status === "pass"),
-      legacyDaemonReceiptUnreadDeleteRejected: checks.some((check) => check.name === "legacy daemon receipt path rejects unread delete" && check.status === "pass"),
+      localApiReceiptMissingReadRejected: checks.some((check) => check.name === "local-api receipt path rejects missing read" && check.status === "pass"),
+      localApiReceiptStaleRejected: checks.some((check) => check.name === "local-api receipt path rejects stale receipt" && check.status === "pass"),
+      localApiReceiptFreshAccepted: checks.some((check) => check.name === "local-api receipt path accepts fresh receipt" && check.status === "pass"),
+      localApiReceiptMutationEnvelopeRecorded: checks.some((check) => check.name === "local-api receipt mutation envelope recorded" && check.status === "pass"),
+      localApiReceiptUnreadDeleteRejected: checks.some((check) => check.name === "local-api receipt path rejects unread delete" && check.status === "pass"),
       directCanvasCliWriteBeforeReadRejected: checks.some((check) => check.name === "direct canvas CLI rejects write before read" && check.status === "pass"),
       directCanvasCliCwdObservationRecorded: checks.some((check) => check.name === "direct canvas CLI read records only cwd entity version" && check.status === "pass"),
       directCanvasCliStaleObservationRejected: checks.some((check) => check.name === "direct canvas CLI rejects stale cwd observation" && check.status === "pass"),
@@ -1441,7 +1444,7 @@ async function main() {
     },
     artifacts: {
       projectionPathGuards,
-      legacyDaemonReceipt,
+      localApiReceipt,
       directCanvasCli,
     },
   };

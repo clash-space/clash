@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AgentAnnotationDraftSchema,
   serializeAgentAnnotationPromptBlock,
-} from "./agent-annotation";
+} from "./agent-annotation.js";
 
 describe("agent text-selection annotations", () => {
   it("preserves an exact text quote and its visual anchor in the shared contract", () => {

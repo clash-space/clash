@@ -1,0 +1,58 @@
+{
+  "name": "@clash/gui",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ports": "./src/ports.ts",
+    "./test-support/source-match": "./test-support/source-match.ts",
+    "./components/Background": "./src/components/Background.tsx",
+    "./components/copilot/AcpAgentLogo": "./src/components/copilot/AcpAgentLogo.tsx",
+    "./components/copilot/ThinkingIndicator": "./src/components/copilot/ThinkingIndicator.tsx",
+    "./components/ui/controllable-state": "./src/components/ui/controllable-state.ts",
+    "./components/ui/gesture": "./src/components/ui/gesture.ts",
+    "./components/ui/popup-focus": "./src/components/ui/popup-focus.ts",
+    "./components/ui/*": "./src/components/ui/*.tsx"
+  },
+  "scripts": {
+    "build": "tsc --noEmit --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@ariakit/react": "^0.4.31",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@phosphor-icons/react": "^2.1.10",
+    "@radix-ui/react-use-controllable-state": "^1.2.2",
+    "@use-gesture/react": "^10.3.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.23.24",
+    "radix-ui": "^1.4.3",
+    "tailwind-merge": "^3.6.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "jsdom": "^29.0.2",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.4"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "apiVersion": "clash.binding/v1",
+  "kind": "model-provider-binding",
+  "spec": {
+    "id": "hilo-kling-motion-control",
+    "modelId": "kling-motion-control",
+    "upstreamModel": "kling-motion-control"
+  }
+}

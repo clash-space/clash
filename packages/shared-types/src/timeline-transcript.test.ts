@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   TimelineTranscriptProjectionSchema,
   buildTimelineTranscriptProjection,
-} from "./timeline-transcript";
+} from "./timeline-transcript.js";
 
 describe("timeline transcript projection", () => {
   it("derives one editable transcript view from multiple asset transcripts", () => {

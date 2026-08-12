@@ -10,7 +10,7 @@ import {
   type TimelineDefaultConsumerCoverage,
   type TimelineFieldConsumerClassification,
   type TimelineRootTrackFieldConsumerRegistry,
-} from '@master-clash/remotion-core';
+} from '@clash/remotion-core';
 
 type BaseField = keyof typeof TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase;
 type VariantField<Type extends TimelineDslItemType> =

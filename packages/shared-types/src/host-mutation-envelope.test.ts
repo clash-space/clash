@@ -4,7 +4,7 @@ import {
   hostMutationRejected,
   hostMutationSucceeded,
   validateHostMutationEnvelope,
-} from "./host-mutation-envelope";
+} from "./host-mutation-envelope.js";
 
 describe("host mutation envelope", () => {
   it("records CAS and read-token preconditions in the same host contract", () => {

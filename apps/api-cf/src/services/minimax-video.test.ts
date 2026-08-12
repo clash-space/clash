@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { generateMiniMaxVideo } from "./minimax-video";
 
 describe("MiniMax H3 video service", () => {
-  it("preserves ordered text and omni-reference parts in MiniMax content", async () => {
+  it("emits one complete text item and preserves omni-reference order", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(Response.json({ task_id: "h3-ordered-1" }))
       .mockResolvedValueOnce(Response.json({
@@ -33,19 +33,17 @@ describe("MiniMax H3 video service", () => {
     } as never);
 
     expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).content).toEqual([
-      { type: "text", text: "Use " },
+      { type: "text", text: "Use the subject, then follow the motion." },
       {
         type: "image_url",
         image_url: { url: "https://media.clash.test/subject.png" },
         role: "reference_image",
       },
-      { type: "text", text: ", then follow " },
       {
         type: "video_url",
         video_url: { url: "https://media.clash.test/motion.mp4" },
         role: "reference_video",
       },
-      { type: "text", text: "." },
     ]);
   });
 
