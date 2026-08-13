@@ -1,8 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { LoroDoc } from "loro-crdt";
 import {
+  ACTION_ASSET_BINDINGS_CONTAINER,
+  ACTION_ASSET_BINDING_SCHEMA_CONTAINER,
+  ActionAssetBindingSchema,
   DEFAULT_CANVAS_ID,
+  PROJECT_ASSETS_CONTAINER,
+  PROJECT_ASSET_SCHEMA_CONTAINER,
+  canonicalTimelineRenderDsl,
   canvasGraphReconciliationChanged,
   reconcileCanvasGraph,
   reconcileActionAssetBindingTargets,
@@ -10,6 +17,13 @@ import {
   reconcileProjectTimelineOwnership,
   reconcileProjectDirectorStageOwnership,
   loroSyncUpdateId,
+  listActionAssetBindingsForOwner,
+  projectTimelineActionId,
+  projectTimelineAssetInputs,
+  projectTimelineRenderActionRunId,
+  readProjectAsset,
+  readProjectTimeline,
+  type ActionAssetBinding,
   type ActivityAction,
   type ActivityMessage,
   type ClientType,
@@ -74,6 +88,167 @@ function exactBytes(view: Uint8Array): Uint8Array {
   return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength
     ? view
     : view.slice();
+}
+
+function isPeerEditableActionAssetBinding(
+  binding: ActionAssetBinding | undefined,
+): boolean {
+  return (
+    binding !== undefined &&
+    binding.owner.kind === "draft" &&
+    binding.direction === "input"
+  );
+}
+
+function isMatchingPeerTimelineRunInput(
+  candidate: LoroDoc,
+  binding: ActionAssetBinding | undefined,
+): boolean {
+  if (binding?.direction !== "input" || binding.owner.kind !== "run") {
+    return false;
+  }
+  for (const [nodeId, raw] of candidate.getMap("nodes").entries()) {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    if ((raw as Record<string, unknown>).type !== "video") continue;
+    const data = (raw as Record<string, unknown>).data;
+    if (data === null || typeof data !== "object" || Array.isArray(data)) {
+      continue;
+    }
+    const fields = data as Record<string, unknown>;
+    if (fields.status !== "pending" && fields.status !== "generating") continue;
+    if (
+      projectTimelineRenderActionRunId(nodeId) !== binding.owner.actionRunId ||
+      fields.sourceTimelineActionRunId !== binding.owner.actionRunId
+    ) {
+      continue;
+    }
+    const timelineId = fields.sourceTimelineId;
+    if (typeof timelineId !== "string") continue;
+    const timeline = readProjectTimeline(candidate, timelineId);
+    if (!timeline) continue;
+    if (
+      projectTimelineActionId(timeline.id, timeline.owner) !==
+        binding.owner.actionId ||
+      fields.sourceTimelineActionId !== binding.owner.actionId ||
+      timeline.revisionId !== binding.owner.actionRevisionId ||
+      fields.sourceTimelineRevisionId !== binding.owner.actionRevisionId
+    ) {
+      continue;
+    }
+    const canonicalDsl = canonicalTimelineRenderDsl(timeline.state);
+    if (
+      canonicalDsl === null ||
+      !isDeepStrictEqual(fields.timelineDsl, canonicalDsl)
+    ) {
+      continue;
+    }
+    const expected = projectTimelineAssetInputs(timeline.state).sort(
+      (left, right) => left.slot.localeCompare(right.slot),
+    );
+    const actual = listActionAssetBindingsForOwner(candidate, binding.owner)
+      .filter((candidateBinding) => candidateBinding.direction === "input")
+      .sort((left, right) => left.slot.localeCompare(right.slot));
+    if (
+      expected.length === actual.length &&
+      expected.every((input, index) => {
+        const candidateBinding = actual[index];
+        return (
+          candidateBinding !== undefined &&
+          candidateBinding.slot === input.slot &&
+          candidateBinding.projectAssetId === input.projectAssetId &&
+          candidateBinding.role === input.role
+        );
+      })
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function actionAssetBindingFromPeerRaw(
+  id: string,
+  raw: unknown,
+): ActionAssetBinding | undefined {
+  if (raw === undefined) return undefined;
+  if (
+    raw !== null &&
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    (raw as Record<string, unknown>).unbound === true
+  ) {
+    return undefined;
+  }
+  const parsed = ActionAssetBindingSchema.safeParse({
+    id,
+    ...(raw !== null && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {}),
+  });
+  if (!parsed.success) {
+    throw new Error(
+      `Local peer supplied invalid Action Asset binding ${id}: ${parsed.error.issues[0]?.message ?? "invalid binding"}.`,
+    );
+  }
+  return parsed.data;
+}
+
+function assertLocalPeerActionAssetBindingMutation(
+  current: LoroDoc,
+  candidate: LoroDoc,
+): void {
+  if (
+    !isDeepStrictEqual(
+      candidate.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER).toJSON(),
+      current.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER).toJSON(),
+    )
+  ) {
+    throw new Error(
+      "Local peers cannot mutate Host-owned Action Asset binding authority markers.",
+    );
+  }
+
+  const currentRaw = current
+    .getMap(ACTION_ASSET_BINDINGS_CONTAINER)
+    .toJSON() as Record<string, unknown>;
+  const candidateRaw = candidate
+    .getMap(ACTION_ASSET_BINDINGS_CONTAINER)
+    .toJSON() as Record<string, unknown>;
+  for (const id of new Set([
+    ...Object.keys(currentRaw),
+    ...Object.keys(candidateRaw),
+  ])) {
+    if (isDeepStrictEqual(currentRaw[id], candidateRaw[id])) continue;
+    const before = actionAssetBindingFromPeerRaw(id, currentRaw[id]);
+    const after = actionAssetBindingFromPeerRaw(id, candidateRaw[id]);
+    if (after?.direction === "input") {
+      const target = readProjectAsset(candidate, after.projectAssetId);
+      if (!target || target.lifecycle.state === "purged") {
+        throw new Error(
+          `Local peer Action Asset input ${id} points to Project Asset ${after.projectAssetId}, which is not active or recoverable.`,
+        );
+      }
+    }
+    const changedEditableDraftInput =
+      (before === undefined || isPeerEditableActionAssetBinding(before)) &&
+      (after === undefined || isPeerEditableActionAssetBinding(after)) &&
+      (before !== undefined || after !== undefined);
+    if (changedEditableDraftInput) continue;
+    if (
+      before === undefined &&
+      isMatchingPeerTimelineRunInput(candidate, after)
+    ) {
+      continue;
+    }
+    if (after?.direction === "input" && after.owner.kind !== "draft") {
+      throw new Error(
+        "Local peers cannot create or rewrite frozen run inputs outside a matching Timeline submission.",
+      );
+    }
+    throw new Error(
+      "Local peers may mutate input bindings only; run/revision output lineage is Host-owned.",
+    );
+  }
 }
 
 function exactArrayBuffer(view: Uint8Array): ArrayBuffer {
@@ -369,6 +544,23 @@ export class LocalLoroRoom {
     for (const [id, raw] of nodesMap.entries()) {
       nodesBefore.set(id, raw as Record<string, any>);
     }
+    const candidate = this.doc.fork();
+    candidate.import(updateBytes);
+    if (
+      !isDeepStrictEqual(
+        candidate.getMap(PROJECT_ASSETS_CONTAINER).toJSON(),
+        this.doc.getMap(PROJECT_ASSETS_CONTAINER).toJSON(),
+      ) ||
+      !isDeepStrictEqual(
+        candidate.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).toJSON(),
+        this.doc.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).toJSON(),
+      )
+    ) {
+      throw new Error(
+        "Local peer updates cannot mutate Host-owned Project Asset authority; use the Asset SDK/Host publication boundary.",
+      );
+    }
+    assertLocalPeerActionAssetBindingMutation(this.doc, candidate);
     this.doc.import(updateBytes);
     const repairVersion = this.doc.version();
     const graphRepair = reconcileCanvasGraph(this.doc);

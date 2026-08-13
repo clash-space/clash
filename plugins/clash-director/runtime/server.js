@@ -43806,7 +43806,7 @@ var z2 = /* @__PURE__ */ Object.freeze({
   ZodError: ZodError3
 });
 
-// ../../packages/shared-types/dist/chunk-CGTXLVQX.js
+// ../../packages/shared-types/dist/chunk-T6TANLZN.js
 var AssetKindSchema = z2.enum(["image", "video", "audio", "model"]);
 var ResourceIdSchema = z2.string().trim().min(1);
 var ResourceSchema2 = z2.object({
@@ -43822,6 +43822,8 @@ var ResourceSchema2 = z2.object({
 var ProjectAssetMetadataSchema = z2.object({
   width: z2.number().int().nonnegative().optional(),
   height: z2.number().int().nonnegative().optional(),
+  /** Display-matrix rotation normalized into [0, 360). */
+  rotationDegrees: z2.number().finite().min(0).lt(360).optional(),
   durationMs: z2.number().int().nonnegative().optional(),
   bytes: z2.number().int().nonnegative().optional(),
   /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
@@ -43832,6 +43834,9 @@ var ProjectAssetMetadataSchema = z2.object({
   /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
   hasAudio: z2.boolean().optional(),
   audioCodec: z2.string().trim().min(1).optional(),
+  sampleRate: z2.number().int().positive().optional(),
+  channelCount: z2.number().int().positive().optional(),
+  channelLayout: z2.string().trim().min(1).optional(),
   originalName: z2.string().trim().min(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
@@ -43950,6 +43955,7 @@ var ResolvedAssetSchema = z2.object({
 var AssetMetadataSchema = z2.object({
   width: z2.number().int().optional(),
   height: z2.number().int().optional(),
+  rotationDegrees: z2.number().finite().min(0).lt(360).optional(),
   durationMs: z2.number().int().optional(),
   bytes: z2.number().int().optional(),
   /** @deprecated Historical row payload; never emit from new publication. */
@@ -43959,6 +43965,9 @@ var AssetMetadataSchema = z2.object({
   videoCodec: z2.string().optional(),
   hasAudio: z2.boolean().optional(),
   audioCodec: z2.string().optional(),
+  sampleRate: z2.number().int().positive().optional(),
+  channelCount: z2.number().int().positive().optional(),
+  channelLayout: z2.string().optional(),
   contentHash: z2.string().optional(),
   localBlobKey: z2.string().optional(),
   originalName: z2.string().optional(),
@@ -44003,7 +44012,7 @@ var AssetRefRowSchema = z2.object({
   importedAt: z2.number()
 });
 
-// ../../packages/shared-types/dist/chunk-Y7VKLK6W.js
+// ../../packages/shared-types/dist/chunk-3E3S6SZN.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z2.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");

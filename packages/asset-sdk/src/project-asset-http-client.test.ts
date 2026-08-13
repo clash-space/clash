@@ -87,7 +87,25 @@ describe("Project Asset HTTP client", () => {
     expect(form.get("projectAssetId")).toBe("asset:one");
   });
 
-  it("reuses one generated Project Asset id when the same import command retries an unknown result", async () => {
+  it("rejects an import without the command's preassigned Project Asset id before I/O", async () => {
+    const fetch = vi.fn(async () => {
+      throw new Error("must not send an unnamed import");
+    });
+    const client = createProjectAssetHttpClient({ fetch });
+
+    await expect(
+      client.importFile({
+        projectId: "project/one",
+        file: new File([new Uint8Array([1])], "frame.png", {
+          type: "image/png",
+        }),
+        kind: "image",
+      } as never),
+    ).rejects.toThrow("project asset id is required");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("replays the preassigned Project Asset id when the same import command retries an unknown result", async () => {
     const requests: FormData[] = [];
     const client = createProjectAssetHttpClient({
       fetch: async (_input, init) => {
@@ -105,6 +123,7 @@ describe("Project Asset HTTP client", () => {
         type: "image/png",
       }),
       kind: "image" as const,
+      projectAssetId: "asset:retry-command",
     };
 
     await expect(client.importFile(operation)).rejects.toThrow(
@@ -114,12 +133,11 @@ describe("Project Asset HTTP client", () => {
 
     const firstId = requests[0]?.get("projectAssetId");
     const retryId = requests[1]?.get("projectAssetId");
-    expect(typeof firstId).toBe("string");
-    expect(firstId).not.toBe("");
+    expect(firstId).toBe("asset:retry-command");
     expect(retryId).toBe(firstId);
   });
 
-  it("does not merge separate Project import commands that share one Blob", async () => {
+  it("keeps separately preassigned Project import commands distinct even when they share one Blob", async () => {
     const importedIds: FormDataEntryValue[] = [];
     const file = new File([new Uint8Array([1, 2, 3, 4])], "frame.png", {
       type: "image/png",
@@ -139,17 +157,20 @@ describe("Project Asset HTTP client", () => {
       projectId: "project/one",
       file,
       kind: "image",
+      projectAssetId: "asset:first-command",
     });
     await client.importFile({
       projectId: "project/one",
       file,
       kind: "image",
+      projectAssetId: "asset:second-command",
     });
 
     expect(importedIds).toHaveLength(2);
-    expect(typeof importedIds[0]).toBe("string");
-    expect(typeof importedIds[1]).toBe("string");
-    expect(importedIds[1]).not.toBe(importedIds[0]);
+    expect(importedIds).toEqual([
+      "asset:first-command",
+      "asset:second-command",
+    ]);
   });
 
   it("replays the first Project import snapshot after an unknown result", async () => {
@@ -169,6 +190,7 @@ describe("Project Asset HTTP client", () => {
       file: new Blob([new Uint8Array([1, 2, 3, 4])], { type: "image/png" }),
       fileName: "frame.png",
       kind: "image",
+      projectAssetId: "asset:original-command",
     };
 
     await expect(client.importFile(operation)).rejects.toThrow(
@@ -192,8 +214,7 @@ describe("Project Asset HTTP client", () => {
       "image",
     ]);
     const firstId = requests[0]?.form.get("projectAssetId");
-    expect(typeof firstId).toBe("string");
-    expect(firstId).not.toBe("");
+    expect(firstId).toBe("asset:original-command");
     expect(requests[1]?.form.get("projectAssetId")).toBe(firstId);
     const firstFile = requests[0]?.form.get("file");
     const retryFile = requests[1]?.form.get("file");

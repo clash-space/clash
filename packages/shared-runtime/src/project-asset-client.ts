@@ -36,7 +36,7 @@ const ASSET_IMPORT_FILE_TYPES: Record<string, AssetImportFileType> = {
   ".mp4": { kind: "video", contentType: "video/mp4" },
   ".webm": { kind: "video", contentType: "video/webm" },
   ".mov": { kind: "video", contentType: "video/quicktime" },
-  ".m4v": { kind: "video", contentType: "video/x-m4v" },
+  ".m4v": { kind: "video", contentType: "video/mp4" },
   ".mkv": { kind: "video", contentType: "video/x-matroska" },
   ".mp3": { kind: "audio", contentType: "audio/mpeg" },
   ".wav": { kind: "audio", contentType: "audio/wav" },
@@ -85,30 +85,10 @@ export type ProjectAssetHostObservation<T> = ProjectAssetHostResult<T> & {
   receipt: string;
 };
 
-function stableImportId(
-  command: object,
-  requested: string | undefined,
-  ids: WeakMap<object, string>,
-  prefix: "asset" | "global",
-): string {
-  const existing = ids.get(command);
-  if (existing) return existing;
-  const normalized = requested?.trim();
-  if (requested !== undefined && !normalized) {
-    throw new Error(`${prefix} asset id is required`);
-  }
-  const runtimeCrypto = (
-    globalThis as {
-      crypto?: { randomUUID?: () => string };
-    }
-  ).crypto;
-  const randomUUID = runtimeCrypto?.randomUUID;
-  if (!normalized && typeof randomUUID !== "function") {
-    throw new Error("crypto.randomUUID is required for Asset import ids");
-  }
-  const id = normalized ?? `${prefix}:${runtimeCrypto!.randomUUID!()}`;
-  ids.set(command, id);
-  return id;
+function requiredImportId(value: string | undefined, label: string): string {
+  const normalized = value?.trim();
+  if (!normalized) throw new Error(`${label} is required`);
+  return normalized;
 }
 
 export type ProjectAssetHostClient = {
@@ -137,7 +117,7 @@ export type ProjectAssetHostClient = {
       fileName: string;
       contentType: string;
       kind: AssetKind;
-      projectAssetId?: string;
+      projectAssetId: string;
     },
   ): Promise<ProjectAssetHostResult<ResolvedAsset>>;
   admit(
@@ -170,7 +150,7 @@ export type PersonalGlobalAssetHostClient = {
     fileName: string;
     contentType: string;
     kind: AssetKind;
-    globalAssetId?: string;
+    globalAssetId: string;
   }): Promise<ResolvedAsset>;
   publish(input: {
     projectId: string;
@@ -234,7 +214,6 @@ export function createProjectAssetHostClient(
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body),
   });
-  const importIds = new WeakMap<object, string>();
   type ProjectImportSnapshot = {
     resolved: ResolvedProjectHostContext;
     command: Parameters<typeof http.importFile>[0];
@@ -311,11 +290,9 @@ export function createProjectAssetHostClient(
             file: new Blob([bytes], { type: input.contentType }),
             fileName: input.fileName,
             kind: input.kind,
-            projectAssetId: stableImportId(
-              input,
+            projectAssetId: requiredImportId(
               input.projectAssetId,
-              importIds,
-              "asset",
+              "project asset id",
             ),
           },
         };
@@ -381,7 +358,6 @@ export function createPersonalGlobalAssetHostClient(
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body),
   });
-  const importIds = new WeakMap<object, string>();
   // Keep the same narrow command boundary as Project imports; this is not
   // content-addressed library deduplication.
   const importCommands = new WeakMap<
@@ -400,11 +376,9 @@ export function createPersonalGlobalAssetHostClient(
           file: new Blob([bytes], { type: input.contentType }),
           fileName: input.fileName,
           kind: input.kind,
-          globalAssetId: stableImportId(
-            input,
+          globalAssetId: requiredImportId(
             input.globalAssetId,
-            importIds,
-            "global",
+            "global asset id",
           ),
         };
         importCommands.set(input, command);

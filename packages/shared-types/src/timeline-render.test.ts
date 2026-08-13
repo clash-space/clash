@@ -22,7 +22,15 @@ const timelineState = {
   tracks: [
     {
       id: "video-track",
-      items: [{ id: "clip-1", type: "video", from: 0, durationInFrames: 60, assetId: "asset-1" }],
+      items: [
+        {
+          id: "clip-1",
+          type: "video",
+          from: 0,
+          durationInFrames: 60,
+          assetId: "asset-1",
+        },
+      ],
     },
   ],
 };
@@ -46,6 +54,31 @@ function authoritativeTimelineDoc(): LoroDoc {
 }
 
 describe("Timeline render requests", () => {
+  it("exports the canonical render DSL projection shared with authority validation", () => {
+    expect((timelineRender as any).canonicalTimelineRenderDsl).toBeTypeOf(
+      "function",
+    );
+    expect(
+      (timelineRender as any).canonicalTimelineRenderDsl({
+        durationInFrames: 5,
+        tracks: [
+          {
+            id: "video",
+            items: [{ id: "clip", from: 12, durationInFrames: 18 }],
+          },
+        ],
+      }),
+    ).toEqual({
+      durationInFrames: 30,
+      tracks: [
+        {
+          id: "video",
+          items: [{ id: "clip", from: 12, durationInFrames: 18 }],
+        },
+      ],
+    });
+  });
+
   it("creates a backend-only render request for a Project-owned Timeline", () => {
     const doc = authoritativeTimelineDoc();
     (workspace as any).createProjectTimeline(doc, {
@@ -54,7 +87,9 @@ describe("Timeline render requests", () => {
       state: timelineState,
     });
 
-    expect((timelineRender as any).requestTimelineRender).toBeTypeOf("function");
+    expect((timelineRender as any).requestTimelineRender).toBeTypeOf(
+      "function",
+    );
     const result = (timelineRender as any).requestTimelineRender(doc, {
       timelineId: "timeline-project",
       actorUserId: "user-1",
@@ -107,9 +142,15 @@ describe("Timeline render requests", () => {
     expect(result).toMatchObject({
       ok: true,
       renderNodeId: "render-canvas-1",
-      target: { kind: "canvas", canvasId: "shots", actionNodeId: "timeline-action" },
+      target: {
+        kind: "canvas",
+        canvasId: "shots",
+        actionNodeId: "timeline-action",
+      },
     });
-    expect(new Canvas(doc, () => {}, "shots").readNode("render-canvas-1")).toMatchObject({
+    expect(
+      new Canvas(doc, () => {}, "shots").readNode("render-canvas-1"),
+    ).toMatchObject({
       type: "video",
       upstream: [{ nodeId: "timeline-action" }],
       data: {
@@ -118,7 +159,11 @@ describe("Timeline render requests", () => {
         sourceTimelineId: "timeline-canvas",
         sourceTimelineActionId: "node:timeline-action",
         sourceTimelineActionRunId: "timeline-render:render-canvas-1",
-        renderTarget: { kind: "canvas", canvasId: "shots", actionNodeId: "timeline-action" },
+        renderTarget: {
+          kind: "canvas",
+          canvasId: "shots",
+          actionNodeId: "timeline-action",
+        },
       },
     });
   });
@@ -184,9 +229,7 @@ describe("Timeline render requests", () => {
       listActionAssetReferences(doc, "asset-1").filter(
         (binding) => binding.direction === "input",
       ),
-    ).toMatchObject([
-      { owner: runOwner, projectAssetId: "asset-1" },
-    ]);
+    ).toMatchObject([{ owner: runOwner, projectAssetId: "asset-1" }]);
     expect(
       trashProjectAssetIfUnreferenced(doc, {
         id: "asset-1",

@@ -38,7 +38,7 @@ export interface ProjectAssetHttpClient {
       file: Blob;
       fileName?: string;
       kind: AssetKind;
-      projectAssetId?: string;
+      projectAssetId: string;
     },
   ): Promise<ResolvedAsset>;
   admit(
@@ -124,14 +124,6 @@ type ProjectImportCommandSnapshot = {
   projectAssetId: string;
 };
 
-function newProjectAssetId(): string {
-  const cryptoObject = globalThis.crypto;
-  if (typeof cryptoObject?.randomUUID !== "function") {
-    throw new Error("crypto.randomUUID is required for Asset import ids");
-  }
-  return `asset:${cryptoObject.randomUUID()}`;
-}
-
 function snapshotProjectImport(
   input: Parameters<ProjectAssetHttpClient["importFile"]>[0],
 ): ProjectImportCommandSnapshot {
@@ -145,10 +137,7 @@ function snapshotProjectImport(
     fileName,
     appendFileName: input.fileName !== undefined || sourceFileName !== fileName,
     kind: input.kind,
-    projectAssetId:
-      input.projectAssetId === undefined
-        ? newProjectAssetId()
-        : required(input.projectAssetId, "project asset id"),
+    projectAssetId: required(input.projectAssetId, "project asset id"),
   };
 }
 

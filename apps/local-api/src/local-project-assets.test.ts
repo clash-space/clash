@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,12 +27,79 @@ import {
 
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
-import { createLocalAssetInspectionService } from "./local-asset-inspections.js";
+import {
+  createLocalAssetInspectionService,
+  type LocalAssetInspector,
+} from "./local-asset-inspections.js";
+import { createLocalResourceStore } from "./local-resource-store.js";
 import {
   LocalProjectAssetMigrationError,
   createLocalProjectAssetService,
   publishLocalProjectAssetWithBindings,
 } from "./local-project-assets.js";
+
+const nodeRequire = createRequire(import.meta.url);
+
+function downgradeResourceToPrePromotionRow(
+  dataDir: string,
+  resourceId: string,
+): void {
+  const { DatabaseSync } = nodeRequire("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): { run(...params: unknown[]): unknown };
+      close(): void;
+    };
+  };
+  const database = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    database
+      .prepare(
+        `UPDATE local_resources
+         SET content_type = NULL, facts_verified = 0
+         WHERE resource_id = ?`,
+      )
+      .run(resourceId);
+  } finally {
+    database.close();
+  }
+}
+
+const inspectFixtureAsset: LocalAssetInspector = async ({ resource }) =>
+  resource.kind === "image"
+    ? {
+        width: 1,
+        height: 1,
+        rotationDegrees: 0,
+        ...(resource.contentType ? { contentType: resource.contentType } : {}),
+      }
+    : resource.kind === "video"
+      ? {
+          width: 1,
+          height: 1,
+          rotationDegrees: 0,
+          durationMs: 1_000,
+          frameRate: 24,
+          videoCodec: "h264",
+          hasAudio: false,
+          ...(resource.contentType
+            ? { contentType: resource.contentType }
+            : {}),
+        }
+      : resource.kind === "audio"
+        ? {
+            durationMs: 1_000,
+            hasAudio: true,
+            audioCodec: "aac",
+            sampleRate: 48_000,
+            channelCount: 2,
+            channelLayout: "stereo",
+            ...(resource.contentType
+              ? { contentType: resource.contentType }
+              : {}),
+          }
+        : resource.contentType
+          ? { contentType: resource.contentType }
+          : {};
 
 async function fixture() {
   const clashRoot = await mkdtemp(join(tmpdir(), "clash-project-assets-"));
@@ -45,6 +113,11 @@ async function fixture() {
       dataDir,
       clashRoot,
       projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        clashRoot,
+        inspectResource: inspectFixtureAsset,
+      }),
     }),
   };
 }
@@ -97,6 +170,495 @@ async function seedLegacyAsset(
 }
 
 describe("Local Project Asset service", () => {
+  it("refuses a new Project Asset publication when no Host byte inspector is configured", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+    });
+
+    await expect(
+      service.installOwned({
+        projectId: "project-no-inspector",
+        projectAssetId: "asset:no-inspector",
+        kind: "image",
+        bytes: new TextEncoder().encode("bytes awaiting Host verification"),
+        contentType: "image/png",
+        name: "unverified.png",
+        metadata: { width: 640, height: 360 },
+        provenance: { kind: "import" },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      service.readEntry("project-no-inspector", "asset:no-inspector"),
+    ).resolves.toBeNull();
+  });
+
+  it("refuses publication when the inspection registry has no byte-probe adapter", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        clashRoot,
+      }),
+    });
+
+    await expect(
+      service.installOwned({
+        projectId: "project-missing-probe-adapter",
+        projectAssetId: "asset:missing-probe-adapter",
+        kind: "image",
+        bytes: new TextEncoder().encode("bytes need a real decoder"),
+        contentType: "image/png",
+        metadata: { width: 640, height: 360 },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      service.readEntry(
+        "project-missing-probe-adapter",
+        "asset:missing-probe-adapter",
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("promotes current v4 media facts for a pre-v4 Resource without a MIME before the Project commit", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const resources = createLocalResourceStore({ dataDir, clashRoot });
+    const bytes = new TextEncoder().encode("legacy PNG without MIME");
+    const legacy = await resources.install({ kind: "image", bytes });
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      clashRoot,
+      inspectResource: async () => ({
+        contentType: "image/png",
+        width: 320,
+        height: 180,
+        rotationDegrees: 0,
+      }),
+    });
+    await assetInspection.inspect({ source: legacy });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+
+    await expect(
+      service.installOwned({
+        projectId: "project-legacy-no-mime",
+        projectAssetId: "asset:legacy-no-mime",
+        kind: "image",
+        bytes,
+        contentType: "image/png",
+        metadata: {},
+      }),
+    ).resolves.toMatchObject({
+      id: "asset:legacy-no-mime",
+      status: "ready",
+      metadata: { contentType: "image/png", width: 320, height: 180 },
+    });
+    await expect(
+      service.readEntry("project-legacy-no-mime", "asset:legacy-no-mime"),
+    ).resolves.toMatchObject({
+      metadata: { contentType: "image/png" },
+    });
+  });
+
+  it("repairs the old v4-receipt/no-MIME migration state before resolving an existing Project entry", async () => {
+    const { clashRoot, dataDir, service } = await fixture();
+    const bytes = new TextEncoder().encode("published Project PNG");
+    const published = await service.installOwned({
+      projectId: "project-old-v4-no-mime",
+      projectAssetId: "asset:old-v4-no-mime",
+      kind: "image",
+      bytes,
+      contentType: "image/png",
+      metadata: {},
+    });
+    const entry = await service.readEntry(
+      "project-old-v4-no-mime",
+      published.id,
+    );
+    expect(entry).not.toBeNull();
+    downgradeResourceToPrePromotionRow(dataDir, entry!.source.resourceId);
+    const restarted = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        clashRoot,
+        inspectResource: async () => {
+          throw new Error("the persisted current-v4 receipt must be reused");
+        },
+      }),
+    });
+
+    await expect(
+      restarted.read("project-old-v4-no-mime", "asset:old-v4-no-mime"),
+    ).resolves.toMatchObject({
+      status: "ready",
+      metadata: { contentType: "image/png" },
+    });
+    await expect(
+      createLocalResourceStore({ dataDir, clashRoot }).resolve(
+        entry!.source.resourceId,
+      ),
+    ).resolves.toMatchObject({
+      resource: { contentType: "image/png" },
+    });
+  });
+
+  it("repairs an unverified pre-v4 Resource declaration but rejects a second interpretation", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const resources = createLocalResourceStore({ dataDir, clashRoot });
+    const bytes = new TextEncoder().encode("legacy image bytes");
+    await resources.install({
+      kind: "video",
+      bytes,
+      contentType: "video/mp4",
+    });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        clashRoot,
+        inspectResource: async ({ resource }) =>
+          resource.kind === "image"
+            ? {
+                contentType: "image/png",
+                width: 320,
+                height: 180,
+                rotationDegrees: 0,
+              }
+            : {
+                contentType: "video/mp4",
+                width: 320,
+                height: 180,
+                rotationDegrees: 0,
+                durationMs: 1_000,
+                frameRate: 24,
+                videoCodec: "h264",
+                hasAudio: false,
+              },
+      }),
+    });
+
+    await expect(
+      service.installOwned({
+        projectId: "project-repair-pre-v4",
+        projectAssetId: "asset:repaired-image",
+        kind: "image",
+        bytes,
+        contentType: "image/png",
+        metadata: {},
+      }),
+    ).resolves.toMatchObject({ status: "ready", kind: "image" });
+    await expect(
+      service.installOwned({
+        projectId: "project-repair-pre-v4",
+        projectAssetId: "asset:second-interpretation",
+        kind: "video",
+        bytes,
+        contentType: "video/mp4",
+        metadata: {},
+      }),
+    ).rejects.toThrow();
+    await expect(
+      service.readEntry("project-repair-pre-v4", "asset:second-interpretation"),
+    ).resolves.toBeNull();
+  });
+
+  it("publishes Host facts instead of conflicting caller media hints", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      clashRoot,
+      inspectResource: async ({ resource }) => ({
+        contentType: resource.contentType,
+        width: 1_920,
+        height: 1_080,
+        rotationDegrees: 0,
+        durationMs: 2_500,
+        frameRate: 24,
+        videoCodec: "h264",
+        hasAudio: false,
+      }),
+    });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+
+    await service.installOwned({
+      projectId: "project-host-facts-win",
+      projectAssetId: "asset:host-facts-win",
+      kind: "video",
+      bytes: new TextEncoder().encode("video bytes verified by the Host"),
+      contentType: "video/mp4",
+      name: "clip.mp4",
+      metadata: {
+        width: 320,
+        height: 180,
+        durationMs: 9_999,
+        frameRate: 60,
+        videoCodec: "caller-codec",
+        hasAudio: true,
+        audioCodec: "caller-audio",
+      },
+      provenance: { kind: "import" },
+    });
+
+    const entry = await service.readEntry(
+      "project-host-facts-win",
+      "asset:host-facts-win",
+    );
+    expect(entry?.metadata).toMatchObject({
+      width: 1_920,
+      height: 1_080,
+      durationMs: 2_500,
+      frameRate: 24,
+      videoCodec: "h264",
+      hasAudio: false,
+    });
+    expect(entry?.metadata).not.toHaveProperty("audioCodec");
+  });
+
+  it("publishes canonical v4 content type when reopening a sealed legacy alias", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const resources = createLocalResourceStore({ dataDir, clashRoot });
+    const source = await resources.install({
+      kind: "image",
+      bytes: new TextEncoder().encode("legacy Project JPEG alias"),
+      contentType: "image/jpg",
+    });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        clashRoot,
+        inspectResource: async () => ({
+          contentType: "image/jpeg",
+          width: 640,
+          height: 360,
+          rotationDegrees: 0,
+        }),
+      }),
+    });
+
+    await service.publishStagedOwnedWithBindings({
+      projectId: "project-legacy-jpeg-alias",
+      projectAssetId: "asset:legacy-jpeg-alias",
+      resourceId: source.resource.id,
+      kind: "image",
+      metadata: { contentType: "image/jpg" },
+      bindings: [],
+    });
+
+    await expect(
+      service.readEntry("project-legacy-jpeg-alias", "asset:legacy-jpeg-alias"),
+    ).resolves.toMatchObject({
+      metadata: { contentType: "image/jpeg" },
+    });
+  });
+
+  it("rejects a caller kind assertion that does not match the decoded bytes", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        clashRoot,
+        inspectResource: async ({ resource }) => {
+          if (resource.kind !== "image") {
+            throw new Error("decoded bytes are an image, not video");
+          }
+          return {
+            contentType: "image/png",
+            width: 640,
+            height: 360,
+            rotationDegrees: 0,
+          };
+        },
+      }),
+    });
+
+    await expect(
+      service.installOwned({
+        projectId: "project-kind-assertion",
+        projectAssetId: "asset:kind-assertion",
+        kind: "video",
+        bytes: new TextEncoder().encode("image bytes with a video assertion"),
+        contentType: "video/mp4",
+        metadata: {},
+      }),
+    ).rejects.toThrow("decoded bytes are an image, not video");
+    await expect(
+      service.readEntry("project-kind-assertion", "asset:kind-assertion"),
+    ).resolves.toBeNull();
+  });
+
+  it("can finalize staged bytes after the caller corrects a rejected media-type assertion", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const bytes = new TextEncoder().encode("one immutable PNG byte sequence");
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      clashRoot,
+      inspectResource: async ({ resource }) => {
+        if (resource.contentType !== "image/png") {
+          throw new Error("decoded bytes are PNG, not JPEG");
+        }
+        return {
+          contentType: "image/png",
+          width: 640,
+          height: 360,
+          rotationDegrees: 0,
+        };
+      },
+    });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+    const command = {
+      projectId: "project-corrected-l0",
+      projectAssetId: "asset:corrected-l0",
+      kind: "image" as const,
+      bytes,
+      name: "frame.png",
+      metadata: {},
+      provenance: { kind: "import" as const },
+    };
+
+    await expect(
+      service.installOwned({ ...command, contentType: "image/jpeg" }),
+    ).rejects.toThrow("decoded bytes are PNG, not JPEG");
+    await expect(
+      service.readEntry(command.projectId, command.projectAssetId),
+    ).resolves.toBeNull();
+
+    await expect(
+      service.installOwned({ ...command, contentType: "image/png" }),
+    ).resolves.toMatchObject({
+      id: command.projectAssetId,
+      metadata: {
+        contentType: "image/png",
+        width: 640,
+        height: 360,
+      },
+    });
+  });
+
+  it("rejects a frozen media-type assertion when the same bytes are already sealed under another type", async () => {
+    const { service } = await fixture();
+    const bytes = new TextEncoder().encode("one immutable Project image");
+
+    await service.installOwned({
+      projectId: "project-sealed-media-type",
+      projectAssetId: "asset:sealed-png",
+      kind: "image",
+      bytes,
+      contentType: "image/png",
+      metadata: {},
+      provenance: { kind: "import" },
+    });
+
+    await expect(
+      service.installOwned({
+        projectId: "project-sealed-media-type",
+        projectAssetId: "asset:conflicting-jpeg",
+        kind: "image",
+        bytes,
+        contentType: "image/jpeg",
+        metadata: {},
+        provenance: { kind: "import" },
+      }),
+    ).rejects.toThrow("image/jpeg");
+    await expect(
+      service.readEntry("project-sealed-media-type", "asset:conflicting-jpeg"),
+    ).resolves.toBeNull();
+  });
+
+  it("accepts a canonical media-type alias when reusing sealed Project bytes", async () => {
+    const { service } = await fixture();
+    const bytes = new TextEncoder().encode("one aliased Project JPEG");
+
+    await service.installOwned({
+      projectId: "project-sealed-media-alias",
+      projectAssetId: "asset:canonical-jpeg",
+      kind: "image",
+      bytes,
+      contentType: "image/jpeg",
+      metadata: {},
+      provenance: { kind: "import" },
+    });
+
+    await expect(
+      service.installOwned({
+        projectId: "project-sealed-media-alias",
+        projectAssetId: "asset:aliased-jpeg",
+        kind: "image",
+        bytes,
+        contentType: "image/jpg",
+        metadata: {},
+        provenance: { kind: "import" },
+      }),
+    ).resolves.toMatchObject({
+      id: "asset:aliased-jpeg",
+      metadata: { contentType: "image/jpeg" },
+    });
+  });
+
+  it("keeps non-frozen Project media hints subordinate to Host facts on sealed-byte reuse", async () => {
+    const { service } = await fixture();
+    const bytes = new TextEncoder().encode(
+      "one Project image with stale hints",
+    );
+
+    await service.installOwned({
+      projectId: "project-sealed-hints",
+      projectAssetId: "asset:sealed-hints-source",
+      kind: "image",
+      bytes,
+      contentType: "image/png",
+      metadata: {},
+      provenance: { kind: "import" },
+    });
+
+    await expect(
+      service.installOwned({
+        projectId: "project-sealed-hints",
+        projectAssetId: "asset:sealed-hints-reuse",
+        kind: "image",
+        bytes,
+        metadata: { width: 999, height: 999 },
+        provenance: { kind: "import" },
+      }),
+    ).resolves.toMatchObject({
+      id: "asset:sealed-hints-reuse",
+      metadata: {
+        contentType: "image/png",
+        width: 1,
+        height: 1,
+      },
+    });
+  });
+
   it("publishes Host-inspected media facts into the Project authority", async () => {
     const { clashRoot, dataDir } = await fixture();
     const bytes = new TextEncoder().encode("video bytes inspected by the Host");
@@ -107,11 +669,15 @@ describe("Local Project Asset service", () => {
         contentType: resource.contentType,
         width: 1_920,
         height: 1_080,
+        rotationDegrees: 0,
         durationMs: 2_500,
         frameRate: 24,
         videoCodec: "h264",
         hasAudio: true,
         audioCodec: "aac",
+        sampleRate: 48_000,
+        channelCount: 2,
+        channelLayout: "stereo",
       }),
     });
     const service = createLocalProjectAssetService({
@@ -160,6 +726,9 @@ describe("Local Project Asset service", () => {
         durationMs: 2_000,
         hasAudio: true,
         audioCodec: "aac",
+        sampleRate: 48_000,
+        channelCount: 2,
+        channelLayout: "stereo",
       }),
     });
     const service = createLocalProjectAssetService({
@@ -200,6 +769,7 @@ describe("Local Project Asset service", () => {
       inspectResource: async () => ({
         width: 1_280,
         height: 720,
+        rotationDegrees: 0,
         durationMs: 1_500,
         frameRate: 30,
         videoCodec: "h264",
@@ -222,9 +792,9 @@ describe("Local Project Asset service", () => {
     const entry = await service.prepareStagedOwnedEntry({
       projectAssetId: "asset:durable-video",
       kind: "video",
-      resourceId: staged.resource.id,
+      resourceId: staged.resourceId,
       name: "generated.mp4",
-      metadata: {},
+      metadata: { contentType: "video/mp4" },
       provenance: {
         kind: "generation",
         actionRunId: "run:durable-video",
@@ -233,7 +803,7 @@ describe("Local Project Asset service", () => {
 
     expect(entry).toMatchObject({
       id: "asset:durable-video",
-      source: { kind: "owned", resourceId: staged.resource.id },
+      source: { kind: "owned", resourceId: staged.resourceId },
       metadata: {
         width: 1_280,
         height: 720,
@@ -616,9 +1186,9 @@ describe("Local Project Asset service", () => {
         projectId,
         projectAssetId: outputAssetId,
         kind: "image",
-        resourceId: staged.resource.id,
+        resourceId: staged.resourceId,
         name: "edited.png",
-        metadata: {},
+        metadata: { contentType: "image/png" },
         provenance: {
           kind: "edit",
           actionRunId: owner.actionRunId,
@@ -644,7 +1214,7 @@ describe("Local Project Asset service", () => {
       ),
     ).toEqual([conflictingBinding]);
     await expect(
-      service.resolveStagedOwned(staged.resource.id),
+      service.resolveStagedOwned(staged.resourceId),
     ).resolves.toEqual(staged);
   });
 

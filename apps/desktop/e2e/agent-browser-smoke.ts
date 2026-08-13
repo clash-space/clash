@@ -454,11 +454,24 @@ async function main() {
     const seededAssetForm = new FormData();
     seededAssetForm.set(
       "file",
-      new File(["explicit target"], "explicit-target.png", {
-        type: "image/png",
-      }),
+      new File(
+        [
+          Uint8Array.from(
+            Buffer.from(
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+              "base64",
+            ),
+          ).buffer,
+        ],
+        "explicit-target.png",
+        { type: "image/png" },
+      ),
     );
     seededAssetForm.set("kind", "image");
+    seededAssetForm.set(
+      "projectAssetId",
+      "asset:desktop-smoke:explicit-target",
+    );
     const seededAssetResponse = await fetch(
       `${apiOrigin}/api/v1/projects/${encodeURIComponent(projectId)}/assets/import-file`,
       {

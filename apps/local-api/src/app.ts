@@ -881,13 +881,18 @@ function contentTypeForPath(path: string): string {
   if (ext === ".gif") return "image/gif";
   if (ext === ".webp") return "image/webp";
   if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".avif") return "image/avif";
   if (ext === ".mp4") return "video/mp4";
   if (ext === ".webm") return "video/webm";
   if (ext === ".mov") return "video/quicktime";
+  if (ext === ".m4v") return "video/mp4";
+  if (ext === ".mkv") return "video/x-matroska";
   if (ext === ".mp3") return "audio/mpeg";
   if (ext === ".wav") return "audio/wav";
   if (ext === ".m4a") return "audio/mp4";
+  if (ext === ".aac") return "audio/aac";
   if (ext === ".flac") return "audio/flac";
+  if (ext === ".ogg") return "audio/ogg";
   if (ext === ".glb") return "model/gltf-binary";
   if (ext === ".gltf") return "model/gltf+json";
   if (ext === ".txt") return "text/plain";
@@ -3568,6 +3573,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     globalAssetService ??= createLocalGlobalAssetService({
       dataDir: options.dataDir,
       clashRoot,
+      legacyUserId: userId,
       projectionOrigin:
         configuredProjectionOrigin?.trim() || requestProjectionOrigin,
       assetInspection,
@@ -3853,20 +3859,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const file = form.get("file");
     const kind = AssetKindSchema.safeParse(form.get("kind"));
     const projectAssetIdValue = form.get("projectAssetId");
-    if (!file || typeof file === "string" || !kind.success) {
+    if (
+      !file ||
+      typeof file === "string" ||
+      !kind.success ||
+      projectAssetIdValue === null
+    ) {
       return c.json(
         {
-          error: "Project Asset import requires file and kind",
+          error: "Project Asset import requires file, kind, and projectAssetId",
           code: "INVALID_PROJECT_ASSET_IMPORT",
         },
         400,
       );
     }
     if (
-      projectAssetIdValue !== null &&
-      (typeof projectAssetIdValue !== "string" ||
-        !projectAssetIdValue.trim() ||
-        projectAssetIdValue.length > 512)
+      typeof projectAssetIdValue !== "string" ||
+      !projectAssetIdValue.trim() ||
+      projectAssetIdValue.length > 512
     ) {
       return c.json(
         {
@@ -3893,9 +3903,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           : declaredContentType;
       const asset = await projectAssetServiceAt(requestOrigin(c)).installOwned({
         projectId: c.req.param("projectId"),
-        ...(typeof projectAssetIdValue === "string"
-          ? { projectAssetId: projectAssetIdValue.trim() }
-          : {}),
+        projectAssetId: projectAssetIdValue.trim(),
         kind: kind.data,
         bytes: new Uint8Array(await file.arrayBuffer()),
         contentType,
@@ -4083,20 +4091,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const file = form.get("file");
     const kind = AssetKindSchema.safeParse(form.get("kind"));
     const globalAssetIdValue = form.get("globalAssetId");
-    if (!file || typeof file === "string" || !kind.success) {
+    if (
+      !file ||
+      typeof file === "string" ||
+      !kind.success ||
+      globalAssetIdValue === null
+    ) {
       return c.json(
         {
-          error: "Global Asset import requires file and kind",
+          error: "Global Asset import requires file, kind, and globalAssetId",
           code: "INVALID_GLOBAL_ASSET_IMPORT",
         },
         400,
       );
     }
     if (
-      globalAssetIdValue !== null &&
-      (typeof globalAssetIdValue !== "string" ||
-        !globalAssetIdValue.trim() ||
-        globalAssetIdValue.length > 512)
+      typeof globalAssetIdValue !== "string" ||
+      !globalAssetIdValue.trim() ||
+      globalAssetIdValue.length > 512
     ) {
       return c.json(
         {
@@ -4123,9 +4135,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           : declaredContentType;
       const asset = await globalAssetServiceAt(requestOrigin(c)).importBytes({
         libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
-        ...(typeof globalAssetIdValue === "string"
-          ? { globalAssetId: globalAssetIdValue.trim() }
-          : {}),
+        globalAssetId: globalAssetIdValue.trim(),
         kind: kind.data,
         bytes: new Uint8Array(await file.arrayBuffer()),
         contentType,
@@ -10132,6 +10142,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const projectId =
       typeof body.projectId === "string" ? body.projectId.trim() : "";
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    const actionRunId =
+      typeof body.actionRunId === "string" ? body.actionRunId.trim() : "";
     const quality =
       body.quality === "low-poly" || body.quality === "geometry"
         ? body.quality
@@ -10139,6 +10151,15 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (!projectId || !prompt) {
       return c.json(
         { error: "projectId and a 3D model prompt are required" },
+        400,
+      );
+    }
+    if (!actionRunId) {
+      return c.json({ error: "actionRunId is required" }, 400);
+    }
+    if (actionRunId.length > 256) {
+      return c.json(
+        { error: "actionRunId must be at most 256 characters" },
         400,
       );
     }
@@ -10167,15 +10188,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         503,
       );
     }
-    const clientActionRunId =
-      typeof body.actionRunId === "string" ? body.actionRunId.trim() : "";
-    if (clientActionRunId.length > 256) {
-      return c.json(
-        { error: "actionRunId must be at most 256 characters" },
-        400,
-      );
-    }
-    const actionRunId = clientActionRunId || `director:${randomUUID()}`;
     const identity = { actionRunId, outputSlot: "media" };
     try {
       const existing = await durableRunJournal.load(identity);
@@ -10401,7 +10413,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         projectId,
         projectAssetId: outputAssetId,
         kind: outputKind,
-        resourceId: staged.resource.id,
+        resourceId: staged.resourceId,
         name: file.name || `edit-${actionRunId}`,
         metadata: { bytes: bytes.byteLength, contentType },
         provenance: {
@@ -10534,7 +10546,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         projectId,
         projectAssetId: outputAssetId,
         kind: "video",
-        resourceId: staged.resource.id,
+        resourceId: staged.resourceId,
         name: `trimmed-${source.name ?? source.id}.mp4`,
         metadata: {
           bytes: bytes.byteLength,

@@ -286,8 +286,13 @@ export function listPersonalGlobalAssets(): Promise<ResolvedAsset[]> {
 export function importPersonalGlobalAssetFile(
   file: File,
   kind: AssetKind,
+  options: { globalAssetId?: string } = {},
 ): Promise<ResolvedAsset> {
-  return personalGlobalAssets.importFile({ file, kind });
+  return personalGlobalAssets.importFile({
+    file,
+    kind,
+    globalAssetId: options.globalAssetId ?? `global:${crypto.randomUUID()}`,
+  });
 }
 
 /** Publish a Project Resource as an independent personal-library entry. */

@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 import {
   createGlobalAssetClient,
@@ -9,18 +10,24 @@ import {
   ProjectAssetMetadataSchema,
   ResolvedAssetSchema,
   type AssetKind,
+  type Asset,
   type GlobalAssetEntry,
   type ProjectAssetMetadata,
   type ProjectAssetProvenance,
   type ResolvedAsset,
 } from "@clash/shared-types";
 
+import { assetPathForRead } from "./local-asset-paths.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import {
   createLocalResourceStore,
   type LocalResourceProjection,
 } from "./local-resource-store.js";
-import type { LocalAssetInspectionService } from "./local-asset-inspections.js";
+import {
+  canonicalAssetMediaTypeAssertion,
+  type LocalAssetInspectionService,
+} from "./local-asset-inspections.js";
+import type { LocalAssetInspectionFacts } from "./local-asset-inspections.js";
 
 export type LocalGlobalAssetErrorCode =
   | "GLOBAL_ASSET_NOT_FOUND"
@@ -44,7 +51,7 @@ export class LocalGlobalAssetError extends Error {
 export interface LocalGlobalAssetService {
   importBytes(input: {
     libraryId: string;
-    globalAssetId?: string;
+    globalAssetId: string;
     kind: AssetKind;
     bytes: Uint8Array;
     contentType?: string;
@@ -55,7 +62,7 @@ export interface LocalGlobalAssetService {
   }): Promise<ResolvedAsset>;
   publishResource(input: {
     libraryId: string;
-    globalAssetId?: string;
+    globalAssetId: string;
     resourceId: string;
     kind: AssetKind;
     name?: string;
@@ -107,6 +114,40 @@ function mediaUrl(
   return `${origin.replace(/\/+$/, "")}/api/v1/libraries/${encodeURIComponent(libraryId)}/assets/${encodeURIComponent(globalAssetId)}/media`;
 }
 
+function legacyStorageKey(asset: Asset): string {
+  const localBlobKey = asset.metadata?.localBlobKey;
+  if (typeof localBlobKey === "string" && localBlobKey.trim()) {
+    const normalized = localBlobKey.replace(/\\/g, "/").replace(/^\/+/, "");
+    return normalized.startsWith("blobs/")
+      ? `local-blobs/${normalized.slice("blobs/".length)}`
+      : normalized;
+  }
+  return asset.srcR2Key;
+}
+
+function legacyContentHash(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/^sha256:/, "");
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : undefined;
+}
+
+function legacyProvenance(asset: Asset): ProjectAssetProvenance {
+  if (asset.sourceTaskId || asset.sourceModel || asset.sourcePrompt) {
+    return {
+      kind: "generation",
+      ...(asset.sourceTaskId ? { actionRunId: asset.sourceTaskId } : {}),
+      ...(asset.sourceModel ? { model: asset.sourceModel } : {}),
+      ...(asset.sourcePrompt !== null && asset.sourcePrompt !== undefined
+        ? { prompt: asset.sourcePrompt }
+        : {}),
+    };
+  }
+  return { kind: "import" };
+}
+
 function metadataForResource(input: {
   metadata?: ProjectAssetMetadata;
   byteLength: number;
@@ -143,6 +184,7 @@ export function createLocalGlobalAssetService(options: {
   dataDir: string;
   clashRoot?: string;
   projectionOrigin: string | (() => string);
+  legacyUserId?: string;
   assetInspection?: LocalAssetInspectionService;
 }): LocalGlobalAssetService {
   const metadata = createLocalMetadataStore(options.dataDir);
@@ -165,9 +207,26 @@ export function createLocalGlobalAssetService(options: {
     registry: {
       async resolve({ entry }) {
         try {
-          const projection = await resources.resolve(entry.resourceId);
+          let projection = await resources.resolve(entry.resourceId);
+          if (
+            projection &&
+            !projection.resource.contentType &&
+            options.assetInspection
+          ) {
+            await options.assetInspection.inspect({ source: projection });
+            projection = await resources.resolve(entry.resourceId);
+          }
+          const contentType = canonicalAssetMediaTypeAssertion(
+            projection?.resource.contentType,
+          );
           return projection
-            ? { status: "ready" as const, resource: projection.resource }
+            ? {
+                status: "ready" as const,
+                resource: {
+                  ...projection.resource,
+                  ...(contentType ? { contentType } : {}),
+                },
+              }
             : {
                 status: "unavailable" as const,
                 error:
@@ -209,7 +268,6 @@ export function createLocalGlobalAssetService(options: {
     try {
       const inspection = await options.assetInspection.inspect({
         source,
-        knownFacts: entry.metadata,
       });
       return ResolvedAssetSchema.parse({
         ...resolved,
@@ -253,80 +311,101 @@ export function createLocalGlobalAssetService(options: {
     return resolveEntry(libraryId, entry);
   }
 
-  async function metadataForPublication(input: {
+  function canonicalMetadata(input: {
     source: LocalResourceProjection;
+    facts: LocalAssetInspectionFacts;
     metadata?: ProjectAssetMetadata;
     originalName?: string;
-  }): Promise<ProjectAssetMetadata> {
-    const { waveform: _legacyWaveform, ...metadata } = input.metadata ?? {};
-    const base = metadataForResource({
-      metadata,
-      byteLength: input.source.resource.byteLength,
-      ...(input.source.resource.contentType
-        ? { contentType: input.source.resource.contentType }
-        : {}),
-      ...(input.originalName ? { originalName: input.originalName } : {}),
-    });
-    if (!options.assetInspection) return base;
-
-    const inspection = await options.assetInspection.inspect({
-      source: input.source,
-      knownFacts: base,
-    });
+  }): ProjectAssetMetadata {
     return ProjectAssetMetadataSchema.parse({
-      ...base,
-      ...inspection.facts,
-      // Resource facts, not caller or probe claims, own these immutable fields.
+      ...input.facts,
+      // Resource and Host byte-probe facts own the canonical media read model.
+      // Producer/browser values are hints only and cannot become authority.
       bytes: input.source.resource.byteLength,
-      ...(input.source.resource.contentType
-        ? { contentType: input.source.resource.contentType }
+      ...(input.metadata?.originalName || input.originalName
+        ? { originalName: input.metadata?.originalName ?? input.originalName }
         : {}),
     });
   }
 
-  async function publish(input: {
+  async function finalizedSource(input: {
+    resourceId: string;
+    kind: AssetKind;
+    metadata?: ProjectAssetMetadata;
+  }): Promise<{
+    source: LocalResourceProjection;
+    facts: LocalAssetInspectionFacts;
+  }> {
+    if (!options.assetInspection) {
+      throw new LocalGlobalAssetError(
+        "GLOBAL_ASSET_UNAVAILABLE",
+        "A verified Host Asset inspection is required before Global publication.",
+      );
+    }
+    try {
+      return await options.assetInspection.finalize({
+        resourceId: input.resourceId,
+        kind: input.kind,
+        ...(input.metadata?.contentType
+          ? { contentType: input.metadata.contentType }
+          : {}),
+      });
+    } catch (error) {
+      throw new LocalGlobalAssetError(
+        "GLOBAL_ASSET_UNAVAILABLE",
+        `Resource ${input.resourceId} could not be verified for Global publication: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
+  type GlobalPublicationInput = {
     libraryId: string;
-    globalAssetId?: string;
+    globalAssetId: string;
     resourceId: string;
     kind: AssetKind;
     name?: string;
     metadata?: ProjectAssetMetadata;
     provenance?: ProjectAssetProvenance;
     originalName?: string;
-  }): Promise<ResolvedAsset> {
+  };
+
+  async function preparePublication(input: GlobalPublicationInput): Promise<{
+    libraryId: string;
+    globalAssetId: string;
+    entry: GlobalAssetEntry;
+  }> {
     const libraryId = nonEmpty(input.libraryId, "libraryId");
-    const globalAssetId = nonEmpty(
-      input.globalAssetId ?? `global:${randomUUID()}`,
-      "globalAssetId",
-    );
-    const projection = await resources.resolve(
-      nonEmpty(input.resourceId, "resourceId"),
-    );
-    if (!projection) {
-      throw new LocalGlobalAssetError(
-        "GLOBAL_ASSET_UNAVAILABLE",
-        `Resource ${input.resourceId} is not installed on this Host.`,
-      );
-    }
-    if (projection.resource.kind !== input.kind) {
-      throw new LocalGlobalAssetError(
-        "GLOBAL_ASSET_FACT_MISMATCH",
-        `Resource ${input.resourceId} is ${projection.resource.kind}, not ${input.kind}.`,
-      );
-    }
+    const globalAssetId = nonEmpty(input.globalAssetId, "globalAssetId");
+    const resourceId = nonEmpty(input.resourceId, "resourceId");
+    const finalized = await finalizedSource({
+      resourceId,
+      kind: input.kind,
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    });
+    const projection = finalized.source;
     const entry = GlobalAssetEntrySchema.parse({
       id: globalAssetId,
       kind: input.kind,
       resourceId: projection.resource.id,
       lifecycle: { state: "active" },
       ...(input.name ? { name: input.name } : {}),
-      metadata: await metadataForPublication({
+      metadata: canonicalMetadata({
         source: projection,
+        facts: finalized.facts,
         metadata: input.metadata,
         ...(input.originalName ? { originalName: input.originalName } : {}),
       }),
       ...(input.provenance ? { provenance: input.provenance } : {}),
     } satisfies GlobalAssetEntry);
+    return { libraryId, globalAssetId, entry };
+  }
+
+  async function publish(
+    input: GlobalPublicationInput,
+  ): Promise<ResolvedAsset> {
+    await ensureLibraryMaterialized(input.libraryId);
+    const { libraryId, globalAssetId, entry } = await preparePublication(input);
     const existing = await authority.read(libraryId, globalAssetId);
     if (existing) {
       if (JSON.stringify(existing) !== JSON.stringify(entry)) {
@@ -354,23 +433,119 @@ export function createLocalGlobalAssetService(options: {
     return requireResolved(libraryId, globalAssetId);
   }
 
+  async function materializeLegacyPersonalAssets(): Promise<void> {
+    if (await metadata.legacyPersonalGlobalAssetMigrationCompleted()) return;
+    const legacy = await metadata.load();
+    const legacyUserId = options.legacyUserId?.trim() || "local-user";
+    const assetsById = new Map(legacy.assets.map((asset) => [asset.id, asset]));
+    const assetIds = [
+      ...new Set(
+        (legacy.libraryAssetRefs ?? [])
+          .filter((reference) => reference.userId === legacyUserId)
+          .map((reference) => reference.assetId),
+      ),
+    ].sort();
+    const entries: GlobalAssetEntry[] = [];
+    for (const assetId of assetIds) {
+      const asset = assetsById.get(assetId);
+      if (!asset) {
+        throw new LocalGlobalAssetError(
+          "GLOBAL_ASSET_UNAVAILABLE",
+          `Legacy personal Global Asset ${assetId} has no Asset row.`,
+        );
+      }
+      if (asset.userId !== legacyUserId) continue;
+      let bytes: Uint8Array;
+      try {
+        const path = await assetPathForRead(
+          options.dataDir,
+          legacyStorageKey(asset),
+          options.clashRoot,
+        );
+        bytes = new Uint8Array(await readFile(path));
+      } catch (error) {
+        throw new LocalGlobalAssetError(
+          "GLOBAL_ASSET_UNAVAILABLE",
+          `Legacy personal Global Asset ${asset.id} has no locally verifiable immutable bytes.`,
+          { cause: error },
+        );
+      }
+      const digest = createHash("sha256").update(bytes).digest("hex");
+      const claimedDigest = legacyContentHash(asset.metadata?.contentHash);
+      if (
+        (typeof asset.metadata?.contentHash === "string" && !claimedDigest) ||
+        (claimedDigest !== undefined && claimedDigest !== digest) ||
+        (typeof asset.metadata?.bytes === "number" &&
+          asset.metadata.bytes !== bytes.byteLength)
+      ) {
+        throw new LocalGlobalAssetError(
+          "GLOBAL_ASSET_FACT_MISMATCH",
+          `Legacy personal Global Asset ${asset.id} does not match its claimed immutable facts.`,
+        );
+      }
+      const staged = await resources.stage({
+        bytes,
+        ...(asset.metadata?.originalName
+          ? { originalName: asset.metadata.originalName }
+          : {}),
+      });
+      const prepared = await preparePublication({
+        libraryId: "personal",
+        globalAssetId: asset.id,
+        resourceId: staged.resourceId,
+        kind: asset.kind,
+        ...(asset.metadata?.originalName
+          ? {
+              name: asset.metadata.originalName,
+              originalName: asset.metadata.originalName,
+            }
+          : {}),
+        metadata: {
+          ...(asset.metadata?.contentType
+            ? { contentType: asset.metadata.contentType }
+            : {}),
+        },
+        provenance: legacyProvenance(asset),
+      });
+      entries.push(prepared.entry);
+    }
+    try {
+      await metadata.createLegacyPersonalGlobalAssets(entries);
+    } catch (error) {
+      throw new LocalGlobalAssetError(
+        "GLOBAL_ASSET_FACT_MISMATCH",
+        "Legacy personal Global Assets conflict with canonical library facts.",
+        { cause: error },
+      );
+    }
+  }
+
+  async function ensureLibraryMaterialized(
+    libraryIdInput: string,
+  ): Promise<string> {
+    const libraryId = nonEmpty(libraryIdInput, "libraryId");
+    if (libraryId === "personal") await materializeLegacyPersonalAssets();
+    return libraryId;
+  }
+
   return {
     async importBytes(input) {
-      const projection = await resources.install({
-        kind: input.kind,
+      const staged = await resources.stage({
         bytes: input.bytes,
-        ...(input.contentType ? { contentType: input.contentType } : {}),
         ...(input.originalName ? { originalName: input.originalName } : {}),
       });
       return publish({
         libraryId: input.libraryId,
-        ...(input.globalAssetId ? { globalAssetId: input.globalAssetId } : {}),
-        resourceId: projection.resource.id,
+        globalAssetId: input.globalAssetId,
+        resourceId: staged.resourceId,
         kind: input.kind,
         ...((input.name ?? input.originalName)
           ? { name: input.name ?? input.originalName }
           : {}),
-        ...(input.metadata ? { metadata: input.metadata } : {}),
+        metadata: {
+          ...(input.metadata ?? {}),
+          ...(input.contentType ? { contentType: input.contentType } : {}),
+        },
         ...(input.provenance ? { provenance: input.provenance } : {}),
         ...(input.originalName ? { originalName: input.originalName } : {}),
       });
@@ -379,18 +554,20 @@ export function createLocalGlobalAssetService(options: {
     publishResource: publish,
 
     async readEntry(libraryIdInput, globalAssetIdInput) {
-      const libraryId = nonEmpty(libraryIdInput, "libraryId");
+      const libraryId = await ensureLibraryMaterialized(libraryIdInput);
       const globalAssetId = nonEmpty(globalAssetIdInput, "globalAssetId");
       const entry = await authority.read(libraryId, globalAssetId);
       return entry ? GlobalAssetEntrySchema.parse(entry) : null;
     },
 
-    async read(libraryId, globalAssetId) {
+    async read(libraryIdInput, globalAssetId) {
+      const libraryId = await ensureLibraryMaterialized(libraryIdInput);
       const entry = await authority.read(libraryId, globalAssetId);
       return entry ? resolveEntry(libraryId, entry) : null;
     },
 
-    async list(libraryId) {
+    async list(libraryIdInput) {
+      const libraryId = await ensureLibraryMaterialized(libraryIdInput);
       return Promise.all(
         (await authority.list(libraryId)).map((entry) =>
           resolveEntry(libraryId, entry),
@@ -399,7 +576,7 @@ export function createLocalGlobalAssetService(options: {
     },
 
     async trash(input) {
-      const libraryId = nonEmpty(input.libraryId, "libraryId");
+      const libraryId = await ensureLibraryMaterialized(input.libraryId);
       const globalAssetId = nonEmpty(input.globalAssetId, "globalAssetId");
       const deleteOperationId = nonEmpty(
         input.deleteOperationId,
@@ -440,7 +617,7 @@ export function createLocalGlobalAssetService(options: {
     },
 
     async restore(input) {
-      const libraryId = nonEmpty(input.libraryId, "libraryId");
+      const libraryId = await ensureLibraryMaterialized(input.libraryId);
       const globalAssetId = nonEmpty(input.globalAssetId, "globalAssetId");
       const deleteOperationId = nonEmpty(
         input.deleteOperationId,
@@ -467,12 +644,13 @@ export function createLocalGlobalAssetService(options: {
     },
 
     async purge(input) {
-      await client.purge(input);
-      return requireResolved(input.libraryId, input.globalAssetId);
+      const libraryId = await ensureLibraryMaterialized(input.libraryId);
+      await client.purge({ ...input, libraryId });
+      return requireResolved(libraryId, input.globalAssetId);
     },
 
     async openProjection(libraryIdInput, globalAssetIdInput) {
-      const libraryId = nonEmpty(libraryIdInput, "libraryId");
+      const libraryId = await ensureLibraryMaterialized(libraryIdInput);
       const globalAssetId = nonEmpty(globalAssetIdInput, "globalAssetId");
       const entry = await authority.read(libraryId, globalAssetId);
       if (!entry) {

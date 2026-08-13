@@ -1,14 +1,16 @@
 import { createRequire } from "node:module";
 import { execFile } from "node:child_process";
-import { chmod, mkdir, readFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import {
   ProjectAssetMetadataSchema,
+  ResourceSchema,
   type AssetKind,
   type ProjectAssetMetadata,
   type Resource,
 } from "@clash/shared-types";
+import { SaxesParser } from "saxes";
 
 import {
   createLocalResourceStore,
@@ -32,29 +34,37 @@ interface SqliteDatabase {
 }
 
 const LOCAL_ASSET_INSPECTION_RECIPE =
-  "asset-inspection/v3:canonical-media-facts";
+  "asset-inspection/v4:canonical-media-facts";
 
 const LocalAssetInspectionFactsSchema = ProjectAssetMetadataSchema.pick({
   width: true,
   height: true,
+  rotationDegrees: true,
   durationMs: true,
   contentType: true,
   frameRate: true,
   videoCodec: true,
   hasAudio: true,
   audioCodec: true,
+  sampleRate: true,
+  channelCount: true,
+  channelLayout: true,
 });
 
 export type LocalAssetInspectionFacts = Pick<
   ProjectAssetMetadata,
   | "width"
   | "height"
+  | "rotationDegrees"
   | "durationMs"
   | "contentType"
   | "frameRate"
   | "videoCodec"
   | "hasAudio"
   | "audioCodec"
+  | "sampleRate"
+  | "channelCount"
+  | "channelLayout"
 >;
 
 export interface LocalAssetInspectorInput {
@@ -77,10 +87,17 @@ function optionalNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function canonicalChannelLayout(value: unknown): string | undefined {
+  const layout = optionalNonEmptyString(value);
+  return layout?.toLowerCase() === "unknown" ? undefined : layout;
+}
+
 function optionalPositiveInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
-    ? value
-    : undefined;
+  if (typeof value !== "number" && typeof value !== "string") {
+    return undefined;
+  }
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : undefined;
 }
 
 function frameRate(value: unknown): number | undefined {
@@ -108,6 +125,34 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+function displayMatrixSideData(
+  video: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const sideData = Array.isArray(video.side_data_list)
+    ? video.side_data_list
+        .map(record)
+        .filter((item): item is Record<string, unknown> => !!item)
+    : [];
+  return sideData.find((item) => item.side_data_type === "Display Matrix");
+}
+
+function displayRotationDegrees(video: Record<string, unknown>): number {
+  const displayMatrix = displayMatrixSideData(video);
+  if (!displayMatrix) return 0;
+  const rotation = displayMatrix.rotation;
+  if (typeof rotation !== "number" || !Number.isFinite(rotation)) {
+    throw new Error("Decoded visual Asset has a malformed display rotation.");
+  }
+  const normalized = ((rotation % 360) + 360) % 360;
+  const canonical = Object.is(normalized, -0) ? 0 : normalized;
+  if (![0, 90, 180, 270].includes(canonical)) {
+    throw new Error(
+      "Decoded visual Asset has an unsupported non-quarter-turn display rotation.",
+    );
+  }
+  return canonical;
+}
+
 function mediaTypeParameters(value: string | undefined): {
   essence: string;
   parameters: Map<string, string>;
@@ -128,8 +173,58 @@ function mediaTypeParameters(value: string | undefined): {
   return { essence: rawEssence.trim().toLowerCase(), parameters };
 }
 
-function requireRegisteredMediaType(resource: Resource): string {
-  const { essence } = mediaTypeParameters(resource.contentType);
+export function canonicalAssetMediaTypeAssertion(
+  value: string | undefined,
+): string | undefined {
+  if (!value?.trim()) return undefined;
+  const { essence, parameters } = mediaTypeParameters(value);
+  const canonicalEssence =
+    essence === "image/jpg"
+      ? "image/jpeg"
+      : essence === "audio/x-wav"
+        ? "audio/wav"
+        : essence === "audio/mp3"
+          ? "audio/mpeg"
+          : essence;
+  const serializedParameters = [...parameters.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, parameter]) => `${key}=${parameter}`)
+    .join(";");
+  return serializedParameters
+    ? `${canonicalEssence};${serializedParameters}`
+    : canonicalEssence;
+}
+
+function assertByteVerifiableMediaType(value: string | undefined): void {
+  const { essence } = mediaTypeParameters(value);
+  if (essence === "audio/l16" || essence === "audio/pcm") {
+    throw new Error(
+      "Headerless raw PCM cannot be published as canonical Asset media without a trusted byte-derived source contract; wrap it in a self-describing audio container.",
+    );
+  }
+}
+
+function sameMediaTypeAssertion(
+  left: string | undefined,
+  right: string | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  const leftParsed = mediaTypeParameters(left);
+  const rightParsed = mediaTypeParameters(right);
+  if (leftParsed.essence !== rightParsed.essence) return false;
+  return (
+    leftParsed.parameters.size === rightParsed.parameters.size &&
+    [...leftParsed.parameters].every(
+      ([key, value]) => rightParsed.parameters.get(key) === value,
+    )
+  );
+}
+
+function registeredMediaTypeAssertion(resource: Resource): string | undefined {
+  const canonical = canonicalAssetMediaTypeAssertion(resource.contentType);
+  if (!canonical) return undefined;
+  assertByteVerifiableMediaType(canonical);
+  const { essence } = mediaTypeParameters(canonical);
   const matches =
     (resource.kind === "image" && essence.startsWith("image/")) ||
     (resource.kind === "video" && essence.startsWith("video/")) ||
@@ -149,6 +244,7 @@ function decodedMediaType(input: {
   formatName?: string;
   videoCodec?: string;
   majorBrand?: string;
+  matroskaDocType?: "matroska" | "webm";
 }): string {
   const formatNames = new Set(
     (input.formatName ?? "")
@@ -176,6 +272,18 @@ function decodedMediaType(input: {
                   ? "image/avif"
                   : undefined;
     if (mediaType) return mediaType;
+  } else if (
+    formatNames.has("matroska") &&
+    formatNames.has("webm") &&
+    input.matroskaDocType
+  ) {
+    return input.kind === "video"
+      ? input.matroskaDocType === "webm"
+        ? "video/webm"
+        : "video/x-matroska"
+      : input.matroskaDocType === "webm"
+        ? "audio/webm"
+        : "audio/x-matroska";
   } else if (formatNames.has("webm")) {
     return input.kind === "video" ? "video/webm" : "audio/webm";
   } else if (formatNames.has("matroska")) {
@@ -213,24 +321,160 @@ function decodedMediaType(input: {
   );
 }
 
-function assertDecodedMediaType(input: {
+function verifiedDecodedMediaType(input: {
   resource: Resource;
-  registeredEssence: string;
+  registeredEssence?: string;
   formatName?: string;
   videoCodec?: string;
   majorBrand?: string;
-}): void {
-  if (input.resource.kind === "model") return;
+  matroskaDocType?: "matroska" | "webm";
+}): string {
+  if (input.resource.kind === "model") {
+    throw new Error("Model media type verification uses the glTF byte probe.");
+  }
   const decoded = decodedMediaType({
     kind: input.resource.kind,
     ...(input.formatName ? { formatName: input.formatName } : {}),
     ...(input.videoCodec ? { videoCodec: input.videoCodec } : {}),
     ...(input.majorBrand ? { majorBrand: input.majorBrand } : {}),
+    ...(input.matroskaDocType
+      ? { matroskaDocType: input.matroskaDocType }
+      : {}),
   });
-  if (decoded !== input.registeredEssence) {
+  if (
+    input.registeredEssence !== undefined &&
+    decoded !== input.registeredEssence
+  ) {
     throw new Error(
       `Decoded ${input.resource.kind} Asset has canonical media type ${decoded}, not registered ${input.registeredEssence}.`,
     );
+  }
+  return decoded;
+}
+
+async function inspectEbmlDocType(
+  sourcePath: string,
+  resource: Resource,
+): Promise<"matroska" | "webm"> {
+  const bytes = await readFile(sourcePath);
+  if (bytes.byteLength !== resource.byteLength) {
+    throw new Error("EBML Asset bytes do not match immutable Resource length.");
+  }
+  if (
+    bytes.byteLength < 8 ||
+    bytes[0] !== 0x1a ||
+    bytes[1] !== 0x45 ||
+    bytes[2] !== 0xdf ||
+    bytes[3] !== 0xa3
+  ) {
+    throw new Error("Matroska/WebM Asset bytes contain no EBML header.");
+  }
+  const limit = Math.min(bytes.byteLength - 3, 64 * 1024);
+  for (let offset = 4; offset < limit; offset += 1) {
+    if (bytes[offset] !== 0x42 || bytes[offset + 1] !== 0x82) continue;
+    const first = bytes[offset + 2]!;
+    let sizeLength = 1;
+    let marker = 0x80;
+    while (sizeLength <= 8 && (first & marker) === 0) {
+      sizeLength += 1;
+      marker >>= 1;
+    }
+    if (sizeLength > 8 || offset + 2 + sizeLength > bytes.byteLength) {
+      break;
+    }
+    let size = first & (marker - 1);
+    for (let index = 1; index < sizeLength; index += 1) {
+      size = size * 256 + bytes[offset + 2 + index]!;
+    }
+    const start = offset + 2 + sizeLength;
+    const end = start + size;
+    if (size <= 0 || end > bytes.byteLength || size > 32) break;
+    const value = bytes.subarray(start, end).toString("ascii").toLowerCase();
+    if (value === "matroska" || value === "webm") return value;
+    throw new Error(`Unsupported EBML document type ${value || "(empty)"}.`);
+  }
+  throw new Error("Matroska/WebM Asset bytes contain no EBML DocType.");
+}
+
+async function readFileSlice(
+  file: Awaited<ReturnType<typeof open>>,
+  position: number,
+  length: number,
+): Promise<Buffer | undefined> {
+  const bytes = Buffer.alloc(length);
+  let offset = 0;
+  while (offset < length) {
+    const { bytesRead } = await file.read(
+      bytes,
+      offset,
+      length - offset,
+      position + offset,
+    );
+    if (bytesRead === 0) return undefined;
+    offset += bytesRead;
+  }
+  return bytes;
+}
+
+async function inspectWaveChannelLayout(
+  sourcePath: string,
+  resource: Resource,
+  decodedChannelCount: number,
+): Promise<"mono" | "stereo" | undefined> {
+  const file = await open(sourcePath, "r");
+  try {
+    const { size } = await file.stat();
+    if (size !== resource.byteLength) {
+      throw new Error(
+        "WAVE Asset bytes do not match immutable Resource length.",
+      );
+    }
+    const riff = await readFileSlice(file, 0, 12);
+    if (
+      !riff ||
+      riff.subarray(0, 4).toString("ascii") !== "RIFF" ||
+      riff.subarray(8, 12).toString("ascii") !== "WAVE"
+    ) {
+      return undefined;
+    }
+
+    let offset = 12;
+    while (offset + 8 <= size) {
+      const header = await readFileSlice(file, offset, 8);
+      if (!header) return undefined;
+      const chunkSize = header.readUInt32LE(4);
+      const chunkStart = offset + 8;
+      const chunkEnd = chunkStart + chunkSize;
+      if (chunkEnd > size) {
+        throw new Error("WAVE Asset contains a truncated RIFF chunk.");
+      }
+      if (header.subarray(0, 4).toString("ascii") === "fmt ") {
+        if (chunkSize < 16) {
+          throw new Error("WAVE Asset contains an incomplete fmt chunk.");
+        }
+        const format = await readFileSlice(file, chunkStart, 16);
+        if (!format) {
+          throw new Error("WAVE Asset contains an incomplete fmt chunk.");
+        }
+        const formatTag = format.readUInt16LE(0);
+        const channelCount = format.readUInt16LE(2);
+        if (channelCount !== decodedChannelCount) {
+          throw new Error(
+            "WAVE fmt channel count disagrees with the decoded audio stream.",
+          );
+        }
+        if (formatTag !== 0x0001 && formatTag !== 0x0003) return undefined;
+        return channelCount === 1
+          ? "mono"
+          : channelCount === 2
+            ? "stereo"
+            : undefined;
+      }
+      offset = chunkEnd + (chunkSize % 2);
+    }
+    return undefined;
+  } finally {
+    await file.close();
   }
 }
 
@@ -259,13 +503,22 @@ function parseGltfDocument(value: unknown): void {
 async function inspectGltf(
   sourcePath: string,
   resource: Resource,
-  essence: string,
+  registeredEssence: string | undefined,
 ): Promise<LocalAssetInspectionFacts> {
   const bytes = await readFile(sourcePath);
   if (bytes.byteLength !== resource.byteLength) {
     throw new Error("glTF Asset bytes do not match immutable Resource length.");
   }
-  if (essence === "model/gltf+json") {
+  const decodedEssence =
+    bytes.byteLength >= 4 && bytes.subarray(0, 4).toString() === "glTF"
+      ? "model/gltf-binary"
+      : "model/gltf+json";
+  if (registeredEssence !== undefined && registeredEssence !== decodedEssence) {
+    throw new Error(
+      `Decoded model Asset has canonical media type ${decodedEssence}, not registered ${registeredEssence}.`,
+    );
+  }
+  if (decodedEssence === "model/gltf+json") {
     try {
       parseGltfDocument(JSON.parse(bytes.toString("utf8")));
     } catch (error) {
@@ -304,35 +557,133 @@ async function inspectGltf(
     }
   }
   return LocalAssetInspectionFactsSchema.parse({
-    contentType: resource.contentType,
+    contentType: decodedEssence,
   });
 }
 
-function inspectRawL16(
+function svgPixelLength(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const match = /^(\d+(?:\.\d+)?)(?:px)?$/i.exec(value.trim());
+  if (!match) return undefined;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function svgDocumentRoot(text: string): string | undefined {
+  let document = text.replace(/^\uFEFF/u, "").trimStart();
+  if (/^<\?xml\b/i.test(document)) {
+    const declarationEnd = document.indexOf("?>");
+    if (declarationEnd < 0) return undefined;
+    document = document.slice(declarationEnd + 2).trimStart();
+  }
+  while (document.startsWith("<!--")) {
+    const commentEnd = document.indexOf("-->");
+    if (commentEnd < 0) return undefined;
+    document = document.slice(commentEnd + 3).trimStart();
+  }
+  return /^<svg\b[^>]*>/i.exec(document)?.[0];
+}
+
+interface SvgRootAttributes {
+  width?: string;
+  height?: string;
+  viewBox?: string;
+}
+
+function assertWellFormedSvgDocument(text: string): SvgRootAttributes {
+  const parser = new SaxesParser({ xmlns: true });
+  let sawRoot = false;
+  let rootAttributes: SvgRootAttributes | undefined;
+  parser.on("doctype", () => {
+    throw new Error("SVG documents with a DOCTYPE are not accepted.");
+  });
+  parser.on("opentag", (tag) => {
+    if (sawRoot) return;
+    sawRoot = true;
+    if (
+      tag.local.toLowerCase() !== "svg" ||
+      (tag.uri !== "" && tag.uri !== "http://www.w3.org/2000/svg")
+    ) {
+      throw new Error("The XML document root is not an SVG element.");
+    }
+    rootAttributes = {
+      ...(tag.attributes.width
+        ? { width: tag.attributes.width.value.trim() }
+        : {}),
+      ...(tag.attributes.height
+        ? { height: tag.attributes.height.value.trim() }
+        : {}),
+      ...(tag.attributes.viewBox
+        ? { viewBox: tag.attributes.viewBox.value.trim() }
+        : {}),
+    };
+  });
+  parser.on("error", (error) => {
+    throw error;
+  });
+  try {
+    parser.write(text).close();
+  } catch (error) {
+    throw new Error("Asset bytes are not a well-formed SVG document.", {
+      cause: error,
+    });
+  }
+  if (!sawRoot || !rootAttributes) {
+    throw new Error("Asset bytes are not a well-formed SVG document.");
+  }
+  return rootAttributes;
+}
+
+async function inspectSvg(
+  sourcePath: string,
   resource: Resource,
-): LocalAssetInspectionFacts | undefined {
-  const { essence, parameters } = mediaTypeParameters(resource.contentType);
-  if (essence !== "audio/l16" && essence !== "audio/pcm") return undefined;
-  const rate = Number(parameters.get("rate"));
-  const channels = Number(parameters.get("channels") ?? "1");
+  registeredEssence: string | undefined,
+): Promise<LocalAssetInspectionFacts | undefined> {
+  if (resource.kind !== "image") return undefined;
+  const bytes = await readFile(sourcePath);
+  if (bytes.byteLength !== resource.byteLength) {
+    throw new Error("SVG Asset bytes do not match immutable Resource length.");
+  }
+  const text = bytes.toString("utf8");
+  const root = svgDocumentRoot(text);
+  if (!root) {
+    if (registeredEssence === "image/svg+xml") {
+      throw new Error(
+        "Registered SVG Asset bytes contain no SVG root element.",
+      );
+    }
+    return undefined;
+  }
+  const rootAttributes = assertWellFormedSvgDocument(text);
   if (
-    !Number.isSafeInteger(rate) ||
-    rate <= 0 ||
-    !Number.isSafeInteger(channels) ||
-    channels <= 0 ||
-    resource.byteLength % (2 * channels) !== 0
+    registeredEssence !== undefined &&
+    registeredEssence !== "image/svg+xml"
   ) {
     throw new Error(
-      "Raw 16-bit PCM Asset metadata must provide a valid sample rate, channel count, and whole samples.",
+      `Decoded image Asset has canonical media type image/svg+xml, not registered ${registeredEssence}.`,
+    );
+  }
+  const viewBox = rootAttributes.viewBox?.split(/[\s,]+/).map(Number);
+  const viewBoxWidth =
+    viewBox?.length === 4 && Number.isFinite(viewBox[2]) && viewBox[2]! > 0
+      ? viewBox[2]
+      : undefined;
+  const viewBoxHeight =
+    viewBox?.length === 4 && Number.isFinite(viewBox[3]) && viewBox[3]! > 0
+      ? viewBox[3]
+      : undefined;
+  const width = svgPixelLength(rootAttributes.width) ?? viewBoxWidth;
+  const height = svgPixelLength(rootAttributes.height) ?? viewBoxHeight;
+  if (!width || !height) {
+    throw new Error(
+      "SVG Asset bytes must declare positive pixel dimensions or a positive viewBox.",
     );
   }
   return LocalAssetInspectionFactsSchema.parse({
-    durationMs: Math.round(
-      (resource.byteLength / (2 * channels * rate)) * 1_000,
-    ),
-    ...(resource.contentType ? { contentType: resource.contentType } : {}),
-    hasAudio: true,
-    audioCodec: "pcm_s16le",
+    contentType: "image/svg+xml",
+    width,
+    height,
+    rotationDegrees: 0,
   });
 }
 
@@ -351,21 +702,30 @@ export function createLocalFfprobeAssetInspector(options: {
       return { stdout: result.stdout };
     });
   return async ({ sourcePath, resource }) => {
-    const essence = requireRegisteredMediaType(resource);
+    const registeredEssence = registeredMediaTypeAssertion(resource);
     if (resource.kind === "model") {
-      return inspectGltf(sourcePath, resource, essence);
+      return inspectGltf(sourcePath, resource, registeredEssence);
     }
-    const rawL16 = inspectRawL16(resource);
-    if (rawL16) return rawL16;
-    const { stdout } = await run(options.ffprobePath, [
+    if (
+      resource.kind === "image" &&
+      (registeredEssence === undefined || registeredEssence === "image/svg+xml")
+    ) {
+      const svg = await inspectSvg(sourcePath, resource, registeredEssence);
+      if (svg) return svg;
+    }
+    const ffprobeArgs = [
       "-v",
       "error",
       "-print_format",
       "json",
       "-show_streams",
       "-show_format",
+      ...(resource.kind === "image"
+        ? ["-show_frames", "-read_intervals", "%+#1"]
+        : []),
       sourcePath,
-    ]);
+    ];
+    const { stdout } = await run(options.ffprobePath, ffprobeArgs);
     let output: unknown;
     try {
       output = JSON.parse(stdout);
@@ -381,7 +741,15 @@ export function createLocalFfprobeAssetInspector(options: {
           .map(record)
           .filter((item): item is Record<string, unknown> => !!item)
       : [];
+    const frames = Array.isArray(root.frames)
+      ? root.frames
+          .map(record)
+          .filter((item): item is Record<string, unknown> => !!item)
+      : [];
     const video = streams.find((stream) => stream.codec_type === "video");
+    const firstVideoFrame = frames.find(
+      (frame) => frame.media_type === "video" || frame.codec_type === "video",
+    );
     const audio = streams.find((stream) => stream.codec_type === "audio");
     const format = record(root.format);
     const formatName = optionalNonEmptyString(format?.format_name);
@@ -390,49 +758,112 @@ export function createLocalFfprobeAssetInspector(options: {
     );
     const width = optionalPositiveInteger(video?.width);
     const height = optionalPositiveInteger(video?.height);
+    const rotationSource =
+      firstVideoFrame && displayMatrixSideData(firstVideoFrame)
+        ? firstVideoFrame
+        : video;
+    const rotation = rotationSource
+      ? displayRotationDegrees(rotationSource)
+      : undefined;
+    const swapsDisplayDimensions = rotation === 90 || rotation === 270;
+    const displayWidth = swapsDisplayDimensions ? height : width;
+    const displayHeight = swapsDisplayDimensions ? width : height;
     const duration = durationMs(
       format?.duration ?? video?.duration ?? audio?.duration,
     );
     const rate = frameRate(video?.avg_frame_rate ?? video?.r_frame_rate);
     const videoCodec = optionalNonEmptyString(video?.codec_name);
     const audioCodec = optionalNonEmptyString(audio?.codec_name);
+    const sampleRate = optionalPositiveInteger(audio?.sample_rate);
+    const channelCount = optionalPositiveInteger(audio?.channels);
+    const formatNames = new Set(
+      (formatName ?? "")
+        .toLowerCase()
+        .split(",")
+        .map((value) => value.trim()),
+    );
+    const channelLayout =
+      canonicalChannelLayout(audio?.channel_layout) ??
+      (audio && channelCount && formatNames.has("wav")
+        ? await inspectWaveChannelLayout(sourcePath, resource, channelCount)
+        : undefined);
+    const matroskaDocType =
+      formatNames.has("matroska") && formatNames.has("webm")
+        ? await inspectEbmlDocType(sourcePath, resource)
+        : undefined;
 
     if (resource.kind === "image") {
       if (!video) throw new Error("Decoded image Asset has no visual stream.");
       requireFact(width, "width", resource.kind);
       requireFact(height, "height", resource.kind);
+      requireFact(rotation, "display rotation", resource.kind);
       requireFact(videoCodec, "image codec", resource.kind);
     } else if (resource.kind === "video") {
       if (!video) throw new Error("Decoded video Asset has no video stream.");
       requireFact(width, "width", resource.kind);
       requireFact(height, "height", resource.kind);
+      requireFact(rotation, "display rotation", resource.kind);
       requireFact(duration, "duration", resource.kind);
       requireFact(rate, "frame rate", resource.kind);
       requireFact(videoCodec, "video codec", resource.kind);
-      if (audio) requireFact(audioCodec, "audio codec", resource.kind);
+      if (audio) {
+        requireFact(audioCodec, "audio codec", resource.kind);
+        requireFact(sampleRate, "sample rate", resource.kind);
+        requireFact(channelCount, "channel count", resource.kind);
+        requireFact(channelLayout, "channel layout", resource.kind);
+      }
     } else {
       if (!audio) throw new Error("Decoded audio Asset has no audio stream.");
       requireFact(duration, "duration", resource.kind);
       requireFact(audioCodec, "audio codec", resource.kind);
+      requireFact(sampleRate, "sample rate", resource.kind);
+      requireFact(channelCount, "channel count", resource.kind);
+      requireFact(channelLayout, "channel layout", resource.kind);
     }
-    assertDecodedMediaType({
+    const contentType = verifiedDecodedMediaType({
       resource,
-      registeredEssence: essence,
+      ...(registeredEssence ? { registeredEssence } : {}),
       ...(formatName ? { formatName } : {}),
       ...(videoCodec ? { videoCodec } : {}),
       ...(majorBrand ? { majorBrand } : {}),
+      ...(matroskaDocType ? { matroskaDocType } : {}),
     });
+    if (resource.kind === "image") {
+      return LocalAssetInspectionFactsSchema.parse({
+        contentType,
+        width: displayWidth,
+        height: displayHeight,
+        rotationDegrees: rotation,
+      });
+    }
+    if (resource.kind === "video") {
+      return LocalAssetInspectionFactsSchema.parse({
+        contentType,
+        width: displayWidth,
+        height: displayHeight,
+        rotationDegrees: rotation,
+        durationMs: duration,
+        frameRate: rate,
+        videoCodec,
+        hasAudio: !!audio,
+        ...(audio
+          ? {
+              audioCodec,
+              sampleRate,
+              channelCount,
+              channelLayout,
+            }
+          : {}),
+      });
+    }
     return LocalAssetInspectionFactsSchema.parse({
-      ...(width === undefined ? {} : { width }),
-      ...(height === undefined ? {} : { height }),
-      ...(duration === undefined ? {} : { durationMs: duration }),
-      ...(resource.contentType ? { contentType: resource.contentType } : {}),
-      ...(rate === undefined ? {} : { frameRate: rate }),
-      ...(videoCodec ? { videoCodec } : {}),
-      ...(resource.kind === "video" || resource.kind === "audio"
-        ? { hasAudio: !!audio }
-        : {}),
-      ...(audioCodec ? { audioCodec } : {}),
+      contentType,
+      durationMs: duration,
+      hasAudio: true,
+      audioCodec,
+      sampleRate,
+      channelCount,
+      channelLayout,
     });
   };
 }
@@ -450,6 +881,18 @@ export interface LocalAssetInspectionService {
     source: LocalResourceProjection;
     knownFacts?: ProjectAssetMetadata;
   }): Promise<LocalAssetInspection>;
+  /**
+   * Verifies staged bytes under caller-frozen kind/media assertions, then
+   * seals the canonical Resource and records one versioned L1 receipt.
+   */
+  finalize(input: {
+    resourceId: string;
+    kind: AssetKind;
+    contentType?: string;
+  }): Promise<{
+    source: LocalResourceProjection;
+    facts: LocalAssetInspectionFacts;
+  }>;
 }
 
 interface InspectionRow {
@@ -547,7 +990,19 @@ function assertCompleteInspectionFacts(
   resource: Resource,
   facts: LocalAssetInspectionFacts,
 ): LocalAssetInspectionFacts {
-  if (facts.contentType !== resource.contentType) {
+  const contentType = requireFact(
+    facts.contentType,
+    "content type",
+    resource.kind,
+  );
+  assertByteVerifiableMediaType(contentType);
+  if (
+    resource.contentType !== undefined &&
+    !sameMediaTypeAssertion(
+      canonicalAssetMediaTypeAssertion(facts.contentType),
+      canonicalAssetMediaTypeAssertion(resource.contentType),
+    )
+  ) {
     throw new Error(
       `Decoded ${resource.kind} Asset content type does not match immutable Resource facts.`,
     );
@@ -555,15 +1010,21 @@ function assertCompleteInspectionFacts(
   if (resource.kind === "image") {
     requireFact(facts.width, "width", resource.kind);
     requireFact(facts.height, "height", resource.kind);
+    requireFact(facts.rotationDegrees, "display rotation", resource.kind);
   } else if (resource.kind === "video") {
     requireFact(facts.width, "width", resource.kind);
     requireFact(facts.height, "height", resource.kind);
+    requireFact(facts.rotationDegrees, "display rotation", resource.kind);
     requireFact(facts.durationMs, "duration", resource.kind);
     requireFact(facts.frameRate, "frame rate", resource.kind);
     requireFact(facts.videoCodec, "video codec", resource.kind);
     requireFact(facts.hasAudio, "audio presence", resource.kind);
-    if (facts.hasAudio)
+    if (facts.hasAudio) {
       requireFact(facts.audioCodec, "audio codec", resource.kind);
+      requireFact(facts.sampleRate, "sample rate", resource.kind);
+      requireFact(facts.channelCount, "channel count", resource.kind);
+      requireFact(facts.channelLayout, "channel layout", resource.kind);
+    }
   } else if (resource.kind === "audio") {
     requireFact(facts.durationMs, "duration", resource.kind);
     if (facts.hasAudio !== true) {
@@ -572,6 +1033,9 @@ function assertCompleteInspectionFacts(
       );
     }
     requireFact(facts.audioCodec, "audio codec", resource.kind);
+    requireFact(facts.sampleRate, "sample rate", resource.kind);
+    requireFact(facts.channelCount, "channel count", resource.kind);
+    requireFact(facts.channelLayout, "channel layout", resource.kind);
   }
   return facts;
 }
@@ -659,15 +1123,32 @@ export function createLocalAssetInspectionService(options: {
 
   async function ensureInspection(
     source: LocalResourceProjection,
-  ): Promise<InspectionRow | undefined> {
+  ): Promise<InspectionRow> {
     const stored = await readInspection(source.resource.id);
     if (stored) {
       assertCompleteInspectionFacts(source.resource, stored.facts);
+      const canonicalContentType = canonicalAssetMediaTypeAssertion(
+        stored.facts.contentType,
+      );
+      if (!canonicalContentType) {
+        throw new Error(
+          `Decoded ${source.resource.kind} Asset is missing a canonical media type.`,
+        );
+      }
+      await resources.seal({
+        resourceId: source.resource.id,
+        kind: source.resource.kind,
+        contentType: canonicalContentType,
+      });
       return stored;
     }
 
     const inspectResource = options.inspectResource;
-    if (!inspectResource) return undefined;
+    if (!inspectResource) {
+      throw new Error(
+        "A Host byte-probe adapter is required before Asset publication.",
+      );
+    }
 
     const key = `${source.resource.id}\u0000${LOCAL_ASSET_INSPECTION_RECIPE}`;
     const existing = inspectionInFlight.get(key);
@@ -685,14 +1166,28 @@ export function createLocalAssetInspectionService(options: {
           resource: source.resource,
         }),
       );
-      return persistInspection({
-        source,
-        facts: mergeInspectionFacts(
+      const facts = assertCompleteInspectionFacts(
+        source.resource,
+        mergeInspectionFacts(
           source.resource.id,
-          inspectionFactsFromKnown(source, undefined),
+          inspectionFactsFromResource(source),
           probed,
         ),
+      );
+      const canonicalContentType = canonicalAssetMediaTypeAssertion(
+        facts.contentType,
+      );
+      if (!canonicalContentType) {
+        throw new Error(
+          `Decoded ${source.resource.kind} Asset is missing a canonical media type.`,
+        );
+      }
+      const canonicalSource = await resources.seal({
+        resourceId: source.resource.id,
+        kind: source.resource.kind,
+        contentType: canonicalContentType,
       });
+      return persistInspection({ source: canonicalSource, facts });
     })();
     inspectionInFlight.set(key, task);
     try {
@@ -716,48 +1211,14 @@ export function createLocalAssetInspectionService(options: {
     return source;
   }
 
-  function inspectionFactsFromKnown(
+  function inspectionFactsFromResource(
     source: LocalResourceProjection,
-    knownFacts: ProjectAssetMetadata | undefined,
   ): LocalAssetInspectionFacts {
-    if (
-      knownFacts?.contentType !== undefined &&
-      knownFacts.contentType !== source.resource.contentType
-    ) {
-      throw new Error(
-        `Inspection content type for ${source.resource.id} conflicts with its immutable Resource facts.`,
-      );
-    }
-    const selected = knownFacts
-      ? {
-          ...(knownFacts.width === undefined
-            ? {}
-            : { width: knownFacts.width }),
-          ...(knownFacts.height === undefined
-            ? {}
-            : { height: knownFacts.height }),
-          ...(knownFacts.durationMs === undefined
-            ? {}
-            : { durationMs: knownFacts.durationMs }),
-          ...(knownFacts.frameRate === undefined
-            ? {}
-            : { frameRate: knownFacts.frameRate }),
-          ...(knownFacts.videoCodec === undefined
-            ? {}
-            : { videoCodec: knownFacts.videoCodec }),
-          ...(knownFacts.hasAudio === undefined
-            ? {}
-            : { hasAudio: knownFacts.hasAudio }),
-          ...(knownFacts.audioCodec === undefined
-            ? {}
-            : { audioCodec: knownFacts.audioCodec }),
-        }
-      : {};
+    const contentType = canonicalAssetMediaTypeAssertion(
+      source.resource.contentType,
+    );
     return LocalAssetInspectionFactsSchema.parse({
-      ...selected,
-      ...(source.resource.contentType
-        ? { contentType: source.resource.contentType }
-        : {}),
+      ...(contentType ? { contentType } : {}),
     });
   }
 
@@ -783,17 +1244,128 @@ export function createLocalAssetInspectionService(options: {
   }
 
   return {
+    async finalize(input) {
+      const staged = await resources.resolveStaged(input.resourceId);
+      const sealed = await resources.resolve(input.resourceId);
+      if (!staged && !sealed) {
+        throw new Error(
+          `Bytes ${input.resourceId} are not available for Asset verification.`,
+        );
+      }
+      if (sealed) {
+        const stored = await readInspection(input.resourceId);
+        if (stored) {
+          const facts = assertCompleteInspectionFacts(
+            sealed.resource,
+            stored.facts,
+          );
+          const canonicalContentType = canonicalAssetMediaTypeAssertion(
+            facts.contentType,
+          );
+          if (!canonicalContentType) {
+            throw new Error(
+              `Decoded ${sealed.resource.kind} Asset is missing a canonical media type.`,
+            );
+          }
+          const source = await resources.seal({
+            resourceId: input.resourceId,
+            kind: sealed.resource.kind,
+            contentType: canonicalContentType,
+          });
+          const assertedContentType = canonicalAssetMediaTypeAssertion(
+            input.contentType,
+          );
+          if (
+            source.resource.kind !== input.kind ||
+            (assertedContentType !== undefined &&
+              !sameMediaTypeAssertion(
+                assertedContentType,
+                source.resource.contentType,
+              ))
+          ) {
+            throw new Error(
+              `Local Resource ${input.resourceId} already has different verified media facts than ${input.kind}/${assertedContentType ?? "an unspecified media type"}.`,
+            );
+          }
+          return { source, facts };
+        }
+      }
+      const inspectResource = options.inspectResource;
+      if (!inspectResource) {
+        throw new Error(
+          "A Host byte-probe adapter is required before Asset publication.",
+        );
+      }
+      const assertedContentType = canonicalAssetMediaTypeAssertion(
+        input.contentType ?? sealed?.resource.contentType,
+      );
+      const evidence = staged ?? sealed!;
+      const assertedResource = ResourceSchema.parse({
+        id: input.resourceId,
+        kind: input.kind,
+        digest: {
+          algorithm: "sha256",
+          value:
+            "digest" in evidence
+              ? evidence.digest
+              : evidence.resource.digest.value,
+        },
+        byteLength:
+          "byteLength" in evidence
+            ? evidence.byteLength
+            : evidence.resource.byteLength,
+        ...(assertedContentType ? { contentType: assertedContentType } : {}),
+      });
+      const facts = assertCompleteInspectionFacts(
+        assertedResource,
+        mergeInspectionFacts(
+          input.resourceId,
+          LocalAssetInspectionFactsSchema.parse({
+            ...(assertedResource.contentType
+              ? { contentType: assertedResource.contentType }
+              : {}),
+          }),
+          LocalAssetInspectionFactsSchema.parse(
+            await inspectResource({
+              sourcePath: evidence.path,
+              resource: assertedResource,
+            }),
+          ),
+        ),
+      );
+      const canonicalContentType = canonicalAssetMediaTypeAssertion(
+        facts.contentType,
+      );
+      if (!canonicalContentType) {
+        throw new Error(
+          `Decoded ${input.kind} Asset is missing a canonical media type.`,
+        );
+      }
+      const source = await resources.seal({
+        ...(staged
+          ? { receipt: staged.receipt }
+          : { resourceId: input.resourceId }),
+        kind: assertedResource.kind,
+        contentType: canonicalContentType,
+      });
+      const canonicalFacts = LocalAssetInspectionFactsSchema.parse({
+        ...facts,
+        contentType: canonicalContentType,
+      });
+      const winner = await persistInspection({
+        source,
+        facts: canonicalFacts,
+      });
+      return { source, facts: winner.facts };
+    },
+
     async inspect(input) {
       const source = await installedSource(input.source);
-      const knownFacts = inspectionFactsFromKnown(source, input.knownFacts);
       const inspection = await ensureInspection(source);
-      // Caller metadata can enrich this one projection, but only byte-derived
-      // Host inspection is durable Resource registry state.
-      const facts = inspection
-        ? mergeInspectionFacts(source.resource.id, inspection.facts, knownFacts)
-        : knownFacts;
-
-      return { facts };
+      // Caller metadata remains a display hint outside the byte-probe
+      // authority. Only immutable Resource facts and verified probe output can
+      // enter this result.
+      return { facts: inspection.facts };
     },
   };
 }

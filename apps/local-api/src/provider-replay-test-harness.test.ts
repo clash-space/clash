@@ -8,6 +8,7 @@ import {
   assertProviderMediaFormat,
   createProviderReplayOfflineFetch,
   normalizeProviderReplayText,
+  providerTestReferenceAssetId,
   providerTestExecutedNodeId,
   runProviderReplayTestHarness,
 } from "./provider-replay-test-harness.js";
@@ -75,6 +76,19 @@ describe("provider replay test harness", () => {
       }),
     ).toThrow(
       "minimax-tts execute failed: MiniMax TTS rejected voice_id female-warm",
+    );
+  });
+
+  it("keeps reference import identity stable for the same case and reference index", () => {
+    const firstReplay = providerTestReferenceAssetId("case/with spaces", 0);
+    const secondReplay = providerTestReferenceAssetId("case/with spaces", 0);
+
+    expect(secondReplay).toBe(firstReplay);
+    expect(providerTestReferenceAssetId("another-case", 0)).not.toBe(
+      firstReplay,
+    );
+    expect(providerTestReferenceAssetId("case/with spaces", 1)).not.toBe(
+      firstReplay,
     );
   });
 

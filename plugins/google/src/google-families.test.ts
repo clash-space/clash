@@ -145,7 +145,7 @@ describe("Google API families", () => {
 
   it("uses generateContent AUDIO and the selected voice for TTS", async () => {
     const requests: CapturedRequest[] = [];
-    const result = await googleAdapter.submit(
+    await googleAdapter.submit(
       invocation({
         modelId: "gemini-3.1-flash-tts",
         upstreamModel: "gemini-3.1-flash-tts-preview",
@@ -186,9 +186,111 @@ describe("Google API families", () => {
         },
       },
     });
-    expect(result).toEqual({
+  });
+
+  it("emits a standards-readable WAV from captured L16 TTS media", async () => {
+    const result = await googleAdapter.submit(
+      invocation({
+        modelId: "gemini-3.1-flash-tts",
+        upstreamModel: "gemini-3.1-flash-tts-preview",
+        kind: "audio",
+        prompt: "Read this sentence.",
+        modelParams: { voice_name: "Kore" },
+      }),
+      context(
+        {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: "audio/L16;rate=24000",
+                      data: "AAE=",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        [],
+      ),
+    );
+
+    expect(result).toMatchObject({
       status: "completed",
-      media: { media: { base64: "AAE=", mediaType: "audio/L16;rate=24000" } },
+      media: { media: { mediaType: "audio/wav" } },
+    });
+    if (result.status !== "completed" || !("media" in result)) {
+      throw new Error("expected completed media");
+    }
+    const media = result.media.media;
+    if (!("base64" in media)) throw new Error("expected inline audio bytes");
+    const wav = Buffer.from(media.base64, "base64");
+    const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+
+    expect(wav.toString("ascii", 0, 4)).toBe("RIFF");
+    expect(view.getUint32(4, true)).toBe(38);
+    expect(wav.toString("ascii", 8, 12)).toBe("WAVE");
+    expect(wav.toString("ascii", 12, 16)).toBe("fmt ");
+    expect(view.getUint32(16, true)).toBe(16);
+    expect(view.getUint16(20, true)).toBe(1);
+    expect(view.getUint16(22, true)).toBe(1);
+    expect(view.getUint32(24, true)).toBe(24_000);
+    expect(view.getUint32(28, true)).toBe(48_000);
+    expect(view.getUint16(32, true)).toBe(2);
+    expect(view.getUint16(34, true)).toBe(16);
+    expect(wav.toString("ascii", 36, 40)).toBe("data");
+    expect(view.getUint32(40, true)).toBe(2);
+    expect([...wav.subarray(44)]).toEqual([0, 1]);
+  });
+
+  it.each([
+    {
+      caseName: "missing sample rate",
+      mimeType: "audio/L16",
+      data: "AAE=",
+    },
+    {
+      caseName: "zero channels",
+      mimeType: "audio/L16;rate=24000;channels=0",
+      data: "AAE=",
+    },
+    {
+      caseName: "odd sample byte length",
+      mimeType: "audio/L16;rate=24000;channels=1",
+      data: "AA==",
+    },
+  ])("rejects $caseName in returned L16 media", async ({ mimeType, data }) => {
+    await expect(
+      googleAdapter.submit(
+        invocation({
+          modelId: "gemini-3.1-flash-tts",
+          upstreamModel: "gemini-3.1-flash-tts-preview",
+          kind: "audio",
+          prompt: "Read this sentence.",
+          modelParams: { voice_name: "Kore" },
+        }),
+        context(
+          {
+            candidates: [
+              {
+                content: {
+                  parts: [{ inlineData: { mimeType, data } }],
+                },
+              },
+            ],
+          },
+          [],
+        ),
+      ),
+    ).rejects.toMatchObject({
+      failure: {
+        code: "invalid_response",
+        retryable: false,
+        requestState: "accepted",
+      },
     });
   });
 
@@ -525,8 +627,7 @@ describe("Google API families", () => {
         undefined,
         async (reference) => ({
           form: "text",
-          text:
-            (reference as { text?: { value?: string } }).text?.value ?? "",
+          text: (reference as { text?: { value?: string } }).text?.value ?? "",
         }),
       ),
     );

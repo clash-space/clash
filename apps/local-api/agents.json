@@ -2,19 +2,25 @@
   "summary": "Local Host API, Project Loro owner, Asset CAS, executable-provider bridge, and SQLite-backed Durable Run adapter.",
   "architecture_notes": [
     "@clash/shared-runtime owns the only Durable Run phases, retry policy, and step graph; local-api supplies SQLite journal, executor adapters, Resource staging, Project publication, and restart scheduling.",
+    "New media bytes are first stored as an unsealed Host-private staging receipt. asset-inspection/v4 derives canonical byte facts before LocalResourceStore seals an immutable L0 Resource; Project/Global entries and output bindings publish only after that boundary succeeds.",
+    "Project/Global import commands carry caller-preallocated stable Asset ids. Caller media metadata is a hint only; v4 Host facts own display geometry, rotation, duration, stream presence, codecs, sample rate, channel count, and channel layout.",
     "Provider plugins translate one submit or poll step. Timeline render and built-in local-acp/local-tts use targetKind=local-executor but advance through the same engine rather than synchronous execution loops.",
-    "Media execution is at-least-once. local-durable-output-staging.ts consumer-CASes one Resource receipt by projectId + actionRunId + outputSlot; Project Asset and ActionAssetBinding facts appear only in the publication checkpoint.",
+    "Media execution is at-least-once. local-durable-output-staging.ts consumer-CASes one staging receipt by projectId + actionRunId + outputSlot; Project Asset and ActionAssetBinding facts appear only after v4 finalization in the publication checkpoint. Pre-v4 sealed receipts are re-verified and copied back to unsealed staging before recovery continues.",
     "Timeline render freezes its Timeline Action revision and input bindings, uses outputSlot render:output, and recovers from the journal without client resubmission.",
     "New Canvas Provider, Host-local, and custom plugin runs use a finalized-executor revision-scoped actionRunId and a separate mutable-node projection CAS fingerprint. Legacy base-key rows recover consumer outputs fail-closed and never reserve or project the current node.",
-    "Project Loro exposes only coarse status and Asset lineage. Provider tokens, attempts, deadlines, staging receipts, local paths, and raw failures remain Host-private in SQLite."
+    "Project Loro exposes only coarse status and Asset lineage. Provider tokens, attempts, deadlines, staging receipts, local paths, and raw failures remain Host-private in SQLite.",
+    "The personal Global Asset service performs one fail-closed migration of current-user legacy assets plus asset_library_refs through Resource staging and v4 inspection; canonical entries and its completion marker commit atomically, after which legacy membership is never rescanned.",
+    "Poster frames, waveforms, and Timeline filmstrips are disposable frontend caches in Current Local. They are not L1 facts, Durable steps, publication gates, or backend representations."
   ],
   "key_files": {
     "src/local-processor.ts": "Composes the shared engine with Provider, plugin Action, and Host-local executor adapters plus Project publication.",
     "src/durable-run-coordinator.ts": "Freezes executor input and maps one executable invocation into one shared DurableRunEngine step.",
     "src/durable-run-journal.ts": "SQLite journal and restart/wake queries.",
     "src/local-durable-output-staging.ts": "Stable consumer-CAS receipt for at-least-once Host-local media output.",
+    "src/local-resource-store.ts": "Unsealed byte staging and canonical L0 Resource sealing; staged bytes are not readable as Resources before successful inspection. Pre-v4 compatibility rows remain explicitly unverified until one complete v4 probe promotes the canonical kind/media facts by CAS.",
+    "src/local-asset-inspections.ts": "Versioned asset-inspection/v4 byte probe and L1 fact receipt used by every new Local media publication, including safe promotion of old unverified or no-MIME Resource rows.",
     "src/local-metadata-store.ts": "SQLite metadata store, including the rebuildable typed metadata-attachment query projection; it is not Project authority.",
-    "src/sync.ts": "Project Loro owner and journal-driven wake scheduler.",
+    "src/sync.ts": "Project Loro owner and journal-driven wake scheduler; peer sync cannot author Project Asset authority or frozen/run-owned Asset bindings.",
     "src/timeline-durable-workflow.test.ts": "Timeline/local-acp/local-tts journal, restart, and output-winner integration evidence."
   }
 }

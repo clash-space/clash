@@ -36230,7 +36230,7 @@ var z2 = /* @__PURE__ */ Object.freeze({
   ZodError: ZodError3
 });
 
-// ../../packages/shared-types/dist/chunk-CGTXLVQX.js
+// ../../packages/shared-types/dist/chunk-T6TANLZN.js
 var AssetKindSchema = z2.enum(["image", "video", "audio", "model"]);
 var ResourceIdSchema = z2.string().trim().min(1);
 var ResourceSchema2 = z2.object({
@@ -36246,6 +36246,8 @@ var ResourceSchema2 = z2.object({
 var ProjectAssetMetadataSchema = z2.object({
   width: z2.number().int().nonnegative().optional(),
   height: z2.number().int().nonnegative().optional(),
+  /** Display-matrix rotation normalized into [0, 360). */
+  rotationDegrees: z2.number().finite().min(0).lt(360).optional(),
   durationMs: z2.number().int().nonnegative().optional(),
   bytes: z2.number().int().nonnegative().optional(),
   /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
@@ -36256,6 +36258,9 @@ var ProjectAssetMetadataSchema = z2.object({
   /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
   hasAudio: z2.boolean().optional(),
   audioCodec: z2.string().trim().min(1).optional(),
+  sampleRate: z2.number().int().positive().optional(),
+  channelCount: z2.number().int().positive().optional(),
+  channelLayout: z2.string().trim().min(1).optional(),
   originalName: z2.string().trim().min(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
@@ -36374,6 +36379,7 @@ var ResolvedAssetSchema = z2.object({
 var AssetMetadataSchema = z2.object({
   width: z2.number().int().optional(),
   height: z2.number().int().optional(),
+  rotationDegrees: z2.number().finite().min(0).lt(360).optional(),
   durationMs: z2.number().int().optional(),
   bytes: z2.number().int().optional(),
   /** @deprecated Historical row payload; never emit from new publication. */
@@ -36383,6 +36389,9 @@ var AssetMetadataSchema = z2.object({
   videoCodec: z2.string().optional(),
   hasAudio: z2.boolean().optional(),
   audioCodec: z2.string().optional(),
+  sampleRate: z2.number().int().positive().optional(),
+  channelCount: z2.number().int().positive().optional(),
+  channelLayout: z2.string().optional(),
   contentHash: z2.string().optional(),
   localBlobKey: z2.string().optional(),
   originalName: z2.string().optional(),
@@ -36427,7 +36436,7 @@ var AssetRefRowSchema = z2.object({
   importedAt: z2.number()
 });
 
-// ../../packages/shared-types/dist/chunk-Y7VKLK6W.js
+// ../../packages/shared-types/dist/chunk-3E3S6SZN.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z2.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -50519,13 +50528,6 @@ function projectAssetsUrl(endpoint, projectId) {
 function fileNameOf(file5) {
   return "name" in file5 && typeof file5.name === "string" ? file5.name : void 0;
 }
-function newProjectAssetId() {
-  const cryptoObject = globalThis.crypto;
-  if (typeof cryptoObject?.randomUUID !== "function") {
-    throw new Error("crypto.randomUUID is required for Asset import ids");
-  }
-  return `asset:${cryptoObject.randomUUID()}`;
-}
 function snapshotProjectImport(input) {
   const projectId = required2(input.projectId, "project id");
   const file5 = input.file;
@@ -50537,7 +50539,7 @@ function snapshotProjectImport(input) {
     fileName,
     appendFileName: input.fileName !== void 0 || sourceFileName !== fileName,
     kind: input.kind,
-    projectAssetId: input.projectAssetId === void 0 ? newProjectAssetId() : required2(input.projectAssetId, "project asset id")
+    projectAssetId: required2(input.projectAssetId, "project asset id")
   };
 }
 function newDeleteOperationId() {
@@ -50755,7 +50757,6 @@ function stableOperationId(input, requested, generatedIds, prefix, label) {
 }
 function createPersonalGlobalAssetHttpClient(options = {}) {
   const fetch2 = options.fetch ?? globalThis.fetch;
-  const generatedImportIds = /* @__PURE__ */ new WeakMap();
   const generatedTrashIds = /* @__PURE__ */ new WeakMap();
   const connection = async () => {
     if (options.resolveConnection)
@@ -50801,7 +50802,7 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
       return resolvedAsset(await fetch2(url5, requestInit({ method: "GET", headers: headers(connected) })));
     },
     async importFile(input) {
-      const globalAssetId = stableOperationId(input, input.globalAssetId, generatedImportIds, "global", "global asset id");
+      const globalAssetId = required3(input.globalAssetId, "global asset id");
       const fileName = required3(input.fileName ?? fileNameOf2(input.file), "file name");
       const { connected, url: url5 } = await target("/import-file");
       const form = new FormData();
@@ -51049,7 +51050,7 @@ var ASSET_IMPORT_FILE_TYPES = {
   ".mp4": { kind: "video", contentType: "video/mp4" },
   ".webm": { kind: "video", contentType: "video/webm" },
   ".mov": { kind: "video", contentType: "video/quicktime" },
-  ".m4v": { kind: "video", contentType: "video/x-m4v" },
+  ".m4v": { kind: "video", contentType: "video/mp4" },
   ".mkv": { kind: "video", contentType: "video/x-matroska" },
   ".mp3": { kind: "audio", contentType: "audio/mpeg" },
   ".wav": { kind: "audio", contentType: "audio/wav" },
@@ -51076,22 +51077,11 @@ function resolveAssetImportFileType(filePath, requestedKind) {
   }
   return { ...inferred, ...requestedKind ? { kind: requestedKind } : {} };
 }
-function stableImportId(command4, requested, ids, prefix) {
-  const existing = ids.get(command4);
-  if (existing)
-    return existing;
-  const normalized = requested?.trim();
-  if (requested !== void 0 && !normalized) {
-    throw new Error(`${prefix} asset id is required`);
-  }
-  const runtimeCrypto = globalThis.crypto;
-  const randomUUID4 = runtimeCrypto?.randomUUID;
-  if (!normalized && typeof randomUUID4 !== "function") {
-    throw new Error("crypto.randomUUID is required for Asset import ids");
-  }
-  const id4 = normalized ?? `${prefix}:${runtimeCrypto.randomUUID()}`;
-  ids.set(command4, id4);
-  return id4;
+function requiredImportId(value, label) {
+  const normalized = value?.trim();
+  if (!normalized)
+    throw new Error(`${label} is required`);
+  return normalized;
 }
 function createAssetHostConnectionResolver(options) {
   const env = options.env ?? process.env;
@@ -51120,7 +51110,6 @@ function createProjectAssetHostClient(options = {}) {
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body)
   });
-  const importIds = /* @__PURE__ */ new WeakMap();
   const importCommands = /* @__PURE__ */ new WeakMap();
   const trashCommands = /* @__PURE__ */ new WeakMap();
   const result = (resolved, value) => ({
@@ -51175,7 +51164,7 @@ function createProjectAssetHostClient(options = {}) {
             file: new Blob([bytes], { type: input.contentType }),
             fileName: input.fileName,
             kind: input.kind,
-            projectAssetId: stableImportId(input, input.projectAssetId, importIds, "asset")
+            projectAssetId: requiredImportId(input.projectAssetId, "project asset id")
           }
         };
         importCommands.set(input, snapshot);
@@ -51230,7 +51219,6 @@ function createPersonalGlobalAssetHostClient(options = {}) {
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body)
   });
-  const importIds = /* @__PURE__ */ new WeakMap();
   const importCommands = /* @__PURE__ */ new WeakMap();
   return {
     list: () => http.list(),
@@ -51243,7 +51231,7 @@ function createPersonalGlobalAssetHostClient(options = {}) {
           file: new Blob([bytes], { type: input.contentType }),
           fileName: input.fileName,
           kind: input.kind,
-          globalAssetId: stableImportId(input, input.globalAssetId, importIds, "global")
+          globalAssetId: requiredImportId(input.globalAssetId, "global asset id")
         };
         importCommands.set(input, command4);
       }
@@ -124149,6 +124137,8 @@ var ResourceSchema4 = z5.object({
 var ProjectAssetMetadataSchema2 = z5.object({
   width: z5.number().int().nonnegative().optional(),
   height: z5.number().int().nonnegative().optional(),
+  /** Display-matrix rotation normalized into [0, 360). */
+  rotationDegrees: z5.number().finite().min(0).lt(360).optional(),
   durationMs: z5.number().int().nonnegative().optional(),
   bytes: z5.number().int().nonnegative().optional(),
   /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
@@ -124159,6 +124149,9 @@ var ProjectAssetMetadataSchema2 = z5.object({
   /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
   hasAudio: z5.boolean().optional(),
   audioCodec: z5.string().trim().min(1).optional(),
+  sampleRate: z5.number().int().positive().optional(),
+  channelCount: z5.number().int().positive().optional(),
+  channelLayout: z5.string().trim().min(1).optional(),
   originalName: z5.string().trim().min(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema2 = ProjectAssetMetadataSchema2.omit({ waveform: true });
@@ -124277,6 +124270,7 @@ var ResolvedAssetSchema2 = z5.object({
 var AssetMetadataSchema2 = z5.object({
   width: z5.number().int().optional(),
   height: z5.number().int().optional(),
+  rotationDegrees: z5.number().finite().min(0).lt(360).optional(),
   durationMs: z5.number().int().optional(),
   bytes: z5.number().int().optional(),
   /** @deprecated Historical row payload; never emit from new publication. */
@@ -124286,6 +124280,9 @@ var AssetMetadataSchema2 = z5.object({
   videoCodec: z5.string().optional(),
   hasAudio: z5.boolean().optional(),
   audioCodec: z5.string().optional(),
+  sampleRate: z5.number().int().positive().optional(),
+  channelCount: z5.number().int().positive().optional(),
+  channelLayout: z5.string().optional(),
   contentHash: z5.string().optional(),
   localBlobKey: z5.string().optional(),
   originalName: z5.string().optional(),
@@ -177936,6 +177933,8 @@ var ResourceSchema22 = z24.object({
 var ProjectAssetMetadataSchema3 = z24.object({
   width: z24.number().int().nonnegative().optional(),
   height: z24.number().int().nonnegative().optional(),
+  /** Display-matrix rotation normalized into [0, 360). */
+  rotationDegrees: z24.number().finite().min(0).lt(360).optional(),
   durationMs: z24.number().int().nonnegative().optional(),
   bytes: z24.number().int().nonnegative().optional(),
   /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
@@ -177946,6 +177945,9 @@ var ProjectAssetMetadataSchema3 = z24.object({
   /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
   hasAudio: z24.boolean().optional(),
   audioCodec: z24.string().trim().min(1).optional(),
+  sampleRate: z24.number().int().positive().optional(),
+  channelCount: z24.number().int().positive().optional(),
+  channelLayout: z24.string().trim().min(1).optional(),
   originalName: z24.string().trim().min(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema3 = ProjectAssetMetadataSchema3.omit({ waveform: true });
@@ -178064,6 +178066,7 @@ var ResolvedAssetSchema3 = z24.object({
 var AssetMetadataSchema3 = z24.object({
   width: z24.number().int().optional(),
   height: z24.number().int().optional(),
+  rotationDegrees: z24.number().finite().min(0).lt(360).optional(),
   durationMs: z24.number().int().optional(),
   bytes: z24.number().int().optional(),
   /** @deprecated Historical row payload; never emit from new publication. */
@@ -178073,6 +178076,9 @@ var AssetMetadataSchema3 = z24.object({
   videoCodec: z24.string().optional(),
   hasAudio: z24.boolean().optional(),
   audioCodec: z24.string().optional(),
+  sampleRate: z24.number().int().positive().optional(),
+  channelCount: z24.number().int().positive().optional(),
+  channelLayout: z24.string().optional(),
   contentHash: z24.string().optional(),
   localBlobKey: z24.string().optional(),
   originalName: z24.string().optional(),

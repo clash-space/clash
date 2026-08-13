@@ -420,6 +420,7 @@ describe("useAsset", () => {
     const importForm = fetchSpy.mock.calls[1]?.[1]?.body as FormData;
     expect(importForm.get("file")).toBe(file);
     expect(importForm.get("kind")).toBe("image");
+    expect(String(importForm.get("globalAssetId"))).toMatch(/^global:/u);
     expect(fetchSpy.mock.calls[2]?.[1]).toMatchObject({
       body: JSON.stringify({
         projectId: "project-1",

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,11 +16,61 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
+import {
+  createLocalAssetInspectionService,
+  type LocalAssetInspector,
+} from "./local-asset-inspections.js";
 import { createLocalDurableOutputStagingStore } from "./local-durable-output-staging.js";
 import { createMockExternalAigcService } from "./local-aigc.js";
 import { createLocalWorkflowProcessor } from "./local-processor.js";
 
 let dataDir = "";
+const nodeRequire = createRequire(import.meta.url);
+
+const inspectTestMedia: LocalAssetInspector = async ({ resource }) => {
+  const contentType = resource.contentType
+    ? { contentType: resource.contentType }
+    : {};
+  if (resource.kind === "video") {
+    return {
+      ...contentType,
+      width: 1920,
+      height: 1080,
+      rotationDegrees: 0,
+      durationMs: 1_000,
+      frameRate: 30,
+      videoCodec: "h264",
+      hasAudio: false,
+    };
+  }
+  if (resource.kind === "audio") {
+    return {
+      ...contentType,
+      durationMs: 500,
+      hasAudio: true,
+      audioCodec: resource.contentType === "audio/wav" ? "pcm_s16le" : "mp3",
+      sampleRate: 48_000,
+      channelCount: 2,
+      channelLayout: "stereo",
+    };
+  }
+  if (resource.kind === "image") {
+    return {
+      ...contentType,
+      width: 1920,
+      height: 1080,
+      rotationDegrees: 0,
+    };
+  }
+  return contentType;
+};
+
+function testAssetInspection() {
+  return createLocalAssetInspectionService({
+    dataDir,
+    inspectResource: inspectTestMedia,
+  });
+}
 
 async function recoverableIdentityForNode(
   nodeId: string,
@@ -107,6 +158,7 @@ describe("Local durable Timeline render workflow", () => {
     const { doc, owner } = submittedTimelineRender();
     const processor = createLocalWorkflowProcessor({
       dataDir,
+      assetInspection: testAssetInspection(),
       timelineRenderer: {
         async render() {
           return {
@@ -183,6 +235,7 @@ describe("Local durable Timeline render workflow", () => {
     let checkpoints = 0;
     await createLocalWorkflowProcessor({
       dataDir,
+      assetInspection: testAssetInspection(),
       timelineRenderer: { render },
       durableProviderRuns,
     }).process({
@@ -206,6 +259,7 @@ describe("Local durable Timeline render workflow", () => {
     now = 1_100;
     await createLocalWorkflowProcessor({
       dataDir,
+      assetInspection: testAssetInspection(),
       timelineRenderer: { render },
       durableProviderRuns,
     }).process({ doc, projectId: "project-1", checkpoint: async () => {} });
@@ -216,6 +270,70 @@ describe("Local durable Timeline render workflow", () => {
         outputSlot: "render:output",
       }),
     ).resolves.toMatchObject({ phase: "succeeded", projectedAt: 1_100 });
+    expect(render).toHaveBeenCalledOnce();
+  });
+
+  it("does not publish a recovered staged entry after its versioned inspection receipt is lost", async () => {
+    dataDir = await mkdtemp(
+      join(tmpdir(), "clash-timeline-inspection-recovery-"),
+    );
+    const { doc, owner } = submittedTimelineRender();
+    let now = 100;
+    const render = vi.fn(async () => ({
+      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+      contentType: "video/mp4",
+    }));
+    const durableProviderRuns = {
+      ownerId: "local-api",
+      now: () => now,
+      providerPluginExecutor: vi.fn(async () => {
+        throw new Error("Provider adapter must not run for Timeline render");
+      }),
+    };
+    let checkpoints = 0;
+    await createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: testAssetInspection(),
+      timelineRenderer: { render },
+      durableProviderRuns,
+    }).process({
+      doc,
+      projectId: "project-1",
+      async checkpoint() {
+        checkpoints += 1;
+        if (checkpoints === 2) throw new Error("snapshot acknowledgement lost");
+      },
+    });
+
+    const { DatabaseSync } = nodeRequire("node:sqlite") as {
+      DatabaseSync: new (path: string) => {
+        exec(sql: string): void;
+        close(): void;
+      };
+    };
+    const database = new DatabaseSync(join(dataDir, "local.sqlite"));
+    database.exec("DELETE FROM local_asset_inspections");
+    database.close();
+
+    const recovered = submittedTimelineRender().doc;
+    now = 1_100;
+    await createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection: createLocalAssetInspectionService({ dataDir }),
+      timelineRenderer: { render },
+      durableProviderRuns,
+    }).process({ doc: recovered, projectId: "project-1" });
+
+    expect(listProjectAssets(recovered)).toEqual([]);
+    await expect(
+      createSqliteDurableRunJournal(dataDir).load({
+        actionRunId: owner.actionRunId,
+        outputSlot: "render:output",
+      }),
+    ).resolves.toMatchObject({
+      phase: "finalizing",
+      failure: { retryable: true },
+    });
     expect(render).toHaveBeenCalledOnce();
   });
 
@@ -239,6 +357,7 @@ describe("Local durable Timeline render workflow", () => {
     };
     const processor = createLocalWorkflowProcessor({
       dataDir,
+      assetInspection: testAssetInspection(),
       timelineRenderer: { render },
       durableProviderRuns,
       providerPollDelayCapMs: 0,
@@ -279,10 +398,7 @@ describe("Local durable Timeline render workflow", () => {
       .digest("hex");
     expect(sameReplay.projectAssetId).toBe(first.projectAssetId);
     expect(first.projectAssetId).toBe(replay.projectAssetId);
-    expect(replay.projection.resource.digest).toEqual({
-      algorithm: "sha256",
-      value: expectedDigest,
-    });
+    expect(replay.projection.digest).toBe(expectedDigest);
   });
 });
 
@@ -454,7 +570,11 @@ describe("Local executor generation uses the shared durable graph", () => {
     }));
     const aigc = createMockExternalAigcService({ localTts });
 
-    const processor = createLocalWorkflowProcessor({ dataDir, aigc });
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      aigc,
+      assetInspection: testAssetInspection(),
+    });
     await processor.process({
       doc,
       projectId: "project-1",

@@ -263,6 +263,9 @@ importers:
       loro-crdt:
         specifier: ^1.10.3
         version: 1.13.6
+      saxes:
+        specifier: 6.0.0
+        version: 6.0.0
       ws:
         specifier: ^8.18.0
         version: 8.21.0

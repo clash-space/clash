@@ -55,8 +55,13 @@ import { createLocalMetadataStore } from "./local-metadata-store.js";
 import {
   createLocalResourceStore,
   type LocalResourceProjection,
+  type LocalResourceStagingProjection,
 } from "./local-resource-store.js";
-import type { LocalAssetInspectionService } from "./local-asset-inspections.js";
+import {
+  canonicalAssetMediaTypeAssertion,
+  type LocalAssetInspectionService,
+} from "./local-asset-inspections.js";
+import type { LocalAssetInspectionFacts } from "./local-asset-inspections.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 
 export type LocalProjectAssetMigrationErrorCode =
@@ -66,6 +71,7 @@ export type LocalProjectAssetMigrationErrorCode =
   | "RESOURCE_DIGEST_UNAVAILABLE"
   | "RESOURCE_DIGEST_MISMATCH"
   | "RESOURCE_KIND_CONFLICT"
+  | "RESOURCE_MEDIA_TYPE_CONFLICT"
   | "PROJECT_ASSET_NOT_FOUND";
 
 export class LocalProjectAssetMigrationError extends Error {
@@ -95,9 +101,11 @@ export interface LocalProjectAssetService {
     bytes: Uint8Array;
     contentType?: string;
     name?: string;
-  }): Promise<LocalResourceProjection>;
+  }): Promise<LocalResourceStagingProjection>;
   /** Host-private lookup for a durable staging receipt; never grants Project membership. */
-  resolveStagedOwned(resourceId: string): Promise<LocalResourceProjection>;
+  resolveStagedOwned(
+    resourceId: string,
+  ): Promise<LocalResourceStagingProjection>;
   /**
    * Verifies staged bytes and builds the canonical Project fact without mutating Loro.
    * Durable staging uses this before its separately idempotent publication step.
@@ -126,7 +134,7 @@ export interface LocalProjectAssetService {
   }): Promise<ResolvedAsset>;
   installOwned(input: {
     projectId: string;
-    projectAssetId?: string;
+    projectAssetId: string;
     kind: AssetKind;
     bytes: Uint8Array;
     contentType?: string;
@@ -599,9 +607,26 @@ export function createLocalProjectAssetService(options: {
     registry: {
       async resolve({ entry }) {
         try {
-          const projection = await resources.resolve(entry.source.resourceId);
+          let projection = await resources.resolve(entry.source.resourceId);
+          if (
+            projection &&
+            !projection.resource.contentType &&
+            options.assetInspection
+          ) {
+            await options.assetInspection.inspect({ source: projection });
+            projection = await resources.resolve(entry.source.resourceId);
+          }
+          const contentType = canonicalAssetMediaTypeAssertion(
+            projection?.resource.contentType,
+          );
           return projection
-            ? { status: "ready" as const, resource: projection.resource }
+            ? {
+                status: "ready" as const,
+                resource: {
+                  ...projection.resource,
+                  ...(contentType ? { contentType } : {}),
+                },
+              }
             : {
                 status: "unavailable" as const,
                 error:
@@ -644,7 +669,6 @@ export function createLocalProjectAssetService(options: {
     try {
       const inspection = await options.assetInspection.inspect({
         source,
-        knownFacts: entry.metadata,
       });
       return ResolvedAssetSchema.parse({
         ...resolved,
@@ -667,35 +691,42 @@ export function createLocalProjectAssetService(options: {
     );
   }
 
-  async function metadataForPublication(input: {
+  function canonicalMetadata(input: {
     source: LocalResourceProjection;
+    facts: LocalAssetInspectionFacts;
     metadata: ProjectAssetMetadata;
     name?: string;
-  }): Promise<ProjectAssetMetadata> {
-    const { waveform: _legacyWaveform, ...metadata } = input.metadata;
-    const base = ProjectAssetMetadataSchema.parse({
-      ...metadata,
-      bytes: input.source.resource.byteLength,
-      ...(input.source.resource.contentType
-        ? { contentType: input.source.resource.contentType }
-        : {}),
-      ...(input.name && !input.metadata.originalName
-        ? { originalName: input.name }
-        : {}),
-    });
-    if (!options.assetInspection) return base;
-
-    const inspection = await options.assetInspection.inspect({
-      source: input.source,
-      knownFacts: base,
-    });
+  }): ProjectAssetMetadata {
     return ProjectAssetMetadataSchema.parse({
-      ...base,
-      ...inspection.facts,
-      // Resource facts, not caller or probe claims, own these immutable fields.
+      ...input.facts,
+      // Resource and Host byte-probe facts own the canonical media read model.
+      // Producer/browser values are hints only and cannot become authority.
       bytes: input.source.resource.byteLength,
-      ...(input.source.resource.contentType
-        ? { contentType: input.source.resource.contentType }
+      ...(input.metadata.originalName || input.name
+        ? { originalName: input.metadata.originalName ?? input.name }
+        : {}),
+    });
+  }
+
+  async function finalizedSource(input: {
+    resourceId: string;
+    kind: AssetKind;
+    metadata: ProjectAssetMetadata;
+  }): Promise<{
+    source: LocalResourceProjection;
+    facts: LocalAssetInspectionFacts;
+  }> {
+    if (!options.assetInspection) {
+      throw new LocalProjectAssetMigrationError(
+        "RESOURCE_DIGEST_UNAVAILABLE",
+        "A verified Host Asset inspection is required before Project publication.",
+      );
+    }
+    return options.assetInspection.finalize({
+      resourceId: input.resourceId,
+      kind: input.kind,
+      ...(input.metadata.contentType
+        ? { contentType: input.metadata.contentType }
         : {}),
     });
   }
@@ -710,27 +741,16 @@ export function createLocalProjectAssetService(options: {
   }): Promise<ProjectAssetEntry> {
     const projectAssetId = nonEmpty(input.projectAssetId, "projectAssetId");
     const resourceId = nonEmpty(input.resourceId, "resourceId");
-    const projection = await resources.resolve(resourceId);
-    if (!projection) {
-      throw new LocalProjectAssetMigrationError(
-        "RESOURCE_DIGEST_UNAVAILABLE",
-        `Staged Resource ${resourceId} is not installed on this Host.`,
-      );
-    }
-    if (projection.resource.kind !== input.kind) {
-      throw new LocalProjectAssetMigrationError(
-        "RESOURCE_KIND_CONFLICT",
-        `Staged Resource ${resourceId} is ${projection.resource.kind}, not ${input.kind}.`,
-      );
-    }
+    const finalized = await finalizedSource(input);
     return ProjectAssetEntrySchema.parse({
       id: projectAssetId,
       kind: input.kind,
       source: { kind: "owned", resourceId },
       lifecycle: { state: "active" },
       ...(input.name ? { name: input.name } : {}),
-      metadata: await metadataForPublication({
-        source: projection,
+      metadata: canonicalMetadata({
+        source: finalized.source,
+        facts: finalized.facts,
         metadata: input.metadata,
         ...(input.name ? { name: input.name } : {}),
       }),
@@ -747,27 +767,16 @@ export function createLocalProjectAssetService(options: {
     metadata: ProjectAssetMetadata;
     provenance?: ProjectAssetProvenance;
   }): Promise<ResolvedAsset> {
-    const source = await resources.resolve(input.resourceId);
-    if (!source) {
-      throw new LocalProjectAssetMigrationError(
-        "RESOURCE_DIGEST_UNAVAILABLE",
-        `Resource ${input.resourceId} is not installed on this Host.`,
-      );
-    }
-    if (source.resource.kind !== input.kind) {
-      throw new LocalProjectAssetMigrationError(
-        "RESOURCE_KIND_CONFLICT",
-        `Resource ${input.resourceId} is ${source.resource.kind}, not ${input.kind}.`,
-      );
-    }
+    const finalized = await finalizedSource(input);
     const entry: ProjectAssetEntry = {
       id: nonEmpty(input.projectAssetId, "projectAssetId"),
       kind: input.kind,
       source: { kind: "owned", resourceId: input.resourceId },
       lifecycle: { state: "active" },
       ...(input.name ? { name: input.name } : {}),
-      metadata: await metadataForPublication({
-        source,
+      metadata: canonicalMetadata({
+        source: finalized.source,
+        facts: finalized.facts,
         metadata: input.metadata,
         ...(input.name ? { name: input.name } : {}),
       }),
@@ -798,19 +807,7 @@ export function createLocalProjectAssetService(options: {
     metadata: ProjectAssetMetadata;
     provenance?: ProjectAssetProvenance;
   }): Promise<ResolvedAsset> {
-    const source = await resources.resolve(input.resourceId);
-    if (!source) {
-      throw new LocalProjectAssetMigrationError(
-        "RESOURCE_DIGEST_UNAVAILABLE",
-        `Resource ${input.resourceId} is not installed on this Host.`,
-      );
-    }
-    if (source.resource.kind !== input.kind) {
-      throw new LocalProjectAssetMigrationError(
-        "RESOURCE_KIND_CONFLICT",
-        `Resource ${input.resourceId} is ${source.resource.kind}, not ${input.kind}.`,
-      );
-    }
+    const finalized = await finalizedSource(input);
     const entry: ProjectAssetEntry = {
       id: nonEmpty(input.projectAssetId, "projectAssetId"),
       kind: input.kind,
@@ -825,8 +822,9 @@ export function createLocalProjectAssetService(options: {
       },
       lifecycle: { state: "active" },
       ...(input.name ? { name: input.name } : {}),
-      metadata: await metadataForPublication({
-        source,
+      metadata: canonicalMetadata({
+        source: finalized.source,
+        facts: finalized.facts,
         metadata: input.metadata,
         ...(input.name ? { name: input.name } : {}),
       }),
@@ -1205,21 +1203,19 @@ export function createLocalProjectAssetService(options: {
     },
 
     stageOwned(input) {
-      return resources.install({
-        kind: input.kind,
+      return resources.stage({
         bytes: input.bytes,
-        ...(input.contentType ? { contentType: input.contentType } : {}),
         ...(input.name ? { originalName: input.name } : {}),
       });
     },
 
     async resolveStagedOwned(resourceIdInput) {
       const resourceId = nonEmpty(resourceIdInput, "resourceId");
-      const projection = await resources.resolve(resourceId);
+      const projection = await resources.resolveStaged(resourceId);
       if (!projection) {
         throw new LocalProjectAssetMigrationError(
           "RESOURCE_DIGEST_UNAVAILABLE",
-          `Staged Resource ${resourceId} is not installed on this Host.`,
+          `Staged bytes ${resourceId} are not available on this Host.`,
         );
       }
       return projection;
@@ -1243,24 +1239,20 @@ export function createLocalProjectAssetService(options: {
     },
 
     async installOwned(input) {
-      const projection = await resources.install({
-        kind: input.kind,
+      const staged = await resources.stage({
         bytes: input.bytes,
-        ...(input.contentType ? { contentType: input.contentType } : {}),
         ...(input.name ? { originalName: input.name } : {}),
       });
       return publishInstalled({
         projectId: nonEmpty(input.projectId, "projectId"),
-        projectAssetId: input.projectAssetId?.trim() || `asset:${randomUUID()}`,
+        projectAssetId: nonEmpty(input.projectAssetId, "projectAssetId"),
         kind: input.kind,
-        resourceId: projection.resource.id,
+        resourceId: staged.resourceId,
         ...(input.name ? { name: input.name } : {}),
         metadata: {
           ...input.metadata,
-          bytes: projection.resource.byteLength,
-          ...(projection.resource.contentType
-            ? { contentType: projection.resource.contentType }
-            : {}),
+          bytes: staged.byteLength,
+          ...(input.contentType ? { contentType: input.contentType } : {}),
           ...(input.name && !input.metadata.originalName
             ? { originalName: input.name }
             : {}),

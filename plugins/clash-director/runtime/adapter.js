@@ -11424,7 +11424,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-CGTXLVQX.js
+// ../../packages/shared-types/dist/chunk-T6TANLZN.js
 var AssetKindSchema = z.enum(["image", "video", "audio", "model"]);
 var ResourceIdSchema = z.string().trim().min(1);
 var ResourceSchema = z.object({
@@ -11440,6 +11440,8 @@ var ResourceSchema = z.object({
 var ProjectAssetMetadataSchema = z.object({
   width: z.number().int().nonnegative().optional(),
   height: z.number().int().nonnegative().optional(),
+  /** Display-matrix rotation normalized into [0, 360). */
+  rotationDegrees: z.number().finite().min(0).lt(360).optional(),
   durationMs: z.number().int().nonnegative().optional(),
   bytes: z.number().int().nonnegative().optional(),
   /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
@@ -11450,6 +11452,9 @@ var ProjectAssetMetadataSchema = z.object({
   /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
   hasAudio: z.boolean().optional(),
   audioCodec: z.string().trim().min(1).optional(),
+  sampleRate: z.number().int().positive().optional(),
+  channelCount: z.number().int().positive().optional(),
+  channelLayout: z.string().trim().min(1).optional(),
   originalName: z.string().trim().min(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
@@ -11568,6 +11573,7 @@ var ResolvedAssetSchema = z.object({
 var AssetMetadataSchema = z.object({
   width: z.number().int().optional(),
   height: z.number().int().optional(),
+  rotationDegrees: z.number().finite().min(0).lt(360).optional(),
   durationMs: z.number().int().optional(),
   bytes: z.number().int().optional(),
   /** @deprecated Historical row payload; never emit from new publication. */
@@ -11577,6 +11583,9 @@ var AssetMetadataSchema = z.object({
   videoCodec: z.string().optional(),
   hasAudio: z.boolean().optional(),
   audioCodec: z.string().optional(),
+  sampleRate: z.number().int().positive().optional(),
+  channelCount: z.number().int().positive().optional(),
+  channelLayout: z.string().optional(),
   contentHash: z.string().optional(),
   localBlobKey: z.string().optional(),
   originalName: z.string().optional(),
@@ -11621,7 +11630,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-Y7VKLK6W.js
+// ../../packages/shared-types/dist/chunk-3E3S6SZN.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");

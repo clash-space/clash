@@ -201,6 +201,88 @@ function firstInlineMedia(
   return undefined;
 }
 
+function invalidL16Response(message: string): never {
+  throw new ProviderExecutionError({
+    code: "invalid_response",
+    message: `Google returned invalid L16 audio: ${message}`,
+    retryable: false,
+    requestState: "accepted",
+  });
+}
+
+function selfDescribingInlineMedia(media: { data: string; mimeType: string }): {
+  data: string;
+  mimeType: string;
+} {
+  const [rawEssence = "", ...rawParameters] = media.mimeType.split(";");
+  if (rawEssence.trim().toLowerCase() !== "audio/l16") return media;
+
+  const parameters = new Map<string, string>();
+  for (const rawParameter of rawParameters) {
+    const separator = rawParameter.indexOf("=");
+    if (separator <= 0) continue;
+    parameters.set(
+      rawParameter.slice(0, separator).trim().toLowerCase(),
+      rawParameter.slice(separator + 1).trim(),
+    );
+  }
+  const rawRate = parameters.get("rate");
+  const rawChannels = parameters.get("channels");
+  if (!rawRate || !/^\d+$/.test(rawRate)) {
+    return invalidL16Response(
+      "the required sample rate is missing or invalid.",
+    );
+  }
+  if (rawChannels !== undefined && !/^\d+$/.test(rawChannels)) {
+    return invalidL16Response("the channel count is invalid.");
+  }
+  const sampleRate = Number(rawRate);
+  const channels = rawChannels === undefined ? 1 : Number(rawChannels);
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  if (
+    !Number.isSafeInteger(sampleRate) ||
+    sampleRate <= 0 ||
+    !Number.isSafeInteger(channels) ||
+    channels <= 0 ||
+    channels > 0xffff ||
+    blockAlign > 0xffff ||
+    byteRate > 0xffffffff
+  ) {
+    return invalidL16Response("the sample rate or channel count is invalid.");
+  }
+
+  const pcm = Buffer.from(media.data, "base64");
+  if (pcm.byteLength === 0 || pcm.byteLength % blockAlign !== 0) {
+    return invalidL16Response(
+      "the payload does not contain a whole number of sample frames.",
+    );
+  }
+  if (pcm.byteLength > 0xffffffff - 36) {
+    return invalidL16Response("the payload is too large for a RIFF/WAVE file.");
+  }
+
+  const wav = Buffer.allocUnsafe(44 + pcm.byteLength);
+  wav.write("RIFF", 0, "ascii");
+  wav.writeUInt32LE(36 + pcm.byteLength, 4);
+  wav.write("WAVE", 8, "ascii");
+  wav.write("fmt ", 12, "ascii");
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(channels, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(byteRate, 28);
+  wav.writeUInt16LE(blockAlign, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36, "ascii");
+  wav.writeUInt32LE(pcm.byteLength, 40);
+  // Gemini TTS documents its returned PCM as 16-bit little-endian, despite
+  // the response MIME spelling. WAVE PCM uses the same byte order.
+  pcm.copy(wav, 44);
+  return { data: wav.toString("base64"), mimeType: "audio/wav" };
+}
+
 /** The model's words, for a text generation. */
 function firstText(body: Record<string, unknown>): string | undefined {
   const candidates = body.candidates;
@@ -558,7 +640,9 @@ function interactionBody(
   ) {
     const received = [
       ...references.content.map((reference) =>
-        reference.form === "text" ? "content:text" : `content:${reference.kind}`,
+        reference.form === "text"
+          ? "content:text"
+          : `content:${reference.kind}`,
       ),
       ...references.images.map(() => "image"),
       ...references.videos.map(() => "video"),
@@ -741,12 +825,15 @@ function mediaStep(media: {
   url?: string;
   mimeType: string;
 }): ExecutorStep {
+  const output: { data?: string; url?: string; mimeType: string } = media.data
+    ? selfDescribingInlineMedia({ data: media.data, mimeType: media.mimeType })
+    : media;
   return {
     status: "completed",
     media: {
-      media: media.data
-        ? { base64: media.data, mediaType: media.mimeType }
-        : { url: media.url!, mediaType: media.mimeType },
+      media: output.data
+        ? { base64: output.data, mediaType: output.mimeType }
+        : { url: output.url!, mediaType: output.mimeType },
     },
   };
 }
@@ -978,10 +1065,7 @@ export const googleAdapter: ProviderExecutor = {
     if (media) {
       // Returned as data, not uploaded here. Google answers with base64, so that is what this
       // hands back; the SDK decodes and stores it.
-      return {
-        status: "completed",
-        media: { media: { base64: media.data, mediaType: media.mimeType } },
-      };
+      return mediaStep(media);
     }
     const text = firstText(body);
     if (text)

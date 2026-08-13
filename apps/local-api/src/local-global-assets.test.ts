@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import {
   chmod,
   mkdtemp,
@@ -12,14 +13,83 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createLocalAssetInspectionService } from "./local-asset-inspections.js";
+import type { Asset } from "@clash/shared-types";
+
+import {
+  createLocalAssetInspectionService,
+  type LocalAssetInspector,
+} from "./local-asset-inspections.js";
+import { assetPathForWrite } from "./local-asset-paths.js";
 import { createLocalGlobalAssetService } from "./local-global-assets.js";
+import { createLocalMetadataStore } from "./local-metadata-store.js";
 import {
   createLocalResourceStore,
   resourceIdForSha256,
 } from "./local-resource-store.js";
 
 const temporaryDirectories: string[] = [];
+const nodeRequire = createRequire(import.meta.url);
+
+function downgradeResourceToPrePromotionRow(
+  dataDir: string,
+  resourceId: string,
+): void {
+  const { DatabaseSync } = nodeRequire("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): { run(...params: unknown[]): unknown };
+      close(): void;
+    };
+  };
+  const database = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    database
+      .prepare(
+        `UPDATE local_resources
+         SET content_type = NULL, facts_verified = 0
+         WHERE resource_id = ?`,
+      )
+      .run(resourceId);
+  } finally {
+    database.close();
+  }
+}
+
+const inspectFixtureAsset: LocalAssetInspector = async ({ resource }) =>
+  resource.kind === "image"
+    ? {
+        width: 1,
+        height: 1,
+        rotationDegrees: 0,
+        ...(resource.contentType ? { contentType: resource.contentType } : {}),
+      }
+    : resource.kind === "video"
+      ? {
+          width: 1,
+          height: 1,
+          rotationDegrees: 0,
+          durationMs: 1_000,
+          frameRate: 24,
+          videoCodec: "h264",
+          hasAudio: false,
+          ...(resource.contentType
+            ? { contentType: resource.contentType }
+            : {}),
+        }
+      : resource.kind === "audio"
+        ? {
+            durationMs: 2_000,
+            hasAudio: true,
+            audioCodec: "aac",
+            sampleRate: 48_000,
+            channelCount: 2,
+            channelLayout: "stereo",
+            ...(resource.contentType
+              ? { contentType: resource.contentType }
+              : {}),
+          }
+        : resource.contentType
+          ? { contentType: resource.contentType }
+          : {};
 
 async function fixture() {
   const dataDir = await mkdtemp(join(tmpdir(), "clash-global-assets-"));
@@ -27,8 +97,29 @@ async function fixture() {
   const service = createLocalGlobalAssetService({
     dataDir,
     projectionOrigin: "http://127.0.0.1:49152",
+    assetInspection: createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: inspectFixtureAsset,
+    }),
   });
   return { dataDir, service };
+}
+
+async function seedLegacyPersonalGlobalAsset(input: {
+  dataDir: string;
+  asset: Asset;
+  bytes: Uint8Array;
+}): Promise<void> {
+  const path = await assetPathForWrite(input.dataDir, input.asset.srcR2Key);
+  await writeFile(path, input.bytes);
+  const metadata = createLocalMetadataStore(input.dataDir);
+  const state = await metadata.load();
+  state.assets = [...state.assets, input.asset];
+  state.libraryAssetRefs = [
+    ...(state.libraryAssetRefs ?? []),
+    { assetId: input.asset.id, userId: input.asset.userId, addedAt: 1 },
+  ];
+  await metadata.save(state, { replaceLegacyAssetMigrationInput: true });
 }
 
 afterEach(async () => {
@@ -40,6 +131,612 @@ afterEach(async () => {
 });
 
 describe("local Global Asset library", () => {
+  it("promotes current v4 media facts for a pre-v4 Resource without a MIME before Global publication", async () => {
+    const { dataDir } = await fixture();
+    const resources = createLocalResourceStore({ dataDir });
+    const bytes = new TextEncoder().encode("legacy global PNG without MIME");
+    const legacy = await resources.install({ kind: "image", bytes });
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        contentType: "image/png",
+        width: 320,
+        height: 180,
+        rotationDegrees: 0,
+      }),
+    });
+    await assetInspection.inspect({ source: legacy });
+    const service = createLocalGlobalAssetService({
+      dataDir,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+
+    await expect(
+      service.importBytes({
+        libraryId: "team:no-mime",
+        globalAssetId: "global:legacy-no-mime",
+        kind: "image",
+        bytes,
+        contentType: "image/png",
+        metadata: {},
+      }),
+    ).resolves.toMatchObject({
+      id: "global:legacy-no-mime",
+      status: "ready",
+      metadata: { contentType: "image/png", width: 320, height: 180 },
+    });
+  });
+
+  it("repairs the old v4-receipt/no-MIME migration state before resolving an existing Global entry", async () => {
+    const { dataDir, service } = await fixture();
+    const published = await service.importBytes({
+      libraryId: "team:old-v4-no-mime",
+      globalAssetId: "global:old-v4-no-mime",
+      kind: "image",
+      bytes: new TextEncoder().encode("published Global PNG"),
+      contentType: "image/png",
+      metadata: {},
+    });
+    const entry = await service.readEntry("team:old-v4-no-mime", published.id);
+    expect(entry).not.toBeNull();
+    downgradeResourceToPrePromotionRow(dataDir, entry!.resourceId);
+    const restarted = createLocalGlobalAssetService({
+      dataDir,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        inspectResource: async () => {
+          throw new Error("the persisted current-v4 receipt must be reused");
+        },
+      }),
+    });
+
+    await expect(
+      restarted.read("team:old-v4-no-mime", "global:old-v4-no-mime"),
+    ).resolves.toMatchObject({
+      status: "ready",
+      metadata: { contentType: "image/png" },
+    });
+    await expect(
+      createLocalResourceStore({ dataDir }).resolve(entry!.resourceId),
+    ).resolves.toMatchObject({
+      resource: { contentType: "image/png" },
+    });
+  });
+
+  it("materializes legacy personal-library membership through verified canonical Global entries", async () => {
+    const { dataDir, service } = await fixture();
+    const bytes = new TextEncoder().encode("legacy personal image bytes");
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    await seedLegacyPersonalGlobalAsset({
+      dataDir,
+      bytes,
+      asset: {
+        id: "legacy-personal-image",
+        userId: "local-user",
+        kind: "image",
+        srcR2Key: "uploads/legacy-personal.png",
+        coverR2Key: null,
+        metadata: {
+          bytes: bytes.byteLength,
+          contentHash: digest,
+          contentType: "image/png",
+          originalName: "legacy-personal.png",
+        },
+        sourceModel: null,
+        sourcePrompt: null,
+        sourceTaskId: null,
+        sources: null,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+
+    await expect(service.list("personal")).resolves.toMatchObject([
+      {
+        id: "legacy-personal-image",
+        kind: "image",
+        lifecycle: { state: "active" },
+        status: "ready",
+        metadata: {
+          bytes: bytes.byteLength,
+          contentType: "image/png",
+          width: 1,
+          height: 1,
+          rotationDegrees: 0,
+          originalName: "legacy-personal.png",
+        },
+      },
+    ]);
+    await expect(
+      createLocalMetadataStore(dataDir).readGlobalAsset(
+        "personal",
+        "legacy-personal-image",
+      ),
+    ).resolves.toMatchObject({
+      id: "legacy-personal-image",
+      resourceId: resourceIdForSha256(digest),
+    });
+  });
+
+  it("leaves no partial Global entries or completed migration when one legacy member has no bytes", async () => {
+    const { dataDir, service } = await fixture();
+    const validBytes = new TextEncoder().encode("valid legacy image bytes");
+    const validDigest = createHash("sha256").update(validBytes).digest("hex");
+    await seedLegacyPersonalGlobalAsset({
+      dataDir,
+      bytes: validBytes,
+      asset: {
+        id: "legacy-a-valid-image",
+        userId: "local-user",
+        kind: "image",
+        srcR2Key: "uploads/legacy-valid.png",
+        coverR2Key: null,
+        metadata: {
+          bytes: validBytes.byteLength,
+          contentHash: validDigest,
+          contentType: "image/png",
+        },
+        sourceModel: null,
+        sourcePrompt: null,
+        sourceTaskId: null,
+        sources: null,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+    const missingBytes = new TextEncoder().encode("missing legacy image bytes");
+    const missingDigest = createHash("sha256")
+      .update(missingBytes)
+      .digest("hex");
+    const metadata = createLocalMetadataStore(dataDir);
+    const state = await metadata.load();
+    state.assets.push({
+      id: "legacy-z-missing-image",
+      userId: "local-user",
+      kind: "image",
+      srcR2Key: "uploads/legacy-missing.png",
+      coverR2Key: null,
+      metadata: {
+        bytes: missingBytes.byteLength,
+        contentHash: missingDigest,
+        contentType: "image/png",
+      },
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    state.libraryAssetRefs = [
+      ...(state.libraryAssetRefs ?? []),
+      {
+        assetId: "legacy-z-missing-image",
+        userId: "local-user",
+        addedAt: 2,
+      },
+    ];
+    await metadata.save(state, { replaceLegacyAssetMigrationInput: true });
+
+    await expect(service.list("personal")).rejects.toMatchObject({
+      code: "GLOBAL_ASSET_UNAVAILABLE",
+    });
+    await expect(
+      metadata.readGlobalAsset("personal", "legacy-a-valid-image"),
+    ).resolves.toBeNull();
+
+    const missingPath = await assetPathForWrite(
+      dataDir,
+      "uploads/legacy-missing.png",
+    );
+    await writeFile(missingPath, missingBytes);
+    const migrated = await service.list("personal");
+    expect(migrated.map((asset) => asset.id).sort()).toEqual([
+      "legacy-a-valid-image",
+      "legacy-z-missing-image",
+    ]);
+  });
+
+  it("does not rescan legacy personal membership after the one-way migration completes", async () => {
+    const { dataDir, service } = await fixture();
+    const bytes = new TextEncoder().encode("one-time legacy member");
+    await seedLegacyPersonalGlobalAsset({
+      dataDir,
+      bytes,
+      asset: {
+        id: "legacy-before-cutover",
+        userId: "local-user",
+        kind: "image",
+        srcR2Key: "uploads/legacy-before-cutover.png",
+        coverR2Key: null,
+        metadata: {
+          bytes: bytes.byteLength,
+          contentHash: createHash("sha256").update(bytes).digest("hex"),
+          contentType: "image/png",
+        },
+        sourceModel: null,
+        sourcePrompt: null,
+        sourceTaskId: null,
+        sources: null,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+    await expect(service.list("personal")).resolves.toHaveLength(1);
+
+    const metadata = createLocalMetadataStore(dataDir);
+    const state = await metadata.load();
+    state.assets.push({
+      id: "legacy-after-cutover",
+      userId: "local-user",
+      kind: "image",
+      srcR2Key: "uploads/legacy-after-cutover-missing.png",
+      coverR2Key: null,
+      metadata: { contentType: "image/png" },
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      createdAt: 2,
+      updatedAt: 2,
+    });
+    state.libraryAssetRefs = [
+      ...(state.libraryAssetRefs ?? []),
+      {
+        assetId: "legacy-after-cutover",
+        userId: "local-user",
+        addedAt: 2,
+      },
+    ];
+    await metadata.save(state, { replaceLegacyAssetMigrationInput: true });
+
+    const canonical = await service.list("personal");
+    expect(canonical.map((asset) => asset.id)).toEqual([
+      "legacy-before-cutover",
+    ]);
+  });
+
+  it("materializes a legacy identity before rejecting a conflicting personal import", async () => {
+    const { dataDir, service } = await fixture();
+    const legacyBytes = new TextEncoder().encode("legacy identity winner");
+    const legacyDigest = createHash("sha256").update(legacyBytes).digest("hex");
+    await seedLegacyPersonalGlobalAsset({
+      dataDir,
+      bytes: legacyBytes,
+      asset: {
+        id: "legacy-import-collision",
+        userId: "local-user",
+        kind: "image",
+        srcR2Key: "uploads/legacy-import-collision.png",
+        coverR2Key: null,
+        metadata: {
+          bytes: legacyBytes.byteLength,
+          contentHash: legacyDigest,
+          contentType: "image/png",
+        },
+        sourceModel: null,
+        sourcePrompt: null,
+        sourceTaskId: null,
+        sources: null,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+
+    await expect(
+      service.importBytes({
+        libraryId: "personal",
+        globalAssetId: "legacy-import-collision",
+        kind: "image",
+        bytes: new TextEncoder().encode("different new import bytes"),
+        contentType: "image/png",
+      }),
+    ).rejects.toMatchObject({ code: "GLOBAL_ASSET_FACT_MISMATCH" });
+    await expect(
+      service.readEntry("personal", "legacy-import-collision"),
+    ).resolves.toMatchObject({
+      resourceId: resourceIdForSha256(legacyDigest),
+    });
+  });
+
+  it("materializes a legacy personal member on direct canonical read", async () => {
+    const { dataDir, service } = await fixture();
+    const bytes = new TextEncoder().encode("directly read legacy image");
+    await seedLegacyPersonalGlobalAsset({
+      dataDir,
+      bytes,
+      asset: {
+        id: "legacy-direct-read",
+        userId: "local-user",
+        kind: "image",
+        srcR2Key: "uploads/legacy-direct-read.png",
+        coverR2Key: null,
+        metadata: {
+          bytes: bytes.byteLength,
+          contentHash: createHash("sha256").update(bytes).digest("hex"),
+          contentType: "image/png",
+        },
+        sourceModel: null,
+        sourcePrompt: null,
+        sourceTaskId: null,
+        sources: null,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+
+    await expect(
+      service.read("personal", "legacy-direct-read"),
+    ).resolves.toMatchObject({
+      id: "legacy-direct-read",
+      lifecycle: { state: "active" },
+      status: "ready",
+    });
+  });
+
+  it("does not admit another legacy user's library membership into the personal library", async () => {
+    const { dataDir, service } = await fixture();
+    const bytes = new TextEncoder().encode("another user's legacy image");
+    await seedLegacyPersonalGlobalAsset({
+      dataDir,
+      bytes,
+      asset: {
+        id: "legacy-other-user",
+        userId: "other-user",
+        kind: "image",
+        srcR2Key: "uploads/legacy-other-user.png",
+        coverR2Key: null,
+        metadata: {
+          bytes: bytes.byteLength,
+          contentHash: createHash("sha256").update(bytes).digest("hex"),
+          contentType: "image/png",
+        },
+        sourceModel: null,
+        sourcePrompt: null,
+        sourceTaskId: null,
+        sources: null,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+
+    await expect(service.list("personal")).resolves.toEqual([]);
+    await expect(
+      createLocalMetadataStore(dataDir).readGlobalAsset(
+        "personal",
+        "legacy-other-user",
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("does not admit a legacy membership whose Asset belongs to another user", async () => {
+    const { dataDir, service } = await fixture();
+    const bytes = new TextEncoder().encode("foreign-owned legacy image");
+    await seedLegacyPersonalGlobalAsset({
+      dataDir,
+      bytes,
+      asset: {
+        id: "legacy-foreign-owner",
+        userId: "other-user",
+        kind: "image",
+        srcR2Key: "uploads/legacy-foreign-owner.png",
+        coverR2Key: null,
+        metadata: {
+          bytes: bytes.byteLength,
+          contentHash: createHash("sha256").update(bytes).digest("hex"),
+          contentType: "image/png",
+        },
+        sourceModel: null,
+        sourcePrompt: null,
+        sourceTaskId: null,
+        sources: null,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+    const metadata = createLocalMetadataStore(dataDir);
+    const state = await metadata.load();
+    state.libraryAssetRefs = state.libraryAssetRefs?.map((reference) => ({
+      ...reference,
+      userId: "local-user",
+    }));
+    await metadata.save(state, { replaceLegacyAssetMigrationInput: true });
+
+    await expect(service.list("personal")).resolves.toEqual([]);
+  });
+
+  it("refuses a new Global Asset publication when no Host byte inspector is configured", async () => {
+    const { dataDir } = await fixture();
+    const service = createLocalGlobalAssetService({
+      dataDir,
+      projectionOrigin: "http://127.0.0.1:49152",
+    });
+
+    await expect(
+      service.importBytes({
+        libraryId: "personal",
+        globalAssetId: "global:no-inspector",
+        kind: "image",
+        bytes: new TextEncoder().encode("unverified Global bytes"),
+        contentType: "image/png",
+        metadata: { width: 640, height: 360 },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      service.readEntry("personal", "global:no-inspector"),
+    ).resolves.toBeNull();
+  });
+
+  it("publishes Host facts instead of conflicting Global caller hints", async () => {
+    const { dataDir } = await fixture();
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async ({ resource }) => ({
+        contentType: resource.contentType,
+        durationMs: 1_250,
+        hasAudio: true,
+        audioCodec: "aac",
+        sampleRate: 48_000,
+        channelCount: 2,
+        channelLayout: "stereo",
+      }),
+    });
+    const service = createLocalGlobalAssetService({
+      dataDir,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+
+    await service.importBytes({
+      libraryId: "personal",
+      globalAssetId: "global:host-facts-win",
+      kind: "audio",
+      bytes: new TextEncoder().encode("audio bytes verified by the Host"),
+      contentType: "audio/mp4",
+      metadata: {
+        width: 999,
+        durationMs: 9_999,
+        hasAudio: false,
+        audioCodec: "caller-codec",
+      },
+    });
+
+    const entry = await service.readEntry("personal", "global:host-facts-win");
+    expect(entry?.metadata).toMatchObject({
+      durationMs: 1_250,
+      hasAudio: true,
+      audioCodec: "aac",
+    });
+    expect(entry?.metadata).not.toHaveProperty("width");
+  });
+
+  it("publishes canonical v4 content type when reopening a sealed legacy alias", async () => {
+    const { dataDir } = await fixture();
+    const resources = createLocalResourceStore({ dataDir });
+    const source = await resources.install({
+      kind: "image",
+      bytes: new TextEncoder().encode("legacy Global JPEG alias"),
+      contentType: "image/jpg",
+    });
+    const service = createLocalGlobalAssetService({
+      dataDir,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        inspectResource: async () => ({
+          contentType: "image/jpeg",
+          width: 640,
+          height: 360,
+          rotationDegrees: 0,
+        }),
+      }),
+    });
+
+    await service.publishResource({
+      libraryId: "personal",
+      globalAssetId: "global:legacy-jpeg-alias",
+      resourceId: source.resource.id,
+      kind: "image",
+      metadata: { contentType: "image/jpg" },
+    });
+
+    await expect(
+      service.readEntry("personal", "global:legacy-jpeg-alias"),
+    ).resolves.toMatchObject({
+      metadata: { contentType: "image/jpeg" },
+    });
+  });
+
+  it("rejects a frozen media-type assertion when the same Global bytes are already sealed under another type", async () => {
+    const { service } = await fixture();
+    const bytes = new TextEncoder().encode("one immutable Global image");
+
+    await service.importBytes({
+      libraryId: "personal",
+      globalAssetId: "global:sealed-png",
+      kind: "image",
+      bytes,
+      contentType: "image/png",
+      provenance: { kind: "import" },
+    });
+
+    await expect(
+      service.importBytes({
+        libraryId: "personal",
+        globalAssetId: "global:conflicting-jpeg",
+        kind: "image",
+        bytes,
+        contentType: "image/jpeg",
+        provenance: { kind: "import" },
+      }),
+    ).rejects.toThrow("image/jpeg");
+    await expect(
+      service.readEntry("personal", "global:conflicting-jpeg"),
+    ).resolves.toBeNull();
+  });
+
+  it("accepts a canonical media-type alias when reusing sealed Global bytes", async () => {
+    const { service } = await fixture();
+    const bytes = new TextEncoder().encode("one aliased Global JPEG");
+
+    await service.importBytes({
+      libraryId: "personal",
+      globalAssetId: "global:canonical-jpeg",
+      kind: "image",
+      bytes,
+      contentType: "image/jpeg",
+      provenance: { kind: "import" },
+    });
+
+    await expect(
+      service.importBytes({
+        libraryId: "personal",
+        globalAssetId: "global:aliased-jpeg",
+        kind: "image",
+        bytes,
+        contentType: "image/jpg",
+        provenance: { kind: "import" },
+      }),
+    ).resolves.toMatchObject({
+      id: "global:aliased-jpeg",
+      metadata: { contentType: "image/jpeg" },
+    });
+  });
+
+  it("keeps non-frozen Global media hints subordinate to Host facts on sealed-byte reuse", async () => {
+    const { service } = await fixture();
+    const bytes = new TextEncoder().encode("one Global image with stale hints");
+
+    await service.importBytes({
+      libraryId: "personal",
+      globalAssetId: "global:sealed-hints-source",
+      kind: "image",
+      bytes,
+      contentType: "image/png",
+      provenance: { kind: "import" },
+    });
+
+    await expect(
+      service.importBytes({
+        libraryId: "personal",
+        globalAssetId: "global:sealed-hints-reuse",
+        kind: "image",
+        bytes,
+        metadata: { width: 999, height: 999 },
+        provenance: { kind: "import" },
+      }),
+    ).resolves.toMatchObject({
+      id: "global:sealed-hints-reuse",
+      metadata: {
+        contentType: "image/png",
+        width: 1,
+        height: 1,
+      },
+    });
+  });
+
   it("stores Host-inspected media facts in the Global authority before returning an import", async () => {
     const { dataDir } = await fixture();
     const bytes = new TextEncoder().encode("Host-inspected Global video");
@@ -48,11 +745,15 @@ describe("local Global Asset library", () => {
       inspectResource: async ({ resource }) => ({
         width: 1_920,
         height: 1_080,
+        rotationDegrees: 0,
         durationMs: 2_500,
         frameRate: 24,
         videoCodec: "h264",
         hasAudio: true,
         audioCodec: "aac",
+        sampleRate: 48_000,
+        channelCount: 2,
+        channelLayout: "stereo",
         contentType: resource.contentType,
       }),
     });
@@ -99,6 +800,9 @@ describe("local Global Asset library", () => {
         contentType: resource.contentType,
         hasAudio: true,
         audioCodec: "aac",
+        sampleRate: 48_000,
+        channelCount: 2,
+        channelLayout: "stereo",
       }),
     });
     const service = createLocalGlobalAssetService({
@@ -135,6 +839,7 @@ describe("local Global Asset library", () => {
         return {
           width: 1_280,
           height: 720,
+          rotationDegrees: 0,
           durationMs: 1_500,
           frameRate: 30,
           videoCodec: "h264",
@@ -206,20 +911,24 @@ describe("local Global Asset library", () => {
         bytes,
         contentType: "video/mp4",
       }),
-    ).rejects.toThrow("temporary decoder failure");
+    ).rejects.toMatchObject({
+      code: "GLOBAL_ASSET_UNAVAILABLE",
+      cause: expect.objectContaining({ message: "temporary decoder failure" }),
+    });
     await expect(
       service.readEntry("personal", "global:probe-failure"),
     ).resolves.toBeNull();
 
     const digest = createHash("sha256").update(bytes).digest("hex");
-    const resource = await createLocalResourceStore({ dataDir }).resolve(
-      resourceIdForSha256(digest),
-    );
-    expect(resource?.resource).toMatchObject({
-      kind: "video",
+    const resources = createLocalResourceStore({ dataDir });
+    const resource = await resources.resolveStaged(resourceIdForSha256(digest));
+    expect(resource).toMatchObject({
       byteLength: bytes.byteLength,
-      contentType: "video/mp4",
+      resourceId: resourceIdForSha256(digest),
     });
+    await expect(
+      resources.resolve(resourceIdForSha256(digest)),
+    ).resolves.toBeUndefined();
   });
 
   it("keeps library membership and lifecycle independent while deduplicating Resource bytes", async () => {
@@ -388,6 +1097,11 @@ describe("local Global Asset library", () => {
       name: "voice.mp3",
       metadata: {
         durationMs: 2_000,
+        hasAudio: true,
+        audioCodec: "aac",
+        sampleRate: 48_000,
+        channelCount: 2,
+        channelLayout: "stereo",
         bytes: bytes.byteLength,
         contentType: "audio/mpeg",
         originalName: "voice.mp3",

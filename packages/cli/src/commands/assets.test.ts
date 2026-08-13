@@ -14,6 +14,7 @@ import {
   resolveAssetLinkName,
   restoreProjectAsset,
   trashProjectAsset,
+  preassignImportAssetId,
 } from "./assets";
 import * as assetCommands from "./assets";
 import type {
@@ -53,6 +54,13 @@ test("assets command registers link subcommand", () => {
     global.commands.map((command) => command.name()),
     ["list", "get", "import", "delete", "restore"],
   );
+  const globalImport = global.commands.find(
+    (command) => command.name() === "import",
+  );
+  assert.ok(globalImport);
+  assert.ok(
+    globalImport.options.some((option) => option.long === "--asset-id"),
+  );
   const get = assetsCommand.commands.find(
     (command) => command.name() === "get",
   );
@@ -65,6 +73,11 @@ test("assets command registers link subcommand", () => {
   assert.ok(replace);
   assert.ok(!replace.options.some((option) => option.long === "--if-match"));
   assert.ok(!replace.options.some((option) => option.long === "--force"));
+  const importFile = assetsCommand.commands.find(
+    (command) => command.name() === "import",
+  );
+  assert.ok(importFile);
+  assert.ok(importFile.options.some((option) => option.long === "--asset-id"));
   const refs = assetsCommand.commands.find(
     (command) => command.name() === "refs",
   );
@@ -87,6 +100,17 @@ test("assets command registers link subcommand", () => {
   assert.ok(!restore.options.some((option) => option.long === "--force"));
   assert.ok(!restore.options.some((option) => option.long === "--if-match"));
   assert.ok(!restore.options.some((option) => option.long === "--read-token"));
+});
+
+test("CLI preserves an explicit import identity for an unknown-result replay", () => {
+  assert.equal(
+    preassignImportAssetId(" asset:retry-command ", "asset"),
+    "asset:retry-command",
+  );
+  assert.equal(
+    preassignImportAssetId(" global:retry-command ", "global"),
+    "global:retry-command",
+  );
 });
 
 test("global asset list and read use the personal-library client without Project scope", async () => {

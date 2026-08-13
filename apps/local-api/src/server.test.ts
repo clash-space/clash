@@ -592,9 +592,17 @@ describe("local API server configuration", () => {
       kind: "image",
       mediaType: "image/png",
       projection: {
-        resource: { kind: "image", byteLength: 3, contentType: "image/png" },
+        byteLength: 3,
+        receipt: { byteLength: 3 },
       },
     });
+    expect(staged?.projection.resourceId).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(staged?.projection.receipt.resourceId).toBe(
+      staged?.projection.resourceId,
+    );
+    expect(staged?.projection).not.toHaveProperty("resource");
+    expect(staged?.projection).not.toHaveProperty("kind");
+    expect(staged?.projection).not.toHaveProperty("contentType");
     await expect(readFile(staged!.projection.path)).resolves.toEqual(
       Buffer.from([1, 2, 3]),
     );
@@ -714,9 +722,17 @@ describe("local API server configuration", () => {
         kind: "video",
         mediaType: "video/mp4",
         projection: {
-          resource: { kind: "video", byteLength: 3, contentType: "video/mp4" },
+          byteLength: 3,
+          receipt: { byteLength: 3 },
         },
       });
+      expect(staged?.projection.resourceId).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(staged?.projection.receipt.resourceId).toBe(
+        staged?.projection.resourceId,
+      );
+      expect(staged?.projection).not.toHaveProperty("resource");
+      expect(staged?.projection).not.toHaveProperty("kind");
+      expect(staged?.projection).not.toHaveProperty("contentType");
       const metadata = await createLocalMetadataStore(dataDir).load();
       expect(metadata.assets).toEqual([]);
       expect(metadata.assetRefs).toEqual([]);

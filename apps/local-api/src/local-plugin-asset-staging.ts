@@ -1,15 +1,12 @@
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { chmod, mkdir } from "node:fs/promises";
+import { chmod, mkdir, readFile } from "node:fs/promises";
 
-import {
-  AssetKindSchema,
-  type AssetKind,
-} from "@clash/shared-types";
+import { AssetKindSchema, type AssetKind } from "@clash/shared-types";
 
 import {
   createLocalResourceStore,
-  type LocalResourceProjection,
+  type LocalResourceStagingProjection,
 } from "./local-resource-store.js";
 
 interface SqliteRunResult {
@@ -32,6 +29,7 @@ interface StagingRow {
   projectAssetId: string;
   resourceId: string;
   kind: AssetKind;
+  byteLength: number;
   taskId: string;
   slot: string;
   pluginId: string;
@@ -42,7 +40,7 @@ interface StagingRow {
 }
 
 export interface LocalPluginStagedAsset extends StagingRow {
-  projection: LocalResourceProjection;
+  projection: LocalResourceStagingProjection;
 }
 
 export interface LocalPluginAssetStagingStore {
@@ -83,6 +81,7 @@ function openDatabase(path: string): SqliteDatabase {
       project_asset_id TEXT NOT NULL,
       resource_id TEXT NOT NULL,
       kind TEXT NOT NULL,
+      byte_length INTEGER NOT NULL,
       task_id TEXT NOT NULL,
       slot TEXT NOT NULL,
       plugin_id TEXT NOT NULL,
@@ -95,6 +94,15 @@ function openDatabase(path: string): SqliteDatabase {
     CREATE INDEX IF NOT EXISTS local_plugin_asset_staging_resource
       ON local_plugin_asset_staging (resource_id);
   `);
+  try {
+    database.prepare(
+      "SELECT byte_length FROM local_plugin_asset_staging LIMIT 1",
+    );
+  } catch {
+    database.exec(
+      "ALTER TABLE local_plugin_asset_staging ADD COLUMN byte_length INTEGER",
+    );
+  }
   return database;
 }
 
@@ -109,6 +117,7 @@ function parseRow(row: Record<string, unknown>): StagingRow {
   const projectAssetId = row.project_asset_id;
   const resourceId = row.resource_id;
   const kind = AssetKindSchema.safeParse(row.kind);
+  const byteLength = row.byte_length;
   const taskId = row.task_id;
   const slot = row.slot;
   const pluginId = row.plugin_id;
@@ -117,18 +126,22 @@ function parseRow(row: Record<string, unknown>): StagingRow {
   const mediaType = row.media_type;
   const createdAt = row.created_at;
   if (
-    typeof projectId !== "string"
-    || typeof projectAssetId !== "string"
-    || typeof resourceId !== "string"
-    || !kind.success
-    || typeof taskId !== "string"
-    || typeof slot !== "string"
-    || typeof pluginId !== "string"
-    || typeof pluginVersion !== "string"
-    || typeof invocationId !== "string"
-    || (mediaType !== null && typeof mediaType !== "string")
-    || typeof createdAt !== "number"
-    || !Number.isSafeInteger(createdAt)
+    typeof projectId !== "string" ||
+    typeof projectAssetId !== "string" ||
+    typeof resourceId !== "string" ||
+    !kind.success ||
+    (byteLength !== null &&
+      (typeof byteLength !== "number" ||
+        !Number.isSafeInteger(byteLength) ||
+        byteLength < 0)) ||
+    typeof taskId !== "string" ||
+    typeof slot !== "string" ||
+    typeof pluginId !== "string" ||
+    typeof pluginVersion !== "string" ||
+    typeof invocationId !== "string" ||
+    (mediaType !== null && typeof mediaType !== "string") ||
+    typeof createdAt !== "number" ||
+    !Number.isSafeInteger(createdAt)
   ) {
     throw new Error("Local plugin Asset staging row is corrupt.");
   }
@@ -137,6 +150,7 @@ function parseRow(row: Record<string, unknown>): StagingRow {
     projectAssetId,
     resourceId,
     kind: kind.data,
+    byteLength: typeof byteLength === "number" ? byteLength : -1,
     taskId,
     slot,
     pluginId,
@@ -179,7 +193,9 @@ export function createLocalPluginAssetStagingStore(options: {
     ...(options.clashRoot ? { clashRoot: options.clashRoot } : {}),
   });
 
-  async function withDatabase<T>(task: (database: SqliteDatabase) => T): Promise<T> {
+  async function withDatabase<T>(
+    task: (database: SqliteDatabase) => T,
+  ): Promise<T> {
     await mkdir(options.dataDir, { recursive: true });
     const database = openDatabase(databasePath);
     try {
@@ -195,29 +211,81 @@ export function createLocalPluginAssetStagingStore(options: {
     projectAssetId: string;
   }): Promise<StagingRow | undefined> {
     return withDatabase((database) => {
-      const row = database.prepare(`
+      const row = database
+        .prepare(
+          `
         SELECT project_id, project_asset_id, resource_id, kind, task_id, slot,
-               plugin_id, plugin_version, invocation_id, media_type, created_at
+               byte_length, plugin_id, plugin_version, invocation_id,
+               media_type, created_at
         FROM local_plugin_asset_staging
         WHERE project_id = ? AND project_asset_id = ?
-      `).get(input.projectId, input.projectAssetId);
+      `,
+        )
+        .get(input.projectId, input.projectAssetId);
       return row ? parseRow(row) : undefined;
     });
   }
 
   async function resolved(row: StagingRow): Promise<LocalPluginStagedAsset> {
-    const projection = await resources.resolve(row.resourceId);
-    if (!projection) {
+    const projection = await resources.resolveStaged(row.resourceId);
+    if (projection) {
+      if (projection.resourceId !== row.resourceId) {
+        throw new Error(
+          `Staged plugin Asset ${row.projectAssetId} receipt does not match its staged bytes.`,
+        );
+      }
+      const byteLength =
+        row.byteLength < 0 ? projection.byteLength : row.byteLength;
+      if (projection.byteLength !== byteLength) {
+        throw new Error(
+          `Staged plugin Asset ${row.projectAssetId} byte length does not match its receipt.`,
+        );
+      }
+      return { ...row, byteLength, projection };
+    }
+
+    // One-time pre-cutover recovery: old plugin receipts pointed at a sealed
+    // Resource and had no byte_length column. Re-verify the immutable Resource
+    // projection, require every persisted claim to agree, then copy the exact
+    // bytes back into unsealed staging so current v4 inspection remains the
+    // only publication path.
+    const sealed = await resources.resolve(row.resourceId);
+    const receiptMediaType = row.mediaType?.trim().toLowerCase();
+    const sealedMediaType = sealed?.resource.contentType?.trim().toLowerCase();
+    const sealedByteLength = sealed?.resource.byteLength;
+    const receiptByteLength =
+      row.byteLength < 0 ? sealedByteLength : row.byteLength;
+    if (
+      !sealed ||
+      sealed.resource.id !== row.resourceId ||
+      sealed.resource.digest.algorithm !== "sha256" ||
+      sealed.resource.id !== `sha256:${sealed.resource.digest.value}` ||
+      sealed.resource.kind !== row.kind ||
+      !receiptMediaType ||
+      receiptMediaType !== sealedMediaType ||
+      receiptByteLength === undefined ||
+      receiptByteLength !== sealedByteLength
+    ) {
       throw new Error(
-        `Staged plugin Asset ${row.projectAssetId} has no immutable Resource ${row.resourceId}.`,
+        `Staged plugin Asset ${row.projectAssetId} has no complete pre-cutover receipt matching sealed Resource ${row.resourceId}.`,
       );
     }
-    if (projection.resource.kind !== row.kind) {
+    const recovered = await resources.stage({
+      bytes: new Uint8Array(await readFile(sealed.path)),
+    });
+    if (
+      recovered.resourceId !== row.resourceId ||
+      recovered.byteLength !== receiptByteLength
+    ) {
       throw new Error(
-        `Staged plugin Asset ${row.projectAssetId} kind does not match its immutable Resource.`,
+        `Staged plugin Asset ${row.projectAssetId} recovery does not match its verified sealed Resource.`,
       );
     }
-    return { ...row, projection };
+    return {
+      ...row,
+      byteLength: receiptByteLength,
+      projection: recovered,
+    };
   }
 
   return {
@@ -227,55 +295,75 @@ export function createLocalPluginAssetStagingStore(options: {
       const projectId = required(input.projectId, "projectId");
       const taskId = required(input.taskId, "taskId");
       const slot = required(input.slot, "slot");
-      const projectAssetId = pluginOutputProjectAssetId({ projectId, taskId, slot });
+      const projectAssetId = pluginOutputProjectAssetId({
+        projectId,
+        taskId,
+        slot,
+      });
       const existing = await load({ projectId, projectAssetId });
       if (existing) {
-        if (existing.taskId !== taskId || existing.slot !== slot || existing.kind !== input.kind) {
-          throw new Error(`Staged plugin Asset receipt ${projectAssetId} conflicts with its identity.`);
+        if (
+          existing.taskId !== taskId ||
+          existing.slot !== slot ||
+          existing.kind !== input.kind
+        ) {
+          throw new Error(
+            `Staged plugin Asset receipt ${projectAssetId} conflicts with its identity.`,
+          );
         }
         return resolved(existing);
       }
 
-      const projection = await resources.install({
-        kind: input.kind,
+      const projection = await resources.stage({
         bytes: input.bytes,
-        ...(input.mediaType ? { contentType: input.mediaType } : {}),
       });
       const intended: StagingRow = {
         projectId,
         projectAssetId,
-        resourceId: projection.resource.id,
+        resourceId: projection.resourceId,
         kind: input.kind,
+        byteLength: projection.byteLength,
         taskId,
         slot,
         pluginId: required(input.pluginId, "pluginId"),
         pluginVersion: input.pluginVersion.trim(),
         invocationId: required(input.invocationId, "invocationId"),
-        ...(input.mediaType?.trim() ? { mediaType: input.mediaType.trim().toLowerCase() } : {}),
+        ...(input.mediaType?.trim()
+          ? { mediaType: input.mediaType.trim().toLowerCase() }
+          : {}),
         createdAt: Date.now(),
       };
       await withDatabase((database) => {
-        database.prepare(`
+        database
+          .prepare(
+            `
           INSERT OR IGNORE INTO local_plugin_asset_staging (
             project_id, project_asset_id, resource_id, kind, task_id, slot,
-            plugin_id, plugin_version, invocation_id, media_type, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          intended.projectId,
-          intended.projectAssetId,
-          intended.resourceId,
-          intended.kind,
-          intended.taskId,
-          intended.slot,
-          intended.pluginId,
-          intended.pluginVersion,
-          intended.invocationId,
-          intended.mediaType ?? null,
-          intended.createdAt,
-        );
+            byte_length, plugin_id, plugin_version, invocation_id,
+            media_type, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+          )
+          .run(
+            intended.projectId,
+            intended.projectAssetId,
+            intended.resourceId,
+            intended.kind,
+            intended.taskId,
+            intended.slot,
+            intended.byteLength,
+            intended.pluginId,
+            intended.pluginVersion,
+            intended.invocationId,
+            intended.mediaType ?? null,
+            intended.createdAt,
+          );
       });
       const stored = await load({ projectId, projectAssetId });
-      if (!stored) throw new Error(`Staged plugin Asset ${projectAssetId} was not recorded.`);
+      if (!stored)
+        throw new Error(
+          `Staged plugin Asset ${projectAssetId} was not recorded.`,
+        );
       // First durable receipt wins. A Provider retry may legitimately return different bytes after
       // an ambiguous request; the Action still publishes exactly one output for this slot.
       return resolved(stored);

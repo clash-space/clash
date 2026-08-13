@@ -1,7 +1,8 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -21,6 +22,32 @@ async function fixture() {
     dataDir,
     resources: createLocalResourceStore({ dataDir }),
   };
+}
+
+function waveBytes(options: {
+  formatTag: 1 | 3;
+  channels: number;
+}): Uint8Array {
+  const bytesPerSample = options.formatTag === 1 ? 2 : 4;
+  const sampleRate = 8_000;
+  const dataLength = options.channels * bytesPerSample;
+  const bytes = new Uint8Array(44 + dataLength);
+  const view = new DataView(bytes.buffer);
+  const text = new TextEncoder();
+  bytes.set(text.encode("RIFF"), 0);
+  view.setUint32(4, bytes.byteLength - 8, true);
+  bytes.set(text.encode("WAVE"), 8);
+  bytes.set(text.encode("fmt "), 12);
+  view.setUint32(16, 16, true);
+  view.setUint16(20, options.formatTag, true);
+  view.setUint16(22, options.channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * options.channels * bytesPerSample, true);
+  view.setUint16(32, options.channels * bytesPerSample, true);
+  view.setUint16(34, bytesPerSample * 8, true);
+  bytes.set(text.encode("data"), 36);
+  view.setUint32(40, dataLength, true);
+  return bytes;
 }
 
 afterEach(async () => {
@@ -55,8 +82,17 @@ describe("Local Asset inspection", () => {
                 width: 1920,
                 height: 1080,
                 avg_frame_rate: "30000/1001",
+                side_data_list: [
+                  { side_data_type: "Display Matrix", rotation: 90 },
+                ],
               },
-              { codec_type: "audio", codec_name: "aac" },
+              {
+                codec_type: "audio",
+                codec_name: "aac",
+                sample_rate: "48000",
+                channels: 2,
+                channel_layout: "stereo",
+              },
             ],
             format: {
               format_name: "mov,mp4,m4a,3gp,3g2,mj2",
@@ -79,15 +115,534 @@ describe("Local Asset inspection", () => {
         },
       }),
     ).resolves.toEqual({
-      width: 1920,
-      height: 1080,
+      width: 1080,
+      height: 1920,
+      rotationDegrees: 90,
       durationMs: 2_501,
       contentType: "video/mp4",
       frameRate: 30000 / 1001,
       videoCodec: "h264",
       hasAudio: true,
       audioCodec: "aac",
+      sampleRate: 48_000,
+      channelCount: 2,
+      channelLayout: "stereo",
     });
+  });
+
+  it("uses first-frame image orientation when ffprobe does not project EXIF rotation onto the stream", async () => {
+    let observedArgs: string[] = [];
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async (_file, args) => {
+        observedArgs = args;
+        return {
+          stdout: JSON.stringify({
+            streams: [
+              {
+                codec_type: "video",
+                codec_name: "mjpeg",
+                width: 4_032,
+                height: 3_024,
+              },
+            ],
+            frames: [
+              {
+                media_type: "video",
+                side_data_list: [
+                  { side_data_type: "Display Matrix", rotation: 90 },
+                ],
+              },
+            ],
+            format: { format_name: "image2" },
+          }),
+        };
+      },
+    });
+
+    await expect(
+      inspector({
+        sourcePath: "/private/portrait.jpg",
+        resource: {
+          id: `sha256:${"3".repeat(64)}`,
+          kind: "image",
+          digest: { algorithm: "sha256", value: "3".repeat(64) },
+          byteLength: 42,
+          contentType: "image/jpeg",
+        },
+      }),
+    ).resolves.toMatchObject({
+      width: 3_024,
+      height: 4_032,
+      rotationDegrees: 90,
+    });
+    expect(observedArgs).toEqual(
+      expect.arrayContaining(["-show_frames", "-read_intervals", "%+#1"]),
+    );
+  });
+
+  it("normalizes a negative Display Matrix angle into the canonical rotation domain", async () => {
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 320,
+              height: 180,
+              avg_frame_rate: "24/1",
+              side_data_list: [
+                { side_data_type: "Display Matrix", rotation: -90 },
+              ],
+            },
+          ],
+          format: {
+            format_name: "mov,mp4,m4a,3gp,3g2,mj2",
+            duration: "1.0",
+          },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath: "/private/rotated.mp4",
+        resource: {
+          id: `sha256:${"9".repeat(64)}`,
+          kind: "video",
+          digest: { algorithm: "sha256", value: "9".repeat(64) },
+          byteLength: 42,
+          contentType: "video/mp4",
+        },
+      }),
+    ).resolves.toMatchObject({
+      width: 180,
+      height: 320,
+      rotationDegrees: 270,
+    });
+  });
+
+  it("rejects a malformed Display Matrix angle instead of inventing orientation", async () => {
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 320,
+              height: 180,
+              avg_frame_rate: "24/1",
+              side_data_list: [
+                { side_data_type: "Display Matrix", rotation: "NaN" },
+              ],
+            },
+          ],
+          format: {
+            format_name: "mov,mp4,m4a,3gp,3g2,mj2",
+            duration: "1.0",
+          },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath: "/private/malformed-rotation.mp4",
+        resource: {
+          id: `sha256:${"8".repeat(64)}`,
+          kind: "video",
+          digest: { algorithm: "sha256", value: "8".repeat(64) },
+          byteLength: 42,
+          contentType: "video/mp4",
+        },
+      }),
+    ).rejects.toThrow(/rotation/i);
+  });
+
+  it("rejects a non-quarter-turn Display Matrix instead of mislabeling coded dimensions as display dimensions", async () => {
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 320,
+              height: 180,
+              avg_frame_rate: "24/1",
+              side_data_list: [
+                { side_data_type: "Display Matrix", rotation: 45 },
+              ],
+            },
+          ],
+          format: {
+            format_name: "mov,mp4,m4a,3gp,3g2,mj2",
+            duration: "1.0",
+          },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath: "/private/non-quarter-turn.mp4",
+        resource: {
+          id: `sha256:${"7".repeat(64)}`,
+          kind: "video",
+          digest: { algorithm: "sha256", value: "7".repeat(64) },
+          byteLength: 42,
+          contentType: "video/mp4",
+        },
+      }),
+    ).rejects.toThrow(/rotation/i);
+  });
+
+  it("publishes canonical audio layout without leaking an attached picture stream", async () => {
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "mjpeg",
+              width: 600,
+              height: 600,
+              disposition: { attached_pic: 1 },
+            },
+            {
+              codec_type: "audio",
+              codec_name: "mp3",
+              sample_rate: "44100",
+              channels: 2,
+              channel_layout: "stereo",
+            },
+          ],
+          format: { format_name: "mp3", duration: "3.25" },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath: "/private/song.mp3",
+        resource: {
+          id: `sha256:${"7".repeat(64)}`,
+          kind: "audio",
+          digest: { algorithm: "sha256", value: "7".repeat(64) },
+          byteLength: 42,
+          contentType: "audio/mpeg",
+        },
+      }),
+    ).resolves.toEqual({
+      durationMs: 3_250,
+      contentType: "audio/mpeg",
+      hasAudio: true,
+      audioCodec: "mp3",
+      sampleRate: 44_100,
+      channelCount: 2,
+      channelLayout: "stereo",
+    });
+  });
+
+  it("canonicalizes a compatible WAV media-type alias from decoded bytes", async () => {
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "audio",
+              codec_name: "pcm_s16le",
+              sample_rate: "48000",
+              channels: 1,
+              channel_layout: "mono",
+            },
+          ],
+          format: { format_name: "wav", duration: "1.0" },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath: "/private/source.wav",
+        resource: {
+          id: `sha256:${"6".repeat(64)}`,
+          kind: "audio",
+          digest: { algorithm: "sha256", value: "6".repeat(64) },
+          byteLength: 96_000,
+          contentType: "audio/x-wav",
+        },
+      }),
+    ).resolves.toMatchObject({ contentType: "audio/wav" });
+  });
+
+  it.each([
+    {
+      label: "mono integer PCM",
+      formatTag: 1 as const,
+      channels: 1,
+      codec: "pcm_s16le",
+      channelLayout: "mono",
+    },
+    {
+      label: "stereo IEEE float PCM",
+      formatTag: 3 as const,
+      channels: 2,
+      codec: "pcm_f32le",
+      channelLayout: "stereo",
+    },
+  ])(
+    "derives $label layout from the standard RIFF fmt chunk when ffprobe omits it",
+    async ({ formatTag, channels, codec, channelLayout }) => {
+      const directory = await mkdtemp(join(tmpdir(), "clash-wave-layout-"));
+      temporaryDirectories.push(directory);
+      const bytes = waveBytes({ formatTag, channels });
+      const sourcePath = join(directory, "source.wav");
+      await writeFile(sourcePath, bytes);
+      const inspector = createLocalFfprobeAssetInspector({
+        ffprobePath: "/test/bin/ffprobe",
+        run: async () => ({
+          stdout: JSON.stringify({
+            streams: [
+              {
+                codec_type: "audio",
+                codec_name: codec,
+                sample_rate: "8000",
+                channels,
+              },
+            ],
+            format: { format_name: "wav", duration: "0.001" },
+          }),
+        }),
+      });
+
+      await expect(
+        inspector({
+          sourcePath,
+          resource: {
+            id: `sha256:${"a".repeat(64)}`,
+            kind: "audio",
+            digest: { algorithm: "sha256", value: "a".repeat(64) },
+            byteLength: bytes.byteLength,
+            contentType: "audio/wav",
+          },
+        }),
+      ).resolves.toMatchObject({ channelCount: channels, channelLayout });
+    },
+  );
+
+  it("does not invent a layout from a non-WAV stream's channel count", async () => {
+    const sourcePath = fileURLToPath(
+      new URL("./fixtures/minimax-h3-reference.mp3", import.meta.url),
+    );
+    const bytes = await readFile(sourcePath);
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "audio",
+              codec_name: "mp3",
+              sample_rate: "44100",
+              channels: 1,
+            },
+          ],
+          format: { format_name: "mp3", duration: "1.0" },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath,
+        resource: {
+          id: `sha256:${"b".repeat(64)}`,
+          kind: "audio",
+          digest: { algorithm: "sha256", value: "b".repeat(64) },
+          byteLength: bytes.byteLength,
+          contentType: "audio/mpeg",
+        },
+      }),
+    ).rejects.toThrow(/channel layout/i);
+  });
+
+  it("does not invent a layout for a three-channel PCM WAV without a speaker mask", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clash-wave-layout-"));
+    temporaryDirectories.push(directory);
+    const bytes = waveBytes({ formatTag: 1, channels: 3 });
+    const sourcePath = join(directory, "three-channel.wav");
+    await writeFile(sourcePath, bytes);
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "audio",
+              codec_name: "pcm_s16le",
+              sample_rate: "8000",
+              channels: 3,
+            },
+          ],
+          format: { format_name: "wav", duration: "0.001" },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath,
+        resource: {
+          id: `sha256:${"c".repeat(64)}`,
+          kind: "audio",
+          digest: { algorithm: "sha256", value: "c".repeat(64) },
+          byteLength: bytes.byteLength,
+          contentType: "audio/wav",
+        },
+      }),
+    ).rejects.toThrow(/channel layout/i);
+  });
+
+  it("keeps a registered Matroska family assertion when ffprobe reports its shared WebM demuxer", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clash-matroska-probe-"));
+    temporaryDirectories.push(directory);
+    const bytes = Uint8Array.from([
+      0x1a,
+      0x45,
+      0xdf,
+      0xa3,
+      0x8b,
+      0x42,
+      0x82,
+      0x88,
+      ...new TextEncoder().encode("matroska"),
+    ]);
+    const sourcePath = join(directory, "source.mkv");
+    await writeFile(sourcePath, bytes);
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 1_920,
+              height: 1_080,
+              avg_frame_rate: "24/1",
+              side_data_list: [],
+            },
+          ],
+          format: { format_name: "matroska,webm", duration: "1.0" },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath,
+        resource: {
+          id: `sha256:${"5".repeat(64)}`,
+          kind: "video",
+          digest: { algorithm: "sha256", value: "5".repeat(64) },
+          byteLength: bytes.byteLength,
+          contentType: "video/x-matroska",
+        },
+      }),
+    ).resolves.toMatchObject({ contentType: "video/x-matroska" });
+  });
+
+  it("rejects a Matroska assertion when the EBML bytes declare WebM", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clash-webm-probe-"));
+    temporaryDirectories.push(directory);
+    const bytes = Uint8Array.from([
+      0x1a,
+      0x45,
+      0xdf,
+      0xa3,
+      0x87,
+      0x42,
+      0x82,
+      0x84,
+      ...new TextEncoder().encode("webm"),
+    ]);
+    const sourcePath = join(directory, "mislabeled.mkv");
+    await writeFile(sourcePath, bytes);
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "vp9",
+              width: 640,
+              height: 360,
+              avg_frame_rate: "24/1",
+              side_data_list: [],
+            },
+          ],
+          format: { format_name: "matroska,webm", duration: "1.0" },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath,
+        resource: {
+          id: `sha256:${"4".repeat(64)}`,
+          kind: "video",
+          digest: { algorithm: "sha256", value: "4".repeat(64) },
+          byteLength: bytes.byteLength,
+          contentType: "video/x-matroska",
+        },
+      }),
+    ).rejects.toThrow(/video\/webm/i);
+  });
+
+  it("rejects an unknown ffprobe channel layout instead of publishing an unknown sentinel", async () => {
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => ({
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "audio",
+              codec_name: "aac",
+              sample_rate: "48000",
+              channels: 2,
+              channel_layout: "unknown",
+            },
+          ],
+          format: {
+            format_name: "mov,mp4,m4a,3gp,3g2,mj2",
+            duration: "1.0",
+          },
+        }),
+      }),
+    });
+
+    await expect(
+      inspector({
+        sourcePath: "/private/unknown-layout.m4a",
+        resource: {
+          id: `sha256:${"6".repeat(64)}`,
+          kind: "audio",
+          digest: { algorithm: "sha256", value: "6".repeat(64) },
+          byteLength: 42,
+          contentType: "audio/mp4",
+        },
+      }),
+    ).rejects.toThrow(/channel layout/i);
   });
 
   it("derives a silent-video fact instead of leaving audio presence unknown", async () => {
@@ -123,33 +678,44 @@ describe("Local Asset inspection", () => {
     ).resolves.toMatchObject({ hasAudio: false, videoCodec: "h264" });
   });
 
-  it("probes registered L16 bytes without asking ffprobe to guess a headerless stream", async () => {
+  it("rejects competing caller interpretations of the same headerless PCM bytes", async () => {
     let ffprobeCalls = 0;
     const inspector = createLocalFfprobeAssetInspector({
       ffprobePath: "/test/bin/ffprobe",
       run: async () => {
         ffprobeCalls += 1;
-        throw new Error("raw PCM must not be guessed by ffprobe");
+        throw new Error("headerless PCM must fail before ffprobe");
       },
     });
+    const resourceId = `sha256:${"c".repeat(64)}`;
 
-    await expect(
+    const results = await Promise.allSettled([
       inspector({
         sourcePath: "/private/generated.bin",
         resource: {
-          id: `sha256:${"c".repeat(64)}`,
+          id: resourceId,
           kind: "audio",
           digest: { algorithm: "sha256", value: "c".repeat(64) },
           byteLength: 96_000,
           contentType: "audio/L16;codec=pcm;rate=24000;channels=1",
         },
       }),
-    ).resolves.toEqual({
-      durationMs: 2_000,
-      contentType: "audio/L16;codec=pcm;rate=24000;channels=1",
-      hasAudio: true,
-      audioCodec: "pcm_s16le",
-    });
+      inspector({
+        sourcePath: "/private/generated.bin",
+        resource: {
+          id: resourceId,
+          kind: "audio",
+          digest: { algorithm: "sha256", value: "c".repeat(64) },
+          byteLength: 96_000,
+          contentType: "audio/pcm;rate=48000;channels=2",
+        },
+      }),
+    ]);
+
+    expect(results.map((result) => result.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
     expect(ffprobeCalls).toBe(0);
   });
 
@@ -280,6 +846,618 @@ describe("Local Asset inspection", () => {
     expect(ffprobeCalls).toBe(0);
   });
 
+  it("reads SVG display geometry from verified bytes without invoking ffprobe", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clash-svg-probe-"));
+    temporaryDirectories.push(directory);
+    const bytes = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180"/></svg>',
+    );
+    const sourcePath = join(directory, "graphic.svg");
+    await writeFile(sourcePath, bytes);
+    let ffprobeCalls = 0;
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => {
+        ffprobeCalls += 1;
+        throw new Error("SVG byte verification must not use ffprobe");
+      },
+    });
+
+    await expect(
+      inspector({
+        sourcePath,
+        resource: {
+          id: `sha256:${"e".repeat(64)}`,
+          kind: "image",
+          digest: { algorithm: "sha256", value: "e".repeat(64) },
+          byteLength: bytes.byteLength,
+          contentType: "image/svg+xml",
+        },
+      }),
+    ).resolves.toEqual({
+      contentType: "image/svg+xml",
+      width: 320,
+      height: 180,
+      rotationDegrees: 0,
+    });
+    expect(ffprobeCalls).toBe(0);
+  });
+
+  it("does not treat custom data attributes as SVG display dimensions", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clash-svg-data-size-"));
+    temporaryDirectories.push(directory);
+    const bytes = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" data-width="640" data-height="480"></svg>',
+    );
+    const sourcePath = join(directory, "custom-data-size.svg");
+    await writeFile(sourcePath, bytes);
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => {
+        throw new Error("SVG byte verification must not use ffprobe");
+      },
+    });
+
+    await expect(
+      inspector({
+        sourcePath,
+        resource: {
+          id: `sha256:${"b".repeat(64)}`,
+          kind: "image",
+          digest: { algorithm: "sha256", value: "b".repeat(64) },
+          byteLength: bytes.byteLength,
+          contentType: "image/svg+xml",
+        },
+      }),
+    ).rejects.toThrow(/positive pixel dimensions|positive viewBox/i);
+  });
+
+  it("rejects an HTML document that merely embeds an SVG element", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clash-fake-svg-probe-"));
+    temporaryDirectories.push(directory);
+    const bytes = new TextEncoder().encode(
+      '<html><body><svg viewBox="0 0 320 180"></svg></body></html>',
+    );
+    const sourcePath = join(directory, "not-an-svg.svg");
+    await writeFile(sourcePath, bytes);
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => {
+        throw new Error("invalid SVG must fail before ffprobe");
+      },
+    });
+
+    await expect(
+      inspector({
+        sourcePath,
+        resource: {
+          id: `sha256:${"d".repeat(64)}`,
+          kind: "image",
+          digest: { algorithm: "sha256", value: "d".repeat(64) },
+          byteLength: bytes.byteLength,
+          contentType: "image/svg+xml",
+        },
+      }),
+    ).rejects.toThrow(/SVG root/i);
+  });
+
+  it("rejects a truncated SVG document instead of sealing root attributes", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clash-truncated-svg-"));
+    temporaryDirectories.push(directory);
+    const bytes = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">',
+    );
+    const sourcePath = join(directory, "truncated.svg");
+    await writeFile(sourcePath, bytes);
+    const inspector = createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/bin/ffprobe",
+      run: async () => {
+        throw new Error("invalid SVG must fail before ffprobe");
+      },
+    });
+
+    await expect(
+      inspector({
+        sourcePath,
+        resource: {
+          id: `sha256:${"c".repeat(64)}`,
+          kind: "image",
+          digest: { algorithm: "sha256", value: "c".repeat(64) },
+          byteLength: bytes.byteLength,
+          contentType: "image/svg+xml",
+        },
+      }),
+    ).rejects.toThrow(/well-formed SVG/i);
+  });
+
+  it("keeps staged bytes private when finalization has no Host probe adapter", async () => {
+    const { dataDir, resources } = await fixture();
+    const bytes = new TextEncoder().encode("unverified staged image");
+    const staged = await resources.stage({ bytes });
+    const service = createLocalAssetInspectionService({ dataDir });
+
+    await expect(
+      service.finalize({
+        resourceId: staged.resourceId,
+        kind: "image",
+        contentType: "image/png",
+      }),
+    ).rejects.toThrow(/byte-probe adapter/i);
+
+    await expect(resources.resolve(staged.resourceId)).resolves.toBeUndefined();
+    await expect(
+      resources.resolveStaged(staged.resourceId),
+    ).resolves.toMatchObject({
+      resourceId: staged.resourceId,
+      digest: staged.digest,
+      byteLength: bytes.byteLength,
+    });
+    await expect(readFile(staged.path)).resolves.toEqual(Buffer.from(bytes));
+  });
+
+  it("refuses to treat a sealed Resource assertion as verified L1 facts without a Host probe adapter", async () => {
+    const { dataDir, resources } = await fixture();
+    const source = await resources.install({
+      kind: "image",
+      bytes: new TextEncoder().encode("sealed but not byte-probed"),
+      contentType: "image/png",
+    });
+    const service = createLocalAssetInspectionService({ dataDir });
+
+    await expect(service.inspect({ source })).rejects.toThrow(
+      /byte-probe adapter/i,
+    );
+  });
+
+  it("finalizes staged bytes into one sealed Resource and reuses cached v4 facts after restart", async () => {
+    const { dataDir, resources } = await fixture();
+    const staged = await resources.stage({
+      bytes: new TextEncoder().encode("verified staged video"),
+    });
+    let probes = 0;
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async ({ resource }) => {
+        probes += 1;
+        return {
+          contentType: resource.contentType,
+          width: 1_920,
+          height: 1_080,
+          rotationDegrees: 0,
+          durationMs: 2_500,
+          frameRate: 24,
+          videoCodec: "h264",
+          hasAudio: true,
+          audioCodec: "aac",
+          sampleRate: 48_000,
+          channelCount: 2,
+          channelLayout: "stereo",
+        };
+      },
+    });
+
+    const finalized = await service.finalize({
+      resourceId: staged.resourceId,
+      kind: "video",
+      contentType: "video/mp4",
+    });
+
+    expect(probes).toBe(1);
+    expect(finalized.source.resource).toMatchObject({
+      id: staged.resourceId,
+      kind: "video",
+      byteLength: staged.byteLength,
+      contentType: "video/mp4",
+    });
+    expect(finalized.facts).toEqual({
+      width: 1_920,
+      height: 1_080,
+      rotationDegrees: 0,
+      durationMs: 2_500,
+      contentType: "video/mp4",
+      frameRate: 24,
+      videoCodec: "h264",
+      hasAudio: true,
+      audioCodec: "aac",
+      sampleRate: 48_000,
+      channelCount: 2,
+      channelLayout: "stereo",
+    });
+    await expect(resources.resolve(staged.resourceId)).resolves.toEqual(
+      finalized.source,
+    );
+
+    const restarted = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => {
+        throw new Error("the persisted v4 inspection must be reused");
+      },
+    });
+    await expect(
+      restarted.inspect({ source: finalized.source }),
+    ).resolves.toEqual({ facts: finalized.facts });
+    expect(probes).toBe(1);
+  });
+
+  it("seals the canonical media type derived by the Host when staging has no caller MIME", async () => {
+    const { dataDir, resources } = await fixture();
+    const staged = await resources.stage({
+      bytes: new TextEncoder().encode("media with no caller MIME"),
+    });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        contentType: "image/png",
+        width: 1,
+        height: 1,
+        rotationDegrees: 0,
+      }),
+    });
+
+    const finalized = await service.finalize({
+      resourceId: staged.resourceId,
+      kind: "image",
+    });
+
+    expect(finalized.source.resource.contentType).toBe("image/png");
+    await expect(resources.resolve(staged.resourceId)).resolves.toMatchObject({
+      resource: { contentType: "image/png" },
+    });
+  });
+
+  it("canonicalizes a compatible caller media-type alias before sealing L0", async () => {
+    const { dataDir, resources } = await fixture();
+    const staged = await resources.stage({
+      bytes: new TextEncoder().encode("verified WAV bytes"),
+    });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        contentType: "audio/wav",
+        durationMs: 1_000,
+        hasAudio: true,
+        audioCodec: "pcm_s16le",
+        sampleRate: 48_000,
+        channelCount: 1,
+        channelLayout: "mono",
+      }),
+    });
+
+    const finalized = await service.finalize({
+      resourceId: staged.resourceId,
+      kind: "audio",
+      contentType: "audio/x-wav",
+    });
+
+    expect(finalized.source.resource.contentType).toBe("audio/wav");
+    expect(finalized.facts.contentType).toBe("audio/wav");
+  });
+
+  it("does not let a probe adapter publish caller-declared raw PCM parameters as canonical facts", async () => {
+    const { dataDir, resources } = await fixture();
+    const staged = await resources.stage({ bytes: new Uint8Array(96_000) });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async ({ resource }) => {
+        const stereo = resource.contentType?.startsWith("audio/pcm");
+        return {
+          contentType: resource.contentType,
+          durationMs: stereo ? 500 : 2_000,
+          hasAudio: true,
+          audioCodec: "pcm_s16le",
+          sampleRate: stereo ? 48_000 : 24_000,
+          channelCount: stereo ? 2 : 1,
+          channelLayout: stereo ? "stereo" : "mono",
+        };
+      },
+    });
+
+    const results: PromiseSettledResult<unknown>[] = [];
+    for (const contentType of [
+      "audio/L16;codec=pcm;rate=24000;channels=1",
+      "audio/pcm;rate=48000;channels=2",
+    ]) {
+      results.push(
+        ...(await Promise.allSettled([
+          service.finalize({
+            resourceId: staged.resourceId,
+            kind: "audio",
+            contentType,
+          }),
+        ])),
+      );
+    }
+
+    expect(results.map((result) => result.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    await expect(resources.resolve(staged.resourceId)).resolves.toBeUndefined();
+  });
+
+  it("reopens a sealed legacy JPEG alias with canonical v4 inspection facts", async () => {
+    const { dataDir, resources } = await fixture();
+    const source = await resources.install({
+      kind: "image",
+      bytes: new TextEncoder().encode("sealed legacy JPEG alias"),
+      contentType: "image/jpg",
+    });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        contentType: "image/jpeg",
+        width: 640,
+        height: 360,
+        rotationDegrees: 0,
+      }),
+    });
+
+    await expect(service.inspect({ source })).resolves.toEqual({
+      facts: {
+        contentType: "image/jpeg",
+        width: 640,
+        height: 360,
+        rotationDegrees: 0,
+      },
+    });
+  });
+
+  it("reopens a sealed legacy WAV alias with canonical v4 inspection facts", async () => {
+    const { dataDir, resources } = await fixture();
+    const source = await resources.install({
+      kind: "audio",
+      bytes: new TextEncoder().encode("sealed legacy WAV alias"),
+      contentType: "audio/x-wav",
+    });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        contentType: "audio/wav",
+        durationMs: 1_000,
+        hasAudio: true,
+        audioCodec: "pcm_s16le",
+        sampleRate: 48_000,
+        channelCount: 1,
+        channelLayout: "mono",
+      }),
+    });
+
+    await expect(service.inspect({ source })).resolves.toMatchObject({
+      facts: { contentType: "audio/wav" },
+    });
+  });
+
+  it("still rejects a decoded media type that is not an alias of the sealed Resource assertion", async () => {
+    const { dataDir, resources } = await fixture();
+    const source = await resources.install({
+      kind: "image",
+      bytes: new TextEncoder().encode("sealed bytes with a wrong type"),
+      contentType: "image/png",
+    });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        contentType: "image/jpeg",
+        width: 640,
+        height: 360,
+        rotationDegrees: 0,
+      }),
+    });
+
+    await expect(service.inspect({ source })).rejects.toThrow(
+      /contentType.*conflicts with the persisted Resource facts/i,
+    );
+  });
+
+  it("retains staged bytes after a failed assertion so corrected finalization can succeed", async () => {
+    const { dataDir, resources } = await fixture();
+    const staged = await resources.stage({
+      bytes: new TextEncoder().encode("one staged PNG byte sequence"),
+    });
+    let probes = 0;
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async ({ resource }) => {
+        probes += 1;
+        if (resource.contentType !== "image/png") {
+          throw new Error("decoded bytes are PNG, not JPEG");
+        }
+        return {
+          contentType: "image/png",
+          width: 640,
+          height: 360,
+          rotationDegrees: 0,
+        };
+      },
+    });
+
+    await expect(
+      service.finalize({
+        resourceId: staged.resourceId,
+        kind: "image",
+        contentType: "image/jpeg",
+      }),
+    ).rejects.toThrow("decoded bytes are PNG, not JPEG");
+    await expect(resources.resolve(staged.resourceId)).resolves.toBeUndefined();
+    await expect(
+      resources.resolveStaged(staged.resourceId),
+    ).resolves.toBeDefined();
+
+    await expect(
+      service.finalize({
+        resourceId: staged.resourceId,
+        kind: "image",
+        contentType: "image/png",
+      }),
+    ).resolves.toMatchObject({
+      source: {
+        resource: {
+          id: staged.resourceId,
+          kind: "image",
+          contentType: "image/png",
+        },
+      },
+      facts: {
+        contentType: "image/png",
+        width: 640,
+        height: 360,
+        rotationDegrees: 0,
+      },
+    });
+    expect(probes).toBe(2);
+  });
+
+  it("lets the first complete v4 probe repair a pre-v4 sealed Resource with the wrong kind and media type", async () => {
+    const { dataDir, resources } = await fixture();
+    const bytes = new TextEncoder().encode("legacy bytes declared as video");
+    const legacy = await resources.install({
+      kind: "video",
+      bytes,
+      contentType: "video/mp4",
+    });
+    await resources.stage({ bytes });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async ({ resource }) => {
+        if (resource.kind !== "image" || resource.contentType !== "image/png") {
+          throw new Error("the decoded bytes are PNG");
+        }
+        return {
+          contentType: "image/png",
+          width: 640,
+          height: 360,
+          rotationDegrees: 0,
+        };
+      },
+    });
+
+    await expect(
+      service.finalize({
+        resourceId: legacy.resource.id,
+        kind: "image",
+        contentType: "image/png",
+      }),
+    ).resolves.toMatchObject({
+      source: {
+        resource: {
+          id: legacy.resource.id,
+          kind: "image",
+          contentType: "image/png",
+        },
+      },
+      facts: { contentType: "image/png", width: 640, height: 360 },
+    });
+    await expect(resources.resolve(legacy.resource.id)).resolves.toMatchObject({
+      resource: { kind: "image", contentType: "image/png" },
+    });
+  });
+
+  it("keeps a current v4 inspection receipt as the immutable winner across corrected assertions", async () => {
+    const { dataDir, resources } = await fixture();
+    const staged = await resources.stage({
+      bytes: new TextEncoder().encode("one verified PNG Resource"),
+    });
+    const first = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        contentType: "image/png",
+        width: 640,
+        height: 360,
+        rotationDegrees: 0,
+      }),
+    });
+    await first.finalize({
+      resourceId: staged.resourceId,
+      kind: "image",
+      contentType: "image/png",
+    });
+    const restarted = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        contentType: "video/mp4",
+        width: 1920,
+        height: 1080,
+        rotationDegrees: 0,
+        durationMs: 1_000,
+        frameRate: 24,
+        videoCodec: "h264",
+        hasAudio: false,
+      }),
+    });
+
+    await expect(
+      restarted.finalize({
+        resourceId: staged.resourceId,
+        kind: "video",
+        contentType: "video/mp4",
+      }),
+    ).rejects.toThrow();
+    await expect(resources.resolve(staged.resourceId)).resolves.toMatchObject({
+      resource: { kind: "image", contentType: "image/png" },
+    });
+  });
+
+  it("lets exactly one concurrent v4 interpretation win the pre-v4 Resource CAS", async () => {
+    const { dataDir, resources } = await fixture();
+    const bytes = new TextEncoder().encode("ambiguous legacy Resource bytes");
+    const legacy = await resources.install({
+      kind: "model",
+      bytes,
+      contentType: "model/gltf-binary",
+    });
+    await resources.stage({ bytes });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async ({ resource }) => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 1));
+        return resource.kind === "image"
+          ? {
+              contentType: "image/png",
+              width: 640,
+              height: 360,
+              rotationDegrees: 0,
+            }
+          : {
+              contentType: "video/mp4",
+              width: 640,
+              height: 360,
+              rotationDegrees: 0,
+              durationMs: 1_000,
+              frameRate: 24,
+              videoCodec: "h264",
+              hasAudio: false,
+            };
+      },
+    });
+
+    const settled = await Promise.allSettled([
+      service.finalize({
+        resourceId: legacy.resource.id,
+        kind: "image",
+        contentType: "image/png",
+      }),
+      service.finalize({
+        resourceId: legacy.resource.id,
+        kind: "video",
+        contentType: "video/mp4",
+      }),
+    ]);
+    expect(
+      settled.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      settled.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    const winner = await resources.resolve(legacy.resource.id);
+    expect(
+      winner?.resource.kind === "image" || winner?.resource.kind === "video",
+    ).toBe(true);
+    expect(
+      winner?.resource.contentType === "image/png" ||
+        winner?.resource.contentType === "video/mp4",
+    ).toBe(true);
+  });
+
   it("persists verified inspection facts once per Resource across entry identities and restarts", async () => {
     const { dataDir, resources } = await fixture();
     const source = await resources.install({
@@ -295,11 +1473,15 @@ describe("Local Asset inspection", () => {
         return {
           width: 1920,
           height: 1080,
+          rotationDegrees: 0,
           durationMs: 2_500,
           frameRate: 24,
           videoCodec: "h264",
           hasAudio: true,
           audioCodec: "aac",
+          sampleRate: 48_000,
+          channelCount: 2,
+          channelLayout: "stereo",
         };
       },
     });
@@ -323,12 +1505,16 @@ describe("Local Asset inspection", () => {
     expect(firstEntry.facts).toEqual({
       width: 1920,
       height: 1080,
+      rotationDegrees: 0,
       durationMs: 2_500,
       contentType: "video/mp4",
       frameRate: 24,
       videoCodec: "h264",
       hasAudio: true,
       audioCodec: "aac",
+      sampleRate: 48_000,
+      channelCount: 2,
+      channelLayout: "stereo",
     });
     expect(secondEntry.facts).toEqual(firstEntry.facts);
     expect(JSON.stringify(secondEntry)).not.toMatch(
@@ -364,7 +1550,15 @@ describe("Local Asset inspection", () => {
       bytes: new TextEncoder().encode("inspection-only image"),
       contentType: "image/png",
     });
-    const service = createLocalAssetInspectionService({ dataDir });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async ({ resource }) => ({
+        contentType: resource.contentType,
+        width: 1,
+        height: 1,
+        rotationDegrees: 0,
+      }),
+    });
     await service.inspect({
       source,
       knownFacts: { width: 1, height: 1, contentType: "image/png" },
@@ -431,6 +1625,7 @@ describe("Local Asset inspection", () => {
         return {
           width: 1_920,
           height: 1_080,
+          rotationDegrees: 0,
           durationMs: 1_000,
           frameRate: 24,
           videoCodec: "h264",
@@ -457,7 +1652,7 @@ describe("Local Asset inspection", () => {
     expect(second.facts).toEqual(first.facts);
   });
 
-  it("reprobes a prior versioned recipe after canonical completeness changes", async () => {
+  it("reprobes the v3 recipe after canonical completeness changes", async () => {
     const { dataDir, resources } = await fixture();
     const source = await resources.install({
       kind: "video",
@@ -489,12 +1684,15 @@ describe("Local Asset inspection", () => {
       )
       .run(
         source.resource.id,
-        "asset-inspection/v2:canonical-media-facts",
+        "asset-inspection/v3:canonical-media-facts",
         JSON.stringify({
           width: 320,
           height: 180,
+          durationMs: 1_000,
           contentType: "video/mp4",
+          frameRate: 24,
           videoCodec: "h264",
+          hasAudio: false,
         }),
         Date.now(),
       );
@@ -508,6 +1706,7 @@ describe("Local Asset inspection", () => {
         return {
           width: 1_920,
           height: 1_080,
+          rotationDegrees: 0,
           durationMs: 1_000,
           frameRate: 24,
           videoCodec: "h264",
@@ -532,24 +1731,44 @@ describe("Local Asset inspection", () => {
     const first = createLocalAssetInspectionService({
       dataDir,
     });
-    await first.inspect({ source, knownFacts: { contentType: "image/png" } });
-    await first.inspect({
-      source,
-      knownFacts: { contentType: "image/png", width: 800, height: 600 },
-    });
+    await expect(
+      first.inspect({
+        source,
+        knownFacts: { contentType: "image/png", width: 800, height: 600 },
+      }),
+    ).rejects.toThrow(/byte-probe adapter/i);
 
     let probes = 0;
     const restarted = createLocalAssetInspectionService({
       dataDir,
       inspectResource: async () => {
         probes += 1;
-        return { width: 1_920, height: 1_080 };
+        return { width: 1_920, height: 1_080, rotationDegrees: 0 };
       },
     });
     await expect(restarted.inspect({ source })).resolves.toMatchObject({
       facts: { contentType: "image/png", width: 1_920, height: 1_080 },
     });
     expect(probes).toBe(1);
+  });
+
+  it("rejects a probed audio stream without canonical sample and channel layout facts", async () => {
+    const { dataDir, resources } = await fixture();
+    const source = await resources.install({
+      kind: "audio",
+      bytes: new TextEncoder().encode("incomplete audio layout probe"),
+      contentType: "audio/mpeg",
+    });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        durationMs: 1_000,
+        hasAudio: true,
+        audioCodec: "mp3",
+      }),
+    });
+
+    await expect(service.inspect({ source })).rejects.toThrow(/sample rate/i);
   });
 
   it("rejects incomplete injected video facts before they can become a CAS winner", async () => {
@@ -564,11 +1783,30 @@ describe("Local Asset inspection", () => {
       inspectResource: async () => ({
         width: 1_920,
         height: 1_080,
+        rotationDegrees: 0,
         videoCodec: "h264",
       }),
     });
 
     await expect(service.inspect({ source })).rejects.toThrow(/duration/i);
+  });
+
+  it("rejects a v4 candidate without a canonical media type", async () => {
+    const { dataDir, resources } = await fixture();
+    const source = await resources.install({
+      kind: "image",
+      bytes: new TextEncoder().encode("legacy image without a media type"),
+    });
+    const service = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => ({
+        width: 640,
+        height: 360,
+        rotationDegrees: 0,
+      }),
+    });
+
+    await expect(service.inspect({ source })).rejects.toThrow(/content type/i);
   });
 
   it("coalesces concurrent inspection of the same immutable Resource", async () => {
@@ -591,6 +1829,7 @@ describe("Local Asset inspection", () => {
         return {
           width: 1_920,
           height: 1_080,
+          rotationDegrees: 0,
           durationMs: 2_500,
           frameRate: 24,
           videoCodec: "h264",
@@ -621,19 +1860,29 @@ describe("Local Asset inspection", () => {
     });
     let releaseFirst: (() => void) | undefined;
     let releaseSecond: (() => void) | undefined;
+    let markFirstStarted: (() => void) | undefined;
+    let markSecondStarted: (() => void) | undefined;
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
     const secondGate = new Promise<void>((resolve) => {
       releaseSecond = resolve;
     });
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve;
+    });
+    const secondStarted = new Promise<void>((resolve) => {
+      markSecondStarted = resolve;
+    });
     const firstConsumer = createLocalAssetInspectionService({
       dataDir,
       inspectResource: async () => {
+        markFirstStarted!();
         await firstGate;
         return {
           width: 1_920,
           height: 1_080,
+          rotationDegrees: 0,
           durationMs: 2_500,
           frameRate: 24,
           videoCodec: "h264",
@@ -644,10 +1893,12 @@ describe("Local Asset inspection", () => {
     const secondConsumer = createLocalAssetInspectionService({
       dataDir,
       inspectResource: async () => {
+        markSecondStarted!();
         await secondGate;
         return {
           width: 1_280,
           height: 720,
+          rotationDegrees: 0,
           durationMs: 2_500,
           frameRate: 24,
           videoCodec: "h264",
@@ -658,7 +1909,7 @@ describe("Local Asset inspection", () => {
 
     const first = firstConsumer.inspect({ source });
     const second = secondConsumer.inspect({ source });
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await Promise.all([firstStarted, secondStarted]);
     releaseFirst!();
     const winner = await first;
     releaseSecond!();
@@ -701,6 +1952,9 @@ describe("Local Asset inspection", () => {
           durationMs: 4_000,
           hasAudio: true,
           audioCodec: "mp3",
+          sampleRate: 44_100,
+          channelCount: 2,
+          channelLayout: "stereo",
         };
       },
     });

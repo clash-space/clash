@@ -48,7 +48,11 @@ describe("Personal Global Asset HTTP client", () => {
       type: "image/png",
     });
 
-    await client.importFile({ file, kind: "image" });
+    await client.importFile({
+      file,
+      kind: "image",
+      globalAssetId: "global:shape-command",
+    });
     await client.publish({
       projectId: "project/one",
       projectAssetId: "asset:one",
@@ -86,7 +90,24 @@ describe("Personal Global Asset HTTP client", () => {
     expect(form.get("globalAssetId")).toBe("global:caller-operation");
   });
 
-  it("reuses its generated Global Asset id when the same failed import is retried", async () => {
+  it("rejects an import without the command's preassigned Global Asset id before I/O", async () => {
+    const fetch = vi.fn(async () => {
+      throw new Error("must not send an unnamed import");
+    });
+    const client = createPersonalGlobalAssetHttpClient({ fetch });
+
+    await expect(
+      client.importFile({
+        file: new File([new Uint8Array([1])], "frame.png", {
+          type: "image/png",
+        }),
+        kind: "image",
+      } as never),
+    ).rejects.toThrow("global asset id is required");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("replays its preassigned Global Asset id when the same failed import is retried", async () => {
     const requests: FormData[] = [];
     const fetch = vi.fn(
       async (_input: string | URL | Request, init?: RequestInit) => {
@@ -105,6 +126,7 @@ describe("Personal Global Asset HTTP client", () => {
         type: "image/png",
       }),
       kind: "image" as const,
+      globalAssetId: "global:retry-command",
     };
 
     await expect(client.importFile(operation)).rejects.toThrow(
@@ -114,8 +136,7 @@ describe("Personal Global Asset HTTP client", () => {
 
     const firstId = requests[0]?.get("globalAssetId");
     const retryId = requests[1]?.get("globalAssetId");
-    expect(typeof firstId).toBe("string");
-    expect(firstId).not.toBe("");
+    expect(firstId).toBe("global:retry-command");
     expect(retryId).toBe(firstId);
   });
 

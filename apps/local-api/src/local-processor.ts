@@ -51,7 +51,6 @@ import {
   createLocalProjectAssetService,
   publishLocalProjectAssetWithBindings,
 } from "./local-project-assets.js";
-import type { LocalResourceProjection } from "./local-resource-store.js";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import { createLocalDurableOutputStagingStore } from "./local-durable-output-staging.js";
 import type { LocalAssetInspectionService } from "./local-asset-inspections.js";
@@ -846,85 +845,6 @@ function timelineRenderInputOwner(
   return parsed.success && parsed.data.kind === "run" ? parsed.data : null;
 }
 
-function extensionForContentType(contentType: string): string {
-  if (contentType.includes("image/svg")) return ".svg";
-  if (contentType.includes("image/png")) return ".png";
-  if (contentType.includes("image/jpeg")) return ".jpg";
-  if (contentType.includes("image/webp")) return ".webp";
-  if (contentType.includes("video/mp4")) return ".mp4";
-  if (contentType.includes("video/webm")) return ".webm";
-  if (contentType.includes("audio/wav")) return ".wav";
-  if (contentType.includes("audio/mpeg")) return ".mp3";
-  if (
-    contentType.includes("model/gltf-binary") ||
-    contentType.includes("application/octet-stream+gltf")
-  )
-    return ".glb";
-  return ".bin";
-}
-
-function ownedProjectAssetEntry(options: {
-  projectAssetId?: string;
-  projectId: string;
-  taskId: string;
-  actionRunId?: string;
-  kind: AssetKind;
-  nodeData?: Record<string, unknown>;
-  name?: string;
-  prompt?: string;
-  projection: LocalResourceProjection;
-  width?: number;
-  height?: number;
-  durationMs?: number;
-  transcript?: string;
-  requestId?: string;
-  provider?: string;
-  modelEndpoint?: string;
-  remoteUrl?: string;
-}): ProjectAssetEntry {
-  const assetId =
-    options.projectAssetId ??
-    `local-asset-${sanitizeStorageSegment(options.taskId)}`;
-  const model = options.nodeData
-    ? modelFromData(options.nodeData, `mock-${options.kind}`)
-    : (options.modelEndpoint ?? options.kind);
-  const prompt =
-    options.prompt ??
-    (options.nodeData
-      ? providerPromptFromData(options.nodeData, `Mock ${options.kind}`)
-      : `Generate ${options.kind}`);
-  const name =
-    options.name ??
-    `${assetId}${extensionForContentType(options.projection.resource.contentType ?? "")}`;
-  return ProjectAssetEntrySchema.parse({
-    id: assetId,
-    kind: options.kind,
-    source: { kind: "owned", resourceId: options.projection.resource.id },
-    lifecycle: { state: "active" },
-    name,
-    metadata: {
-      ...(options.width === undefined ? {} : { width: options.width }),
-      ...(options.height === undefined ? {} : { height: options.height }),
-      ...(options.durationMs === undefined
-        ? {}
-        : { durationMs: options.durationMs }),
-      bytes: options.projection.resource.byteLength,
-      ...(options.projection.resource.contentType
-        ? { contentType: options.projection.resource.contentType }
-        : {}),
-      ...(options.name ? { originalName: name } : {}),
-    },
-    provenance: {
-      kind: options.provider === "local-render" ? "render" : "generation",
-      // The product lineage belongs to the Host ActionRun. A Provider request id is
-      // transport state and must not replace the durable run identity exposed to Project Loro.
-      actionRunId: options.actionRunId ?? options.requestId ?? options.taskId,
-      model: options.modelEndpoint ?? model,
-      prompt,
-    },
-  });
-}
-
 export async function resolveLocalTimelineDslReferences(options: {
   dataDir: string;
   doc: LoroDoc;
@@ -1210,7 +1130,7 @@ export function createLocalWorkflowProcessor(
                   assetId: staged.projectAssetId,
                   uri: `clash-asset://${staged.projectAssetId}`,
                   kind: "video",
-                  mediaType: staged.projection.resource.contentType,
+                  mediaType: staged.contentType,
                 },
               },
             ],
@@ -1341,7 +1261,7 @@ export function createLocalWorkflowProcessor(
                 assetId: staged.projectAssetId,
                 uri: `clash-asset://${staged.projectAssetId}`,
                 kind: generationKind,
-                mediaType: staged.projection.resource.contentType,
+                mediaType: staged.contentType,
               },
             },
           ],
@@ -1483,33 +1403,23 @@ export function createLocalWorkflowProcessor(
                 typeof frozen.input.values.prompt === "string"
                   ? frozen.input.values.prompt
                   : `Generate ${frozen.kind}`;
-              const candidate = ownedProjectAssetEntry({
-                projectAssetId: staged.projectAssetId,
-                projectId: frozen.projectId,
-                taskId: idempotencyKey,
-                actionRunId: run.actionRunId,
-                kind: staged.kind,
-                prompt,
-                projection: staged.projection,
-                width: staged.metadata.width,
-                height: staged.metadata.height,
-                durationMs: staged.metadata.durationMs,
-                provider: staged.result?.provider ?? frozen.provider,
-                modelEndpoint:
-                  staged.result?.modelEndpoint ?? frozen.modelEndpoint,
-              });
               const projectAsset = await projectAssets.prepareStagedOwnedEntry({
-                projectAssetId: candidate.id,
-                kind: candidate.kind,
-                resourceId: staged.projection.resource.id,
-                ...(candidate.name ? { name: candidate.name } : {}),
-                metadata: {
-                  ...candidate.metadata,
-                  ...staged.metadata,
+                projectAssetId: staged.projectAssetId,
+                kind: staged.kind,
+                resourceId: staged.resourceId,
+                metadata: staged.metadata,
+                provenance: {
+                  kind:
+                    staged.result?.provider === "local-render"
+                      ? "render"
+                      : "generation",
+                  actionRunId: run.actionRunId,
+                  model:
+                    staged.result?.modelEndpoint ??
+                    frozen.modelEndpoint ??
+                    staged.kind,
+                  prompt,
                 },
-                ...(candidate.provenance
-                  ? { provenance: candidate.provenance }
-                  : {}),
               });
               return {
                 kind: "asset",
@@ -1530,38 +1440,44 @@ export function createLocalWorkflowProcessor(
                 "Durable Provider media output requires a Host staging receipt.",
               );
             }
+            const expectedReceiptTaskId =
+              frozen.targetKind === "action" ? run.actionRunId : idempotencyKey;
+            if (
+              staged.taskId !== expectedReceiptTaskId ||
+              staged.slot !== run.outputSlot ||
+              staged.pluginId !== frozen.binding.pluginId ||
+              staged.pluginVersion !== frozen.binding.version
+            ) {
+              throw new Error(
+                "Durable Provider media output staging receipt is not owned by the frozen run and binding.",
+              );
+            }
             const assetId = staged.projectAssetId;
-            const projection = await projectAssets.resolveStagedOwned(
-              staged.resourceId,
-            );
-            const candidate = ownedProjectAssetEntry({
-              projectAssetId: assetId,
-              projectId: frozen.projectId,
-              taskId: idempotencyKey,
-              actionRunId: run.actionRunId,
-              kind: frozen.kind,
-              ...(typeof frozen.input.values.prompt === "string"
-                ? { prompt: frozen.input.values.prompt }
-                : {}),
-              ...(frozen.delivery?.name ? { name: frozen.delivery.name } : {}),
-              ...(frozen.delivery?.prompt
-                ? { prompt: frozen.delivery.prompt }
-                : {}),
-              projection,
-              ...(frozen.provider ? { provider: frozen.provider } : {}),
-              ...(frozen.modelEndpoint
-                ? { modelEndpoint: frozen.modelEndpoint }
-                : {}),
-            });
             const projectAsset = await projectAssets.prepareStagedOwnedEntry({
-              projectAssetId: candidate.id,
-              kind: candidate.kind,
-              resourceId: projection.resource.id,
-              ...(candidate.name ? { name: candidate.name } : {}),
-              metadata: candidate.metadata,
-              ...(candidate.provenance
-                ? { provenance: candidate.provenance }
-                : {}),
+              projectAssetId: assetId,
+              kind: frozen.kind,
+              resourceId: staged.resourceId,
+              ...(frozen.delivery?.name ? { name: frozen.delivery.name } : {}),
+              metadata: {
+                ...(staged.mediaType ? { contentType: staged.mediaType } : {}),
+              },
+              provenance: {
+                kind: "generation",
+                actionRunId: run.actionRunId,
+                ...(frozen.modelEndpoint
+                  ? { model: frozen.modelEndpoint }
+                  : {}),
+                ...((frozen.delivery?.prompt ??
+                (typeof frozen.input.values.prompt === "string"
+                  ? frozen.input.values.prompt
+                  : undefined))
+                  ? {
+                      prompt:
+                        frozen.delivery?.prompt ??
+                        String(frozen.input.values.prompt),
+                    }
+                  : {}),
+              },
             });
             return {
               kind: "asset",
@@ -1606,16 +1522,36 @@ export function createLocalWorkflowProcessor(
                   `Durable Provider staged Project Asset is invalid: ${parsed.error.issues[0]?.message ?? "invalid entry"}`,
                 );
               }
+              if (parsed.data.source.kind !== "owned") {
+                throw new Error(
+                  "Durable Provider staged output must own its verified Resource.",
+                );
+              }
+              // `stagedOutput` survives upgrades and process restarts. Treat it
+              // as an immutable candidate, not publication authority: reopen
+              // the Resource and require the current versioned Host inspection
+              // before any Project mutation. This prevents a pre-v4 journal
+              // record from bypassing the common L0/L1 finalization boundary.
+              const verified = await projectAssets.prepareStagedOwnedEntry({
+                projectAssetId: parsed.data.id,
+                kind: parsed.data.kind,
+                resourceId: parsed.data.source.resourceId,
+                ...(parsed.data.name ? { name: parsed.data.name } : {}),
+                metadata: parsed.data.metadata,
+                ...(parsed.data.provenance
+                  ? { provenance: parsed.data.provenance }
+                  : {}),
+              });
               const publication = publishLocalProjectAssetWithBindings(
                 doc,
-                parsed.data,
+                verified,
                 [
                   {
                     id: `action-asset:${durableRunIdempotencyKey(run)}:output`,
                     owner: durableActionOwner(frozen, run.actionRunId),
                     direction: "output",
                     slot: run.outputSlot,
-                    projectAssetId: parsed.data.id,
+                    projectAssetId: verified.id,
                   },
                 ],
               );

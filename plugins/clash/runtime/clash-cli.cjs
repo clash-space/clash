@@ -25167,7 +25167,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-CGTXLVQX.js
+// ../../packages/shared-types/dist/chunk-T6TANLZN.js
 function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version2 = normalizeTokenPart(options.version ?? "v1", "version");
@@ -25219,6 +25219,8 @@ var ResourceSchema = z.object({
 var ProjectAssetMetadataSchema = z.object({
   width: z.number().int().nonnegative().optional(),
   height: z.number().int().nonnegative().optional(),
+  /** Display-matrix rotation normalized into [0, 360). */
+  rotationDegrees: z.number().finite().min(0).lt(360).optional(),
   durationMs: z.number().int().nonnegative().optional(),
   bytes: z.number().int().nonnegative().optional(),
   /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
@@ -25229,6 +25231,9 @@ var ProjectAssetMetadataSchema = z.object({
   /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
   hasAudio: z.boolean().optional(),
   audioCodec: z.string().trim().min(1).optional(),
+  sampleRate: z.number().int().positive().optional(),
+  channelCount: z.number().int().positive().optional(),
+  channelLayout: z.string().trim().min(1).optional(),
   originalName: z.string().trim().min(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
@@ -25347,6 +25352,7 @@ var ResolvedAssetSchema = z.object({
 var AssetMetadataSchema = z.object({
   width: z.number().int().optional(),
   height: z.number().int().optional(),
+  rotationDegrees: z.number().finite().min(0).lt(360).optional(),
   durationMs: z.number().int().optional(),
   bytes: z.number().int().optional(),
   /** @deprecated Historical row payload; never emit from new publication. */
@@ -25356,6 +25362,9 @@ var AssetMetadataSchema = z.object({
   videoCodec: z.string().optional(),
   hasAudio: z.boolean().optional(),
   audioCodec: z.string().optional(),
+  sampleRate: z.number().int().positive().optional(),
+  channelCount: z.number().int().positive().optional(),
+  channelLayout: z.string().optional(),
   contentHash: z.string().optional(),
   localBlobKey: z.string().optional(),
   originalName: z.string().optional(),
@@ -25400,7 +25409,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-Y7VKLK6W.js
+// ../../packages/shared-types/dist/chunk-3E3S6SZN.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -40863,13 +40872,6 @@ function projectAssetsUrl(endpoint, projectId) {
 function fileNameOf(file2) {
   return "name" in file2 && typeof file2.name === "string" ? file2.name : void 0;
 }
-function newProjectAssetId() {
-  const cryptoObject = globalThis.crypto;
-  if (typeof cryptoObject?.randomUUID !== "function") {
-    throw new Error("crypto.randomUUID is required for Asset import ids");
-  }
-  return `asset:${cryptoObject.randomUUID()}`;
-}
 function snapshotProjectImport(input) {
   const projectId = required(input.projectId, "project id");
   const file2 = input.file;
@@ -40881,7 +40883,7 @@ function snapshotProjectImport(input) {
     fileName,
     appendFileName: input.fileName !== void 0 || sourceFileName !== fileName,
     kind: input.kind,
-    projectAssetId: input.projectAssetId === void 0 ? newProjectAssetId() : required(input.projectAssetId, "project asset id")
+    projectAssetId: required(input.projectAssetId, "project asset id")
   };
 }
 function newDeleteOperationId() {
@@ -41099,7 +41101,6 @@ function stableOperationId(input, requested, generatedIds, prefix, label) {
 }
 function createPersonalGlobalAssetHttpClient(options = {}) {
   const fetch2 = options.fetch ?? globalThis.fetch;
-  const generatedImportIds = /* @__PURE__ */ new WeakMap();
   const generatedTrashIds = /* @__PURE__ */ new WeakMap();
   const connection = async () => {
     if (options.resolveConnection)
@@ -41145,7 +41146,7 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
       return resolvedAsset(await fetch2(url3, requestInit({ method: "GET", headers: headers(connected) })));
     },
     async importFile(input) {
-      const globalAssetId = stableOperationId(input, input.globalAssetId, generatedImportIds, "global", "global asset id");
+      const globalAssetId = required2(input.globalAssetId, "global asset id");
       const fileName = required2(input.fileName ?? fileNameOf2(input.file), "file name");
       const { connected, url: url3 } = await target("/import-file");
       const form = new FormData();
@@ -41356,7 +41357,7 @@ var ASSET_IMPORT_FILE_TYPES = {
   ".mp4": { kind: "video", contentType: "video/mp4" },
   ".webm": { kind: "video", contentType: "video/webm" },
   ".mov": { kind: "video", contentType: "video/quicktime" },
-  ".m4v": { kind: "video", contentType: "video/x-m4v" },
+  ".m4v": { kind: "video", contentType: "video/mp4" },
   ".mkv": { kind: "video", contentType: "video/x-matroska" },
   ".mp3": { kind: "audio", contentType: "audio/mpeg" },
   ".wav": { kind: "audio", contentType: "audio/wav" },
@@ -41383,22 +41384,11 @@ function resolveAssetImportFileType(filePath, requestedKind) {
   }
   return { ...inferred, ...requestedKind ? { kind: requestedKind } : {} };
 }
-function stableImportId(command2, requested, ids, prefix) {
-  const existing = ids.get(command2);
-  if (existing)
-    return existing;
-  const normalized = requested?.trim();
-  if (requested !== void 0 && !normalized) {
-    throw new Error(`${prefix} asset id is required`);
-  }
-  const runtimeCrypto = globalThis.crypto;
-  const randomUUID9 = runtimeCrypto?.randomUUID;
-  if (!normalized && typeof randomUUID9 !== "function") {
-    throw new Error("crypto.randomUUID is required for Asset import ids");
-  }
-  const id2 = normalized ?? `${prefix}:${runtimeCrypto.randomUUID()}`;
-  ids.set(command2, id2);
-  return id2;
+function requiredImportId(value, label) {
+  const normalized = value?.trim();
+  if (!normalized)
+    throw new Error(`${label} is required`);
+  return normalized;
 }
 function createAssetHostConnectionResolver(options) {
   const env = options.env ?? process.env;
@@ -41427,7 +41417,6 @@ function createProjectAssetHostClient(options = {}) {
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body)
   });
-  const importIds = /* @__PURE__ */ new WeakMap();
   const importCommands = /* @__PURE__ */ new WeakMap();
   const trashCommands = /* @__PURE__ */ new WeakMap();
   const result = (resolved, value) => ({
@@ -41482,7 +41471,7 @@ function createProjectAssetHostClient(options = {}) {
             file: new Blob([bytes], { type: input.contentType }),
             fileName: input.fileName,
             kind: input.kind,
-            projectAssetId: stableImportId(input, input.projectAssetId, importIds, "asset")
+            projectAssetId: requiredImportId(input.projectAssetId, "project asset id")
           }
         };
         importCommands.set(input, snapshot);
@@ -41537,7 +41526,6 @@ function createPersonalGlobalAssetHostClient(options = {}) {
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body)
   });
-  const importIds = /* @__PURE__ */ new WeakMap();
   const importCommands = /* @__PURE__ */ new WeakMap();
   return {
     list: () => http.list(),
@@ -41550,7 +41538,7 @@ function createPersonalGlobalAssetHostClient(options = {}) {
           file: new Blob([bytes], { type: input.contentType }),
           fileName: input.fileName,
           kind: input.kind,
-          globalAssetId: stableImportId(input, input.globalAssetId, importIds, "global")
+          globalAssetId: requiredImportId(input.globalAssetId, "global asset id")
         };
         importCommands.set(input, command2);
       }
@@ -59201,6 +59189,13 @@ function stableCliImportId(command2, requested, ids, prefix) {
   ids.set(command2, id2);
   return id2;
 }
+function preassignImportAssetId(requested, prefix) {
+  const normalized = requested?.trim();
+  if (requested !== void 0 && !normalized) {
+    throw new Error(`${prefix} asset id is required`);
+  }
+  return normalized ?? `${prefix}:${(0, import_node_crypto8.randomUUID)()}`;
+}
 function resolveAssetLinkName(assetId, sourcePath, requestedName) {
   const raw = requestedName?.trim() || (0, import_node_path20.basename)(sourcePath) || assetId;
   if (!raw || raw === "." || raw === ".." || /[/\\]/.test(raw)) {
@@ -59643,13 +59638,19 @@ assetsCommand.command("import").description(
 ).requiredOption("--file <path>", "Local file to import").option("--kind <kind>", "Asset kind: image, video, audio, or model").option(
   "--project <id>",
   "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option(
+  "--asset-id <id>",
+  "Preassigned Project Asset ID; reuse it to replay an import with an unknown result"
 ).option("--name <file>", "Link file name under assets/links").option("--no-link", "Do not create a project assets/links entry").option("--json", "Output result as JSON").action(
   async (options) => {
+    let projectAssetId = options.assetId?.trim();
     try {
+      projectAssetId = preassignImportAssetId(options.assetId, "asset");
       const result = await importAssetFile({
         filePath: options.file,
         kind: options.kind,
         project: options.project,
+        projectAssetId,
         name: options.name,
         link: options.link
       });
@@ -59660,7 +59661,9 @@ assetsCommand.command("import").description(
         console.log(`imported Project Asset ${result.assetId}${link}`);
       }
     } catch (error51) {
-      console.error(error51 instanceof Error ? error51.message : String(error51));
+      const message2 = error51 instanceof Error ? error51.message : String(error51);
+      const retryHint = projectAssetId ? ` Retry an unknown result with --asset-id ${projectAssetId}.` : "";
+      console.error(`${message2}${retryHint}`);
       process.exit(1);
     }
   }
@@ -59879,22 +59882,32 @@ personalGlobalAssetsCommand.command("get").description("Read one personal Global
     process.exit(1);
   }
 });
-personalGlobalAssetsCommand.command("import").description("Import a local file into the personal Global Asset library").requiredOption("--file <path>", "Local file to import").option("--kind <kind>", "Asset kind: image, video, audio, or model").option("--json", "Output result as JSON").action(async (options) => {
-  try {
-    const result = await importPersonalGlobalAssetFile({
-      filePath: options.file,
-      kind: options.kind
-    });
-    if (isJsonMode(options)) {
-      printJson(publicAssetResult(result));
-    } else {
-      console.log(`imported Global Asset ${result.id}`);
+personalGlobalAssetsCommand.command("import").description("Import a local file into the personal Global Asset library").requiredOption("--file <path>", "Local file to import").option("--kind <kind>", "Asset kind: image, video, audio, or model").option(
+  "--asset-id <id>",
+  "Preassigned Global Asset ID; reuse it to replay an import with an unknown result"
+).option("--json", "Output result as JSON").action(
+  async (options) => {
+    let globalAssetId = options.assetId?.trim();
+    try {
+      globalAssetId = preassignImportAssetId(options.assetId, "global");
+      const result = await importPersonalGlobalAssetFile({
+        filePath: options.file,
+        kind: options.kind,
+        globalAssetId
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(`imported Global Asset ${result.id}`);
+      }
+    } catch (error51) {
+      const message2 = error51 instanceof Error ? error51.message : String(error51);
+      const retryHint = globalAssetId ? ` Retry an unknown result with --asset-id ${globalAssetId}.` : "";
+      console.error(`${message2}${retryHint}`);
+      process.exit(1);
     }
-  } catch (error51) {
-    console.error(error51 instanceof Error ? error51.message : String(error51));
-    process.exit(1);
   }
-});
+);
 personalGlobalAssetsCommand.command("delete").description("Move a personal Global Asset to the recovery window").requiredOption("--asset <id>", "Global Asset ID").option("--yes", "Confirm deletion").option("--json", "Output result as JSON").action(async (options) => {
   try {
     const confirmation = requireDestructiveConfirmation(

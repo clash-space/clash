@@ -16,7 +16,7 @@ export interface PersonalGlobalAssetHttpClient {
     file: Blob;
     fileName?: string;
     kind: AssetKind;
-    globalAssetId?: string;
+    globalAssetId: string;
   }): Promise<ResolvedAsset>;
   publish(input: {
     projectId: string;
@@ -106,7 +106,6 @@ export function createPersonalGlobalAssetHttpClient(
   options: PersonalGlobalAssetHttpClientOptions = {},
 ): PersonalGlobalAssetHttpClient {
   const fetch = options.fetch ?? globalThis.fetch;
-  const generatedImportIds = new WeakMap<object, string>();
   const generatedTrashIds = new WeakMap<object, string>();
   const connection = async (): Promise<ProjectAssetHttpConnection> => {
     if (options.resolveConnection) return options.resolveConnection();
@@ -171,13 +170,7 @@ export function createPersonalGlobalAssetHttpClient(
       );
     },
     async importFile(input) {
-      const globalAssetId = stableOperationId(
-        input,
-        input.globalAssetId,
-        generatedImportIds,
-        "global",
-        "global asset id",
-      );
+      const globalAssetId = required(input.globalAssetId, "global asset id");
       const fileName = required(
         input.fileName ?? fileNameOf(input.file),
         "file name",

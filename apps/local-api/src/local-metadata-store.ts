@@ -178,6 +178,8 @@ const EMPTY_METADATA_DB: LocalMetadataDb = {
 };
 
 const METADATA_MIGRATION_ID = "metadata-sqlite-v1";
+const LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID =
+  "legacy-personal-global-assets-v1";
 const require = createRequire(import.meta.url);
 
 // `createRequire` rather than a bare `require`: this package is ESM (`"type": "module"`), and a
@@ -774,11 +776,12 @@ function hasRows(db: SqliteDatabase): boolean {
   return rowNumber(row ?? {}, "count") > 0;
 }
 
-function hasMigrationMarker(db: SqliteDatabase): boolean {
+function hasMigrationMarker(
+  db: SqliteDatabase,
+  id: string = METADATA_MIGRATION_ID,
+): boolean {
   return Boolean(
-    db
-      .prepare("SELECT id FROM local_migration WHERE id = ?")
-      .get(METADATA_MIGRATION_ID),
+    db.prepare("SELECT id FROM local_migration WHERE id = ?").get(id),
   );
 }
 
@@ -786,18 +789,14 @@ function markMigration(
   db: SqliteDatabase,
   dataDir: string,
   sourceSha256: string,
+  id: string = METADATA_MIGRATION_ID,
 ): void {
   db.prepare(
     `
     INSERT OR REPLACE INTO local_migration (id, completed_at, source_path, source_sha256)
     VALUES (?, ?, ?, ?)
   `,
-  ).run(
-    METADATA_MIGRATION_ID,
-    Math.floor(Date.now() / 1000),
-    sqlitePath(dataDir),
-    sourceSha256,
-  );
+  ).run(id, Math.floor(Date.now() / 1000), sqlitePath(dataDir), sourceSha256);
 }
 
 export function createLocalMetadataStore(dataDir: string) {
@@ -1360,6 +1359,85 @@ export function createLocalMetadataStore(dataDir: string) {
         throw error;
       }
     });
+  }
+
+  async function createLegacyPersonalGlobalAssets(
+    rawEntries: readonly GlobalAssetEntry[],
+  ): Promise<void> {
+    const entriesById = new Map<string, GlobalAssetEntry>();
+    for (const rawEntry of rawEntries) {
+      const entry = GlobalAssetEntrySchema.parse(rawEntry);
+      if (entry.lifecycle.state !== "active") {
+        throw new Error("A migrated Global Asset must be active.");
+      }
+      const duplicate = entriesById.get(entry.id);
+      if (duplicate && !sameGlobalAssetEntry(duplicate, entry)) {
+        throw new Error(
+          `Legacy personal Global Asset ${entry.id} identifies different facts.`,
+        );
+      }
+      entriesById.set(entry.id, entry);
+    }
+    const entries = [...entriesById.values()].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    );
+    await withDb((db) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        if (hasMigrationMarker(db, LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID)) {
+          db.exec("COMMIT");
+          return;
+        }
+        for (const entry of entries) {
+          const existingRow = globalAssetRow(db, "personal", entry.id);
+          if (!existingRow) continue;
+          const existing = globalAssetEntryFromRow(existingRow);
+          if (!sameGlobalAssetEntry(existing, entry)) {
+            throw new Error(
+              `Global Asset ${entry.id} already exists with different facts in library personal.`,
+            );
+          }
+        }
+        const now = Date.now();
+        const insert = db.prepare(
+          `
+          INSERT INTO global_asset_entry (
+            library_id, id, kind, resource_id, lifecycle_state,
+            name, metadata_json, provenance_json, created_at, updated_at
+          ) VALUES ('personal', ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+        `,
+        );
+        for (const entry of entries) {
+          if (globalAssetRow(db, "personal", entry.id)) continue;
+          insert.run(
+            entry.id,
+            entry.kind,
+            entry.resourceId,
+            entry.name ?? null,
+            JSON.stringify(entry.metadata),
+            jsonOrNull(entry.provenance),
+            now,
+            now,
+          );
+        }
+        markMigration(
+          db,
+          dataDir,
+          "",
+          LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID,
+        );
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async function legacyPersonalGlobalAssetMigrationCompleted(): Promise<boolean> {
+    return withDb((db) =>
+      hasMigrationMarker(db, LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID),
+    );
   }
 
   async function trashGlobalAsset(
@@ -1958,6 +2036,8 @@ export function createLocalMetadataStore(dataDir: string) {
     readGlobalAsset,
     listGlobalAssets,
     createGlobalAsset,
+    createLegacyPersonalGlobalAssets,
+    legacyPersonalGlobalAssetMigrationCompleted,
     trashGlobalAsset,
     restoreGlobalAsset,
     purgeGlobalAsset,

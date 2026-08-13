@@ -12,6 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalApiApp } from "./app.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import type { ProviderPluginExecutor } from "./local-aigc.js";
+import {
+  createLocalAssetInspectionService,
+  createLocalFfprobeAssetInspector,
+} from "./local-asset-inspections.js";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import { createLocalWorkflowProcessor } from "./local-processor.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
@@ -33,7 +37,92 @@ const binding = {
   schemaHash: `sha256:${"f".repeat(64)}`,
 } as const;
 
+function minimalGlb(): Uint8Array {
+  const json = new TextEncoder().encode('{"asset":{"version":"2.0"}} ');
+  const bytes = new Uint8Array(20 + json.byteLength);
+  const view = new DataView(bytes.buffer);
+  bytes.set(new TextEncoder().encode("glTF"), 0);
+  view.setUint32(4, 2, true);
+  view.setUint32(8, bytes.byteLength, true);
+  view.setUint32(12, json.byteLength, true);
+  view.setUint32(16, 0x4e4f534a, true);
+  bytes.set(json, 20);
+  return bytes;
+}
+
+function modelAssetInspection(dataDir: string) {
+  return createLocalAssetInspectionService({
+    dataDir,
+    inspectResource: createLocalFfprobeAssetInspector({
+      ffprobePath: "/test/ffprobe-must-not-run-for-glb",
+      run: async () => {
+        throw new Error("GLB byte verification must not invoke ffprobe.");
+      },
+    }),
+  });
+}
+
 describe("Director durable model generation", () => {
+  it("rejects an omitted actionRunId before durable admission or execution wake-up", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-director-durable-"));
+    temporaryDirectories.push(root);
+    const dataDir = join(root, "local-api");
+    const resolvePluginBinding = vi.fn(async () => binding);
+    const processProjectWork = vi.fn(async () => undefined);
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      resolvePluginBinding,
+      processProjectWork,
+      projectAssetProjectionOrigin: "http://127.0.0.1:49152",
+    });
+
+    const createdProject = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Director stable identity" }),
+    });
+    expect(createdProject.status).toBe(201);
+    const { id: projectId } = (await createdProject.json()) as { id: string };
+    const configured = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "fal-director",
+            providerId: "fal",
+            upstreamId: "fal",
+            enabled: true,
+            priority: 1,
+            credentials: { apiKey: "must-never-leak" },
+          },
+        ],
+      }),
+    });
+    expect(configured.status, await configured.clone().text()).toBe(200);
+
+    const response = await app.request("/api/v1/director-model-generations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        prompt: "A chestnut horse",
+        quality: "low-poly",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "actionRunId is required",
+    });
+    await expect(
+      createSqliteDurableRunJournal(dataDir).listOwnedProjectIds("local-api"),
+    ).resolves.toEqual([]);
+    expect(resolvePluginBinding).not.toHaveBeenCalled();
+    expect(processProjectWork).not.toHaveBeenCalled();
+  });
+
   it("resumes by polling once and idempotently publishes a staged GLB after a checkpoint crash", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-director-durable-"));
     temporaryDirectories.push(root);
@@ -82,7 +171,7 @@ describe("Director durable model generation", () => {
       invocationId: "fal-hunyuan-poll-1",
       kind: "model",
       mediaType: "model/gltf-binary",
-      bytes: new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0]),
+      bytes: minimalGlb(),
     });
 
     const accepted = await app.request("/api/v1/director-model-generations", {
@@ -118,6 +207,7 @@ describe("Director durable model generation", () => {
     const submittedDoc = await replicaStore.recover(projectId);
     const submitProcessor = createLocalWorkflowProcessor({
       dataDir,
+      assetInspection: modelAssetInspection(dataDir),
       durableProviderRuns: {
         ownerId: "local-api",
         providerPluginExecutor: submit,
@@ -154,6 +244,7 @@ describe("Director durable model generation", () => {
     let failedPublicationCheckpoint = false;
     const pollProcessor = createLocalWorkflowProcessor({
       dataDir,
+      assetInspection: modelAssetInspection(dataDir),
       durableProviderRuns: {
         ownerId: "local-api",
         providerPluginExecutor: poll,
@@ -194,6 +285,7 @@ describe("Director durable model generation", () => {
     });
     const recoveredProcessor = createLocalWorkflowProcessor({
       dataDir,
+      assetInspection: modelAssetInspection(dataDir),
       durableProviderRuns: {
         ownerId: "local-api",
         providerPluginExecutor: unexpectedProviderCall,
@@ -238,7 +330,9 @@ describe("Director durable model generation", () => {
         (asset) => asset.id === staged.projectAssetId,
       ),
     ).toHaveLength(1);
-    expect(listActionAssetReferences(recoveredDoc, staged.projectAssetId)).toEqual([
+    expect(
+      listActionAssetReferences(recoveredDoc, staged.projectAssetId),
+    ).toEqual([
       expect.objectContaining({
         direction: "output",
         slot: "media",

@@ -1,11 +1,11 @@
 # Asset System: Product and Technical Design
 
 > Status: the Local authority, resolver, Durable publication, and consumer-CAS
-> cutover are implemented. Poster, waveform, and filmstrip generation are
+> cutover are implemented, including the fail-closed `asset-inspection/v4`
+> staging/probe/seal boundary. Poster, waveform, and filmstrip generation are
 > device-local frontend presentation concerns in this delivery; backend
-> representations are deferred. Physical purge and the explicitly listed
-> Local metadata-probe closure items remain deferred; Cloud replication and
-> hosted storage are design-only in the current work.
+> representations are deferred. Physical purge, Cloud replication, and hosted
+> storage remain design-only in the current work.
 
 The Local product now has one authority and one public read shape.
 `@clash/shared-types` defines the storage-free `ProjectAssetEntry`, immutable
@@ -158,8 +158,9 @@ one Action-binding path.
 ```mermaid
 flowchart TD
   start["Add media to a Project"] --> source{"Did this operation create new bytes?"}
-  source -->|"Yes · import / generate / edit"| install["Verify and install Resource"]
-  install --> owned["Create owned ProjectAssetEntry"]
+  source -->|"Yes · import / generate / edit"| staging["Stage exact bytes\nunsealed receipt"]
+  staging --> finalize["Required v4 byte probe\nthen canonical Resource seal"]
+  finalize --> owned["Create owned ProjectAssetEntry"]
   source -->|"No · Global / catalog / another Project"| access["Verify source access"]
   access --> linked["Create pinned linked ProjectAssetEntry"]
   linked -. "Registry reconciliation" .-> claim["Derive independent Project claim"]
@@ -187,7 +188,8 @@ sequenceDiagram
 
   rect rgb(245, 247, 250)
     Note over LA,RH: Local-origin Asset
-    LA->>LC: Verify and install immutable bytes
+    LA->>LC: Stage exact bytes without kind/MIME authority
+    LA->>LC: Probe bytes, then seal immutable Resource
     LA->>P: Sync node + ProjectAsset + binding (resourceId)
     P-->>RH: Show structure and pending placeholder
     P-->>R: Reconcile pending Project claim
@@ -304,22 +306,45 @@ disposable frontend caches derived by decoding an entry-authorized original
 media projection. They never enter Resource or ProjectAsset metadata, Action
 bindings, Timeline Loro state, or Durable Run completion.
 
-The target publication contract builds replicated descriptive media facts from
-a versioned Host byte probe rather than trusting a filename, browser
-`File.type`, Provider declaration, or renderer assertion. Current
-`asset-inspection/v3` can verify image dimensions; video dimensions, duration,
-frame rate, video codec, and explicit `hasAudio`; audio duration and codec; and
-supported glTF/GLB bytes. `hasAudio: false` means a verified silent video,
-while omission remains legacy/unknown. Digest and byte length remain immutable
-Resource facts; inspection facts live in the versioned Host processing
+Canonical publication builds descriptive media facts from the required
+versioned Host byte probe rather than trusting a filename, browser `File.type`,
+Provider declaration, renderer assertion, or caller metadata. Current
+`asset-inspection/v4` verifies image display dimensions and rotation; video
+display dimensions, rotation, duration, frame rate, video codec, and explicit
+`hasAudio`; audio duration and codec; sample rate, channel count, and channel
+layout for audio streams; and supported glTF/GLB bytes. Width and height are
+display-normalized: a 90° or 270° display rotation swaps coded width and height,
+while `rotationDegrees` preserves the normalized `[0, 360)` display rotation.
+The current v4 recipe accepts the quarter-turn display matrices that it can
+normalize without inventing geometry; any other matrix fails closed instead of
+publishing coded dimensions as display dimensions. SVG images require a
+well-formed, DOCTYPE-free SVG XML document and are verified from their root
+`width`/`height` or positive `viewBox` without executing document content.
+Compatible caller MIME aliases (for example `audio/x-wav`) are normalized
+before comparison, while the decoded Host media type is the sealed L0 fact.
+Matroska/WebM family media is distinguished by the EBML `DocType` stored in the
+bytes rather than by a filename or FFprobe's shared demuxer name. When FFprobe
+omits a WAV channel layout, v4 may derive only mono/stereo from a verified
+standard PCM/IEEE-float RIFF `fmt` chunk whose 1/2-channel count matches the
+decoded stream; other unknown layouts fail closed. For still images, v4 also
+reads the first decoded frame's display matrix so EXIF-oriented photos publish
+display-normalized dimensions.
+Headerless PCM is not a byte-self-describing Asset format and therefore cannot
+produce canonical L1 facts from caller MIME parameters. Provider adapters must
+wrap such output in a verified self-describing container before staging it.
+`hasAudio: false` means a verified silent video; omission remains
+legacy/unknown.
+
+Digest, byte length, verified kind, and canonical media type are immutable
+Resource facts. Inspection facts live in the versioned Host processing
 registry. Neither is exposed with a Resource identity or local path through
 `ResolvedAsset`. `originalName` is a display hint, not a byte-derived fact.
-
-The current probe closure limitations are recorded under Delivery status. In
-particular, normalized rotation/display dimensions and audio-layout facts are
-not yet part of `asset-inspection/v3`, and an inspector-unavailable Host is not
-yet guaranteed to reject every new publication. Those limitations must not be
-described as verified metadata.
+Every post-cutover Local publication that introduces new bytes requires a
+complete v4 receipt; an unavailable inspector, failed decode, assertion
+mismatch, or incomplete required fact leaves the staged bytes unsealed and
+creates no entry or binding. A cross-scope admit or publish over an already
+sealed Resource does not stage the bytes again: it reopens that Resource and
+requires its complete current v4 receipt before mutating the destination entry.
 
 ### GlobalAssetEntry
 
@@ -408,11 +433,14 @@ type ProjectAssetEntry = Readonly<{
 }>;
 ```
 
-`ProjectAssetMetadata` is deliberately narrower than the transitional Asset-row metadata. It may
-contain descriptive media facts such as dimensions, duration, codecs, content type, and original
-name. It cannot contain a URL, local path, blob key, object-store key, signed projection, or
-transfer state. `ProjectAssetProvenance` carries sanitized product lineage only; Provider task
-tokens and raw execution state remain owner-private.
+`ProjectAssetMetadata` is deliberately narrower than the transitional Asset-row
+metadata. Its current byte-derived facts include display-normalized `width` and
+`height`, `rotationDegrees`, duration, frame rate, video/audio codecs, explicit
+audio presence, sample rate, channel count/layout, and canonical content type.
+`originalName` is display metadata rather than a byte-derived fact. Metadata
+cannot contain a URL, local path, blob key, object-store key, signed projection,
+or transfer state. `ProjectAssetProvenance` carries sanitized product lineage
+only; Provider task tokens and raw execution state remain owner-private.
 
 `active -> trashed` is the synchronized logical delete. During the recovery
 window, CRDT Undo and the explicit Restore command both produce the same
@@ -486,6 +514,14 @@ revision on one designated execution Host and owns the resulting output
 bindings. Rendered and generated outputs therefore remain reproducible after
 the editable Action changes, and synchronization cannot cause another Host to
 execute the run again.
+
+The Local WebSocket mutation boundary treats Project Asset entries, binding
+authority markers, immutable run/revision lineage, and output bindings as
+Host-owned. A local GUI peer may edit draft inputs and may submit the exact
+frozen Timeline inputs created with its matching pending render request; it
+cannot fabricate, rewrite, or remove another run's input/output lineage. Host
+HTTP, command, and Durable consumer mutations publish those facts through the
+same Project replica.
 
 ### Resolved Asset view
 
@@ -651,23 +687,26 @@ Project Asset identity, followed by explicit Action rewiring.
 
 Importing a local file into a Project:
 
-1. hashes and verifies the file;
-2. installs an immutable Resource in the local content-addressed store;
-3. runs the versioned Host byte probe and verifies the declared Asset kind and
-   media type;
-4. derives canonical dimensions, duration, codecs, frame rate, and explicit
-   `hasAudio` where the kind requires them;
-5. creates an owned ProjectAssetEntry from those verified facts;
-6. optionally publishes that entry and its Action binding in the same Project
+1. requires the preassigned `projectAssetId` carried by the import command;
+2. stages the exact bytes, computes their digest and byte length, and records an
+   unsealed receipt with no kind or media-type authority;
+3. runs `asset-inspection/v4` over those staged bytes and verifies the frozen
+   Asset-kind and optional media-type assertions;
+4. derives canonical display dimensions, rotation, duration, codecs, frame
+   rate, stream presence, and audio layout where the kind requires them;
+5. only after the probe succeeds, seals the canonical immutable Resource in the
+   local content-addressed store;
+6. creates an owned ProjectAssetEntry from the sealed Resource and v4 facts;
+7. optionally publishes that entry and its Action binding in the same Project
    mutation;
-7. optionally creates a read-only workspace projection.
+8. optionally creates a read-only workspace projection.
 
 It never adds the Asset to Global Assets implicitly.
 
 There is deliberately no cross-store transaction spanning the immutable
 Resource store and Project Loro. The operation is an at-least-once pipeline:
-the Resource install and probe are repeatable by stable Resource identity, and
-the Project consumer publishes with its stable Project Asset or
+staging, probing, and canonical sealing are repeatable by stable Resource
+identity, and the Project consumer publishes with its stable Project Asset or
 `(actionRunId, outputSlot)` identity under CAS. A crash before the Project
 mutation leaves reusable staged CAS bytes; a retry re-probes or reuses the
 versioned result. A crash after the mutation rereads and verifies the committed
@@ -680,13 +719,14 @@ all converge on one Resource ingest/finalization protocol. They differ only in
 how bytes reach staging and which stable consumer identity publishes the
 result. They do not have separate L0/L1 metadata pipelines.
 
-This is the target semantic protocol shared by Local and future Cloud adapters.
-Current Local import receives bytes through the Project-scoped multipart route;
-current generated output receives a durable Host staging receipt. A future Web
-or Cloud adapter may use an OSS signed PUT and a durable ingest journal, but
-that Cloud transport is design-only in this delivery.
+This is the implemented Local semantic protocol and the required contract for a
+future Cloud adapter. Current Local import receives bytes through the
+Project- or Global-scoped multipart route; current generated output receives a
+durable Host staging receipt. A future Web or Cloud adapter may use an OSS
+signed PUT and a durable ingest journal, but that Cloud transport is design-only
+in this delivery.
 
-The target layers are:
+The protocol layers are:
 
 - **L0 Resource facts:** the verified byte sequence, digest, byte length, kind,
   and canonical media type. L0 is required before a Resource can be consumed
@@ -706,21 +746,45 @@ Aspect ratio is not a third stored fact. It is derived from normalized display
 width and height. A generation request's `aspect_ratio` remains frozen Action
 input, while the generated Resource's actual dimensions remain L1 output facts.
 
-Current Local implements the common staging and consumer-CAS path and the
-`asset-inspection/v3` subset listed in the Resource section. Rotation/display
-matrix normalization plus sample rate, channel count, and channel layout are a
-future probe recipe. Until that recipe lands, consumers must not infer those
-facts or treat coded width/height as proof of normalized orientation. This is a
-metadata-probe delivery gap, not permission to create a second import or
-generation pipeline.
+Current Local implements the complete boundary as
+`unsealed staging -> required asset-inspection/v4 probe -> canonical Resource
+seal -> versioned L1 receipt -> consumer CAS`. The staging receipt fixes the
+digest and byte length but deliberately carries no Resource kind or media-type
+authority. The v4 probe validates the frozen declarations, normalizes display
+geometry and rotation, and records the required audio stream facts before the
+Resource can be sealed or an Asset can be published.
+
+If a declaration is wrong, that attempt fails without reserving the digest
+under its kind or media type. A later command may retry the same staged bytes
+with corrected frozen assertions and seal them only after successful probing.
+
+Rows created by the pre-v4/private legacy `install` and `adopt` compatibility
+wrappers are explicitly recorded as unverified, not as canonical L0 facts. On
+first successful complete v4 probe, the Host promotes exactly one kind and
+canonical media type with a SQLite compare-and-set; concurrent alternatives
+must equal that winner or fail. A verified row is never reinterpreted. During
+upgrade, an existing current-v4 receipt also promotes an old no-media-type row
+before Project/Global registry resolution, so consumer validation never sees a
+half-migrated Resource view.
+
+Publication inputs belong to three non-interchangeable classes:
+
+| Class                     | Examples                                                                                                                                                                                    | Authority rule                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Frozen command assertions | stable Project/Global Asset id or `(actionRunId, outputSlot)`, Asset kind, optional declared media type, and any internally declared expected digest/length                                 | A mismatch fails the command. Assertions are never silently corrected or used to fill decoded facts.                      |
+| Caller media hints        | width, height, duration, rotation, codecs, `hasAudio`, sample rate, channel count/layout, waveform, or other producer/browser metadata                                                      | They never enter new publication authority, never fill a missing Host fact, and never override the probe. Host facts win. |
+| Host facts                | staged digest/byte length, decoded canonical media type, display-normalized dimensions, `rotationDegrees`, duration, codecs, frame rate, stream presence, sample rate, channel count/layout | They are admitted only by the versioned byte probe and canonical seal. Missing required facts fail closed.                |
+
+`name` and `originalName` are separately identified display metadata. They may
+be retained for presentation, but they are not evidence about the bytes.
 
 ```mermaid
 flowchart LR
   user["User import\nLocal stream / future signed PUT"] --> receipt["StagedResourceReceipt"]
   provider["Provider or local generated output\nHost broker / renderer staging"] --> receipt
-  receipt --> seal["Seal and verify exact bytes"]
-  seal --> l0["L0 Resource CAS"]
-  l0 --> l1["Versioned L1 probe CAS"]
+  receipt --> probe["Required v4 byte probe\nvalidate frozen assertions"]
+  probe --> l0["Canonical L0 Resource seal"]
+  l0 --> l1["Versioned L1 fact CAS"]
   l1 --> prepare["Prepare canonical Asset facts"]
   prepare --> publish["Consumer CAS publication"]
   publish --> imported["Import succeeded\nProjectAsset"]
@@ -739,11 +803,13 @@ an upload capability or invoking a byte producer:
 | Provider or local generated output | `(actionRunId, outputSlot)`       | Host Asset broker or Host-local durable staging                              |
 | Edit, crop, or render output       | `(actionRunId, outputSlot)`       | Host-local durable staging or synchronous transform followed by consumer CAS |
 
-For a user import, the client or command adapter generates the Asset id before
-the first request, normally with `crypto.randomUUID()` and the applicable
-opaque Asset-id prefix. Every retry sends that exact same `projectAssetId` or
-`globalAssetId`. A Host-generated UUID when the caller omitted the id is a
-legacy compatibility fallback, not the canonical retry path. Generated output
+For a user import, the command adapter generates the Asset id before the first
+request, normally with `crypto.randomUUID()` and the
+applicable opaque Asset-id prefix, and freezes it with that command snapshot.
+Every retry sends that exact same `projectAssetId` or `globalAssetId`. The
+public SDK and Host command inputs, as well as the Project and Global multipart
+routes, require the id and reject an omitted or empty value; there is no
+Host-generated import-id fallback. Generated output
 does not allocate a fresh random Asset id on each attempt: the Host derives its
 stable opaque output identity from `(actionRunId, outputSlot)`.
 
@@ -798,7 +864,8 @@ checkpoints before retrying.
 The Host may repeat cheap pure work or reuse any verified checkpoint. Every
 consumer is therefore required to implement at-least-once handling with CAS:
 
-- repeated byte installation converges on the same digest-addressed Resource;
+- repeated byte staging and canonical sealing converge on the same
+  digest-addressed Resource;
 - repeated probing converges on the same `(Resource, probe recipe version)`
   facts;
 - repeated publication converges on the same Project/Global Asset or
@@ -827,32 +894,31 @@ Automatic retries use bounded backoff and the same logical identity. They resume
 from the last verified receipt; they do not re-upload bytes, re-run a Provider,
 or repeat a transform when a later stage alone failed.
 
-| Stage                                                | Representative failure                                                                                                   | Classification                                                 | Required recovery                                                                                                                        | Publication consequence                                                                   |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Begin/reserve identity                               | Lost response after command creation                                                                                     | Unknown result                                                 | Read by the preassigned Asset id or generated-output tuple; return the existing winner or replay the same command                        | No duplicate Asset identity                                                               |
-| Begin/reserve identity                               | Same identity reused with different project, kind, filename contract, output slot, or frozen Action revision             | Permanent conflict                                             | Reject; genuinely different work requires a new Asset id or Action run                                                                   | Publish nothing; never suffix or silently replace the identity                            |
-| Authorize upload                                     | Permission revoked                                                                                                       | Permanent authorization failure until access changes           | Stop work; obtain current Project/library authorization before a new attempt                                                             | Publish nothing                                                                           |
-| Authorize upload                                     | Signed URL or upload capability expires                                                                                  | Transient transport failure                                    | Reissue a capability for the same upload slot/operation after rechecking authorization                                                   | Do not create a new Resource or Asset                                                     |
-| Transfer bytes                                       | Timeout, disconnect, partial multipart upload, or process crash                                                          | Transient                                                      | Resume/retry the same slot when supported; otherwise upload the same frozen bytes again under the same consumer identity                 | No probe or publication before a complete object exists                                   |
-| Seal upload                                          | Completion notification or HTTP response is lost                                                                         | Unknown result                                                 | HEAD/read the staging object and verify its exact version, length, and checksum; do not assume success or blindly create another command | Advance only after verification                                                           |
-| Seal upload                                          | Expected digest/length disagrees with uploaded bytes                                                                     | Invalid attempt; permanent if the frozen input itself is wrong | Reject/quarantine that attempt. Re-upload is allowed only for the same frozen byte assertion; a different file requires a new operation  | Publish nothing from mismatched bytes                                                     |
-| Select staging winner                                | Two at-least-once attempts finish with identical verified bytes                                                          | Replay                                                         | CAS-select/reuse one receipt; losing staging is TTL-cleanable                                                                            | One logical Resource result                                                               |
-| Select import staging winner                         | The same preassigned import Asset id carries different verified bytes                                                    | Permanent frozen-input conflict                                | Keep the first verified winner and require a new Asset id for the changed file                                                           | Never overwrite the winner                                                                |
-| Select generated/transform staging winner            | At-least-once attempts for one output tuple produce different verified bytes                                             | Producer nondeterminism / replay contention                    | CAS-select the first verified receipt; discard the losing candidate and reread the winner                                                | One logical output; no second Asset and no overwrite                                      |
-| L0 verify/register                                   | Storage/database acknowledgement is lost after CAS install                                                               | Unknown result                                                 | Read by verified digest and immutable facts; reuse the committed Resource when it matches                                                | Do not upload again                                                                       |
-| L0 verify/register                                   | Bytes are corrupt, unsupported for the declared kind, or canonical media type conflicts with a frozen required assertion | Permanent invalid input                                        | Mark the operation failed with a sanitized diagnostic; retain staging only under its TTL policy                                          | No Project/Global entry or binding                                                        |
-| L0 verify/register                                   | Resource store or verifier is temporarily unavailable                                                                    | Transient                                                      | Retry L0 from the staging receipt                                                                                                        | No re-upload and no publication                                                           |
-| L1 probe                                             | Worker/ffprobe crash, timeout, resource exhaustion, or temporary decoder unavailability                                  | Transient                                                      | Retry the versioned probe from the L0 Resource                                                                                           | No re-upload or Provider reinvocation                                                     |
-| L1 probe                                             | Decodable bytes cannot supply facts required by the Asset kind/operation                                                 | Permanent unsupported-media failure                            | Fail the operation or require a different conversion/import; never invent dimensions, duration, orientation, or frame count              | Publish nothing for a new Asset                                                           |
-| L1 probe                                             | Browser/client hints disagree with Host-derived facts                                                                    | Diagnostic, not a conflict                                     | Host facts win; record bounded diagnostics if useful                                                                                     | Continue with Host facts                                                                  |
-| L1 probe                                             | A frozen required assertion such as kind or expected digest disagrees with Host facts                                    | Permanent fact conflict                                        | Reject the command; a materially different input uses a new Asset id or Action run                                                       | Publish nothing                                                                           |
-| Prepare publication                                  | Process crashes after L0/L1 but before Project mutation                                                                  | Transient                                                      | Reopen the verified Resource and cached versioned probe result                                                                           | Do not recompute earlier successful stages unnecessarily                                  |
-| Consumer CAS publication                             | Project/SQLite/Loro write acknowledgement is lost                                                                        | Unknown result                                                 | Read the target identity and compare the complete committed facts                                                                        | Matching winner is replay success; no second entry                                        |
-| Consumer CAS publication                             | Same Asset identity already contains different Resource, metadata facts, lifecycle, or provenance                        | Permanent CAS conflict                                         | Return a structured conflict and require the caller to read current state                                                                | Never overwrite or merge incompatible facts                                               |
-| Asset + binding publication                          | Entry or one binding collides                                                                                            | Permanent atomic publication conflict                          | Reject the complete mutation                                                                                                             | Neither a partial Asset nor a partial binding set may appear                              |
-| Public outcome checkpoint                            | Asset/binding committed but node or run acknowledgement was lost                                                         | Transient reconciliation                                       | Re-read the consumer winner, checkpoint it, then publish only the coarse outcome for the same frozen revision                            | Never call the Provider/renderer again merely to repair status                            |
-| Post-publication claim reconciliation (future Cloud) | Registry/OSS claim update fails                                                                                          | Transient background failure                                   | Retain the staging lease and retry reconciliation from authoritative Project/Global membership                                           | Do not roll back or duplicate the published Asset; remote availability may remain pending |
-| Final response                                       | Client disconnects after success                                                                                         | Unknown result to client, committed to Host                    | Query by the same import/run identity and return the existing `ResolvedAsset`/run result                                                 | Never begin a new import or generation implicitly                                         |
+| Stage                                                | Representative failure                                                                                       | Classification                                                 | Required recovery                                                                                                                          | Publication consequence                                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Begin/reserve identity                               | Lost response after command creation                                                                         | Unknown result                                                 | Read by the preassigned Asset id or generated-output tuple; return the existing winner or replay the same command                          | No duplicate Asset identity                                                               |
+| Begin/reserve identity                               | Same identity reused with different project, kind, filename contract, output slot, or frozen Action revision | Permanent conflict                                             | Reject; genuinely different work requires a new Asset id or Action run                                                                     | Publish nothing; never suffix or silently replace the identity                            |
+| Authorize upload                                     | Permission revoked                                                                                           | Permanent authorization failure until access changes           | Stop work; obtain current Project/library authorization before a new attempt                                                               | Publish nothing                                                                           |
+| Authorize upload                                     | Signed URL or upload capability expires                                                                      | Transient transport failure                                    | Reissue a capability for the same upload slot/operation after rechecking authorization                                                     | Do not create a new Resource or Asset                                                     |
+| Transfer bytes                                       | Timeout, disconnect, partial multipart upload, or process crash                                              | Transient                                                      | Resume/retry the same slot when supported; otherwise upload the same frozen bytes again under the same consumer identity                   | No probe or publication before a complete object exists                                   |
+| Verify upload staging                                | Completion notification or HTTP response is lost                                                             | Unknown result                                                 | HEAD/read the staging object and verify its exact version, length, and checksum; do not assume success or blindly create another command   | Advance only after verification                                                           |
+| Verify upload staging                                | Expected digest/length disagrees with uploaded bytes                                                         | Invalid attempt; permanent if the frozen input itself is wrong | Reject/quarantine that attempt. Re-upload is allowed only for the same frozen byte assertion; a different file requires a new operation    | Publish nothing from mismatched bytes                                                     |
+| Select staging winner                                | Two at-least-once attempts finish with identical verified bytes                                              | Replay                                                         | CAS-select/reuse one receipt; losing staging is TTL-cleanable                                                                              | One logical Resource result                                                               |
+| Select import staging winner                         | The same preassigned import Asset id carries different verified bytes                                        | Permanent frozen-input conflict                                | Keep the first verified winner and require a new Asset id for the changed file                                                             | Never overwrite the winner                                                                |
+| Select generated/transform staging winner            | At-least-once attempts for one output tuple produce different verified bytes                                 | Producer nondeterminism / replay contention                    | CAS-select the first verified receipt; discard the losing candidate and reread the winner                                                  | One logical output; no second Asset and no overwrite                                      |
+| Required v4 byte probe                               | Worker/ffprobe crash, timeout, resource exhaustion, or temporary decoder unavailability                      | Transient                                                      | Retry the versioned probe from the unsealed staging receipt                                                                                | No re-upload or Provider reinvocation                                                     |
+| Required v4 byte probe                               | Bytes are corrupt, unsupported for the declared kind, or cannot supply a required L1 fact                    | Permanent unsupported-media failure                            | Fail the operation or require a different conversion/import; never invent dimensions, duration, orientation, stream, or audio-layout facts | Leave bytes unsealed; publish no entry or binding                                         |
+| Required v4 byte probe                               | Browser/client media hints disagree with Host-derived facts                                                  | Diagnostic, not a conflict                                     | Ignore those hints for authority; Host facts win                                                                                           | Continue with Host facts                                                                  |
+| Required v4 byte probe                               | A frozen required assertion such as kind, media type, or expected digest disagrees with Host facts           | Permanent fact conflict                                        | Reject the command; a materially different input uses a new Asset id or Action run                                                         | Leave bytes unsealed; publish nothing                                                     |
+| Canonical L0 seal/register                           | Resource store or verifier is temporarily unavailable                                                        | Transient                                                      | Retry the canonical seal from the same staged bytes and verified v4 result                                                                 | No re-upload and no publication                                                           |
+| Canonical L0 seal/register                           | Storage/database acknowledgement is lost after CAS seal                                                      | Unknown result                                                 | Read by verified digest and immutable facts; reuse the committed Resource when it matches                                                  | Do not upload or probe again                                                              |
+| Prepare publication                                  | Process crashes after L0/L1 but before Project mutation                                                      | Transient                                                      | Reopen the verified Resource and cached versioned probe result                                                                             | Do not recompute earlier successful stages unnecessarily                                  |
+| Consumer CAS publication                             | Project/SQLite/Loro write acknowledgement is lost                                                            | Unknown result                                                 | Read the target identity and compare the complete committed facts                                                                          | Matching winner is replay success; no second entry                                        |
+| Consumer CAS publication                             | Same Asset identity already contains different Resource, metadata facts, lifecycle, or provenance            | Permanent CAS conflict                                         | Return a structured conflict and require the caller to read current state                                                                  | Never overwrite or merge incompatible facts                                               |
+| Asset + binding publication                          | Entry or one binding collides                                                                                | Permanent atomic publication conflict                          | Reject the complete mutation                                                                                                               | Neither a partial Asset nor a partial binding set may appear                              |
+| Public outcome checkpoint                            | Asset/binding committed but node or run acknowledgement was lost                                             | Transient reconciliation                                       | Re-read the consumer winner, checkpoint it, then publish only the coarse outcome for the same frozen revision                              | Never call the Provider/renderer again merely to repair status                            |
+| Post-publication claim reconciliation (future Cloud) | Registry/OSS claim update fails                                                                              | Transient background failure                                   | Retain the staging lease and retry reconciliation from authoritative Project/Global membership                                             | Do not roll back or duplicate the published Asset; remote availability may remain pending |
+| Final response                                       | Client disconnects after success                                                                             | Unknown result to client, committed to Host                    | Query by the same import/run identity and return the existing `ResolvedAsset`/run result                                                   | Never begin a new import or generation implicitly                                         |
 
 A cancellation stops scheduling new work but cannot roll back an already
 committed Resource or Project mutation. Unpublished staging may be reclaimed
@@ -920,7 +986,7 @@ One synchronous Local edit Apply owns one stable `actionRunId`; its only
 declared output slot is `output`. The GUI creates that identity when the Apply
 attempt starts and retains it while an unknown HTTP result can be retried. The
 Host derives the opaque Project Asset identity from the unambiguous
-`[actionRunId, "output"]` tuple, installs/probes the submitted bytes, and
+`[actionRunId, "output"]` tuple, stages, probes, and seals the submitted bytes, and
 publishes the Project entry plus source/output `ActionAssetBinding` facts in one
 Project mutation.
 
@@ -1481,18 +1547,19 @@ original-media projection and lets frontend presentation adapters decode it.
   neither synchronized nor accepted as Asset/reference authority.
 
 Current Local delivery uses one Host-private Resource processing registry in
-`local.sqlite`. When the packaged inspector is available, the current
-`asset-inspection/v3` probe stores its byte-derived media facts under
+`local.sqlite`. The required current `asset-inspection/v4` probe stores its
+byte-derived media facts under
 `(sourceResourceId, probeRecipeVersion)`; empty, caller-only, partial, or failed
-probe results are never cached as ready. It validates the currently supported
-per-kind facts and decoded media type, and records explicit audio presence,
-including `hasAudio: false` for a verified silent video. It does not yet provide
-rotation-normalized display geometry or audio-layout facts. Competing
-at-least-once probes conditionally insert one row; a loser must compare all
-candidate facts with the CAS winner and reports a conflict instead of accepting
-different facts. This registry currently stores probe facts only. It does not
-store poster, waveform, or filmstrip mappings, and public Local `ResolvedAsset`
-reads do not depend on such mappings. Paths, Resource identities, recipes, and
+probe results are never cached as ready. It validates decoded media type and
+the complete per-kind fact set, records display-normalized width/height with
+`rotationDegrees`, and records sample rate, channel count, and channel layout
+for every verified audio stream. It also records explicit audio presence,
+including `hasAudio: false` for a verified silent video. Competing at-least-once
+probes conditionally insert one row; a loser must compare all candidate facts
+with the CAS winner and reports a conflict instead of accepting different
+facts. This registry currently stores probe facts only. It does not store
+poster, waveform, or filmstrip mappings, and public Local `ResolvedAsset` reads
+do not depend on such mappings. Paths, Resource identities, recipes, and
 registry rows remain Host-private and are never written to Project Loro.
 
 The current Local model probe admits only glTF 2 (`.glb` or `.gltf`), whose
@@ -1650,13 +1717,18 @@ POST   /api/v1/libraries/personal/assets/:assetId/restore
 
 There is no JSON import route that accepts a local path, `localBlobKey`, object
 key, digest assertion, or storage row. Importing bytes always uses the one
-multipart `import-file` path; the Host verifies and installs them before
-publishing the entry. The corresponding SDK vocabulary is:
+multipart `import-file` path. Every multipart request carries its already-fixed
+`projectAssetId` or `globalAssetId`; the route rejects omission instead of
+minting an identity after receipt. A command adapter allocates that id before
+calling the public SDK or Host client, and retries replay the same snapshot. The
+Host then stages, probes, and seals the bytes before publishing the entry. The
+corresponding SDK vocabulary is:
 
 ```text
 readResolvedAsset(scope, entryId)
-importProjectAsset(projectId, file)
+importProjectAsset(projectId, projectAssetId, file)
 admitProjectAsset(projectId, sourceEntry)
+importGlobalAsset(libraryId, globalAssetId, file)
 publishGlobalAsset(projectAssetId, libraryId)
 bindActionAsset(actionId, slot, projectAssetId)
 unbindActionAsset(actionId, bindingId)
@@ -1753,11 +1825,27 @@ The Local authority foundation is implemented; the product cutover status is:
   versioned L1 inspection facts live in the Host-private processing registry,
   and storage keys never enter synchronized identity;
 - Project/Global import, edit, Provider/local generation, and Timeline render
-  share one staging, metadata-preparation, and consumer-CAS publication path.
-  With the packaged inspector present, new publications reuse its versioned
-  result and failed probing does not publish an entry or binding;
+  share one unsealed-staging, required-v4-probe, canonical-seal,
+  metadata-preparation, and consumer-CAS publication path. A missing inspector,
+  failed probe, assertion mismatch, or incomplete required fact leaves no new
+  entry or binding;
+- Project and Global multipart import require their preassigned stable Asset id.
+  Equal-id/equal-command/equal-byte replay returns the same entry; an equal id
+  with different frozen facts or bytes conflicts;
+- caller dimensions, duration, rotation, codecs, stream/audio flags, and other
+  media hints do not enter authority. Host v4 facts win, including normalized
+  display dimensions, `rotationDegrees`, `sampleRate`, `channelCount`, and
+  `channelLayout`;
 - the personal Global library has its own authority and admits pinned links into
   Projects without merging the two lifecycles;
+- the Local personal library performs one fail-closed, one-way migration of the
+  current user's legacy `assets` plus `asset_library_refs` membership before any
+  canonical personal-library read or write. It verifies the original bytes and
+  declared digest/length, stages them through the required v4 inspection path,
+  and commits every `GlobalAssetEntry` plus the completion marker in one SQLite
+  transaction. Missing bytes, failed inspection, or an identity/fact collision
+  writes neither an entry nor the marker; after success the Host never rescans
+  the legacy membership table;
 - Action inputs and outputs use the Project Loro `actionAssetBindings`
   collection. Legacy fields are materialized once before the authority marker;
   they are never rescanned as a live index after cutover. Timeline and Director
@@ -1793,21 +1881,6 @@ The following are intentionally **not implemented** in this work:
   target and Local query projection accept ActionRevision addresses, while the
   current durable CLI authoring loop owns only Project-Asset attachment
   manifests and out-of-line bodies;
-- fail-closed new publication when a custom/source Local Host starts without a
-  usable media inspector. The packaged distribution includes ffprobe, but the
-  optional-server path can currently fall back to caller metadata instead of
-  rejecting publication;
-- a strict publication boundary that treats caller dimensions, duration,
-  codecs, and audio flags only as hints while always letting Host facts win.
-  Current `asset-inspection/v3` can reject a differing hint, and facts not
-  produced by the inspector can still pass through the publication adapter;
-- staging/finalization that permits a byte sequence first presented with an
-  incorrect kind or media type to be sealed later under corrected Host facts.
-  The current Resource install records declared kind/media type before probe,
-  so a failed declaration can reserve that digest with incompatible facts;
-- rotation/display-matrix normalization and audio sample-rate/channel-layout
-  facts. They require a new versioned inspection recipe and schema rather than
-  invented defaults in `asset-inspection/v3`;
 - hosted api-cf migration from owner-oriented Asset rows to Project permission
   and Project claims;
 - OSS upload/finalization and the Cloud Resource Registry;
@@ -1852,9 +1925,11 @@ phase lands.
   ProjectAsset entries in one materialization pass. Before the authority marker is written,
   readers may verify legacy and converted views; after it is written, Project Loro is the only
   membership authority and legacy rows cannot receive product writes.
-- **Complete for Local (2C):** imports and Provider output finalization install the immutable Resource
-  first, then create the ProjectAsset entry. A plugin upload stages a Resource; it does not publish
-  a half-finished Project Asset by itself.
+- **Complete for Local (2C):** imports and Provider output finalization first
+  stage exact bytes without kind/media-type authority, require the v4 byte
+  probe, and only then seal the immutable Resource and create the ProjectAsset
+  entry. A plugin upload creates an unsealed staging receipt; it does not
+  publish a half-finished Project Asset by itself.
 - **Complete for Local (2D):** Project reads and capability checks resolve ProjectAsset first.
   Legacy SQLite reference tables remain read-only migration/doctor input, not a derived authority.
   The hosted D1 conversion is part of the future Cloud adapter.
@@ -1868,6 +1943,27 @@ referenced the old row. If one Project contains genuinely different legacy Asset
 materialization stops with `PROJECT_ASSET_ID_COLLISION`; it does not invent suffixes that existing
 Canvas/Timeline references could not distinguish. Every reference is rewritten in the same Loro
 materialization commit.
+
+The one-way legacy Project materializer is a compatibility exception to the
+post-cutover publication protocol, not a second product write path. It verifies
+the legacy bytes, digest, and byte length, but records the legacy kind/media
+declaration as an explicitly unverified compatibility Resource row until a
+complete v4 probe promotes one canonical L0 winner. It may preserve read-only
+legacy media metadata (including an inline waveform) in the migrated entry.
+That preserved metadata is not evidence of a v4-derived fact; new product
+writes never use this path, and ordinary reads may only add Host-private
+current-v4 enrichment without rewriting the migrated authority. If the later
+verified L0 winner contradicts that old Project entry, the old entry fails
+closed for doctor/repair; it cannot override or poison the Resource winner.
+
+A pre-v4 plugin or Durable output receipt may point at an already sealed Local
+Resource even though the run has not reached its publication checkpoint. On
+restart, the Host may recover that receipt only after reopening and re-verifying
+the sealed CAS bytes and matching every persisted kind, media-type, digest, and
+available length assertion. It copies those exact bytes back into unsealed
+staging and resumes at the current v4 boundary; the compatibility step never
+publishes an Asset or binding directly. Incomplete or conflicting receipts fail
+closed.
 
 `ResourceId` is never derived from a legacy Asset ID, URL, path, R2 key, or local blob key. If the
 legacy row already names a canonical Registry Resource, migration preserves that ID only after the
@@ -1925,6 +2021,11 @@ conflict may invent a Resource or silently fall back to `asset_refs` after cutov
 ### Phase 4: library links and claims
 
 - **Complete for the Local personal library:** separate Global and Project entry stores.
+- **Complete for the one-way Local personal-library migration:** materialize the current user's
+  legacy `asset_library_refs` membership into stable-id `GlobalAssetEntry` facts only after exact
+  bytes pass digest/length validation and the shared v4 inspection boundary. The entry batch and
+  migration marker commit atomically; failure remains retryable and legacy rows never become a live
+  read or write authority.
 - **Complete for Local:** implement `admitToProject` as an identity-producing operation.
 - **Designed for Cloud:** give admitted Project links an independent Project permission/retention claim.
 - **Complete for Local:** implement Project-to-Global publish as a new independent library entry over
@@ -2072,14 +2173,18 @@ do not claim deployed Cloud behavior.
     `{ assetId, uri, kind, mediaType? }` handle and `bytes | provider-url | text`
     resolution. Cloud must not add a `v1` alias, `url + reach` fallback, or
     storage-specific handle.
-18. **Deferred Local metadata-probe closure:** Every new Project and Global
-    publication derives canonical media facts from bytes under a required
-    versioned probe receipt before the entry mutation. Caller waveform or media
-    hints cannot become authority facts; an unavailable or failed probe leaves
-    no entry or binding. The shared publication path and configured-inspector
-    behavior are implemented, but the inspector-unavailable, hint-separation,
-    pre-probe Resource sealing, orientation, and audio-layout gaps listed above
-    remain outside the current delivery.
+18. **Local:** Every post-cutover Project or Global publication that introduces
+    new bytes starts from unsealed staging, derives canonical media facts from
+    bytes under the required `asset-inspection/v4` receipt, and seals the
+    Resource before the entry mutation. Cross-scope admit/publish over an
+    existing Resource reopens it and requires the complete current v4 receipt
+    instead of staging the bytes again. Caller waveform or media hints cannot
+    become authority facts; Host display-normalized dimensions,
+    `rotationDegrees`, sample rate, channel count, and channel layout win. An
+    unavailable or failed probe leaves no entry or binding, and a failed
+    kind/media-type assertion cannot poison that digest before a corrected
+    retry. The documented one-way legacy Project materializer is the only
+    compatibility exception and is not a post-cutover product write path.
 19. **Local:** Poster frames are scoped, disposable frontend caches decoded from
     the entry-authorized original-media projection. Current Local neither
     requests nor CAS-publishes a backend poster; legacy/remote `thumbnailUrl`

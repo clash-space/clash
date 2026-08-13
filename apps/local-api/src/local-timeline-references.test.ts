@@ -16,12 +16,61 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createLocalAssetInspectionService,
+  type LocalAssetInspector,
+} from "./local-asset-inspections.js";
+import {
   createLocalWorkflowProcessor,
   resolveLocalTimelineDslReferences,
 } from "./local-processor.js";
 import { createLocalProjectAssetService } from "./local-project-assets.js";
 
 let dataDir = "";
+
+const inspectTestMedia: LocalAssetInspector = async ({ resource }) => {
+  const contentType = resource.contentType
+    ? { contentType: resource.contentType }
+    : {};
+  if (resource.kind === "video") {
+    return {
+      ...contentType,
+      width: 1920,
+      height: 1080,
+      rotationDegrees: 0,
+      durationMs: 2_000,
+      frameRate: 30,
+      videoCodec: "h264",
+      hasAudio: false,
+    };
+  }
+  if (resource.kind === "audio") {
+    return {
+      ...contentType,
+      durationMs: 2_000,
+      hasAudio: true,
+      audioCodec: resource.contentType === "audio/wav" ? "pcm_s16le" : "mp3",
+      sampleRate: 48_000,
+      channelCount: 2,
+      channelLayout: "stereo",
+    };
+  }
+  if (resource.kind === "image") {
+    return {
+      ...contentType,
+      width: 1920,
+      height: 1080,
+      rotationDegrees: 0,
+    };
+  }
+  return contentType;
+};
+
+function testAssetInspection() {
+  return createLocalAssetInspectionService({
+    dataDir,
+    inspectResource: inspectTestMedia,
+  });
+}
 
 afterEach(async () => {
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
@@ -32,9 +81,11 @@ describe("local Timeline live references", () => {
   it("hydrates media through the canonical Host Asset resolver", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-asset-resolver-"));
     const doc = new LoroDoc();
+    const assetInspection = testAssetInspection();
     const assets = createLocalProjectAssetService({
       dataDir,
       projectionOrigin: "http://127.0.0.1:49321",
+      assetInspection,
     });
     const staged = await assets.stageOwned({
       kind: "audio",
@@ -42,19 +93,17 @@ describe("local Timeline live references", () => {
       contentType: "audio/mpeg",
       name: "voice.mp3",
     });
-    expect(
-      createProjectAsset(doc, {
-        id: "asset:voice",
-        kind: "audio",
-        source: { kind: "owned", resourceId: staged.resource.id },
-        lifecycle: { state: "active" },
-        name: "voice.mp3",
-        metadata: {
-          bytes: staged.resource.byteLength,
-          contentType: "audio/mpeg",
-        },
-      }),
-    ).toMatchObject({ ok: true });
+    const entry = await assets.prepareStagedOwnedEntry({
+      projectAssetId: "asset:voice",
+      kind: "audio",
+      resourceId: staged.resourceId,
+      name: "voice.mp3",
+      metadata: {
+        bytes: staged.byteLength,
+        contentType: "audio/mpeg",
+      },
+    });
+    expect(createProjectAsset(doc, entry)).toMatchObject({ ok: true });
     expect(markProjectAssetAuthority(doc)).toMatchObject({ ok: true });
     expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
     const inputOwner = {
@@ -107,9 +156,11 @@ describe("local Timeline live references", () => {
     dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-frozen-input-"));
     const projectId = "project-1";
     const doc = new LoroDoc();
+    const assetInspection = testAssetInspection();
     const assets = createLocalProjectAssetService({
       dataDir,
       projectionOrigin: "http://127.0.0.1:49321",
+      assetInspection,
     });
     const original = await assets.stageOwned({
       kind: "video",
@@ -131,19 +182,17 @@ describe("local Timeline live references", () => {
         staged: replacement,
       },
     ]) {
-      expect(
-        createProjectAsset(doc, {
-          id: input.id,
-          kind: "video",
-          source: { kind: "owned", resourceId: input.staged.resource.id },
-          lifecycle: { state: "active" },
-          name: input.name,
-          metadata: {
-            bytes: input.staged.resource.byteLength,
-            contentType: "video/mp4",
-          },
-        }),
-      ).toMatchObject({ ok: true });
+      const entry = await assets.prepareStagedOwnedEntry({
+        projectAssetId: input.id,
+        kind: "video",
+        resourceId: input.staged.resourceId,
+        name: input.name,
+        metadata: {
+          bytes: input.staged.byteLength,
+          contentType: "video/mp4",
+        },
+      });
+      expect(createProjectAsset(doc, entry)).toMatchObject({ ok: true });
     }
     expect(markProjectAssetAuthority(doc)).toMatchObject({ ok: true });
     expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
@@ -231,6 +280,7 @@ describe("local Timeline live references", () => {
     await createLocalWorkflowProcessor({
       dataDir,
       mediaBaseUrl: "http://127.0.0.1:49321",
+      assetInspection,
       timelineRenderer: { render },
     }).process({ doc, projectId });
 

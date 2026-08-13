@@ -819,9 +819,14 @@ export function createLocalPluginBrokerServices(options: {
         projectId,
         projectAssetId: assetId,
       });
-      const projection =
-        staged?.projection ??
-        (await projectAssets.openProjection(projectId, assetId));
+      if (staged) {
+        return {
+          kind: staged.kind,
+          ...(staged.mediaType ? { mediaType: staged.mediaType } : {}),
+          bytes: new Uint8Array(await readFile(staged.projection.path)),
+        };
+      }
+      const projection = await projectAssets.openProjection(projectId, assetId);
       return {
         kind: projection.resource.kind,
         ...(projection.resource.contentType
@@ -1354,10 +1359,8 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
         if (!staged) return undefined;
         return {
           bytes: new Uint8Array(await readFile(staged.projection.path)),
-          kind: staged.projection.resource.kind,
-          ...(staged.projection.resource.contentType
-            ? { contentType: staged.projection.resource.contentType }
-            : {}),
+          kind: staged.kind,
+          ...(staged.mediaType ? { contentType: staged.mediaType } : {}),
         };
       },
       resolveProviderPluginBinding,

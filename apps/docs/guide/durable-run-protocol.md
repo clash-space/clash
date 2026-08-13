@@ -34,12 +34,13 @@ these runs from SQLite exactly like a Provider-backed run; Project Loro is not
 the scheduler.
 
 All media branches call the same Asset metadata-preparation port before
-consumer publication. This is a control-flow guarantee, not a claim that every
-L1 byte fact is already implemented: the inspector-unavailable, caller-hint,
-pre-probe media-type sealing, orientation, and audio-layout limitations are
-explicitly deferred in the Asset System guide. A future probe recipe closes
-those facts inside `stage`; it must not add another Durable graph or re-enter
-Provider/local-model work.
+consumer publication. Current Local `stage` resolves an unsealed receipt,
+requires `asset-inspection/v4`, validates frozen kind/media-type assertions,
+seals the canonical Resource, and prepares Host-owned L1 facts. Caller media
+hints never fill or override those facts. Missing inspection, failed decode, or
+incomplete display/orientation/audio-layout facts leaves the run in
+finalization with no Project entry or binding; retry resumes from the same
+staged bytes and never re-enters Provider/local-model work.
 
 Pika's bundled Local executor is covered by contract tests derived from the
 public catalog schemas and deterministic HTTP fixtures. There is currently no
@@ -229,16 +230,17 @@ the same atomic journal operations used by the Local engine:
   The adapter must not rely on Project Loro status as this compare-and-set
   record.
 - `OssOutputStager` backs the Host Asset broker during a plugin invocation.
-  For media, it writes or ingests bytes into an owner-private staging object,
-  verifies byte length, digest, media kind, and required format, persists a
-  receipt under the stable invocation `taskId + plugin output slot`, and
-  returns only an Asset delivery `v0` handle. The completed frame containing
-  that handle is checkpointed afterwards. During the shared `stage` step the
-  same port resolves and verifies the receipt, runs the same versioned
-  byte-derived media probe required by Local, and prepares canonical metadata
-  plus the immutable `Resource` fact for Project publication; it does not
-  upload the media again. Probe state is keyed by Resource and recipe, not by a
-  Workflow attempt, so Workflow replay can reuse a verified winner.
+  For media, it writes or ingests bytes into an owner-private unsealed staging
+  object, verifies byte length and digest, persists a receipt under the stable
+  invocation `taskId + plugin output slot`, and returns only an Asset delivery
+  `v0` handle. Kind and media type remain frozen assertions, not staging-object
+  authority. The completed frame containing that handle is checkpointed
+  afterwards. During the shared `stage` step the same port resolves and
+  verifies the receipt, runs the same versioned byte-derived media probe
+  required by Local, and only then seals the immutable `Resource` and prepares
+  canonical metadata for Project publication; it does not upload the media
+  again. Probe state is keyed by Resource and recipe, not by a Workflow
+  attempt, so Workflow replay can reuse a verified winner.
   For text, the result checkpoint comes first and `stage` installs the text
   Resource/revision. Object keys and upload sessions stay private;
   `actionRunId + outputSlot` remains the Project publication idempotency key,
@@ -279,12 +281,12 @@ A Provider executor invocation performs exactly one logical Provider step. It
 does not own a retry loop, task lifetime, persistence, account selection, or
 Project publication.
 
-| Host operation | Plugin work in one invocation                                           | Valid result                                       |
-| -------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
-| `submit`       | At most one upstream submission                                         | `completed`, `accepted`, or `failed`               |
-| `poll`         | At most one upstream status request for the supplied opaque `pollState` | `completed`, `accepted`, or `failed`               |
-| `stage`        | None; Host verifies a media receipt or installs checkpointed text       | a durable staged output or structured Host failure |
-| `publish`      | None; Host idempotently publishes the Project Asset/binding             | success or structured Host failure                 |
+| Host operation | Plugin work in one invocation                                           | Valid result                                           |
+| -------------- | ----------------------------------------------------------------------- | ------------------------------------------------------ |
+| `submit`       | At most one upstream submission                                         | `completed`, `accepted`, or `failed`                   |
+| `poll`         | At most one upstream status request for the supplied opaque `pollState` | `completed`, `accepted`, or `failed`                   |
+| `stage`        | None; Host probes/seals a media receipt or installs checkpointed text   | a prepared canonical output or structured Host failure |
+| `publish`      | None; Host idempotently publishes the Project Asset/binding             | success or structured Host failure                     |
 
 Asset delivery is permanently the single `v0` handle/resolve contract. Media
 outputs are `{ assetId, uri, kind, mediaType? }`; input resolution yields one
@@ -481,9 +483,10 @@ request and the owner's durable checkpoint:
   a completed frame. The owner then checkpoints the frame's Asset delivery
   `v0` handle. The shared `stage` step only resolves and verifies that receipt
   and prepares the Project Asset; it does not write the media again. Preparing
-  a new media Asset includes the versioned Host byte probe and canonical
-  metadata validation. Probe failure keeps the run in retryable finalization
-  with the staged receipt intact and never re-enters Provider work.
+  a new media Asset requires the v4 Host byte probe over unsealed bytes,
+  canonical Resource sealing, and Host-owned metadata validation. Probe failure
+  keeps the run in retryable finalization with the staged receipt intact,
+  creates no entry or binding, and never re-enters Provider work.
 - A text completed frame is checkpointed before `stage` installs its immutable
   revision. The prepared Project output is checkpointed separately before any
   Project binding is published.

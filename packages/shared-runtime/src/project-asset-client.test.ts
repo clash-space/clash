@@ -30,6 +30,13 @@ describe("Project Asset Host client", () => {
     );
   });
 
+  it("normalizes the M4V extension to the decoded MP4 media type", () => {
+    expect(resolveAssetImportFileType("clip.m4v")).toEqual({
+      kind: "video",
+      contentType: "video/mp4",
+    });
+  });
+
   it("shares the exact discovered Host connection used by the MCP command client", async () => {
     const requests: string[] = [];
     let connections = 0;
@@ -229,6 +236,7 @@ describe("Project Asset Host client", () => {
         fileName: "frame.png",
         contentType: "image/png",
         kind: "image",
+        projectAssetId: "asset:multipart-command",
       }),
     ).resolves.toEqual({ projectId: "project-a", value: readyAsset });
     expect(requests[0]?.url).toBe(
@@ -246,7 +254,7 @@ describe("Project Asset Host client", () => {
     ).toEqual([1, 2, 3, 4]);
   });
 
-  it("reuses one Project Asset id when the same import command retries an unknown result", async () => {
+  it("replays one preassigned Project Asset id when the same import command retries an unknown result", async () => {
     const importedIds: string[] = [];
     const client = createProjectAssetHostClient({
       endpoint: "http://127.0.0.1:8789",
@@ -267,12 +275,13 @@ describe("Project Asset Host client", () => {
       fileName: "frame.png",
       contentType: "image/png",
       kind: "image" as const,
+      projectAssetId: "asset:retry-command",
     };
 
     await expect(client.importFile(command)).rejects.toThrow("connection lost");
     await client.importFile(command);
 
-    expect(importedIds[0]).not.toBe("");
+    expect(importedIds[0]).toBe("asset:retry-command");
     expect(importedIds[1]).toBe(importedIds[0]);
   });
 
@@ -306,6 +315,7 @@ describe("Project Asset Host client", () => {
       fileName: "frame.png",
       contentType: "image/png",
       kind: "image",
+      projectAssetId: "asset:original-command",
     };
 
     await expect(client.importFile(command)).rejects.toThrow("connection lost");
@@ -321,7 +331,7 @@ describe("Project Asset Host client", () => {
     ]);
   });
 
-  it("does not deduplicate separate Project import commands just because their bytes match", async () => {
+  it("keeps separately preassigned Project import commands distinct even when their bytes match", async () => {
     const importedIds: string[] = [];
     const client = createProjectAssetHostClient({
       endpoint: "http://127.0.0.1:8789",
@@ -342,13 +352,19 @@ describe("Project Asset Host client", () => {
       fileName: "frame.png",
       contentType: "image/png",
       kind: "image" as const,
+      projectAssetId: "asset:first-command",
     };
 
     await client.importFile({ ...file });
-    await client.importFile({ ...file });
+    await client.importFile({
+      ...file,
+      projectAssetId: "asset:second-command",
+    });
 
-    expect(importedIds[0]).not.toBe("");
-    expect(importedIds[1]).not.toBe(importedIds[0]);
+    expect(importedIds).toEqual([
+      "asset:first-command",
+      "asset:second-command",
+    ]);
   });
 
   it("preserves an explicitly assigned Project Asset import id", async () => {
@@ -375,6 +391,28 @@ describe("Project Asset Host client", () => {
     });
 
     expect(importedId).toBe("asset:caller-command");
+  });
+
+  it("requires a Project Asset id from the Host command boundary before I/O", async () => {
+    const fetch = vi.fn(async () => {
+      throw new Error("must not send an unnamed import");
+    });
+    const client = createProjectAssetHostClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch,
+    });
+
+    await expect(
+      client.importFile({
+        projectId: "project-a",
+        bytes: new Uint8Array([1]),
+        fileName: "frame.png",
+        contentType: "image/png",
+        kind: "image",
+      } as never),
+    ).rejects.toThrow("project asset id is required");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("admits one Global Asset through the discovered Project Host", async () => {
@@ -541,6 +579,7 @@ describe("Project Asset Host client", () => {
       | undefined
       | ((options: Record<string, unknown>) => {
           importFile(input: {
+            globalAssetId: string;
             bytes: Uint8Array;
             fileName: string;
             contentType: string;
@@ -565,6 +604,7 @@ describe("Project Asset Host client", () => {
 
     await expect(
       client.importFile({
+        globalAssetId: "global:multipart-command",
         bytes: new Uint8Array([1, 2, 3, 4]),
         fileName: "frame.png",
         contentType: "image/png",
@@ -604,7 +644,7 @@ describe("Project Asset Host client", () => {
     );
   });
 
-  it("reuses one Global Asset id when the same import command retries an unknown result", async () => {
+  it("replays one preassigned Global Asset id when the same import command retries an unknown result", async () => {
     const globalAsset = {
       ...readyAsset,
       id: "global:one",
@@ -616,6 +656,7 @@ describe("Project Asset Host client", () => {
       options: Record<string, unknown>,
     ) => {
       importFile(input: {
+        globalAssetId: string;
         bytes: Uint8Array;
         fileName: string;
         contentType: string;
@@ -638,12 +679,13 @@ describe("Project Asset Host client", () => {
       fileName: "frame.png",
       contentType: "image/png",
       kind: "image" as const,
+      globalAssetId: "global:retry-command",
     };
 
     await expect(client.importFile(command)).rejects.toThrow("connection lost");
     await client.importFile(command);
 
-    expect(importedIds[0]).not.toBe("");
+    expect(importedIds[0]).toBe("global:retry-command");
     expect(importedIds[1]).toBe(importedIds[0]);
   });
 
@@ -663,6 +705,7 @@ describe("Project Asset Host client", () => {
       options: Record<string, unknown>,
     ) => {
       importFile(input: {
+        globalAssetId: string;
         bytes: Uint8Array;
         fileName: string;
         contentType: string;
@@ -689,6 +732,7 @@ describe("Project Asset Host client", () => {
       fileName: "frame.png",
       contentType: "image/png",
       kind: "image" as "image" | "video",
+      globalAssetId: "global:original-command",
     };
 
     await expect(client.importFile(command)).rejects.toThrow("connection lost");
@@ -741,6 +785,27 @@ describe("Project Asset Host client", () => {
     });
 
     expect(importedId).toBe("global:caller-command");
+  });
+
+  it("requires a Global Asset id from the Host command boundary before I/O", async () => {
+    const fetch = vi.fn(async () => {
+      throw new Error("must not send an unnamed import");
+    });
+    const client = projectAssetClients.createPersonalGlobalAssetHostClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch,
+    });
+
+    await expect(
+      client.importFile({
+        bytes: new Uint8Array([1]),
+        fileName: "frame.png",
+        contentType: "image/png",
+        kind: "image",
+      } as never),
+    ).rejects.toThrow("global asset id is required");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("lists and reads references, then restores through the same Project scope", async () => {

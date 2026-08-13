@@ -14890,6 +14890,1914 @@ var require_dist = __commonJS({
   }
 });
 
+// ../../node_modules/.pnpm/xmlchars@2.2.0/node_modules/xmlchars/xml/1.0/ed5.js
+var require_ed5 = __commonJS({
+  "../../node_modules/.pnpm/xmlchars@2.2.0/node_modules/xmlchars/xml/1.0/ed5.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.CHAR = "	\n\r -\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}";
+    exports2.S = " 	\r\n";
+    exports2.NAME_START_CHAR = ":A-Z_a-z\xC0-\xD6\xD8-\xF6\xF8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u{10000}-\u{EFFFF}";
+    exports2.NAME_CHAR = "-" + exports2.NAME_START_CHAR + ".0-9\xB7\u0300-\u036F\u203F-\u2040";
+    exports2.CHAR_RE = new RegExp("^[" + exports2.CHAR + "]$", "u");
+    exports2.S_RE = new RegExp("^[" + exports2.S + "]+$", "u");
+    exports2.NAME_START_CHAR_RE = new RegExp("^[" + exports2.NAME_START_CHAR + "]$", "u");
+    exports2.NAME_CHAR_RE = new RegExp("^[" + exports2.NAME_CHAR + "]$", "u");
+    exports2.NAME_RE = new RegExp("^[" + exports2.NAME_START_CHAR + "][" + exports2.NAME_CHAR + "]*$", "u");
+    exports2.NMTOKEN_RE = new RegExp("^[" + exports2.NAME_CHAR + "]+$", "u");
+    var TAB = 9;
+    var NL = 10;
+    var CR = 13;
+    var SPACE2 = 32;
+    exports2.S_LIST = [SPACE2, NL, CR, TAB];
+    function isChar(c5) {
+      return c5 >= SPACE2 && c5 <= 55295 || c5 === NL || c5 === CR || c5 === TAB || c5 >= 57344 && c5 <= 65533 || c5 >= 65536 && c5 <= 1114111;
+    }
+    exports2.isChar = isChar;
+    function isS(c5) {
+      return c5 === SPACE2 || c5 === NL || c5 === CR || c5 === TAB;
+    }
+    exports2.isS = isS;
+    function isNameStartChar(c5) {
+      return c5 >= 65 && c5 <= 90 || c5 >= 97 && c5 <= 122 || c5 === 58 || c5 === 95 || c5 === 8204 || c5 === 8205 || c5 >= 192 && c5 <= 214 || c5 >= 216 && c5 <= 246 || c5 >= 248 && c5 <= 767 || c5 >= 880 && c5 <= 893 || c5 >= 895 && c5 <= 8191 || c5 >= 8304 && c5 <= 8591 || c5 >= 11264 && c5 <= 12271 || c5 >= 12289 && c5 <= 55295 || c5 >= 63744 && c5 <= 64975 || c5 >= 65008 && c5 <= 65533 || c5 >= 65536 && c5 <= 983039;
+    }
+    exports2.isNameStartChar = isNameStartChar;
+    function isNameChar(c5) {
+      return isNameStartChar(c5) || c5 >= 48 && c5 <= 57 || c5 === 45 || c5 === 46 || c5 === 183 || c5 >= 768 && c5 <= 879 || c5 >= 8255 && c5 <= 8256;
+    }
+    exports2.isNameChar = isNameChar;
+  }
+});
+
+// ../../node_modules/.pnpm/xmlchars@2.2.0/node_modules/xmlchars/xml/1.1/ed2.js
+var require_ed2 = __commonJS({
+  "../../node_modules/.pnpm/xmlchars@2.2.0/node_modules/xmlchars/xml/1.1/ed2.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.CHAR = "-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}";
+    exports2.RESTRICTED_CHAR = "-\b\v\f-\x7F-\x84\x86-\x9F";
+    exports2.S = " 	\r\n";
+    exports2.NAME_START_CHAR = ":A-Z_a-z\xC0-\xD6\xD8-\xF6\xF8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u{10000}-\u{EFFFF}";
+    exports2.NAME_CHAR = "-" + exports2.NAME_START_CHAR + ".0-9\xB7\u0300-\u036F\u203F-\u2040";
+    exports2.CHAR_RE = new RegExp("^[" + exports2.CHAR + "]$", "u");
+    exports2.RESTRICTED_CHAR_RE = new RegExp("^[" + exports2.RESTRICTED_CHAR + "]$", "u");
+    exports2.S_RE = new RegExp("^[" + exports2.S + "]+$", "u");
+    exports2.NAME_START_CHAR_RE = new RegExp("^[" + exports2.NAME_START_CHAR + "]$", "u");
+    exports2.NAME_CHAR_RE = new RegExp("^[" + exports2.NAME_CHAR + "]$", "u");
+    exports2.NAME_RE = new RegExp("^[" + exports2.NAME_START_CHAR + "][" + exports2.NAME_CHAR + "]*$", "u");
+    exports2.NMTOKEN_RE = new RegExp("^[" + exports2.NAME_CHAR + "]+$", "u");
+    var TAB = 9;
+    var NL = 10;
+    var CR = 13;
+    var SPACE2 = 32;
+    exports2.S_LIST = [SPACE2, NL, CR, TAB];
+    function isChar(c5) {
+      return c5 >= 1 && c5 <= 55295 || c5 >= 57344 && c5 <= 65533 || c5 >= 65536 && c5 <= 1114111;
+    }
+    exports2.isChar = isChar;
+    function isRestrictedChar(c5) {
+      return c5 >= 1 && c5 <= 8 || c5 === 11 || c5 === 12 || c5 >= 14 && c5 <= 31 || c5 >= 127 && c5 <= 132 || c5 >= 134 && c5 <= 159;
+    }
+    exports2.isRestrictedChar = isRestrictedChar;
+    function isCharAndNotRestricted(c5) {
+      return c5 === 9 || c5 === 10 || c5 === 13 || c5 > 31 && c5 < 127 || c5 === 133 || c5 > 159 && c5 <= 55295 || c5 >= 57344 && c5 <= 65533 || c5 >= 65536 && c5 <= 1114111;
+    }
+    exports2.isCharAndNotRestricted = isCharAndNotRestricted;
+    function isS(c5) {
+      return c5 === SPACE2 || c5 === NL || c5 === CR || c5 === TAB;
+    }
+    exports2.isS = isS;
+    function isNameStartChar(c5) {
+      return c5 >= 65 && c5 <= 90 || c5 >= 97 && c5 <= 122 || c5 === 58 || c5 === 95 || c5 === 8204 || c5 === 8205 || c5 >= 192 && c5 <= 214 || c5 >= 216 && c5 <= 246 || c5 >= 248 && c5 <= 767 || c5 >= 880 && c5 <= 893 || c5 >= 895 && c5 <= 8191 || c5 >= 8304 && c5 <= 8591 || c5 >= 11264 && c5 <= 12271 || c5 >= 12289 && c5 <= 55295 || c5 >= 63744 && c5 <= 64975 || c5 >= 65008 && c5 <= 65533 || c5 >= 65536 && c5 <= 983039;
+    }
+    exports2.isNameStartChar = isNameStartChar;
+    function isNameChar(c5) {
+      return isNameStartChar(c5) || c5 >= 48 && c5 <= 57 || c5 === 45 || c5 === 46 || c5 === 183 || c5 >= 768 && c5 <= 879 || c5 >= 8255 && c5 <= 8256;
+    }
+    exports2.isNameChar = isNameChar;
+  }
+});
+
+// ../../node_modules/.pnpm/xmlchars@2.2.0/node_modules/xmlchars/xmlns/1.0/ed3.js
+var require_ed3 = __commonJS({
+  "../../node_modules/.pnpm/xmlchars@2.2.0/node_modules/xmlchars/xmlns/1.0/ed3.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.NC_NAME_START_CHAR = "A-Z_a-z\xC0-\xD6\xD8-\xF6\xF8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u{10000}-\u{EFFFF}";
+    exports2.NC_NAME_CHAR = "-" + exports2.NC_NAME_START_CHAR + ".0-9\xB7\u0300-\u036F\u203F-\u2040";
+    exports2.NC_NAME_START_CHAR_RE = new RegExp("^[" + exports2.NC_NAME_START_CHAR + "]$", "u");
+    exports2.NC_NAME_CHAR_RE = new RegExp("^[" + exports2.NC_NAME_CHAR + "]$", "u");
+    exports2.NC_NAME_RE = new RegExp("^[" + exports2.NC_NAME_START_CHAR + "][" + exports2.NC_NAME_CHAR + "]*$", "u");
+    function isNCNameStartChar(c5) {
+      return c5 >= 65 && c5 <= 90 || c5 === 95 || c5 >= 97 && c5 <= 122 || c5 >= 192 && c5 <= 214 || c5 >= 216 && c5 <= 246 || c5 >= 248 && c5 <= 767 || c5 >= 880 && c5 <= 893 || c5 >= 895 && c5 <= 8191 || c5 >= 8204 && c5 <= 8205 || c5 >= 8304 && c5 <= 8591 || c5 >= 11264 && c5 <= 12271 || c5 >= 12289 && c5 <= 55295 || c5 >= 63744 && c5 <= 64975 || c5 >= 65008 && c5 <= 65533 || c5 >= 65536 && c5 <= 983039;
+    }
+    exports2.isNCNameStartChar = isNCNameStartChar;
+    function isNCNameChar(c5) {
+      return isNCNameStartChar(c5) || (c5 === 45 || c5 === 46 || c5 >= 48 && c5 <= 57 || c5 === 183 || c5 >= 768 && c5 <= 879 || c5 >= 8255 && c5 <= 8256);
+    }
+    exports2.isNCNameChar = isNCNameChar;
+  }
+});
+
+// ../../node_modules/.pnpm/saxes@6.0.0/node_modules/saxes/saxes.js
+var require_saxes = __commonJS({
+  "../../node_modules/.pnpm/saxes@6.0.0/node_modules/saxes/saxes.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.SaxesParser = exports2.EVENTS = void 0;
+    var ed5 = require_ed5();
+    var ed2 = require_ed2();
+    var NSed3 = require_ed3();
+    var isS = ed5.isS;
+    var isChar10 = ed5.isChar;
+    var isNameStartChar = ed5.isNameStartChar;
+    var isNameChar = ed5.isNameChar;
+    var S_LIST = ed5.S_LIST;
+    var NAME_RE = ed5.NAME_RE;
+    var isChar11 = ed2.isChar;
+    var isNCNameStartChar = NSed3.isNCNameStartChar;
+    var isNCNameChar = NSed3.isNCNameChar;
+    var NC_NAME_RE = NSed3.NC_NAME_RE;
+    var XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
+    var XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
+    var rootNS = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+      __proto__: null,
+      xml: XML_NAMESPACE,
+      xmlns: XMLNS_NAMESPACE
+    };
+    var XML_ENTITIES = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+      __proto__: null,
+      amp: "&",
+      gt: ">",
+      lt: "<",
+      quot: '"',
+      apos: "'"
+    };
+    var EOC = -1;
+    var NL_LIKE = -2;
+    var S_BEGIN = 0;
+    var S_BEGIN_WHITESPACE = 1;
+    var S_DOCTYPE = 2;
+    var S_DOCTYPE_QUOTE = 3;
+    var S_DTD = 4;
+    var S_DTD_QUOTED = 5;
+    var S_DTD_OPEN_WAKA = 6;
+    var S_DTD_OPEN_WAKA_BANG = 7;
+    var S_DTD_COMMENT = 8;
+    var S_DTD_COMMENT_ENDING = 9;
+    var S_DTD_COMMENT_ENDED = 10;
+    var S_DTD_PI = 11;
+    var S_DTD_PI_ENDING = 12;
+    var S_TEXT = 13;
+    var S_ENTITY = 14;
+    var S_OPEN_WAKA = 15;
+    var S_OPEN_WAKA_BANG = 16;
+    var S_COMMENT = 17;
+    var S_COMMENT_ENDING = 18;
+    var S_COMMENT_ENDED = 19;
+    var S_CDATA = 20;
+    var S_CDATA_ENDING = 21;
+    var S_CDATA_ENDING_2 = 22;
+    var S_PI_FIRST_CHAR = 23;
+    var S_PI_REST = 24;
+    var S_PI_BODY = 25;
+    var S_PI_ENDING = 26;
+    var S_XML_DECL_NAME_START = 27;
+    var S_XML_DECL_NAME = 28;
+    var S_XML_DECL_EQ = 29;
+    var S_XML_DECL_VALUE_START = 30;
+    var S_XML_DECL_VALUE = 31;
+    var S_XML_DECL_SEPARATOR = 32;
+    var S_XML_DECL_ENDING = 33;
+    var S_OPEN_TAG = 34;
+    var S_OPEN_TAG_SLASH = 35;
+    var S_ATTRIB = 36;
+    var S_ATTRIB_NAME = 37;
+    var S_ATTRIB_NAME_SAW_WHITE = 38;
+    var S_ATTRIB_VALUE = 39;
+    var S_ATTRIB_VALUE_QUOTED = 40;
+    var S_ATTRIB_VALUE_CLOSED = 41;
+    var S_ATTRIB_VALUE_UNQUOTED = 42;
+    var S_CLOSE_TAG = 43;
+    var S_CLOSE_TAG_SAW_WHITE = 44;
+    var TAB = 9;
+    var NL = 10;
+    var CR = 13;
+    var SPACE2 = 32;
+    var BANG = 33;
+    var DQUOTE = 34;
+    var AMP = 38;
+    var SQUOTE = 39;
+    var MINUS = 45;
+    var FORWARD_SLASH = 47;
+    var SEMICOLON = 59;
+    var LESS = 60;
+    var EQUAL = 61;
+    var GREATER = 62;
+    var QUESTION = 63;
+    var OPEN_BRACKET2 = 91;
+    var CLOSE_BRACKET2 = 93;
+    var NEL = 133;
+    var LS = 8232;
+    var isQuote = (c5) => c5 === DQUOTE || c5 === SQUOTE;
+    var QUOTES = [DQUOTE, SQUOTE];
+    var DOCTYPE_TERMINATOR = [...QUOTES, OPEN_BRACKET2, GREATER];
+    var DTD_TERMINATOR = [...QUOTES, LESS, CLOSE_BRACKET2];
+    var XML_DECL_NAME_TERMINATOR = [EQUAL, QUESTION, ...S_LIST];
+    var ATTRIB_VALUE_UNQUOTED_TERMINATOR = [...S_LIST, GREATER, AMP, LESS];
+    function nsPairCheck(parser, prefix, uri) {
+      switch (prefix) {
+        case "xml":
+          if (uri !== XML_NAMESPACE) {
+            parser.fail(`xml prefix must be bound to ${XML_NAMESPACE}.`);
+          }
+          break;
+        case "xmlns":
+          if (uri !== XMLNS_NAMESPACE) {
+            parser.fail(`xmlns prefix must be bound to ${XMLNS_NAMESPACE}.`);
+          }
+          break;
+        default:
+      }
+      switch (uri) {
+        case XMLNS_NAMESPACE:
+          parser.fail(prefix === "" ? `the default namespace may not be set to ${uri}.` : `may not assign a prefix (even "xmlns") to the URI ${XMLNS_NAMESPACE}.`);
+          break;
+        case XML_NAMESPACE:
+          switch (prefix) {
+            case "xml":
+              break;
+            case "":
+              parser.fail(`the default namespace may not be set to ${uri}.`);
+              break;
+            default:
+              parser.fail("may not assign the xml namespace to another prefix.");
+          }
+          break;
+        default:
+      }
+    }
+    function nsMappingCheck(parser, mapping) {
+      for (const local of Object.keys(mapping)) {
+        nsPairCheck(parser, local, mapping[local]);
+      }
+    }
+    var isNCName = (name) => NC_NAME_RE.test(name);
+    var isName = (name) => NAME_RE.test(name);
+    var FORBIDDEN_START = 0;
+    var FORBIDDEN_BRACKET = 1;
+    var FORBIDDEN_BRACKET_BRACKET = 2;
+    exports2.EVENTS = [
+      "xmldecl",
+      "text",
+      "processinginstruction",
+      "doctype",
+      "comment",
+      "opentagstart",
+      "attribute",
+      "opentag",
+      "closetag",
+      "cdata",
+      "error",
+      "end",
+      "ready"
+    ];
+    var EVENT_NAME_TO_HANDLER_NAME = {
+      xmldecl: "xmldeclHandler",
+      text: "textHandler",
+      processinginstruction: "piHandler",
+      doctype: "doctypeHandler",
+      comment: "commentHandler",
+      opentagstart: "openTagStartHandler",
+      attribute: "attributeHandler",
+      opentag: "openTagHandler",
+      closetag: "closeTagHandler",
+      cdata: "cdataHandler",
+      error: "errorHandler",
+      end: "endHandler",
+      ready: "readyHandler"
+    };
+    var SaxesParser2 = class {
+      /**
+       * @param opt The parser options.
+       */
+      constructor(opt) {
+        this.opt = opt !== null && opt !== void 0 ? opt : {};
+        this.fragmentOpt = !!this.opt.fragment;
+        const xmlnsOpt = this.xmlnsOpt = !!this.opt.xmlns;
+        this.trackPosition = this.opt.position !== false;
+        this.fileName = this.opt.fileName;
+        if (xmlnsOpt) {
+          this.nameStartCheck = isNCNameStartChar;
+          this.nameCheck = isNCNameChar;
+          this.isName = isNCName;
+          this.processAttribs = this.processAttribsNS;
+          this.pushAttrib = this.pushAttribNS;
+          this.ns = Object.assign({ __proto__: null }, rootNS);
+          const additional = this.opt.additionalNamespaces;
+          if (additional != null) {
+            nsMappingCheck(this, additional);
+            Object.assign(this.ns, additional);
+          }
+        } else {
+          this.nameStartCheck = isNameStartChar;
+          this.nameCheck = isNameChar;
+          this.isName = isName;
+          this.processAttribs = this.processAttribsPlain;
+          this.pushAttrib = this.pushAttribPlain;
+        }
+        this.stateTable = [
+          /* eslint-disable @typescript-eslint/unbound-method */
+          this.sBegin,
+          this.sBeginWhitespace,
+          this.sDoctype,
+          this.sDoctypeQuote,
+          this.sDTD,
+          this.sDTDQuoted,
+          this.sDTDOpenWaka,
+          this.sDTDOpenWakaBang,
+          this.sDTDComment,
+          this.sDTDCommentEnding,
+          this.sDTDCommentEnded,
+          this.sDTDPI,
+          this.sDTDPIEnding,
+          this.sText,
+          this.sEntity,
+          this.sOpenWaka,
+          this.sOpenWakaBang,
+          this.sComment,
+          this.sCommentEnding,
+          this.sCommentEnded,
+          this.sCData,
+          this.sCDataEnding,
+          this.sCDataEnding2,
+          this.sPIFirstChar,
+          this.sPIRest,
+          this.sPIBody,
+          this.sPIEnding,
+          this.sXMLDeclNameStart,
+          this.sXMLDeclName,
+          this.sXMLDeclEq,
+          this.sXMLDeclValueStart,
+          this.sXMLDeclValue,
+          this.sXMLDeclSeparator,
+          this.sXMLDeclEnding,
+          this.sOpenTag,
+          this.sOpenTagSlash,
+          this.sAttrib,
+          this.sAttribName,
+          this.sAttribNameSawWhite,
+          this.sAttribValue,
+          this.sAttribValueQuoted,
+          this.sAttribValueClosed,
+          this.sAttribValueUnquoted,
+          this.sCloseTag,
+          this.sCloseTagSawWhite
+          /* eslint-enable @typescript-eslint/unbound-method */
+        ];
+        this._init();
+      }
+      /**
+       * Indicates whether or not the parser is closed. If ``true``, wait for
+       * the ``ready`` event to write again.
+       */
+      get closed() {
+        return this._closed;
+      }
+      _init() {
+        var _a4;
+        this.openWakaBang = "";
+        this.text = "";
+        this.name = "";
+        this.piTarget = "";
+        this.entity = "";
+        this.q = null;
+        this.tags = [];
+        this.tag = null;
+        this.topNS = null;
+        this.chunk = "";
+        this.chunkPosition = 0;
+        this.i = 0;
+        this.prevI = 0;
+        this.carriedFromPrevious = void 0;
+        this.forbiddenState = FORBIDDEN_START;
+        this.attribList = [];
+        const { fragmentOpt } = this;
+        this.state = fragmentOpt ? S_TEXT : S_BEGIN;
+        this.reportedTextBeforeRoot = this.reportedTextAfterRoot = this.closedRoot = this.sawRoot = fragmentOpt;
+        this.xmlDeclPossible = !fragmentOpt;
+        this.xmlDeclExpects = ["version"];
+        this.entityReturnState = void 0;
+        let { defaultXMLVersion } = this.opt;
+        if (defaultXMLVersion === void 0) {
+          if (this.opt.forceXMLVersion === true) {
+            throw new Error("forceXMLVersion set but defaultXMLVersion is not set");
+          }
+          defaultXMLVersion = "1.0";
+        }
+        this.setXMLVersion(defaultXMLVersion);
+        this.positionAtNewLine = 0;
+        this.doctype = false;
+        this._closed = false;
+        this.xmlDecl = {
+          version: void 0,
+          encoding: void 0,
+          standalone: void 0
+        };
+        this.line = 1;
+        this.column = 0;
+        this.ENTITIES = Object.create(XML_ENTITIES);
+        (_a4 = this.readyHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this);
+      }
+      /**
+       * The stream position the parser is currently looking at. This field is
+       * zero-based.
+       *
+       * This field is not based on counting Unicode characters but is to be
+       * interpreted as a plain index into a JavaScript string.
+       */
+      get position() {
+        return this.chunkPosition + this.i;
+      }
+      /**
+       * The column number of the next character to be read by the parser.  *
+       * This field is zero-based. (The first column in a line is 0.)
+       *
+       * This field reports the index at which the next character would be in the
+       * line if the line were represented as a JavaScript string.  Note that this
+       * *can* be different to a count based on the number of *Unicode characters*
+       * due to how JavaScript handles astral plane characters.
+       *
+       * See [[column]] for a number that corresponds to a count of Unicode
+       * characters.
+       */
+      get columnIndex() {
+        return this.position - this.positionAtNewLine;
+      }
+      /**
+       * Set an event listener on an event. The parser supports one handler per
+       * event type. If you try to set an event handler over an existing handler,
+       * the old handler is silently overwritten.
+       *
+       * @param name The event to listen to.
+       *
+       * @param handler The handler to set.
+       */
+      on(name, handler) {
+        this[EVENT_NAME_TO_HANDLER_NAME[name]] = handler;
+      }
+      /**
+       * Unset an event handler.
+       *
+       * @parma name The event to stop listening to.
+       */
+      off(name) {
+        this[EVENT_NAME_TO_HANDLER_NAME[name]] = void 0;
+      }
+      /**
+       * Make an error object. The error object will have a message that contains
+       * the ``fileName`` option passed at the creation of the parser. If position
+       * tracking was turned on, it will also have line and column number
+       * information.
+       *
+       * @param message The message describing the error to report.
+       *
+       * @returns An error object with a properly formatted message.
+       */
+      makeError(message) {
+        var _a4;
+        let msg = (_a4 = this.fileName) !== null && _a4 !== void 0 ? _a4 : "";
+        if (this.trackPosition) {
+          if (msg.length > 0) {
+            msg += ":";
+          }
+          msg += `${this.line}:${this.column}`;
+        }
+        if (msg.length > 0) {
+          msg += ": ";
+        }
+        return new Error(msg + message);
+      }
+      /**
+       * Report a parsing error. This method is made public so that client code may
+       * check for issues that are outside the scope of this project and can report
+       * errors.
+       *
+       * @param message The error to report.
+       *
+       * @returns this
+       */
+      fail(message) {
+        const err = this.makeError(message);
+        const handler = this.errorHandler;
+        if (handler === void 0) {
+          throw err;
+        } else {
+          handler(err);
+        }
+        return this;
+      }
+      /**
+       * Write a XML data to the parser.
+       *
+       * @param chunk The XML data to write.
+       *
+       * @returns this
+       */
+      // We do need object for the type here. Yes, it often causes problems
+      // but not in this case.
+      write(chunk) {
+        if (this.closed) {
+          return this.fail("cannot write after close; assign an onready handler.");
+        }
+        let end = false;
+        if (chunk === null) {
+          end = true;
+          chunk = "";
+        } else if (typeof chunk === "object") {
+          chunk = chunk.toString();
+        }
+        if (this.carriedFromPrevious !== void 0) {
+          chunk = `${this.carriedFromPrevious}${chunk}`;
+          this.carriedFromPrevious = void 0;
+        }
+        let limit = chunk.length;
+        const lastCode = chunk.charCodeAt(limit - 1);
+        if (!end && // A trailing CR or surrogate must be carried over to the next
+        // chunk.
+        (lastCode === CR || lastCode >= 55296 && lastCode <= 56319)) {
+          this.carriedFromPrevious = chunk[limit - 1];
+          limit--;
+          chunk = chunk.slice(0, limit);
+        }
+        const { stateTable } = this;
+        this.chunk = chunk;
+        this.i = 0;
+        while (this.i < limit) {
+          stateTable[this.state].call(this);
+        }
+        this.chunkPosition += limit;
+        return end ? this.end() : this;
+      }
+      /**
+       * Close the current stream. Perform final well-formedness checks and reset
+       * the parser tstate.
+       *
+       * @returns this
+       */
+      close() {
+        return this.write(null);
+      }
+      /**
+       * Get a single code point out of the current chunk. This updates the current
+       * position if we do position tracking.
+       *
+       * This is the algorithm to use for XML 1.0.
+       *
+       * @returns The character read.
+       */
+      getCode10() {
+        const { chunk, i: i5 } = this;
+        this.prevI = i5;
+        this.i = i5 + 1;
+        if (i5 >= chunk.length) {
+          return EOC;
+        }
+        const code = chunk.charCodeAt(i5);
+        this.column++;
+        if (code < 55296) {
+          if (code >= SPACE2 || code === TAB) {
+            return code;
+          }
+          switch (code) {
+            case NL:
+              this.line++;
+              this.column = 0;
+              this.positionAtNewLine = this.position;
+              return NL;
+            case CR:
+              if (chunk.charCodeAt(i5 + 1) === NL) {
+                this.i = i5 + 2;
+              }
+              this.line++;
+              this.column = 0;
+              this.positionAtNewLine = this.position;
+              return NL_LIKE;
+            default:
+              this.fail("disallowed character.");
+              return code;
+          }
+        }
+        if (code > 56319) {
+          if (!(code >= 57344 && code <= 65533)) {
+            this.fail("disallowed character.");
+          }
+          return code;
+        }
+        const final = 65536 + (code - 55296) * 1024 + (chunk.charCodeAt(i5 + 1) - 56320);
+        this.i = i5 + 2;
+        if (final > 1114111) {
+          this.fail("disallowed character.");
+        }
+        return final;
+      }
+      /**
+       * Get a single code point out of the current chunk. This updates the current
+       * position if we do position tracking.
+       *
+       * This is the algorithm to use for XML 1.1.
+       *
+       * @returns {number} The character read.
+       */
+      getCode11() {
+        const { chunk, i: i5 } = this;
+        this.prevI = i5;
+        this.i = i5 + 1;
+        if (i5 >= chunk.length) {
+          return EOC;
+        }
+        const code = chunk.charCodeAt(i5);
+        this.column++;
+        if (code < 55296) {
+          if (code > 31 && code < 127 || code > 159 && code !== LS || code === TAB) {
+            return code;
+          }
+          switch (code) {
+            case NL:
+              this.line++;
+              this.column = 0;
+              this.positionAtNewLine = this.position;
+              return NL;
+            case CR: {
+              const next = chunk.charCodeAt(i5 + 1);
+              if (next === NL || next === NEL) {
+                this.i = i5 + 2;
+              }
+            }
+            /* yes, fall through */
+            case NEL:
+            // 0x85
+            case LS:
+              this.line++;
+              this.column = 0;
+              this.positionAtNewLine = this.position;
+              return NL_LIKE;
+            default:
+              this.fail("disallowed character.");
+              return code;
+          }
+        }
+        if (code > 56319) {
+          if (!(code >= 57344 && code <= 65533)) {
+            this.fail("disallowed character.");
+          }
+          return code;
+        }
+        const final = 65536 + (code - 55296) * 1024 + (chunk.charCodeAt(i5 + 1) - 56320);
+        this.i = i5 + 2;
+        if (final > 1114111) {
+          this.fail("disallowed character.");
+        }
+        return final;
+      }
+      /**
+       * Like ``getCode`` but with the return value normalized so that ``NL`` is
+       * returned for ``NL_LIKE``.
+       */
+      getCodeNorm() {
+        const c5 = this.getCode();
+        return c5 === NL_LIKE ? NL : c5;
+      }
+      unget() {
+        this.i = this.prevI;
+        this.column--;
+      }
+      /**
+       * Capture characters into a buffer until encountering one of a set of
+       * characters.
+       *
+       * @param chars An array of codepoints. Encountering a character in the array
+       * ends the capture. (``chars`` may safely contain ``NL``.)
+       *
+       * @return The character code that made the capture end, or ``EOC`` if we hit
+       * the end of the chunk. The return value cannot be NL_LIKE: NL is returned
+       * instead.
+       */
+      captureTo(chars2) {
+        let { i: start } = this;
+        const { chunk } = this;
+        while (true) {
+          const c5 = this.getCode();
+          const isNLLike = c5 === NL_LIKE;
+          const final = isNLLike ? NL : c5;
+          if (final === EOC || chars2.includes(final)) {
+            this.text += chunk.slice(start, this.prevI);
+            return final;
+          }
+          if (isNLLike) {
+            this.text += `${chunk.slice(start, this.prevI)}
+`;
+            start = this.i;
+          }
+        }
+      }
+      /**
+       * Capture characters into a buffer until encountering a character.
+       *
+       * @param char The codepoint that ends the capture. **NOTE ``char`` MAY NOT
+       * CONTAIN ``NL``.** Passing ``NL`` will result in buggy behavior.
+       *
+       * @return ``true`` if we ran into the character. Otherwise, we ran into the
+       * end of the current chunk.
+       */
+      captureToChar(char) {
+        let { i: start } = this;
+        const { chunk } = this;
+        while (true) {
+          let c5 = this.getCode();
+          switch (c5) {
+            case NL_LIKE:
+              this.text += `${chunk.slice(start, this.prevI)}
+`;
+              start = this.i;
+              c5 = NL;
+              break;
+            case EOC:
+              this.text += chunk.slice(start);
+              return false;
+            default:
+          }
+          if (c5 === char) {
+            this.text += chunk.slice(start, this.prevI);
+            return true;
+          }
+        }
+      }
+      /**
+       * Capture characters that satisfy ``isNameChar`` into the ``name`` field of
+       * this parser.
+       *
+       * @return The character code that made the test fail, or ``EOC`` if we hit
+       * the end of the chunk. The return value cannot be NL_LIKE: NL is returned
+       * instead.
+       */
+      captureNameChars() {
+        const { chunk, i: start } = this;
+        while (true) {
+          const c5 = this.getCode();
+          if (c5 === EOC) {
+            this.name += chunk.slice(start);
+            return EOC;
+          }
+          if (!isNameChar(c5)) {
+            this.name += chunk.slice(start, this.prevI);
+            return c5 === NL_LIKE ? NL : c5;
+          }
+        }
+      }
+      /**
+       * Skip white spaces.
+       *
+       * @return The character that ended the skip, or ``EOC`` if we hit
+       * the end of the chunk. The return value cannot be NL_LIKE: NL is returned
+       * instead.
+       */
+      skipSpaces() {
+        while (true) {
+          const c5 = this.getCodeNorm();
+          if (c5 === EOC || !isS(c5)) {
+            return c5;
+          }
+        }
+      }
+      setXMLVersion(version2) {
+        this.currentXMLVersion = version2;
+        if (version2 === "1.0") {
+          this.isChar = isChar10;
+          this.getCode = this.getCode10;
+        } else {
+          this.isChar = isChar11;
+          this.getCode = this.getCode11;
+        }
+      }
+      // STATE ENGINE METHODS
+      // This needs to be a state separate from S_BEGIN_WHITESPACE because we want
+      // to be sure never to come back to this state later.
+      sBegin() {
+        if (this.chunk.charCodeAt(0) === 65279) {
+          this.i++;
+          this.column++;
+        }
+        this.state = S_BEGIN_WHITESPACE;
+      }
+      sBeginWhitespace() {
+        const iBefore = this.i;
+        const c5 = this.skipSpaces();
+        if (this.prevI !== iBefore) {
+          this.xmlDeclPossible = false;
+        }
+        switch (c5) {
+          case LESS:
+            this.state = S_OPEN_WAKA;
+            if (this.text.length !== 0) {
+              throw new Error("no-empty text at start");
+            }
+            break;
+          case EOC:
+            break;
+          default:
+            this.unget();
+            this.state = S_TEXT;
+            this.xmlDeclPossible = false;
+        }
+      }
+      sDoctype() {
+        var _a4;
+        const c5 = this.captureTo(DOCTYPE_TERMINATOR);
+        switch (c5) {
+          case GREATER: {
+            (_a4 = this.doctypeHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, this.text);
+            this.text = "";
+            this.state = S_TEXT;
+            this.doctype = true;
+            break;
+          }
+          case EOC:
+            break;
+          default:
+            this.text += String.fromCodePoint(c5);
+            if (c5 === OPEN_BRACKET2) {
+              this.state = S_DTD;
+            } else if (isQuote(c5)) {
+              this.state = S_DOCTYPE_QUOTE;
+              this.q = c5;
+            }
+        }
+      }
+      sDoctypeQuote() {
+        const q3 = this.q;
+        if (this.captureToChar(q3)) {
+          this.text += String.fromCodePoint(q3);
+          this.q = null;
+          this.state = S_DOCTYPE;
+        }
+      }
+      sDTD() {
+        const c5 = this.captureTo(DTD_TERMINATOR);
+        if (c5 === EOC) {
+          return;
+        }
+        this.text += String.fromCodePoint(c5);
+        if (c5 === CLOSE_BRACKET2) {
+          this.state = S_DOCTYPE;
+        } else if (c5 === LESS) {
+          this.state = S_DTD_OPEN_WAKA;
+        } else if (isQuote(c5)) {
+          this.state = S_DTD_QUOTED;
+          this.q = c5;
+        }
+      }
+      sDTDQuoted() {
+        const q3 = this.q;
+        if (this.captureToChar(q3)) {
+          this.text += String.fromCodePoint(q3);
+          this.state = S_DTD;
+          this.q = null;
+        }
+      }
+      sDTDOpenWaka() {
+        const c5 = this.getCodeNorm();
+        this.text += String.fromCodePoint(c5);
+        switch (c5) {
+          case BANG:
+            this.state = S_DTD_OPEN_WAKA_BANG;
+            this.openWakaBang = "";
+            break;
+          case QUESTION:
+            this.state = S_DTD_PI;
+            break;
+          default:
+            this.state = S_DTD;
+        }
+      }
+      sDTDOpenWakaBang() {
+        const char = String.fromCodePoint(this.getCodeNorm());
+        const owb = this.openWakaBang += char;
+        this.text += char;
+        if (owb !== "-") {
+          this.state = owb === "--" ? S_DTD_COMMENT : S_DTD;
+          this.openWakaBang = "";
+        }
+      }
+      sDTDComment() {
+        if (this.captureToChar(MINUS)) {
+          this.text += "-";
+          this.state = S_DTD_COMMENT_ENDING;
+        }
+      }
+      sDTDCommentEnding() {
+        const c5 = this.getCodeNorm();
+        this.text += String.fromCodePoint(c5);
+        this.state = c5 === MINUS ? S_DTD_COMMENT_ENDED : S_DTD_COMMENT;
+      }
+      sDTDCommentEnded() {
+        const c5 = this.getCodeNorm();
+        this.text += String.fromCodePoint(c5);
+        if (c5 === GREATER) {
+          this.state = S_DTD;
+        } else {
+          this.fail("malformed comment.");
+          this.state = S_DTD_COMMENT;
+        }
+      }
+      sDTDPI() {
+        if (this.captureToChar(QUESTION)) {
+          this.text += "?";
+          this.state = S_DTD_PI_ENDING;
+        }
+      }
+      sDTDPIEnding() {
+        const c5 = this.getCodeNorm();
+        this.text += String.fromCodePoint(c5);
+        if (c5 === GREATER) {
+          this.state = S_DTD;
+        }
+      }
+      sText() {
+        if (this.tags.length !== 0) {
+          this.handleTextInRoot();
+        } else {
+          this.handleTextOutsideRoot();
+        }
+      }
+      sEntity() {
+        let { i: start } = this;
+        const { chunk } = this;
+        loop:
+          while (true) {
+            switch (this.getCode()) {
+              case NL_LIKE:
+                this.entity += `${chunk.slice(start, this.prevI)}
+`;
+                start = this.i;
+                break;
+              case SEMICOLON: {
+                const { entityReturnState } = this;
+                const entity = this.entity + chunk.slice(start, this.prevI);
+                this.state = entityReturnState;
+                let parsed;
+                if (entity === "") {
+                  this.fail("empty entity name.");
+                  parsed = "&;";
+                } else {
+                  parsed = this.parseEntity(entity);
+                  this.entity = "";
+                }
+                if (entityReturnState !== S_TEXT || this.textHandler !== void 0) {
+                  this.text += parsed;
+                }
+                break loop;
+              }
+              case EOC:
+                this.entity += chunk.slice(start);
+                break loop;
+              default:
+            }
+          }
+      }
+      sOpenWaka() {
+        const c5 = this.getCode();
+        if (isNameStartChar(c5)) {
+          this.state = S_OPEN_TAG;
+          this.unget();
+          this.xmlDeclPossible = false;
+        } else {
+          switch (c5) {
+            case FORWARD_SLASH:
+              this.state = S_CLOSE_TAG;
+              this.xmlDeclPossible = false;
+              break;
+            case BANG:
+              this.state = S_OPEN_WAKA_BANG;
+              this.openWakaBang = "";
+              this.xmlDeclPossible = false;
+              break;
+            case QUESTION:
+              this.state = S_PI_FIRST_CHAR;
+              break;
+            default:
+              this.fail("disallowed character in tag name");
+              this.state = S_TEXT;
+              this.xmlDeclPossible = false;
+          }
+        }
+      }
+      sOpenWakaBang() {
+        this.openWakaBang += String.fromCodePoint(this.getCodeNorm());
+        switch (this.openWakaBang) {
+          case "[CDATA[":
+            if (!this.sawRoot && !this.reportedTextBeforeRoot) {
+              this.fail("text data outside of root node.");
+              this.reportedTextBeforeRoot = true;
+            }
+            if (this.closedRoot && !this.reportedTextAfterRoot) {
+              this.fail("text data outside of root node.");
+              this.reportedTextAfterRoot = true;
+            }
+            this.state = S_CDATA;
+            this.openWakaBang = "";
+            break;
+          case "--":
+            this.state = S_COMMENT;
+            this.openWakaBang = "";
+            break;
+          case "DOCTYPE":
+            this.state = S_DOCTYPE;
+            if (this.doctype || this.sawRoot) {
+              this.fail("inappropriately located doctype declaration.");
+            }
+            this.openWakaBang = "";
+            break;
+          default:
+            if (this.openWakaBang.length >= 7) {
+              this.fail("incorrect syntax.");
+            }
+        }
+      }
+      sComment() {
+        if (this.captureToChar(MINUS)) {
+          this.state = S_COMMENT_ENDING;
+        }
+      }
+      sCommentEnding() {
+        var _a4;
+        const c5 = this.getCodeNorm();
+        if (c5 === MINUS) {
+          this.state = S_COMMENT_ENDED;
+          (_a4 = this.commentHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, this.text);
+          this.text = "";
+        } else {
+          this.text += `-${String.fromCodePoint(c5)}`;
+          this.state = S_COMMENT;
+        }
+      }
+      sCommentEnded() {
+        const c5 = this.getCodeNorm();
+        if (c5 !== GREATER) {
+          this.fail("malformed comment.");
+          this.text += `--${String.fromCodePoint(c5)}`;
+          this.state = S_COMMENT;
+        } else {
+          this.state = S_TEXT;
+        }
+      }
+      sCData() {
+        if (this.captureToChar(CLOSE_BRACKET2)) {
+          this.state = S_CDATA_ENDING;
+        }
+      }
+      sCDataEnding() {
+        const c5 = this.getCodeNorm();
+        if (c5 === CLOSE_BRACKET2) {
+          this.state = S_CDATA_ENDING_2;
+        } else {
+          this.text += `]${String.fromCodePoint(c5)}`;
+          this.state = S_CDATA;
+        }
+      }
+      sCDataEnding2() {
+        var _a4;
+        const c5 = this.getCodeNorm();
+        switch (c5) {
+          case GREATER: {
+            (_a4 = this.cdataHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, this.text);
+            this.text = "";
+            this.state = S_TEXT;
+            break;
+          }
+          case CLOSE_BRACKET2:
+            this.text += "]";
+            break;
+          default:
+            this.text += `]]${String.fromCodePoint(c5)}`;
+            this.state = S_CDATA;
+        }
+      }
+      // We need this separate state to check the first character fo the pi target
+      // with this.nameStartCheck which allows less characters than this.nameCheck.
+      sPIFirstChar() {
+        const c5 = this.getCodeNorm();
+        if (this.nameStartCheck(c5)) {
+          this.piTarget += String.fromCodePoint(c5);
+          this.state = S_PI_REST;
+        } else if (c5 === QUESTION || isS(c5)) {
+          this.fail("processing instruction without a target.");
+          this.state = c5 === QUESTION ? S_PI_ENDING : S_PI_BODY;
+        } else {
+          this.fail("disallowed character in processing instruction name.");
+          this.piTarget += String.fromCodePoint(c5);
+          this.state = S_PI_REST;
+        }
+      }
+      sPIRest() {
+        const { chunk, i: start } = this;
+        while (true) {
+          const c5 = this.getCodeNorm();
+          if (c5 === EOC) {
+            this.piTarget += chunk.slice(start);
+            return;
+          }
+          if (!this.nameCheck(c5)) {
+            this.piTarget += chunk.slice(start, this.prevI);
+            const isQuestion = c5 === QUESTION;
+            if (isQuestion || isS(c5)) {
+              if (this.piTarget === "xml") {
+                if (!this.xmlDeclPossible) {
+                  this.fail("an XML declaration must be at the start of the document.");
+                }
+                this.state = isQuestion ? S_XML_DECL_ENDING : S_XML_DECL_NAME_START;
+              } else {
+                this.state = isQuestion ? S_PI_ENDING : S_PI_BODY;
+              }
+            } else {
+              this.fail("disallowed character in processing instruction name.");
+              this.piTarget += String.fromCodePoint(c5);
+            }
+            break;
+          }
+        }
+      }
+      sPIBody() {
+        if (this.text.length === 0) {
+          const c5 = this.getCodeNorm();
+          if (c5 === QUESTION) {
+            this.state = S_PI_ENDING;
+          } else if (!isS(c5)) {
+            this.text = String.fromCodePoint(c5);
+          }
+        } else if (this.captureToChar(QUESTION)) {
+          this.state = S_PI_ENDING;
+        }
+      }
+      sPIEnding() {
+        var _a4;
+        const c5 = this.getCodeNorm();
+        if (c5 === GREATER) {
+          const { piTarget } = this;
+          if (piTarget.toLowerCase() === "xml") {
+            this.fail("the XML declaration must appear at the start of the document.");
+          }
+          (_a4 = this.piHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, {
+            target: piTarget,
+            body: this.text
+          });
+          this.piTarget = this.text = "";
+          this.state = S_TEXT;
+        } else if (c5 === QUESTION) {
+          this.text += "?";
+        } else {
+          this.text += `?${String.fromCodePoint(c5)}`;
+          this.state = S_PI_BODY;
+        }
+        this.xmlDeclPossible = false;
+      }
+      sXMLDeclNameStart() {
+        const c5 = this.skipSpaces();
+        if (c5 === QUESTION) {
+          this.state = S_XML_DECL_ENDING;
+          return;
+        }
+        if (c5 !== EOC) {
+          this.state = S_XML_DECL_NAME;
+          this.name = String.fromCodePoint(c5);
+        }
+      }
+      sXMLDeclName() {
+        const c5 = this.captureTo(XML_DECL_NAME_TERMINATOR);
+        if (c5 === QUESTION) {
+          this.state = S_XML_DECL_ENDING;
+          this.name += this.text;
+          this.text = "";
+          this.fail("XML declaration is incomplete.");
+          return;
+        }
+        if (!(isS(c5) || c5 === EQUAL)) {
+          return;
+        }
+        this.name += this.text;
+        this.text = "";
+        if (!this.xmlDeclExpects.includes(this.name)) {
+          switch (this.name.length) {
+            case 0:
+              this.fail("did not expect any more name/value pairs.");
+              break;
+            case 1:
+              this.fail(`expected the name ${this.xmlDeclExpects[0]}.`);
+              break;
+            default:
+              this.fail(`expected one of ${this.xmlDeclExpects.join(", ")}`);
+          }
+        }
+        this.state = c5 === EQUAL ? S_XML_DECL_VALUE_START : S_XML_DECL_EQ;
+      }
+      sXMLDeclEq() {
+        const c5 = this.getCodeNorm();
+        if (c5 === QUESTION) {
+          this.state = S_XML_DECL_ENDING;
+          this.fail("XML declaration is incomplete.");
+          return;
+        }
+        if (isS(c5)) {
+          return;
+        }
+        if (c5 !== EQUAL) {
+          this.fail("value required.");
+        }
+        this.state = S_XML_DECL_VALUE_START;
+      }
+      sXMLDeclValueStart() {
+        const c5 = this.getCodeNorm();
+        if (c5 === QUESTION) {
+          this.state = S_XML_DECL_ENDING;
+          this.fail("XML declaration is incomplete.");
+          return;
+        }
+        if (isS(c5)) {
+          return;
+        }
+        if (!isQuote(c5)) {
+          this.fail("value must be quoted.");
+          this.q = SPACE2;
+        } else {
+          this.q = c5;
+        }
+        this.state = S_XML_DECL_VALUE;
+      }
+      sXMLDeclValue() {
+        const c5 = this.captureTo([this.q, QUESTION]);
+        if (c5 === QUESTION) {
+          this.state = S_XML_DECL_ENDING;
+          this.text = "";
+          this.fail("XML declaration is incomplete.");
+          return;
+        }
+        if (c5 === EOC) {
+          return;
+        }
+        const value = this.text;
+        this.text = "";
+        switch (this.name) {
+          case "version": {
+            this.xmlDeclExpects = ["encoding", "standalone"];
+            const version2 = value;
+            this.xmlDecl.version = version2;
+            if (!/^1\.[0-9]+$/.test(version2)) {
+              this.fail("version number must match /^1\\.[0-9]+$/.");
+            } else if (!this.opt.forceXMLVersion) {
+              this.setXMLVersion(version2);
+            }
+            break;
+          }
+          case "encoding":
+            if (!/^[A-Za-z][A-Za-z0-9._-]*$/.test(value)) {
+              this.fail("encoding value must match /^[A-Za-z0-9][A-Za-z0-9._-]*$/.");
+            }
+            this.xmlDeclExpects = ["standalone"];
+            this.xmlDecl.encoding = value;
+            break;
+          case "standalone":
+            if (value !== "yes" && value !== "no") {
+              this.fail('standalone value must match "yes" or "no".');
+            }
+            this.xmlDeclExpects = [];
+            this.xmlDecl.standalone = value;
+            break;
+          default:
+        }
+        this.name = "";
+        this.state = S_XML_DECL_SEPARATOR;
+      }
+      sXMLDeclSeparator() {
+        const c5 = this.getCodeNorm();
+        if (c5 === QUESTION) {
+          this.state = S_XML_DECL_ENDING;
+          return;
+        }
+        if (!isS(c5)) {
+          this.fail("whitespace required.");
+          this.unget();
+        }
+        this.state = S_XML_DECL_NAME_START;
+      }
+      sXMLDeclEnding() {
+        var _a4;
+        const c5 = this.getCodeNorm();
+        if (c5 === GREATER) {
+          if (this.piTarget !== "xml") {
+            this.fail("processing instructions are not allowed before root.");
+          } else if (this.name !== "version" && this.xmlDeclExpects.includes("version")) {
+            this.fail("XML declaration must contain a version.");
+          }
+          (_a4 = this.xmldeclHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, this.xmlDecl);
+          this.name = "";
+          this.piTarget = this.text = "";
+          this.state = S_TEXT;
+        } else {
+          this.fail("The character ? is disallowed anywhere in XML declarations.");
+        }
+        this.xmlDeclPossible = false;
+      }
+      sOpenTag() {
+        var _a4;
+        const c5 = this.captureNameChars();
+        if (c5 === EOC) {
+          return;
+        }
+        const tag = this.tag = {
+          name: this.name,
+          attributes: /* @__PURE__ */ Object.create(null)
+        };
+        this.name = "";
+        if (this.xmlnsOpt) {
+          this.topNS = tag.ns = /* @__PURE__ */ Object.create(null);
+        }
+        (_a4 = this.openTagStartHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, tag);
+        this.sawRoot = true;
+        if (!this.fragmentOpt && this.closedRoot) {
+          this.fail("documents may contain only one root.");
+        }
+        switch (c5) {
+          case GREATER:
+            this.openTag();
+            break;
+          case FORWARD_SLASH:
+            this.state = S_OPEN_TAG_SLASH;
+            break;
+          default:
+            if (!isS(c5)) {
+              this.fail("disallowed character in tag name.");
+            }
+            this.state = S_ATTRIB;
+        }
+      }
+      sOpenTagSlash() {
+        if (this.getCode() === GREATER) {
+          this.openSelfClosingTag();
+        } else {
+          this.fail("forward-slash in opening tag not followed by >.");
+          this.state = S_ATTRIB;
+        }
+      }
+      sAttrib() {
+        const c5 = this.skipSpaces();
+        if (c5 === EOC) {
+          return;
+        }
+        if (isNameStartChar(c5)) {
+          this.unget();
+          this.state = S_ATTRIB_NAME;
+        } else if (c5 === GREATER) {
+          this.openTag();
+        } else if (c5 === FORWARD_SLASH) {
+          this.state = S_OPEN_TAG_SLASH;
+        } else {
+          this.fail("disallowed character in attribute name.");
+        }
+      }
+      sAttribName() {
+        const c5 = this.captureNameChars();
+        if (c5 === EQUAL) {
+          this.state = S_ATTRIB_VALUE;
+        } else if (isS(c5)) {
+          this.state = S_ATTRIB_NAME_SAW_WHITE;
+        } else if (c5 === GREATER) {
+          this.fail("attribute without value.");
+          this.pushAttrib(this.name, this.name);
+          this.name = this.text = "";
+          this.openTag();
+        } else if (c5 !== EOC) {
+          this.fail("disallowed character in attribute name.");
+        }
+      }
+      sAttribNameSawWhite() {
+        const c5 = this.skipSpaces();
+        switch (c5) {
+          case EOC:
+            return;
+          case EQUAL:
+            this.state = S_ATTRIB_VALUE;
+            break;
+          default:
+            this.fail("attribute without value.");
+            this.text = "";
+            this.name = "";
+            if (c5 === GREATER) {
+              this.openTag();
+            } else if (isNameStartChar(c5)) {
+              this.unget();
+              this.state = S_ATTRIB_NAME;
+            } else {
+              this.fail("disallowed character in attribute name.");
+              this.state = S_ATTRIB;
+            }
+        }
+      }
+      sAttribValue() {
+        const c5 = this.getCodeNorm();
+        if (isQuote(c5)) {
+          this.q = c5;
+          this.state = S_ATTRIB_VALUE_QUOTED;
+        } else if (!isS(c5)) {
+          this.fail("unquoted attribute value.");
+          this.state = S_ATTRIB_VALUE_UNQUOTED;
+          this.unget();
+        }
+      }
+      sAttribValueQuoted() {
+        const { q: q3, chunk } = this;
+        let { i: start } = this;
+        while (true) {
+          switch (this.getCode()) {
+            case q3:
+              this.pushAttrib(this.name, this.text + chunk.slice(start, this.prevI));
+              this.name = this.text = "";
+              this.q = null;
+              this.state = S_ATTRIB_VALUE_CLOSED;
+              return;
+            case AMP:
+              this.text += chunk.slice(start, this.prevI);
+              this.state = S_ENTITY;
+              this.entityReturnState = S_ATTRIB_VALUE_QUOTED;
+              return;
+            case NL:
+            case NL_LIKE:
+            case TAB:
+              this.text += `${chunk.slice(start, this.prevI)} `;
+              start = this.i;
+              break;
+            case LESS:
+              this.text += chunk.slice(start, this.prevI);
+              this.fail("disallowed character.");
+              return;
+            case EOC:
+              this.text += chunk.slice(start);
+              return;
+            default:
+          }
+        }
+      }
+      sAttribValueClosed() {
+        const c5 = this.getCodeNorm();
+        if (isS(c5)) {
+          this.state = S_ATTRIB;
+        } else if (c5 === GREATER) {
+          this.openTag();
+        } else if (c5 === FORWARD_SLASH) {
+          this.state = S_OPEN_TAG_SLASH;
+        } else if (isNameStartChar(c5)) {
+          this.fail("no whitespace between attributes.");
+          this.unget();
+          this.state = S_ATTRIB_NAME;
+        } else {
+          this.fail("disallowed character in attribute name.");
+        }
+      }
+      sAttribValueUnquoted() {
+        const c5 = this.captureTo(ATTRIB_VALUE_UNQUOTED_TERMINATOR);
+        switch (c5) {
+          case AMP:
+            this.state = S_ENTITY;
+            this.entityReturnState = S_ATTRIB_VALUE_UNQUOTED;
+            break;
+          case LESS:
+            this.fail("disallowed character.");
+            break;
+          case EOC:
+            break;
+          default:
+            if (this.text.includes("]]>")) {
+              this.fail('the string "]]>" is disallowed in char data.');
+            }
+            this.pushAttrib(this.name, this.text);
+            this.name = this.text = "";
+            if (c5 === GREATER) {
+              this.openTag();
+            } else {
+              this.state = S_ATTRIB;
+            }
+        }
+      }
+      sCloseTag() {
+        const c5 = this.captureNameChars();
+        if (c5 === GREATER) {
+          this.closeTag();
+        } else if (isS(c5)) {
+          this.state = S_CLOSE_TAG_SAW_WHITE;
+        } else if (c5 !== EOC) {
+          this.fail("disallowed character in closing tag.");
+        }
+      }
+      sCloseTagSawWhite() {
+        switch (this.skipSpaces()) {
+          case GREATER:
+            this.closeTag();
+            break;
+          case EOC:
+            break;
+          default:
+            this.fail("disallowed character in closing tag.");
+        }
+      }
+      // END OF STATE ENGINE METHODS
+      handleTextInRoot() {
+        let { i: start, forbiddenState } = this;
+        const { chunk, textHandler: handler } = this;
+        scanLoop:
+          while (true) {
+            switch (this.getCode()) {
+              case LESS: {
+                this.state = S_OPEN_WAKA;
+                if (handler !== void 0) {
+                  const { text } = this;
+                  const slice = chunk.slice(start, this.prevI);
+                  if (text.length !== 0) {
+                    handler(text + slice);
+                    this.text = "";
+                  } else if (slice.length !== 0) {
+                    handler(slice);
+                  }
+                }
+                forbiddenState = FORBIDDEN_START;
+                break scanLoop;
+              }
+              case AMP:
+                this.state = S_ENTITY;
+                this.entityReturnState = S_TEXT;
+                if (handler !== void 0) {
+                  this.text += chunk.slice(start, this.prevI);
+                }
+                forbiddenState = FORBIDDEN_START;
+                break scanLoop;
+              case CLOSE_BRACKET2:
+                switch (forbiddenState) {
+                  case FORBIDDEN_START:
+                    forbiddenState = FORBIDDEN_BRACKET;
+                    break;
+                  case FORBIDDEN_BRACKET:
+                    forbiddenState = FORBIDDEN_BRACKET_BRACKET;
+                    break;
+                  case FORBIDDEN_BRACKET_BRACKET:
+                    break;
+                  default:
+                    throw new Error("impossible state");
+                }
+                break;
+              case GREATER:
+                if (forbiddenState === FORBIDDEN_BRACKET_BRACKET) {
+                  this.fail('the string "]]>" is disallowed in char data.');
+                }
+                forbiddenState = FORBIDDEN_START;
+                break;
+              case NL_LIKE:
+                if (handler !== void 0) {
+                  this.text += `${chunk.slice(start, this.prevI)}
+`;
+                }
+                start = this.i;
+                forbiddenState = FORBIDDEN_START;
+                break;
+              case EOC:
+                if (handler !== void 0) {
+                  this.text += chunk.slice(start);
+                }
+                break scanLoop;
+              default:
+                forbiddenState = FORBIDDEN_START;
+            }
+          }
+        this.forbiddenState = forbiddenState;
+      }
+      handleTextOutsideRoot() {
+        let { i: start } = this;
+        const { chunk, textHandler: handler } = this;
+        let nonSpace = false;
+        outRootLoop:
+          while (true) {
+            const code = this.getCode();
+            switch (code) {
+              case LESS: {
+                this.state = S_OPEN_WAKA;
+                if (handler !== void 0) {
+                  const { text } = this;
+                  const slice = chunk.slice(start, this.prevI);
+                  if (text.length !== 0) {
+                    handler(text + slice);
+                    this.text = "";
+                  } else if (slice.length !== 0) {
+                    handler(slice);
+                  }
+                }
+                break outRootLoop;
+              }
+              case AMP:
+                this.state = S_ENTITY;
+                this.entityReturnState = S_TEXT;
+                if (handler !== void 0) {
+                  this.text += chunk.slice(start, this.prevI);
+                }
+                nonSpace = true;
+                break outRootLoop;
+              case NL_LIKE:
+                if (handler !== void 0) {
+                  this.text += `${chunk.slice(start, this.prevI)}
+`;
+                }
+                start = this.i;
+                break;
+              case EOC:
+                if (handler !== void 0) {
+                  this.text += chunk.slice(start);
+                }
+                break outRootLoop;
+              default:
+                if (!isS(code)) {
+                  nonSpace = true;
+                }
+            }
+          }
+        if (!nonSpace) {
+          return;
+        }
+        if (!this.sawRoot && !this.reportedTextBeforeRoot) {
+          this.fail("text data outside of root node.");
+          this.reportedTextBeforeRoot = true;
+        }
+        if (this.closedRoot && !this.reportedTextAfterRoot) {
+          this.fail("text data outside of root node.");
+          this.reportedTextAfterRoot = true;
+        }
+      }
+      pushAttribNS(name, value) {
+        var _a4;
+        const { prefix, local } = this.qname(name);
+        const attr = { name, prefix, local, value };
+        this.attribList.push(attr);
+        (_a4 = this.attributeHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, attr);
+        if (prefix === "xmlns") {
+          const trimmed = value.trim();
+          if (this.currentXMLVersion === "1.0" && trimmed === "") {
+            this.fail("invalid attempt to undefine prefix in XML 1.0");
+          }
+          this.topNS[local] = trimmed;
+          nsPairCheck(this, local, trimmed);
+        } else if (name === "xmlns") {
+          const trimmed = value.trim();
+          this.topNS[""] = trimmed;
+          nsPairCheck(this, "", trimmed);
+        }
+      }
+      pushAttribPlain(name, value) {
+        var _a4;
+        const attr = { name, value };
+        this.attribList.push(attr);
+        (_a4 = this.attributeHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, attr);
+      }
+      /**
+       * End parsing. This performs final well-formedness checks and resets the
+       * parser to a clean state.
+       *
+       * @returns this
+       */
+      end() {
+        var _a4, _b;
+        if (!this.sawRoot) {
+          this.fail("document must contain a root element.");
+        }
+        const { tags } = this;
+        while (tags.length > 0) {
+          const tag = tags.pop();
+          this.fail(`unclosed tag: ${tag.name}`);
+        }
+        if (this.state !== S_BEGIN && this.state !== S_TEXT) {
+          this.fail("unexpected end.");
+        }
+        const { text } = this;
+        if (text.length !== 0) {
+          (_a4 = this.textHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, text);
+          this.text = "";
+        }
+        this._closed = true;
+        (_b = this.endHandler) === null || _b === void 0 ? void 0 : _b.call(this);
+        this._init();
+        return this;
+      }
+      /**
+       * Resolve a namespace prefix.
+       *
+       * @param prefix The prefix to resolve.
+       *
+       * @returns The namespace URI or ``undefined`` if the prefix is not defined.
+       */
+      resolve(prefix) {
+        var _a4, _b;
+        let uri = this.topNS[prefix];
+        if (uri !== void 0) {
+          return uri;
+        }
+        const { tags } = this;
+        for (let index = tags.length - 1; index >= 0; index--) {
+          uri = tags[index].ns[prefix];
+          if (uri !== void 0) {
+            return uri;
+          }
+        }
+        uri = this.ns[prefix];
+        if (uri !== void 0) {
+          return uri;
+        }
+        return (_b = (_a4 = this.opt).resolvePrefix) === null || _b === void 0 ? void 0 : _b.call(_a4, prefix);
+      }
+      /**
+       * Parse a qname into its prefix and local name parts.
+       *
+       * @param name The name to parse
+       *
+       * @returns
+       */
+      qname(name) {
+        const colon = name.indexOf(":");
+        if (colon === -1) {
+          return { prefix: "", local: name };
+        }
+        const local = name.slice(colon + 1);
+        const prefix = name.slice(0, colon);
+        if (prefix === "" || local === "" || local.includes(":")) {
+          this.fail(`malformed name: ${name}.`);
+        }
+        return { prefix, local };
+      }
+      processAttribsNS() {
+        var _a4;
+        const { attribList } = this;
+        const tag = this.tag;
+        {
+          const { prefix, local } = this.qname(tag.name);
+          tag.prefix = prefix;
+          tag.local = local;
+          const uri = tag.uri = (_a4 = this.resolve(prefix)) !== null && _a4 !== void 0 ? _a4 : "";
+          if (prefix !== "") {
+            if (prefix === "xmlns") {
+              this.fail('tags may not have "xmlns" as prefix.');
+            }
+            if (uri === "") {
+              this.fail(`unbound namespace prefix: ${JSON.stringify(prefix)}.`);
+              tag.uri = prefix;
+            }
+          }
+        }
+        if (attribList.length === 0) {
+          return;
+        }
+        const { attributes } = tag;
+        const seen = /* @__PURE__ */ new Set();
+        for (const attr of attribList) {
+          const { name, prefix, local } = attr;
+          let uri;
+          let eqname;
+          if (prefix === "") {
+            uri = name === "xmlns" ? XMLNS_NAMESPACE : "";
+            eqname = name;
+          } else {
+            uri = this.resolve(prefix);
+            if (uri === void 0) {
+              this.fail(`unbound namespace prefix: ${JSON.stringify(prefix)}.`);
+              uri = prefix;
+            }
+            eqname = `{${uri}}${local}`;
+          }
+          if (seen.has(eqname)) {
+            this.fail(`duplicate attribute: ${eqname}.`);
+          }
+          seen.add(eqname);
+          attr.uri = uri;
+          attributes[name] = attr;
+        }
+        this.attribList = [];
+      }
+      processAttribsPlain() {
+        const { attribList } = this;
+        const attributes = this.tag.attributes;
+        for (const { name, value } of attribList) {
+          if (attributes[name] !== void 0) {
+            this.fail(`duplicate attribute: ${name}.`);
+          }
+          attributes[name] = value;
+        }
+        this.attribList = [];
+      }
+      /**
+       * Handle a complete open tag. This parser code calls this once it has seen
+       * the whole tag. This method checks for well-formeness and then emits
+       * ``onopentag``.
+       */
+      openTag() {
+        var _a4;
+        this.processAttribs();
+        const { tags } = this;
+        const tag = this.tag;
+        tag.isSelfClosing = false;
+        (_a4 = this.openTagHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, tag);
+        tags.push(tag);
+        this.state = S_TEXT;
+        this.name = "";
+      }
+      /**
+       * Handle a complete self-closing tag. This parser code calls this once it has
+       * seen the whole tag. This method checks for well-formeness and then emits
+       * ``onopentag`` and ``onclosetag``.
+       */
+      openSelfClosingTag() {
+        var _a4, _b, _c5;
+        this.processAttribs();
+        const { tags } = this;
+        const tag = this.tag;
+        tag.isSelfClosing = true;
+        (_a4 = this.openTagHandler) === null || _a4 === void 0 ? void 0 : _a4.call(this, tag);
+        (_b = this.closeTagHandler) === null || _b === void 0 ? void 0 : _b.call(this, tag);
+        const top = this.tag = (_c5 = tags[tags.length - 1]) !== null && _c5 !== void 0 ? _c5 : null;
+        if (top === null) {
+          this.closedRoot = true;
+        }
+        this.state = S_TEXT;
+        this.name = "";
+      }
+      /**
+       * Handle a complete close tag. This parser code calls this once it has seen
+       * the whole tag. This method checks for well-formeness and then emits
+       * ``onclosetag``.
+       */
+      closeTag() {
+        const { tags, name } = this;
+        this.state = S_TEXT;
+        this.name = "";
+        if (name === "") {
+          this.fail("weird empty close tag.");
+          this.text += "</>";
+          return;
+        }
+        const handler = this.closeTagHandler;
+        let l3 = tags.length;
+        while (l3-- > 0) {
+          const tag = this.tag = tags.pop();
+          this.topNS = tag.ns;
+          handler === null || handler === void 0 ? void 0 : handler(tag);
+          if (tag.name === name) {
+            break;
+          }
+          this.fail("unexpected close tag.");
+        }
+        if (l3 === 0) {
+          this.closedRoot = true;
+        } else if (l3 < 0) {
+          this.fail(`unmatched closing tag: ${name}.`);
+          this.text += `</${name}>`;
+        }
+      }
+      /**
+       * Resolves an entity. Makes any necessary well-formedness checks.
+       *
+       * @param entity The entity to resolve.
+       *
+       * @returns The parsed entity.
+       */
+      parseEntity(entity) {
+        if (entity[0] !== "#") {
+          const defined = this.ENTITIES[entity];
+          if (defined !== void 0) {
+            return defined;
+          }
+          this.fail(this.isName(entity) ? "undefined entity." : "disallowed character in entity name.");
+          return `&${entity};`;
+        }
+        let num = NaN;
+        if (entity[1] === "x" && /^#x[0-9a-f]+$/i.test(entity)) {
+          num = parseInt(entity.slice(2), 16);
+        } else if (/^#[0-9]+$/.test(entity)) {
+          num = parseInt(entity.slice(1), 10);
+        }
+        if (!this.isChar(num)) {
+          this.fail("malformed character entity.");
+          return `&${entity};`;
+        }
+        return String.fromCodePoint(num);
+      }
+    };
+    exports2.SaxesParser = SaxesParser2;
+  }
+});
+
 // ../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/lib/constants.js
 var require_constants = __commonJS({
   "../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/lib/constants.js"(exports2, module2) {
@@ -17138,7 +19046,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes5, createHash: createHash22 } = require("crypto");
+    var { randomBytes: randomBytes5, createHash: createHash23 } = require("crypto");
     var { Duplex, Readable: Readable9 } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -17806,7 +19714,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest3 = createHash22("sha1").update(key + GUID).digest("base64");
+        const digest3 = createHash23("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest3) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -18087,7 +19995,7 @@ var require_stream = __commonJS({
       };
       duplex._final = function(callback) {
         if (ws.readyState === ws.CONNECTING) {
-          ws.once("open", function open3() {
+          ws.once("open", function open4() {
             duplex._final(callback);
           });
           return;
@@ -18108,7 +20016,7 @@ var require_stream = __commonJS({
       };
       duplex._write = function(chunk, encoding, callback) {
         if (ws.readyState === ws.CONNECTING) {
-          ws.once("open", function open3() {
+          ws.once("open", function open4() {
             duplex._write(chunk, encoding, callback);
           });
           return;
@@ -18175,7 +20083,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash: createHash22 } = require("crypto");
+    var { createHash: createHash23 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -18482,7 +20390,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest3 = createHash22("sha1").update(key + GUID).digest("base64");
+        const digest3 = createHash23("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -22424,10 +24332,10 @@ var init_getSSOTokenFilepath = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFromFile.js
-var import_promises21, tokenIntercept, getSSOTokenFromFile;
+var import_promises22, tokenIntercept, getSSOTokenFromFile;
 var init_getSSOTokenFromFile = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFromFile.js"() {
-    import_promises21 = require("node:fs/promises");
+    import_promises22 = require("node:fs/promises");
     init_getSSOTokenFilepath();
     tokenIntercept = {};
     getSSOTokenFromFile = async (id2) => {
@@ -22435,7 +24343,7 @@ var init_getSSOTokenFromFile = __esm({
         return tokenIntercept[id2];
       }
       const ssoTokenFilepath = getSSOTokenFilepath(id2);
-      const ssoTokenText = await (0, import_promises21.readFile)(ssoTokenFilepath, "utf8");
+      const ssoTokenText = await (0, import_promises22.readFile)(ssoTokenFilepath, "utf8");
       return JSON.parse(ssoTokenText);
     };
   }
@@ -22551,18 +24459,18 @@ var init_parseIni = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/readFile.js
-var import_promises22, filePromises, fileIntercept, readFile14;
+var import_promises23, filePromises, fileIntercept, readFile16;
 var init_readFile = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/readFile.js"() {
-    import_promises22 = require("node:fs/promises");
+    import_promises23 = require("node:fs/promises");
     filePromises = {};
     fileIntercept = {};
-    readFile14 = (path, options) => {
+    readFile16 = (path, options) => {
       if (fileIntercept[path] !== void 0) {
         return fileIntercept[path];
       }
       if (!filePromises[path] || options?.ignoreCache) {
-        filePromises[path] = (0, import_promises22.readFile)(path, "utf8");
+        filePromises[path] = (0, import_promises23.readFile)(path, "utf8");
       }
       return filePromises[path];
     };
@@ -22595,10 +24503,10 @@ var init_loadSharedConfigFiles = __esm({
         resolvedConfigFilepath = (0, import_node_path29.join)(homeDir, configFilepath.slice(2));
       }
       const parsedFiles = await Promise.all([
-        readFile14(resolvedConfigFilepath, {
+        readFile16(resolvedConfigFilepath, {
           ignoreCache: init.ignoreCache
         }).then(parseIni).then(getConfigData).catch(swallowError),
-        readFile14(resolvedFilepath, {
+        readFile16(resolvedFilepath, {
           ignoreCache: init.ignoreCache
         }).then(parseIni).catch(swallowError)
       ]);
@@ -22629,7 +24537,7 @@ var init_loadSsoSessionData = __esm({
     init_parseIni();
     init_readFile();
     swallowError2 = () => ({});
-    loadSsoSessionData = async (init = {}) => readFile14(init.configFilepath ?? getConfigFilepath()).then(parseIni).then(getSsoSessionData).catch(swallowError2);
+    loadSsoSessionData = async (init = {}) => readFile16(init.configFilepath ?? getConfigFilepath()).then(parseIni).then(getSsoSessionData).catch(swallowError2);
   }
 });
 
@@ -23274,7 +25182,7 @@ __export(config_exports, {
   nodeFipsConfigSelectors: () => nodeFipsConfigSelectors,
   numberSelector: () => numberSelector,
   parseKnownFiles: () => parseKnownFiles,
-  readFile: () => readFile14,
+  readFile: () => readFile16,
   resolveCustomEndpointsConfig: () => resolveCustomEndpointsConfig,
   resolveDefaultsModeConfig: () => resolveDefaultsModeConfig,
   resolveEndpointsConfig: () => resolveEndpointsConfig,
@@ -43441,7 +45349,7 @@ var require_dist_cjs11 = __commonJS({
     var { setCredentialFeature: setCredentialFeature2 } = (init_client3(), __toCommonJS(client_exports2));
     var { CredentialsProviderError: CredentialsProviderError2, parseKnownFiles: parseKnownFiles2, getProfileName: getProfileName2 } = (init_config2(), __toCommonJS(config_exports));
     var { HttpRequest: HttpRequest2 } = (init_protocols(), __toCommonJS(protocols_exports));
-    var { createHash: createHash22, createPrivateKey, createPublicKey, sign: sign3 } = require("node:crypto");
+    var { createHash: createHash23, createPrivateKey, createPublicKey, sign: sign3 } = require("node:crypto");
     var { promises } = require("node:fs");
     var { homedir: homedir6 } = require("node:os");
     var { dirname: dirname17, join: join45 } = require("node:path");
@@ -43610,7 +45518,7 @@ var require_dist_cjs11 = __commonJS({
       getTokenFilePath() {
         const directory = process.env.AWS_LOGIN_CACHE_DIRECTORY ?? join45(homedir6(), ".aws", "login", "cache");
         const loginSessionBytes = Buffer.from(this.loginSession, "utf8");
-        const loginSessionSha256 = createHash22("sha256").update(loginSessionBytes).digest("hex");
+        const loginSessionSha256 = createHash23("sha256").update(loginSessionBytes).digest("hex");
         return join45(directory, `${loginSessionSha256}.json`);
       }
       derToRawSignature(derSignature) {
@@ -54382,7 +56290,7 @@ var import_node_crypto35 = require("node:crypto");
 var import_node_path46 = require("node:path");
 var import_node_url5 = require("node:url");
 var import_node_fs17 = require("node:fs");
-var import_promises40 = require("node:fs/promises");
+var import_promises41 = require("node:fs/promises");
 
 // ../../node_modules/.pnpm/@hono+node-server@1.19.14_hono@4.12.27/node_modules/@hono/node-server/dist/index.mjs
 var import_http = require("http");
@@ -59093,7 +61001,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-CGTXLVQX.js
+// ../../packages/shared-types/dist/chunk-T6TANLZN.js
 function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version2 = normalizeTokenPart(options.version ?? "v1", "version");
@@ -59395,6 +61303,8 @@ var ResourceSchema = z.object({
 var ProjectAssetMetadataSchema = z.object({
   width: z.number().int().nonnegative().optional(),
   height: z.number().int().nonnegative().optional(),
+  /** Display-matrix rotation normalized into [0, 360). */
+  rotationDegrees: z.number().finite().min(0).lt(360).optional(),
   durationMs: z.number().int().nonnegative().optional(),
   bytes: z.number().int().nonnegative().optional(),
   /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
@@ -59405,6 +61315,9 @@ var ProjectAssetMetadataSchema = z.object({
   /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
   hasAudio: z.boolean().optional(),
   audioCodec: z.string().trim().min(1).optional(),
+  sampleRate: z.number().int().positive().optional(),
+  channelCount: z.number().int().positive().optional(),
+  channelLayout: z.string().trim().min(1).optional(),
   originalName: z.string().trim().min(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
@@ -59523,6 +61436,7 @@ var ResolvedAssetSchema = z.object({
 var AssetMetadataSchema = z.object({
   width: z.number().int().optional(),
   height: z.number().int().optional(),
+  rotationDegrees: z.number().finite().min(0).lt(360).optional(),
   durationMs: z.number().int().optional(),
   bytes: z.number().int().optional(),
   /** @deprecated Historical row payload; never emit from new publication. */
@@ -59532,6 +61446,9 @@ var AssetMetadataSchema = z.object({
   videoCodec: z.string().optional(),
   hasAudio: z.boolean().optional(),
   audioCodec: z.string().optional(),
+  sampleRate: z.number().int().positive().optional(),
+  channelCount: z.number().int().positive().optional(),
+  channelLayout: z.string().optional(),
   contentHash: z.string().optional(),
   localBlobKey: z.string().optional(),
   originalName: z.string().optional(),
@@ -59576,7 +61493,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-Y7VKLK6W.js
+// ../../packages/shared-types/dist/chunk-3E3S6SZN.js
 var NONE = { network: false, store: false, assets: false, hostTools: [] };
 var BY_KIND = {
   // Talks to a vendor: needs the socket, the credential, and somewhere to put what comes back.
@@ -78861,7 +80778,7 @@ registerAssetMetadataKind({
   schema: MediaRenderLineageMetadataSchema
 });
 var PROJECT_ASSET_RENDER_CANVAS_ID = "__project-asset-renders__";
-function renderableTimelineDsl(state2) {
+function canonicalTimelineRenderDsl(state2) {
   if (!state2 || typeof state2 !== "object" || Array.isArray(state2)) return null;
   const timelineDsl = state2;
   const tracks = Array.isArray(timelineDsl.tracks) ? timelineDsl.tracks : [];
@@ -78886,9 +80803,14 @@ function renderableTimelineDsl(state2) {
 }
 function requestTimelineRender(doc, input) {
   const timeline = readProjectTimeline(doc, input.timelineId);
-  if (!timeline) return { ok: false, error: `Timeline ${input.timelineId} not found` };
+  if (!timeline)
+    return { ok: false, error: `Timeline ${input.timelineId} not found` };
   const target = resolveTimelineRenderTarget(doc, input.timelineId);
-  if (!target) return { ok: false, error: `Timeline ${input.timelineId} has no render target` };
+  if (!target)
+    return {
+      ok: false,
+      error: `Timeline ${input.timelineId} has no render target`
+    };
   if (target.kind === "canvas") {
     const result = new Canvas(doc, () => {
     }, target.canvasId).executeRender(
@@ -78898,7 +80820,11 @@ function requestTimelineRender(doc, input) {
     if (result.error) return { ok: false, error: result.error };
     const nodes22 = doc.getMap("nodes");
     const raw2 = nodes22.get(result.renderNodeId);
-    if (!raw2) return { ok: false, error: `Render node ${result.renderNodeId} was not created` };
+    if (!raw2)
+      return {
+        ok: false,
+        error: `Render node ${result.renderNodeId} was not created`
+      };
     nodes22.set(result.renderNodeId, {
       ...raw2,
       data: {
@@ -78916,9 +80842,12 @@ function requestTimelineRender(doc, input) {
       position: result.position
     };
   }
-  const timelineDsl = renderableTimelineDsl(timeline.state);
+  const timelineDsl = canonicalTimelineRenderDsl(timeline.state);
   if (!timelineDsl) {
-    return { ok: false, error: `Timeline ${input.timelineId} has no items \u2014 nothing to render.` };
+    return {
+      ok: false,
+      error: `Timeline ${input.timelineId} has no items \u2014 nothing to render.`
+    };
   }
   const renderNodeId = input.generateId();
   const nodes5 = doc.getMap("nodes");
@@ -83766,11 +85695,11 @@ function isHostStartedBy(value) {
 }
 
 // ../../apps/local-api/dist/app.js
-var import_promises24 = require("node:fs/promises");
+var import_promises25 = require("node:fs/promises");
 var import_node_crypto24 = require("node:crypto");
 var import_node_child_process6 = require("node:child_process");
 var import_node_path31 = require("node:path");
-var import_node_util6 = require("node:util");
+var import_node_util7 = require("node:util");
 
 // ../../node_modules/.pnpm/hono@4.12.27/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
@@ -87576,7 +89505,7 @@ function createProviderExecutionHandoffStore(dataDir2) {
 
 // ../../apps/local-api/dist/local-project-assets.js
 var import_node_crypto8 = require("node:crypto");
-var import_promises9 = require("node:fs/promises");
+var import_promises10 = require("node:fs/promises");
 
 // ../../apps/local-api/dist/local-asset-paths.js
 var import_promises5 = require("node:fs/promises");
@@ -87698,6 +89627,7 @@ var EMPTY_METADATA_DB = {
   sessionMessages: []
 };
 var METADATA_MIGRATION_ID = "metadata-sqlite-v1";
+var LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID = "legacy-personal-global-assets-v1";
 var require2 = (0, import_node_module2.createRequire)(__clash_import_meta_url);
 var nodeRequire2 = (0, import_node_module2.createRequire)(__clash_import_meta_url);
 function sqlitePath(dataDir2) {
@@ -88205,14 +90135,14 @@ function hasRows(db) {
   `).get();
   return rowNumber(row ?? {}, "count") > 0;
 }
-function hasMigrationMarker(db) {
-  return Boolean(db.prepare("SELECT id FROM local_migration WHERE id = ?").get(METADATA_MIGRATION_ID));
+function hasMigrationMarker(db, id2 = METADATA_MIGRATION_ID) {
+  return Boolean(db.prepare("SELECT id FROM local_migration WHERE id = ?").get(id2));
 }
-function markMigration(db, dataDir2, sourceSha256) {
+function markMigration(db, dataDir2, sourceSha256, id2 = METADATA_MIGRATION_ID) {
   db.prepare(`
     INSERT OR REPLACE INTO local_migration (id, completed_at, source_path, source_sha256)
     VALUES (?, ?, ?, ?)
-  `).run(METADATA_MIGRATION_ID, Math.floor(Date.now() / 1e3), sqlitePath(dataDir2), sourceSha256);
+  `).run(id2, Math.floor(Date.now() / 1e3), sqlitePath(dataDir2), sourceSha256);
 }
 function createLocalMetadataStore(dataDir2) {
   const path = sqlitePath(dataDir2);
@@ -88558,6 +90488,59 @@ function createLocalMetadataStore(dataDir2) {
         throw error53;
       }
     });
+  }
+  async function createLegacyPersonalGlobalAssets(rawEntries) {
+    const entriesById = /* @__PURE__ */ new Map();
+    for (const rawEntry of rawEntries) {
+      const entry = GlobalAssetEntrySchema.parse(rawEntry);
+      if (entry.lifecycle.state !== "active") {
+        throw new Error("A migrated Global Asset must be active.");
+      }
+      const duplicate = entriesById.get(entry.id);
+      if (duplicate && !sameGlobalAssetEntry(duplicate, entry)) {
+        throw new Error(`Legacy personal Global Asset ${entry.id} identifies different facts.`);
+      }
+      entriesById.set(entry.id, entry);
+    }
+    const entries = [...entriesById.values()].sort((left, right) => left.id.localeCompare(right.id));
+    await withDb((db) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        if (hasMigrationMarker(db, LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID)) {
+          db.exec("COMMIT");
+          return;
+        }
+        for (const entry of entries) {
+          const existingRow = globalAssetRow(db, "personal", entry.id);
+          if (!existingRow)
+            continue;
+          const existing = globalAssetEntryFromRow(existingRow);
+          if (!sameGlobalAssetEntry(existing, entry)) {
+            throw new Error(`Global Asset ${entry.id} already exists with different facts in library personal.`);
+          }
+        }
+        const now = Date.now();
+        const insert = db.prepare(`
+          INSERT INTO global_asset_entry (
+            library_id, id, kind, resource_id, lifecycle_state,
+            name, metadata_json, provenance_json, created_at, updated_at
+          ) VALUES ('personal', ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+        `);
+        for (const entry of entries) {
+          if (globalAssetRow(db, "personal", entry.id))
+            continue;
+          insert.run(entry.id, entry.kind, entry.resourceId, entry.name ?? null, JSON.stringify(entry.metadata), jsonOrNull(entry.provenance), now, now);
+        }
+        markMigration(db, dataDir2, "", LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID);
+        db.exec("COMMIT");
+      } catch (error53) {
+        db.exec("ROLLBACK");
+        throw error53;
+      }
+    });
+  }
+  async function legacyPersonalGlobalAssetMigrationCompleted() {
+    return withDb((db) => hasMigrationMarker(db, LEGACY_PERSONAL_GLOBAL_ASSET_MIGRATION_ID));
   }
   async function trashGlobalAsset(libraryIdInput, input) {
     const libraryId = normalizedGlobalIdentity(libraryIdInput, "libraryId");
@@ -88941,6 +90924,8 @@ function createLocalMetadataStore(dataDir2) {
     readGlobalAsset,
     listGlobalAssets,
     createGlobalAsset,
+    createLegacyPersonalGlobalAssets,
+    legacyPersonalGlobalAssetMigrationCompleted,
     trashGlobalAsset,
     restoreGlobalAsset,
     purgeGlobalAsset,
@@ -88982,12 +90967,45 @@ function openDatabase2(path) {
       byte_length INTEGER NOT NULL,
       content_type TEXT,
       storage_key TEXT NOT NULL,
+      facts_verified INTEGER NOT NULL DEFAULT 0 CHECK (facts_verified IN (0, 1)),
       created_at INTEGER NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS local_resources_digest
       ON local_resources (digest_sha256);
+    CREATE TABLE IF NOT EXISTS local_resource_staging (
+      resource_id TEXT PRIMARY KEY,
+      digest_sha256 TEXT NOT NULL,
+      byte_length INTEGER NOT NULL,
+      storage_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
   `);
+  const resourcesTable = database.prepare(`
+      SELECT sql
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'local_resources'
+    `).get();
+  if (typeof resourcesTable?.sql !== "string" || !/\bfacts_verified\b/i.test(resourcesTable.sql)) {
+    database.exec(`
+      ALTER TABLE local_resources
+        ADD COLUMN facts_verified INTEGER NOT NULL DEFAULT 0
+        CHECK (facts_verified IN (0, 1));
+    `);
+  }
   return database;
+}
+function parseStagingRow(row) {
+  const resourceId = row.resource_id;
+  const digest3 = row.digest_sha256;
+  const byteLength = row.byte_length;
+  const storageKey = row.storage_key;
+  if (typeof resourceId !== "string" || typeof digest3 !== "string" || !/^[a-f0-9]{64}$/.test(digest3) || typeof byteLength !== "number" || !Number.isSafeInteger(byteLength) || byteLength < 0 || typeof storageKey !== "string") {
+    throw new Error("Local Resource staging row is corrupt.");
+  }
+  if (resourceId !== resourceIdForSha256(digest3)) {
+    throw new Error(`Local Resource staging receipt ${resourceId} has a mismatched digest identity.`);
+  }
+  return { resourceId, digest: digest3, byteLength, storageKey };
 }
 function parseRow(row) {
   const resourceId = row.resource_id;
@@ -88996,7 +91014,8 @@ function parseRow(row) {
   const byteLength = row.byte_length;
   const contentType = row.content_type;
   const storageKey = row.storage_key;
-  if (typeof resourceId !== "string" || !kind.success || typeof digest3 !== "string" || !/^[a-f0-9]{64}$/.test(digest3) || typeof byteLength !== "number" || !Number.isSafeInteger(byteLength) || byteLength < 0 || contentType !== null && typeof contentType !== "string" || typeof storageKey !== "string") {
+  const factsVerified = row.facts_verified;
+  if (typeof resourceId !== "string" || !kind.success || typeof digest3 !== "string" || !/^[a-f0-9]{64}$/.test(digest3) || typeof byteLength !== "number" || !Number.isSafeInteger(byteLength) || byteLength < 0 || contentType !== null && typeof contentType !== "string" || typeof storageKey !== "string" || factsVerified !== 0 && factsVerified !== 1) {
     throw new Error("Local Resource registry row is corrupt.");
   }
   if (resourceId !== resourceIdForSha256(digest3)) {
@@ -89008,7 +91027,8 @@ function parseRow(row) {
     digest: digest3,
     byteLength,
     ...typeof contentType === "string" && contentType ? { contentType } : {},
-    storageKey
+    storageKey,
+    factsVerified: factsVerified === 1
   };
 }
 function resourceFromRow(row) {
@@ -89065,11 +91085,21 @@ function createLocalResourceStore(options) {
     return withDatabase((database) => {
       const row = database.prepare(`
           SELECT resource_id, kind, digest_sha256, byte_length,
-                 content_type, storage_key
+                 content_type, storage_key, facts_verified
           FROM local_resources
           WHERE resource_id = ?
         `).get(resourceId);
       return row ? parseRow(row) : void 0;
+    });
+  }
+  async function stagingRowFor(resourceId) {
+    return withDatabase((database) => {
+      const row = database.prepare(`
+          SELECT resource_id, digest_sha256, byte_length, storage_key
+          FROM local_resource_staging
+          WHERE resource_id = ?
+        `).get(resourceId);
+      return row ? parseStagingRow(row) : void 0;
     });
   }
   async function projection(row) {
@@ -89097,23 +91127,55 @@ function createLocalResourceStore(options) {
     }
     return { resource: resourceFromRow(row), storageKey: row.storageKey, path };
   }
-  async function persist(intended, storageKey) {
+  async function stagingProjection(row) {
+    const path = await assetPathForRead(options.dataDir, row.storageKey, options.clashRoot);
+    await verifyBytes({ path, digest: row.digest, byteLength: row.byteLength });
+    return {
+      receipt: {
+        resourceId: row.resourceId,
+        digest: row.digest,
+        byteLength: row.byteLength
+      },
+      resourceId: row.resourceId,
+      digest: row.digest,
+      byteLength: row.byteLength,
+      storageKey: row.storageKey,
+      path
+    };
+  }
+  async function persist(intended, storageKey, factsVerified) {
     await withDatabase((database) => {
       database.prepare(`
           INSERT OR IGNORE INTO local_resources (
             resource_id, kind, digest_sha256, byte_length,
-            content_type, storage_key, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(intended.resourceId, intended.kind, intended.digest, intended.byteLength, intended.contentType ?? null, storageKey, Date.now());
+            content_type, storage_key, facts_verified, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(intended.resourceId, intended.kind, intended.digest, intended.byteLength, intended.contentType ?? null, storageKey, factsVerified ? 1 : 0, Date.now());
     });
-    const stored = await rowFor(intended.resourceId);
+    let stored = await rowFor(intended.resourceId);
     if (!stored) {
       throw new Error(`Local Resource ${intended.resourceId} was not indexed.`);
     }
-    if (!sameFacts(stored, intended)) {
+    if (factsVerified && !stored.factsVerified) {
+      await promoteVerifiedFacts(intended);
+      stored = await rowFor(intended.resourceId);
+      if (!stored) {
+        throw new Error(`Local Resource ${intended.resourceId} was not indexed.`);
+      }
+    }
+    if (!sameFacts(stored, intended) || factsVerified && !stored.factsVerified) {
       throw new Error(`Local Resource ${intended.resourceId} already exists with different immutable facts.`);
     }
     return projection(stored);
+  }
+  async function promoteVerifiedFacts(intended) {
+    await withDatabase((database) => {
+      database.prepare(`
+          UPDATE local_resources
+          SET kind = ?, content_type = ?, facts_verified = 1
+          WHERE resource_id = ? AND facts_verified = 0
+        `).run(intended.kind, intended.contentType ?? null, intended.resourceId);
+    });
   }
   async function verifyBytes(input) {
     const bytes = new Uint8Array(await (0, import_promises7.readFile)(input.path));
@@ -89124,26 +91186,117 @@ function createLocalResourceStore(options) {
       throw new Error("Local Resource digest does not match the claimed immutable facts.");
     }
   }
-  return {
-    async install(input) {
-      const kind = AssetKindSchema.parse(input.kind);
-      const digest3 = sha256(input.bytes);
-      const resourceId = resourceIdForSha256(digest3);
-      const contentType = normalizedContentType(input.contentType);
-      const intended = {
-        resourceId,
-        kind,
-        digest: digest3,
-        byteLength: input.bytes.byteLength,
-        ...contentType ? { contentType } : {}
-      };
-      const existing = await rowFor(resourceId);
-      if (existing) {
-        if (!sameFacts(existing, intended)) {
+  async function materializeStagedBytes(input) {
+    await (0, import_promises7.link)(input.sourcePath, input.targetPath).catch((error53) => {
+      if (error53.code !== "EEXIST")
+        throw error53;
+    });
+    try {
+      await verifyBytes({
+        path: input.targetPath,
+        digest: input.digest,
+        byteLength: input.byteLength
+      });
+    } catch {
+      const temporaryPath = `${input.targetPath}.repair-${(0, import_node_crypto6.randomUUID)()}`;
+      await (0, import_promises7.link)(input.sourcePath, temporaryPath);
+      try {
+        await (0, import_promises7.rename)(temporaryPath, input.targetPath);
+      } finally {
+        await (0, import_promises7.unlink)(temporaryPath).catch(() => void 0);
+      }
+    }
+    await (0, import_promises7.chmod)(input.targetPath, 292);
+    await verifyBytes({
+      path: input.targetPath,
+      digest: input.digest,
+      byteLength: input.byteLength
+    });
+  }
+  async function sealResource(input, factsVerified) {
+    const kind = AssetKindSchema.parse(input.kind);
+    const rawResourceId = input.receipt?.resourceId ?? input.resourceId;
+    if (typeof rawResourceId !== "string") {
+      throw new Error("Local Resource staging receipt is invalid.");
+    }
+    const requestedResourceId = rawResourceId.trim();
+    const existing = await rowFor(requestedResourceId);
+    const stagedRow = await stagingRowFor(requestedResourceId);
+    const receipt = input.receipt ?? (existing ? {
+      resourceId: existing.resourceId,
+      digest: existing.digest,
+      byteLength: existing.byteLength
+    } : stagedRow ? {
+      resourceId: stagedRow.resourceId,
+      digest: stagedRow.digest,
+      byteLength: stagedRow.byteLength
+    } : void 0);
+    if (!receipt) {
+      throw new Error(`Local Resource staging receipt ${requestedResourceId} is not available.`);
+    }
+    const resourceId = resourceIdForSha256(receipt.digest);
+    if (receipt.resourceId !== resourceId || receipt.resourceId !== requestedResourceId || !Number.isSafeInteger(receipt.byteLength) || receipt.byteLength < 0) {
+      throw new Error("Local Resource staging receipt is invalid.");
+    }
+    const contentType = normalizedContentType(input.contentType);
+    const intended = {
+      resourceId,
+      kind,
+      digest: receipt.digest,
+      byteLength: receipt.byteLength,
+      ...contentType ? { contentType } : {}
+    };
+    if (existing) {
+      try {
+        await projection(existing);
+      } catch (error53) {
+        if (!stagedRow)
+          throw error53;
+        const staged2 = await stagingProjection(stagedRow);
+        const path2 = await assetPathForWrite(options.dataDir, existing.storageKey, options.clashRoot);
+        await materializeStagedBytes({
+          sourcePath: staged2.path,
+          targetPath: path2,
+          digest: existing.digest,
+          byteLength: existing.byteLength
+        });
+      }
+      if (factsVerified && !existing.factsVerified) {
+        await promoteVerifiedFacts(intended);
+        const winner = await rowFor(resourceId);
+        if (!winner || !winner.factsVerified || !sameFacts(winner, intended)) {
           throw new Error(`Local Resource ${resourceId} already exists with different immutable facts.`);
         }
+        return projection(winner);
+      }
+      if (!sameFacts(existing, intended)) {
+        throw new Error(`Local Resource ${resourceId} already exists with different immutable facts.`);
+      }
+      return projection(existing);
+    }
+    if (!stagedRow || stagedRow.digest !== receipt.digest || stagedRow.byteLength !== receipt.byteLength) {
+      throw new Error(`Local Resource staging receipt ${resourceId} is not available.`);
+    }
+    const staged = await stagingProjection(stagedRow);
+    const storageKey = `local-blobs/${stagedRow.digest}/original${extensionFor({ contentType })}`;
+    const path = await assetPathForWrite(options.dataDir, storageKey, options.clashRoot);
+    await materializeStagedBytes({
+      sourcePath: staged.path,
+      targetPath: path,
+      digest: stagedRow.digest,
+      byteLength: stagedRow.byteLength
+    });
+    return persist(intended, storageKey, factsVerified);
+  }
+  const store = {
+    async stage(input) {
+      const digest3 = sha256(input.bytes);
+      const resourceId = resourceIdForSha256(digest3);
+      const byteLength = input.bytes.byteLength;
+      const existing = await stagingRowFor(resourceId);
+      if (existing) {
         try {
-          return await projection(existing);
+          return await stagingProjection(existing);
         } catch {
           const path2 = await assetPathForWrite(options.dataDir, existing.storageKey, options.clashRoot);
           const temporaryPath2 = `${path2}.repair-${(0, import_node_crypto6.randomUUID)()}`;
@@ -89152,20 +91305,16 @@ function createLocalResourceStore(options) {
             mode: 292
           });
           try {
-            await verifyBytes({
-              path: temporaryPath2,
-              digest: digest3,
-              byteLength: input.bytes.byteLength
-            });
+            await verifyBytes({ path: temporaryPath2, digest: digest3, byteLength });
             await (0, import_promises7.rename)(temporaryPath2, path2);
           } finally {
             await (0, import_promises7.unlink)(temporaryPath2).catch(() => void 0);
           }
           await (0, import_promises7.chmod)(path2, 292);
-          return projection(existing);
+          return stagingProjection(existing);
         }
       }
-      const storageKey = `local-blobs/${digest3}/original${extensionFor(input)}`;
+      const storageKey = `local-blobs/${digest3}/staging`;
       const path = await assetPathForWrite(options.dataDir, storageKey, options.clashRoot);
       const temporaryPath = `${path}.staging-${(0, import_node_crypto6.randomUUID)()}`;
       await (0, import_promises7.writeFile)(temporaryPath, input.bytes, { flag: "wx", mode: 292 });
@@ -89178,12 +91327,44 @@ function createLocalResourceStore(options) {
         await (0, import_promises7.unlink)(temporaryPath).catch(() => void 0);
       }
       await (0, import_promises7.chmod)(path, 292);
-      await verifyBytes({ path, digest: digest3, byteLength: input.bytes.byteLength });
-      return persist(intended, storageKey);
+      await verifyBytes({ path, digest: digest3, byteLength });
+      await withDatabase((database) => {
+        database.prepare(`
+            INSERT OR IGNORE INTO local_resource_staging (
+              resource_id, digest_sha256, byte_length, storage_key, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+          `).run(resourceId, digest3, byteLength, storageKey, Date.now());
+      });
+      const stored = await stagingRowFor(resourceId);
+      if (!stored) {
+        throw new Error(`Local Resource staging receipt ${resourceId} was not indexed.`);
+      }
+      return stagingProjection(stored);
+    },
+    async resolveStaged(resourceId) {
+      const normalized = resourceId.trim();
+      if (!normalized)
+        return void 0;
+      const row = await stagingRowFor(normalized);
+      return row ? stagingProjection(row) : void 0;
+    },
+    seal(input) {
+      return sealResource(input, true);
+    },
+    async install(input) {
+      const staged = await store.stage({
+        bytes: input.bytes,
+        ...input.originalName ? { originalName: input.originalName } : {}
+      });
+      return sealResource({
+        receipt: staged.receipt,
+        kind: input.kind,
+        ...input.contentType ? { contentType: input.contentType } : {}
+      }, false);
     },
     async adopt(input) {
       const kind = AssetKindSchema.parse(input.kind);
-      const resourceId = resourceIdForSha256(input.digest);
+      resourceIdForSha256(input.digest);
       if (!Number.isSafeInteger(input.byteLength) || input.byteLength < 0) {
         throw new Error("A Local Resource byte length must be a non-negative safe integer.");
       }
@@ -89194,15 +91375,16 @@ function createLocalResourceStore(options) {
         digest: input.digest,
         byteLength: input.byteLength
       });
-      await (0, import_promises7.chmod)(path, 292);
-      const contentType = normalizedContentType(input.contentType);
-      return persist({
-        resourceId,
+      const staged = await store.stage({
+        bytes: new Uint8Array(await (0, import_promises7.readFile)(path))
+      });
+      const sealed = await sealResource({
+        receipt: staged.receipt,
         kind,
-        digest: input.digest,
-        byteLength: input.byteLength,
-        ...contentType ? { contentType } : {}
-      }, storageKey);
+        ...input.contentType ? { contentType: input.contentType } : {}
+      }, false);
+      await (0, import_promises7.chmod)(path, 292);
+      return sealed;
     },
     async resolve(resourceId) {
       const normalized = resourceId.trim();
@@ -89212,12 +91394,946 @@ function createLocalResourceStore(options) {
       return row ? projection(row) : void 0;
     }
   };
+  return store;
+}
+
+// ../../apps/local-api/dist/local-asset-inspections.js
+var import_node_module5 = require("node:module");
+var import_node_child_process3 = require("node:child_process");
+var import_promises8 = require("node:fs/promises");
+var import_node_util = require("node:util");
+var import_saxes = __toESM(require_saxes(), 1);
+
+// ../../apps/local-api/dist/local-media-binaries.js
+var import_node_fs4 = require("node:fs");
+var import_node_module4 = require("node:module");
+var import_node_path13 = require("node:path");
+var nodeRequire4 = (0, import_node_module4.createRequire)(__clash_import_meta_url);
+var installerPackage = {
+  ffmpeg: "@ffmpeg-installer/ffmpeg",
+  ffprobe: "@ffprobe-installer/ffprobe"
+};
+function packageBinaryPath(tool, loadPackage) {
+  try {
+    const loaded = loadPackage(installerPackage[tool]);
+    const value = loaded && typeof loaded === "object" && "default" in loaded ? loaded.default : loaded;
+    return value && typeof value === "object" && "path" in value ? String(value.path) : null;
+  } catch {
+    return null;
+  }
+}
+function defaultSystemPaths(tool) {
+  return [
+    `/opt/homebrew/bin/${tool}`,
+    `/usr/local/bin/${tool}`,
+    `/usr/bin/${tool}`
+  ];
+}
+function isExecutableFile(path, platform3) {
+  if (/(?:^|[\\/])app\.asar(?:[\\/]|$)/.test(path))
+    return false;
+  try {
+    if (!(0, import_node_fs4.statSync)(path).isFile())
+      return false;
+    (0, import_node_fs4.accessSync)(path, platform3 === "win32" ? import_node_fs4.constants.F_OK : import_node_fs4.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function preparePackagedExecutable(path, platform3) {
+  if (!path || /(?:^|[\\/])app\.asar(?:[\\/]|$)/.test(path))
+    return path;
+  if (platform3 !== "win32" && !isExecutableFile(path, platform3)) {
+    try {
+      if ((0, import_node_fs4.statSync)(path).isFile())
+        (0, import_node_fs4.chmodSync)(path, 493);
+    } catch {
+      return path;
+    }
+  }
+  return path;
+}
+function selectLocalMediaBinary(options) {
+  const overrideName = options.tool === "ffmpeg" ? "FFMPEG_PATH" : "FFPROBE_PATH";
+  const candidates = [
+    options.env[overrideName],
+    options.packagedPath,
+    ...options.systemPaths
+  ];
+  return candidates.filter((candidate) => Boolean(candidate)).find((candidate) => isExecutableFile(candidate, options.platform)) ?? null;
+}
+function resolveLocalMediaBinary(tool, options = {}) {
+  const loadPackage = options.loadPackage ?? ((name) => nodeRequire4(name));
+  const platform3 = options.platform ?? process.platform;
+  const env2 = { ...options.env ?? process.env };
+  if (tool === "ffprobe" && !env2.FFPROBE_PATH && env2.FFMPEG_PATH) {
+    env2.FFPROBE_PATH = (0, import_node_path13.join)((0, import_node_path13.dirname)(env2.FFMPEG_PATH), "ffprobe");
+  }
+  return selectLocalMediaBinary({
+    tool,
+    env: env2,
+    packagedPath: preparePackagedExecutable(packageBinaryPath(tool, loadPackage), platform3),
+    systemPaths: options.systemPaths ?? defaultSystemPaths(tool),
+    platform: platform3
+  });
+}
+function localFfmpegPath() {
+  return resolveLocalMediaBinary("ffmpeg");
+}
+function localFfprobePath() {
+  return resolveLocalMediaBinary("ffprobe");
+}
+
+// ../../apps/local-api/dist/local-asset-inspections.js
+var LOCAL_ASSET_INSPECTION_RECIPE = "asset-inspection/v4:canonical-media-facts";
+var LocalAssetInspectionFactsSchema = ProjectAssetMetadataSchema.pick({
+  width: true,
+  height: true,
+  rotationDegrees: true,
+  durationMs: true,
+  contentType: true,
+  frameRate: true,
+  videoCodec: true,
+  hasAudio: true,
+  audioCodec: true,
+  sampleRate: true,
+  channelCount: true,
+  channelLayout: true
+});
+var execFileAsync = (0, import_node_util.promisify)(import_node_child_process3.execFile);
+function optionalNonEmptyString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function canonicalChannelLayout(value) {
+  const layout = optionalNonEmptyString(value);
+  return layout?.toLowerCase() === "unknown" ? void 0 : layout;
+}
+function optionalPositiveInteger(value) {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return void 0;
+  }
+  const number4 = Number(value);
+  return Number.isSafeInteger(number4) && number4 > 0 ? number4 : void 0;
+}
+function frameRate(value) {
+  if (typeof value !== "string")
+    return void 0;
+  const match2 = /^(\d+(?:\.\d+)?)(?:\/(\d+(?:\.\d+)?))?$/.exec(value.trim());
+  if (!match2)
+    return void 0;
+  const numerator = Number(match2[1]);
+  const denominator = match2[2] ? Number(match2[2]) : 1;
+  const rate = numerator / denominator;
+  return Number.isFinite(rate) && rate > 0 ? rate : void 0;
+}
+function durationMs(value) {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return void 0;
+  }
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0)
+    return void 0;
+  return Math.round(seconds * 1e3);
+}
+function record(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+}
+function displayMatrixSideData(video) {
+  const sideData = Array.isArray(video.side_data_list) ? video.side_data_list.map(record).filter((item) => !!item) : [];
+  return sideData.find((item) => item.side_data_type === "Display Matrix");
+}
+function displayRotationDegrees(video) {
+  const displayMatrix = displayMatrixSideData(video);
+  if (!displayMatrix)
+    return 0;
+  const rotation = displayMatrix.rotation;
+  if (typeof rotation !== "number" || !Number.isFinite(rotation)) {
+    throw new Error("Decoded visual Asset has a malformed display rotation.");
+  }
+  const normalized = (rotation % 360 + 360) % 360;
+  const canonical = Object.is(normalized, -0) ? 0 : normalized;
+  if (![0, 90, 180, 270].includes(canonical)) {
+    throw new Error("Decoded visual Asset has an unsupported non-quarter-turn display rotation.");
+  }
+  return canonical;
+}
+function mediaTypeParameters(value) {
+  const [rawEssence = "", ...rawParameters] = (value ?? "").split(";");
+  const parameters = /* @__PURE__ */ new Map();
+  for (const rawParameter of rawParameters) {
+    const separator = rawParameter.indexOf("=");
+    if (separator <= 0)
+      continue;
+    parameters.set(rawParameter.slice(0, separator).trim().toLowerCase(), rawParameter.slice(separator + 1).trim().toLowerCase());
+  }
+  return { essence: rawEssence.trim().toLowerCase(), parameters };
+}
+function canonicalAssetMediaTypeAssertion(value) {
+  if (!value?.trim())
+    return void 0;
+  const { essence, parameters } = mediaTypeParameters(value);
+  const canonicalEssence = essence === "image/jpg" ? "image/jpeg" : essence === "audio/x-wav" ? "audio/wav" : essence === "audio/mp3" ? "audio/mpeg" : essence;
+  const serializedParameters = [...parameters.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([key, parameter]) => `${key}=${parameter}`).join(";");
+  return serializedParameters ? `${canonicalEssence};${serializedParameters}` : canonicalEssence;
+}
+function assertByteVerifiableMediaType(value) {
+  const { essence } = mediaTypeParameters(value);
+  if (essence === "audio/l16" || essence === "audio/pcm") {
+    throw new Error("Headerless raw PCM cannot be published as canonical Asset media without a trusted byte-derived source contract; wrap it in a self-describing audio container.");
+  }
+}
+function sameMediaTypeAssertion(left, right) {
+  if (left === void 0 || right === void 0)
+    return left === right;
+  const leftParsed = mediaTypeParameters(left);
+  const rightParsed = mediaTypeParameters(right);
+  if (leftParsed.essence !== rightParsed.essence)
+    return false;
+  return leftParsed.parameters.size === rightParsed.parameters.size && [...leftParsed.parameters].every(([key, value]) => rightParsed.parameters.get(key) === value);
+}
+function registeredMediaTypeAssertion(resource) {
+  const canonical = canonicalAssetMediaTypeAssertion(resource.contentType);
+  if (!canonical)
+    return void 0;
+  assertByteVerifiableMediaType(canonical);
+  const { essence } = mediaTypeParameters(canonical);
+  const matches = resource.kind === "image" && essence.startsWith("image/") || resource.kind === "video" && essence.startsWith("video/") || resource.kind === "audio" && essence.startsWith("audio/") || resource.kind === "model" && (essence === "model/gltf-binary" || essence === "model/gltf+json");
+  if (!matches) {
+    throw new Error(`Registered ${resource.kind} Asset content type ${resource.contentType ?? "(missing)"} does not match its kind.`);
+  }
+  return essence;
+}
+function decodedMediaType(input) {
+  const formatNames = new Set((input.formatName ?? "").toLowerCase().split(",").map((value) => value.trim()).filter(Boolean));
+  if (input.kind === "image") {
+    const codec2 = input.videoCodec?.toLowerCase();
+    const mediaType = codec2 === "png" ? "image/png" : codec2 === "mjpeg" || codec2 === "jpeg2000" ? codec2 === "mjpeg" ? "image/jpeg" : "image/jp2" : codec2 === "gif" ? "image/gif" : codec2 === "webp" ? "image/webp" : codec2 === "svg" ? "image/svg+xml" : codec2 === "av1" && formatNames.has("mov") ? "image/avif" : void 0;
+    if (mediaType)
+      return mediaType;
+  } else if (formatNames.has("matroska") && formatNames.has("webm") && input.matroskaDocType) {
+    return input.kind === "video" ? input.matroskaDocType === "webm" ? "video/webm" : "video/x-matroska" : input.matroskaDocType === "webm" ? "audio/webm" : "audio/x-matroska";
+  } else if (formatNames.has("webm")) {
+    return input.kind === "video" ? "video/webm" : "audio/webm";
+  } else if (formatNames.has("matroska")) {
+    return input.kind === "video" ? "video/x-matroska" : "audio/x-matroska";
+  } else if (formatNames.has("mov") || formatNames.has("mp4") || formatNames.has("m4a") || formatNames.has("3gp") || formatNames.has("3g2") || formatNames.has("mj2")) {
+    return input.kind === "video" ? input.majorBrand?.trim().toLowerCase() === "qt" ? "video/quicktime" : "video/mp4" : "audio/mp4";
+  } else if (input.kind === "video" && formatNames.has("mpegts")) {
+    return "video/mp2t";
+  } else if (input.kind === "video" && formatNames.has("avi")) {
+    return "video/x-msvideo";
+  } else if (input.kind === "audio" && formatNames.has("mp3")) {
+    return "audio/mpeg";
+  } else if (input.kind === "audio" && formatNames.has("wav")) {
+    return "audio/wav";
+  } else if (input.kind === "audio" && formatNames.has("flac")) {
+    return "audio/flac";
+  } else if (input.kind === "audio" && formatNames.has("ogg")) {
+    return "audio/ogg";
+  } else if (input.kind === "audio" && formatNames.has("aac")) {
+    return "audio/aac";
+  }
+  throw new Error(`Decoded ${input.kind} Asset format ${input.formatName ?? "(missing)"}/${input.videoCodec ?? "(missing)"} has no canonical media type mapping.`);
+}
+function verifiedDecodedMediaType(input) {
+  if (input.resource.kind === "model") {
+    throw new Error("Model media type verification uses the glTF byte probe.");
+  }
+  const decoded = decodedMediaType({
+    kind: input.resource.kind,
+    ...input.formatName ? { formatName: input.formatName } : {},
+    ...input.videoCodec ? { videoCodec: input.videoCodec } : {},
+    ...input.majorBrand ? { majorBrand: input.majorBrand } : {},
+    ...input.matroskaDocType ? { matroskaDocType: input.matroskaDocType } : {}
+  });
+  if (input.registeredEssence !== void 0 && decoded !== input.registeredEssence) {
+    throw new Error(`Decoded ${input.resource.kind} Asset has canonical media type ${decoded}, not registered ${input.registeredEssence}.`);
+  }
+  return decoded;
+}
+async function inspectEbmlDocType(sourcePath, resource) {
+  const bytes = await (0, import_promises8.readFile)(sourcePath);
+  if (bytes.byteLength !== resource.byteLength) {
+    throw new Error("EBML Asset bytes do not match immutable Resource length.");
+  }
+  if (bytes.byteLength < 8 || bytes[0] !== 26 || bytes[1] !== 69 || bytes[2] !== 223 || bytes[3] !== 163) {
+    throw new Error("Matroska/WebM Asset bytes contain no EBML header.");
+  }
+  const limit = Math.min(bytes.byteLength - 3, 64 * 1024);
+  for (let offset = 4; offset < limit; offset += 1) {
+    if (bytes[offset] !== 66 || bytes[offset + 1] !== 130)
+      continue;
+    const first = bytes[offset + 2];
+    let sizeLength = 1;
+    let marker = 128;
+    while (sizeLength <= 8 && (first & marker) === 0) {
+      sizeLength += 1;
+      marker >>= 1;
+    }
+    if (sizeLength > 8 || offset + 2 + sizeLength > bytes.byteLength) {
+      break;
+    }
+    let size = first & marker - 1;
+    for (let index = 1; index < sizeLength; index += 1) {
+      size = size * 256 + bytes[offset + 2 + index];
+    }
+    const start = offset + 2 + sizeLength;
+    const end = start + size;
+    if (size <= 0 || end > bytes.byteLength || size > 32)
+      break;
+    const value = bytes.subarray(start, end).toString("ascii").toLowerCase();
+    if (value === "matroska" || value === "webm")
+      return value;
+    throw new Error(`Unsupported EBML document type ${value || "(empty)"}.`);
+  }
+  throw new Error("Matroska/WebM Asset bytes contain no EBML DocType.");
+}
+async function readFileSlice(file2, position2, length) {
+  const bytes = Buffer.alloc(length);
+  let offset = 0;
+  while (offset < length) {
+    const { bytesRead } = await file2.read(bytes, offset, length - offset, position2 + offset);
+    if (bytesRead === 0)
+      return void 0;
+    offset += bytesRead;
+  }
+  return bytes;
+}
+async function inspectWaveChannelLayout(sourcePath, resource, decodedChannelCount) {
+  const file2 = await (0, import_promises8.open)(sourcePath, "r");
+  try {
+    const { size } = await file2.stat();
+    if (size !== resource.byteLength) {
+      throw new Error("WAVE Asset bytes do not match immutable Resource length.");
+    }
+    const riff = await readFileSlice(file2, 0, 12);
+    if (!riff || riff.subarray(0, 4).toString("ascii") !== "RIFF" || riff.subarray(8, 12).toString("ascii") !== "WAVE") {
+      return void 0;
+    }
+    let offset = 12;
+    while (offset + 8 <= size) {
+      const header = await readFileSlice(file2, offset, 8);
+      if (!header)
+        return void 0;
+      const chunkSize = header.readUInt32LE(4);
+      const chunkStart = offset + 8;
+      const chunkEnd = chunkStart + chunkSize;
+      if (chunkEnd > size) {
+        throw new Error("WAVE Asset contains a truncated RIFF chunk.");
+      }
+      if (header.subarray(0, 4).toString("ascii") === "fmt ") {
+        if (chunkSize < 16) {
+          throw new Error("WAVE Asset contains an incomplete fmt chunk.");
+        }
+        const format2 = await readFileSlice(file2, chunkStart, 16);
+        if (!format2) {
+          throw new Error("WAVE Asset contains an incomplete fmt chunk.");
+        }
+        const formatTag = format2.readUInt16LE(0);
+        const channelCount = format2.readUInt16LE(2);
+        if (channelCount !== decodedChannelCount) {
+          throw new Error("WAVE fmt channel count disagrees with the decoded audio stream.");
+        }
+        if (formatTag !== 1 && formatTag !== 3)
+          return void 0;
+        return channelCount === 1 ? "mono" : channelCount === 2 ? "stereo" : void 0;
+      }
+      offset = chunkEnd + chunkSize % 2;
+    }
+    return void 0;
+  } finally {
+    await file2.close();
+  }
+}
+function requireFact(value, name, kind) {
+  if (value === void 0) {
+    throw new Error(`Decoded ${kind} Asset is missing canonical ${name}.`);
+  }
+  return value;
+}
+function parseGltfDocument(value) {
+  const root5 = record(value);
+  const asset = record(root5?.asset);
+  const version2 = optionalNonEmptyString(asset?.version);
+  if (!version2 || !/^2(?:\.|$)/.test(version2)) {
+    throw new Error("glTF Asset bytes do not declare a supported 2.x asset version.");
+  }
+}
+async function inspectGltf(sourcePath, resource, registeredEssence) {
+  const bytes = await (0, import_promises8.readFile)(sourcePath);
+  if (bytes.byteLength !== resource.byteLength) {
+    throw new Error("glTF Asset bytes do not match immutable Resource length.");
+  }
+  const decodedEssence = bytes.byteLength >= 4 && bytes.subarray(0, 4).toString() === "glTF" ? "model/gltf-binary" : "model/gltf+json";
+  if (registeredEssence !== void 0 && registeredEssence !== decodedEssence) {
+    throw new Error(`Decoded model Asset has canonical media type ${decodedEssence}, not registered ${registeredEssence}.`);
+  }
+  if (decodedEssence === "model/gltf+json") {
+    try {
+      parseGltfDocument(JSON.parse(bytes.toString("utf8")));
+    } catch (error53) {
+      throw new Error("glTF JSON Asset bytes are invalid.", { cause: error53 });
+    }
+  } else {
+    if (bytes.byteLength < 20 || bytes.subarray(0, 4).toString() !== "glTF") {
+      throw new Error("GLB Asset bytes do not contain a valid glTF header.");
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const version2 = view.getUint32(4, true);
+    const declaredLength = view.getUint32(8, true);
+    const jsonLength = view.getUint32(12, true);
+    const jsonType = view.getUint32(16, true);
+    if (version2 !== 2 || declaredLength !== bytes.byteLength || jsonType !== 1313821514 || jsonLength > bytes.byteLength - 20) {
+      throw new Error("GLB Asset bytes do not contain a valid glTF 2 JSON chunk.");
+    }
+    try {
+      parseGltfDocument(JSON.parse(bytes.subarray(20, 20 + jsonLength).toString("utf8").trim()));
+    } catch (error53) {
+      throw new Error("GLB Asset JSON chunk is invalid.", { cause: error53 });
+    }
+  }
+  return LocalAssetInspectionFactsSchema.parse({
+    contentType: decodedEssence
+  });
+}
+function svgPixelLength(value) {
+  if (!value)
+    return void 0;
+  const match2 = /^(\d+(?:\.\d+)?)(?:px)?$/i.exec(value.trim());
+  if (!match2)
+    return void 0;
+  const parsed = Number(match2[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : void 0;
+}
+function svgDocumentRoot(text) {
+  let document = text.replace(/^\uFEFF/u, "").trimStart();
+  if (/^<\?xml\b/i.test(document)) {
+    const declarationEnd = document.indexOf("?>");
+    if (declarationEnd < 0)
+      return void 0;
+    document = document.slice(declarationEnd + 2).trimStart();
+  }
+  while (document.startsWith("<!--")) {
+    const commentEnd = document.indexOf("-->");
+    if (commentEnd < 0)
+      return void 0;
+    document = document.slice(commentEnd + 3).trimStart();
+  }
+  return /^<svg\b[^>]*>/i.exec(document)?.[0];
+}
+function assertWellFormedSvgDocument(text) {
+  const parser = new import_saxes.SaxesParser({ xmlns: true });
+  let sawRoot = false;
+  let rootAttributes;
+  parser.on("doctype", () => {
+    throw new Error("SVG documents with a DOCTYPE are not accepted.");
+  });
+  parser.on("opentag", (tag) => {
+    if (sawRoot)
+      return;
+    sawRoot = true;
+    if (tag.local.toLowerCase() !== "svg" || tag.uri !== "" && tag.uri !== "http://www.w3.org/2000/svg") {
+      throw new Error("The XML document root is not an SVG element.");
+    }
+    rootAttributes = {
+      ...tag.attributes.width ? { width: tag.attributes.width.value.trim() } : {},
+      ...tag.attributes.height ? { height: tag.attributes.height.value.trim() } : {},
+      ...tag.attributes.viewBox ? { viewBox: tag.attributes.viewBox.value.trim() } : {}
+    };
+  });
+  parser.on("error", (error53) => {
+    throw error53;
+  });
+  try {
+    parser.write(text).close();
+  } catch (error53) {
+    throw new Error("Asset bytes are not a well-formed SVG document.", {
+      cause: error53
+    });
+  }
+  if (!sawRoot || !rootAttributes) {
+    throw new Error("Asset bytes are not a well-formed SVG document.");
+  }
+  return rootAttributes;
+}
+async function inspectSvg(sourcePath, resource, registeredEssence) {
+  if (resource.kind !== "image")
+    return void 0;
+  const bytes = await (0, import_promises8.readFile)(sourcePath);
+  if (bytes.byteLength !== resource.byteLength) {
+    throw new Error("SVG Asset bytes do not match immutable Resource length.");
+  }
+  const text = bytes.toString("utf8");
+  const root5 = svgDocumentRoot(text);
+  if (!root5) {
+    if (registeredEssence === "image/svg+xml") {
+      throw new Error("Registered SVG Asset bytes contain no SVG root element.");
+    }
+    return void 0;
+  }
+  const rootAttributes = assertWellFormedSvgDocument(text);
+  if (registeredEssence !== void 0 && registeredEssence !== "image/svg+xml") {
+    throw new Error(`Decoded image Asset has canonical media type image/svg+xml, not registered ${registeredEssence}.`);
+  }
+  const viewBox = rootAttributes.viewBox?.split(/[\s,]+/).map(Number);
+  const viewBoxWidth = viewBox?.length === 4 && Number.isFinite(viewBox[2]) && viewBox[2] > 0 ? viewBox[2] : void 0;
+  const viewBoxHeight = viewBox?.length === 4 && Number.isFinite(viewBox[3]) && viewBox[3] > 0 ? viewBox[3] : void 0;
+  const width = svgPixelLength(rootAttributes.width) ?? viewBoxWidth;
+  const height = svgPixelLength(rootAttributes.height) ?? viewBoxHeight;
+  if (!width || !height) {
+    throw new Error("SVG Asset bytes must declare positive pixel dimensions or a positive viewBox.");
+  }
+  return LocalAssetInspectionFactsSchema.parse({
+    contentType: "image/svg+xml",
+    width,
+    height,
+    rotationDegrees: 0
+  });
+}
+function createLocalFfprobeAssetInspector(options) {
+  const run = options.run ?? (async (file2, args) => {
+    const result = await execFileAsync(file2, args, {
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024
+    });
+    return { stdout: result.stdout };
+  });
+  return async ({ sourcePath, resource }) => {
+    const registeredEssence = registeredMediaTypeAssertion(resource);
+    if (resource.kind === "model") {
+      return inspectGltf(sourcePath, resource, registeredEssence);
+    }
+    if (resource.kind === "image" && (registeredEssence === void 0 || registeredEssence === "image/svg+xml")) {
+      const svg = await inspectSvg(sourcePath, resource, registeredEssence);
+      if (svg)
+        return svg;
+    }
+    const ffprobeArgs = [
+      "-v",
+      "error",
+      "-print_format",
+      "json",
+      "-show_streams",
+      "-show_format",
+      ...resource.kind === "image" ? ["-show_frames", "-read_intervals", "%+#1"] : [],
+      sourcePath
+    ];
+    const { stdout } = await run(options.ffprobePath, ffprobeArgs);
+    let output;
+    try {
+      output = JSON.parse(stdout);
+    } catch (error53) {
+      throw new Error("ffprobe returned malformed Asset inspection JSON.", {
+        cause: error53
+      });
+    }
+    const root5 = record(output);
+    if (!root5)
+      throw new Error("ffprobe returned no Asset inspection object.");
+    const streams = Array.isArray(root5.streams) ? root5.streams.map(record).filter((item) => !!item) : [];
+    const frames = Array.isArray(root5.frames) ? root5.frames.map(record).filter((item) => !!item) : [];
+    const video = streams.find((stream) => stream.codec_type === "video");
+    const firstVideoFrame = frames.find((frame) => frame.media_type === "video" || frame.codec_type === "video");
+    const audio = streams.find((stream) => stream.codec_type === "audio");
+    const format2 = record(root5.format);
+    const formatName = optionalNonEmptyString(format2?.format_name);
+    const majorBrand = optionalNonEmptyString(record(format2?.tags)?.major_brand);
+    const width = optionalPositiveInteger(video?.width);
+    const height = optionalPositiveInteger(video?.height);
+    const rotationSource = firstVideoFrame && displayMatrixSideData(firstVideoFrame) ? firstVideoFrame : video;
+    const rotation = rotationSource ? displayRotationDegrees(rotationSource) : void 0;
+    const swapsDisplayDimensions = rotation === 90 || rotation === 270;
+    const displayWidth = swapsDisplayDimensions ? height : width;
+    const displayHeight = swapsDisplayDimensions ? width : height;
+    const duration3 = durationMs(format2?.duration ?? video?.duration ?? audio?.duration);
+    const rate = frameRate(video?.avg_frame_rate ?? video?.r_frame_rate);
+    const videoCodec = optionalNonEmptyString(video?.codec_name);
+    const audioCodec = optionalNonEmptyString(audio?.codec_name);
+    const sampleRate = optionalPositiveInteger(audio?.sample_rate);
+    const channelCount = optionalPositiveInteger(audio?.channels);
+    const formatNames = new Set((formatName ?? "").toLowerCase().split(",").map((value) => value.trim()));
+    const channelLayout = canonicalChannelLayout(audio?.channel_layout) ?? (audio && channelCount && formatNames.has("wav") ? await inspectWaveChannelLayout(sourcePath, resource, channelCount) : void 0);
+    const matroskaDocType = formatNames.has("matroska") && formatNames.has("webm") ? await inspectEbmlDocType(sourcePath, resource) : void 0;
+    if (resource.kind === "image") {
+      if (!video)
+        throw new Error("Decoded image Asset has no visual stream.");
+      requireFact(width, "width", resource.kind);
+      requireFact(height, "height", resource.kind);
+      requireFact(rotation, "display rotation", resource.kind);
+      requireFact(videoCodec, "image codec", resource.kind);
+    } else if (resource.kind === "video") {
+      if (!video)
+        throw new Error("Decoded video Asset has no video stream.");
+      requireFact(width, "width", resource.kind);
+      requireFact(height, "height", resource.kind);
+      requireFact(rotation, "display rotation", resource.kind);
+      requireFact(duration3, "duration", resource.kind);
+      requireFact(rate, "frame rate", resource.kind);
+      requireFact(videoCodec, "video codec", resource.kind);
+      if (audio) {
+        requireFact(audioCodec, "audio codec", resource.kind);
+        requireFact(sampleRate, "sample rate", resource.kind);
+        requireFact(channelCount, "channel count", resource.kind);
+        requireFact(channelLayout, "channel layout", resource.kind);
+      }
+    } else {
+      if (!audio)
+        throw new Error("Decoded audio Asset has no audio stream.");
+      requireFact(duration3, "duration", resource.kind);
+      requireFact(audioCodec, "audio codec", resource.kind);
+      requireFact(sampleRate, "sample rate", resource.kind);
+      requireFact(channelCount, "channel count", resource.kind);
+      requireFact(channelLayout, "channel layout", resource.kind);
+    }
+    const contentType = verifiedDecodedMediaType({
+      resource,
+      ...registeredEssence ? { registeredEssence } : {},
+      ...formatName ? { formatName } : {},
+      ...videoCodec ? { videoCodec } : {},
+      ...majorBrand ? { majorBrand } : {},
+      ...matroskaDocType ? { matroskaDocType } : {}
+    });
+    if (resource.kind === "image") {
+      return LocalAssetInspectionFactsSchema.parse({
+        contentType,
+        width: displayWidth,
+        height: displayHeight,
+        rotationDegrees: rotation
+      });
+    }
+    if (resource.kind === "video") {
+      return LocalAssetInspectionFactsSchema.parse({
+        contentType,
+        width: displayWidth,
+        height: displayHeight,
+        rotationDegrees: rotation,
+        durationMs: duration3,
+        frameRate: rate,
+        videoCodec,
+        hasAudio: !!audio,
+        ...audio ? {
+          audioCodec,
+          sampleRate,
+          channelCount,
+          channelLayout
+        } : {}
+      });
+    }
+    return LocalAssetInspectionFactsSchema.parse({
+      contentType,
+      durationMs: duration3,
+      hasAudio: true,
+      audioCodec,
+      sampleRate,
+      channelCount,
+      channelLayout
+    });
+  };
+}
+var nodeRequire5 = (0, import_node_module5.createRequire)(__clash_import_meta_url);
+function openDatabase3(path) {
+  const { DatabaseSync } = nodeRequire5("node:sqlite");
+  const database = new DatabaseSync(path);
+  database.exec(`
+    PRAGMA busy_timeout = 5000;
+    PRAGMA journal_mode = WAL;
+    DROP TABLE IF EXISTS local_asset_representations;
+    CREATE TABLE IF NOT EXISTS local_asset_inspections (
+      source_resource_id TEXT NOT NULL,
+      recipe TEXT NOT NULL,
+      facts_json TEXT NOT NULL,
+      inspected_at INTEGER NOT NULL,
+      PRIMARY KEY (source_resource_id, recipe)
+    );
+  `);
+  const inspectionTable = database.prepare(`
+      SELECT sql
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'local_asset_inspections'
+    `).get();
+  if (typeof inspectionTable?.sql !== "string" || !/\brecipe\b/i.test(inspectionTable.sql)) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      ALTER TABLE local_asset_inspections
+        RENAME TO local_asset_inspections_unversioned;
+      CREATE TABLE local_asset_inspections (
+        source_resource_id TEXT NOT NULL,
+        recipe TEXT NOT NULL,
+        facts_json TEXT NOT NULL,
+        inspected_at INTEGER NOT NULL,
+        PRIMARY KEY (source_resource_id, recipe)
+      );
+      DROP TABLE local_asset_inspections_unversioned;
+      COMMIT;
+    `);
+  }
+  return database;
+}
+function parseInspectionRow(row) {
+  const sourceResourceId = row.source_resource_id;
+  const recipe = row.recipe;
+  const factsJson = row.facts_json;
+  if (typeof sourceResourceId !== "string" || !sourceResourceId || typeof recipe !== "string" || !recipe || typeof factsJson !== "string") {
+    throw new Error("Local Asset inspection row is corrupt.");
+  }
+  let facts;
+  try {
+    facts = JSON.parse(factsJson);
+  } catch (error53) {
+    throw new Error("Local Asset inspection facts are corrupt.", {
+      cause: error53
+    });
+  }
+  return {
+    sourceResourceId,
+    recipe,
+    facts: LocalAssetInspectionFactsSchema.parse(facts)
+  };
+}
+function sameResourceFacts(left, right) {
+  return JSON.stringify(left.resource) === JSON.stringify(right.resource);
+}
+function assertCompleteInspectionFacts(resource, facts) {
+  const contentType = requireFact(facts.contentType, "content type", resource.kind);
+  assertByteVerifiableMediaType(contentType);
+  if (resource.contentType !== void 0 && !sameMediaTypeAssertion(canonicalAssetMediaTypeAssertion(facts.contentType), canonicalAssetMediaTypeAssertion(resource.contentType))) {
+    throw new Error(`Decoded ${resource.kind} Asset content type does not match immutable Resource facts.`);
+  }
+  if (resource.kind === "image") {
+    requireFact(facts.width, "width", resource.kind);
+    requireFact(facts.height, "height", resource.kind);
+    requireFact(facts.rotationDegrees, "display rotation", resource.kind);
+  } else if (resource.kind === "video") {
+    requireFact(facts.width, "width", resource.kind);
+    requireFact(facts.height, "height", resource.kind);
+    requireFact(facts.rotationDegrees, "display rotation", resource.kind);
+    requireFact(facts.durationMs, "duration", resource.kind);
+    requireFact(facts.frameRate, "frame rate", resource.kind);
+    requireFact(facts.videoCodec, "video codec", resource.kind);
+    requireFact(facts.hasAudio, "audio presence", resource.kind);
+    if (facts.hasAudio) {
+      requireFact(facts.audioCodec, "audio codec", resource.kind);
+      requireFact(facts.sampleRate, "sample rate", resource.kind);
+      requireFact(facts.channelCount, "channel count", resource.kind);
+      requireFact(facts.channelLayout, "channel layout", resource.kind);
+    }
+  } else if (resource.kind === "audio") {
+    requireFact(facts.durationMs, "duration", resource.kind);
+    if (facts.hasAudio !== true) {
+      throw new Error("Decoded audio Asset is missing canonical audio presence.");
+    }
+    requireFact(facts.audioCodec, "audio codec", resource.kind);
+    requireFact(facts.sampleRate, "sample rate", resource.kind);
+    requireFact(facts.channelCount, "channel count", resource.kind);
+    requireFact(facts.channelLayout, "channel layout", resource.kind);
+  }
+  return facts;
+}
+function createLocalAssetInspectionService(options) {
+  const databasePath2 = `${options.dataDir}/local.sqlite`;
+  const resources = createLocalResourceStore({
+    dataDir: options.dataDir,
+    ...options.clashRoot ? { clashRoot: options.clashRoot } : {}
+  });
+  const inspectionInFlight = /* @__PURE__ */ new Map();
+  async function withDatabase(task) {
+    await (0, import_promises8.mkdir)(options.dataDir, { recursive: true });
+    const database = openDatabase3(databasePath2);
+    try {
+      return task(database);
+    } finally {
+      database.close();
+      await (0, import_promises8.chmod)(databasePath2, 384).catch(() => void 0);
+    }
+  }
+  async function readInspection(sourceResourceId) {
+    return withDatabase((database) => {
+      const row = database.prepare(`
+          SELECT source_resource_id, recipe, facts_json
+          FROM local_asset_inspections
+          WHERE source_resource_id = ? AND recipe = ?
+        `).get(sourceResourceId, LOCAL_ASSET_INSPECTION_RECIPE);
+      return row ? parseInspectionRow(row) : void 0;
+    });
+  }
+  async function persistInspection(input) {
+    const facts = assertCompleteInspectionFacts(input.source.resource, LocalAssetInspectionFactsSchema.parse(input.facts));
+    await withDatabase((database) => {
+      database.prepare(`
+          INSERT OR IGNORE INTO local_asset_inspections (
+            source_resource_id, recipe, facts_json, inspected_at
+          ) VALUES (?, ?, ?, ?)
+        `).run(input.source.resource.id, LOCAL_ASSET_INSPECTION_RECIPE, JSON.stringify(facts), Date.now());
+    });
+    const stored = await readInspection(input.source.resource.id);
+    if (!stored) {
+      throw new Error(`Local Asset inspection for ${input.source.resource.id} was not indexed.`);
+    }
+    assertCompleteInspectionFacts(input.source.resource, stored.facts);
+    if (JSON.stringify(stored.facts) !== JSON.stringify(facts)) {
+      throw new Error(`Local Asset inspection candidate for ${input.source.resource.id} conflicts with the inspection CAS winner.`);
+    }
+    return stored;
+  }
+  async function ensureInspection(source) {
+    const stored = await readInspection(source.resource.id);
+    if (stored) {
+      assertCompleteInspectionFacts(source.resource, stored.facts);
+      const canonicalContentType = canonicalAssetMediaTypeAssertion(stored.facts.contentType);
+      if (!canonicalContentType) {
+        throw new Error(`Decoded ${source.resource.kind} Asset is missing a canonical media type.`);
+      }
+      await resources.seal({
+        resourceId: source.resource.id,
+        kind: source.resource.kind,
+        contentType: canonicalContentType
+      });
+      return stored;
+    }
+    const inspectResource = options.inspectResource;
+    if (!inspectResource) {
+      throw new Error("A Host byte-probe adapter is required before Asset publication.");
+    }
+    const key = `${source.resource.id}\0${LOCAL_ASSET_INSPECTION_RECIPE}`;
+    const existing = inspectionInFlight.get(key);
+    if (existing)
+      return existing;
+    const task = (async () => {
+      const raced = await readInspection(source.resource.id);
+      if (raced) {
+        assertCompleteInspectionFacts(source.resource, raced.facts);
+        return raced;
+      }
+      const probed = LocalAssetInspectionFactsSchema.parse(await inspectResource({
+        sourcePath: source.path,
+        resource: source.resource
+      }));
+      const facts = assertCompleteInspectionFacts(source.resource, mergeInspectionFacts(source.resource.id, inspectionFactsFromResource(source), probed));
+      const canonicalContentType = canonicalAssetMediaTypeAssertion(facts.contentType);
+      if (!canonicalContentType) {
+        throw new Error(`Decoded ${source.resource.kind} Asset is missing a canonical media type.`);
+      }
+      const canonicalSource = await resources.seal({
+        resourceId: source.resource.id,
+        kind: source.resource.kind,
+        contentType: canonicalContentType
+      });
+      return persistInspection({ source: canonicalSource, facts });
+    })();
+    inspectionInFlight.set(key, task);
+    try {
+      return await task;
+    } finally {
+      if (inspectionInFlight.get(key) === task) {
+        inspectionInFlight.delete(key);
+      }
+    }
+  }
+  async function installedSource(input) {
+    const source = await resources.resolve(input.resource.id);
+    if (!source || !sameResourceFacts(source, input)) {
+      throw new Error(`Source Resource ${input.resource.id} is not installed with the claimed immutable facts.`);
+    }
+    return source;
+  }
+  function inspectionFactsFromResource(source) {
+    const contentType = canonicalAssetMediaTypeAssertion(source.resource.contentType);
+    return LocalAssetInspectionFactsSchema.parse({
+      ...contentType ? { contentType } : {}
+    });
+  }
+  function mergeInspectionFacts(sourceResourceId, left, right) {
+    const merged = { ...left };
+    for (const [key, value] of Object.entries(right)) {
+      const existing = merged[key];
+      if (existing !== void 0 && JSON.stringify(existing) !== JSON.stringify(value)) {
+        throw new Error(`Inspection fact ${key} for ${sourceResourceId} conflicts with the persisted Resource facts.`);
+      }
+      merged[key] = value;
+    }
+    return LocalAssetInspectionFactsSchema.parse(merged);
+  }
+  return {
+    async finalize(input) {
+      const staged = await resources.resolveStaged(input.resourceId);
+      const sealed = await resources.resolve(input.resourceId);
+      if (!staged && !sealed) {
+        throw new Error(`Bytes ${input.resourceId} are not available for Asset verification.`);
+      }
+      if (sealed) {
+        const stored = await readInspection(input.resourceId);
+        if (stored) {
+          const facts2 = assertCompleteInspectionFacts(sealed.resource, stored.facts);
+          const canonicalContentType2 = canonicalAssetMediaTypeAssertion(facts2.contentType);
+          if (!canonicalContentType2) {
+            throw new Error(`Decoded ${sealed.resource.kind} Asset is missing a canonical media type.`);
+          }
+          const source2 = await resources.seal({
+            resourceId: input.resourceId,
+            kind: sealed.resource.kind,
+            contentType: canonicalContentType2
+          });
+          const assertedContentType2 = canonicalAssetMediaTypeAssertion(input.contentType);
+          if (source2.resource.kind !== input.kind || assertedContentType2 !== void 0 && !sameMediaTypeAssertion(assertedContentType2, source2.resource.contentType)) {
+            throw new Error(`Local Resource ${input.resourceId} already has different verified media facts than ${input.kind}/${assertedContentType2 ?? "an unspecified media type"}.`);
+          }
+          return { source: source2, facts: facts2 };
+        }
+      }
+      const inspectResource = options.inspectResource;
+      if (!inspectResource) {
+        throw new Error("A Host byte-probe adapter is required before Asset publication.");
+      }
+      const assertedContentType = canonicalAssetMediaTypeAssertion(input.contentType ?? sealed?.resource.contentType);
+      const evidence = staged ?? sealed;
+      const assertedResource = ResourceSchema.parse({
+        id: input.resourceId,
+        kind: input.kind,
+        digest: {
+          algorithm: "sha256",
+          value: "digest" in evidence ? evidence.digest : evidence.resource.digest.value
+        },
+        byteLength: "byteLength" in evidence ? evidence.byteLength : evidence.resource.byteLength,
+        ...assertedContentType ? { contentType: assertedContentType } : {}
+      });
+      const facts = assertCompleteInspectionFacts(assertedResource, mergeInspectionFacts(input.resourceId, LocalAssetInspectionFactsSchema.parse({
+        ...assertedResource.contentType ? { contentType: assertedResource.contentType } : {}
+      }), LocalAssetInspectionFactsSchema.parse(await inspectResource({
+        sourcePath: evidence.path,
+        resource: assertedResource
+      }))));
+      const canonicalContentType = canonicalAssetMediaTypeAssertion(facts.contentType);
+      if (!canonicalContentType) {
+        throw new Error(`Decoded ${input.kind} Asset is missing a canonical media type.`);
+      }
+      const source = await resources.seal({
+        ...staged ? { receipt: staged.receipt } : { resourceId: input.resourceId },
+        kind: assertedResource.kind,
+        contentType: canonicalContentType
+      });
+      const canonicalFacts = LocalAssetInspectionFactsSchema.parse({
+        ...facts,
+        contentType: canonicalContentType
+      });
+      const winner = await persistInspection({
+        source,
+        facts: canonicalFacts
+      });
+      return { source, facts: winner.facts };
+    },
+    async inspect(input) {
+      const source = await installedSource(input.source);
+      const inspection = await ensureInspection(source);
+      return { facts: inspection.facts };
+    }
+  };
 }
 
 // ../../apps/local-api/dist/loro/file-replica-store.js
-var import_promises8 = require("node:fs/promises");
+var import_promises9 = require("node:fs/promises");
 var import_node_crypto7 = require("node:crypto");
-var import_node_path13 = require("node:path");
+var import_node_path14 = require("node:path");
 var import_loro_crdt7 = __toESM(require_nodejs(), 1);
 function exactBytes(view) {
   return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength ? view : new Uint8Array(view);
@@ -89233,7 +92349,7 @@ var FileReplicaStore = class {
   }
   async loadSnapshot(projectId) {
     try {
-      return exactBytes(await (0, import_promises8.readFile)(this.snapshotPath(projectId)));
+      return exactBytes(await (0, import_promises9.readFile)(this.snapshotPath(projectId)));
     } catch (error53) {
       if (isMissingFile(error53))
         return null;
@@ -89247,17 +92363,17 @@ var FileReplicaStore = class {
   }
   async appendUpdateUnsafe(projectId, update) {
     const logPath = this.updateLogPath(projectId);
-    await (0, import_promises8.mkdir)(this.loroDir(projectId), { recursive: true });
+    await (0, import_promises9.mkdir)(this.loroDir(projectId), { recursive: true });
     const updateBytes = exactBytes(update);
     const header = Buffer.alloc(4);
     header.writeUInt32BE(updateBytes.byteLength, 0);
-    await (0, import_promises8.appendFile)(logPath, Buffer.concat([header, Buffer.from(updateBytes)]));
+    await (0, import_promises9.appendFile)(logPath, Buffer.concat([header, Buffer.from(updateBytes)]));
   }
   async loadUpdateLog(projectId) {
     const logPath = this.updateLogPath(projectId);
     let log2;
     try {
-      log2 = await (0, import_promises8.readFile)(logPath);
+      log2 = await (0, import_promises9.readFile)(logPath);
     } catch (error53) {
       if (isMissingFile(error53))
         return [];
@@ -89267,14 +92383,14 @@ var FileReplicaStore = class {
     let offset = 0;
     while (offset < log2.byteLength) {
       if (offset + 4 > log2.byteLength) {
-        await (0, import_promises8.truncate)(logPath, offset);
+        await (0, import_promises9.truncate)(logPath, offset);
         break;
       }
       const length = log2.readUInt32BE(offset);
       const recordStart = offset + 4;
       const recordEnd = recordStart + length;
       if (recordEnd > log2.byteLength) {
-        await (0, import_promises8.truncate)(logPath, offset);
+        await (0, import_promises9.truncate)(logPath, offset);
         break;
       }
       updates.push(exactBytes(log2.subarray(recordStart, recordEnd)));
@@ -89305,34 +92421,34 @@ var FileReplicaStore = class {
   }
   async saveSnapshotAtomicUnsafe(projectId, snapshot) {
     const dir = this.loroDir(projectId);
-    await (0, import_promises8.mkdir)(dir, { recursive: true });
+    await (0, import_promises9.mkdir)(dir, { recursive: true });
     const finalPath = this.snapshotPath(projectId);
-    const tempPath = (0, import_node_path13.join)(dir, `snapshot.bin.${process.pid}.${(0, import_node_crypto7.randomUUID)()}.tmp`);
+    const tempPath = (0, import_node_path14.join)(dir, `snapshot.bin.${process.pid}.${(0, import_node_crypto7.randomUUID)()}.tmp`);
     const snapshotBytes = exactBytes(snapshot);
     try {
-      const handle = await (0, import_promises8.open)(tempPath, "wx");
+      const handle = await (0, import_promises9.open)(tempPath, "wx");
       try {
         await handle.writeFile(snapshotBytes);
         await handle.sync();
       } finally {
         await handle.close();
       }
-      await (0, import_promises8.rename)(tempPath, finalPath);
+      await (0, import_promises9.rename)(tempPath, finalPath);
     } catch (error53) {
-      await (0, import_promises8.rm)(tempPath, { force: true }).catch(() => {
+      await (0, import_promises9.rm)(tempPath, { force: true }).catch(() => {
       });
       throw error53;
     }
   }
   async truncateUpdateLog(projectId) {
     const logPath = this.updateLogPath(projectId);
-    await (0, import_promises8.mkdir)(this.loroDir(projectId), { recursive: true });
+    await (0, import_promises9.mkdir)(this.loroDir(projectId), { recursive: true });
     try {
-      await (0, import_promises8.truncate)(logPath, 0);
+      await (0, import_promises9.truncate)(logPath, 0);
     } catch (error53) {
       if (!isMissingFile(error53))
         throw error53;
-      await (0, import_promises8.writeFile)(logPath, new Uint8Array(), { mode: 384 });
+      await (0, import_promises9.writeFile)(logPath, new Uint8Array(), { mode: 384 });
     }
   }
   async recover(projectId) {
@@ -89340,7 +92456,7 @@ var FileReplicaStore = class {
   }
   async deleteReplica(projectId) {
     await this.enqueueProjectWrite(projectId, async () => {
-      await (0, import_promises8.rm)(this.projectDir(projectId), { recursive: true, force: true });
+      await (0, import_promises9.rm)(this.projectDir(projectId), { recursive: true, force: true });
     });
   }
   async recoverUnsafe(projectId) {
@@ -89356,16 +92472,16 @@ var FileReplicaStore = class {
     return doc;
   }
   loroDir(projectId) {
-    return (0, import_node_path13.join)(this.projectDir(projectId), "loro");
+    return (0, import_node_path14.join)(this.projectDir(projectId), "loro");
   }
   projectDir(projectId) {
-    return (0, import_node_path13.join)(this.rootDir, encodeURIComponent(projectId));
+    return (0, import_node_path14.join)(this.rootDir, encodeURIComponent(projectId));
   }
   snapshotPath(projectId) {
-    return (0, import_node_path13.join)(this.loroDir(projectId), "snapshot.bin");
+    return (0, import_node_path14.join)(this.loroDir(projectId), "snapshot.bin");
   }
   updateLogPath(projectId) {
-    return (0, import_node_path13.join)(this.loroDir(projectId), "updates.log");
+    return (0, import_node_path14.join)(this.loroDir(projectId), "updates.log");
   }
   async enqueueProjectWrite(projectId, task) {
     const key = encodeURIComponent(projectId);
@@ -89610,8 +92726,19 @@ function createLocalProjectAssetService(options) {
     registry: {
       async resolve({ entry }) {
         try {
-          const projection = await resources.resolve(entry.source.resourceId);
-          return projection ? { status: "ready", resource: projection.resource } : {
+          let projection = await resources.resolve(entry.source.resourceId);
+          if (projection && !projection.resource.contentType && options.assetInspection) {
+            await options.assetInspection.inspect({ source: projection });
+            projection = await resources.resolve(entry.source.resourceId);
+          }
+          const contentType = canonicalAssetMediaTypeAssertion(projection?.resource.contentType);
+          return projection ? {
+            status: "ready",
+            resource: {
+              ...projection.resource,
+              ...contentType ? { contentType } : {}
+            }
+          } : {
             status: "unavailable",
             error: "Immutable Resource bytes are not installed on this Host."
           };
@@ -89645,8 +92772,7 @@ function createLocalProjectAssetService(options) {
       return resolved;
     try {
       const inspection = await options.assetInspection.inspect({
-        source,
-        knownFacts: entry.metadata
+        source
       });
       return ResolvedAssetSchema.parse({
         ...resolved,
@@ -89659,46 +92785,38 @@ function createLocalProjectAssetService(options) {
   async function resolveEntry(projectId, entry) {
     return enrichResolved(entry, await resolveProjectAsset(resolverPorts, { projectId, entry }));
   }
-  async function metadataForPublication(input) {
-    const { waveform: _legacyWaveform, ...metadata2 } = input.metadata;
-    const base = ProjectAssetMetadataSchema.parse({
-      ...metadata2,
-      bytes: input.source.resource.byteLength,
-      ...input.source.resource.contentType ? { contentType: input.source.resource.contentType } : {},
-      ...input.name && !input.metadata.originalName ? { originalName: input.name } : {}
-    });
-    if (!options.assetInspection)
-      return base;
-    const inspection = await options.assetInspection.inspect({
-      source: input.source,
-      knownFacts: base
-    });
+  function canonicalMetadata(input) {
     return ProjectAssetMetadataSchema.parse({
-      ...base,
-      ...inspection.facts,
-      // Resource facts, not caller or probe claims, own these immutable fields.
+      ...input.facts,
+      // Resource and Host byte-probe facts own the canonical media read model.
+      // Producer/browser values are hints only and cannot become authority.
       bytes: input.source.resource.byteLength,
-      ...input.source.resource.contentType ? { contentType: input.source.resource.contentType } : {}
+      ...input.metadata.originalName || input.name ? { originalName: input.metadata.originalName ?? input.name } : {}
+    });
+  }
+  async function finalizedSource(input) {
+    if (!options.assetInspection) {
+      throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", "A verified Host Asset inspection is required before Project publication.");
+    }
+    return options.assetInspection.finalize({
+      resourceId: input.resourceId,
+      kind: input.kind,
+      ...input.metadata.contentType ? { contentType: input.metadata.contentType } : {}
     });
   }
   async function prepareStagedOwnedEntry(input) {
     const projectAssetId2 = nonEmpty4(input.projectAssetId, "projectAssetId");
     const resourceId = nonEmpty4(input.resourceId, "resourceId");
-    const projection = await resources.resolve(resourceId);
-    if (!projection) {
-      throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Staged Resource ${resourceId} is not installed on this Host.`);
-    }
-    if (projection.resource.kind !== input.kind) {
-      throw new LocalProjectAssetMigrationError("RESOURCE_KIND_CONFLICT", `Staged Resource ${resourceId} is ${projection.resource.kind}, not ${input.kind}.`);
-    }
+    const finalized = await finalizedSource(input);
     return ProjectAssetEntrySchema.parse({
       id: projectAssetId2,
       kind: input.kind,
       source: { kind: "owned", resourceId },
       lifecycle: { state: "active" },
       ...input.name ? { name: input.name } : {},
-      metadata: await metadataForPublication({
-        source: projection,
+      metadata: canonicalMetadata({
+        source: finalized.source,
+        facts: finalized.facts,
         metadata: input.metadata,
         ...input.name ? { name: input.name } : {}
       }),
@@ -89706,21 +92824,16 @@ function createLocalProjectAssetService(options) {
     });
   }
   async function publishInstalled(input) {
-    const source = await resources.resolve(input.resourceId);
-    if (!source) {
-      throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Resource ${input.resourceId} is not installed on this Host.`);
-    }
-    if (source.resource.kind !== input.kind) {
-      throw new LocalProjectAssetMigrationError("RESOURCE_KIND_CONFLICT", `Resource ${input.resourceId} is ${source.resource.kind}, not ${input.kind}.`);
-    }
+    const finalized = await finalizedSource(input);
     const entry = {
       id: nonEmpty4(input.projectAssetId, "projectAssetId"),
       kind: input.kind,
       source: { kind: "owned", resourceId: input.resourceId },
       lifecycle: { state: "active" },
       ...input.name ? { name: input.name } : {},
-      metadata: await metadataForPublication({
-        source,
+      metadata: canonicalMetadata({
+        source: finalized.source,
+        facts: finalized.facts,
         metadata: input.metadata,
         ...input.name ? { name: input.name } : {}
       }),
@@ -89737,13 +92850,7 @@ function createLocalProjectAssetService(options) {
     return enrichResolved(entry, resolved);
   }
   async function publishLinked(input) {
-    const source = await resources.resolve(input.resourceId);
-    if (!source) {
-      throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Resource ${input.resourceId} is not installed on this Host.`);
-    }
-    if (source.resource.kind !== input.kind) {
-      throw new LocalProjectAssetMigrationError("RESOURCE_KIND_CONFLICT", `Resource ${input.resourceId} is ${source.resource.kind}, not ${input.kind}.`);
-    }
+    const finalized = await finalizedSource(input);
     const entry = {
       id: nonEmpty4(input.projectAssetId, "projectAssetId"),
       kind: input.kind,
@@ -89758,8 +92865,9 @@ function createLocalProjectAssetService(options) {
       },
       lifecycle: { state: "active" },
       ...input.name ? { name: input.name } : {},
-      metadata: await metadataForPublication({
-        source,
+      metadata: canonicalMetadata({
+        source: finalized.source,
+        facts: finalized.facts,
         metadata: input.metadata,
         ...input.name ? { name: input.name } : {}
       }),
@@ -89773,7 +92881,7 @@ function createLocalProjectAssetService(options) {
     let bytes;
     try {
       const path = await assetPathForRead(options.dataDir, legacyStorageKey(asset), options.clashRoot);
-      bytes = new Uint8Array(await (0, import_promises9.readFile)(path));
+      bytes = new Uint8Array(await (0, import_promises10.readFile)(path));
     } catch (error53) {
       throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Legacy Asset ${asset.id} has no locally verifiable immutable bytes.`, { cause: error53 });
     }
@@ -89994,18 +93102,16 @@ function createLocalProjectAssetService(options) {
       return applyMaterialization(projectId, doc, await prepareLegacyEntries(projectId, doc, legacy));
     },
     stageOwned(input) {
-      return resources.install({
-        kind: input.kind,
+      return resources.stage({
         bytes: input.bytes,
-        ...input.contentType ? { contentType: input.contentType } : {},
         ...input.name ? { originalName: input.name } : {}
       });
     },
     async resolveStagedOwned(resourceIdInput) {
       const resourceId = nonEmpty4(resourceIdInput, "resourceId");
-      const projection = await resources.resolve(resourceId);
+      const projection = await resources.resolveStaged(resourceId);
       if (!projection) {
-        throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Staged Resource ${resourceId} is not installed on this Host.`);
+        throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Staged bytes ${resourceId} are not available on this Host.`);
       }
       return projection;
     },
@@ -90021,22 +93127,20 @@ function createLocalProjectAssetService(options) {
       return resolveEntry(projectId, published);
     },
     async installOwned(input) {
-      const projection = await resources.install({
-        kind: input.kind,
+      const staged = await resources.stage({
         bytes: input.bytes,
-        ...input.contentType ? { contentType: input.contentType } : {},
         ...input.name ? { originalName: input.name } : {}
       });
       return publishInstalled({
         projectId: nonEmpty4(input.projectId, "projectId"),
-        projectAssetId: input.projectAssetId?.trim() || `asset:${(0, import_node_crypto8.randomUUID)()}`,
+        projectAssetId: nonEmpty4(input.projectAssetId, "projectAssetId"),
         kind: input.kind,
-        resourceId: projection.resource.id,
+        resourceId: staged.resourceId,
         ...input.name ? { name: input.name } : {},
         metadata: {
           ...input.metadata,
-          bytes: projection.resource.byteLength,
-          ...projection.resource.contentType ? { contentType: projection.resource.contentType } : {},
+          bytes: staged.byteLength,
+          ...input.contentType ? { contentType: input.contentType } : {},
           ...input.name && !input.metadata.originalName ? { originalName: input.name } : {}
         },
         ...input.provenance ? { provenance: input.provenance } : {}
@@ -90164,6 +93268,7 @@ function createLocalProjectAssetService(options) {
 
 // ../../apps/local-api/dist/local-global-assets.js
 var import_node_crypto9 = require("node:crypto");
+var import_promises11 = require("node:fs/promises");
 var LocalGlobalAssetError = class extends Error {
   code;
   constructor(code, message, options) {
@@ -90180,6 +93285,31 @@ function nonEmpty5(value, label) {
 }
 function mediaUrl2(origin, libraryId, globalAssetId) {
   return `${origin.replace(/\/+$/, "")}/api/v1/libraries/${encodeURIComponent(libraryId)}/assets/${encodeURIComponent(globalAssetId)}/media`;
+}
+function legacyStorageKey2(asset) {
+  const localBlobKey = asset.metadata?.localBlobKey;
+  if (typeof localBlobKey === "string" && localBlobKey.trim()) {
+    const normalized = localBlobKey.replace(/\\/g, "/").replace(/^\/+/, "");
+    return normalized.startsWith("blobs/") ? `local-blobs/${normalized.slice("blobs/".length)}` : normalized;
+  }
+  return asset.srcR2Key;
+}
+function legacyContentHash(value) {
+  if (typeof value !== "string")
+    return void 0;
+  const normalized = value.trim().toLowerCase().replace(/^sha256:/, "");
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : void 0;
+}
+function legacyProvenance(asset) {
+  if (asset.sourceTaskId || asset.sourceModel || asset.sourcePrompt) {
+    return {
+      kind: "generation",
+      ...asset.sourceTaskId ? { actionRunId: asset.sourceTaskId } : {},
+      ...asset.sourceModel ? { model: asset.sourceModel } : {},
+      ...asset.sourcePrompt !== null && asset.sourcePrompt !== void 0 ? { prompt: asset.sourcePrompt } : {}
+    };
+  }
+  return { kind: "import" };
 }
 function metadataForResource(input) {
   if (input.metadata?.bytes !== void 0 && input.metadata.bytes !== input.byteLength) {
@@ -90214,8 +93344,19 @@ function createLocalGlobalAssetService(options) {
     registry: {
       async resolve({ entry }) {
         try {
-          const projection = await resources.resolve(entry.resourceId);
-          return projection ? { status: "ready", resource: projection.resource } : {
+          let projection = await resources.resolve(entry.resourceId);
+          if (projection && !projection.resource.contentType && options.assetInspection) {
+            await options.assetInspection.inspect({ source: projection });
+            projection = await resources.resolve(entry.resourceId);
+          }
+          const contentType = canonicalAssetMediaTypeAssertion(projection?.resource.contentType);
+          return projection ? {
+            status: "ready",
+            resource: {
+              ...projection.resource,
+              ...contentType ? { contentType } : {}
+            }
+          } : {
             status: "unavailable",
             error: "Immutable Resource bytes are not installed on this Host."
           };
@@ -90248,8 +93389,7 @@ function createLocalGlobalAssetService(options) {
       return resolved;
     try {
       const inspection = await options.assetInspection.inspect({
-        source,
-        knownFacts: entry.metadata
+        source
       });
       return ResolvedAssetSchema.parse({
         ...resolved,
@@ -90276,51 +93416,58 @@ function createLocalGlobalAssetService(options) {
     }
     return resolveEntry(libraryId, entry);
   }
-  async function metadataForPublication(input) {
-    const { waveform: _legacyWaveform, ...metadata2 } = input.metadata ?? {};
-    const base = metadataForResource({
-      metadata: metadata2,
-      byteLength: input.source.resource.byteLength,
-      ...input.source.resource.contentType ? { contentType: input.source.resource.contentType } : {},
-      ...input.originalName ? { originalName: input.originalName } : {}
-    });
-    if (!options.assetInspection)
-      return base;
-    const inspection = await options.assetInspection.inspect({
-      source: input.source,
-      knownFacts: base
-    });
+  function canonicalMetadata(input) {
     return ProjectAssetMetadataSchema.parse({
-      ...base,
-      ...inspection.facts,
-      // Resource facts, not caller or probe claims, own these immutable fields.
+      ...input.facts,
+      // Resource and Host byte-probe facts own the canonical media read model.
+      // Producer/browser values are hints only and cannot become authority.
       bytes: input.source.resource.byteLength,
-      ...input.source.resource.contentType ? { contentType: input.source.resource.contentType } : {}
+      ...input.metadata?.originalName || input.originalName ? { originalName: input.metadata?.originalName ?? input.originalName } : {}
     });
   }
-  async function publish(input) {
+  async function finalizedSource(input) {
+    if (!options.assetInspection) {
+      throw new LocalGlobalAssetError("GLOBAL_ASSET_UNAVAILABLE", "A verified Host Asset inspection is required before Global publication.");
+    }
+    try {
+      return await options.assetInspection.finalize({
+        resourceId: input.resourceId,
+        kind: input.kind,
+        ...input.metadata?.contentType ? { contentType: input.metadata.contentType } : {}
+      });
+    } catch (error53) {
+      throw new LocalGlobalAssetError("GLOBAL_ASSET_UNAVAILABLE", `Resource ${input.resourceId} could not be verified for Global publication: ${error53 instanceof Error ? error53.message : String(error53)}`, { cause: error53 });
+    }
+  }
+  async function preparePublication(input) {
     const libraryId = nonEmpty5(input.libraryId, "libraryId");
-    const globalAssetId = nonEmpty5(input.globalAssetId ?? `global:${(0, import_node_crypto9.randomUUID)()}`, "globalAssetId");
-    const projection = await resources.resolve(nonEmpty5(input.resourceId, "resourceId"));
-    if (!projection) {
-      throw new LocalGlobalAssetError("GLOBAL_ASSET_UNAVAILABLE", `Resource ${input.resourceId} is not installed on this Host.`);
-    }
-    if (projection.resource.kind !== input.kind) {
-      throw new LocalGlobalAssetError("GLOBAL_ASSET_FACT_MISMATCH", `Resource ${input.resourceId} is ${projection.resource.kind}, not ${input.kind}.`);
-    }
+    const globalAssetId = nonEmpty5(input.globalAssetId, "globalAssetId");
+    const resourceId = nonEmpty5(input.resourceId, "resourceId");
+    const finalized = await finalizedSource({
+      resourceId,
+      kind: input.kind,
+      ...input.metadata ? { metadata: input.metadata } : {}
+    });
+    const projection = finalized.source;
     const entry = GlobalAssetEntrySchema.parse({
       id: globalAssetId,
       kind: input.kind,
       resourceId: projection.resource.id,
       lifecycle: { state: "active" },
       ...input.name ? { name: input.name } : {},
-      metadata: await metadataForPublication({
+      metadata: canonicalMetadata({
         source: projection,
+        facts: finalized.facts,
         metadata: input.metadata,
         ...input.originalName ? { originalName: input.originalName } : {}
       }),
       ...input.provenance ? { provenance: input.provenance } : {}
     });
+    return { libraryId, globalAssetId, entry };
+  }
+  async function publish(input) {
+    await ensureLibraryMaterialized(input.libraryId);
+    const { libraryId, globalAssetId, entry } = await preparePublication(input);
     const existing = await authority.read(libraryId, globalAssetId);
     if (existing) {
       if (JSON.stringify(existing) !== JSON.stringify(entry)) {
@@ -90341,41 +93488,105 @@ function createLocalGlobalAssetService(options) {
     }
     return requireResolved(libraryId, globalAssetId);
   }
+  async function materializeLegacyPersonalAssets() {
+    if (await metadata.legacyPersonalGlobalAssetMigrationCompleted())
+      return;
+    const legacy = await metadata.load();
+    const legacyUserId = options.legacyUserId?.trim() || "local-user";
+    const assetsById = new Map(legacy.assets.map((asset) => [asset.id, asset]));
+    const assetIds = [
+      ...new Set((legacy.libraryAssetRefs ?? []).filter((reference) => reference.userId === legacyUserId).map((reference) => reference.assetId))
+    ].sort();
+    const entries = [];
+    for (const assetId of assetIds) {
+      const asset = assetsById.get(assetId);
+      if (!asset) {
+        throw new LocalGlobalAssetError("GLOBAL_ASSET_UNAVAILABLE", `Legacy personal Global Asset ${assetId} has no Asset row.`);
+      }
+      if (asset.userId !== legacyUserId)
+        continue;
+      let bytes;
+      try {
+        const path = await assetPathForRead(options.dataDir, legacyStorageKey2(asset), options.clashRoot);
+        bytes = new Uint8Array(await (0, import_promises11.readFile)(path));
+      } catch (error53) {
+        throw new LocalGlobalAssetError("GLOBAL_ASSET_UNAVAILABLE", `Legacy personal Global Asset ${asset.id} has no locally verifiable immutable bytes.`, { cause: error53 });
+      }
+      const digest3 = (0, import_node_crypto9.createHash)("sha256").update(bytes).digest("hex");
+      const claimedDigest = legacyContentHash(asset.metadata?.contentHash);
+      if (typeof asset.metadata?.contentHash === "string" && !claimedDigest || claimedDigest !== void 0 && claimedDigest !== digest3 || typeof asset.metadata?.bytes === "number" && asset.metadata.bytes !== bytes.byteLength) {
+        throw new LocalGlobalAssetError("GLOBAL_ASSET_FACT_MISMATCH", `Legacy personal Global Asset ${asset.id} does not match its claimed immutable facts.`);
+      }
+      const staged = await resources.stage({
+        bytes,
+        ...asset.metadata?.originalName ? { originalName: asset.metadata.originalName } : {}
+      });
+      const prepared = await preparePublication({
+        libraryId: "personal",
+        globalAssetId: asset.id,
+        resourceId: staged.resourceId,
+        kind: asset.kind,
+        ...asset.metadata?.originalName ? {
+          name: asset.metadata.originalName,
+          originalName: asset.metadata.originalName
+        } : {},
+        metadata: {
+          ...asset.metadata?.contentType ? { contentType: asset.metadata.contentType } : {}
+        },
+        provenance: legacyProvenance(asset)
+      });
+      entries.push(prepared.entry);
+    }
+    try {
+      await metadata.createLegacyPersonalGlobalAssets(entries);
+    } catch (error53) {
+      throw new LocalGlobalAssetError("GLOBAL_ASSET_FACT_MISMATCH", "Legacy personal Global Assets conflict with canonical library facts.", { cause: error53 });
+    }
+  }
+  async function ensureLibraryMaterialized(libraryIdInput) {
+    const libraryId = nonEmpty5(libraryIdInput, "libraryId");
+    if (libraryId === "personal")
+      await materializeLegacyPersonalAssets();
+    return libraryId;
+  }
   return {
     async importBytes(input) {
-      const projection = await resources.install({
-        kind: input.kind,
+      const staged = await resources.stage({
         bytes: input.bytes,
-        ...input.contentType ? { contentType: input.contentType } : {},
         ...input.originalName ? { originalName: input.originalName } : {}
       });
       return publish({
         libraryId: input.libraryId,
-        ...input.globalAssetId ? { globalAssetId: input.globalAssetId } : {},
-        resourceId: projection.resource.id,
+        globalAssetId: input.globalAssetId,
+        resourceId: staged.resourceId,
         kind: input.kind,
         ...input.name ?? input.originalName ? { name: input.name ?? input.originalName } : {},
-        ...input.metadata ? { metadata: input.metadata } : {},
+        metadata: {
+          ...input.metadata ?? {},
+          ...input.contentType ? { contentType: input.contentType } : {}
+        },
         ...input.provenance ? { provenance: input.provenance } : {},
         ...input.originalName ? { originalName: input.originalName } : {}
       });
     },
     publishResource: publish,
     async readEntry(libraryIdInput, globalAssetIdInput) {
-      const libraryId = nonEmpty5(libraryIdInput, "libraryId");
+      const libraryId = await ensureLibraryMaterialized(libraryIdInput);
       const globalAssetId = nonEmpty5(globalAssetIdInput, "globalAssetId");
       const entry = await authority.read(libraryId, globalAssetId);
       return entry ? GlobalAssetEntrySchema.parse(entry) : null;
     },
-    async read(libraryId, globalAssetId) {
+    async read(libraryIdInput, globalAssetId) {
+      const libraryId = await ensureLibraryMaterialized(libraryIdInput);
       const entry = await authority.read(libraryId, globalAssetId);
       return entry ? resolveEntry(libraryId, entry) : null;
     },
-    async list(libraryId) {
+    async list(libraryIdInput) {
+      const libraryId = await ensureLibraryMaterialized(libraryIdInput);
       return Promise.all((await authority.list(libraryId)).map((entry) => resolveEntry(libraryId, entry)));
     },
     async trash(input) {
-      const libraryId = nonEmpty5(input.libraryId, "libraryId");
+      const libraryId = await ensureLibraryMaterialized(input.libraryId);
       const globalAssetId = nonEmpty5(input.globalAssetId, "globalAssetId");
       const deleteOperationId = nonEmpty5(input.deleteOperationId, "deleteOperationId");
       if (!await authority.read(libraryId, globalAssetId)) {
@@ -90409,7 +93620,7 @@ function createLocalGlobalAssetService(options) {
       return requireResolved(libraryId, globalAssetId);
     },
     async restore(input) {
-      const libraryId = nonEmpty5(input.libraryId, "libraryId");
+      const libraryId = await ensureLibraryMaterialized(input.libraryId);
       const globalAssetId = nonEmpty5(input.globalAssetId, "globalAssetId");
       const deleteOperationId = nonEmpty5(input.deleteOperationId, "deleteOperationId");
       if (!await authority.read(libraryId, globalAssetId)) {
@@ -90426,11 +93637,12 @@ function createLocalGlobalAssetService(options) {
       return requireResolved(libraryId, globalAssetId);
     },
     async purge(input) {
-      await client2.purge(input);
-      return requireResolved(input.libraryId, input.globalAssetId);
+      const libraryId = await ensureLibraryMaterialized(input.libraryId);
+      await client2.purge({ ...input, libraryId });
+      return requireResolved(libraryId, input.globalAssetId);
     },
     async openProjection(libraryIdInput, globalAssetIdInput) {
-      const libraryId = nonEmpty5(libraryIdInput, "libraryId");
+      const libraryId = await ensureLibraryMaterialized(libraryIdInput);
       const globalAssetId = nonEmpty5(globalAssetIdInput, "globalAssetId");
       const entry = await authority.read(libraryId, globalAssetId);
       if (!entry) {
@@ -90456,570 +93668,9 @@ function createLocalGlobalAssetService(options) {
   };
 }
 
-// ../../apps/local-api/dist/local-asset-inspections.js
-var import_node_module5 = require("node:module");
-var import_node_child_process3 = require("node:child_process");
-var import_promises10 = require("node:fs/promises");
-var import_node_util = require("node:util");
-
-// ../../apps/local-api/dist/local-media-binaries.js
-var import_node_fs4 = require("node:fs");
-var import_node_module4 = require("node:module");
-var import_node_path14 = require("node:path");
-var nodeRequire4 = (0, import_node_module4.createRequire)(__clash_import_meta_url);
-var installerPackage = {
-  ffmpeg: "@ffmpeg-installer/ffmpeg",
-  ffprobe: "@ffprobe-installer/ffprobe"
-};
-function packageBinaryPath(tool, loadPackage) {
-  try {
-    const loaded = loadPackage(installerPackage[tool]);
-    const value = loaded && typeof loaded === "object" && "default" in loaded ? loaded.default : loaded;
-    return value && typeof value === "object" && "path" in value ? String(value.path) : null;
-  } catch {
-    return null;
-  }
-}
-function defaultSystemPaths(tool) {
-  return [
-    `/opt/homebrew/bin/${tool}`,
-    `/usr/local/bin/${tool}`,
-    `/usr/bin/${tool}`
-  ];
-}
-function isExecutableFile(path, platform3) {
-  if (/(?:^|[\\/])app\.asar(?:[\\/]|$)/.test(path))
-    return false;
-  try {
-    if (!(0, import_node_fs4.statSync)(path).isFile())
-      return false;
-    (0, import_node_fs4.accessSync)(path, platform3 === "win32" ? import_node_fs4.constants.F_OK : import_node_fs4.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-function preparePackagedExecutable(path, platform3) {
-  if (!path || /(?:^|[\\/])app\.asar(?:[\\/]|$)/.test(path))
-    return path;
-  if (platform3 !== "win32" && !isExecutableFile(path, platform3)) {
-    try {
-      if ((0, import_node_fs4.statSync)(path).isFile())
-        (0, import_node_fs4.chmodSync)(path, 493);
-    } catch {
-      return path;
-    }
-  }
-  return path;
-}
-function selectLocalMediaBinary(options) {
-  const overrideName = options.tool === "ffmpeg" ? "FFMPEG_PATH" : "FFPROBE_PATH";
-  const candidates = [
-    options.env[overrideName],
-    options.packagedPath,
-    ...options.systemPaths
-  ];
-  return candidates.filter((candidate) => Boolean(candidate)).find((candidate) => isExecutableFile(candidate, options.platform)) ?? null;
-}
-function resolveLocalMediaBinary(tool, options = {}) {
-  const loadPackage = options.loadPackage ?? ((name) => nodeRequire4(name));
-  const platform3 = options.platform ?? process.platform;
-  const env2 = { ...options.env ?? process.env };
-  if (tool === "ffprobe" && !env2.FFPROBE_PATH && env2.FFMPEG_PATH) {
-    env2.FFPROBE_PATH = (0, import_node_path14.join)((0, import_node_path14.dirname)(env2.FFMPEG_PATH), "ffprobe");
-  }
-  return selectLocalMediaBinary({
-    tool,
-    env: env2,
-    packagedPath: preparePackagedExecutable(packageBinaryPath(tool, loadPackage), platform3),
-    systemPaths: options.systemPaths ?? defaultSystemPaths(tool),
-    platform: platform3
-  });
-}
-function localFfmpegPath() {
-  return resolveLocalMediaBinary("ffmpeg");
-}
-function localFfprobePath() {
-  return resolveLocalMediaBinary("ffprobe");
-}
-
-// ../../apps/local-api/dist/local-asset-inspections.js
-var LOCAL_ASSET_INSPECTION_RECIPE = "asset-inspection/v3:canonical-media-facts";
-var LocalAssetInspectionFactsSchema = ProjectAssetMetadataSchema.pick({
-  width: true,
-  height: true,
-  durationMs: true,
-  contentType: true,
-  frameRate: true,
-  videoCodec: true,
-  hasAudio: true,
-  audioCodec: true
-});
-var execFileAsync = (0, import_node_util.promisify)(import_node_child_process3.execFile);
-function optionalNonEmptyString(value) {
-  return typeof value === "string" && value.trim() ? value.trim() : void 0;
-}
-function optionalPositiveInteger(value) {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : void 0;
-}
-function frameRate(value) {
-  if (typeof value !== "string")
-    return void 0;
-  const match2 = /^(\d+(?:\.\d+)?)(?:\/(\d+(?:\.\d+)?))?$/.exec(value.trim());
-  if (!match2)
-    return void 0;
-  const numerator = Number(match2[1]);
-  const denominator = match2[2] ? Number(match2[2]) : 1;
-  const rate = numerator / denominator;
-  return Number.isFinite(rate) && rate > 0 ? rate : void 0;
-}
-function durationMs(value) {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return void 0;
-  }
-  const seconds = Number(value);
-  if (!Number.isFinite(seconds) || seconds < 0)
-    return void 0;
-  return Math.round(seconds * 1e3);
-}
-function record(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
-}
-function mediaTypeParameters(value) {
-  const [rawEssence = "", ...rawParameters] = (value ?? "").split(";");
-  const parameters = /* @__PURE__ */ new Map();
-  for (const rawParameter of rawParameters) {
-    const separator = rawParameter.indexOf("=");
-    if (separator <= 0)
-      continue;
-    parameters.set(rawParameter.slice(0, separator).trim().toLowerCase(), rawParameter.slice(separator + 1).trim().toLowerCase());
-  }
-  return { essence: rawEssence.trim().toLowerCase(), parameters };
-}
-function requireRegisteredMediaType(resource) {
-  const { essence } = mediaTypeParameters(resource.contentType);
-  const matches = resource.kind === "image" && essence.startsWith("image/") || resource.kind === "video" && essence.startsWith("video/") || resource.kind === "audio" && essence.startsWith("audio/") || resource.kind === "model" && (essence === "model/gltf-binary" || essence === "model/gltf+json");
-  if (!matches) {
-    throw new Error(`Registered ${resource.kind} Asset content type ${resource.contentType ?? "(missing)"} does not match its kind.`);
-  }
-  return essence;
-}
-function decodedMediaType(input) {
-  const formatNames = new Set((input.formatName ?? "").toLowerCase().split(",").map((value) => value.trim()).filter(Boolean));
-  if (input.kind === "image") {
-    const codec2 = input.videoCodec?.toLowerCase();
-    const mediaType = codec2 === "png" ? "image/png" : codec2 === "mjpeg" || codec2 === "jpeg2000" ? codec2 === "mjpeg" ? "image/jpeg" : "image/jp2" : codec2 === "gif" ? "image/gif" : codec2 === "webp" ? "image/webp" : codec2 === "svg" ? "image/svg+xml" : codec2 === "av1" && formatNames.has("mov") ? "image/avif" : void 0;
-    if (mediaType)
-      return mediaType;
-  } else if (formatNames.has("webm")) {
-    return input.kind === "video" ? "video/webm" : "audio/webm";
-  } else if (formatNames.has("matroska")) {
-    return input.kind === "video" ? "video/x-matroska" : "audio/x-matroska";
-  } else if (formatNames.has("mov") || formatNames.has("mp4") || formatNames.has("m4a") || formatNames.has("3gp") || formatNames.has("3g2") || formatNames.has("mj2")) {
-    return input.kind === "video" ? input.majorBrand?.trim().toLowerCase() === "qt" ? "video/quicktime" : "video/mp4" : "audio/mp4";
-  } else if (input.kind === "video" && formatNames.has("mpegts")) {
-    return "video/mp2t";
-  } else if (input.kind === "video" && formatNames.has("avi")) {
-    return "video/x-msvideo";
-  } else if (input.kind === "audio" && formatNames.has("mp3")) {
-    return "audio/mpeg";
-  } else if (input.kind === "audio" && formatNames.has("wav")) {
-    return "audio/wav";
-  } else if (input.kind === "audio" && formatNames.has("flac")) {
-    return "audio/flac";
-  } else if (input.kind === "audio" && formatNames.has("ogg")) {
-    return "audio/ogg";
-  } else if (input.kind === "audio" && formatNames.has("aac")) {
-    return "audio/aac";
-  }
-  throw new Error(`Decoded ${input.kind} Asset format ${input.formatName ?? "(missing)"}/${input.videoCodec ?? "(missing)"} has no canonical media type mapping.`);
-}
-function assertDecodedMediaType(input) {
-  if (input.resource.kind === "model")
-    return;
-  const decoded = decodedMediaType({
-    kind: input.resource.kind,
-    ...input.formatName ? { formatName: input.formatName } : {},
-    ...input.videoCodec ? { videoCodec: input.videoCodec } : {},
-    ...input.majorBrand ? { majorBrand: input.majorBrand } : {}
-  });
-  if (decoded !== input.registeredEssence) {
-    throw new Error(`Decoded ${input.resource.kind} Asset has canonical media type ${decoded}, not registered ${input.registeredEssence}.`);
-  }
-}
-function requireFact(value, name, kind) {
-  if (value === void 0) {
-    throw new Error(`Decoded ${kind} Asset is missing canonical ${name}.`);
-  }
-  return value;
-}
-function parseGltfDocument(value) {
-  const root5 = record(value);
-  const asset = record(root5?.asset);
-  const version2 = optionalNonEmptyString(asset?.version);
-  if (!version2 || !/^2(?:\.|$)/.test(version2)) {
-    throw new Error("glTF Asset bytes do not declare a supported 2.x asset version.");
-  }
-}
-async function inspectGltf(sourcePath, resource, essence) {
-  const bytes = await (0, import_promises10.readFile)(sourcePath);
-  if (bytes.byteLength !== resource.byteLength) {
-    throw new Error("glTF Asset bytes do not match immutable Resource length.");
-  }
-  if (essence === "model/gltf+json") {
-    try {
-      parseGltfDocument(JSON.parse(bytes.toString("utf8")));
-    } catch (error53) {
-      throw new Error("glTF JSON Asset bytes are invalid.", { cause: error53 });
-    }
-  } else {
-    if (bytes.byteLength < 20 || bytes.subarray(0, 4).toString() !== "glTF") {
-      throw new Error("GLB Asset bytes do not contain a valid glTF header.");
-    }
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const version2 = view.getUint32(4, true);
-    const declaredLength = view.getUint32(8, true);
-    const jsonLength = view.getUint32(12, true);
-    const jsonType = view.getUint32(16, true);
-    if (version2 !== 2 || declaredLength !== bytes.byteLength || jsonType !== 1313821514 || jsonLength > bytes.byteLength - 20) {
-      throw new Error("GLB Asset bytes do not contain a valid glTF 2 JSON chunk.");
-    }
-    try {
-      parseGltfDocument(JSON.parse(bytes.subarray(20, 20 + jsonLength).toString("utf8").trim()));
-    } catch (error53) {
-      throw new Error("GLB Asset JSON chunk is invalid.", { cause: error53 });
-    }
-  }
-  return LocalAssetInspectionFactsSchema.parse({
-    contentType: resource.contentType
-  });
-}
-function inspectRawL16(resource) {
-  const { essence, parameters } = mediaTypeParameters(resource.contentType);
-  if (essence !== "audio/l16" && essence !== "audio/pcm")
-    return void 0;
-  const rate = Number(parameters.get("rate"));
-  const channels = Number(parameters.get("channels") ?? "1");
-  if (!Number.isSafeInteger(rate) || rate <= 0 || !Number.isSafeInteger(channels) || channels <= 0 || resource.byteLength % (2 * channels) !== 0) {
-    throw new Error("Raw 16-bit PCM Asset metadata must provide a valid sample rate, channel count, and whole samples.");
-  }
-  return LocalAssetInspectionFactsSchema.parse({
-    durationMs: Math.round(resource.byteLength / (2 * channels * rate) * 1e3),
-    ...resource.contentType ? { contentType: resource.contentType } : {},
-    hasAudio: true,
-    audioCodec: "pcm_s16le"
-  });
-}
-function createLocalFfprobeAssetInspector(options) {
-  const run = options.run ?? (async (file2, args) => {
-    const result = await execFileAsync(file2, args, {
-      encoding: "utf8",
-      maxBuffer: 4 * 1024 * 1024
-    });
-    return { stdout: result.stdout };
-  });
-  return async ({ sourcePath, resource }) => {
-    const essence = requireRegisteredMediaType(resource);
-    if (resource.kind === "model") {
-      return inspectGltf(sourcePath, resource, essence);
-    }
-    const rawL16 = inspectRawL16(resource);
-    if (rawL16)
-      return rawL16;
-    const { stdout } = await run(options.ffprobePath, [
-      "-v",
-      "error",
-      "-print_format",
-      "json",
-      "-show_streams",
-      "-show_format",
-      sourcePath
-    ]);
-    let output;
-    try {
-      output = JSON.parse(stdout);
-    } catch (error53) {
-      throw new Error("ffprobe returned malformed Asset inspection JSON.", {
-        cause: error53
-      });
-    }
-    const root5 = record(output);
-    if (!root5)
-      throw new Error("ffprobe returned no Asset inspection object.");
-    const streams = Array.isArray(root5.streams) ? root5.streams.map(record).filter((item) => !!item) : [];
-    const video = streams.find((stream) => stream.codec_type === "video");
-    const audio = streams.find((stream) => stream.codec_type === "audio");
-    const format2 = record(root5.format);
-    const formatName = optionalNonEmptyString(format2?.format_name);
-    const majorBrand = optionalNonEmptyString(record(format2?.tags)?.major_brand);
-    const width = optionalPositiveInteger(video?.width);
-    const height = optionalPositiveInteger(video?.height);
-    const duration3 = durationMs(format2?.duration ?? video?.duration ?? audio?.duration);
-    const rate = frameRate(video?.avg_frame_rate ?? video?.r_frame_rate);
-    const videoCodec = optionalNonEmptyString(video?.codec_name);
-    const audioCodec = optionalNonEmptyString(audio?.codec_name);
-    if (resource.kind === "image") {
-      if (!video)
-        throw new Error("Decoded image Asset has no visual stream.");
-      requireFact(width, "width", resource.kind);
-      requireFact(height, "height", resource.kind);
-      requireFact(videoCodec, "image codec", resource.kind);
-    } else if (resource.kind === "video") {
-      if (!video)
-        throw new Error("Decoded video Asset has no video stream.");
-      requireFact(width, "width", resource.kind);
-      requireFact(height, "height", resource.kind);
-      requireFact(duration3, "duration", resource.kind);
-      requireFact(rate, "frame rate", resource.kind);
-      requireFact(videoCodec, "video codec", resource.kind);
-      if (audio)
-        requireFact(audioCodec, "audio codec", resource.kind);
-    } else {
-      if (!audio)
-        throw new Error("Decoded audio Asset has no audio stream.");
-      requireFact(duration3, "duration", resource.kind);
-      requireFact(audioCodec, "audio codec", resource.kind);
-    }
-    assertDecodedMediaType({
-      resource,
-      registeredEssence: essence,
-      ...formatName ? { formatName } : {},
-      ...videoCodec ? { videoCodec } : {},
-      ...majorBrand ? { majorBrand } : {}
-    });
-    return LocalAssetInspectionFactsSchema.parse({
-      ...width === void 0 ? {} : { width },
-      ...height === void 0 ? {} : { height },
-      ...duration3 === void 0 ? {} : { durationMs: duration3 },
-      ...resource.contentType ? { contentType: resource.contentType } : {},
-      ...rate === void 0 ? {} : { frameRate: rate },
-      ...videoCodec ? { videoCodec } : {},
-      ...resource.kind === "video" || resource.kind === "audio" ? { hasAudio: !!audio } : {},
-      ...audioCodec ? { audioCodec } : {}
-    });
-  };
-}
-var nodeRequire5 = (0, import_node_module5.createRequire)(__clash_import_meta_url);
-function openDatabase3(path) {
-  const { DatabaseSync } = nodeRequire5("node:sqlite");
-  const database = new DatabaseSync(path);
-  database.exec(`
-    PRAGMA busy_timeout = 5000;
-    PRAGMA journal_mode = WAL;
-    DROP TABLE IF EXISTS local_asset_representations;
-    CREATE TABLE IF NOT EXISTS local_asset_inspections (
-      source_resource_id TEXT NOT NULL,
-      recipe TEXT NOT NULL,
-      facts_json TEXT NOT NULL,
-      inspected_at INTEGER NOT NULL,
-      PRIMARY KEY (source_resource_id, recipe)
-    );
-  `);
-  const inspectionTable = database.prepare(`
-      SELECT sql
-      FROM sqlite_master
-      WHERE type = 'table' AND name = 'local_asset_inspections'
-    `).get();
-  if (typeof inspectionTable?.sql !== "string" || !/\brecipe\b/i.test(inspectionTable.sql)) {
-    database.exec(`
-      BEGIN IMMEDIATE;
-      ALTER TABLE local_asset_inspections
-        RENAME TO local_asset_inspections_unversioned;
-      CREATE TABLE local_asset_inspections (
-        source_resource_id TEXT NOT NULL,
-        recipe TEXT NOT NULL,
-        facts_json TEXT NOT NULL,
-        inspected_at INTEGER NOT NULL,
-        PRIMARY KEY (source_resource_id, recipe)
-      );
-      DROP TABLE local_asset_inspections_unversioned;
-      COMMIT;
-    `);
-  }
-  return database;
-}
-function parseInspectionRow(row) {
-  const sourceResourceId = row.source_resource_id;
-  const recipe = row.recipe;
-  const factsJson = row.facts_json;
-  if (typeof sourceResourceId !== "string" || !sourceResourceId || typeof recipe !== "string" || !recipe || typeof factsJson !== "string") {
-    throw new Error("Local Asset inspection row is corrupt.");
-  }
-  let facts;
-  try {
-    facts = JSON.parse(factsJson);
-  } catch (error53) {
-    throw new Error("Local Asset inspection facts are corrupt.", {
-      cause: error53
-    });
-  }
-  return {
-    sourceResourceId,
-    recipe,
-    facts: LocalAssetInspectionFactsSchema.parse(facts)
-  };
-}
-function sameResourceFacts(left, right) {
-  return JSON.stringify(left.resource) === JSON.stringify(right.resource);
-}
-function assertCompleteInspectionFacts(resource, facts) {
-  if (facts.contentType !== resource.contentType) {
-    throw new Error(`Decoded ${resource.kind} Asset content type does not match immutable Resource facts.`);
-  }
-  if (resource.kind === "image") {
-    requireFact(facts.width, "width", resource.kind);
-    requireFact(facts.height, "height", resource.kind);
-  } else if (resource.kind === "video") {
-    requireFact(facts.width, "width", resource.kind);
-    requireFact(facts.height, "height", resource.kind);
-    requireFact(facts.durationMs, "duration", resource.kind);
-    requireFact(facts.frameRate, "frame rate", resource.kind);
-    requireFact(facts.videoCodec, "video codec", resource.kind);
-    requireFact(facts.hasAudio, "audio presence", resource.kind);
-    if (facts.hasAudio)
-      requireFact(facts.audioCodec, "audio codec", resource.kind);
-  } else if (resource.kind === "audio") {
-    requireFact(facts.durationMs, "duration", resource.kind);
-    if (facts.hasAudio !== true) {
-      throw new Error("Decoded audio Asset is missing canonical audio presence.");
-    }
-    requireFact(facts.audioCodec, "audio codec", resource.kind);
-  }
-  return facts;
-}
-function createLocalAssetInspectionService(options) {
-  const databasePath2 = `${options.dataDir}/local.sqlite`;
-  const resources = createLocalResourceStore({
-    dataDir: options.dataDir,
-    ...options.clashRoot ? { clashRoot: options.clashRoot } : {}
-  });
-  const inspectionInFlight = /* @__PURE__ */ new Map();
-  async function withDatabase(task) {
-    await (0, import_promises10.mkdir)(options.dataDir, { recursive: true });
-    const database = openDatabase3(databasePath2);
-    try {
-      return task(database);
-    } finally {
-      database.close();
-      await (0, import_promises10.chmod)(databasePath2, 384).catch(() => void 0);
-    }
-  }
-  async function readInspection(sourceResourceId) {
-    return withDatabase((database) => {
-      const row = database.prepare(`
-          SELECT source_resource_id, recipe, facts_json
-          FROM local_asset_inspections
-          WHERE source_resource_id = ? AND recipe = ?
-        `).get(sourceResourceId, LOCAL_ASSET_INSPECTION_RECIPE);
-      return row ? parseInspectionRow(row) : void 0;
-    });
-  }
-  async function persistInspection(input) {
-    const facts = assertCompleteInspectionFacts(input.source.resource, LocalAssetInspectionFactsSchema.parse(input.facts));
-    await withDatabase((database) => {
-      database.prepare(`
-          INSERT OR IGNORE INTO local_asset_inspections (
-            source_resource_id, recipe, facts_json, inspected_at
-          ) VALUES (?, ?, ?, ?)
-        `).run(input.source.resource.id, LOCAL_ASSET_INSPECTION_RECIPE, JSON.stringify(facts), Date.now());
-    });
-    const stored = await readInspection(input.source.resource.id);
-    if (!stored) {
-      throw new Error(`Local Asset inspection for ${input.source.resource.id} was not indexed.`);
-    }
-    assertCompleteInspectionFacts(input.source.resource, stored.facts);
-    if (JSON.stringify(stored.facts) !== JSON.stringify(facts)) {
-      throw new Error(`Local Asset inspection candidate for ${input.source.resource.id} conflicts with the inspection CAS winner.`);
-    }
-    return stored;
-  }
-  async function ensureInspection(source) {
-    const stored = await readInspection(source.resource.id);
-    if (stored) {
-      assertCompleteInspectionFacts(source.resource, stored.facts);
-      return stored;
-    }
-    const inspectResource = options.inspectResource;
-    if (!inspectResource)
-      return void 0;
-    const key = `${source.resource.id}\0${LOCAL_ASSET_INSPECTION_RECIPE}`;
-    const existing = inspectionInFlight.get(key);
-    if (existing)
-      return existing;
-    const task = (async () => {
-      const raced = await readInspection(source.resource.id);
-      if (raced) {
-        assertCompleteInspectionFacts(source.resource, raced.facts);
-        return raced;
-      }
-      const probed = LocalAssetInspectionFactsSchema.parse(await inspectResource({
-        sourcePath: source.path,
-        resource: source.resource
-      }));
-      return persistInspection({
-        source,
-        facts: mergeInspectionFacts(source.resource.id, inspectionFactsFromKnown(source, void 0), probed)
-      });
-    })();
-    inspectionInFlight.set(key, task);
-    try {
-      return await task;
-    } finally {
-      if (inspectionInFlight.get(key) === task) {
-        inspectionInFlight.delete(key);
-      }
-    }
-  }
-  async function installedSource(input) {
-    const source = await resources.resolve(input.resource.id);
-    if (!source || !sameResourceFacts(source, input)) {
-      throw new Error(`Source Resource ${input.resource.id} is not installed with the claimed immutable facts.`);
-    }
-    return source;
-  }
-  function inspectionFactsFromKnown(source, knownFacts) {
-    if (knownFacts?.contentType !== void 0 && knownFacts.contentType !== source.resource.contentType) {
-      throw new Error(`Inspection content type for ${source.resource.id} conflicts with its immutable Resource facts.`);
-    }
-    const selected = knownFacts ? {
-      ...knownFacts.width === void 0 ? {} : { width: knownFacts.width },
-      ...knownFacts.height === void 0 ? {} : { height: knownFacts.height },
-      ...knownFacts.durationMs === void 0 ? {} : { durationMs: knownFacts.durationMs },
-      ...knownFacts.frameRate === void 0 ? {} : { frameRate: knownFacts.frameRate },
-      ...knownFacts.videoCodec === void 0 ? {} : { videoCodec: knownFacts.videoCodec },
-      ...knownFacts.hasAudio === void 0 ? {} : { hasAudio: knownFacts.hasAudio },
-      ...knownFacts.audioCodec === void 0 ? {} : { audioCodec: knownFacts.audioCodec }
-    } : {};
-    return LocalAssetInspectionFactsSchema.parse({
-      ...selected,
-      ...source.resource.contentType ? { contentType: source.resource.contentType } : {}
-    });
-  }
-  function mergeInspectionFacts(sourceResourceId, left, right) {
-    const merged = { ...left };
-    for (const [key, value] of Object.entries(right)) {
-      const existing = merged[key];
-      if (existing !== void 0 && JSON.stringify(existing) !== JSON.stringify(value)) {
-        throw new Error(`Inspection fact ${key} for ${sourceResourceId} conflicts with the persisted Resource facts.`);
-      }
-      merged[key] = value;
-    }
-    return LocalAssetInspectionFactsSchema.parse(merged);
-  }
-  return {
-    async inspect(input) {
-      const source = await installedSource(input.source);
-      const knownFacts = inspectionFactsFromKnown(source, input.knownFacts);
-      const inspection = await ensureInspection(source);
-      const facts = inspection ? mergeInspectionFacts(source.resource.id, inspection.facts, knownFacts) : knownFacts;
-      return { facts };
-    }
-  };
-}
-
 // ../../apps/local-api/dist/local-token-import.js
 var import_node_crypto10 = require("node:crypto");
-var import_promises11 = require("node:fs/promises");
+var import_promises12 = require("node:fs/promises");
 var import_node_os5 = require("node:os");
 var import_node_path15 = require("node:path");
 var ENCRYPTED_V2_PREFIX = "v2enc:";
@@ -91091,7 +93742,7 @@ async function importLocalProviderToken(options) {
   const appDataDirectory = resolveInside(root5, options.auth.source.appDataSubdirectory);
   const configPath = resolveInside(appDataDirectory, options.auth.source.configFile);
   const keyPath = resolveInside(appDataDirectory, options.auth.source.keyFile);
-  const [configBytes, key] = await Promise.all([(0, import_promises11.readFile)(configPath), (0, import_promises11.readFile)(keyPath)]);
+  const [configBytes, key] = await Promise.all([(0, import_promises12.readFile)(configPath), (0, import_promises12.readFile)(keyPath)]);
   if (key.length !== KEY_LENGTH) {
     throw new Error(`Local token key must be ${KEY_LENGTH} bytes.`);
   }
@@ -91114,13 +93765,13 @@ async function importLocalProviderToken(options) {
 // ../../apps/local-api/dist/plugin-store.js
 var import_node_module7 = require("node:module");
 var import_node_crypto12 = require("node:crypto");
-var import_promises13 = require("node:fs/promises");
+var import_promises14 = require("node:fs/promises");
 var import_node_path17 = require("node:path");
 
 // ../../apps/local-api/dist/local-provider-store.js
 var import_node_crypto11 = require("node:crypto");
 var import_node_module6 = require("node:module");
-var import_promises12 = require("node:fs/promises");
+var import_promises13 = require("node:fs/promises");
 var import_node_path16 = require("node:path");
 
 // ../../apps/local-api/dist/provider-accounts.js
@@ -91713,16 +94364,16 @@ function keyFromString(value) {
 async function resolveKeyFromFile(dataDir2) {
   const path = providerSecretKeyPath(dataDir2);
   try {
-    const existing = (await (0, import_promises12.readFile)(path, "utf8")).trim();
+    const existing = (await (0, import_promises13.readFile)(path, "utf8")).trim();
     if (existing)
       return keyFromString(`base64:${existing}`);
   } catch {
   }
-  await (0, import_promises12.mkdir)((0, import_node_path16.dirname)(path), { recursive: true, mode: 448 });
+  await (0, import_promises13.mkdir)((0, import_node_path16.dirname)(path), { recursive: true, mode: 448 });
   const generated = (0, import_node_crypto11.randomBytes)(32).toString("base64");
-  await (0, import_promises12.writeFile)(path, `${generated}
+  await (0, import_promises13.writeFile)(path, `${generated}
 `, { mode: 384 });
-  await (0, import_promises12.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises13.chmod)(path, 384).catch(() => void 0);
   return keyFromString(`base64:${generated}`);
 }
 async function resolveProviderSecretKey(dataDir2) {
@@ -92070,21 +94721,21 @@ function createLocalProviderStore(dataDir2) {
   const path = sqlitePath2(dataDir2);
   async function exists2() {
     try {
-      await (0, import_promises12.stat)(path);
+      await (0, import_promises13.stat)(path);
       return true;
     } catch {
       return false;
     }
   }
   async function withDb(task) {
-    await (0, import_promises12.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises13.mkdir)(dataDir2, { recursive: true });
     const db = openDatabase4(path);
     try {
       applySchema2(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises12.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises13.chmod)(path, 384).catch(() => void 0);
     }
   }
   async function ensureProviderAccountsMigrated() {
@@ -92331,7 +94982,7 @@ function decrypt(stored, key) {
   ]).toString("utf8");
 }
 async function openPluginStore(options) {
-  await (0, import_promises13.mkdir)(options.dataDir, { recursive: true });
+  await (0, import_promises14.mkdir)(options.dataDir, { recursive: true });
   const { DatabaseSync } = nodeRequire7("node:sqlite");
   const db = new DatabaseSync((0, import_node_path17.join)(options.dataDir, "local.sqlite"));
   db.exec(`
@@ -92398,7 +95049,7 @@ async function openPluginStore(options) {
 
 // ../../apps/local-api/dist/text-revision-content.js
 var import_node_crypto13 = require("node:crypto");
-var import_promises14 = require("node:fs/promises");
+var import_promises15 = require("node:fs/promises");
 var import_node_path18 = require("node:path");
 function textRevisionContentHash(content) {
   return (0, import_node_crypto13.createHash)("sha256").update(content).digest("hex").slice(0, 16);
@@ -92433,7 +95084,7 @@ async function storeTextRevisionContentBlob(dataDir2, revision, content) {
     throw new Error("text revision contentHash does not match content");
   }
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const existing = await (0, import_promises14.readFile)(path, "utf8").catch((error53) => {
+  const existing = await (0, import_promises15.readFile)(path, "utf8").catch((error53) => {
     if (error53 && typeof error53 === "object" && error53.code === "ENOENT")
       return null;
     throw error53;
@@ -92442,21 +95093,21 @@ async function storeTextRevisionContentBlob(dataDir2, revision, content) {
     if (existing !== content) {
       throw new Error("text revision content blob already exists with different content");
     }
-    await (0, import_promises14.chmod)(path, 292).catch(() => void 0);
+    await (0, import_promises15.chmod)(path, 292).catch(() => void 0);
     return {
       ...textRevisionContentDescriptor(revision, { stored: true })
     };
   }
-  await (0, import_promises14.mkdir)((0, import_node_path18.dirname)(path), { recursive: true });
-  await (0, import_promises14.writeFile)(path, content, { encoding: "utf8", mode: 292 });
-  await (0, import_promises14.chmod)(path, 292).catch(() => void 0);
+  await (0, import_promises15.mkdir)((0, import_node_path18.dirname)(path), { recursive: true });
+  await (0, import_promises15.writeFile)(path, content, { encoding: "utf8", mode: 292 });
+  await (0, import_promises15.chmod)(path, 292).catch(() => void 0);
   return {
     ...textRevisionContentDescriptor(revision, { stored: true })
   };
 }
 async function withTextRevisionContentDescriptor(dataDir2, revision) {
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const fileStat = await (0, import_promises14.stat)(path).catch(() => null);
+  const fileStat = await (0, import_promises15.stat)(path).catch(() => null);
   if (!fileStat?.isFile())
     return revision;
   return {
@@ -92469,7 +95120,7 @@ async function withTextRevisionContentDescriptor(dataDir2, revision) {
 var import_node_child_process4 = require("node:child_process");
 var import_node_crypto14 = require("node:crypto");
 var import_node_fs5 = require("node:fs");
-var import_promises15 = require("node:fs/promises");
+var import_promises16 = require("node:fs/promises");
 var import_node_os6 = require("node:os");
 var import_node_path19 = require("node:path");
 var import_node_util2 = require("node:util");
@@ -92747,7 +95398,7 @@ async function makeRenderedVideoFrame(record3, dir) {
     return null;
   const layout = makeVideoFrameLayout(record3);
   const svgPath = (0, import_node_path19.join)(dir, "frame.svg");
-  await (0, import_promises15.writeFile)(svgPath, makeVideoFrameSvg(record3, layout), "utf8");
+  await (0, import_promises16.writeFile)(svgPath, makeVideoFrameSvg(record3, layout), "utf8");
   await execFileAsync2(qlmanage, ["-t", "-s", String(layout.canvasWidth), "-o", dir, svgPath], { timeout: 1e4, maxBuffer: 1024 * 1024 * 10 });
   const pngPath = `${svgPath}.png`;
   return (0, import_node_fs5.existsSync)(pngPath) ? { path: pngPath, layout } : null;
@@ -92842,14 +95493,14 @@ async function makeMp4(record3) {
       extension: ".mp4"
     };
   }
-  const dir = await (0, import_promises15.mkdtemp)((0, import_node_path19.join)((0, import_node_os6.tmpdir)(), "clash-fal-video-"));
+  const dir = await (0, import_promises16.mkdtemp)((0, import_node_path19.join)((0, import_node_os6.tmpdir)(), "clash-fal-video-"));
   const framePath = (0, import_node_path19.join)(dir, "frame.ppm");
   const outputPath = (0, import_node_path19.join)(dir, "mock.mp4");
   try {
     const renderedFrame = await makeRenderedVideoFrame(record3, dir).catch(() => null);
     const inputFramePath = renderedFrame?.path ?? framePath;
     if (!renderedFrame) {
-      await (0, import_promises15.writeFile)(framePath, makePpmFrame(record3));
+      await (0, import_promises16.writeFile)(framePath, makePpmFrame(record3));
     }
     const videoFilter = renderedFrame ? `crop=${makeEven(renderedFrame.layout.contentWidth)}:${makeEven(renderedFrame.layout.contentHeight)}:${makeEven(renderedFrame.layout.contentX)}:${makeEven(renderedFrame.layout.contentY)},scale=${record3.width}:${record3.height},setsar=1` : void 0;
     await execFileAsync2(ffmpeg, [
@@ -92878,12 +95529,12 @@ async function makeMp4(record3) {
       outputPath
     ], { timeout: 3e4, maxBuffer: 1024 * 1024 * 10 });
     return {
-      bytes: await (0, import_promises15.readFile)(outputPath),
+      bytes: await (0, import_promises16.readFile)(outputPath),
       contentType: "video/mp4",
       extension: ".mp4"
     };
   } finally {
-    await (0, import_promises15.rm)(dir, { recursive: true, force: true });
+    await (0, import_promises16.rm)(dir, { recursive: true, force: true });
   }
 }
 function waveformForPrompt(prompt, bars = 128) {
@@ -93651,7 +96302,7 @@ ${input.prompt || "Mock text"}`),
 // ../../apps/local-api/dist/local-plugin-asset-staging.js
 var import_node_crypto15 = require("node:crypto");
 var import_node_module8 = require("node:module");
-var import_promises16 = require("node:fs/promises");
+var import_promises17 = require("node:fs/promises");
 var nodeRequire8 = (0, import_node_module8.createRequire)(__clash_import_meta_url);
 function openDatabase5(path) {
   const { DatabaseSync } = nodeRequire8("node:sqlite");
@@ -93664,6 +96315,7 @@ function openDatabase5(path) {
       project_asset_id TEXT NOT NULL,
       resource_id TEXT NOT NULL,
       kind TEXT NOT NULL,
+      byte_length INTEGER NOT NULL,
       task_id TEXT NOT NULL,
       slot TEXT NOT NULL,
       plugin_id TEXT NOT NULL,
@@ -93676,6 +96328,11 @@ function openDatabase5(path) {
     CREATE INDEX IF NOT EXISTS local_plugin_asset_staging_resource
       ON local_plugin_asset_staging (resource_id);
   `);
+  try {
+    database.prepare("SELECT byte_length FROM local_plugin_asset_staging LIMIT 1");
+  } catch {
+    database.exec("ALTER TABLE local_plugin_asset_staging ADD COLUMN byte_length INTEGER");
+  }
   return database;
 }
 function required(value, label) {
@@ -93689,6 +96346,7 @@ function parseRow2(row) {
   const projectAssetId2 = row.project_asset_id;
   const resourceId = row.resource_id;
   const kind = AssetKindSchema.safeParse(row.kind);
+  const byteLength = row.byte_length;
   const taskId = row.task_id;
   const slot = row.slot;
   const pluginId = row.plugin_id;
@@ -93696,7 +96354,7 @@ function parseRow2(row) {
   const invocationId = row.invocation_id;
   const mediaType = row.media_type;
   const createdAt = row.created_at;
-  if (typeof projectId !== "string" || typeof projectAssetId2 !== "string" || typeof resourceId !== "string" || !kind.success || typeof taskId !== "string" || typeof slot !== "string" || typeof pluginId !== "string" || typeof pluginVersion !== "string" || typeof invocationId !== "string" || mediaType !== null && typeof mediaType !== "string" || typeof createdAt !== "number" || !Number.isSafeInteger(createdAt)) {
+  if (typeof projectId !== "string" || typeof projectAssetId2 !== "string" || typeof resourceId !== "string" || !kind.success || byteLength !== null && (typeof byteLength !== "number" || !Number.isSafeInteger(byteLength) || byteLength < 0) || typeof taskId !== "string" || typeof slot !== "string" || typeof pluginId !== "string" || typeof pluginVersion !== "string" || typeof invocationId !== "string" || mediaType !== null && typeof mediaType !== "string" || typeof createdAt !== "number" || !Number.isSafeInteger(createdAt)) {
     throw new Error("Local plugin Asset staging row is corrupt.");
   }
   return {
@@ -93704,6 +96362,7 @@ function parseRow2(row) {
     projectAssetId: projectAssetId2,
     resourceId,
     kind: kind.data,
+    byteLength: typeof byteLength === "number" ? byteLength : -1,
     taskId,
     slot,
     pluginId,
@@ -93724,20 +96383,21 @@ function createLocalPluginAssetStagingStore(options) {
     ...options.clashRoot ? { clashRoot: options.clashRoot } : {}
   });
   async function withDatabase(task) {
-    await (0, import_promises16.mkdir)(options.dataDir, { recursive: true });
+    await (0, import_promises17.mkdir)(options.dataDir, { recursive: true });
     const database = openDatabase5(databasePath2);
     try {
       return task(database);
     } finally {
       database.close();
-      await (0, import_promises16.chmod)(databasePath2, 384).catch(() => void 0);
+      await (0, import_promises17.chmod)(databasePath2, 384).catch(() => void 0);
     }
   }
   async function load(input) {
     return withDatabase((database) => {
       const row = database.prepare(`
         SELECT project_id, project_asset_id, resource_id, kind, task_id, slot,
-               plugin_id, plugin_version, invocation_id, media_type, created_at
+               byte_length, plugin_id, plugin_version, invocation_id,
+               media_type, created_at
         FROM local_plugin_asset_staging
         WHERE project_id = ? AND project_asset_id = ?
       `).get(input.projectId, input.projectAssetId);
@@ -93745,14 +96405,36 @@ function createLocalPluginAssetStagingStore(options) {
     });
   }
   async function resolved(row) {
-    const projection = await resources.resolve(row.resourceId);
-    if (!projection) {
-      throw new Error(`Staged plugin Asset ${row.projectAssetId} has no immutable Resource ${row.resourceId}.`);
+    const projection = await resources.resolveStaged(row.resourceId);
+    if (projection) {
+      if (projection.resourceId !== row.resourceId) {
+        throw new Error(`Staged plugin Asset ${row.projectAssetId} receipt does not match its staged bytes.`);
+      }
+      const byteLength = row.byteLength < 0 ? projection.byteLength : row.byteLength;
+      if (projection.byteLength !== byteLength) {
+        throw new Error(`Staged plugin Asset ${row.projectAssetId} byte length does not match its receipt.`);
+      }
+      return { ...row, byteLength, projection };
     }
-    if (projection.resource.kind !== row.kind) {
-      throw new Error(`Staged plugin Asset ${row.projectAssetId} kind does not match its immutable Resource.`);
+    const sealed = await resources.resolve(row.resourceId);
+    const receiptMediaType = row.mediaType?.trim().toLowerCase();
+    const sealedMediaType = sealed?.resource.contentType?.trim().toLowerCase();
+    const sealedByteLength = sealed?.resource.byteLength;
+    const receiptByteLength = row.byteLength < 0 ? sealedByteLength : row.byteLength;
+    if (!sealed || sealed.resource.id !== row.resourceId || sealed.resource.digest.algorithm !== "sha256" || sealed.resource.id !== `sha256:${sealed.resource.digest.value}` || sealed.resource.kind !== row.kind || !receiptMediaType || receiptMediaType !== sealedMediaType || receiptByteLength === void 0 || receiptByteLength !== sealedByteLength) {
+      throw new Error(`Staged plugin Asset ${row.projectAssetId} has no complete pre-cutover receipt matching sealed Resource ${row.resourceId}.`);
     }
-    return { ...row, projection };
+    const recovered = await resources.stage({
+      bytes: new Uint8Array(await (0, import_promises17.readFile)(sealed.path))
+    });
+    if (recovered.resourceId !== row.resourceId || recovered.byteLength !== receiptByteLength) {
+      throw new Error(`Staged plugin Asset ${row.projectAssetId} recovery does not match its verified sealed Resource.`);
+    }
+    return {
+      ...row,
+      byteLength: receiptByteLength,
+      projection: recovered
+    };
   }
   return {
     projectAssetId: pluginOutputProjectAssetId,
@@ -93760,7 +96442,11 @@ function createLocalPluginAssetStagingStore(options) {
       const projectId = required(input.projectId, "projectId");
       const taskId = required(input.taskId, "taskId");
       const slot = required(input.slot, "slot");
-      const projectAssetId2 = pluginOutputProjectAssetId({ projectId, taskId, slot });
+      const projectAssetId2 = pluginOutputProjectAssetId({
+        projectId,
+        taskId,
+        slot
+      });
       const existing = await load({ projectId, projectAssetId: projectAssetId2 });
       if (existing) {
         if (existing.taskId !== taskId || existing.slot !== slot || existing.kind !== input.kind) {
@@ -93768,16 +96454,15 @@ function createLocalPluginAssetStagingStore(options) {
         }
         return resolved(existing);
       }
-      const projection = await resources.install({
-        kind: input.kind,
-        bytes: input.bytes,
-        ...input.mediaType ? { contentType: input.mediaType } : {}
+      const projection = await resources.stage({
+        bytes: input.bytes
       });
       const intended = {
         projectId,
         projectAssetId: projectAssetId2,
-        resourceId: projection.resource.id,
+        resourceId: projection.resourceId,
         kind: input.kind,
+        byteLength: projection.byteLength,
         taskId,
         slot,
         pluginId: required(input.pluginId, "pluginId"),
@@ -93790,9 +96475,10 @@ function createLocalPluginAssetStagingStore(options) {
         database.prepare(`
           INSERT OR IGNORE INTO local_plugin_asset_staging (
             project_id, project_asset_id, resource_id, kind, task_id, slot,
-            plugin_id, plugin_version, invocation_id, media_type, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(intended.projectId, intended.projectAssetId, intended.resourceId, intended.kind, intended.taskId, intended.slot, intended.pluginId, intended.pluginVersion, intended.invocationId, intended.mediaType ?? null, intended.createdAt);
+            byte_length, plugin_id, plugin_version, invocation_id,
+            media_type, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(intended.projectId, intended.projectAssetId, intended.resourceId, intended.kind, intended.taskId, intended.slot, intended.byteLength, intended.pluginId, intended.pluginVersion, intended.invocationId, intended.mediaType ?? null, intended.createdAt);
       });
       const stored = await load({ projectId, projectAssetId: projectAssetId2 });
       if (!stored)
@@ -93810,7 +96496,7 @@ function createLocalPluginAssetStagingStore(options) {
 
 // ../../apps/local-api/dist/audio-config.js
 var import_node_fs7 = require("node:fs");
-var import_promises20 = require("node:fs/promises");
+var import_promises21 = require("node:fs/promises");
 var import_node_os7 = require("node:os");
 var import_node_path23 = require("node:path");
 var import_node_url = require("node:url");
@@ -94231,7 +96917,7 @@ function optionalConfidence(value, label) {
 
 // ../../apps/local-api/dist/local-config-store.js
 var import_node_module9 = require("node:module");
-var import_promises17 = require("node:fs/promises");
+var import_promises18 = require("node:fs/promises");
 var import_node_path20 = require("node:path");
 var require4 = (0, import_node_module9.createRequire)(__clash_import_meta_url);
 var nodeRequire9 = (0, import_node_module9.createRequire)(__clash_import_meta_url);
@@ -94261,7 +96947,7 @@ function applySchema3(db) {
 }
 async function exists(path) {
   try {
-    await (0, import_promises17.stat)(path);
+    await (0, import_promises18.stat)(path);
     return true;
   } catch {
     return false;
@@ -94270,14 +96956,14 @@ async function exists(path) {
 function createSqliteLocalConfigStore(dataDir2) {
   const path = sqlitePath3(dataDir2);
   async function withDb(task) {
-    await (0, import_promises17.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises18.mkdir)(dataDir2, { recursive: true });
     const db = openDatabase6(path);
     try {
       applySchema3(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises17.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
     }
   }
   return {
@@ -94319,7 +97005,7 @@ function createSqliteLocalConfigStore(dataDir2) {
 // ../../apps/local-api/dist/user-config.js
 var import_node_crypto16 = require("node:crypto");
 var import_node_fs6 = require("node:fs");
-var import_promises18 = require("node:fs/promises");
+var import_promises19 = require("node:fs/promises");
 var import_node_path21 = require("node:path");
 var import_yaml2 = __toESM(require_dist(), 1);
 var writes = /* @__PURE__ */ new Map();
@@ -94418,7 +97104,7 @@ function validateClashUserConfig(value) {
 }
 async function readText(path) {
   try {
-    return await (0, import_promises18.readFile)(path, "utf8");
+    return await (0, import_promises19.readFile)(path, "utf8");
   } catch (error53) {
     if (error53.code === "ENOENT")
       return null;
@@ -94426,38 +97112,38 @@ async function readText(path) {
   }
 }
 async function atomicWrite(path, contents) {
-  await (0, import_promises18.mkdir)((0, import_node_path21.dirname)(path), { recursive: true, mode: 448 });
+  await (0, import_promises19.mkdir)((0, import_node_path21.dirname)(path), { recursive: true, mode: 448 });
   const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
   try {
-    await (0, import_promises18.writeFile)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
-    await (0, import_promises18.chmod)(temporaryPath, 384);
-    await (0, import_promises18.rename)(temporaryPath, path);
-    await (0, import_promises18.chmod)(path, 384);
+    await (0, import_promises19.writeFile)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
+    await (0, import_promises19.chmod)(temporaryPath, 384);
+    await (0, import_promises19.rename)(temporaryPath, path);
+    await (0, import_promises19.chmod)(path, 384);
   } finally {
-    await (0, import_promises18.rm)(temporaryPath, { force: true }).catch(() => void 0);
+    await (0, import_promises19.rm)(temporaryPath, { force: true }).catch(() => void 0);
   }
 }
 async function wait(milliseconds) {
   await new Promise((resolve18) => setTimeout(resolve18, milliseconds));
 }
 async function withConfigLock(clashHome, task) {
-  await (0, import_promises18.mkdir)(clashHome, { recursive: true, mode: 448 });
-  await (0, import_promises18.chmod)(clashHome, 448);
+  await (0, import_promises19.mkdir)(clashHome, { recursive: true, mode: 448 });
+  await (0, import_promises19.chmod)(clashHome, 448);
   const lockPath = (0, import_node_path21.join)(clashHome, ".config.lock");
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   while (true) {
     try {
-      await (0, import_promises18.mkdir)(lockPath, { mode: 448 });
-      await (0, import_promises18.writeFile)((0, import_node_path21.join)(lockPath, "owner"), `pid=${process.pid}
+      await (0, import_promises19.mkdir)(lockPath, { mode: 448 });
+      await (0, import_promises19.writeFile)((0, import_node_path21.join)(lockPath, "owner"), `pid=${process.pid}
 created_at=${(/* @__PURE__ */ new Date()).toISOString()}
 `, { encoding: "utf8", mode: 384 });
       break;
     } catch (error53) {
       if (error53.code !== "EEXIST")
         throw error53;
-      const info = await (0, import_promises18.stat)(lockPath).catch(() => null);
+      const info = await (0, import_promises19.stat)(lockPath).catch(() => null);
       if (info && Date.now() - info.mtimeMs > STALE_LOCK_MS) {
-        await (0, import_promises18.rm)(lockPath, { recursive: true, force: true });
+        await (0, import_promises19.rm)(lockPath, { recursive: true, force: true });
         continue;
       }
       if (Date.now() >= deadline) {
@@ -94469,7 +97155,7 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
   try {
     return await task();
   } finally {
-    await (0, import_promises18.rm)(lockPath, { recursive: true, force: true });
+    await (0, import_promises19.rm)(lockPath, { recursive: true, force: true });
   }
 }
 function serializeYamlSection(source, name, value) {
@@ -94553,7 +97239,7 @@ function createClashUserConfigStore(localDataDir) {
             ...typeof current.cliApiKey === "string" ? {} : { cliApiKey: legacy.apiKey }
           })));
         }
-        await (0, import_promises18.unlink)(legacyConfigPath).catch((error53) => {
+        await (0, import_promises19.unlink)(legacyConfigPath).catch((error53) => {
           if (error53.code !== "ENOENT")
             throw error53;
         });
@@ -94677,7 +97363,7 @@ function watchClashUserConfig(localDataDir, options) {
 
 // ../../apps/local-api/dist/managed-local-model-python.js
 var import_node_child_process5 = require("node:child_process");
-var import_promises19 = require("node:fs/promises");
+var import_promises20 = require("node:fs/promises");
 var import_node_path22 = require("node:path");
 var import_node_util3 = require("node:util");
 var execFileAsync3 = (0, import_node_util3.promisify)(import_node_child_process5.execFile);
@@ -94705,7 +97391,7 @@ function pythonEnvironment(env2, sdkPythonPath) {
 }
 async function readStamp(path) {
   try {
-    const parsed = JSON.parse(await (0, import_promises19.readFile)(path, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises20.readFile)(path, "utf8"));
     if (parsed.version !== MANAGED_RUNTIME_SCHEMA_VERSION)
       return null;
     if (typeof parsed.sdkPythonPath !== "string" || !parsed.sdkPythonPath)
@@ -94719,7 +97405,7 @@ async function readStamp(path) {
 }
 async function pathExists(path) {
   try {
-    await (0, import_promises19.access)(path);
+    await (0, import_promises20.access)(path);
     return true;
   } catch {
     return false;
@@ -94744,13 +97430,13 @@ function createManagedLocalModelPythonEnvironment(options) {
     return stamp?.sdkPythonPath === options.sdkPythonPath;
   }
   async function prepare() {
-    await (0, import_promises19.mkdir)(runtimeRoot, { recursive: true });
+    await (0, import_promises20.mkdir)(runtimeRoot, { recursive: true });
     if (await pathExists(pythonBinary)) {
       try {
         await verify(pythonBinary);
         verified = true;
       } catch {
-        await (0, import_promises19.rm)(venvDir, { recursive: true, force: true });
+        await (0, import_promises20.rm)(venvDir, { recursive: true, force: true });
       }
     }
     if (!await pathExists(pythonBinary)) {
@@ -94764,14 +97450,14 @@ function createManagedLocalModelPythonEnvironment(options) {
         const stagingPython = pythonBinaryForVenv(stagingDir);
         await verify(stagingPython);
         try {
-          await (0, import_promises19.rename)(stagingDir, venvDir);
+          await (0, import_promises20.rename)(stagingDir, venvDir);
         } catch (error53) {
           if (!await pathExists(pythonBinary))
             throw error53;
           await verify(pythonBinary);
         }
       } finally {
-        await (0, import_promises19.rm)(stagingDir, { recursive: true, force: true });
+        await (0, import_promises20.rm)(stagingDir, { recursive: true, force: true });
       }
       verified = true;
     }
@@ -94781,9 +97467,9 @@ function createManagedLocalModelPythonEnvironment(options) {
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
     const temporaryStamp = (0, import_node_path22.join)((0, import_node_path22.dirname)(stampPath), `.${MANAGED_RUNTIME_STAMP}-${process.pid}`);
-    await (0, import_promises19.writeFile)(temporaryStamp, `${JSON.stringify(stamp, null, 2)}
+    await (0, import_promises20.writeFile)(temporaryStamp, `${JSON.stringify(stamp, null, 2)}
 `, { mode: 384 });
-    await (0, import_promises19.rename)(temporaryStamp, stampPath);
+    await (0, import_promises20.rename)(temporaryStamp, stampPath);
     return pythonBinary;
   }
   return {
@@ -95110,7 +97796,7 @@ function createHookBackedRuntime(options, pythonBinary, cacheDir, pythonPath) {
     async transcribe(input) {
       if (!options.builtinTranscribe)
         return fallback2.transcribe(input);
-      const file2 = new File([await (0, import_promises20.readFile)(input.audioPath)], (0, import_node_path23.basename)(input.audioPath), { type: "audio/webm" });
+      const file2 = new File([await (0, import_promises21.readFile)(input.audioPath)], (0, import_node_path23.basename)(input.audioPath), { type: "audio/webm" });
       return options.builtinTranscribe({
         file: file2,
         model: input.model,
@@ -95134,11 +97820,11 @@ function createDefaultTtsRuntime(options, pythonBinary, cacheDir, pythonPath) {
   });
 }
 async function transcribeWithRuntime(runtime, input, model) {
-  const dir = await (0, import_promises20.mkdtemp)((0, import_node_path23.join)((0, import_node_os7.tmpdir)(), "clash-asr-"));
+  const dir = await (0, import_promises21.mkdtemp)((0, import_node_path23.join)((0, import_node_os7.tmpdir)(), "clash-asr-"));
   const extension2 = (0, import_node_path23.extname)(input.file.name || "") || ".webm";
   const audioPath = (0, import_node_path23.join)(dir, (0, import_node_path23.basename)(input.file.name || `input${extension2}`));
   try {
-    await (0, import_promises20.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
+    await (0, import_promises21.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
     return await runtime.transcribe({
       model,
       audioPath,
@@ -95149,7 +97835,7 @@ async function transcribeWithRuntime(runtime, input, model) {
       throw error53;
     throw new LocalAudioConfigError(`Local ASR transcription failed: ${displayErrorMessage(error53)}`, 502);
   } finally {
-    await (0, import_promises20.rm)(dir, { recursive: true, force: true });
+    await (0, import_promises21.rm)(dir, { recursive: true, force: true });
   }
 }
 function createLocalAudioConfigStore(options) {
@@ -95376,7 +98062,7 @@ function createLocalAudioConfigStore(options) {
       if (!status.available) {
         throw new LocalAudioConfigError(`Selected TTS model is not downloaded. Open Settings > Models and download it.${status.message ? ` ${status.message}.` : ""}`, 409);
       }
-      const dir = await (0, import_promises20.mkdtemp)((0, import_node_path23.join)((0, import_node_os7.tmpdir)(), "clash-tts-"));
+      const dir = await (0, import_promises21.mkdtemp)((0, import_node_path23.join)((0, import_node_os7.tmpdir)(), "clash-tts-"));
       const outputPath = (0, import_node_path23.join)(dir, "speech.wav");
       try {
         const synthesis = await ttsRuntime.synthesize({
@@ -95389,7 +98075,7 @@ function createLocalAudioConfigStore(options) {
         });
         const { outputPath: _outputPath, ...metadata } = synthesis;
         return {
-          audio: new Uint8Array(await (0, import_promises20.readFile)(outputPath)),
+          audio: new Uint8Array(await (0, import_promises21.readFile)(outputPath)),
           metadata
         };
       } catch (error53) {
@@ -95397,7 +98083,7 @@ function createLocalAudioConfigStore(options) {
           throw error53;
         throw new LocalAudioConfigError(`Local TTS synthesis failed: ${displayErrorMessage(error53)}`, 502);
       } finally {
-        await (0, import_promises20.rm)(dir, { recursive: true, force: true });
+        await (0, import_promises21.rm)(dir, { recursive: true, force: true });
       }
     }
   };
@@ -95406,6 +98092,7 @@ function createLocalAudioConfigStore(options) {
 // ../../apps/local-api/dist/sync.js
 var import_node_crypto17 = require("node:crypto");
 var import_node_path24 = require("node:path");
+var import_node_util4 = require("node:util");
 var import_loro_crdt8 = __toESM(require_nodejs(), 1);
 
 // ../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/wrapper.mjs
@@ -95423,6 +98110,99 @@ var LOCAL_LORO_COMPACT_UPDATE_THRESHOLD = 16;
 var LOCAL_LORO_COMPACT_BYTES_THRESHOLD = 1024 * 1024;
 function exactBytes2(view) {
   return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength ? view : view.slice();
+}
+function isPeerEditableActionAssetBinding(binding) {
+  return binding !== void 0 && binding.owner.kind === "draft" && binding.direction === "input";
+}
+function isMatchingPeerTimelineRunInput(candidate, binding) {
+  if (binding?.direction !== "input" || binding.owner.kind !== "run") {
+    return false;
+  }
+  for (const [nodeId, raw2] of candidate.getMap("nodes").entries()) {
+    if (raw2 === null || typeof raw2 !== "object" || Array.isArray(raw2))
+      continue;
+    if (raw2.type !== "video")
+      continue;
+    const data = raw2.data;
+    if (data === null || typeof data !== "object" || Array.isArray(data)) {
+      continue;
+    }
+    const fields = data;
+    if (fields.status !== "pending" && fields.status !== "generating")
+      continue;
+    if (projectTimelineRenderActionRunId(nodeId) !== binding.owner.actionRunId || fields.sourceTimelineActionRunId !== binding.owner.actionRunId) {
+      continue;
+    }
+    const timelineId = fields.sourceTimelineId;
+    if (typeof timelineId !== "string")
+      continue;
+    const timeline = readProjectTimeline(candidate, timelineId);
+    if (!timeline)
+      continue;
+    if (projectTimelineActionId(timeline.id, timeline.owner) !== binding.owner.actionId || fields.sourceTimelineActionId !== binding.owner.actionId || timeline.revisionId !== binding.owner.actionRevisionId || fields.sourceTimelineRevisionId !== binding.owner.actionRevisionId) {
+      continue;
+    }
+    const canonicalDsl = canonicalTimelineRenderDsl(timeline.state);
+    if (canonicalDsl === null || !(0, import_node_util4.isDeepStrictEqual)(fields.timelineDsl, canonicalDsl)) {
+      continue;
+    }
+    const expected = projectTimelineAssetInputs(timeline.state).sort((left, right) => left.slot.localeCompare(right.slot));
+    const actual = listActionAssetBindingsForOwner(candidate, binding.owner).filter((candidateBinding) => candidateBinding.direction === "input").sort((left, right) => left.slot.localeCompare(right.slot));
+    if (expected.length === actual.length && expected.every((input, index) => {
+      const candidateBinding = actual[index];
+      return candidateBinding !== void 0 && candidateBinding.slot === input.slot && candidateBinding.projectAssetId === input.projectAssetId && candidateBinding.role === input.role;
+    })) {
+      return true;
+    }
+  }
+  return false;
+}
+function actionAssetBindingFromPeerRaw(id2, raw2) {
+  if (raw2 === void 0)
+    return void 0;
+  if (raw2 !== null && typeof raw2 === "object" && !Array.isArray(raw2) && raw2.unbound === true) {
+    return void 0;
+  }
+  const parsed = ActionAssetBindingSchema.safeParse({
+    id: id2,
+    ...raw2 !== null && typeof raw2 === "object" && !Array.isArray(raw2) ? raw2 : {}
+  });
+  if (!parsed.success) {
+    throw new Error(`Local peer supplied invalid Action Asset binding ${id2}: ${parsed.error.issues[0]?.message ?? "invalid binding"}.`);
+  }
+  return parsed.data;
+}
+function assertLocalPeerActionAssetBindingMutation(current, candidate) {
+  if (!(0, import_node_util4.isDeepStrictEqual)(candidate.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER).toJSON(), current.getMap(ACTION_ASSET_BINDING_SCHEMA_CONTAINER).toJSON())) {
+    throw new Error("Local peers cannot mutate Host-owned Action Asset binding authority markers.");
+  }
+  const currentRaw = current.getMap(ACTION_ASSET_BINDINGS_CONTAINER).toJSON();
+  const candidateRaw = candidate.getMap(ACTION_ASSET_BINDINGS_CONTAINER).toJSON();
+  for (const id2 of /* @__PURE__ */ new Set([
+    ...Object.keys(currentRaw),
+    ...Object.keys(candidateRaw)
+  ])) {
+    if ((0, import_node_util4.isDeepStrictEqual)(currentRaw[id2], candidateRaw[id2]))
+      continue;
+    const before = actionAssetBindingFromPeerRaw(id2, currentRaw[id2]);
+    const after = actionAssetBindingFromPeerRaw(id2, candidateRaw[id2]);
+    if (after?.direction === "input") {
+      const target = readProjectAsset(candidate, after.projectAssetId);
+      if (!target || target.lifecycle.state === "purged") {
+        throw new Error(`Local peer Action Asset input ${id2} points to Project Asset ${after.projectAssetId}, which is not active or recoverable.`);
+      }
+    }
+    const changedEditableDraftInput = (before === void 0 || isPeerEditableActionAssetBinding(before)) && (after === void 0 || isPeerEditableActionAssetBinding(after)) && (before !== void 0 || after !== void 0);
+    if (changedEditableDraftInput)
+      continue;
+    if (before === void 0 && isMatchingPeerTimelineRunInput(candidate, after)) {
+      continue;
+    }
+    if (after?.direction === "input" && after.owner.kind !== "draft") {
+      throw new Error("Local peers cannot create or rewrite frozen run inputs outside a matching Timeline submission.");
+    }
+    throw new Error("Local peers may mutate input bindings only; run/revision output lineage is Host-owned.");
+  }
 }
 function exactArrayBuffer(view) {
   const bytes = exactBytes2(view);
@@ -95614,6 +98394,12 @@ var LocalLoroRoom = class _LocalLoroRoom {
     for (const [id2, raw2] of nodesMap.entries()) {
       nodesBefore.set(id2, raw2);
     }
+    const candidate = this.doc.fork();
+    candidate.import(updateBytes);
+    if (!(0, import_node_util4.isDeepStrictEqual)(candidate.getMap(PROJECT_ASSETS_CONTAINER).toJSON(), this.doc.getMap(PROJECT_ASSETS_CONTAINER).toJSON()) || !(0, import_node_util4.isDeepStrictEqual)(candidate.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).toJSON(), this.doc.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).toJSON())) {
+      throw new Error("Local peer updates cannot mutate Host-owned Project Asset authority; use the Asset SDK/Host publication boundary.");
+    }
+    assertLocalPeerActionAssetBindingMutation(this.doc, candidate);
     this.doc.import(updateBytes);
     const repairVersion = this.doc.version();
     const graphRepair = reconcileCanvasGraph(this.doc);
@@ -96427,7 +99213,7 @@ function createPublicAssetStorageService(options) {
 }
 
 // ../../apps/local-api/dist/durable-run-coordinator.js
-var import_node_util4 = require("node:util");
+var import_node_util5 = require("node:util");
 var DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS = 30 * 6e4;
 var FrozenExecutorInputError = class extends Error {
   name = "FrozenExecutorInputError";
@@ -96779,7 +99565,7 @@ function classifyThrownError(error53, operation2, run) {
   };
 }
 function sameCreation(existing, intended) {
-  return existing.actionRunId === intended.actionRunId && existing.outputSlot === intended.outputSlot && existing.owner.realm === intended.owner.realm && existing.owner.id === intended.owner.id && existing.deadlineAt === intended.deadlineAt && (0, import_node_util4.isDeepStrictEqual)(existing.executorInput, intended.executorInput);
+  return existing.actionRunId === intended.actionRunId && existing.outputSlot === intended.outputSlot && existing.owner.realm === intended.owner.realm && existing.owner.id === intended.owner.id && existing.deadlineAt === intended.deadlineAt && (0, import_node_util5.isDeepStrictEqual)(existing.executorInput, intended.executorInput);
 }
 async function createLocalDurableRun(options) {
   if (!options.ownerId.trim()) {
@@ -96906,9 +99692,9 @@ function createLocalDurableRunCoordinator(options) {
 
 // ../../apps/local-api/dist/durable-run-journal.js
 var import_node_module10 = require("node:module");
-var import_promises23 = require("node:fs/promises");
+var import_promises24 = require("node:fs/promises");
 var import_node_path30 = require("node:path");
-var import_node_util5 = require("node:util");
+var import_node_util6 = require("node:util");
 var nodeRequire10 = (0, import_node_module10.createRequire)(__clash_import_meta_url);
 var PHASES = /* @__PURE__ */ new Set([
   "queued",
@@ -97087,7 +99873,7 @@ function runProjectId(run) {
   return projectId;
 }
 function sameFrozenFields(current, next) {
-  return current.schemaVersion === next.schemaVersion && current.actionRunId === next.actionRunId && current.outputSlot === next.outputSlot && current.owner.realm === next.owner.realm && current.owner.id === next.owner.id && current.createdAt === next.createdAt && current.deadlineAt === next.deadlineAt && (current.recoveryFinalizationDeadlineAt === void 0 || current.recoveryFinalizationDeadlineAt === next.recoveryFinalizationDeadlineAt) && (0, import_node_util5.isDeepStrictEqual)(current.executorInput, next.executorInput);
+  return current.schemaVersion === next.schemaVersion && current.actionRunId === next.actionRunId && current.outputSlot === next.outputSlot && current.owner.realm === next.owner.realm && current.owner.id === next.owner.id && current.createdAt === next.createdAt && current.deadlineAt === next.deadlineAt && (current.recoveryFinalizationDeadlineAt === void 0 || current.recoveryFinalizationDeadlineAt === next.recoveryFinalizationDeadlineAt) && (0, import_node_util6.isDeepStrictEqual)(current.executorInput, next.executorInput);
 }
 function changes(result) {
   return typeof result.changes === "bigint" ? Number(result.changes) : result.changes;
@@ -97095,14 +99881,14 @@ function changes(result) {
 function createSqliteDurableRunJournal(dataDir2) {
   const path = databasePath(dataDir2);
   async function withDatabase(task) {
-    await (0, import_promises23.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises24.mkdir)(dataDir2, { recursive: true });
     const database = openDatabase7(path);
     try {
       applySchema4(database);
       return task(database);
     } finally {
       database.close();
-      await (0, import_promises23.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises24.chmod)(path, 384).catch(() => void 0);
     }
   }
   return {
@@ -97120,7 +99906,7 @@ function createSqliteDurableRunJournal(dataDir2) {
           `).get(normalized.actionRunId, normalized.outputSlot);
           if (existingRow) {
             const existing = parseRow3(existingRow);
-            if (!(0, import_node_util5.isDeepStrictEqual)(existing, normalized)) {
+            if (!(0, import_node_util6.isDeepStrictEqual)(existing, normalized)) {
               throw new Error(`Durable run ${normalized.actionRunId}/${normalized.outputSlot} already exists with different content.`);
             }
           } else {
@@ -97238,7 +100024,7 @@ function createSqliteDurableRunJournal(dataDir2) {
 }
 
 // ../../apps/local-api/dist/app.js
-var execFileAsync4 = (0, import_node_util6.promisify)(import_node_child_process6.execFile);
+var execFileAsync4 = (0, import_node_util7.promisify)(import_node_child_process6.execFile);
 function parseAssetEditInvocation(input) {
   if (typeof input.raw === "string" && input.raw.trim()) {
     return AssetEditActionInvocationSchema.parse(JSON.parse(input.raw));
@@ -97301,7 +100087,7 @@ async function preflightTextRevisionContentBlob(dataDir2, revision, content) {
     throw new Error("text revision contentHash does not match content");
   }
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const existing = await (0, import_promises24.readFile)(path, "utf8").catch((error53) => {
+  const existing = await (0, import_promises25.readFile)(path, "utf8").catch((error53) => {
     if (error53 && typeof error53 === "object" && error53.code === "ENOENT")
       return null;
     throw error53;
@@ -97465,20 +100251,30 @@ function contentTypeForPath(path) {
     return "image/webp";
   if (ext === ".svg")
     return "image/svg+xml";
+  if (ext === ".avif")
+    return "image/avif";
   if (ext === ".mp4")
     return "video/mp4";
   if (ext === ".webm")
     return "video/webm";
   if (ext === ".mov")
     return "video/quicktime";
+  if (ext === ".m4v")
+    return "video/mp4";
+  if (ext === ".mkv")
+    return "video/x-matroska";
   if (ext === ".mp3")
     return "audio/mpeg";
   if (ext === ".wav")
     return "audio/wav";
   if (ext === ".m4a")
     return "audio/mp4";
+  if (ext === ".aac")
+    return "audio/aac";
   if (ext === ".flac")
     return "audio/flac";
+  if (ext === ".ogg")
+    return "audio/ogg";
   if (ext === ".glb")
     return "model/gltf-binary";
   if (ext === ".gltf")
@@ -97515,7 +100311,7 @@ function parseAssetByteRange(rangeHeader, size) {
   };
 }
 async function serveImmutableFileProjection(options) {
-  const fileInfo = await (0, import_promises24.stat)(options.path);
+  const fileInfo = await (0, import_promises25.stat)(options.path);
   if (!fileInfo.isFile() || options.expectedByteLength !== void 0 && fileInfo.size !== options.expectedByteLength) {
     throw new Error("Immutable Asset projection no longer matches its Resource facts.");
   }
@@ -97531,7 +100327,7 @@ async function serveImmutableFileProjection(options) {
   }
   if (range2) {
     const length = range2.end - range2.start + 1;
-    const handle = await (0, import_promises24.open)(options.path, "r");
+    const handle = await (0, import_promises25.open)(options.path, "r");
     try {
       const bytes2 = new Uint8Array(length);
       const { bytesRead } = await handle.read(bytes2, 0, length, range2.start);
@@ -97550,7 +100346,7 @@ async function serveImmutableFileProjection(options) {
       await handle.close();
     }
   }
-  const bytes = await (0, import_promises24.readFile)(options.path);
+  const bytes = await (0, import_promises25.readFile)(options.path);
   return new Response(bytes, {
     headers: {
       "accept-ranges": "bytes",
@@ -99166,6 +101962,7 @@ function createLocalApiApp(options) {
     globalAssetService ??= createLocalGlobalAssetService({
       dataDir: options.dataDir,
       clashRoot,
+      legacyUserId: userId,
       projectionOrigin: configuredProjectionOrigin?.trim() || requestProjectionOrigin,
       assetInspection
     });
@@ -99343,13 +102140,13 @@ function createLocalApiApp(options) {
     const file2 = form.get("file");
     const kind = AssetKindSchema.safeParse(form.get("kind"));
     const projectAssetIdValue = form.get("projectAssetId");
-    if (!file2 || typeof file2 === "string" || !kind.success) {
+    if (!file2 || typeof file2 === "string" || !kind.success || projectAssetIdValue === null) {
       return c5.json({
-        error: "Project Asset import requires file and kind",
+        error: "Project Asset import requires file, kind, and projectAssetId",
         code: "INVALID_PROJECT_ASSET_IMPORT"
       }, 400);
     }
-    if (projectAssetIdValue !== null && (typeof projectAssetIdValue !== "string" || !projectAssetIdValue.trim() || projectAssetIdValue.length > 512)) {
+    if (typeof projectAssetIdValue !== "string" || !projectAssetIdValue.trim() || projectAssetIdValue.length > 512) {
       return c5.json({
         error: "Invalid Project Asset id",
         code: "INVALID_PROJECT_ASSET_IMPORT"
@@ -99364,7 +102161,7 @@ function createLocalApiApp(options) {
       const contentType = !declaredContentType || declaredContentType === "application/octet-stream" ? contentTypeForPath(file2.name) : declaredContentType;
       const asset = await projectAssetServiceAt(requestOrigin(c5)).installOwned({
         projectId: c5.req.param("projectId"),
-        ...typeof projectAssetIdValue === "string" ? { projectAssetId: projectAssetIdValue.trim() } : {},
+        projectAssetId: projectAssetIdValue.trim(),
         kind: kind.data,
         bytes: new Uint8Array(await file2.arrayBuffer()),
         contentType,
@@ -99481,13 +102278,13 @@ function createLocalApiApp(options) {
     const file2 = form.get("file");
     const kind = AssetKindSchema.safeParse(form.get("kind"));
     const globalAssetIdValue = form.get("globalAssetId");
-    if (!file2 || typeof file2 === "string" || !kind.success) {
+    if (!file2 || typeof file2 === "string" || !kind.success || globalAssetIdValue === null) {
       return c5.json({
-        error: "Global Asset import requires file and kind",
+        error: "Global Asset import requires file, kind, and globalAssetId",
         code: "INVALID_GLOBAL_ASSET_IMPORT"
       }, 400);
     }
-    if (globalAssetIdValue !== null && (typeof globalAssetIdValue !== "string" || !globalAssetIdValue.trim() || globalAssetIdValue.length > 512)) {
+    if (typeof globalAssetIdValue !== "string" || !globalAssetIdValue.trim() || globalAssetIdValue.length > 512) {
       return c5.json({
         error: "Invalid Global Asset id",
         code: "INVALID_GLOBAL_ASSET_IMPORT"
@@ -99502,7 +102299,7 @@ function createLocalApiApp(options) {
       const contentType = !declaredContentType || declaredContentType === "application/octet-stream" ? contentTypeForPath(file2.name) : declaredContentType;
       const asset = await globalAssetServiceAt(requestOrigin(c5)).importBytes({
         libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
-        ...typeof globalAssetIdValue === "string" ? { globalAssetId: globalAssetIdValue.trim() } : {},
+        globalAssetId: globalAssetIdValue.trim(),
         kind: kind.data,
         bytes: new Uint8Array(await file2.arrayBuffer()),
         contentType,
@@ -102286,7 +105083,7 @@ function createLocalApiApp(options) {
       return c5.json({ error: "text revision not found" }, 404);
     let content;
     try {
-      content = await (0, import_promises24.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
+      content = await (0, import_promises25.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
     } catch {
       return c5.json({ error: "text revision content not found" }, 404);
     }
@@ -103628,9 +106425,16 @@ function createLocalApiApp(options) {
     const body = await c5.req.json().catch(() => ({}));
     const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    const actionRunId = typeof body.actionRunId === "string" ? body.actionRunId.trim() : "";
     const quality = body.quality === "low-poly" || body.quality === "geometry" ? body.quality : "normal";
     if (!projectId || !prompt) {
       return c5.json({ error: "projectId and a 3D model prompt are required" }, 400);
+    }
+    if (!actionRunId) {
+      return c5.json({ error: "actionRunId is required" }, 400);
+    }
+    if (actionRunId.length > 256) {
+      return c5.json({ error: "actionRunId must be at most 256 characters" }, 400);
     }
     const state2 = await db.load();
     if (!state2.projects.some((project) => project.id === projectId)) {
@@ -103645,11 +106449,6 @@ function createLocalApiApp(options) {
     if (!options.resolvePluginBinding || !options.processProjectWork) {
       return c5.json({ error: "The local durable Provider runtime is unavailable" }, 503);
     }
-    const clientActionRunId = typeof body.actionRunId === "string" ? body.actionRunId.trim() : "";
-    if (clientActionRunId.length > 256) {
-      return c5.json({ error: "actionRunId must be at most 256 characters" }, 400);
-    }
-    const actionRunId = clientActionRunId || `director:${(0, import_node_crypto24.randomUUID)()}`;
     const identity = { actionRunId, outputSlot: "media" };
     try {
       const existing = await durableRunJournal.load(identity);
@@ -103812,7 +106611,7 @@ function createLocalApiApp(options) {
         projectId,
         projectAssetId: outputAssetId,
         kind: outputKind,
-        resourceId: staged.resource.id,
+        resourceId: staged.resourceId,
         name: file2.name || `edit-${actionRunId}`,
         metadata: { bytes: bytes.byteLength, contentType },
         provenance: {
@@ -103870,8 +106669,8 @@ function createLocalApiApp(options) {
     } catch (error53) {
       return localProjectAssetErrorResponse(error53);
     }
-    await (0, import_promises24.mkdir)(options.dataDir, { recursive: true });
-    const tempDir = await (0, import_promises24.mkdtemp)((0, import_node_path31.join)(options.dataDir, "video-crop-"));
+    await (0, import_promises25.mkdir)(options.dataDir, { recursive: true });
+    const tempDir = await (0, import_promises25.mkdtemp)((0, import_node_path31.join)(options.dataDir, "video-crop-"));
     const outputPath = (0, import_node_path31.join)(tempDir, "output.mp4");
     try {
       await execFileAsync4(ffmpeg, [
@@ -103891,11 +106690,11 @@ function createLocalApiApp(options) {
         outputPath
       ]);
     } catch (error53) {
-      await (0, import_promises24.rm)(tempDir, { recursive: true, force: true });
+      await (0, import_promises25.rm)(tempDir, { recursive: true, force: true });
       return c5.json({ error: `Video trim failed: ${errorMessage(error53)}` }, 500);
     }
-    const bytes = new Uint8Array(await (0, import_promises24.readFile)(outputPath));
-    await (0, import_promises24.rm)(tempDir, { recursive: true, force: true });
+    const bytes = new Uint8Array(await (0, import_promises25.readFile)(outputPath));
+    await (0, import_promises25.rm)(tempDir, { recursive: true, force: true });
     const outputAssetId = editOutputAssetId(actionRunId);
     try {
       const staged = await assetService.stageOwned({
@@ -103908,7 +106707,7 @@ function createLocalApiApp(options) {
         projectId,
         projectAssetId: outputAssetId,
         kind: "video",
-        resourceId: staged.resource.id,
+        resourceId: staged.resourceId,
         name: `trimmed-${source.name ?? source.id}.mp4`,
         metadata: {
           bytes: bytes.byteLength,
@@ -103935,7 +106734,7 @@ function createLocalApiApp(options) {
 
 // ../../apps/local-api/dist/host-discovery.js
 var import_node_crypto25 = require("node:crypto");
-var import_promises25 = require("node:fs/promises");
+var import_promises26 = require("node:fs/promises");
 var import_node_path32 = require("node:path");
 function getDefaultHostDiscoveryRunDir(env2 = process.env) {
   return (0, import_node_path32.join)(clashHomeForLocalDataDir(defaultLocalApiDataDir(env2)), "run");
@@ -103966,12 +106765,12 @@ async function writeHostDiscovery(record3, options = {}) {
     throw new Error("Invalid local host discovery record");
   }
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
-  await (0, import_promises25.mkdir)(runDir, { recursive: true });
+  await (0, import_promises26.mkdir)(runDir, { recursive: true });
   const finalPath = getHostDiscoveryPath(runDir);
   const pidExists = options.pidExists ?? defaultPidExists;
   let incumbent;
   try {
-    incumbent = JSON.parse(await (0, import_promises25.readFile)(finalPath, "utf8"));
+    incumbent = JSON.parse(await (0, import_promises26.readFile)(finalPath, "utf8"));
   } catch (error53) {
     if (!isNotFound(error53))
       throw error53;
@@ -103980,17 +106779,17 @@ async function writeHostDiscovery(record3, options = {}) {
     throw new Error(`A local host is already active on ${incumbent.endpoint} (pid ${incumbent.pid}); stop it before starting another.`);
   }
   const tmpPath = (0, import_node_path32.join)(runDir, `host.${record3.hostId}.${process.pid}.${Date.now()}.tmp`);
-  await (0, import_promises25.writeFile)(tmpPath, `${JSON.stringify(record3, null, 2)}
+  await (0, import_promises26.writeFile)(tmpPath, `${JSON.stringify(record3, null, 2)}
 `, { encoding: "utf8", mode: 384 });
-  await (0, import_promises25.rename)(tmpPath, finalPath);
-  await (0, import_promises25.chmod)(finalPath, 384).catch(() => void 0);
+  await (0, import_promises26.rename)(tmpPath, finalPath);
+  await (0, import_promises26.chmod)(finalPath, 384).catch(() => void 0);
 }
 async function removeHostDiscovery(hostId, options = {}) {
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
   const filePath = getHostDiscoveryPath(runDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises25.readFile)(filePath, "utf8"));
+    parsed = JSON.parse(await (0, import_promises26.readFile)(filePath, "utf8"));
   } catch (error53) {
     if (isNotFound(error53))
       return;
@@ -103998,7 +106797,7 @@ async function removeHostDiscovery(hostId, options = {}) {
   }
   if (!isLocalHostDiscoveryRecord(parsed) || parsed.hostId !== hostId)
     return;
-  await (0, import_promises25.rm)(filePath, { force: true });
+  await (0, import_promises26.rm)(filePath, { force: true });
 }
 function defaultPidExists(pid) {
   try {
@@ -104302,14 +107101,14 @@ function createExecutablePluginActionInvoker(options) {
 
 // ../../apps/local-api/dist/bundled-plugins.js
 var import_node_fs11 = require("node:fs");
-var import_promises27 = require("node:fs/promises");
+var import_promises28 = require("node:fs/promises");
 var import_node_module11 = require("node:module");
 var import_node_path34 = require("node:path");
 var import_node_url2 = require("node:url");
 
 // ../../apps/local-api/dist/runtime/plugin-package.js
 var import_node_fs10 = require("node:fs");
-var import_promises26 = require("node:fs/promises");
+var import_promises27 = require("node:fs/promises");
 var import_node_path33 = require("node:path");
 function decodeJsonDocuments(paths2, files, kind) {
   const documents = {};
@@ -104356,10 +107155,10 @@ async function writeHostPackageDirectory(directory, input) {
   const manifest = validateHostExecutablePluginPackage(input);
   for (const [relativePath, encoded] of Object.entries(input.files)) {
     const destination = (0, import_node_path33.join)(directory, relativePath);
-    await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(destination), { recursive: true });
-    await (0, import_promises26.writeFile)(destination, Buffer.from(encoded, "base64"));
+    await (0, import_promises27.mkdir)((0, import_node_path33.dirname)(destination), { recursive: true });
+    await (0, import_promises27.writeFile)(destination, Buffer.from(encoded, "base64"));
   }
-  await (0, import_promises26.writeFile)((0, import_node_path33.join)(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
+  await (0, import_promises27.writeFile)((0, import_node_path33.join)(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
 `);
 }
 async function contractTestHostPackage(directory, input) {
@@ -104371,47 +107170,47 @@ async function contractTestHostPackage(directory, input) {
 async function writeActivationReceipt(actionsRoot, pluginDir) {
   const receipt = await createExecutablePluginActivationReceipt(pluginDir);
   const target = executablePluginActivationReceiptPath(actionsRoot, receipt.pluginId);
-  await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(target), { recursive: true });
-  const staging = await (0, import_promises26.mkdtemp)((0, import_node_path33.join)((0, import_node_path33.dirname)(target), `.${receipt.pluginId}-`));
+  await (0, import_promises27.mkdir)((0, import_node_path33.dirname)(target), { recursive: true });
+  const staging = await (0, import_promises27.mkdtemp)((0, import_node_path33.join)((0, import_node_path33.dirname)(target), `.${receipt.pluginId}-`));
   const stagedReceipt = (0, import_node_path33.join)(staging, "receipt.json");
   try {
-    await (0, import_promises26.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
+    await (0, import_promises27.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
 `);
-    await (0, import_promises26.rename)(stagedReceipt, target);
+    await (0, import_promises27.rename)(stagedReceipt, target);
   } finally {
-    await (0, import_promises26.rm)(staging, { recursive: true, force: true });
+    await (0, import_promises27.rm)(staging, { recursive: true, force: true });
   }
 }
 async function activateHostExecutablePluginPackage(input, actionsRoot) {
   const manifest = validateHostExecutablePluginPackage(input);
   const targetDir = (0, import_node_path33.join)(actionsRoot, manifest.id);
   if ((0, import_node_fs10.existsSync)(targetDir)) {
-    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8")));
+    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises27.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8")));
     throw new Error(`Executable plugin ${manifest.id} version ${existing.version} is already active.`);
   }
-  await (0, import_promises26.mkdir)(actionsRoot, { recursive: true });
-  const stagingDir = await (0, import_promises26.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
+  await (0, import_promises27.mkdir)(actionsRoot, { recursive: true });
+  const stagingDir = await (0, import_promises27.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
   let contractTests;
   try {
     await writeHostPackageDirectory(stagingDir, input);
     contractTests = await contractTestHostPackage(stagingDir, input);
-    await (0, import_promises26.rename)(stagingDir, targetDir);
+    await (0, import_promises27.rename)(stagingDir, targetDir);
     await writeActivationReceipt(actionsRoot, targetDir);
     return {
       targetDir,
       ...contractTests ? { contractTests } : {}
     };
   } catch (error53) {
-    await (0, import_promises26.rm)(stagingDir, { recursive: true, force: true });
+    await (0, import_promises27.rm)(stagingDir, { recursive: true, force: true });
     if ((0, import_node_fs10.existsSync)(targetDir))
-      await (0, import_promises26.rm)(targetDir, { recursive: true, force: true });
+      await (0, import_promises27.rm)(targetDir, { recursive: true, force: true });
     throw error53;
   }
 }
 async function validateHostExecutablePluginPackageContracts(input, actionsRoot) {
   const manifest = validateHostExecutablePluginPackage(input);
-  await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(actionsRoot), { recursive: true });
-  const stagingDir = await (0, import_promises26.mkdtemp)(`${actionsRoot}.validate-${manifest.id}-`);
+  await (0, import_promises27.mkdir)((0, import_node_path33.dirname)(actionsRoot), { recursive: true });
+  const stagingDir = await (0, import_promises27.mkdtemp)(`${actionsRoot}.validate-${manifest.id}-`);
   try {
     await writeHostPackageDirectory(stagingDir, input);
     const contractTests = await contractTestHostPackage(stagingDir, input);
@@ -104421,43 +107220,43 @@ async function validateHostExecutablePluginPackageContracts(input, actionsRoot) 
       ...contractTests ? { contractTests } : {}
     };
   } finally {
-    await (0, import_promises26.rm)(stagingDir, { recursive: true, force: true });
+    await (0, import_promises27.rm)(stagingDir, { recursive: true, force: true });
   }
 }
 async function activateOrUpdateHostExecutablePluginPackage(input, actionsRoot) {
   const manifest = validateHostExecutablePluginPackage(input);
   const targetDir = (0, import_node_path33.join)(actionsRoot, manifest.id);
   if ((0, import_node_fs10.existsSync)((0, import_node_path33.join)(targetDir, "manifest.json"))) {
-    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8")));
+    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises27.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8")));
     if (existing.version === manifest.version) {
       throw new Error(`Executable plugin ${manifest.id} version ${manifest.version} is already active; bump the version before changing or reactivating executable code.`);
     }
   }
-  await (0, import_promises26.mkdir)(actionsRoot, { recursive: true });
-  const stagingDir = await (0, import_promises26.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
+  await (0, import_promises27.mkdir)(actionsRoot, { recursive: true });
+  const stagingDir = await (0, import_promises27.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
   let rollbackDir;
   try {
     await writeHostPackageDirectory(stagingDir, input);
     const contractTests = await contractTestHostPackage(stagingDir, input);
     if ((0, import_node_fs10.existsSync)(targetDir)) {
       const rollbackRoot = (0, import_node_path33.join)(actionsRoot, ".rollback", manifest.id);
-      await (0, import_promises26.mkdir)(rollbackRoot, { recursive: true });
-      const existing = JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8"));
+      await (0, import_promises27.mkdir)(rollbackRoot, { recursive: true });
+      const existing = JSON.parse(await (0, import_promises27.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8"));
       rollbackDir = (0, import_node_path33.join)(rollbackRoot, `${String(Date.now()).padStart(16, "0")}-${existing.version ?? "unknown"}`);
-      await (0, import_promises26.rename)(targetDir, rollbackDir);
+      await (0, import_promises27.rename)(targetDir, rollbackDir);
     }
     try {
-      await (0, import_promises26.rename)(stagingDir, targetDir);
+      await (0, import_promises27.rename)(stagingDir, targetDir);
       await writeActivationReceipt(actionsRoot, targetDir);
     } catch (error53) {
       if ((0, import_node_fs10.existsSync)(targetDir) && !(0, import_node_fs10.existsSync)(stagingDir)) {
         try {
-          await (0, import_promises26.rename)(targetDir, stagingDir);
+          await (0, import_promises27.rename)(targetDir, stagingDir);
         } catch {
         }
       }
       if (rollbackDir && !(0, import_node_fs10.existsSync)(targetDir))
-        await (0, import_promises26.rename)(rollbackDir, targetDir);
+        await (0, import_promises27.rename)(rollbackDir, targetDir);
       throw error53;
     }
     return {
@@ -104469,14 +107268,14 @@ async function activateOrUpdateHostExecutablePluginPackage(input, actionsRoot) {
     };
   } catch (error53) {
     if ((0, import_node_fs10.existsSync)(stagingDir))
-      await (0, import_promises26.rm)(stagingDir, { recursive: true, force: true });
+      await (0, import_promises27.rm)(stagingDir, { recursive: true, force: true });
     throw error53;
   }
 }
 async function rollbackHostExecutablePluginPackage(actionsRoot, inputId) {
   const id2 = pluginIdSchema.parse(inputId);
   const rollbackRoot = (0, import_node_path33.join)(actionsRoot, ".rollback", id2);
-  const entries = (await (0, import_promises26.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
+  const entries = (await (0, import_promises27.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
   const selected = entries[0];
   if (!selected)
     throw new Error(`No rollback version is available for ${id2}.`);
@@ -104484,29 +107283,29 @@ async function rollbackHostExecutablePluginPackage(actionsRoot, inputId) {
   const selectedDir = (0, import_node_path33.join)(rollbackRoot, selected);
   const displacedDir = (0, import_node_path33.join)(actionsRoot, ".rollback-displaced", id2, String(Date.now()));
   if ((0, import_node_fs10.existsSync)(targetDir)) {
-    await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(displacedDir), { recursive: true });
-    await (0, import_promises26.rename)(targetDir, displacedDir);
+    await (0, import_promises27.mkdir)((0, import_node_path33.dirname)(displacedDir), { recursive: true });
+    await (0, import_promises27.rename)(targetDir, displacedDir);
   }
   try {
-    await (0, import_promises26.rename)(selectedDir, targetDir);
+    await (0, import_promises27.rename)(selectedDir, targetDir);
     await writeActivationReceipt(actionsRoot, targetDir);
   } catch (error53) {
     if ((0, import_node_fs10.existsSync)(targetDir) && !(0, import_node_fs10.existsSync)(selectedDir)) {
       try {
-        await (0, import_promises26.rename)(targetDir, selectedDir);
+        await (0, import_promises27.rename)(targetDir, selectedDir);
       } catch {
       }
     }
     if ((0, import_node_fs10.existsSync)(displacedDir) && !(0, import_node_fs10.existsSync)(targetDir)) {
-      await (0, import_promises26.rename)(displacedDir, targetDir);
+      await (0, import_promises27.rename)(displacedDir, targetDir);
     }
     throw error53;
   }
-  const restored = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8")));
+  const restored = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises27.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8")));
   return { id: id2, targetDir, version: restored.version };
 }
 async function collectHostPackageFiles(root5, directory, output) {
-  for (const entry of await (0, import_promises26.readdir)(directory, { withFileTypes: true })) {
+  for (const entry of await (0, import_promises27.readdir)(directory, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === "manifest.json")
       continue;
     const absolutePath = (0, import_node_path33.join)(directory, entry.name);
@@ -104514,22 +107313,22 @@ async function collectHostPackageFiles(root5, directory, output) {
     if (!isSafePluginRelativePath(relativePath)) {
       throw new Error(`Refusing suspicious active plugin path: ${relativePath}`);
     }
-    const metadata = await (0, import_promises26.lstat)(absolutePath);
+    const metadata = await (0, import_promises27.lstat)(absolutePath);
     if (metadata.isSymbolicLink()) {
       throw new Error(`Active plugins cannot contain symbolic links: ${relativePath}`);
     }
     if (metadata.isDirectory()) {
       await collectHostPackageFiles(root5, absolutePath, output);
     } else if (metadata.isFile()) {
-      output[relativePath] = (await (0, import_promises26.readFile)(absolutePath)).toString("base64");
+      output[relativePath] = (await (0, import_promises27.readFile)(absolutePath)).toString("base64");
     }
   }
 }
 async function readHostExecutablePluginPackage(actionsRoot, inputId) {
   const id2 = pluginIdSchema.parse(inputId);
   const pluginDir = (0, import_node_path33.join)(actionsRoot, id2);
-  const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(pluginDir, "manifest.json"), "utf8")));
-  const storedReceipt = ExecutablePluginActivationReceiptSchema.parse(JSON.parse(await (0, import_promises26.readFile)(executablePluginActivationReceiptPath(actionsRoot, id2), "utf8")));
+  const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises27.readFile)((0, import_node_path33.join)(pluginDir, "manifest.json"), "utf8")));
+  const storedReceipt = ExecutablePluginActivationReceiptSchema.parse(JSON.parse(await (0, import_promises27.readFile)(executablePluginActivationReceiptPath(actionsRoot, id2), "utf8")));
   const currentReceipt = await createExecutablePluginActivationReceipt(pluginDir);
   if (storedReceipt.pluginId !== currentReceipt.pluginId || storedReceipt.version !== currentReceipt.version || storedReceipt.schemaHash !== currentReceipt.schemaHash || storedReceipt.contentHash !== currentReceipt.contentHash) {
     throw new Error(`Active plugin ${id2} differs from its activation receipt; restore or reactivate it before checkout.`);
@@ -104544,12 +107343,12 @@ async function removeHostExecutablePluginPackage(actionsRoot, inputId) {
   if (!(0, import_node_fs10.existsSync)(targetDir))
     return { id: id2, removed: false };
   const trashDir = (0, import_node_path33.join)(actionsRoot, ".trash", `${id2}-${Date.now()}`);
-  await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(trashDir), { recursive: true });
-  await (0, import_promises26.rename)(targetDir, trashDir);
+  await (0, import_promises27.mkdir)((0, import_node_path33.dirname)(trashDir), { recursive: true });
+  await (0, import_promises27.rename)(targetDir, trashDir);
   const receiptPath = executablePluginActivationReceiptPath(actionsRoot, id2);
   if ((0, import_node_fs10.existsSync)(receiptPath)) {
     const receiptTrash = (0, import_node_path33.join)(trashDir, ".activation-receipt.json");
-    await (0, import_promises26.rename)(receiptPath, receiptTrash);
+    await (0, import_promises27.rename)(receiptPath, receiptTrash);
   }
   return { id: id2, removed: true, trashDir };
 }
@@ -104557,13 +107356,13 @@ async function listHostExecutablePluginPackages(actionsRoot) {
   if (!(0, import_node_fs10.existsSync)(actionsRoot))
     return [];
   const results = [];
-  for (const entry of await (0, import_promises26.readdir)(actionsRoot, { withFileTypes: true })) {
+  for (const entry of await (0, import_promises27.readdir)(actionsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith("."))
       continue;
     const targetDir = (0, import_node_path33.join)(actionsRoot, entry.name);
     let manifest;
     try {
-      manifest = JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8"));
+      manifest = JSON.parse(await (0, import_promises27.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8"));
     } catch {
       continue;
     }
@@ -104697,7 +107496,7 @@ function createCodexImagegenMarketplace(options) {
     async listInstalled() {
       if (!(0, import_node_fs11.existsSync)((0, import_node_path34.join)(targetDir, "manifest.json")))
         return [];
-      const manifest = JSON.parse(await (0, import_promises27.readFile)((0, import_node_path34.join)(targetDir, "manifest.json"), "utf8"));
+      const manifest = JSON.parse(await (0, import_promises28.readFile)((0, import_node_path34.join)(targetDir, "manifest.json"), "utf8"));
       return [
         {
           actionId: CODEX_IMAGEGEN_ACTION_ID,
@@ -104724,20 +107523,20 @@ function createCodexImagegenMarketplace(options) {
         };
       }
       const { manifestPath, entrypointPath } = sourcePaths();
-      const manifest = JSON.parse(await (0, import_promises27.readFile)(manifestPath, "utf8"));
+      const manifest = JSON.parse(await (0, import_promises28.readFile)(manifestPath, "utf8"));
       if (manifest.id !== CODEX_IMAGEGEN_PLUGIN_ID || !manifest.runtime?.entrypoint) {
         throw new Error("Bundled Codex ImageGen package is invalid.");
       }
       const files = {
-        [manifest.runtime.entrypoint]: (await (0, import_promises27.readFile)(entrypointPath)).toString("base64")
+        [manifest.runtime.entrypoint]: (await (0, import_promises28.readFile)(entrypointPath)).toString("base64")
       };
       for (const card of manifest.contributes?.cards ?? []) {
         if (!card.path)
           continue;
-        files[card.path] = (await (0, import_promises27.readFile)((0, import_node_path34.join)((0, import_node_path34.dirname)(manifestPath), card.path))).toString("base64");
+        files[card.path] = (await (0, import_promises28.readFile)((0, import_node_path34.join)((0, import_node_path34.dirname)(manifestPath), card.path))).toString("base64");
       }
       for (const contractPath of manifest.contractTests ?? []) {
-        files[contractPath] = (await (0, import_promises27.readFile)((0, import_node_path34.join)((0, import_node_path34.dirname)(manifestPath), contractPath))).toString("base64");
+        files[contractPath] = (await (0, import_promises28.readFile)((0, import_node_path34.join)((0, import_node_path34.dirname)(manifestPath), contractPath))).toString("base64");
       }
       const activated = await activateHostExecutablePluginPackage({
         id: CODEX_IMAGEGEN_PLUGIN_ID,
@@ -104758,10 +107557,10 @@ function createCodexImagegenMarketplace(options) {
       if (!(0, import_node_fs11.existsSync)(targetDir))
         return;
       const trashRoot = (0, import_node_path34.join)(options.actionsRoot, ".trash");
-      await (0, import_promises27.mkdir)(trashRoot, { recursive: true });
+      await (0, import_promises28.mkdir)(trashRoot, { recursive: true });
       const firstTrash = (0, import_node_path34.join)(trashRoot, CODEX_IMAGEGEN_PLUGIN_ID);
       const destination = (0, import_node_fs11.existsSync)(firstTrash) ? (0, import_node_path34.join)(trashRoot, `${CODEX_IMAGEGEN_PLUGIN_ID}-${Date.now()}`) : firstTrash;
-      await (0, import_promises27.rename)(targetDir, destination);
+      await (0, import_promises28.rename)(targetDir, destination);
     }
   };
 }
@@ -104773,14 +107572,14 @@ async function ensureBundledPlugin(options) {
   const defaults = options.manifestPath && options.entrypointPath ? null : bundledPluginPaths(options.id);
   const manifestPath = options.manifestPath ?? defaults.manifestPath;
   const entrypointPath = options.entrypointPath ?? defaults.entrypointPath;
-  const manifest = JSON.parse(await (0, import_promises27.readFile)(manifestPath, "utf8"));
+  const manifest = JSON.parse(await (0, import_promises28.readFile)(manifestPath, "utf8"));
   if (manifest.id !== options.id) {
     throw new Error(`Expected the bundled manifest for ${options.id}, but it declares ${manifest.id}.`);
   }
   if (manifest.runtime?.kind !== "local" || !manifest.runtime.entrypoint) {
     throw new Error(`Bundled plugin ${options.id} must have a local entrypoint.`);
   }
-  const entrypoint = await (0, import_promises27.readFile)(entrypointPath);
+  const entrypoint = await (0, import_promises28.readFile)(entrypointPath);
   const files = {
     [manifest.runtime.entrypoint]: entrypoint.toString("base64")
   };
@@ -104794,7 +107593,7 @@ async function ensureBundledPlugin(options) {
   for (const relativePath of declaredDocuments) {
     if (!relativePath)
       continue;
-    files[relativePath] = (await (0, import_promises27.readFile)((0, import_node_path34.join)(manifestDir, relativePath))).toString("base64");
+    files[relativePath] = (await (0, import_promises28.readFile)((0, import_node_path34.join)(manifestDir, relativePath))).toString("base64");
   }
   const activated = await activateHostExecutablePluginPackage({
     id: options.id,
@@ -104807,7 +107606,7 @@ async function ensureBundledPlugin(options) {
 // ../../apps/local-api/dist/codex-imagegen.js
 var import_node_child_process7 = require("node:child_process");
 var import_node_fs12 = require("node:fs");
-var import_promises28 = require("node:fs/promises");
+var import_promises29 = require("node:fs/promises");
 var import_node_os10 = require("node:os");
 var import_node_path35 = require("node:path");
 var PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -104880,13 +107679,13 @@ function createCodexImageGenerator(options = {}) {
     if (!codexPath) {
       throw new Error("Codex CLI was not found. Install Codex or set CODEX_BIN, then sign in with `codex login`.");
     }
-    const workDir = await (0, import_promises28.mkdtemp)((0, import_node_path35.join)((0, import_node_os10.tmpdir)(), "clash.codex-imagegen-"));
+    const workDir = await (0, import_promises29.mkdtemp)((0, import_node_path35.join)((0, import_node_os10.tmpdir)(), "clash.codex-imagegen-"));
     const outputPath = (0, import_node_path35.join)(workDir, "result.png");
     try {
       const referencePaths = [];
       for (const [index, reference] of input.references.entries()) {
         const path = (0, import_node_path35.join)(workDir, `reference-${index + 1}${referenceExtension(reference.mediaType, reference.asset)}`);
-        await (0, import_promises28.writeFile)(path, reference.bytes);
+        await (0, import_promises29.writeFile)(path, reference.bytes);
         referencePaths.push(path);
       }
       const args = [
@@ -104915,7 +107714,7 @@ function createCodexImageGenerator(options = {}) {
         const detail = [processError?.stderr, processError?.stdout, processError?.message].map((value) => typeof value === "string" ? value.trim() : "").find(Boolean)?.slice(-2e3) ?? String(error53);
         throw new Error(`Codex ImageGen failed: ${detail}`);
       }
-      const bytes = await (0, import_promises28.readFile)(outputPath).catch(() => null);
+      const bytes = await (0, import_promises29.readFile)(outputPath).catch(() => null);
       if (!bytes) {
         throw new Error("Codex ImageGen completed without writing result.png.");
       }
@@ -104924,7 +107723,7 @@ function createCodexImageGenerator(options = {}) {
       }
       return { mediaType: "image/png", bytes: new Uint8Array(bytes) };
     } finally {
-      await (0, import_promises28.rm)(workDir, { recursive: true, force: true });
+      await (0, import_promises29.rm)(workDir, { recursive: true, force: true });
     }
   };
 }
@@ -104932,7 +107731,7 @@ function createCodexImageGenerator(options = {}) {
 // ../../apps/local-api/dist/local-acp.js
 var import_node_child_process10 = require("node:child_process");
 var import_node_crypto30 = require("node:crypto");
-var import_promises34 = require("node:fs/promises");
+var import_promises35 = require("node:fs/promises");
 var import_node_path41 = require("node:path");
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
@@ -122637,7 +125436,7 @@ function nodeWritableToWeb(stream) {
 
 // ../../apps/local-api/dist/runtime/host/_acp-runtime/probe.js
 var import_node_fs13 = require("node:fs");
-var import_promises29 = require("node:fs/promises");
+var import_promises30 = require("node:fs/promises");
 var import_node_os11 = require("node:os");
 var import_node_path36 = require("node:path");
 
@@ -126721,7 +129520,7 @@ async function allowDiagnosticsToFlush() {
 }
 async function probeAgentSessionConfig(options) {
   const cwd = options.cwd ?? (0, import_node_path36.join)((0, import_node_os11.tmpdir)(), "clash-acp-probe");
-  await (0, import_promises29.mkdir)(cwd, { recursive: true });
+  await (0, import_promises30.mkdir)(cwd, { recursive: true });
   let updatedConfigOptions = [];
   let updatedAvailableCommands = [];
   let updatedModeId = null;
@@ -126825,7 +129624,7 @@ async function probeAgentSessionConfig(options) {
 }
 async function authenticateAgent(options) {
   const cwd = options.cwd ?? (0, import_node_path36.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth");
-  await (0, import_promises29.mkdir)(cwd, { recursive: true });
+  await (0, import_promises30.mkdir)(cwd, { recursive: true });
   const env2 = mergedStringEnv(options.agent.env, options.env);
   let authTerminalId = 0;
   let activeAuthMethodName = "Agent";
@@ -126961,7 +129760,7 @@ async function authenticateAgent(options) {
 }
 async function probeAgentAuthStatus(options) {
   const cwd = options.cwd ?? (0, import_node_path36.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth-probe");
-  await (0, import_promises29.mkdir)(cwd, { recursive: true });
+  await (0, import_promises30.mkdir)(cwd, { recursive: true });
   const connection = await spawnAcpProbeAgent({
     agent: options.agent,
     cwd,
@@ -127078,7 +129877,7 @@ async function listLocalAgentSessions(agent2) {
 
 // ../../apps/local-api/dist/runtime/host/_acp-runtime/registry.js
 var import_node_fs14 = require("node:fs");
-var import_promises30 = require("node:fs/promises");
+var import_promises31 = require("node:fs/promises");
 var import_node_path37 = require("node:path");
 function registryShimName(id2) {
   return `clash-acp-${id2}`;
@@ -127209,7 +130008,7 @@ var KNOWN_ACP_AGENTS = [
 ];
 async function isExecutable(path, platform3 = process.platform) {
   try {
-    await (0, import_promises30.access)(path, platform3 === "win32" ? import_node_fs14.constants.F_OK : import_node_fs14.constants.X_OK);
+    await (0, import_promises31.access)(path, platform3 === "win32" ? import_node_fs14.constants.F_OK : import_node_fs14.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -127248,7 +130047,7 @@ function candidateSystemDirs(options) {
 async function candidateNodeVersionDirs(root5, suffix) {
   const dirs = [];
   try {
-    for (const entry of await (0, import_promises30.readdir)(root5, { withFileTypes: true })) {
+    for (const entry of await (0, import_promises31.readdir)(root5, { withFileTypes: true })) {
       if (!entry.isDirectory())
         continue;
       dirs.push((0, import_node_path37.join)(root5, entry.name, ...suffix));
@@ -127375,14 +130174,14 @@ async function detectAll(options = {}) {
 }
 
 // ../../apps/local-api/dist/runtime/host/lib/cc-sessions.js
-var import_promises31 = require("node:fs/promises");
+var import_promises32 = require("node:fs/promises");
 var import_node_os12 = require("node:os");
 var import_node_path38 = require("node:path");
 var ROOT = (0, import_node_path38.join)((0, import_node_os12.homedir)(), ".claude", "projects");
 async function listLocalCcSessions(limit = 20) {
   let projectDirs;
   try {
-    projectDirs = await (0, import_promises31.readdir)(ROOT);
+    projectDirs = await (0, import_promises32.readdir)(ROOT);
   } catch (e5) {
     if (e5.code === "ENOENT")
       return [];
@@ -127397,7 +130196,7 @@ async function listLocalCcSessions(limit = 20) {
     const projPath = (0, import_node_path38.join)(ROOT, projDir);
     let entries = [];
     try {
-      entries = await (0, import_promises31.readdir)(projPath);
+      entries = await (0, import_promises32.readdir)(projPath);
     } catch {
       continue;
     }
@@ -127406,7 +130205,7 @@ async function listLocalCcSessions(limit = 20) {
         continue;
       const file2 = (0, import_node_path38.join)(projPath, entry);
       try {
-        const st = await (0, import_promises31.stat)(file2);
+        const st = await (0, import_promises32.stat)(file2);
         if (!st.isFile())
           continue;
         const id2 = entry.slice(0, -".jsonl".length);
@@ -127429,7 +130228,7 @@ async function listLocalCcSessions(limit = 20) {
 async function readFirstSummary(file2) {
   let text;
   try {
-    const buf = await (0, import_promises31.readFile)(file2, { encoding: "utf-8" });
+    const buf = await (0, import_promises32.readFile)(file2, { encoding: "utf-8" });
     text = buf;
   } catch {
     return "";
@@ -127519,7 +130318,7 @@ function reduceSessionLifecycle(state2, event) {
 }
 
 // ../../apps/local-api/dist/runtime/host/lib/session-cwd.js
-var import_promises32 = require("node:fs/promises");
+var import_promises33 = require("node:fs/promises");
 var import_node_fs15 = require("node:fs");
 var import_node_path39 = require("node:path");
 var import_node_url3 = require("node:url");
@@ -127570,7 +130369,7 @@ function bundledAgentsDir() {
 }
 async function readAgentRuntime(agentTemplateId) {
   try {
-    const text = await (0, import_promises32.readFile)((0, import_node_path39.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
+    const text = await (0, import_promises33.readFile)((0, import_node_path39.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
     return JSON.parse(text);
   } catch {
     return null;
@@ -127615,14 +130414,14 @@ function pluginMcpEnv(runtimeEnv, pluginEnv, usesElectronNode) {
   return [...merged].map(([name, value]) => ({ name, value }));
 }
 async function resolvePluginMcpServers(pluginRoot, runtimeEnv) {
-  const manifest = JSON.parse(await (0, import_promises32.readFile)((0, import_node_path39.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
+  const manifest = JSON.parse(await (0, import_promises33.readFile)((0, import_node_path39.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
   const pluginName = typeof manifest.name === "string" ? manifest.name : "plugin";
   const mcpManifestPath = manifest.mcpServers;
   if (typeof mcpManifestPath !== "string" || !mcpManifestPath.startsWith("./")) {
     throw new Error(`built-in plugin '${pluginName}' has no valid mcpServers manifest`);
   }
   const mcpPath = resolvePluginPath(pluginRoot, pluginRoot, mcpManifestPath);
-  const mcpConfig = JSON.parse(await (0, import_promises32.readFile)(mcpPath, "utf8"));
+  const mcpConfig = JSON.parse(await (0, import_promises33.readFile)(mcpPath, "utf8"));
   const wrapped = isRecord13(mcpConfig.mcpServers) ? mcpConfig.mcpServers : isRecord13(mcpConfig.mcp_servers) ? mcpConfig.mcp_servers : mcpConfig;
   const servers = [];
   for (const [serverName, rawServer] of Object.entries(wrapped)) {
@@ -127667,7 +130466,7 @@ async function ensureAgentCwd(agentTemplateId, projectId, capabilities = {}) {
   const canonicalProjectId = projectId && projectId.length > 0 ? projectId : DEFAULT_PROJECT;
   const projectPathSegment = projectIdPathSegment(canonicalProjectId);
   const cwd = (0, import_node_path39.join)(paths().projectsDir, projectPathSegment);
-  await (0, import_promises32.mkdir)(cwd, { recursive: true });
+  await (0, import_promises33.mkdir)(cwd, { recursive: true });
   await ensureProjectWorkspaceLayout(cwd);
   await assertAgentTemplate(agentTemplateId);
   await installNativeAgentSkills(agentTemplateId, resolveHarnessProjectSkillDirectory(capabilities.harnessId ?? ""), cwd);
@@ -127676,16 +130475,16 @@ async function ensureAgentCwd(agentTemplateId, projectId, capabilities = {}) {
 }
 async function ensureProjectWorkspaceLayout(cwd) {
   await Promise.all([
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "drafts"), { recursive: true }),
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "text"), { recursive: true }),
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "timelines"), { recursive: true }),
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "storyboards"), { recursive: true }),
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "prompts"), { recursive: true }),
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "metadata"), { recursive: true }),
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "timelines"), { recursive: true }),
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "sessions"), { recursive: true }),
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "assets", "links"), { recursive: true }),
-    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "runtime"), { recursive: true })
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "drafts"), { recursive: true }),
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "projections", "text"), { recursive: true }),
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "projections", "timelines"), { recursive: true }),
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "projections", "storyboards"), { recursive: true }),
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "projections", "prompts"), { recursive: true }),
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "projections", "metadata"), { recursive: true }),
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "timelines"), { recursive: true }),
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "sessions"), { recursive: true }),
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "assets", "links"), { recursive: true }),
+    (0, import_promises33.mkdir)((0, import_node_path39.join)(cwd, "runtime"), { recursive: true })
   ]);
 }
 function sanitize(id2) {
@@ -127705,7 +130504,7 @@ async function assertAgentTemplate(agentTemplateId) {
   const templateId = sanitize(agentTemplateId);
   const runtimePath = (0, import_node_path39.join)(bundledAgentsDir(), templateId, "runtime.json");
   try {
-    const runtime = await (0, import_promises32.lstat)(runtimePath);
+    const runtime = await (0, import_promises33.lstat)(runtimePath);
     if (!runtime.isFile())
       throw new Error(`unknown agent template: ${templateId}`);
   } catch (e5) {
@@ -127729,7 +130528,7 @@ function resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory) {
   return root5;
 }
 async function replaceManagedSkillLink(target, source) {
-  const current = await (0, import_promises32.lstat)(target).catch((error53) => {
+  const current = await (0, import_promises33.lstat)(target).catch((error53) => {
     if (error53.code === "ENOENT")
       return null;
     throw error53;
@@ -127738,11 +130537,11 @@ async function replaceManagedSkillLink(target, source) {
     if (!current.isSymbolicLink()) {
       throw new Error(`Cannot install bundled Clash skill over an existing workspace entry: ${target}`);
     }
-    if (await (0, import_promises32.readlink)(target) === source)
+    if (await (0, import_promises33.readlink)(target) === source)
       return;
-    await (0, import_promises32.unlink)(target);
+    await (0, import_promises33.unlink)(target);
   }
-  await (0, import_promises32.symlink)(source, target, "dir");
+  await (0, import_promises33.symlink)(source, target, "dir");
 }
 async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory, cwd) {
   const root5 = resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory);
@@ -127751,15 +130550,15 @@ async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory
   const runtime = await readAgentRuntime(agentTemplateId);
   if (!runtime?.plugins?.length)
     return;
-  await (0, import_promises32.mkdir)(root5, { recursive: true });
+  await (0, import_promises33.mkdir)(root5, { recursive: true });
   for (const pluginId of runtime.plugins) {
     const agentRoot = (0, import_node_path39.join)(bundledAgentsDir(), sanitize(agentTemplateId));
     const pluginRoot = resolveAgentPluginRoot(agentRoot, pluginId, process.env);
-    const manifest = JSON.parse(await (0, import_promises32.readFile)((0, import_node_path39.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
+    const manifest = JSON.parse(await (0, import_promises33.readFile)((0, import_node_path39.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
     const configuredRoots = typeof manifest.skills === "string" ? [manifest.skills] : Array.isArray(manifest.skills) ? manifest.skills.filter((entry) => typeof entry === "string") : [];
     for (const configuredRoot of configuredRoots) {
       const skillRoot = resolvePluginPath(pluginRoot, pluginRoot, configuredRoot);
-      const entries = await (0, import_promises32.readdir)(skillRoot, { withFileTypes: true });
+      const entries = await (0, import_promises33.readdir)(skillRoot, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory())
           continue;
@@ -127770,8 +130569,8 @@ async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory
 }
 async function writeProjectMarker(cwd, projectId) {
   const markerDir = (0, import_node_path39.join)(cwd, ".clash");
-  await (0, import_promises32.mkdir)(markerDir, { recursive: true });
-  await (0, import_promises32.writeFile)((0, import_node_path39.join)(markerDir, "project.toml"), [
+  await (0, import_promises33.mkdir)(markerDir, { recursive: true });
+  await (0, import_promises33.writeFile)((0, import_node_path39.join)(markerDir, "project.toml"), [
     "schema_version = 1",
     `project_id = ${JSON.stringify(projectId)}`,
     `workspace_id = ${JSON.stringify(projectWorkspaceId("managed", projectId, cwd))}`,
@@ -128313,10 +131112,10 @@ var SessionManager = class {
 // ../../apps/local-api/dist/acp-registry-installer.js
 var import_node_child_process9 = require("node:child_process");
 var import_node_crypto29 = require("node:crypto");
-var import_promises33 = require("node:fs/promises");
+var import_promises34 = require("node:fs/promises");
 var import_node_path40 = require("node:path");
-var import_node_util7 = require("node:util");
-var execFileAsync5 = (0, import_node_util7.promisify)(import_node_child_process9.execFile);
+var import_node_util8 = require("node:util");
+var execFileAsync5 = (0, import_node_util8.promisify)(import_node_child_process9.execFile);
 var ACP_REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 function currentPlatformKey() {
   const os = process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : process.platform === "win32" ? "windows" : process.platform;
@@ -128373,9 +131172,9 @@ function renderShellShim(commandPath, args = [], env2 = {}) {
   ].join("\n");
 }
 async function writeExecutableShim(shimPath, commandPath, args = [], env2 = {}) {
-  await (0, import_promises33.mkdir)((0, import_node_path40.dirname)(shimPath), { recursive: true });
-  await (0, import_promises33.writeFile)(shimPath, renderShellShim(commandPath, args, env2), "utf8");
-  await (0, import_promises33.chmod)(shimPath, 493);
+  await (0, import_promises34.mkdir)((0, import_node_path40.dirname)(shimPath), { recursive: true });
+  await (0, import_promises34.writeFile)(shimPath, renderShellShim(commandPath, args, env2), "utf8");
+  await (0, import_promises34.chmod)(shimPath, 493);
 }
 async function fetchBytes(url2, fetchImpl) {
   const response = await fetchImpl(url2);
@@ -128457,13 +131256,13 @@ async function writeRegistryInstallMetadata(options, metadata) {
   if (!installRoot)
     throw new Error("Install metadata requires an install root");
   const metadataPath = registryInstallMetadataPath(installRoot, options.registryId);
-  await (0, import_promises33.mkdir)((0, import_node_path40.dirname)(metadataPath), { recursive: true });
-  await (0, import_promises33.writeFile)(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+  await (0, import_promises34.mkdir)((0, import_node_path40.dirname)(metadataPath), { recursive: true });
+  await (0, import_promises34.writeFile)(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
 }
 async function readAcpRegistryInstallMetadata(options) {
   const installRoot = options.installRoot ?? options.binDir;
   try {
-    const parsed = JSON.parse(await (0, import_promises33.readFile)(registryInstallMetadataPath(installRoot, options.registryId), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises34.readFile)(registryInstallMetadataPath(installRoot, options.registryId), "utf8"));
     if (parsed.source !== "registry" || parsed.registryId !== options.registryId || typeof parsed.shimName !== "string") {
       return null;
     }
@@ -128498,19 +131297,19 @@ async function installBinaryDistribution(agent2, target, options) {
     throw new Error(`Registry command escapes install directory: ${target.cmd}`);
   }
   try {
-    await (0, import_promises33.chmod)(commandPath, 493);
+    await (0, import_promises34.chmod)(commandPath, 493);
   } catch {
     const tmpDir = `${finalDir}.tmp-${process.pid}-${Date.now()}`;
-    await (0, import_promises33.rm)(tmpDir, { recursive: true, force: true });
-    await (0, import_promises33.mkdir)(tmpDir, { recursive: true });
+    await (0, import_promises34.rm)(tmpDir, { recursive: true, force: true });
+    await (0, import_promises34.mkdir)(tmpDir, { recursive: true });
     const bytes = await fetchBytes(target.archive, fetchImpl);
     verifySha256(bytes, target.sha256);
     const kind = archiveKind(target.archive);
     const archivePath = (0, import_node_path40.join)(tmpDir, `download${kind === "zip" ? ".zip" : kind === "tar-gz" ? ".tar.gz" : kind === "tar-bz2" ? ".tar.bz2" : (0, import_node_path40.extname)(rawBinaryFileName(target.archive))}`);
     if (kind === "raw") {
-      await (0, import_promises33.writeFile)((0, import_node_path40.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
+      await (0, import_promises34.writeFile)((0, import_node_path40.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
     } else {
-      await (0, import_promises33.writeFile)(archivePath, bytes);
+      await (0, import_promises34.writeFile)(archivePath, bytes);
       if (kind === "zip") {
         await execFileAsync5("unzip", ["-q", archivePath, "-d", tmpDir]);
       } else if (kind === "tar-gz") {
@@ -128518,12 +131317,12 @@ async function installBinaryDistribution(agent2, target, options) {
       } else {
         await execFileAsync5("tar", ["-xjf", archivePath, "-C", tmpDir]);
       }
-      await (0, import_promises33.rm)(archivePath, { force: true });
+      await (0, import_promises34.rm)(archivePath, { force: true });
     }
-    await (0, import_promises33.rm)(finalDir, { recursive: true, force: true });
-    await (0, import_promises33.mkdir)((0, import_node_path40.dirname)(finalDir), { recursive: true });
-    await (0, import_promises33.rename)(tmpDir, finalDir);
-    await (0, import_promises33.chmod)(commandPath, 493);
+    await (0, import_promises34.rm)(finalDir, { recursive: true, force: true });
+    await (0, import_promises34.mkdir)((0, import_node_path40.dirname)(finalDir), { recursive: true });
+    await (0, import_promises34.rename)(tmpDir, finalDir);
+    await (0, import_promises34.chmod)(commandPath, 493);
   }
   const shimPath = (0, import_node_path40.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, commandPath, options.shimArgs ?? target.args ?? [], {
@@ -128546,7 +131345,7 @@ function packagePathParts(packageName) {
 async function resolvePackageBin(prefixDir, packageSpec) {
   const packageName = packageNameFromSpec(packageSpec);
   const packageJsonPath = (0, import_node_path40.join)(prefixDir, "node_modules", ...packagePathParts(packageName), "package.json");
-  const pkg = JSON.parse(await (0, import_promises33.readFile)(packageJsonPath, "utf8"));
+  const pkg = JSON.parse(await (0, import_promises34.readFile)(packageJsonPath, "utf8"));
   const unscopedName = (0, import_node_path40.basename)(packageName);
   const binName = typeof pkg.bin === "string" ? unscopedName : pkg.bin?.[unscopedName] ? unscopedName : Object.keys(pkg.bin ?? {})[0];
   if (!binName)
@@ -128557,7 +131356,7 @@ async function resolvePackageBin(prefixDir, packageSpec) {
 async function installNpxDistribution(npx, options) {
   const installRoot = options.installRoot ?? options.binDir;
   const prefixDir = (0, import_node_path40.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "npx");
-  await (0, import_promises33.mkdir)(prefixDir, { recursive: true });
+  await (0, import_promises34.mkdir)(prefixDir, { recursive: true });
   await execFileAsync5(options.npmCommand ?? "npm", ["install", "--prefix", prefixDir, "--omit=dev", "--no-audit", "--no-fund", npx.package], {
     env: {
       ...process.env,
@@ -128578,7 +131377,7 @@ function pythonPackageNameFromSpec(packageSpec) {
   return packageSpec.split(/[<>=!~\[]/, 1)[0].trim().replace(/_/g, "-");
 }
 async function firstExecutableInDir(binDir, preferredName) {
-  const entries = await (0, import_promises33.readdir)(binDir).catch(() => []);
+  const entries = await (0, import_promises34.readdir)(binDir).catch(() => []);
   const preferred = [
     preferredName,
     preferredName.replace(/-/g, "_"),
@@ -128589,7 +131388,7 @@ async function firstExecutableInDir(binDir, preferredName) {
       continue;
     const candidate = (0, import_node_path40.join)(binDir, name);
     try {
-      await (0, import_promises33.access)(candidate);
+      await (0, import_promises34.access)(candidate);
       return candidate;
     } catch {
     }
@@ -128601,7 +131400,7 @@ async function installUvxDistribution(uvx, options) {
   const prefixDir = (0, import_node_path40.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "uvx");
   const toolDir = (0, import_node_path40.join)(prefixDir, "tools");
   const toolBinDir = (0, import_node_path40.join)(prefixDir, "bin");
-  await (0, import_promises33.mkdir)(toolBinDir, { recursive: true });
+  await (0, import_promises34.mkdir)(toolBinDir, { recursive: true });
   await execFileAsync5("uv", ["tool", "install", "--force", uvx.package], {
     env: {
       ...process.env,
@@ -128675,22 +131474,22 @@ async function installAcpRegistryAgent(options) {
 async function installManagedAdapter(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const bytes = await fetchBytes(options.downloadUrl, fetchImpl);
-  await (0, import_promises33.mkdir)(options.binDir, { recursive: true });
+  await (0, import_promises34.mkdir)(options.binDir, { recursive: true });
   const commandPath = (0, import_node_path40.join)(options.binDir, (0, import_node_path40.basename)(options.command));
-  await (0, import_promises33.writeFile)(commandPath, bytes);
-  await (0, import_promises33.chmod)(commandPath, 493);
+  await (0, import_promises34.writeFile)(commandPath, bytes);
+  await (0, import_promises34.chmod)(commandPath, 493);
   return { commandPath };
 }
 async function uninstallAcpRegistryAgent(options) {
   const installRoot = options.installRoot ?? options.binDir;
-  await (0, import_promises33.rm)((0, import_node_path40.join)(options.binDir, options.shimName), { force: true });
-  await (0, import_promises33.rm)((0, import_node_path40.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
+  await (0, import_promises34.rm)((0, import_node_path40.join)(options.binDir, options.shimName), { force: true });
+  await (0, import_promises34.rm)((0, import_node_path40.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
     recursive: true,
     force: true
   });
 }
 async function uninstallManagedAdapter(options) {
-  await (0, import_promises33.rm)((0, import_node_path40.join)(options.binDir, (0, import_node_path40.basename)(options.command)), { force: true });
+  await (0, import_promises34.rm)((0, import_node_path40.join)(options.binDir, (0, import_node_path40.basename)(options.command)), { force: true });
 }
 
 // ../../apps/local-api/dist/local-acp.js
@@ -129023,7 +131822,7 @@ function createLocalHarnessConfigStore(dataDir2) {
         return;
       let legacy = null;
       try {
-        legacy = JSON.parse(await (0, import_promises34.readFile)(legacySidecarPath, "utf8"));
+        legacy = JSON.parse(await (0, import_promises35.readFile)(legacySidecarPath, "utf8"));
       } catch {
         legacy = await legacyStore.getJson(LOCAL_HARNESS_CONFIG_KEY);
       }
@@ -129032,7 +131831,7 @@ function createLocalHarnessConfigStore(dataDir2) {
         return;
       await userConfig.setSection("harnesses", migrated);
       await legacyStore.delete(LOCAL_HARNESS_CONFIG_KEY);
-      await (0, import_promises34.unlink)(legacySidecarPath).catch(() => void 0);
+      await (0, import_promises35.unlink)(legacySidecarPath).catch(() => void 0);
     })();
     return migration;
   };
@@ -129251,7 +132050,7 @@ async function geminiAuthPreflight(env2) {
       message: "Cannot inspect Gemini auth because HOME is not set."
     };
   }
-  const settings = readJsonObject(await (0, import_promises34.readFile)((0, import_node_path41.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
+  const settings = readJsonObject(await (0, import_promises35.readFile)((0, import_node_path41.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
   const selectedType = nestedString(settings, ["security", "auth", "selectedType"]);
   if (selectedType) {
     return {
@@ -129259,7 +132058,7 @@ async function geminiAuthPreflight(env2) {
       message: `Gemini auth method selected: ${selectedType}.`
     };
   }
-  const accounts = readJsonObject(await (0, import_promises34.readFile)((0, import_node_path41.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
+  const accounts = readJsonObject(await (0, import_promises35.readFile)((0, import_node_path41.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
   const activeAccount = nestedString(accounts, ["active"]);
   const hadOldAccounts = Array.isArray(accounts?.old) && accounts.old.length > 0;
   return {
@@ -129806,7 +132605,7 @@ var LocalAcpRuntimeAdapter = class {
       };
     }
     const shimPath = (0, import_node_path41.join)(this.harnessDownloadDir, (0, import_node_path41.basename)(entry.spec.command));
-    const installed = await (0, import_promises34.access)(shimPath).then(() => true, () => false);
+    const installed = await (0, import_promises35.access)(shimPath).then(() => true, () => false);
     if (!installed) {
       return {
         installed: false,
@@ -129842,7 +132641,7 @@ var LocalAcpRuntimeAdapter = class {
     if (!this.harnessDownloadDir)
       return void 0;
     try {
-      const packageJson = JSON.parse(await (0, import_promises34.readFile)((0, import_node_path41.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
+      const packageJson = JSON.parse(await (0, import_promises35.readFile)((0, import_node_path41.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
       return typeof packageJson.version === "string" && packageJson.version.length > 0 ? packageJson.version : void 0;
     } catch {
       return void 0;
@@ -130950,7 +133749,7 @@ var import_node_crypto32 = require("node:crypto");
 // ../../apps/local-api/dist/local-durable-output-staging.js
 var import_node_crypto31 = require("node:crypto");
 var import_node_module12 = require("node:module");
-var import_promises35 = require("node:fs/promises");
+var import_promises36 = require("node:fs/promises");
 var import_node_path42 = require("node:path");
 var nodeRequire11 = (0, import_node_module12.createRequire)(__clash_import_meta_url);
 function required3(value, label) {
@@ -130958,6 +133757,9 @@ function required3(value, label) {
   if (!normalized)
     throw new Error(`${label} must not be empty.`);
   return normalized;
+}
+function normalizedContentType2(value) {
+  return required3(value, "contentType").toLowerCase();
 }
 function projectAssetId(input) {
   const digest3 = (0, import_node_crypto31.createHash)("sha256").update(input.projectId).update("\0").update(input.actionRunId).update("\0").update(input.outputSlot).digest("hex");
@@ -130976,12 +133778,24 @@ function openDatabase8(path) {
       project_asset_id TEXT NOT NULL,
       resource_id TEXT NOT NULL,
       kind TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      byte_length INTEGER NOT NULL,
       metadata_json TEXT NOT NULL,
       result_json TEXT,
       created_at INTEGER NOT NULL,
       PRIMARY KEY (project_id, action_run_id, output_slot)
     );
   `);
+  for (const [column, declaration] of [
+    ["content_type", "TEXT"],
+    ["byte_length", "INTEGER"]
+  ]) {
+    try {
+      database.prepare(`SELECT ${column} FROM local_durable_output_staging LIMIT 1`);
+    } catch {
+      database.exec(`ALTER TABLE local_durable_output_staging ADD COLUMN ${column} ${declaration}`);
+    }
+  }
   return database;
 }
 function parseRow4(row) {
@@ -130991,7 +133805,9 @@ function parseRow4(row) {
   const projectAssetIdValue = row.project_asset_id;
   const resourceId = row.resource_id;
   const kind = AssetKindSchema.safeParse(row.kind);
-  if (typeof projectId !== "string" || typeof actionRunId !== "string" || typeof outputSlot !== "string" || typeof projectAssetIdValue !== "string" || typeof resourceId !== "string" || !kind.success || typeof row.metadata_json !== "string" || row.result_json !== null && typeof row.result_json !== "string") {
+  const contentType = row.content_type;
+  const byteLength = row.byte_length;
+  if (typeof projectId !== "string" || typeof actionRunId !== "string" || typeof outputSlot !== "string" || typeof projectAssetIdValue !== "string" || typeof resourceId !== "string" || !kind.success || contentType !== null && typeof contentType !== "string" || byteLength !== null && (typeof byteLength !== "number" || !Number.isSafeInteger(byteLength) || byteLength < 0) || typeof row.metadata_json !== "string" || row.result_json !== null && typeof row.result_json !== "string") {
     throw new Error("Local durable output staging row is corrupt.");
   }
   let metadataValue;
@@ -131014,6 +133830,12 @@ function parseRow4(row) {
     }
     result = record3;
   }
+  const metadata = ProjectAssetMetadataSchema.parse(metadataValue);
+  const normalizedType = typeof contentType === "string" && contentType ? normalizedContentType2(contentType) : typeof metadata.contentType === "string" ? normalizedContentType2(metadata.contentType) : void 0;
+  const normalizedByteLength = typeof byteLength === "number" ? byteLength : metadata.bytes;
+  if (!normalizedType || normalizedByteLength === void 0) {
+    throw new Error("Local durable output staging row is corrupt.");
+  }
   return {
     projectId,
     actionRunId,
@@ -131021,7 +133843,9 @@ function parseRow4(row) {
     projectAssetId: projectAssetIdValue,
     resourceId,
     kind: kind.data,
-    metadata: ProjectAssetMetadataSchema.parse(metadataValue),
+    contentType: normalizedType,
+    byteLength: normalizedByteLength,
+    metadata,
     ...result ? { result } : {}
   };
 }
@@ -131029,30 +133853,46 @@ function createLocalDurableOutputStagingStore(options) {
   const databasePath2 = (0, import_node_path42.join)(options.dataDir, "local.sqlite");
   const resources = createLocalResourceStore({ dataDir: options.dataDir });
   async function withDatabase(task) {
-    await (0, import_promises35.mkdir)(options.dataDir, { recursive: true });
+    await (0, import_promises36.mkdir)(options.dataDir, { recursive: true });
     const database = openDatabase8(databasePath2);
     try {
       return task(database);
     } finally {
       database.close();
-      await (0, import_promises35.chmod)(databasePath2, 384).catch(() => void 0);
+      await (0, import_promises36.chmod)(databasePath2, 384).catch(() => void 0);
     }
   }
   async function load(input) {
     return withDatabase((database) => {
       const row = database.prepare(`SELECT project_id, action_run_id, output_slot, project_asset_id,
-                  resource_id, kind, metadata_json, result_json
+                  resource_id, kind, content_type, byte_length,
+                  metadata_json, result_json
              FROM local_durable_output_staging
             WHERE project_id = ? AND action_run_id = ? AND output_slot = ?`).get(input.projectId, input.actionRunId, input.outputSlot);
       return row ? parseRow4(row) : void 0;
     });
   }
   async function resolveStored(stored) {
-    const projection = await resources.resolve(stored.resourceId);
-    if (!projection || projection.resource.kind !== stored.kind) {
-      throw new Error(`Durable output ${stored.actionRunId}/${stored.outputSlot} has no matching immutable Resource.`);
+    const projection = await resources.resolveStaged(stored.resourceId);
+    if (projection) {
+      if (projection.resourceId !== stored.resourceId || projection.byteLength !== stored.byteLength) {
+        throw new Error(`Durable output ${stored.actionRunId}/${stored.outputSlot} has staged bytes that conflict with its receipt.`);
+      }
+      return { ...stored, projection };
     }
-    return { ...stored, projection };
+    const sealed = await resources.resolve(stored.resourceId);
+    const sealedContentType = sealed?.resource.contentType?.trim().toLowerCase();
+    const metadataContentType = stored.metadata.contentType?.trim().toLowerCase();
+    if (!sealed || sealed.resource.id !== stored.resourceId || sealed.resource.digest.algorithm !== "sha256" || sealed.resource.id !== `sha256:${sealed.resource.digest.value}` || sealed.resource.kind !== stored.kind || sealed.resource.byteLength !== stored.byteLength || sealedContentType !== stored.contentType || stored.metadata.bytes !== stored.byteLength || metadataContentType !== stored.contentType) {
+      throw new Error(`Durable output ${stored.actionRunId}/${stored.outputSlot} has no complete pre-cutover receipt matching sealed Resource ${stored.resourceId}.`);
+    }
+    const recovered = await resources.stage({
+      bytes: new Uint8Array(await (0, import_promises36.readFile)(sealed.path))
+    });
+    if (recovered.resourceId !== stored.resourceId || recovered.byteLength !== stored.byteLength) {
+      throw new Error(`Durable output ${stored.actionRunId}/${stored.outputSlot} recovery does not match its verified sealed Resource.`);
+    }
+    return { ...stored, projection: recovered };
   }
   return {
     async stage(input) {
@@ -131064,29 +133904,31 @@ function createLocalDurableOutputStagingStore(options) {
       const existing = await load(identity);
       if (existing)
         return resolveStored(existing);
-      const projection = await resources.install({
-        kind: input.kind,
-        bytes: input.bytes,
-        contentType: input.contentType
+      const projection = await resources.stage({
+        bytes: input.bytes
       });
+      const contentType = normalizedContentType2(input.contentType);
       const metadata = ProjectAssetMetadataSchema.parse({
         ...input.metadata ?? {},
-        bytes: projection.resource.byteLength,
-        contentType: projection.resource.contentType ?? input.contentType
+        bytes: projection.byteLength,
+        contentType
       });
       const intended = {
         ...identity,
         projectAssetId: projectAssetId(identity),
-        resourceId: projection.resource.id,
+        resourceId: projection.resourceId,
         kind: input.kind,
+        contentType,
+        byteLength: projection.byteLength,
         metadata,
         ...input.result ? { result: input.result } : {}
       };
       await withDatabase((database) => {
         database.prepare(`INSERT OR IGNORE INTO local_durable_output_staging (
                project_id, action_run_id, output_slot, project_asset_id,
-               resource_id, kind, metadata_json, result_json, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(intended.projectId, intended.actionRunId, intended.outputSlot, intended.projectAssetId, intended.resourceId, intended.kind, JSON.stringify(intended.metadata), intended.result ? JSON.stringify(intended.result) : null, Date.now());
+               resource_id, kind, content_type, byte_length,
+               metadata_json, result_json, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(intended.projectId, intended.actionRunId, intended.outputSlot, intended.projectAssetId, intended.resourceId, intended.kind, intended.contentType, intended.byteLength, JSON.stringify(intended.metadata), intended.result ? JSON.stringify(intended.result) : null, Date.now());
       });
       const winner = await load(identity);
       if (!winner)
@@ -131158,10 +134000,6 @@ function numberParam(data, key) {
 }
 function authoredPromptFromData(data, fallback2) {
   return typeof data.prompt === "string" && data.prompt.trim() ? data.prompt : typeof data.label === "string" && data.label.trim() ? data.label : fallback2;
-}
-function providerPromptFromData(data, fallback2) {
-  const authoredPrompt = authoredPromptFromData(data, fallback2);
-  return extractPromptText(parsePromptParts(authoredPrompt));
 }
 function modelFromData(data, fallback2) {
   return typeof data.modelId === "string" && data.modelId.trim() ? data.modelId : typeof data.model === "string" && data.model.trim() ? data.model : fallback2;
@@ -131538,56 +134376,6 @@ function timelineRenderInputOwner(data) {
   });
   return parsed.success && parsed.data.kind === "run" ? parsed.data : null;
 }
-function extensionForContentType(contentType) {
-  if (contentType.includes("image/svg"))
-    return ".svg";
-  if (contentType.includes("image/png"))
-    return ".png";
-  if (contentType.includes("image/jpeg"))
-    return ".jpg";
-  if (contentType.includes("image/webp"))
-    return ".webp";
-  if (contentType.includes("video/mp4"))
-    return ".mp4";
-  if (contentType.includes("video/webm"))
-    return ".webm";
-  if (contentType.includes("audio/wav"))
-    return ".wav";
-  if (contentType.includes("audio/mpeg"))
-    return ".mp3";
-  if (contentType.includes("model/gltf-binary") || contentType.includes("application/octet-stream+gltf"))
-    return ".glb";
-  return ".bin";
-}
-function ownedProjectAssetEntry(options) {
-  const assetId = options.projectAssetId ?? `local-asset-${sanitizeStorageSegment(options.taskId)}`;
-  const model = options.nodeData ? modelFromData(options.nodeData, `mock-${options.kind}`) : options.modelEndpoint ?? options.kind;
-  const prompt = options.prompt ?? (options.nodeData ? providerPromptFromData(options.nodeData, `Mock ${options.kind}`) : `Generate ${options.kind}`);
-  const name = options.name ?? `${assetId}${extensionForContentType(options.projection.resource.contentType ?? "")}`;
-  return ProjectAssetEntrySchema.parse({
-    id: assetId,
-    kind: options.kind,
-    source: { kind: "owned", resourceId: options.projection.resource.id },
-    lifecycle: { state: "active" },
-    name,
-    metadata: {
-      ...options.width === void 0 ? {} : { width: options.width },
-      ...options.height === void 0 ? {} : { height: options.height },
-      ...options.durationMs === void 0 ? {} : { durationMs: options.durationMs },
-      bytes: options.projection.resource.byteLength,
-      ...options.projection.resource.contentType ? { contentType: options.projection.resource.contentType } : {},
-      ...options.name ? { originalName: name } : {}
-    },
-    provenance: {
-      kind: options.provider === "local-render" ? "render" : "generation",
-      // The product lineage belongs to the Host ActionRun. A Provider request id is
-      // transport state and must not replace the durable run identity exposed to Project Loro.
-      actionRunId: options.actionRunId ?? options.requestId ?? options.taskId,
-      model: options.modelEndpoint ?? model,
-      prompt
-    }
-  });
-}
 async function resolveLocalTimelineDslReferences(options) {
   const resolved = structuredClone(options.timelineDsl);
   const projectAssets = createLocalProjectAssetService({
@@ -131766,7 +134554,7 @@ function createLocalWorkflowProcessor(options) {
                   assetId: staged2.projectAssetId,
                   uri: `clash-asset://${staged2.projectAssetId}`,
                   kind: "video",
-                  mediaType: staged2.projection.resource.contentType
+                  mediaType: staged2.contentType
                 }
               }
             ]
@@ -131862,7 +134650,7 @@ function createLocalWorkflowProcessor(options) {
                 assetId: staged.projectAssetId,
                 uri: `clash-asset://${staged.projectAssetId}`,
                 kind: generationKind,
-                mediaType: staged.projection.resource.contentType
+                mediaType: staged.contentType
               }
             }
           ]
@@ -131896,7 +134684,7 @@ function createLocalWorkflowProcessor(options) {
             if (frozen.nodeId && (!rawTarget?.data || typeof rawTarget.data !== "object")) {
               throw new Error(`Durable Provider target node ${frozen.nodeId} is missing.`);
             }
-            const output = outputs.find((candidate2) => candidate2.slot === run.outputSlot);
+            const output = outputs.find((candidate) => candidate.slot === run.outputSlot);
             if (!output) {
               throw new Error(`Durable Provider output slot ${run.outputSlot} is missing.`);
             }
@@ -131950,30 +134738,17 @@ function createLocalWorkflowProcessor(options) {
                 throw new Error(`Host-local durable output is ${staged2.kind}, not ${frozen.kind}.`);
               }
               const prompt = typeof frozen.input.values.prompt === "string" ? frozen.input.values.prompt : `Generate ${frozen.kind}`;
-              const candidate2 = ownedProjectAssetEntry({
-                projectAssetId: staged2.projectAssetId,
-                projectId: frozen.projectId,
-                taskId: idempotencyKey,
-                actionRunId: run.actionRunId,
-                kind: staged2.kind,
-                prompt,
-                projection: staged2.projection,
-                width: staged2.metadata.width,
-                height: staged2.metadata.height,
-                durationMs: staged2.metadata.durationMs,
-                provider: staged2.result?.provider ?? frozen.provider,
-                modelEndpoint: staged2.result?.modelEndpoint ?? frozen.modelEndpoint
-              });
               const projectAsset2 = await projectAssets.prepareStagedOwnedEntry({
-                projectAssetId: candidate2.id,
-                kind: candidate2.kind,
-                resourceId: staged2.projection.resource.id,
-                ...candidate2.name ? { name: candidate2.name } : {},
-                metadata: {
-                  ...candidate2.metadata,
-                  ...staged2.metadata
-                },
-                ...candidate2.provenance ? { provenance: candidate2.provenance } : {}
+                projectAssetId: staged2.projectAssetId,
+                kind: staged2.kind,
+                resourceId: staged2.resourceId,
+                metadata: staged2.metadata,
+                provenance: {
+                  kind: staged2.result?.provider === "local-render" ? "render" : "generation",
+                  actionRunId: run.actionRunId,
+                  model: staged2.result?.modelEndpoint ?? frozen.modelEndpoint ?? staged2.kind,
+                  prompt
+                }
               });
               return {
                 kind: "asset",
@@ -131990,28 +134765,27 @@ function createLocalWorkflowProcessor(options) {
             if (!staged) {
               throw new Error("Durable Provider media output requires a Host staging receipt.");
             }
+            const expectedReceiptTaskId = frozen.targetKind === "action" ? run.actionRunId : idempotencyKey;
+            if (staged.taskId !== expectedReceiptTaskId || staged.slot !== run.outputSlot || staged.pluginId !== frozen.binding.pluginId || staged.pluginVersion !== frozen.binding.version) {
+              throw new Error("Durable Provider media output staging receipt is not owned by the frozen run and binding.");
+            }
             const assetId = staged.projectAssetId;
-            const projection = await projectAssets.resolveStagedOwned(staged.resourceId);
-            const candidate = ownedProjectAssetEntry({
-              projectAssetId: assetId,
-              projectId: frozen.projectId,
-              taskId: idempotencyKey,
-              actionRunId: run.actionRunId,
-              kind: frozen.kind,
-              ...typeof frozen.input.values.prompt === "string" ? { prompt: frozen.input.values.prompt } : {},
-              ...frozen.delivery?.name ? { name: frozen.delivery.name } : {},
-              ...frozen.delivery?.prompt ? { prompt: frozen.delivery.prompt } : {},
-              projection,
-              ...frozen.provider ? { provider: frozen.provider } : {},
-              ...frozen.modelEndpoint ? { modelEndpoint: frozen.modelEndpoint } : {}
-            });
             const projectAsset = await projectAssets.prepareStagedOwnedEntry({
-              projectAssetId: candidate.id,
-              kind: candidate.kind,
-              resourceId: projection.resource.id,
-              ...candidate.name ? { name: candidate.name } : {},
-              metadata: candidate.metadata,
-              ...candidate.provenance ? { provenance: candidate.provenance } : {}
+              projectAssetId: assetId,
+              kind: frozen.kind,
+              resourceId: staged.resourceId,
+              ...frozen.delivery?.name ? { name: frozen.delivery.name } : {},
+              metadata: {
+                ...staged.mediaType ? { contentType: staged.mediaType } : {}
+              },
+              provenance: {
+                kind: "generation",
+                actionRunId: run.actionRunId,
+                ...frozen.modelEndpoint ? { model: frozen.modelEndpoint } : {},
+                ...frozen.delivery?.prompt ?? (typeof frozen.input.values.prompt === "string" ? frozen.input.values.prompt : void 0) ? {
+                  prompt: frozen.delivery?.prompt ?? String(frozen.input.values.prompt)
+                } : {}
+              }
             });
             return {
               kind: "asset",
@@ -132039,13 +134813,24 @@ function createLocalWorkflowProcessor(options) {
               if (!parsed.success) {
                 throw new Error(`Durable Provider staged Project Asset is invalid: ${parsed.error.issues[0]?.message ?? "invalid entry"}`);
               }
-              const publication = publishLocalProjectAssetWithBindings(doc, parsed.data, [
+              if (parsed.data.source.kind !== "owned") {
+                throw new Error("Durable Provider staged output must own its verified Resource.");
+              }
+              const verified = await projectAssets.prepareStagedOwnedEntry({
+                projectAssetId: parsed.data.id,
+                kind: parsed.data.kind,
+                resourceId: parsed.data.source.resourceId,
+                ...parsed.data.name ? { name: parsed.data.name } : {},
+                metadata: parsed.data.metadata,
+                ...parsed.data.provenance ? { provenance: parsed.data.provenance } : {}
+              });
+              const publication = publishLocalProjectAssetWithBindings(doc, verified, [
                 {
                   id: `action-asset:${durableRunIdempotencyKey(run)}:output`,
                   owner: durableActionOwner(frozen, run.actionRunId),
                   direction: "output",
                   slot: run.outputSlot,
-                  projectAssetId: parsed.data.id
+                  projectAssetId: verified.id
                 }
               ]);
               publishedAsset = publication.entry;
@@ -132989,8 +135774,8 @@ function createLocalExecutablePluginBroker(options) {
 
 // ../../apps/local-api/dist/marketplace-skills.js
 var import_node_child_process11 = require("node:child_process");
-var import_node_util8 = require("node:util");
-var execFileAsync6 = (0, import_node_util8.promisify)(import_node_child_process11.execFile);
+var import_node_util9 = require("node:util");
+var execFileAsync6 = (0, import_node_util9.promisify)(import_node_child_process11.execFile);
 async function defaultCommandRunner(executable, args) {
   const result = await execFileAsync6(executable, args, {
     encoding: "utf8",
@@ -133787,10 +136572,10 @@ var registry_default = {
 };
 
 // ../../apps/local-api/dist/remotion-timeline-renderer.js
-var import_promises36 = require("node:fs/promises");
+var import_promises37 = require("node:fs/promises");
 var import_node_os13 = require("node:os");
 var import_node_path43 = require("node:path");
-var import_promises37 = require("node:fs/promises");
+var import_promises38 = require("node:fs/promises");
 function positiveNumber(value, fallback2, label) {
   const candidate = value === void 0 ? fallback2 : value;
   if (typeof candidate !== "number" || !Number.isFinite(candidate) || candidate <= 0) {
@@ -133821,7 +136606,7 @@ function createRemotionTimelineRenderer(options) {
   const render = (request) => {
     const current = queue.then(async () => {
       const inputProps = renderInput(request.timelineDsl);
-      const outputDir = await (0, import_promises37.mkdtemp)((0, import_node_path43.join)((0, import_node_os13.tmpdir)(), "clash-timeline-render-"));
+      const outputDir = await (0, import_promises38.mkdtemp)((0, import_node_path43.join)((0, import_node_os13.tmpdir)(), "clash-timeline-render-"));
       options.onRenderDirectory?.(outputDir);
       const outputPath = (0, import_node_path43.join)(outputDir, `${safeTaskSegment(request.taskId)}.mp4`);
       try {
@@ -133845,7 +136630,7 @@ function createRemotionTimelineRenderer(options) {
           inputProps
         });
         return {
-          bytes: await (0, import_promises36.readFile)(outputPath),
+          bytes: await (0, import_promises37.readFile)(outputPath),
           contentType: "video/mp4",
           width: inputProps.compositionWidth,
           height: inputProps.compositionHeight,
@@ -133857,7 +136642,7 @@ function createRemotionTimelineRenderer(options) {
           cause: error53
         });
       } finally {
-        await (0, import_promises36.rm)(outputDir, { recursive: true, force: true });
+        await (0, import_promises37.rm)(outputDir, { recursive: true, force: true });
       }
     });
     queue = current.then(() => void 0, () => void 0);
@@ -133869,7 +136654,7 @@ function createRemotionTimelineRenderer(options) {
 // ../../apps/local-api/dist/director-stage-renderer.js
 var import_node_crypto33 = require("node:crypto");
 var import_node_http = require("node:http");
-var import_promises38 = require("node:fs/promises");
+var import_promises39 = require("node:fs/promises");
 var import_node_path44 = require("node:path");
 var MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -133911,7 +136696,7 @@ function validatedRequest(input) {
 async function startBundleServer(bundleDir) {
   const bundleRoot = (0, import_node_path44.resolve)(bundleDir);
   const staticRoot = (0, import_node_path44.dirname)(bundleRoot);
-  if (!(await (0, import_promises38.stat)((0, import_node_path44.resolve)(bundleRoot, "index.html"))).isFile()) {
+  if (!(await (0, import_promises39.stat)((0, import_node_path44.resolve)(bundleRoot, "index.html"))).isFile()) {
     throw new Error(`Packaged Director renderer is missing index.html: ${bundleRoot}`);
   }
   const server2 = (0, import_node_http.createServer)(async (request, response) => {
@@ -133924,7 +136709,7 @@ async function startBundleServer(bundleDir) {
         response.writeHead(403).end("forbidden");
         return;
       }
-      const content = await (0, import_promises38.readFile)(filePath);
+      const content = await (0, import_promises39.readFile)(filePath);
       response.writeHead(200, {
         "content-type": MIME_TYPES[(0, import_node_path44.extname)(filePath).toLowerCase()] ?? "application/octet-stream",
         "cache-control": "no-store"
@@ -134046,9 +136831,9 @@ function createHeadlessDirectorStageRenderer(options) {
 }
 
 // ../../apps/local-api/dist/development-bundled-plugins.js
-var import_node_util9 = require("node:util");
+var import_node_util10 = require("node:util");
 var import_node_fs16 = require("node:fs");
-var import_promises39 = require("node:fs/promises");
+var import_promises40 = require("node:fs/promises");
 var import_node_crypto34 = require("node:crypto");
 var import_node_module13 = require("node:module");
 var import_node_path45 = require("node:path");
@@ -134075,7 +136860,7 @@ async function developmentPackage(options) {
   if (!(0, import_node_fs16.existsSync)(sourceEntrypoint)) {
     throw new Error(`Development plugin ${options.expectedId} has no src/stdio.ts entrypoint.`);
   }
-  const manifest = JSON.parse(await (0, import_promises39.readFile)(manifestPath, "utf8"));
+  const manifest = JSON.parse(await (0, import_promises40.readFile)(manifestPath, "utf8"));
   if (manifest.id !== options.expectedId) {
     throw new Error(`Expected development plugin ${options.expectedId}, but ${manifestPath} declares ${manifest.id}.`);
   }
@@ -134098,7 +136883,7 @@ async function developmentPackage(options) {
   for (const relativePath of documents) {
     if (!relativePath)
       continue;
-    files[relativePath] = (await (0, import_promises39.readFile)((0, import_node_path45.join)(options.pluginRoot, relativePath))).toString("base64");
+    files[relativePath] = (await (0, import_promises40.readFile)((0, import_node_path45.join)(options.pluginRoot, relativePath))).toString("base64");
   }
   return { id: options.expectedId, manifest, files };
 }
@@ -134106,7 +136891,7 @@ async function activePackageMatches(actionsRoot, input) {
   try {
     const active = await readHostExecutablePluginPackage(actionsRoot, input.id);
     const manifest = validateHostExecutablePluginPackage(input);
-    return (0, import_node_util9.isDeepStrictEqual)(active.manifest, manifest) && (0, import_node_util9.isDeepStrictEqual)(active.files, input.files);
+    return (0, import_node_util10.isDeepStrictEqual)(active.manifest, manifest) && (0, import_node_util10.isDeepStrictEqual)(active.files, input.files);
   } catch {
     return false;
   }
@@ -134119,7 +136904,7 @@ async function prepareDevelopmentBundledPlugins(options) {
   const actionSdkSource = (0, import_node_path45.join)(root5, "packages", "action-sdk", "src");
   const sharedRuntimeSource = (0, import_node_path45.join)(root5, "packages", "shared-runtime", "src");
   const sharedTypesSource = (0, import_node_path45.join)(root5, "packages", "shared-types", "src");
-  await (0, import_promises39.mkdir)(options.actionsRoot, { recursive: true });
+  await (0, import_promises40.mkdir)(options.actionsRoot, { recursive: true });
   const plugins = options.pluginIds === void 0 ? BUNDLED_PLUGINS : BUNDLED_PLUGINS.filter((plugin) => options.pluginIds.includes(plugin.id));
   for (const plugin of plugins) {
     const pluginRoot = (0, import_node_path45.join)(root5, "plugins", plugin.workspaceDir);
@@ -134143,18 +136928,18 @@ async function prepareDevelopmentBundledPlugins(options) {
     let backupDir;
     if ((0, import_node_fs16.existsSync)(targetDir)) {
       const backupRoot = (0, import_node_path45.join)(`${options.actionsRoot}.development-backups`, plugin.id);
-      await (0, import_promises39.mkdir)(backupRoot, { recursive: true });
+      await (0, import_promises40.mkdir)(backupRoot, { recursive: true });
       backupDir = (0, import_node_path45.join)(backupRoot, `${Date.now()}-${(0, import_node_crypto34.randomUUID)()}`);
-      await (0, import_promises39.rename)(targetDir, backupDir);
+      await (0, import_promises40.rename)(targetDir, backupDir);
     }
     try {
       await activateHostExecutablePluginPackage(input, options.actionsRoot);
       refreshed.push(plugin.id);
     } catch (error53) {
       if ((0, import_node_fs16.existsSync)(targetDir))
-        await (0, import_promises39.rm)(targetDir, { recursive: true, force: true });
+        await (0, import_promises40.rm)(targetDir, { recursive: true, force: true });
       if (backupDir && (0, import_node_fs16.existsSync)(backupDir))
-        await (0, import_promises39.rename)(backupDir, targetDir);
+        await (0, import_promises40.rename)(backupDir, targetDir);
       throw error53;
     }
   }
@@ -134663,11 +137448,18 @@ function createLocalPluginBrokerServices(options) {
         projectId,
         projectAssetId: assetId
       });
-      const projection = staged?.projection ?? await projectAssets.openProjection(projectId, assetId);
+      if (staged) {
+        return {
+          kind: staged.kind,
+          ...staged.mediaType ? { mediaType: staged.mediaType } : {},
+          bytes: new Uint8Array(await (0, import_promises41.readFile)(staged.projection.path))
+        };
+      }
+      const projection = await projectAssets.openProjection(projectId, assetId);
       return {
         kind: projection.resource.kind,
         ...projection.resource.contentType ? { mediaType: projection.resource.contentType } : {},
-        bytes: new Uint8Array(await (0, import_promises40.readFile)(projection.path))
+        bytes: new Uint8Array(await (0, import_promises41.readFile)(projection.path))
       };
     },
     ...options.publicAssetStorage ? {
@@ -135043,9 +137835,9 @@ function startLocalApiServer(options) {
         if (!staged)
           return void 0;
         return {
-          bytes: new Uint8Array(await (0, import_promises40.readFile)(staged.projection.path)),
-          kind: staged.projection.resource.kind,
-          ...staged.projection.resource.contentType ? { contentType: staged.projection.resource.contentType } : {}
+          bytes: new Uint8Array(await (0, import_promises41.readFile)(staged.projection.path)),
+          kind: staged.kind,
+          ...staged.mediaType ? { contentType: staged.mediaType } : {}
         };
       },
       resolveProviderPluginBinding,
@@ -135167,7 +137959,7 @@ if (__clash_import_meta_url === directRunUrl && !process.env.CLASH_LOCAL_API_WRA
 
 // src/development-browser-assets.ts
 var import_node_crypto36 = require("node:crypto");
-var import_promises41 = require("node:fs/promises");
+var import_promises42 = require("node:fs/promises");
 var import_node_os14 = require("node:os");
 var import_node_path47 = require("node:path");
 var REMOTION_SOURCE_PACKAGES = [
@@ -135190,12 +137982,12 @@ var DIRECTOR_SOURCE_PACKAGES = [
 async function sourceFingerprint(paths2) {
   const hash2 = (0, import_node_crypto36.createHash)("sha256");
   const visit = async (path) => {
-    const metadata = await (0, import_promises41.stat)(path);
+    const metadata = await (0, import_promises42.stat)(path);
     hash2.update(path);
     hash2.update(String(metadata.size));
     hash2.update(String(metadata.mtimeMs));
     if (!metadata.isDirectory()) return;
-    const entries = await (0, import_promises41.readdir)(path, { withFileTypes: true });
+    const entries = await (0, import_promises42.readdir)(path, { withFileTypes: true });
     entries.sort((left, right) => left.name.localeCompare(right.name));
     for (const entry of entries) {
       if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
@@ -135251,7 +138043,7 @@ function createDevelopmentBrowserAssets(options) {
       });
       const previousPath = remotionBundle?.path;
       if (previousPath && previousPath !== path) {
-        await (0, import_promises41.rm)(previousPath, { recursive: true, force: true });
+        await (0, import_promises42.rm)(previousPath, { recursive: true, force: true });
       }
       return { fingerprint, path };
     })();
@@ -135276,8 +138068,8 @@ function createDevelopmentBrowserAssets(options) {
         directorFingerprint ? "[clash] Director source changed; rebuilding the development bundle" : "[clash] Building the Director development bundle from source"
       );
       const { build: build2 } = await import("esbuild");
-      await (0, import_promises41.rm)(directorBundleDir, { recursive: true, force: true });
-      await (0, import_promises41.mkdir)(directorBundleDir, { recursive: true });
+      await (0, import_promises42.rm)(directorBundleDir, { recursive: true, force: true });
+      await (0, import_promises42.mkdir)(directorBundleDir, { recursive: true });
       await build2({
         absWorkingDir: repoRoot,
         entryPoints: [
@@ -135290,7 +138082,7 @@ function createDevelopmentBrowserAssets(options) {
         target: "chrome120",
         sourcemap: "inline"
       });
-      await (0, import_promises41.writeFile)(
+      await (0, import_promises42.writeFile)(
         (0, import_node_path47.join)(directorBundleDir, "index.html"),
         [
           "<!doctype html>",
@@ -135300,8 +138092,8 @@ function createDevelopmentBrowserAssets(options) {
         ].join("\n"),
         "utf8"
       );
-      await (0, import_promises41.rm)(directorAssetsDir, { recursive: true, force: true });
-      await (0, import_promises41.cp)(
+      await (0, import_promises42.rm)(directorAssetsDir, { recursive: true, force: true });
+      await (0, import_promises42.cp)(
         (0, import_node_path47.join)(repoRoot, "packages", "director-ui", "assets"),
         directorAssetsDir,
         { recursive: true }
@@ -135412,3 +138204,32 @@ void main().catch((error53) => {
   console.error(error53 instanceof Error ? error53.stack ?? error53.message : String(error53));
   process.exit(1);
 });
+/*! Bundled license information:
+
+xmlchars/xml/1.0/ed5.js:
+  (**
+   * Character classes and associated utilities for the 5th edition of XML 1.0.
+   *
+   * @author Louis-Dominique Dubeau
+   * @license MIT
+   * @copyright Louis-Dominique Dubeau
+   *)
+
+xmlchars/xml/1.1/ed2.js:
+  (**
+   * Character classes and associated utilities for the 2nd edition of XML 1.1.
+   *
+   * @author Louis-Dominique Dubeau
+   * @license MIT
+   * @copyright Louis-Dominique Dubeau
+   *)
+
+xmlchars/xmlns/1.0/ed3.js:
+  (**
+   * Character class utilities for XML NS 1.0 edition 3.
+   *
+   * @author Louis-Dominique Dubeau
+   * @license MIT
+   * @copyright Louis-Dominique Dubeau
+   *)
+*/

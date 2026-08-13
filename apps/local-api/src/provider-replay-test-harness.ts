@@ -295,13 +295,16 @@ async function runProviderTestHarness(
     const preparedReferenceNodes: PreparedProviderReferenceNode[] = [];
     for (const graderCase of options.cases) {
       const prepared = await importReferenceNodes({
-          origin,
-          projectId,
-          caseId: graderCase.id,
-          refs: graderCase.refs ?? [],
+        origin,
+        projectId,
+        caseId: graderCase.id,
+        refs: graderCase.refs ?? [],
       });
       preparedReferenceNodes.push(...prepared);
-      referencesByCase.set(graderCase.id, prepared.map(({ nodeId }) => nodeId));
+      referencesByCase.set(
+        graderCase.id,
+        prepared.map(({ nodeId }) => nodeId),
+      );
     }
     await createReferenceNodes({
       dataDir,
@@ -426,11 +429,15 @@ async function importReferenceNodes(options: {
       }),
     );
     form.set("kind", ref.kind);
+    form.set(
+      "projectAssetId",
+      providerTestReferenceAssetId(options.caseId, index),
+    );
     const asset = await jsonResponse<{ id: string }>(
       await fetch(
         `${options.origin}/api/v1/projects/${encodeURIComponent(options.projectId)}/assets/import-file`,
         {
-        method: "POST",
+          method: "POST",
           body: form,
         },
       ),
@@ -829,6 +836,14 @@ function isObject(value: unknown): value is JsonObject {
 
 function safeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-");
+}
+
+/** Stable producer identity for one authored reference across replay attempts. */
+export function providerTestReferenceAssetId(
+  caseId: string,
+  referenceIndex: number,
+): string {
+  return `asset:provider-test:${safeSegment(caseId)}:reference:${referenceIndex}`;
 }
 
 function extensionForReference(ref: ProviderTestReference): string {

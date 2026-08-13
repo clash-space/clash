@@ -35,7 +35,7 @@ async function fixture(
         ? {
             width: 1,
             height: 1,
-            videoCodec: "png",
+            rotationDegrees: 0,
             ...(resource.contentType
               ? { contentType: resource.contentType }
               : {}),
@@ -44,6 +44,7 @@ async function fixture(
           ? {
               width: 1,
               height: 1,
+              rotationDegrees: 0,
               durationMs: 1_000,
               frameRate: 24,
               videoCodec: "h264",
@@ -57,6 +58,9 @@ async function fixture(
                 durationMs: 1_000,
                 hasAudio: true,
                 audioCodec: "aac",
+                sampleRate: 48_000,
+                channelCount: 2,
+                channelLayout: "stereo",
                 ...(resource.contentType
                   ? { contentType: resource.contentType }
                   : {}),
@@ -78,6 +82,18 @@ function mediaForm(name: string, type: string, kind: string, value: string) {
   const form = new FormData();
   form.set("file", new File([value], name, { type }));
   form.set("kind", kind);
+  return form;
+}
+
+function projectMediaForm(
+  projectAssetId: string,
+  name: string,
+  type: string,
+  kind: string,
+  value: string,
+) {
+  const form = mediaForm(name, type, kind, value);
+  form.set("projectAssetId", projectAssetId);
   return form;
 }
 
@@ -108,6 +124,90 @@ afterEach(async () => {
 });
 
 describe("personal Global Asset routes", () => {
+  it("rejects a multipart import without a stable Global Asset id before publishing an Asset", async () => {
+    const { app } = await fixture();
+    const collection = `${origin}/api/v1/libraries/personal/assets`;
+    const response = await app.request(`${collection}/import-file`, {
+      method: "POST",
+      body: mediaForm("voice.mp3", "audio/mpeg", "audio", "0123456789"),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Global Asset import requires file, kind, and globalAssetId",
+      code: "INVALID_GLOBAL_ASSET_IMPORT",
+    });
+    const listed = await app.request(collection);
+    await expect(listed.json()).resolves.toEqual({ assets: [] });
+  });
+
+  it("supplies canonical media assertions for supported empty-MIME browser uploads", async () => {
+    const observed = new Map<string, string | undefined>();
+    const { app } = await fixture({
+      inspectAssetResource: async ({ resource }) => {
+        observed.set(resource.kind, resource.contentType);
+        if (resource.kind === "video") {
+          if (resource.contentType !== "video/mp4") {
+            throw new Error("M4V must enter the MP4 byte probe");
+          }
+          return {
+            contentType: "video/mp4",
+            width: 1,
+            height: 1,
+            rotationDegrees: 0,
+            durationMs: 1_000,
+            frameRate: 24,
+            videoCodec: "h264",
+            hasAudio: false,
+          };
+        }
+        if (resource.contentType !== "audio/ogg") {
+          throw new Error("Ogg must enter the Ogg byte probe");
+        }
+        return {
+          contentType: "audio/ogg",
+          durationMs: 1_000,
+          hasAudio: true,
+          audioCodec: "vorbis",
+          sampleRate: 48_000,
+          channelCount: 2,
+          channelLayout: "stereo",
+        };
+      },
+    });
+    const collection = `${origin}/api/v1/libraries/personal/assets`;
+
+    const video = await app.request(`${collection}/import-file`, {
+      method: "POST",
+      body: globalMediaForm(
+        "global:empty-mime-video",
+        "clip.m4v",
+        "",
+        "video",
+        "m4v bytes",
+      ),
+    });
+    const audio = await app.request(`${collection}/import-file`, {
+      method: "POST",
+      body: globalMediaForm(
+        "global:empty-mime-audio",
+        "voice.ogg",
+        "",
+        "audio",
+        "ogg bytes",
+      ),
+    });
+
+    expect(video.status, await video.clone().text()).toBe(201);
+    expect(audio.status, await audio.clone().text()).toBe(201);
+    expect(observed).toEqual(
+      new Map([
+        ["video", "video/mp4"],
+        ["audio", "audio/ogg"],
+      ]),
+    );
+  });
+
   it("enriches Project and Global entries from one Resource inspection without synchronizing storage facts", async () => {
     let probes = 0;
     const { app } = await fixture({
@@ -116,11 +216,15 @@ describe("personal Global Asset routes", () => {
         return {
           width: 1280,
           height: 720,
+          rotationDegrees: 0,
           durationMs: 3_000,
           frameRate: 30,
           videoCodec: "h264",
           hasAudio: true,
           audioCodec: "aac",
+          sampleRate: 48_000,
+          channelCount: 2,
+          channelLayout: "stereo",
         };
       },
     });
@@ -128,7 +232,8 @@ describe("personal Global Asset routes", () => {
     const globalCollection = `${origin}/api/v1/libraries/personal/assets`;
     const imported = await app.request(`${projectCollection}/import-file`, {
       method: "POST",
-      body: mediaForm(
+      body: projectMediaForm(
+        "asset:inspection-source",
         "inspected.mp4",
         "video/mp4",
         "video",
@@ -172,6 +277,7 @@ describe("personal Global Asset routes", () => {
         return {
           width: 1_280,
           height: 720,
+          rotationDegrees: 0,
           durationMs: 3_000,
           frameRate: 30,
           videoCodec: "h264",
@@ -228,7 +334,13 @@ describe("personal Global Asset routes", () => {
     const globalCollection = `${origin}/api/v1/libraries/personal/assets`;
     const imported = await app.request(`${projectCollection}/import-file`, {
       method: "POST",
-      body: mediaForm("source.mp4", "video/mp4", "video", "video source bytes"),
+      body: projectMediaForm(
+        "asset:poster-source",
+        "source.mp4",
+        "video/mp4",
+        "video",
+        "video source bytes",
+      ),
     });
     expect(imported.status, await imported.clone().text()).toBe(201);
     const projectAsset = (await imported.json()) as ResolvedAsset;
@@ -342,7 +454,13 @@ describe("personal Global Asset routes", () => {
     const projectCollection = `${origin}/api/v1/projects/${encodeURIComponent(projectId)}/assets`;
     const imported = await app.request(`${projectCollection}/import-file`, {
       method: "POST",
-      body: mediaForm("cover.png", "image/png", "image", "project-cover"),
+      body: projectMediaForm(
+        "asset:project-cover",
+        "cover.png",
+        "image/png",
+        "image",
+        "project-cover",
+      ),
     });
     const asset = (await imported.json()) as ResolvedAsset;
     const cover = await app.request(
@@ -379,7 +497,13 @@ describe("personal Global Asset routes", () => {
     const collection = `${origin}/api/v1/libraries/personal/assets`;
     const imported = await app.request(`${collection}/import-file`, {
       method: "POST",
-      body: mediaForm("voice.mp3", "audio/mpeg", "audio", "0123456789"),
+      body: globalMediaForm(
+        "global:voice",
+        "voice.mp3",
+        "audio/mpeg",
+        "audio",
+        "0123456789",
+      ),
     });
     expect(imported.status, await imported.clone().text()).toBe(201);
     const asset = (await imported.json()) as ResolvedAsset;
@@ -620,7 +744,13 @@ describe("personal Global Asset routes", () => {
     const globalCollection = `${origin}/api/v1/libraries/personal/assets`;
     const imported = await app.request(`${projectCollection}/import-file`, {
       method: "POST",
-      body: mediaForm("hero.png", "image/png", "image", "same-image-bytes"),
+      body: projectMediaForm(
+        "asset:publish-source",
+        "hero.png",
+        "image/png",
+        "image",
+        "same-image-bytes",
+      ),
     });
     expect(imported.status, await imported.clone().text()).toBe(201);
     const projectSource = (await imported.json()) as ResolvedAsset;
@@ -707,7 +837,8 @@ describe("personal Global Asset routes", () => {
     const globalCollection = `${origin}/api/v1/libraries/personal/assets`;
     const imported = await app.request(`${projectCollection}/import-file`, {
       method: "POST",
-      body: mediaForm(
+      body: projectMediaForm(
+        "asset:publish-retry-source",
         "publish-once.png",
         "image/png",
         "image",
@@ -746,7 +877,8 @@ describe("personal Global Asset routes", () => {
     const projectCollection = `${origin}/api/v1/projects/project-admit-retry/assets`;
     const imported = await app.request(`${globalCollection}/import-file`, {
       method: "POST",
-      body: mediaForm(
+      body: globalMediaForm(
+        "global:admit-retry-source",
         "admit-once.png",
         "image/png",
         "image",
@@ -783,7 +915,8 @@ describe("personal Global Asset routes", () => {
     const projectCollection = `${origin}/api/v1/projects/${projectId}/assets`;
     const imported = await app.request(`${globalCollection}/import-file`, {
       method: "POST",
-      body: mediaForm(
+      body: globalMediaForm(
+        "global:linked-edit-source",
         "linked-source.png",
         "image/png",
         "image",
@@ -862,7 +995,8 @@ describe("personal Global Asset routes", () => {
 
     const imported = await app.request(`${globalCollection}/import-file`, {
       method: "POST",
-      body: mediaForm(
+      body: globalMediaForm(
+        "global:journey-source",
         "journey.mp3",
         "audio/mpeg",
         "audio",

@@ -113,6 +113,21 @@ function stableCliImportId(
   return id;
 }
 
+/**
+ * Allocate the public import identity at the Commander boundary. The Host and
+ * SDK only consume this value; they must never invent it after bytes are sent.
+ */
+export function preassignImportAssetId(
+  requested: string | undefined,
+  prefix: "asset" | "global",
+): string {
+  const normalized = requested?.trim();
+  if (requested !== undefined && !normalized) {
+    throw new Error(`${prefix} asset id is required`);
+  }
+  return normalized ?? `${prefix}:${randomUUID()}`;
+}
+
 export function resolveAssetLinkName(
   assetId: string,
   sourcePath: string,
@@ -807,6 +822,10 @@ assetsCommand
     "--project <id>",
     "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
   )
+  .option(
+    "--asset-id <id>",
+    "Preassigned Project Asset ID; reuse it to replay an import with an unknown result",
+  )
   .option("--name <file>", "Link file name under assets/links")
   .option("--no-link", "Do not create a project assets/links entry")
   .option("--json", "Output result as JSON")
@@ -815,15 +834,19 @@ assetsCommand
       file: string;
       kind?: string;
       project?: string;
+      assetId?: string;
       name?: string;
       link?: boolean;
       json?: boolean;
     }) => {
+      let projectAssetId = options.assetId?.trim();
       try {
+        projectAssetId = preassignImportAssetId(options.assetId, "asset");
         const result = await importAssetFile({
           filePath: options.file,
           kind: options.kind,
           project: options.project,
+          projectAssetId,
           name: options.name,
           link: options.link,
         });
@@ -834,7 +857,11 @@ assetsCommand
           console.log(`imported Project Asset ${result.assetId}${link}`);
         }
       } catch (error) {
-        console.error(error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        const retryHint = projectAssetId
+          ? ` Retry an unknown result with --asset-id ${projectAssetId}.`
+          : "";
+        console.error(`${message}${retryHint}`);
         process.exit(1);
       }
     },
@@ -1144,23 +1171,41 @@ personalGlobalAssetsCommand
   .description("Import a local file into the personal Global Asset library")
   .requiredOption("--file <path>", "Local file to import")
   .option("--kind <kind>", "Asset kind: image, video, audio, or model")
+  .option(
+    "--asset-id <id>",
+    "Preassigned Global Asset ID; reuse it to replay an import with an unknown result",
+  )
   .option("--json", "Output result as JSON")
-  .action(async (options: { file: string; kind?: string; json?: boolean }) => {
-    try {
-      const result = await importPersonalGlobalAssetFile({
-        filePath: options.file,
-        kind: options.kind,
-      });
-      if (isJsonMode(options)) {
-        printJson(publicAssetResult(result));
-      } else {
-        console.log(`imported Global Asset ${result.id}`);
+  .action(
+    async (options: {
+      file: string;
+      kind?: string;
+      assetId?: string;
+      json?: boolean;
+    }) => {
+      let globalAssetId = options.assetId?.trim();
+      try {
+        globalAssetId = preassignImportAssetId(options.assetId, "global");
+        const result = await importPersonalGlobalAssetFile({
+          filePath: options.file,
+          kind: options.kind,
+          globalAssetId,
+        });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else {
+          console.log(`imported Global Asset ${result.id}`);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const retryHint = globalAssetId
+          ? ` Retry an unknown result with --asset-id ${globalAssetId}.`
+          : "";
+        console.error(`${message}${retryHint}`);
+        process.exit(1);
       }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
+    },
+  );
 
 personalGlobalAssetsCommand
   .command("delete")

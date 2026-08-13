@@ -53,6 +53,7 @@
     "@openma/common": "github:openma-ai/openma-common#codex/acp-lifecycle-v05",
     "hono": "^4.7.10",
     "loro-crdt": "^1.10.3",
+    "saxes": "6.0.0",
     "ws": "^8.18.0",
     "yaml": "^2.6.0"
   },

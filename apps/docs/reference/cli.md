@@ -82,7 +82,7 @@ supports `--json`.
 ```sh
 clash assets list
 clash assets get --asset <project-asset-id>
-clash assets import --file <path>
+clash assets import --file <path> [--asset-id <project-asset-id>]
 clash assets refs --asset <project-asset-id>
 clash assets admit --global-asset <global-asset-id>
 clash assets publish --asset <project-asset-id>
@@ -91,7 +91,7 @@ clash assets restore --asset <project-asset-id>
 
 clash assets global list
 clash assets global get --asset <global-asset-id>
-clash assets global import --file <path>
+clash assets global import --file <path> [--asset-id <global-asset-id>]
 clash assets global delete --asset <global-asset-id> --yes
 clash assets global restore --asset <global-asset-id>
 ```
@@ -101,6 +101,12 @@ not reuse a Global Asset ID as a Project Asset ID or vice versa. The stdio MCP
 peer exposes the same Global list/read/import/trash/restore, admit, and publish
 operations. Terminal purge is not exposed by the Local HTTP/SDK surface yet and
 therefore has no CLI or MCP command.
+
+Each import command preassigns its consumer identity before sending bytes. If a
+result is unknown (for example, a connection loss after the Host may have
+committed), replay the command with the same `--asset-id`; a generated ID is
+printed in the command's failure hint. The public SDK and Host clients require
+this id; they never invent one below the command boundary.
 
 The CLI is the intended future component manager for daemon and Desktop
 lifecycle. Today, npm and Desktop share compatible-host discovery, the startup

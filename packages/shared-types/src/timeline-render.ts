@@ -26,8 +26,10 @@ export type TimelineRenderRequestResult =
     }
   | { ok: false; error: string };
 
-type RenderableTimelineDsl = {
-  tracks?: Array<{ items?: Array<{ from?: number; durationInFrames?: number }> }>;
+export type RenderableTimelineDsl = {
+  tracks?: Array<{
+    items?: Array<{ from?: number; durationInFrames?: number }>;
+  }>;
   compositionWidth?: number;
   compositionHeight?: number;
   fps?: number;
@@ -35,12 +37,15 @@ type RenderableTimelineDsl = {
   [key: string]: unknown;
 };
 
-function renderableTimelineDsl(state: unknown): RenderableTimelineDsl | null {
+export function canonicalTimelineRenderDsl(
+  state: unknown,
+): RenderableTimelineDsl | null {
   if (!state || typeof state !== "object" || Array.isArray(state)) return null;
   const timelineDsl = state as RenderableTimelineDsl;
   const tracks = Array.isArray(timelineDsl.tracks) ? timelineDsl.tracks : [];
   const totalItems = tracks.reduce(
-    (count, track) => count + (Array.isArray(track.items) ? track.items.length : 0),
+    (count, track) =>
+      count + (Array.isArray(track.items) ? track.items.length : 0),
     0,
   );
   if (totalItems === 0) return null;
@@ -49,13 +54,15 @@ function renderableTimelineDsl(state: unknown): RenderableTimelineDsl | null {
   for (const track of tracks) {
     for (const item of track.items ?? []) {
       const from = typeof item.from === "number" ? item.from : 0;
-      const duration = typeof item.durationInFrames === "number" ? item.durationInFrames : 0;
+      const duration =
+        typeof item.durationInFrames === "number" ? item.durationInFrames : 0;
       maxEnd = Math.max(maxEnd, from + duration);
     }
   }
-  const declaredDuration = typeof timelineDsl.durationInFrames === "number"
-    ? timelineDsl.durationInFrames
-    : 0;
+  const declaredDuration =
+    typeof timelineDsl.durationInFrames === "number"
+      ? timelineDsl.durationInFrames
+      : 0;
   return {
     ...timelineDsl,
     durationInFrames: Math.max(maxEnd, declaredDuration, 1),
@@ -73,9 +80,14 @@ export function requestTimelineRender(
   input: TimelineRenderRequestInput,
 ): TimelineRenderRequestResult {
   const timeline = readProjectTimeline(doc, input.timelineId);
-  if (!timeline) return { ok: false, error: `Timeline ${input.timelineId} not found` };
+  if (!timeline)
+    return { ok: false, error: `Timeline ${input.timelineId} not found` };
   const target = resolveTimelineRenderTarget(doc, input.timelineId);
-  if (!target) return { ok: false, error: `Timeline ${input.timelineId} has no render target` };
+  if (!target)
+    return {
+      ok: false,
+      error: `Timeline ${input.timelineId} has no render target`,
+    };
 
   if (target.kind === "canvas") {
     const result = new Canvas(doc, () => {}, target.canvasId).executeRender(
@@ -84,8 +96,13 @@ export function requestTimelineRender(
     );
     if (result.error) return { ok: false, error: result.error };
     const nodes = doc.getMap("nodes");
-    const raw = nodes.get(result.renderNodeId) as Record<string, any> | undefined;
-    if (!raw) return { ok: false, error: `Render node ${result.renderNodeId} was not created` };
+    const raw = nodes.get(result.renderNodeId) as
+      Record<string, any> | undefined;
+    if (!raw)
+      return {
+        ok: false,
+        error: `Render node ${result.renderNodeId} was not created`,
+      };
     nodes.set(result.renderNodeId, {
       ...raw,
       data: {
@@ -104,9 +121,12 @@ export function requestTimelineRender(
     };
   }
 
-  const timelineDsl = renderableTimelineDsl(timeline.state);
+  const timelineDsl = canonicalTimelineRenderDsl(timeline.state);
   if (!timelineDsl) {
-    return { ok: false, error: `Timeline ${input.timelineId} has no items — nothing to render.` };
+    return {
+      ok: false,
+      error: `Timeline ${input.timelineId} has no items — nothing to render.`,
+    };
   }
   const renderNodeId = input.generateId();
   const nodes = doc.getMap("nodes");
@@ -122,12 +142,16 @@ export function requestTimelineRender(
   if (!frozenPreflight.ok) {
     return { ok: false, error: frozenPreflight.error };
   }
-  const naturalWidth = typeof timelineDsl.compositionWidth === "number" && timelineDsl.compositionWidth > 0
-    ? timelineDsl.compositionWidth
-    : 1920;
-  const naturalHeight = typeof timelineDsl.compositionHeight === "number" && timelineDsl.compositionHeight > 0
-    ? timelineDsl.compositionHeight
-    : 1080;
+  const naturalWidth =
+    typeof timelineDsl.compositionWidth === "number" &&
+    timelineDsl.compositionWidth > 0
+      ? timelineDsl.compositionWidth
+      : 1920;
+  const naturalHeight =
+    typeof timelineDsl.compositionHeight === "number" &&
+    timelineDsl.compositionHeight > 0
+      ? timelineDsl.compositionHeight
+      : 1080;
   nodes.set(renderNodeId, {
     canvasId: PROJECT_ASSET_RENDER_CANVAS_ID,
     type: "video",

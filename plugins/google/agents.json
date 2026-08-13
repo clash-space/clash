@@ -3,7 +3,8 @@
   "context_hints": [
     "The Provider id is clash.google; keep its declaration in providers/google.json",
     "Plugin code performs native upstream HTTP; service-account and API-key authentication belong in this plugin, not a Host HTTP broker",
-    "Read and write only the Host-selected account state through context.store"
+    "Read and write only the Host-selected account state through context.store",
+    "Google TTS raw little-endian PCM must be wrapped as a self-describing WAV before it crosses the Provider media boundary"
   ],
   "subdirectories": {
     "providers": "Google Provider declaration and account authentication forms.",
@@ -16,7 +17,5 @@
     "src/google-adapter.ts": "Native Google request and response translation.",
     "src/model-path.ts": "Model path construction for the supported Google API surfaces."
   },
-  "verification": [
-    "pnpm --filter @clash-plugin/google test"
-  ]
+  "verification": ["pnpm --filter @clash-plugin/google test"]
 }

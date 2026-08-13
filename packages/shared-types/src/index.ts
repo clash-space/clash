@@ -911,8 +911,10 @@ export {
   type TimelineRenderTarget,
 } from "./project-workspace.js";
 export {
+  canonicalTimelineRenderDsl,
   PROJECT_ASSET_RENDER_CANVAS_ID,
   requestTimelineRender,
+  type RenderableTimelineDsl,
   type TimelineRenderRequestInput,
   type TimelineRenderRequestResult,
 } from "./timeline-render.js";

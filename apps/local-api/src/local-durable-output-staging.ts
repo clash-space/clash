@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { chmod, mkdir } from "node:fs/promises";
+import { chmod, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -12,7 +12,7 @@ import {
 
 import {
   createLocalResourceStore,
-  type LocalResourceProjection,
+  type LocalResourceStagingProjection,
 } from "./local-resource-store.js";
 
 interface SqliteRunResult {
@@ -35,14 +35,17 @@ export interface LocalDurableStagedOutput {
   actionRunId: string;
   outputSlot: string;
   projectAssetId: string;
+  resourceId: string;
   kind: AssetKind;
+  contentType: string;
+  byteLength: number;
   metadata: ProjectAssetMetadata;
   result?: {
     provider?: string;
     modelEndpoint?: string;
     requestId?: string;
   };
-  projection: LocalResourceProjection;
+  projection: LocalResourceStagingProjection;
 }
 
 export interface LocalDurableOutputStagingStore {
@@ -63,9 +66,7 @@ export interface LocalDurableOutputStagingStore {
   }): Promise<LocalDurableStagedOutput | undefined>;
 }
 
-type StoredOutput = Omit<LocalDurableStagedOutput, "projection"> & {
-  resourceId: string;
-};
+type StoredOutput = Omit<LocalDurableStagedOutput, "projection">;
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -73,6 +74,10 @@ function required(value: string, label: string): string {
   const normalized = value.trim();
   if (!normalized) throw new Error(`${label} must not be empty.`);
   return normalized;
+}
+
+function normalizedContentType(value: string): string {
+  return required(value, "contentType").toLowerCase();
 }
 
 function projectAssetId(input: {
@@ -105,12 +110,28 @@ function openDatabase(path: string): SqliteDatabase {
       project_asset_id TEXT NOT NULL,
       resource_id TEXT NOT NULL,
       kind TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      byte_length INTEGER NOT NULL,
       metadata_json TEXT NOT NULL,
       result_json TEXT,
       created_at INTEGER NOT NULL,
       PRIMARY KEY (project_id, action_run_id, output_slot)
     );
   `);
+  for (const [column, declaration] of [
+    ["content_type", "TEXT"],
+    ["byte_length", "INTEGER"],
+  ] as const) {
+    try {
+      database.prepare(
+        `SELECT ${column} FROM local_durable_output_staging LIMIT 1`,
+      );
+    } catch {
+      database.exec(
+        `ALTER TABLE local_durable_output_staging ADD COLUMN ${column} ${declaration}`,
+      );
+    }
+  }
   return database;
 }
 
@@ -121,6 +142,8 @@ function parseRow(row: Record<string, unknown>): StoredOutput {
   const projectAssetIdValue = row.project_asset_id;
   const resourceId = row.resource_id;
   const kind = AssetKindSchema.safeParse(row.kind);
+  const contentType = row.content_type;
+  const byteLength = row.byte_length;
   if (
     typeof projectId !== "string" ||
     typeof actionRunId !== "string" ||
@@ -128,6 +151,11 @@ function parseRow(row: Record<string, unknown>): StoredOutput {
     typeof projectAssetIdValue !== "string" ||
     typeof resourceId !== "string" ||
     !kind.success ||
+    (contentType !== null && typeof contentType !== "string") ||
+    (byteLength !== null &&
+      (typeof byteLength !== "number" ||
+        !Number.isSafeInteger(byteLength) ||
+        byteLength < 0)) ||
     typeof row.metadata_json !== "string" ||
     (row.result_json !== null && typeof row.result_json !== "string")
   ) {
@@ -153,6 +181,18 @@ function parseRow(row: Record<string, unknown>): StoredOutput {
     }
     result = record as LocalDurableStagedOutput["result"];
   }
+  const metadata = ProjectAssetMetadataSchema.parse(metadataValue);
+  const normalizedType =
+    typeof contentType === "string" && contentType
+      ? normalizedContentType(contentType)
+      : typeof metadata.contentType === "string"
+        ? normalizedContentType(metadata.contentType)
+        : undefined;
+  const normalizedByteLength =
+    typeof byteLength === "number" ? byteLength : metadata.bytes;
+  if (!normalizedType || normalizedByteLength === undefined) {
+    throw new Error("Local durable output staging row is corrupt.");
+  }
   return {
     projectId,
     actionRunId,
@@ -160,7 +200,9 @@ function parseRow(row: Record<string, unknown>): StoredOutput {
     projectAssetId: projectAssetIdValue,
     resourceId,
     kind: kind.data,
-    metadata: ProjectAssetMetadataSchema.parse(metadataValue),
+    contentType: normalizedType,
+    byteLength: normalizedByteLength,
+    metadata,
     ...(result ? { result } : {}),
   };
 }
@@ -193,7 +235,8 @@ export function createLocalDurableOutputStagingStore(options: {
       const row = database
         .prepare(
           `SELECT project_id, action_run_id, output_slot, project_asset_id,
-                  resource_id, kind, metadata_json, result_json
+                  resource_id, kind, content_type, byte_length,
+                  metadata_json, result_json
              FROM local_durable_output_staging
             WHERE project_id = ? AND action_run_id = ? AND output_slot = ?`,
         )
@@ -205,13 +248,57 @@ export function createLocalDurableOutputStagingStore(options: {
   async function resolveStored(
     stored: StoredOutput,
   ): Promise<LocalDurableStagedOutput> {
-    const projection = await resources.resolve(stored.resourceId);
-    if (!projection || projection.resource.kind !== stored.kind) {
+    const projection = await resources.resolveStaged(stored.resourceId);
+    if (projection) {
+      if (
+        projection.resourceId !== stored.resourceId ||
+        projection.byteLength !== stored.byteLength
+      ) {
+        throw new Error(
+          `Durable output ${stored.actionRunId}/${stored.outputSlot} has staged bytes that conflict with its receipt.`,
+        );
+      }
+      return { ...stored, projection };
+    }
+
+    // One-time pre-cutover recovery: old durable receipts referenced a sealed
+    // Resource. Only a complete receipt that agrees with the re-verified
+    // immutable projection may be copied back into unsealed staging; v4
+    // inspection and consumer CAS still happen later in the normal workflow.
+    const sealed = await resources.resolve(stored.resourceId);
+    const sealedContentType = sealed?.resource.contentType
+      ?.trim()
+      .toLowerCase();
+    const metadataContentType = stored.metadata.contentType
+      ?.trim()
+      .toLowerCase();
+    if (
+      !sealed ||
+      sealed.resource.id !== stored.resourceId ||
+      sealed.resource.digest.algorithm !== "sha256" ||
+      sealed.resource.id !== `sha256:${sealed.resource.digest.value}` ||
+      sealed.resource.kind !== stored.kind ||
+      sealed.resource.byteLength !== stored.byteLength ||
+      sealedContentType !== stored.contentType ||
+      stored.metadata.bytes !== stored.byteLength ||
+      metadataContentType !== stored.contentType
+    ) {
       throw new Error(
-        `Durable output ${stored.actionRunId}/${stored.outputSlot} has no matching immutable Resource.`,
+        `Durable output ${stored.actionRunId}/${stored.outputSlot} has no complete pre-cutover receipt matching sealed Resource ${stored.resourceId}.`,
       );
     }
-    return { ...stored, projection };
+    const recovered = await resources.stage({
+      bytes: new Uint8Array(await readFile(sealed.path)),
+    });
+    if (
+      recovered.resourceId !== stored.resourceId ||
+      recovered.byteLength !== stored.byteLength
+    ) {
+      throw new Error(
+        `Durable output ${stored.actionRunId}/${stored.outputSlot} recovery does not match its verified sealed Resource.`,
+      );
+    }
+    return { ...stored, projection: recovered };
   }
 
   return {
@@ -224,21 +311,22 @@ export function createLocalDurableOutputStagingStore(options: {
       const existing = await load(identity);
       if (existing) return resolveStored(existing);
 
-      const projection = await resources.install({
-        kind: input.kind,
+      const projection = await resources.stage({
         bytes: input.bytes,
-        contentType: input.contentType,
       });
+      const contentType = normalizedContentType(input.contentType);
       const metadata = ProjectAssetMetadataSchema.parse({
         ...(input.metadata ?? {}),
-        bytes: projection.resource.byteLength,
-        contentType: projection.resource.contentType ?? input.contentType,
+        bytes: projection.byteLength,
+        contentType,
       });
       const intended: StoredOutput = {
         ...identity,
         projectAssetId: projectAssetId(identity),
-        resourceId: projection.resource.id,
+        resourceId: projection.resourceId,
         kind: input.kind,
+        contentType,
+        byteLength: projection.byteLength,
         metadata,
         ...(input.result ? { result: input.result } : {}),
       };
@@ -247,8 +335,9 @@ export function createLocalDurableOutputStagingStore(options: {
           .prepare(
             `INSERT OR IGNORE INTO local_durable_output_staging (
                project_id, action_run_id, output_slot, project_asset_id,
-               resource_id, kind, metadata_json, result_json, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               resource_id, kind, content_type, byte_length,
+               metadata_json, result_json, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             intended.projectId,
@@ -257,6 +346,8 @@ export function createLocalDurableOutputStagingStore(options: {
             intended.projectAssetId,
             intended.resourceId,
             intended.kind,
+            intended.contentType,
+            intended.byteLength,
             JSON.stringify(intended.metadata),
             intended.result ? JSON.stringify(intended.result) : null,
             Date.now(),

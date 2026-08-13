@@ -23,10 +23,13 @@ import {
   listActionAssetReferences,
   markActionAssetBindingAuthority,
   MODEL_CARDS,
+  purgeProjectAsset,
   readActionAssetBinding,
   readProjectAsset,
   requestTimelineRender,
   trashProjectAssetIfUnreferenced,
+  unbindActionAssetBinding,
+  updateActionAssetBinding,
 } from "@clash/shared-types";
 import WebSocket from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +46,7 @@ import { FileReplicaStore } from "./loro/file-replica-store";
 import { createLocalResourceStore } from "./local-resource-store";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging";
 import { createSqliteDurableRunJournal } from "./durable-run-journal";
+import { createLocalAssetInspectionService } from "./local-asset-inspections";
 
 let dataDir = "";
 
@@ -58,6 +62,56 @@ function openSqlite() {
     };
   };
   return new DatabaseSync(join(dataDir, "local.sqlite"));
+}
+
+function testAssetInspection(
+  options: {
+    video?: { width: number; height: number; durationMs: number };
+  } = {},
+) {
+  const video = options.video ?? {
+    width: 720,
+    height: 1_280,
+    durationMs: 4_000,
+  };
+  return createLocalAssetInspectionService({
+    dataDir,
+    inspectResource: async ({ resource }) => {
+      const contentType = resource.contentType
+        ? { contentType: resource.contentType }
+        : {};
+      if (resource.kind === "image") {
+        return {
+          ...contentType,
+          width: 1_024,
+          height: 576,
+          rotationDegrees: 0,
+        };
+      }
+      if (resource.kind === "video") {
+        return {
+          ...contentType,
+          ...video,
+          rotationDegrees: 0,
+          frameRate: 24,
+          videoCodec: "h264",
+          hasAudio: false,
+        };
+      }
+      if (resource.kind === "audio") {
+        return {
+          ...contentType,
+          durationMs: 3_000,
+          hasAudio: true,
+          audioCodec: "pcm_s16le",
+          sampleRate: 44_100,
+          channelCount: 1,
+          channelLayout: "mono",
+        };
+      }
+      return contentType;
+    },
+  });
 }
 
 beforeEach(async () => {
@@ -103,6 +157,7 @@ describe("LocalLoroRoom", () => {
   function testAigc() {
     return createLocalWorkflowProcessor({
       dataDir,
+      assetInspection: testAssetInspection(),
       aigc: createMockExternalAigcService({
         // Named here, in the test, rather than reached by default. The host refuses a route that
         // resolves to nothing, so the stand-in has to be selected like any other provider.
@@ -116,6 +171,94 @@ describe("LocalLoroRoom", () => {
         ],
       }),
     });
+  }
+
+  async function peerTimelineSubmission(projectId: string) {
+    const assetId = "asset:timeline-input";
+    const timelineId = "timeline-canonical";
+    const renderNodeId = "timeline-render-node";
+    const actionRunId = `timeline-render:${renderNodeId}`;
+    const slot = "timeline:item:clip-1";
+    const bindingId =
+      `action-asset:run:${encodeURIComponent(actionRunId)}` +
+      `:input:${encodeURIComponent(slot)}`;
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    await room.mutateProject((doc) => {
+      for (const [id, digestCharacter] of [
+        [assetId, "e"],
+        ["asset:other-timeline-input", "f"],
+      ] as const) {
+        expect(
+          createProjectAsset(doc, {
+            id,
+            kind: "image",
+            source: {
+              kind: "owned",
+              resourceId: `sha256:${digestCharacter.repeat(64)}`,
+            },
+            lifecycle: { state: "active" },
+            metadata: { contentType: "image/png", width: 1, height: 1 },
+          }),
+        ).toMatchObject({ ok: true });
+      }
+      expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const version = clientDoc.version();
+    expect(
+      createProjectTimeline(clientDoc, {
+        id: timelineId,
+        name: "Canonical Timeline",
+        state: {
+          compositionWidth: 1_920,
+          compositionHeight: 1_080,
+          fps: 30,
+          tracks: [
+            {
+              id: "video",
+              items: [
+                {
+                  id: "clip-1",
+                  type: "image",
+                  from: 0,
+                  durationInFrames: 30,
+                  assetId,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      requestTimelineRender(clientDoc, {
+        timelineId,
+        actorUserId: "local-user",
+        generateId: () => renderNodeId,
+      }),
+    ).toMatchObject({ ok: true, renderNodeId });
+    const binding = readActionAssetBinding(clientDoc, bindingId);
+    expect(binding).not.toBeNull();
+    if (!binding || binding.owner.kind !== "run") {
+      throw new Error("Expected a frozen Timeline run input binding.");
+    }
+    return {
+      actionRunId,
+      assetId,
+      binding,
+      bindingId,
+      clientDoc,
+      peer,
+      renderNodeId,
+      room,
+      version,
+    };
   }
 
   it("drains in-flight Project work and cancels future polls when its hub closes", async () => {
@@ -198,6 +341,578 @@ describe("LocalLoroRoom", () => {
     ).toBe(1);
   });
 
+  it("rejects a peer-authored Project Asset before it can bypass Host L0/L1 publication", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/asset-authority-boundary",
+      workflowProcessor: null,
+    });
+    const sideband: Record<string, unknown>[] = [];
+    const peer = room.addPeer(() => {}, {
+      sendJson: (message) => sideband.push(message),
+    });
+    const clientDoc = new LoroDoc();
+    expect(
+      createProjectAsset(clientDoc, {
+        id: "asset:forged",
+        kind: "image",
+        source: { kind: "owned", resourceId: `sha256:${"f".repeat(64)}` },
+        lifecycle: { state: "active" },
+        metadata: { contentType: "image/png", width: 1, height: 1 },
+      }),
+    ).toMatchObject({ ok: true });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "snapshot" })),
+    ).rejects.toThrow(/Project Asset authority/i);
+
+    expect(
+      readProjectAsset(LoroDoc.fromSnapshot(room.snapshot()), "asset:forged"),
+    ).toBeNull();
+    expect(sideband).not.toContainEqual(
+      expect.objectContaining({ type: "sync_ack" }),
+    );
+  });
+
+  it("accepts peer-authored draft inputs but rejects peer-authored run output lineage", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/binding-authority-boundary",
+      workflowProcessor: null,
+    });
+    await room.mutateProject((doc) => {
+      expect(
+        createProjectAsset(doc, {
+          id: "asset:verified",
+          kind: "image",
+          source: {
+            kind: "owned",
+            resourceId: `sha256:${"a".repeat(64)}`,
+          },
+          lifecycle: { state: "active" },
+          metadata: { contentType: "image/png", width: 1, height: 1 },
+        }),
+      ).toMatchObject({ ok: true });
+      expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
+
+    const peer = room.addPeer(() => {});
+    const draftDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const draftVersion = draftDoc.version();
+    expect(
+      createActionAssetBinding(draftDoc, {
+        id: "binding:draft-input",
+        owner: { kind: "draft", actionId: "action:draft" },
+        direction: "input",
+        slot: "reference",
+        projectAssetId: "asset:verified",
+      }),
+    ).toMatchObject({ ok: true });
+    await expect(
+      room.receive(
+        peer,
+        draftDoc.export({ mode: "update", from: draftVersion }),
+      ),
+    ).resolves.toBeUndefined();
+
+    const forgedDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const forgedVersion = forgedDoc.version();
+    expect(
+      createActionAssetBinding(forgedDoc, {
+        id: "binding:forged-output",
+        owner: {
+          kind: "run",
+          actionId: "action:forged",
+          actionRevisionId: "revision:forged",
+          actionRunId: "run:forged",
+        },
+        direction: "output",
+        slot: "output",
+        projectAssetId: "asset:verified",
+      }),
+    ).toMatchObject({ ok: true });
+
+    await expect(
+      room.receive(
+        peer,
+        forgedDoc.export({ mode: "update", from: forgedVersion }),
+      ),
+    ).rejects.toThrow(/output lineage/i);
+    expect(
+      readActionAssetBinding(
+        LoroDoc.fromSnapshot(room.snapshot()),
+        "binding:forged-output",
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects a peer-authored removal of Host-published output lineage", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/binding-output-removal",
+      workflowProcessor: null,
+    });
+    await room.mutateProject((doc) => {
+      expect(
+        createProjectAsset(doc, {
+          id: "asset:output",
+          kind: "image",
+          source: {
+            kind: "owned",
+            resourceId: `sha256:${"b".repeat(64)}`,
+          },
+          lifecycle: { state: "active" },
+          metadata: { contentType: "image/png", width: 1, height: 1 },
+        }),
+      ).toMatchObject({ ok: true });
+      expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+      expect(
+        createActionAssetBinding(doc, {
+          id: "binding:host-output",
+          owner: {
+            kind: "run",
+            actionId: "action:host",
+            actionRevisionId: "revision:host",
+            actionRunId: "run:host",
+          },
+          direction: "output",
+          slot: "output",
+          projectAssetId: "asset:output",
+        }),
+      ).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const version = clientDoc.version();
+    expect(
+      unbindActionAssetBinding(clientDoc, "binding:host-output"),
+    ).toMatchObject({ ok: true });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/output lineage/i);
+    expect(
+      readActionAssetBinding(
+        LoroDoc.fromSnapshot(room.snapshot()),
+        "binding:host-output",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("rejects peer-authored Action binding authority markers", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/binding-schema-authority",
+      workflowProcessor: null,
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const version = clientDoc.version();
+    expect(markActionAssetBindingAuthority(clientDoc)).toMatchObject({
+      ok: true,
+    });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/binding authority/i);
+  });
+
+  it("rejects a peer-authored draft input whose Project Asset is not active", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/binding-inactive-target",
+      workflowProcessor: null,
+    });
+    await room.mutateProject((doc) => {
+      expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const version = clientDoc.version();
+    clientDoc.getMap("actionAssetBindings").set("binding:missing-target", {
+      id: "binding:missing-target",
+      owner: { kind: "draft", actionId: "action:draft" },
+      direction: "input",
+      slot: "reference",
+      projectAssetId: "asset:missing",
+    });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/not active/i);
+  });
+
+  it("rejects a stale peer draft input after its Project Asset was purged without importing it", async () => {
+    const projectId = "project/binding-purged-target";
+    const assetId = "asset:purged-draft-input";
+    const bindingId = "binding:purged-draft-input";
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId,
+      workflowProcessor: null,
+    });
+    await room.mutateProject((doc) => {
+      expect(
+        createProjectAsset(doc, {
+          id: assetId,
+          kind: "image",
+          source: {
+            kind: "owned",
+            resourceId: "sha256:" + "1".repeat(64),
+          },
+          lifecycle: { state: "active" },
+          metadata: { contentType: "image/png", width: 1, height: 1 },
+        }),
+      ).toMatchObject({ ok: true });
+      expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
+
+    const peer = room.addPeer(() => {});
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const version = clientDoc.version();
+    expect(
+      createActionAssetBinding(clientDoc, {
+        id: bindingId,
+        owner: { kind: "draft", actionId: "action:draft" },
+        direction: "input",
+        slot: "reference",
+        projectAssetId: assetId,
+      }),
+    ).toMatchObject({ ok: true });
+
+    await room.mutateProject((doc) => {
+      expect(
+        trashProjectAssetIfUnreferenced(doc, {
+          id: assetId,
+          deleteOperationId: "delete-purged-draft-input",
+          deletedAt: "2026-08-13T00:00:00.000Z",
+          purgeAfter: "2026-08-20T00:00:00.000Z",
+        }),
+      ).toMatchObject({ ok: true });
+      expect(
+        purgeProjectAsset(doc, {
+          id: assetId,
+          deleteOperationId: "delete-purged-draft-input",
+          purgedAt: "2026-08-21T00:00:00.000Z",
+        }),
+      ).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/not active/i);
+
+    expect(
+      readActionAssetBinding(LoroDoc.fromSnapshot(room.snapshot()), bindingId),
+    ).toBeNull();
+    const persisted = await new FileReplicaStore(
+      join(dataDir, "projects"),
+    ).recover(projectId);
+    expect(readActionAssetBinding(persisted, bindingId)).toBeNull();
+  });
+
+  it("rejects peer-authored frozen run inputs outside a matching Timeline submission", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/forged-run-input",
+      workflowProcessor: null,
+    });
+    await room.mutateProject((doc) => {
+      expect(
+        createProjectAsset(doc, {
+          id: "asset:input",
+          kind: "image",
+          source: {
+            kind: "owned",
+            resourceId: `sha256:${"c".repeat(64)}`,
+          },
+          lifecycle: { state: "active" },
+          metadata: { contentType: "image/png", width: 1, height: 1 },
+        }),
+      ).toMatchObject({ ok: true });
+      expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const version = clientDoc.version();
+    expect(
+      createActionAssetBinding(clientDoc, {
+        id: "binding:forged-run-input",
+        owner: {
+          kind: "run",
+          actionId: "action:forged",
+          actionRevisionId: "revision:forged",
+          actionRunId: "run:forged",
+        },
+        direction: "input",
+        slot: "reference",
+        projectAssetId: "asset:input",
+      }),
+    ).toMatchObject({ ok: true });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/frozen run input/i);
+  });
+
+  it("rejects a peer run input vouched for only by forged Timeline fields on a non-Timeline node", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/forged-run-input-node",
+      workflowProcessor: null,
+    });
+    await room.mutateProject((doc) => {
+      expect(
+        createProjectAsset(doc, {
+          id: "asset:forged-input",
+          kind: "image",
+          source: {
+            kind: "owned",
+            resourceId: `sha256:${"d".repeat(64)}`,
+          },
+          lifecycle: { state: "active" },
+          metadata: { contentType: "image/png", width: 1, height: 1 },
+        }),
+      ).toMatchObject({ ok: true });
+      expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const version = clientDoc.version();
+    clientDoc.getMap("nodes").set("forged-text-node", {
+      id: "forged-text-node",
+      type: "text",
+      data: {
+        status: "pending",
+        sourceTimelineActionId: "timeline:forged",
+        sourceTimelineRevisionId: "revision:forged",
+        sourceTimelineActionRunId: "timeline-render:forged-text-node",
+      },
+    });
+    expect(
+      createActionAssetBinding(clientDoc, {
+        id: "binding:forged-node-run-input",
+        owner: {
+          kind: "run",
+          actionId: "timeline:forged",
+          actionRevisionId: "revision:forged",
+          actionRunId: "timeline-render:forged-text-node",
+        },
+        direction: "input",
+        slot: "timeline:item:forged",
+        projectAssetId: "asset:forged-input",
+        role: "source",
+      }),
+    ).toMatchObject({ ok: true });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/matching Timeline submission/i);
+  });
+
+  it("accepts the exact frozen inputs created by a canonical peer Timeline submission", async () => {
+    const { clientDoc, peer, room, version } = await peerTimelineSubmission(
+      "project/canonical-peer-timeline-submission",
+    );
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a canonical peer Timeline run input after its Project Asset was purged", async () => {
+    const projectId = "project/purged-peer-timeline-input";
+    const { assetId, bindingId, clientDoc, peer, room, version } =
+      await peerTimelineSubmission(projectId);
+    await room.mutateProject((doc) => {
+      expect(
+        trashProjectAssetIfUnreferenced(doc, {
+          id: assetId,
+          deleteOperationId: "delete-purged-timeline-input",
+          deletedAt: "2026-08-13T00:00:00.000Z",
+          purgeAfter: "2026-08-20T00:00:00.000Z",
+        }),
+      ).toMatchObject({ ok: true });
+      expect(
+        purgeProjectAsset(doc, {
+          id: assetId,
+          deleteOperationId: "delete-purged-timeline-input",
+          purgedAt: "2026-08-21T00:00:00.000Z",
+        }),
+      ).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/not active/i);
+    expect(
+      readActionAssetBinding(LoroDoc.fromSnapshot(room.snapshot()), bindingId),
+    ).toBeNull();
+  });
+
+  it("rejects a non-video render node even when its Timeline lineage is otherwise canonical", async () => {
+    const { clientDoc, peer, renderNodeId, room, version } =
+      await peerTimelineSubmission("project/forged-peer-timeline-node-type");
+    const renderNode = clientDoc.getMap("nodes").get(renderNodeId) as Record<
+      string,
+      unknown
+    >;
+    clientDoc.getMap("nodes").set(renderNodeId, {
+      ...renderNode,
+      type: "text",
+    });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/matching Timeline submission/i);
+  });
+
+  it("rejects a peer Timeline run input whose self-reported revision differs from the canonical Timeline", async () => {
+    const {
+      assetId,
+      binding,
+      bindingId,
+      clientDoc,
+      peer,
+      renderNodeId,
+      room,
+      version,
+    } = await peerTimelineSubmission("project/forged-peer-timeline-revision");
+    expect(
+      updateActionAssetBinding(clientDoc, {
+        ...binding,
+        owner: {
+          ...binding.owner,
+          actionRevisionId: "revision:forged",
+        },
+        projectAssetId: assetId,
+      }),
+    ).toMatchObject({ ok: true });
+    const renderNode = clientDoc.getMap("nodes").get(renderNodeId) as Record<
+      string,
+      any
+    >;
+    clientDoc.getMap("nodes").set(renderNodeId, {
+      ...renderNode,
+      data: {
+        ...renderNode.data,
+        sourceTimelineRevisionId: "revision:forged",
+      },
+    });
+    expect(readActionAssetBinding(clientDoc, bindingId)?.owner).toMatchObject({
+      actionRevisionId: "revision:forged",
+    });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/matching Timeline submission/i);
+  });
+
+  it("rejects a peer Timeline submission with an extra frozen run input", async () => {
+    const { assetId, binding, clientDoc, peer, room, version } =
+      await peerTimelineSubmission("project/forged-peer-timeline-input-set");
+    expect(
+      createActionAssetBinding(clientDoc, {
+        id: "binding:extra-timeline-run-input",
+        owner: binding.owner,
+        direction: "input",
+        slot: "timeline:item:extra",
+        projectAssetId: assetId,
+        role: "source",
+      }),
+    ).toMatchObject({ ok: true });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/matching Timeline submission/i);
+  });
+
+  it("rejects a peer Timeline submission whose frozen input is rewired from its canonical item", async () => {
+    const { binding, clientDoc, peer, room, version } =
+      await peerTimelineSubmission("project/rewired-peer-timeline-input-set");
+    expect(
+      updateActionAssetBinding(clientDoc, {
+        ...binding,
+        projectAssetId: "asset:other-timeline-input",
+      }),
+    ).toMatchObject({ ok: true });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/matching Timeline submission/i);
+  });
+
+  it("rejects a peer Timeline submission whose render DSL differs from its canonical revision", async () => {
+    const { clientDoc, peer, renderNodeId, room, version } =
+      await peerTimelineSubmission("project/forged-peer-timeline-dsl");
+    const renderNode = clientDoc.getMap("nodes").get(renderNodeId) as Record<
+      string,
+      any
+    >;
+    clientDoc.getMap("nodes").set(renderNodeId, {
+      ...renderNode,
+      data: {
+        ...renderNode.data,
+        timelineDsl: {
+          ...renderNode.data.timelineDsl,
+          tracks: [
+            {
+              id: "video",
+              items: [
+                {
+                  id: "forged-clip",
+                  type: "image",
+                  from: 0,
+                  durationInFrames: 30,
+                  assetId: "asset:timeline-input",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/matching Timeline submission/i);
+  });
+
+  it("rejects a peer Timeline run id that is not derived from its render node id", async () => {
+    const { binding, clientDoc, peer, renderNodeId, room, version } =
+      await peerTimelineSubmission("project/forged-peer-timeline-run-id");
+    const forgedRunId = "timeline-render:another-node";
+    expect(
+      updateActionAssetBinding(clientDoc, {
+        ...binding,
+        owner: { ...binding.owner, actionRunId: forgedRunId },
+      }),
+    ).toMatchObject({ ok: true });
+    const renderNode = clientDoc.getMap("nodes").get(renderNodeId) as Record<
+      string,
+      any
+    >;
+    clientDoc.getMap("nodes").set(renderNodeId, {
+      ...renderNode,
+      data: {
+        ...renderNode.data,
+        sourceTimelineActionRunId: forgedRunId,
+      },
+    });
+
+    await expect(
+      room.receive(peer, clientDoc.export({ mode: "update", from: version })),
+    ).rejects.toThrow(/matching Timeline submission/i);
+  });
+
   it("restores a trashed Project Asset when a concurrent input binding arrives", async () => {
     const projectId = "project/asset-binding-race";
     const room = await LocalLoroRoom.open({
@@ -205,33 +920,23 @@ describe("LocalLoroRoom", () => {
       projectId,
       workflowProcessor: null,
     });
-    const seedSender = room.addPeer(() => {});
-    const base = new LoroDoc();
-    expect(
-      createProjectAsset(base, {
-        id: "asset-1",
-        kind: "image",
-        source: { kind: "owned", resourceId: "sha256:asset-1" },
-        lifecycle: { state: "active" },
-        metadata: {},
-      }),
-    ).toMatchObject({ ok: true });
-    expect(markActionAssetBindingAuthority(base)).toMatchObject({ ok: true });
-    await room.receive(seedSender, base.export({ mode: "snapshot" }));
+    await room.mutateProject((doc) => {
+      expect(
+        createProjectAsset(doc, {
+          id: "asset-1",
+          kind: "image",
+          source: { kind: "owned", resourceId: "sha256:asset-1" },
+          lifecycle: { state: "active" },
+          metadata: {},
+        }),
+      ).toMatchObject({ ok: true });
+      expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
 
-    const snapshot = base.export({ mode: "snapshot" });
-    const deletingPeer = LoroDoc.fromSnapshot(snapshot);
+    const snapshot = room.snapshot();
     const bindingPeer = LoroDoc.fromSnapshot(snapshot);
-    const deletingVersion = deletingPeer.version();
     const bindingVersion = bindingPeer.version();
-    expect(
-      trashProjectAssetIfUnreferenced(deletingPeer, {
-        id: "asset-1",
-        deleteOperationId: "delete-1",
-        deletedAt: "2026-08-13T00:00:00.000Z",
-        purgeAfter: "2026-08-20T00:00:00.000Z",
-      }),
-    ).toMatchObject({ ok: true });
     expect(
       createActionAssetBinding(bindingPeer, {
         id: "binding-1",
@@ -243,11 +948,17 @@ describe("LocalLoroRoom", () => {
       }),
     ).toMatchObject({ ok: true });
 
-    const deletingSender = room.addPeer(() => {});
-    await room.receive(
-      deletingSender,
-      deletingPeer.export({ mode: "update", from: deletingVersion }),
-    );
+    await room.mutateProject((doc) => {
+      expect(
+        trashProjectAssetIfUnreferenced(doc, {
+          id: "asset-1",
+          deleteOperationId: "delete-1",
+          deletedAt: "2026-08-13T00:00:00.000Z",
+          purgeAfter: "2026-08-20T00:00:00.000Z",
+        }),
+      ).toMatchObject({ ok: true });
+      return { value: undefined };
+    });
     expect(
       readProjectAsset(LoroDoc.fromSnapshot(room.snapshot()), "asset-1")
         ?.lifecycle.state,
@@ -453,22 +1164,26 @@ describe("LocalLoroRoom", () => {
         },
       }),
     });
+    await room.mutateProject((doc) => {
+      for (const [id, originalName] of [
+        ["asset-start", "start.png"],
+        ["asset-end", "end.png"],
+      ] as const) {
+        expect(
+          createProjectAsset(doc, {
+            id,
+            kind: "image",
+            source: { kind: "owned", resourceId: `sha256:${id}` },
+            lifecycle: { state: "active" },
+            metadata: { contentType: "image/png", originalName },
+          }),
+        ).toMatchObject({ ok: true });
+      }
+      return { value: undefined };
+    });
     const peer = room.addPeer(() => {});
-    const clientDoc = new LoroDoc();
-    for (const [id, originalName] of [
-      ["asset-start", "start.png"],
-      ["asset-end", "end.png"],
-    ] as const) {
-      expect(
-        createProjectAsset(clientDoc, {
-          id,
-          kind: "image",
-          source: { kind: "owned", resourceId: `sha256:${id}` },
-          lifecycle: { state: "active" },
-          metadata: { contentType: "image/png", originalName },
-        }),
-      ).toMatchObject({ ok: true });
-    }
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const clientVersion = clientDoc.version();
     clientDoc.getMap("nodes").set("h3-startend-node", {
       id: "h3-startend-node",
       type: "video",
@@ -482,7 +1197,10 @@ describe("LocalLoroRoom", () => {
       },
     });
 
-    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+    await room.receive(
+      peer,
+      clientDoc.export({ mode: "update", from: clientVersion }),
+    );
 
     expect(generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -548,22 +1266,26 @@ describe("LocalLoroRoom", () => {
         },
       }),
     });
+    await room.mutateProject((doc) => {
+      for (const [id, originalName] of [
+        ["plugin-asset-start", "start.png"],
+        ["plugin-asset-end", "end.png"],
+      ] as const) {
+        expect(
+          createProjectAsset(doc, {
+            id,
+            kind: "image",
+            source: { kind: "owned", resourceId: `sha256:${id}` },
+            lifecycle: { state: "active" },
+            metadata: { contentType: "image/png", originalName },
+          }),
+        ).toMatchObject({ ok: true });
+      }
+      return { value: undefined };
+    });
     const peer = room.addPeer(() => {});
-    const clientDoc = new LoroDoc();
-    for (const [id, originalName] of [
-      ["plugin-asset-start", "start.png"],
-      ["plugin-asset-end", "end.png"],
-    ] as const) {
-      expect(
-        createProjectAsset(clientDoc, {
-          id,
-          kind: "image",
-          source: { kind: "owned", resourceId: `sha256:${id}` },
-          lifecycle: { state: "active" },
-          metadata: { contentType: "image/png", originalName },
-        }),
-      ).toMatchObject({ ok: true });
-    }
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const clientVersion = clientDoc.version();
     clientDoc.getMap("nodes").set("plugin-startend-node", {
       id: "plugin-startend-node",
       type: "video",
@@ -577,7 +1299,10 @@ describe("LocalLoroRoom", () => {
       },
     });
 
-    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+    await room.receive(
+      peer,
+      clientDoc.export({ mode: "update", from: clientVersion }),
+    );
 
     expect(generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -682,18 +1407,7 @@ describe("LocalLoroRoom", () => {
 
   it("publishes a staged plugin output and its Action binding in the live Project replica", async () => {
     const projectId = "project/plugin-media-action";
-    const stagingTaskId = "plugin-media-fixture";
-    const staged = await createLocalPluginAssetStagingStore({ dataDir }).stage({
-      projectId,
-      taskId: stagingTaskId,
-      slot: "media",
-      pluginId: "test.agent-image-actions",
-      pluginVersion: "1.0.0",
-      invocationId: "invoke-media-1",
-      kind: "image",
-      mediaType: "image/png",
-      bytes: new Uint8Array([1, 2, 3]),
-    });
+    const staging = createLocalPluginAssetStagingStore({ dataDir });
     const binding = {
       pluginId: "test.agent-image-actions",
       version: "1.0.0",
@@ -704,6 +1418,17 @@ describe("LocalLoroRoom", () => {
     const executablePluginAction = vi.fn(
       async (request: { taskId: string }) => {
         actionRunId = request.taskId;
+        const staged = await staging.stage({
+          projectId,
+          taskId: request.taskId,
+          slot: "media",
+          pluginId: binding.pluginId,
+          pluginVersion: binding.version,
+          invocationId: "invoke-media-1",
+          kind: "image",
+          mediaType: "image/png",
+          bytes: new Uint8Array([1, 2, 3]),
+        });
         return {
           protocol: "clash.plugin.result/v1" as const,
           invocationId: "result-media-1",
@@ -728,6 +1453,7 @@ describe("LocalLoroRoom", () => {
       projectId,
       workflowProcessor: createLocalWorkflowProcessor({
         dataDir,
+        assetInspection: testAssetInspection(),
         executablePluginAction,
         aigc: {
           generateVideo: vi.fn(),
@@ -754,6 +1480,16 @@ describe("LocalLoroRoom", () => {
     });
 
     await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+    const staged = await staging.resolve({
+      projectId,
+      projectAssetId: staging.projectAssetId({
+        projectId,
+        taskId: actionRunId,
+        slot: "media",
+      }),
+    });
+    expect(staged).toBeDefined();
+    if (!staged) throw new Error("Expected the Action output to be staged.");
 
     const finalDoc = new LoroDoc();
     finalDoc.import(room.snapshot());
@@ -854,9 +1590,7 @@ describe("LocalLoroRoom", () => {
         },
       }),
     });
-    const peer = room.addPeer(() => {});
-    const clientDoc = new LoroDoc();
-    for (const asset of [
+    const referenceAssets = [
       {
         id: "asset-image",
         kind: "image" as const,
@@ -875,23 +1609,30 @@ describe("LocalLoroRoom", () => {
         contentType: "audio/mpeg",
         originalName: "ambience.mp3",
       },
-    ]) {
-      expect(
-        createProjectAsset(clientDoc, {
-          id: asset.id,
-          kind: asset.kind,
-          source: {
-            kind: "owned",
-            resourceId: `sha256:${asset.id}`,
-          },
-          lifecycle: { state: "active" },
-          metadata: {
-            contentType: asset.contentType,
-            originalName: asset.originalName,
-          },
-        }),
-      ).toMatchObject({ ok: true });
-    }
+    ];
+    await room.mutateProject((doc) => {
+      for (const asset of referenceAssets) {
+        expect(
+          createProjectAsset(doc, {
+            id: asset.id,
+            kind: asset.kind,
+            source: {
+              kind: "owned",
+              resourceId: `sha256:${asset.id}`,
+            },
+            lifecycle: { state: "active" },
+            metadata: {
+              contentType: asset.contentType,
+              originalName: asset.originalName,
+            },
+          }),
+        ).toMatchObject({ ok: true });
+      }
+      return { value: undefined };
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = LoroDoc.fromSnapshot(room.snapshot());
+    const clientVersion = clientDoc.version();
     clientDoc.getMap("nodes").set("image-ref", {
       id: "image-ref",
       type: "image",
@@ -920,7 +1661,10 @@ describe("LocalLoroRoom", () => {
       },
     });
 
-    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+    await room.receive(
+      peer,
+      clientDoc.export({ mode: "update", from: clientVersion }),
+    );
 
     expect(generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1353,6 +2097,9 @@ describe("LocalLoroRoom", () => {
       projectId: "project/local-render",
       workflowProcessor: createLocalWorkflowProcessor({
         dataDir,
+        assetInspection: testAssetInspection({
+          video: { width: 1_920, height: 1_080, durationMs: 2_000 },
+        }),
         mediaBaseUrl: "http://127.0.0.1:49321",
         timelineRenderer: { render: renderTimeline },
       } as any),

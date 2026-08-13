@@ -14,7 +14,10 @@ import {
 } from "@clash/shared-types";
 
 import { createLocalApiApp } from "./app.js";
-import type { LocalAssetInspector } from "./local-asset-inspections.js";
+import {
+  createLocalAssetInspectionService,
+  type LocalAssetInspector,
+} from "./local-asset-inspections.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import {
   createLocalProjectAssetService,
@@ -32,13 +35,14 @@ const inspectFixtureAsset: LocalAssetInspector = async ({ resource }) =>
     ? {
         width: 1,
         height: 1,
-        videoCodec: "png",
+        rotationDegrees: 0,
         ...(resource.contentType ? { contentType: resource.contentType } : {}),
       }
     : resource.kind === "video"
       ? {
           width: 1,
           height: 1,
+          rotationDegrees: 0,
           durationMs: 2_000,
           frameRate: 24,
           videoCodec: "h264",
@@ -51,6 +55,9 @@ const inspectFixtureAsset: LocalAssetInspector = async ({ resource }) =>
           durationMs: 2_000,
           hasAudio: true,
           audioCodec: "mp3",
+          sampleRate: 48_000,
+          channelCount: 2,
+          channelLayout: "stereo",
           ...(resource.contentType
             ? { contentType: resource.contentType }
             : {}),
@@ -77,6 +84,11 @@ async function fixture() {
     dataDir,
     clashRoot,
     projectionOrigin: "http://seed.invalid",
+    assetInspection: createLocalAssetInspectionService({
+      dataDir,
+      clashRoot,
+      inspectResource: inspectFixtureAsset,
+    }),
   });
   const asset = await service.installOwned({
     projectId: "project-a",
@@ -98,6 +110,7 @@ async function fixture() {
   return {
     app: createLocalApiApp(appOptions),
     asset,
+    service,
     clashRoot,
     dataDir,
   };
@@ -191,7 +204,7 @@ describe("Project-scoped ResolvedAsset routes", () => {
       inspectAssetResource: async ({ resource }) => ({
         width: 1,
         height: 1,
-        videoCodec: "png",
+        rotationDegrees: 0,
         ...(resource.contentType ? { contentType: resource.contentType } : {}),
       }),
     });
@@ -244,6 +257,9 @@ describe("Project-scoped ResolvedAsset routes", () => {
         durationMs: 2_000,
         hasAudio: true,
         audioCodec: "mp3",
+        sampleRate: 48_000,
+        channelCount: 2,
+        channelLayout: "stereo",
         bytes: 10,
         contentType: "audio/mpeg",
         originalName: "result.unusual",
@@ -325,23 +341,20 @@ describe("Project-scoped ResolvedAsset routes", () => {
     });
   });
 
-  it("imports multipart bytes idempotently under an explicit Project Asset id", async () => {
+  it("imports multipart bytes idempotently under an explicit Project Asset id and rejects conflicting bytes", async () => {
     const { app } = await fixture();
     const url =
       "http://127.0.0.1:49152/api/v1/projects/project-a/assets/import-file";
-    const request = () => {
+    const request = (value: string) => {
       const form = new FormData();
-      form.set(
-        "file",
-        new File(["multipart image"], "hero.png", { type: "image/png" }),
-      );
+      form.set("file", new File([value], "hero.png", { type: "image/png" }));
       form.set("kind", "image");
       form.set("projectAssetId", "imported:multipart");
       return app.request(url, { method: "POST", body: form });
     };
 
-    const first = await request();
-    const second = await request();
+    const first = await request("multipart image");
+    const second = await request("multipart image");
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
     const expected = {
@@ -353,7 +366,7 @@ describe("Project-scoped ResolvedAsset routes", () => {
         height: 1,
         bytes: 15,
         contentType: "image/png",
-        videoCodec: "png",
+        rotationDegrees: 0,
         originalName: "hero.png",
       },
       provenance: { kind: "import" },
@@ -368,6 +381,12 @@ describe("Project-scoped ResolvedAsset routes", () => {
     expect(JSON.stringify(expected)).not.toMatch(
       /storageKey|localBlobKey|signedUrl|\/Users\//,
     );
+
+    const conflicting = await request("different immutable bytes");
+    expect(conflicting.status, await conflicting.clone().text()).toBe(409);
+    await expect(conflicting.json()).resolves.toMatchObject({
+      code: "PROJECT_ASSET_ID_COLLISION",
+    });
   });
 
   it("publishes edit outputs as ResolvedAsset and records Action input/output bindings", async () => {
@@ -810,6 +829,11 @@ describe("Project-scoped ResolvedAsset routes", () => {
       clashRoot,
       projectionOrigin: "http://127.0.0.1:49152",
       replica: collision.replica,
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        clashRoot,
+        inspectResource: inspectFixtureAsset,
+      }),
     });
     await service.installOwned({
       projectId,
@@ -885,7 +909,7 @@ describe("Project-scoped ResolvedAsset routes", () => {
       .digest("hex");
     await expect(
       service.resolveStagedOwned(`sha256:${digest}`),
-    ).resolves.toMatchObject({ resource: { id: `sha256:${digest}` } });
+    ).resolves.toMatchObject({ resourceId: `sha256:${digest}` });
   });
 
   it("publishes no video-crop Project facts when its output binding identity collides", async () => {
@@ -906,6 +930,11 @@ describe("Project-scoped ResolvedAsset routes", () => {
       clashRoot,
       projectionOrigin: "http://127.0.0.1:49152",
       replica: collision.replica,
+      assetInspection: createLocalAssetInspectionService({
+        dataDir,
+        clashRoot,
+        inspectResource: inspectFixtureAsset,
+      }),
     });
     await service.installOwned({
       projectId,
@@ -997,7 +1026,7 @@ describe("Project-scoped ResolvedAsset routes", () => {
       .digest("hex");
     await expect(
       service.resolveStagedOwned(`sha256:${digest}`),
-    ).resolves.toMatchObject({ resource: { id: `sha256:${digest}` } });
+    ).resolves.toMatchObject({ resourceId: `sha256:${digest}` });
   });
 
   it("enqueues Director generation through the shared durable Provider journal", async () => {
@@ -1105,38 +1134,29 @@ describe("Project-scoped ResolvedAsset routes", () => {
     expect(conflict.status).toBe(409);
   });
 
-  it("creates distinct Project Asset identities while deduplicating identical Resources", async () => {
-    const { app, dataDir } = await fixture();
+  it("rejects a multipart import without a stable Project Asset id before publishing an Asset", async () => {
+    const { app } = await fixture();
     const url =
       "http://127.0.0.1:49152/api/v1/projects/project-a/assets/import-file";
-    const request = () => {
-      const form = new FormData();
-      form.set(
-        "file",
-        new File(["same immutable bytes"], "same.png", {
-          type: "image/png",
-        }),
-      );
-      form.set("kind", "image");
-      return app.request(url, { method: "POST", body: form });
-    };
-
-    const firstResponse = await request();
-    const secondResponse = await request();
-    expect(firstResponse.status).toBe(201);
-    expect(secondResponse.status).toBe(201);
-    const first = (await firstResponse.json()) as { id: string };
-    const second = (await secondResponse.json()) as { id: string };
-    expect(first.id).toMatch(/^asset:[0-9a-f-]{36}$/);
-    expect(second.id).toMatch(/^asset:[0-9a-f-]{36}$/);
-    expect(second.id).not.toBe(first.id);
-
-    const doc = await new FileReplicaStore(join(dataDir, "projects")).recover(
-      "project-a",
+    const form = new FormData();
+    form.set(
+      "file",
+      new File(["same immutable bytes"], "same.png", {
+        type: "image/png",
+      }),
     );
-    expect(readProjectAsset(doc, first.id)?.source).toEqual(
-      readProjectAsset(doc, second.id)?.source,
-    );
+    form.set("kind", "image");
+
+    const response = await app.request(url, { method: "POST", body: form });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Project Asset import requires file, kind, and projectAssetId",
+      code: "INVALID_PROJECT_ASSET_IMPORT",
+    });
+    const listed = await app.request(url.replace("/import-file", ""));
+    await expect(listed.json()).resolves.toEqual({
+      assets: [expect.objectContaining({ id: "result:one" })],
+    });
   });
 
   it("rejects empty, mismatched, and invalidly identified multipart imports", async () => {
@@ -1237,16 +1257,10 @@ describe("Project-scoped ResolvedAsset routes", () => {
   });
 
   it("logically trashes and restores an unreferenced Asset without deleting its bytes", async () => {
-    const { app, asset, clashRoot, dataDir } = await fixture();
+    const { app, asset, dataDir, service } = await fixture();
     const baseUrl = `http://127.0.0.1:49152/api/v1/projects/project-a/assets/${encodeURIComponent(asset.id)}`;
-    const digest = createHash("sha256").update("0123456789").digest("hex");
-    const resourcePath = join(
-      clashRoot,
-      "assets",
-      "blobs",
-      digest,
-      "original.unusual",
-    );
+    const resourcePath = (await service.openProjection("project-a", asset.id))
+      .path;
 
     const removed = await app.request(
       baseUrl,

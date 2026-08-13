@@ -1,7 +1,7 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 2986
+/***/ 7233
 (__unused_webpack_module, __unused_webpack___webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -4423,7 +4423,7 @@ var z = /*#__PURE__*/Object.freeze({
 
 
 
-;// ../shared-types/dist/chunk-CGTXLVQX.js
+;// ../shared-types/dist/chunk-T6TANLZN.js
 
 
 function agentReadToken(options) {
@@ -4728,6 +4728,8 @@ var ResourceSchema = z.object({
 var ProjectAssetMetadataSchema = z.object({
   width: z.number().int().nonnegative().optional(),
   height: z.number().int().nonnegative().optional(),
+  /** Display-matrix rotation normalized into [0, 360). */
+  rotationDegrees: z.number().finite().min(0).lt(360).optional(),
   durationMs: z.number().int().nonnegative().optional(),
   bytes: z.number().int().nonnegative().optional(),
   /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
@@ -4738,6 +4740,9 @@ var ProjectAssetMetadataSchema = z.object({
   /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
   hasAudio: z.boolean().optional(),
   audioCodec: z.string().trim().min(1).optional(),
+  sampleRate: z.number().int().positive().optional(),
+  channelCount: z.number().int().positive().optional(),
+  channelLayout: z.string().trim().min(1).optional(),
   originalName: z.string().trim().min(1).optional()
 }).strict();
 var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
@@ -4856,6 +4861,7 @@ var ResolvedAssetSchema = z.object({
 var AssetMetadataSchema = z.object({
   width: z.number().int().optional(),
   height: z.number().int().optional(),
+  rotationDegrees: z.number().finite().min(0).lt(360).optional(),
   durationMs: z.number().int().optional(),
   bytes: z.number().int().optional(),
   /** @deprecated Historical row payload; never emit from new publication. */
@@ -4865,6 +4871,9 @@ var AssetMetadataSchema = z.object({
   videoCodec: z.string().optional(),
   hasAudio: z.boolean().optional(),
   audioCodec: z.string().optional(),
+  sampleRate: z.number().int().positive().optional(),
+  channelCount: z.number().int().positive().optional(),
+  channelLayout: z.string().optional(),
   contentHash: z.string().optional(),
   localBlobKey: z.string().optional(),
   originalName: z.string().optional(),
@@ -4938,7 +4947,7 @@ function assetRefReadToken(ref) {
 }
 
 
-;// ../shared-types/dist/chunk-Y7VKLK6W.js
+;// ../shared-types/dist/chunk-3E3S6SZN.js
 /* unused harmony import specifier */ var z6;
 
 
@@ -36540,7 +36549,7 @@ function summarizeActionBuildInvocations(estimates) {
   );
 }
 var PROJECT_ASSET_RENDER_CANVAS_ID = "__project-asset-renders__";
-function renderableTimelineDsl(state) {
+function canonicalTimelineRenderDsl(state) {
   if (!state || typeof state !== "object" || Array.isArray(state)) return null;
   const timelineDsl = state;
   const tracks = Array.isArray(timelineDsl.tracks) ? timelineDsl.tracks : [];
@@ -36565,9 +36574,14 @@ function renderableTimelineDsl(state) {
 }
 function requestTimelineRender(doc, input) {
   const timeline = readProjectTimeline(doc, input.timelineId);
-  if (!timeline) return { ok: false, error: `Timeline ${input.timelineId} not found` };
+  if (!timeline)
+    return { ok: false, error: `Timeline ${input.timelineId} not found` };
   const target = resolveTimelineRenderTarget(doc, input.timelineId);
-  if (!target) return { ok: false, error: `Timeline ${input.timelineId} has no render target` };
+  if (!target)
+    return {
+      ok: false,
+      error: `Timeline ${input.timelineId} has no render target`
+    };
   if (target.kind === "canvas") {
     const result = new Canvas(doc, () => {
     }, target.canvasId).executeRender(
@@ -36577,7 +36591,11 @@ function requestTimelineRender(doc, input) {
     if (result.error) return { ok: false, error: result.error };
     const nodes2 = doc.getMap("nodes");
     const raw = nodes2.get(result.renderNodeId);
-    if (!raw) return { ok: false, error: `Render node ${result.renderNodeId} was not created` };
+    if (!raw)
+      return {
+        ok: false,
+        error: `Render node ${result.renderNodeId} was not created`
+      };
     nodes2.set(result.renderNodeId, {
       ...raw,
       data: {
@@ -36595,9 +36613,12 @@ function requestTimelineRender(doc, input) {
       position: result.position
     };
   }
-  const timelineDsl = renderableTimelineDsl(timeline.state);
+  const timelineDsl = canonicalTimelineRenderDsl(timeline.state);
   if (!timelineDsl) {
-    return { ok: false, error: `Timeline ${input.timelineId} has no items \u2014 nothing to render.` };
+    return {
+      ok: false,
+      error: `Timeline ${input.timelineId} has no items \u2014 nothing to render.`
+    };
   }
   const renderNodeId = input.generateId();
   const nodes = doc.getMap("nodes");
@@ -283819,7 +283840,7 @@ var NoReactInternals = {
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module is referenced by other modules so it can't be inlined
 /******/ 	__webpack_require__(7835);
-/******/ 	__webpack_require__(2986);
+/******/ 	__webpack_require__(7233);
 /******/ 	__webpack_require__(6426);
 /******/ 	var __webpack_exports__ = __webpack_require__(1366);
 /******/ 	
