@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MODEL_CARDS } from "@clash/shared-types";
 
-import { referenceDataUrlMimeType } from "./local-aigc";
+import { normalizeProviderReferenceMediaType } from "./local-aigc";
 
 /**
  * A reference's media type must derive an extension the upstream accepts.
@@ -29,12 +29,12 @@ describe("reference media types derive an allowed extension", () => {
   });
 
   it("keeps provider-neutral MIME types unchanged before route adaptation", () => {
-    expect(referenceDataUrlMimeType("audio/mpeg")).toBe("audio/mpeg");
-    expect(referenceDataUrlMimeType("audio/x-wav")).toBe("audio/x-wav");
+    expect(normalizeProviderReferenceMediaType("audio/mpeg")).toBe("audio/mpeg");
+    expect(normalizeProviderReferenceMediaType("audio/x-wav")).toBe("audio/x-wav");
   });
 
   it("leaves a mime that already derives an allowed extension alone", () => {
-    expect(referenceDataUrlMimeType("audio/wav")).toBe("audio/wav");
-    expect(referenceDataUrlMimeType("video/mp4")).toBe("video/mp4");
+    expect(normalizeProviderReferenceMediaType("audio/wav")).toBe("audio/wav");
+    expect(normalizeProviderReferenceMediaType("video/mp4")).toBe("video/mp4");
   });
 });

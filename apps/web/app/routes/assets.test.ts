@@ -37,7 +37,7 @@ describe("Global Assets route", () => {
     await expect(loader()).resolves.toEqual({ assets });
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/libraries/personal/assets",
-      { credentials: "include" },
+      { credentials: "include", headers: {}, method: "GET" },
     );
   });
 

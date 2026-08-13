@@ -807,7 +807,16 @@ export function createLocalPluginBrokerServices(options: {
     },
     generateCodexImage: createCodexImageGenerator(),
     readAsset: async ({ assetId, projectId }) => {
-      const projection = await projectAssets.openProjection(projectId, assetId);
+      // Inputs uploaded immediately before an invocation are already immutable Resources, but do
+      // not become Project Assets merely because a Provider needs to read them. Resolve that
+      // Host-private staging receipt through the same broker path as ordinary Project references.
+      const staged = await stagedAssets.resolve({
+        projectId,
+        projectAssetId: assetId,
+      });
+      const projection =
+        staged?.projection ??
+        (await projectAssets.openProjection(projectId, assetId));
       return {
         kind: projection.resource.kind,
         ...(projection.resource.contentType
@@ -825,6 +834,8 @@ export function createLocalPluginBrokerServices(options: {
             mediaType,
             bytes,
           }) => {
+            const publicConfig = await options.publicAssetStorage!.getPublicConfig();
+            if (!publicConfig.available) return undefined;
             const published = await options.publicAssetStorage!.publish({
               key: `plugins/${pluginId}/${invocationId}/${assetId}`,
               bytes,

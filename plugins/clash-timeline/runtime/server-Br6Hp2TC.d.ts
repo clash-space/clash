@@ -17,7 +17,7 @@ declare const TIMELINE_PLUGIN_TOOL_NAMES: readonly TimelinePluginSurfaceToolName
 declare const TIMELINE_APP_CONTRACT: Readonly<{
     contractFingerprint: string;
     trackCategories: readonly Readonly<{
-        id: "text" | "audio" | "effect" | "visual" | "primary";
+        id: "effect" | "text" | "visual" | "primary" | "audio";
         label: "Effects" | "Text / subtitle" | "Video / image" | "Primary video" | "Audio";
     }>[];
     defaultTrackCategory: TimelineDslTrackCategory;

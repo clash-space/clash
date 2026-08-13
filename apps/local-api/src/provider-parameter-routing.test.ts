@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ModelCardSchema } from "@clash/shared-types";
 
@@ -6,6 +6,8 @@ import {
   createMockExternalAigcService,
   type ProviderPluginExecutorRequest,
 } from "./local-aigc.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 const model = ModelCardSchema.parse({
   id: "provider-capability-audio",
@@ -48,6 +50,11 @@ const model = ModelCardSchema.parse({
       priority: 2,
       executorPluginId: "test.speech",
       executorExportId: "full-execute",
+      assetInputs: [{
+        match: { kinds: ["audio"] },
+        representations: ["bytes"],
+        mediaTypes: ["audio/wav"],
+      }],
     },
   ],
 });
@@ -104,7 +111,7 @@ describe("provider parameter routing", () => {
     async (apiShape) => {
       const legacyModel = legacyRemoteModel(apiShape);
       const providerId = `legacy-${apiShape}`;
-      const vendorFetch = vi.fn(
+      const vendorFetch = vi.spyOn(globalThis, "fetch").mockImplementation(
         async () =>
           new Response(JSON.stringify({}), {
             status: 200,
@@ -124,7 +131,6 @@ describe("provider parameter routing", () => {
             credentials: { apiKey: "legacy-secret" },
           },
         ],
-        fetch: vendorFetch,
         providerPluginExecutor: executePlugin,
       });
 
@@ -180,6 +186,11 @@ describe("provider parameter routing", () => {
     expect(plan).toEqual({
       binding,
       accountId: "full-account",
+      assetInputs: [{
+        match: { kinds: ["audio"] },
+        representations: ["bytes"],
+        mediaTypes: ["audio/wav"],
+      }],
       kind: "audio",
       projectId: "project-1",
       nodeId: "node-1",
@@ -232,15 +243,23 @@ describe("provider parameter routing", () => {
             schemaHash: `sha256:${"a".repeat(64)}`,
           },
           media: {
-            url: "data:audio/wav;base64,AA==",
-            contentType: "audio/wav",
+            assetId: "plugin-output:routed-audio",
+            uri: "clash-asset://plugin-output:routed-audio",
+            kind: "audio",
+            mediaType: "audio/wav",
           },
         };
       },
+      resolveProviderPluginStagedAsset: async () => ({
+        bytes: new Uint8Array([0]),
+        kind: "audio",
+        contentType: "audio/wav",
+      }),
     });
 
     await service.generateAudio({
       taskId: "audio-with-voice",
+      projectId: "project-1",
       model: model.id,
       prompt: "Read this line.",
       modelParams: { voice_id: "speaker-123" },
@@ -248,5 +267,10 @@ describe("provider parameter routing", () => {
 
     expect(requests).toHaveLength(1);
     expect(requests[0]?.exportId).toBe("full-execute");
+    expect(requests[0]?.assetInputs).toEqual([{
+      match: { kinds: ["audio"] },
+      representations: ["bytes"],
+      mediaTypes: ["audio/wav"],
+    }]);
   });
 });

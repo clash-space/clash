@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createPikaMediaJob,
+  getPikaMediaJob,
   getPikaMediaContent,
   uploadPikaMedia,
   waitForPikaMediaJob,
@@ -69,6 +70,24 @@ describe("Pika media API", () => {
       "https://api.dev.pika.art/v1/media/jobs/media-2/content",
       { headers: { "x-api-key": "pk_live_test" } },
     );
+  });
+
+  it("checks one job state without owning the poll schedule", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({
+        id: "media-one-check",
+        status: "running",
+      }),
+    );
+
+    await expect(
+      getPikaMediaJob({
+        apiKey: "pk_live_test",
+        jobId: "media-one-check",
+        fetch,
+      }),
+    ).resolves.toEqual({ id: "media-one-check", status: "running" });
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it("surfaces failed jobs without retrying the paid submission", async () => {

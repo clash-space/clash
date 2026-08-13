@@ -16,6 +16,7 @@ import { Canvas } from "@clash/shared-types";
 
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
+import type { PublicAssetStorageService } from "./public-asset-storage.js";
 import {
   createJsonlProviderTestRecorder,
   createProviderConformanceStubs,
@@ -105,6 +106,8 @@ interface ProviderTestHarnessCommonOptions {
   cases: readonly ProviderReplayTestCase[];
   /** Test-only source plugins to activate; inferred for bundled Google/MiniMax suites. */
   bundledPluginIds?: readonly string[];
+  /** Test-owned public projection service for URL-only Provider inputs. */
+  publicAssetStorage?: PublicAssetStorageService;
   providerAssetFetch?: typeof fetch;
   timeoutMs?: number;
   preparePlugins?: (
@@ -242,6 +245,9 @@ async function runProviderTestHarness(
         loaderPath: createRequire(import.meta.url).resolve("tsx"),
       },
       providerAssetFetch,
+      ...(options.publicAssetStorage
+        ? { publicAssetStorage: options.publicAssetStorage }
+        : {}),
       ...(options.traffic.mode === "replay"
         ? { providerPollDelayCapMs: 1 }
         : {}),

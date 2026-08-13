@@ -1,13 +1,35 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { access, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { BUNDLED_PLUGINS } from "../../../apps/local-api/src/bundled-plugins.js";
 
 const pluginRoot = dirname(
   fileURLToPath(new URL("../package.json", import.meta.url)),
 );
+
+function sha256(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function relativeFiles(root: URL, prefix = ""): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      files.push(
+        ...(await relativeFiles(new URL(`${entry.name}/`, root), relativePath)),
+      );
+    } else {
+      files.push(relativePath);
+    }
+  }
+  return files.sort();
+}
 
 test("plugin manifest starts one bundled MCP runtime and keeps product state in the shared local host", async () => {
   const manifest = JSON.parse(
@@ -310,6 +332,62 @@ test("the packaged MCP entry has no unresolved workspace package imports", async
   assert.doesNotMatch(runtime, /from\s+["']@clash\//);
 });
 
+test("the packaged host carries the exact current first-party plugin payloads", async () => {
+  const packagedPluginsRoot = new URL(
+    "../runtime/bundled-plugins/",
+    import.meta.url,
+  );
+  assert.deepEqual(
+    (await readdir(packagedPluginsRoot)).sort(),
+    BUNDLED_PLUGINS.map((plugin) => plugin.workspaceDir).sort(),
+    "packaged first-party plugin set differs from the Host catalog",
+  );
+
+  for (const { workspaceDir: directory } of BUNDLED_PLUGINS) {
+    const sourceRoot = new URL(`../../${directory}/`, import.meta.url);
+    const packagedRoot = new URL(
+      `../runtime/bundled-plugins/${directory}/`,
+      import.meta.url,
+    );
+    const manifest = JSON.parse(
+      await readFile(new URL("manifest.json", sourceRoot), "utf8"),
+    ) as {
+      runtime?: { entrypoint?: string };
+      contributes?: {
+        cards?: Array<{ path?: string }>;
+        providers?: Array<{ path?: string }>;
+        modelBindings?: Array<{ path?: string }>;
+      };
+      contractTests?: string[];
+    };
+    const declared = new Set(
+      [
+        "manifest.json",
+        manifest.runtime?.entrypoint,
+        ...(manifest.contributes?.cards ?? []).map((entry) => entry.path),
+        ...(manifest.contributes?.providers ?? []).map((entry) => entry.path),
+        ...(manifest.contributes?.modelBindings ?? []).map(
+          (entry) => entry.path,
+        ),
+        ...(manifest.contractTests ?? []),
+      ].filter((path): path is string => Boolean(path)),
+    );
+
+    for (const path of declared) {
+      assert.equal(
+        sha256(await readFile(new URL(path, packagedRoot))),
+        sha256(await readFile(new URL(path, sourceRoot))),
+        `packaged ${directory}/${path} is stale`,
+      );
+    }
+    assert.deepEqual(
+      await relativeFiles(packagedRoot),
+      [...declared].sort(),
+      `packaged ${directory} contains undeclared or missing payload files`,
+    );
+  }
+});
+
 test("the MCP host client uses the shared canonical Clash home helper, not the local-api server entry", async () => {
   const source = await readFile(
     new URL("./plugin-host.ts", import.meta.url),
@@ -378,10 +456,7 @@ test("the persistent daemon owns a packaged Remotion renderer without a second s
   );
   assert.match(hostBuild, /\.remotion-bundle/);
   assert.match(hostBuild, /remotion-bundle/);
-  assert.match(
-    hostBuild,
-    /external:\s*\[[^\]]*"@remotion\/renderer"[^\]]*\]/,
-  );
+  assert.match(hostBuild, /external:\s*\[[^\]]*"@remotion\/renderer"[^\]]*\]/);
   assert.equal(
     packageJson.dependencies?.["@remotion/renderer"],
     rootPackageJson.pnpm?.overrides?.["@remotion/*"],

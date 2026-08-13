@@ -45,12 +45,16 @@ test("Timeline list records the host receipt and save sends it as MCP CAS", asyn
 
   assert.deepEqual(await adapter.get({ cwd: "/workspace", timelineId: "rough-cut" }), timeline);
   const state = { tracks: [], fps: 30, durationInFrames: 90 };
-  await adapter.save({
+  const saved = await adapter.save({
     cwd: "/workspace",
     timelineId: "rough-cut",
     baseRevisionId: "revision-1",
     state,
   });
+  assert.doesNotMatch(
+    JSON.stringify(saved),
+    /readToken|receipt|ifMatch|observedVersion/i,
+  );
 
   assert.equal(writes[0]?.path, join("/workspace", "timelines", "rough-cut.timeline.yaml"));
   assert.deepEqual(calls.map(({ command }) => command), [

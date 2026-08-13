@@ -4,6 +4,7 @@ import {
   PROJECT_ASSET_READ_RECEIPT_HEADER,
   createProjectAssetHostClient,
 } from "./project-asset-client.js";
+import * as projectAssetClients from "./project-asset-client.js";
 import { createProjectHostClient } from "./project-host-client.js";
 
 const readyAsset = {
@@ -183,6 +184,161 @@ describe("Project Asset Host client", () => {
     expect(
       Array.from(new Uint8Array(await (file as File).arrayBuffer())),
     ).toEqual([1, 2, 3, 4]);
+  });
+
+  it("admits one Global Asset through the discovered Project Host", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createProjectAssetHostClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (input, init) => {
+        requests.push({ url: String(input), init });
+        return new Response(JSON.stringify(readyAsset), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    }) as ReturnType<typeof createProjectAssetHostClient> & {
+      admit(input: {
+        projectId: string;
+        globalAssetId: string;
+      }): Promise<{ projectId: string; value: typeof readyAsset }>;
+    };
+
+    await expect(
+      client.admit({
+        projectId: "project-a",
+        globalAssetId: "global:one",
+      }),
+    ).resolves.toEqual({ projectId: "project-a", value: readyAsset });
+    expect(requests).toEqual([
+      {
+        url: "http://127.0.0.1:8789/api/v1/projects/project-a/assets/admit",
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ globalAssetId: "global:one" }),
+        },
+      },
+    ]);
+  });
+
+  it("uses the discovered Host for personal Global Asset list and read", async () => {
+    const globalAsset = {
+      ...readyAsset,
+      id: "global:one",
+      url: "http://127.0.0.1:49321/api/v1/libraries/personal/assets/global%3Aone/media",
+    };
+    const requests: string[] = [];
+    const createGlobalClient = (projectAssetClients as Record<string, unknown>)
+      .createPersonalGlobalAssetHostClient as
+      | undefined
+      | ((options: Record<string, unknown>) => {
+          list(): Promise<(typeof globalAsset)[]>;
+          get(input: { globalAssetId: string }): Promise<typeof globalAsset>;
+        });
+
+    expect(createGlobalClient).toBeTypeOf("function");
+    if (!createGlobalClient) return;
+    const client = createGlobalClient({
+      resolveConnection: async () => ({
+        endpoint: "http://127.0.0.1:49321",
+        token: "host-token",
+      }),
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(String(input));
+        expect(new Headers(init?.headers).get("authorization")).toBe(
+          "Bearer host-token",
+        );
+        return String(input).endsWith("/assets")
+          ? new Response(JSON.stringify({ assets: [globalAsset] }))
+          : new Response(JSON.stringify(globalAsset));
+      },
+    });
+
+    await expect(client.list()).resolves.toEqual([globalAsset]);
+    await expect(client.get({ globalAssetId: "global:one" })).resolves.toEqual(
+      globalAsset,
+    );
+    expect(requests).toEqual([
+      "http://127.0.0.1:49321/api/v1/libraries/personal/assets",
+      "http://127.0.0.1:49321/api/v1/libraries/personal/assets/global%3Aone",
+    ]);
+  });
+
+  it("uses one personal Global Asset client for import and Project publication", async () => {
+    const globalAsset = {
+      ...readyAsset,
+      id: "global:one",
+      url: "http://127.0.0.1:8789/api/v1/libraries/personal/assets/global%3Aone/media",
+    };
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const createGlobalClient = (projectAssetClients as Record<string, unknown>)
+      .createPersonalGlobalAssetHostClient as
+      | undefined
+      | ((options: Record<string, unknown>) => {
+          importFile(input: {
+            bytes: Uint8Array;
+            fileName: string;
+            contentType: string;
+            kind: "image";
+          }): Promise<typeof globalAsset>;
+          publish(input: {
+            projectId: string;
+            projectAssetId: string;
+          }): Promise<typeof globalAsset>;
+        });
+
+    expect(createGlobalClient).toBeTypeOf("function");
+    if (!createGlobalClient) return;
+    const client = createGlobalClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ url: String(input), init });
+        return new Response(JSON.stringify(globalAsset), { status: 201 });
+      },
+    });
+
+    await expect(
+      client.importFile({
+        bytes: new Uint8Array([1, 2, 3, 4]),
+        fileName: "frame.png",
+        contentType: "image/png",
+        kind: "image",
+      }),
+    ).resolves.toEqual(globalAsset);
+    await expect(
+      client.publish({
+        projectId: "project-a",
+        projectAssetId: "asset:one",
+      }),
+    ).resolves.toEqual(globalAsset);
+
+    expect(
+      requests.map(({ url, init }) => ({ url, method: init?.method })),
+    ).toEqual([
+      {
+        url: "http://127.0.0.1:8789/api/v1/libraries/personal/assets/import-file",
+        method: "POST",
+      },
+      {
+        url: "http://127.0.0.1:8789/api/v1/libraries/personal/assets/publish",
+        method: "POST",
+      },
+    ]);
+    const importForm = requests[0]?.init?.body;
+    expect(importForm).toBeInstanceOf(FormData);
+    expect((importForm as FormData).get("kind")).toBe("image");
+    const file = (importForm as FormData).get("file");
+    expect(file).toBeInstanceOf(File);
+    expect((file as File).name).toBe("frame.png");
+    expect(
+      Array.from(new Uint8Array(await (file as File).arrayBuffer())),
+    ).toEqual([1, 2, 3, 4]);
+    expect(requests[1]?.init?.body).toBe(
+      JSON.stringify({ projectId: "project-a", projectAssetId: "asset:one" }),
+    );
   });
 
   it("lists and reads references, then restores through the same Project scope", async () => {

@@ -39,7 +39,7 @@
     "clean": "rm -rf runtime",
     "dev": "CLASH_SOURCE_RUNTIME=1 tsx --tsconfig tsconfig.dev.json src/dispatcher.ts --profile dev",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test src/*.test.ts",
+    "test": "node --import tsx --test src/*.test.ts scripts/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

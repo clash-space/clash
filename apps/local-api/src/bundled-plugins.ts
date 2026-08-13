@@ -54,6 +54,11 @@ export const BUNDLED_PLUGINS = [
     workspaceDir: "minimax",
   },
   {
+    id: "clash.pika",
+    packageName: "@clash-plugin/pika",
+    workspaceDir: "pika",
+  },
+  {
     id: "clash.volcengine",
     packageName: "@clash-plugin/volcengine",
     workspaceDir: "volcengine",

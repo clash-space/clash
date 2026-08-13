@@ -185,7 +185,7 @@ test("registers Timeline headless tools while the GUI is quarantined", async () 
     timelineId: "rough-cut",
   });
   assert.equal(read.structuredContent.timeline.id, "rough-cut");
-  assert.equal(read.structuredContent.contract.schemaVersion, 6);
+  assert.equal(read.structuredContent.contract.schemaVersion, 9);
   assert.equal(read.structuredContent.validation.ok, true);
 });
 

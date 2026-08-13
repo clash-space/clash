@@ -28,7 +28,7 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     const rootTools = await client.listTools();
     assert.deepEqual(
       rootTools.tools.map((tool) => tool.name),
-      ["clash"],
+      ["clash", "clash_assets", "clash_canvas", "clash_composition"],
     );
     const menu = await client.callTool({
       name: "clash",
@@ -40,11 +40,31 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
         ?.selectedCommand,
       "timeline",
     );
-    const tools = await client.listTools();
-    const timelineTools = tools.tools.filter((tool) => tool.name !== "clash");
+    assert.equal(
+      (menu.structuredContent as { selectedDispatcher?: unknown })
+        ?.selectedDispatcher,
+      "clash_composition",
+    );
+    const disclosure = await client.callTool({
+      name: "clash_composition",
+      arguments: { kind: "timeline" },
+    });
+    assert.notEqual(disclosure.isError, true, JSON.stringify(disclosure));
+    const timelineTools =
+      (
+        disclosure.structuredContent as {
+          operations?: Array<{
+            name: string;
+            inputSchema?: Record<string, unknown>;
+            outputSchema?: Record<string, unknown>;
+            metadata?: Record<string, unknown>;
+          }>;
+        }
+      ).operations ?? [];
     assert.equal(timelineTools.length, 10);
     for (const tool of timelineTools) {
-      const operationId = (tool._meta as any)?.["clash/timelineOperation"]?.id;
+      const operationId = (tool.metadata as any)?.["clash/timelineOperation"]
+        ?.id;
       assert.ok(
         operationId,
         `${tool.name} must publish shared operation metadata`,
@@ -56,7 +76,7 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       );
       assert.ok((tool.outputSchema as any)?.properties?.error, tool.name);
     }
-    const validateTool = tools.tools.find(
+    const validateTool = timelineTools.find(
       (tool) => tool.name === "clash_timeline_validate",
     );
     const validateSchema = validateTool?.inputSchema as any;
@@ -69,14 +89,14 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     );
     assert.equal(validateSchema?.definitions, undefined);
     assert.equal(
-      (validateTool?._meta as any)?.["clash/timelineOperation"]?.id,
+      (validateTool?.metadata as any)?.["clash/timelineOperation"]?.id,
       "timeline.validate",
     );
-    const saveTool = tools.tools.find(
+    const saveTool = timelineTools.find(
       (tool) => tool.name === "clash_timeline_save",
     );
     assert.equal(
-      (saveTool?._meta as any)?.["clash/timelineOperation"]?.id,
+      (saveTool?.metadata as any)?.["clash/timelineOperation"]?.id,
       "timeline.save",
     );
     assert.equal(
@@ -85,7 +105,7 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       ],
       "TimelineDsl",
     );
-    const getTool = tools.tools.find(
+    const getTool = timelineTools.find(
       (tool) => tool.name === "clash_timeline_get",
     );
     assert.equal(
@@ -94,14 +114,23 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       ],
       "TimelineDsl",
     );
-    const result = await client.callTool({
-      name: "clash_timeline_schema",
-      arguments: {},
-    });
+    const callTimeline = (
+      operation: string,
+      operationArguments: Record<string, unknown> = {},
+    ) =>
+      client.callTool({
+        name: "clash_composition",
+        arguments: {
+          kind: "timeline",
+          operation,
+          arguments: operationArguments,
+        },
+      });
+    const result = await callTimeline("schema");
     const structured = result.structuredContent as any;
 
     assert.notEqual(result.isError, true, JSON.stringify(result));
-    assert.equal(structured?.schemaVersion, 6);
+    assert.equal(structured?.schemaVersion, 9);
     assert.equal(
       validateSchema?.["x-clash-contract-fingerprint"],
       structured?.contractFingerprint,
@@ -119,9 +148,20 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       structured?.jsonSchema?.definitions?.TimelineDsl?.properties
         ?.assetTranscripts,
     );
-    assert.ok(
+    assert.equal(
       structured?.jsonSchema?.definitions?.TimelineDsl?.properties
         ?.mediaAssetRefs,
+      undefined,
+    );
+    assert.deepEqual(
+      structured?.jsonSchema?.["x-clash-semantic-rules"]?.rules?.find(
+        (rule: { id?: unknown }) => rule.id === "timeline.asset.retired-field",
+      ),
+      {
+        id: "timeline.asset.retired-field",
+        kind: "forbidden-paths",
+        paths: ["mediaAssetRefs", "tracks[].items[].backingAssetId"],
+      },
     );
     const authoritativeItemVariants =
       structured?.jsonSchema?.definitions?.TimelineDsl?.properties?.tracks
@@ -150,64 +190,23 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       "maskRotation",
       "maskFeather",
     ]);
-    const validation = await client.callTool({
-      name: "clash_timeline_validate",
-      arguments: {
-        document: {
-          tracks: [
-            {
-              id: "visual",
-              items: [
-                {
-                  id: "masked-image",
-                  type: "image",
-                  from: 0,
-                  durationInFrames: 10,
-                  sourceNodeId: "asset-node",
-                  mask: {
-                    shape: "ellipse",
-                    position: [50, 50],
-                    size: [70, 70],
-                    rotation: 0,
-                    feather: 0,
-                    inverted: false,
-                  },
-                  keyframes: {
-                    maskFeather: [
-                      { frame: 0, value: 0, interpolation: "linear" },
-                      { frame: 9, value: 20, interpolation: "linear" },
-                    ],
-                  },
-                },
-              ],
-            },
-          ],
-        },
-      },
-    });
-    assert.notEqual(validation.isError, true, JSON.stringify(validation));
-    assert.equal((validation.structuredContent as { ok?: unknown })?.ok, true);
-
-    const invalidValidation = await client.callTool({
-      name: "clash_timeline_validate",
-      arguments: {
-        document: {
-          tracks: [
-            {
-              id: "visual",
-              items: [
-                {
-                  id: "orphan-mask-keyframe",
-                  type: "image",
-                  from: 0,
-                  durationInFrames: 10,
-                  sourceNodeId: "asset-node",
-                  keyframes: { maskPosition: [] },
-                },
-              ],
-            },
-          ],
-        },
+    const invalidValidation = await callTimeline("validate", {
+      document: {
+        tracks: [
+          {
+            id: "visual",
+            items: [
+              {
+                id: "orphan-mask-keyframe",
+                type: "image",
+                from: 0,
+                durationInFrames: 10,
+                sourceNodeId: "asset-node",
+                keyframes: { maskPosition: [] },
+              },
+            ],
+          },
+        ],
       },
     });
     assert.equal(invalidValidation.isError, true);
@@ -227,24 +226,56 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       "timeline.clip-mask.requires-mask",
     );
 
-    const invalidStructuralValidation = await client.callTool({
-      name: "clash_timeline_validate",
-      arguments: {
-        document: {
-          tracks: [
-            {
-              id: "visual",
-              items: [
-                {
-                  id: "unknown-item",
-                  type: "mystery",
-                  from: 0,
-                  durationInFrames: 10,
-                },
-              ],
-            },
-          ],
-        },
+    for (const document of [
+      {
+        mediaAssetRefs: [{ assetId: "asset-video" }],
+        tracks: [],
+      },
+      {
+        tracks: [
+          {
+            id: "visual",
+            items: [
+              {
+                id: "retired-backing-asset",
+                type: "image",
+                from: 0,
+                durationInFrames: 10,
+                assetId: "asset-image",
+                backingAssetId: "storage-row",
+              },
+            ],
+          },
+        ],
+      },
+    ]) {
+      const retiredValidation = await callTimeline("validate", { document });
+      assert.equal(retiredValidation.isError, true);
+      assert.equal(
+        (
+          retiredValidation.structuredContent as {
+            error?: { issues?: Array<{ ruleId?: unknown }> };
+          }
+        )?.error?.issues?.[0]?.ruleId,
+        "timeline.asset.retired-field",
+      );
+    }
+
+    const invalidStructuralValidation = await callTimeline("validate", {
+      document: {
+        tracks: [
+          {
+            id: "visual",
+            items: [
+              {
+                id: "unknown-item",
+                type: "mystery",
+                from: 0,
+                durationInFrames: 10,
+              },
+            ],
+          },
+        ],
       },
     });
     assert.equal(invalidStructuralValidation.isError, true);

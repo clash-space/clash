@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { capability, validateRefs } from "./model-capabilities.js";
+import {
+  capability,
+  validateReferenceMedia,
+  validateRefs,
+} from "./model-capabilities.js";
 import {
   applyModelProviderImplementation,
   listModelUpstreamRoutes,
@@ -214,6 +218,44 @@ describe("Seedance and H3 unified model cards", () => {
         card(`${version}-extend`).input.inputMode.videos?.constraints,
       ).toEqual(video(maxDurationMs));
     }
+  });
+
+  it("declares the captured Seedance 2.5 edit-video floor on the Model Card", () => {
+    const model = card("seedance-2.5-ref");
+    const reference = {
+      modality: "video" as const,
+      contentType: "video/mp4",
+      durationMs: 3_999,
+      width: 640,
+      height: 640,
+    };
+
+    expect(
+      validateRefs(
+        model,
+        { video: 0 },
+        {
+          modelParams: { edit_mode: true },
+        },
+      ),
+    ).toMatch(/at least 1 reference video/i);
+    expect(
+      validateReferenceMedia(model, [reference], {
+        modelParams: { edit_mode: false },
+      }),
+    ).toBeNull();
+    expect(
+      validateReferenceMedia(model, [reference], {
+        modelParams: { edit_mode: true },
+      }),
+    ).toMatch(/at least 4 seconds/i);
+    expect(
+      validateReferenceMedia(
+        model,
+        [{ ...reference, durationMs: 4_000, width: 640, height: 637 }],
+        { modelParams: { edit_mode: true } },
+      ),
+    ).toMatch(/407,696 total pixels/i);
   });
 
   it("exposes Seedance 2.5 as all-purpose reference plus a separate first/last-frame card", () => {

@@ -88,8 +88,10 @@ id/version, invocation, target, and status.
 
 ## Public Asset storage
 
-`Settings → Public storage` configures one machine capability shared by
-Desktop, CLI, MCP, and local plugins. BYOS presets use the AWS S3 SDK:
+`Settings → Public storage` or `clash host public-storage configure` configures
+one machine capability shared by Desktop, CLI, MCP, and local plugins. Run
+`clash host public-storage test` to verify the active backend without exposing
+credentials. BYOS presets use the AWS S3 SDK:
 
 - R2: account id, bucket, access key id, secret access key; region is `auto`.
 - AWS S3: bucket, region, access key id, secret access key, and optional STS token.
@@ -97,8 +99,10 @@ Desktop, CLI, MCP, and local plugins. BYOS presets use the AWS S3 SDK:
   `https://tos-s3-<region>.volces.com` endpoint and uses virtual-hosted style.
 - Custom S3: endpoint, bucket, region, AK/SK, and an optional path-style switch.
 
-The selected backend uploads only when a plugin function declares
-`public-asset-storage`, then returns a one-hour signed GET URL. Plugins depend
-on the abstract capability, not S3 or login. A future authenticated Host can
-advertise Clash-managed storage as the same capability; local builds do not
-show that option until the Host actually provides it.
+The selected backend uploads only when the exact Provider/model binding accepts
+`provider-url` but not `bytes`, the Asset has no existing Provider URL, and the
+Host must create a fetchable projection. It then returns a one-hour signed GET
+URL. Plugin manifests never declare or receive a storage dependency; they see
+only the resolved reference supplied by the Host SDK. A future authenticated
+Host can satisfy the same binding through Clash-managed storage; local builds
+do not show that option until the Host actually provides it.

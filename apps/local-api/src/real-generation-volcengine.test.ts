@@ -5,6 +5,10 @@ import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
+  createPublicAssetStorageService,
+  type PublicAssetStorageService,
+} from "./public-asset-storage.js";
+import {
   loadProviderLiveTestConfig,
   loadProviderLiveTestLocalAccount,
   providerLiveTestTimeoutMs,
@@ -20,6 +24,29 @@ import {
 const e2e = await loadProviderLiveTestConfig(process.env);
 const providerTimeoutMs = providerLiveTestTimeoutMs(e2e);
 const temporaryRoots: string[] = [];
+
+function trackedPublicStorage(delegate: PublicAssetStorageService): {
+  service: PublicAssetStorageService;
+  cleanup: () => Promise<void>;
+} {
+  const keys: string[] = [];
+  return {
+    service: {
+      getPublicConfig: () => delegate.getPublicConfig(),
+      updateFromRequest: (input) => delegate.updateFromRequest(input),
+      testConnection: () => delegate.testConnection(),
+      async publish(input) {
+        const published = await delegate.publish(input);
+        keys.push(published.key);
+        return published;
+      },
+      delete: (key) => delegate.delete(key),
+    },
+    async cleanup() {
+      await Promise.all(keys.splice(0).map((key) => delegate.delete(key)));
+    },
+  };
+}
 
 afterAll(async () => {
   await Promise.all(
@@ -72,6 +99,31 @@ describe.runIf(e2e.mode === "live")("Volcengine provider live recorder", () => {
         await createVolcengineModelArkCases(),
         e2e.env.CLASH_PROVIDER_E2E_TARGETS,
       );
+      const needsPublicStorage = cases.some((graderCase) =>
+        graderCase.refs?.some((reference) => reference.kind === "video"),
+      );
+      const publicStorageDataDir =
+        e2e.env.CLASH_PROVIDER_E2E_PUBLIC_STORAGE_DATA_DIR?.trim() ||
+        e2e.env.CLASH_PROVIDER_E2E_LOCAL_DATA_DIR?.trim();
+      if (needsPublicStorage && !publicStorageDataDir) {
+        throw new Error(
+          "Volcengine video-reference recording requires CLASH_PROVIDER_E2E_PUBLIC_STORAGE_DATA_DIR or CLASH_PROVIDER_E2E_LOCAL_DATA_DIR.",
+        );
+      }
+      const tracked = publicStorageDataDir
+        ? trackedPublicStorage(
+            createPublicAssetStorageService({ dataDir: publicStorageDataDir }),
+          )
+        : undefined;
+      if (needsPublicStorage) {
+        const config = await tracked!.service.getPublicConfig();
+        if (!config.available) {
+          throw new Error(
+            `Volcengine video-reference recording requires configured public storage in ${publicStorageDataDir}.`,
+          );
+        }
+      }
+
       const result = await runProviderLiveTestHarness({
         recordingPath,
         account: {
@@ -82,8 +134,9 @@ describe.runIf(e2e.mode === "live")("Volcengine provider live recorder", () => {
         },
         cases,
         bundledPluginIds: ["clash.volcengine"],
+        ...(tracked ? { publicAssetStorage: tracked.service } : {}),
         timeoutMs: providerTimeoutMs,
-      });
+      }).finally(() => tracked?.cleanup());
       expect(result.cases.map(({ id }) => id)).toEqual(
         cases.map(({ id }) => id),
       );
@@ -110,6 +163,49 @@ describe.runIf(e2e.mode === "live")("Volcengine provider live recorder", () => {
             event.request.headers.authorization === "[redacted]",
         ),
       ).toBe(true);
+      if (needsPublicStorage) {
+        const referenceVideoUrls = requests.flatMap((event): string[] => {
+          if (
+            event.type !== "request" ||
+            !event.request.url.endsWith("/contents/generations/tasks") ||
+            !event.request.body ||
+            typeof event.request.body !== "object" ||
+            Array.isArray(event.request.body) ||
+            !("content" in event.request.body)
+          ) {
+            return [];
+          }
+          const content = event.request.body.content;
+          if (!Array.isArray(content)) return [];
+          return content.flatMap((part): string[] => {
+            if (
+              !part ||
+              typeof part !== "object" ||
+              Array.isArray(part) ||
+              !("role" in part) ||
+              part.role !== "reference_video" ||
+              !("video_url" in part) ||
+              !part.video_url ||
+              typeof part.video_url !== "object" ||
+              Array.isArray(part.video_url) ||
+              !("url" in part.video_url) ||
+              typeof part.video_url.url !== "string"
+            ) {
+              return [];
+            }
+            return [part.video_url.url];
+          });
+        });
+        expect(referenceVideoUrls).toHaveLength(
+          cases.filter((graderCase) =>
+            graderCase.refs?.some((reference) => reference.kind === "video"),
+          ).length,
+        );
+        expect(referenceVideoUrls.every((url) => url.startsWith("https://")))
+          .toBe(true);
+        expect(referenceVideoUrls.every((url) => !url.startsWith("data:")))
+          .toBe(true);
+      }
     },
     60 * 60_000,
   );

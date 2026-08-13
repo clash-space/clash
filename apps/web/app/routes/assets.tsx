@@ -1,21 +1,24 @@
-import { ResolvedAssetSchema } from "@clash/shared-types";
 import GlobalAssetsClient from "@clash/web-ui/components/GlobalAssetsClient";
-import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
+import { listPersonalGlobalAssets } from "@clash/web-ui/lib/hooks/useAsset";
 import { redirect, useLoaderData } from "react-router";
 
 export async function loader() {
-  const response = await fetch(
-    runtimeApiUrl("/api/v1/libraries/personal/assets"),
-    { credentials: "include" },
-  );
-  if (response.status === 401) throw redirect("/login");
-  if (!response.ok) {
+  try {
+    return { assets: await listPersonalGlobalAssets() };
+  } catch (error) {
+    const status =
+      error &&
+      typeof error === "object" &&
+      "status" in error &&
+      typeof error.status === "number"
+        ? error.status
+        : undefined;
+    if (status === 401) throw redirect("/login");
+    if (status === undefined) throw error;
     throw new Response("Failed to load Global Assets", {
-      status: response.status,
+      status,
     });
   }
-  const body = (await response.json()) as { assets?: unknown };
-  return { assets: ResolvedAssetSchema.array().parse(body.assets) };
 }
 
 export default function AssetsRoute() {

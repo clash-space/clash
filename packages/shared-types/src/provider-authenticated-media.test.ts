@@ -25,11 +25,14 @@ describe('provider-authenticated results', () => {
     }).success).toBe(false);
   });
 
-  it('accepts a URL the host may fetch without provider credentials', () => {
-    const parsed = ExecutablePluginOutputSchema.parse({
+  it('rejects the retired URL/reach Asset projection', () => {
+    expect(ExecutablePluginOutputSchema.safeParse({
       ...base,
       asset: { ...base.asset, url: 'https://cdn.example/out.mp4', reach: 'public' },
-    });
-    expect(parsed.kind === 'asset' && parsed.asset.url).toBe('https://cdn.example/out.mp4');
+    }).success).toBe(false);
+  });
+
+  it('accepts only the canonical Asset identity and media facts', () => {
+    expect(ExecutablePluginOutputSchema.parse(base)).toEqual(base);
   });
 });

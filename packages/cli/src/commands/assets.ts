@@ -17,6 +17,8 @@ import type {
 } from "@clash/shared-types";
 import {
   createProjectAssetHostClient,
+  resolveAssetImportFileType,
+  type PersonalGlobalAssetHostClient,
   type ProjectAssetHostClient,
 } from "@clash/shared-runtime/project-asset-client";
 import { downloadAssetById, replaceCanvasAssetNode } from "./canvas";
@@ -31,7 +33,10 @@ import {
   requireAgentObservation,
 } from "../lib/agent-worktree-observation";
 import { resolveProjectContext } from "../lib/project-context";
-import { createCliProjectAssetHostClient } from "../lib/project-host-client";
+import {
+  createCliPersonalGlobalAssetHostClient,
+  createCliProjectAssetHostClient,
+} from "../lib/project-host-client";
 
 export type AssetLinkMethod = "symlink" | "copy";
 
@@ -186,21 +191,24 @@ export async function importAssetFile(options: {
     env: options.env,
     homeDir: options.homeDir,
   });
-  const kind = normalizeAssetKind(
-    options.kind ?? inferAssetKind(sourcePath) ?? undefined,
-  );
-  if (!kind) {
+  const requestedKind = normalizeAssetKind(options.kind);
+  if (options.kind !== undefined && !requestedKind) {
     throw new Error(
       "asset kind must be image, video, audio, or model to import through the Host",
     );
   }
+  const fileType = resolveAssetImportFileType(
+    sourcePath,
+    requestedKind ?? undefined,
+  );
+  const kind = fileType.kind;
   const imported = await (
     options.client ?? createCliProjectAssetHostClient()
   ).importFile({
     projectId: status.projectId,
     bytes: new Uint8Array(readFileSync(sourcePath)),
     fileName: basename(sourcePath),
-    contentType: contentTypeForPath(sourcePath),
+    contentType: fileType.contentType,
     kind,
   });
   const assetId = imported.value.id;
@@ -358,6 +366,75 @@ export async function restoreProjectAsset(options: {
   return observed.value;
 }
 
+export async function listPersonalGlobalAssetRecords(
+  options: {
+    client?: PersonalGlobalAssetHostClient;
+  } = {},
+): Promise<ResolvedAsset[]> {
+  return (options.client ?? createCliPersonalGlobalAssetHostClient()).list();
+}
+
+export async function fetchPersonalGlobalAssetRecord(options: {
+  globalAssetId: string;
+  client?: PersonalGlobalAssetHostClient;
+}): Promise<ResolvedAsset> {
+  return (options.client ?? createCliPersonalGlobalAssetHostClient()).get({
+    globalAssetId: options.globalAssetId,
+  });
+}
+
+export async function importPersonalGlobalAssetFile(options: {
+  filePath: string;
+  kind?: string;
+  client?: PersonalGlobalAssetHostClient;
+}): Promise<ResolvedAsset> {
+  const sourcePath = resolve(options.filePath);
+  const info = statSync(sourcePath);
+  if (!info.isFile()) {
+    throw new Error(`Global Asset import source is not a file: ${sourcePath}`);
+  }
+  const requestedKind = normalizeAssetKind(options.kind);
+  if (options.kind !== undefined && !requestedKind) {
+    throw new Error("Global Asset kind must be image, video, audio, or model");
+  }
+  const fileType = resolveAssetImportFileType(
+    sourcePath,
+    requestedKind ?? undefined,
+  );
+  return (
+    options.client ?? createCliPersonalGlobalAssetHostClient()
+  ).importFile({
+    bytes: new Uint8Array(readFileSync(sourcePath)),
+    fileName: basename(sourcePath),
+    contentType: fileType.contentType,
+    kind: fileType.kind,
+  });
+}
+
+export async function admitPersonalGlobalAsset(options: {
+  projectId: string;
+  globalAssetId: string;
+  client?: ProjectAssetHostClient;
+}): Promise<ResolvedAsset> {
+  return (
+    await (options.client ?? createCliProjectAssetHostClient()).admit({
+      projectId: options.projectId,
+      globalAssetId: options.globalAssetId,
+    })
+  ).value;
+}
+
+export async function publishProjectAssetToPersonalGlobal(options: {
+  projectId: string;
+  projectAssetId: string;
+  client?: PersonalGlobalAssetHostClient;
+}): Promise<ResolvedAsset> {
+  return (options.client ?? createCliPersonalGlobalAssetHostClient()).publish({
+    projectId: options.projectId,
+    projectAssetId: options.projectAssetId,
+  });
+}
+
 export async function replaceAssetFile(options: {
   filePath: string;
   nodeId: string;
@@ -422,39 +499,9 @@ function normalizeAssetKind(kind: string | undefined): AssetKind | null {
     : null;
 }
 
-function inferAssetKind(path: string): AssetKind | null {
-  const extension = extname(path).toLowerCase();
-  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension))
-    return "image";
-  if ([".mp4", ".mov", ".webm", ".m4v"].includes(extension)) return "video";
-  if ([".mp3", ".wav", ".m4a", ".aac", ".flac"].includes(extension))
-    return "audio";
-  if ([".glb", ".gltf"].includes(extension)) return "model";
-  return null;
-}
-
-function contentTypeForPath(path: string): string {
-  const extension = extname(path).toLowerCase();
-  if (extension === ".png") return "image/png";
-  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
-  if (extension === ".gif") return "image/gif";
-  if (extension === ".webp") return "image/webp";
-  if (extension === ".svg") return "image/svg+xml";
-  if (extension === ".mp4") return "video/mp4";
-  if (extension === ".mov") return "video/quicktime";
-  if (extension === ".webm") return "video/webm";
-  if (extension === ".mp3") return "audio/mpeg";
-  if (extension === ".wav") return "audio/wav";
-  if (extension === ".m4a") return "audio/mp4";
-  if (extension === ".flac") return "audio/flac";
-  if (extension === ".glb") return "model/gltf-binary";
-  if (extension === ".gltf") return "model/gltf+json";
-  return "application/octet-stream";
-}
-
 export const assetsCommand = new Command("assets")
   .alias("asset")
-  .description("Inspect and link project assets");
+  .description("Inspect and transfer Project and personal Global Assets");
 
 function publicAssetResult<T extends object>(result: T): Omit<T, "readToken"> {
   return publicAgentCommandResult(
@@ -723,6 +770,72 @@ assetsCommand
   );
 
 assetsCommand
+  .command("admit")
+  .description("Admit a personal Global Asset into the selected Project")
+  .requiredOption("--global-asset <id>", "Global Asset ID")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
+  .option("--json", "Output result as JSON")
+  .action(
+    async (options: {
+      globalAsset: string;
+      project?: string;
+      json?: boolean;
+    }) => {
+      try {
+        const projectId = await resolveAssetProjectId(options.project);
+        const result = await admitPersonalGlobalAsset({
+          projectId,
+          globalAssetId: options.globalAsset,
+        });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else {
+          console.log(
+            `admitted Global Asset ${options.globalAsset} as Project Asset ${result.id}`,
+          );
+        }
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    },
+  );
+
+assetsCommand
+  .command("publish")
+  .description("Publish a Project Asset to the personal Global library")
+  .requiredOption("--asset <id>", "Project Asset ID")
+  .option(
+    "--project <id>",
+    "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)",
+  )
+  .option("--json", "Output result as JSON")
+  .action(
+    async (options: { asset: string; project?: string; json?: boolean }) => {
+      try {
+        const projectId = await resolveAssetProjectId(options.project);
+        const result = await publishProjectAssetToPersonalGlobal({
+          projectId,
+          projectAssetId: options.asset,
+        });
+        if (isJsonMode(options)) {
+          printJson(publicAssetResult(result));
+        } else {
+          console.log(
+            `published Project Asset ${options.asset} as Global Asset ${result.id}`,
+          );
+        }
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    },
+  );
+
+assetsCommand
   .command("delete")
   .description("Move an unreferenced Project Asset to the recovery window")
   .requiredOption("--asset <id>", "Asset ID")
@@ -805,4 +918,75 @@ assetsCommand
     },
   );
 
+const personalGlobalAssetsCommand = new Command("global").description(
+  "Inspect and import personal Global Assets",
+);
+
+personalGlobalAssetsCommand
+  .command("list")
+  .description("List personal Global Assets resolved by the current Host")
+  .option("--json", "Output result as JSON")
+  .action(async (options: { json?: boolean }) => {
+    try {
+      const assets = await listPersonalGlobalAssetRecords();
+      if (isJsonMode(options)) {
+        printJson({ assets });
+      } else if (assets.length === 0) {
+        console.log("No personal Global Assets");
+      } else {
+        for (const asset of assets) {
+          console.log(`${asset.id} ${asset.kind} ${asset.status}`);
+        }
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+personalGlobalAssetsCommand
+  .command("get")
+  .description("Read one personal Global Asset resolved by the current Host")
+  .requiredOption("--asset <id>", "Global Asset ID")
+  .option("--json", "Output result as JSON")
+  .action(async (options: { asset: string; json?: boolean }) => {
+    try {
+      const result = await fetchPersonalGlobalAssetRecord({
+        globalAssetId: options.asset,
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(`${result.id} ${result.kind} ${result.status}`);
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+personalGlobalAssetsCommand
+  .command("import")
+  .description("Import a local file into the personal Global Asset library")
+  .requiredOption("--file <path>", "Local file to import")
+  .option("--kind <kind>", "Asset kind: image, video, audio, or model")
+  .option("--json", "Output result as JSON")
+  .action(async (options: { file: string; kind?: string; json?: boolean }) => {
+    try {
+      const result = await importPersonalGlobalAssetFile({
+        filePath: options.file,
+        kind: options.kind,
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(`imported Global Asset ${result.id}`);
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+assetsCommand.addCommand(personalGlobalAssetsCommand);
 assetsCommand.addCommand(assetMetadataCommand);

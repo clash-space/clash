@@ -25167,7 +25167,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-JZFWVH64.js
+// ../../packages/shared-types/dist/chunk-4F43M35N.js
 function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version2 = normalizeTokenPart(options.version ?? "v1", "version");
@@ -25312,6 +25312,8 @@ var ResolvedAssetSchema = z.object({
   name: z.string().trim().min(1).optional(),
   metadata: ProjectAssetMetadataSchema,
   provenance: ProjectAssetProvenanceSchema.optional(),
+  /** Synchronized logical lifecycle; independent from current-Host byte availability. */
+  lifecycle: ProjectAssetLifecycleSchema,
   status: z.enum(["uploading", "ready", "downloading", "unavailable", "failed"]),
   url: z.string().url().optional(),
   thumbnailUrl: z.string().url().optional(),
@@ -25372,7 +25374,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-GNYSXLHQ.js
+// ../../packages/shared-types/dist/chunk-QTM5MBKX.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -25677,7 +25679,10 @@ function resolutionParameter(spec) {
     id: "resolution",
     label: "Resolution",
     type: "select",
-    options: spec.tiers.map((tier) => ({ label: tier.label, value: tier.value })),
+    options: spec.tiers.map((tier) => ({
+      label: tier.label,
+      value: tier.value
+    })),
     defaultValue: spec.defaultValue
   };
 }
@@ -25876,6 +25881,10 @@ var ReferenceMediaConstraintsSchema = z.object({
   maxWidth: z.number().int().positive().optional(),
   minHeight: z.number().int().positive().optional(),
   maxHeight: z.number().int().positive().optional(),
+  /** Total decoded pixel area (width × height). Use this when the upstream
+   * publishes an area floor rather than independent edge floors. */
+  minPixels: z.number().int().positive().optional(),
+  maxPixels: z.number().int().positive().optional(),
   minAspectRatio: z.number().positive().optional(),
   maxAspectRatio: z.number().positive().optional(),
   minDurationMs: z.number().int().nonnegative().optional(),
@@ -25885,6 +25894,26 @@ var ReferenceMediaConstraintsSchema = z.object({
   videoCodecs: z.array(z.string().min(1)).optional(),
   audioCodecs: z.array(z.string().min(1)).optional()
 });
+var ReferenceMediaConditionSchema = z.object({
+  field: z.string().regex(
+    /^modelParams\.[A-Za-z0-9_.-]+$/,
+    "Reference media conditions must target modelParams.<id>."
+  ),
+  equals: z.union([z.string(), z.number(), z.boolean()])
+});
+var ConditionalRefSpecSchema = z.object({
+  when: z.array(ReferenceMediaConditionSchema).min(1),
+  min: z.number().int().nonnegative().optional(),
+  max: z.number().int().positive().optional(),
+  constraints: ReferenceMediaConstraintsSchema.optional()
+}).superRefine((conditional, ctx) => {
+  if (conditional.min === void 0 && conditional.max === void 0 && conditional.constraints === void 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "A conditional reference rule must override bounds or media constraints."
+    });
+  }
+});
 var RefSpecSchema = z.object({
   max: z.number().int().positive(),
   min: z.number().int().nonnegative().optional(),
@@ -25892,7 +25921,10 @@ var RefSpecSchema = z.object({
    * modalities must also be present. */
   requiresAnyOf: z.array(z.enum(["image", "video", "audio"])).min(1).optional(),
   constraints: ReferenceMediaConstraintsSchema.optional(),
-  maxTotalDurationMs: z.number().int().positive().optional()
+  maxTotalDurationMs: z.number().int().positive().optional(),
+  /** Parameter-conditioned refinements for one input mode (for example,
+   * Seedance edit mode tightens the video count, duration, and pixel floor). */
+  conditional: z.array(ConditionalRefSpecSchema).optional()
 });
 var ModelInputModeSchema = z.object({
   images: RefSpecSchema.optional(),
@@ -25986,6 +26018,22 @@ var ProviderInputAdaptationSchema = z.object({
     mimeAliases: z.record(z.string().min(1), z.string().min(1))
   }).optional()
 });
+var ProviderAssetRepresentationSchema = z.enum(["provider-url", "bytes"]);
+var ProviderAssetInputSchema = z.object({
+  match: z.object({
+    kinds: z.array(AssetKindSchema).min(1).optional(),
+    slots: z.array(z.string().trim().min(1)).min(1).optional()
+  }).strict().superRefine((match, ctx) => {
+    if (!match.kinds?.length && !match.slots?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Asset input match must declare at least one kind or slot."
+      });
+    }
+  }),
+  representations: z.array(ProviderAssetRepresentationSchema).min(1),
+  mediaTypes: z.array(z.string().trim().min(1)).min(1).optional()
+}).strict();
 var ModelProviderImplementationSchema = z.object({
   providerId: ProviderSchema,
   accountId: z.string().optional(),
@@ -26015,6 +26063,8 @@ var ModelProviderImplementationSchema = z.object({
   referenceBinding: ReferenceBindingSchema.optional(),
   /** Provider-specific wire spellings applied after this route is selected. */
   inputAdaptation: ProviderInputAdaptationSchema.optional(),
+  /** Asset delivery forms accepted by this exact Provider/model binding. */
+  assetInputs: z.array(ProviderAssetInputSchema).optional(),
   /** Full replacements for parameters whose candidates or ranges differ on this provider.
    * Parameters absent from this list are reused from the base model card. */
   parameterOverrides: z.array(ModelParameterSchema).optional(),
@@ -26142,7 +26192,9 @@ var ModelCardSchema = z.object({
         });
       }
       const optionValues = parameter.options?.map((option) => option.value) ?? [];
-      if (new Set(optionValues.map((value) => `${typeof value}:${String(value)}`)).size !== optionValues.length) {
+      if (new Set(
+        optionValues.map((value) => `${typeof value}:${String(value)}`)
+      ).size !== optionValues.length) {
         ctx.addIssue({
           code: "custom",
           path: ["parameters", index, "options"],
@@ -26209,7 +26261,35 @@ var ModelCardSchema = z.object({
     }
     validateConstraintField(rule.field, ["constraints", index, "field"]);
     if (rule.type === "required") {
-      rule.when.forEach((condition, conditionIndex) => validateConstraintField(condition.field, ["constraints", index, "when", conditionIndex, "field"]));
+      rule.when.forEach(
+        (condition, conditionIndex) => validateConstraintField(condition.field, [
+          "constraints",
+          index,
+          "when",
+          conditionIndex,
+          "field"
+        ])
+      );
+    }
+  }
+  for (const [bucket, spec] of [
+    ["images", model.input.inputMode.images],
+    ["videos", model.input.inputMode.videos],
+    ["audios", model.input.inputMode.audios]
+  ]) {
+    for (const [ruleIndex, rule] of (spec?.conditional ?? []).entries()) {
+      rule.when.forEach(
+        (condition, conditionIndex) => validateConstraintField(condition.field, [
+          "input",
+          "inputMode",
+          bucket,
+          "conditional",
+          ruleIndex,
+          "when",
+          conditionIndex,
+          "field"
+        ])
+      );
     }
   }
   for (const [implementationIndex, implementation] of (model.providerImplementations ?? []).entries()) {
@@ -26450,11 +26530,30 @@ var MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: "16:9",
     description: "Seedream 5.0 Pro image generation and editing from the current Pika catalog.",
     parameters: [
-      { id: "resolution", label: "Resolution", type: "select", options: ["2K", "4K"].map((value) => ({ label: value, value })), defaultValue: "2K" },
-      { id: "count", label: "Count", type: "number", min: 1, max: 4, step: 1, defaultValue: 1 }
+      {
+        id: "size",
+        label: "Size",
+        type: "select",
+        options: ["1K", "2K"].map((value) => ({ label: value, value })),
+        defaultValue: "2K"
+      },
+      {
+        id: "count",
+        label: "Count",
+        type: "number",
+        min: 1,
+        max: 6,
+        step: 1,
+        defaultValue: 1
+      }
     ],
-    defaultParams: { resolution: "2K", count: 1 },
-    input: { requiresPrompt: true, inputMode: { images: { max: 10 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING }
+    defaultParams: { size: "2K", count: 1 },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 10 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    }
   },
   {
     id: "grok-imagine-quality",
@@ -26465,9 +26564,31 @@ var MODEL_CARD_DEFINITIONS = [
     kind: "image",
     defaultAspectRatio: "16:9",
     description: "High-quality Grok Imagine image generation and editing.",
-    parameters: [{ id: "count", label: "Count", type: "number", min: 1, max: 4, step: 1, defaultValue: 1 }],
-    defaultParams: { count: 1 },
-    input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING }
+    parameters: [
+      {
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: ["1K", "2K"].map((value) => ({ label: value, value })),
+        defaultValue: "1K"
+      },
+      {
+        id: "count",
+        label: "Count",
+        type: "number",
+        min: 1,
+        max: 10,
+        step: 1,
+        defaultValue: 1
+      }
+    ],
+    defaultParams: { resolution: "1K", count: 1 },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 3 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    }
   },
   {
     id: "grok-imagine-video-1.5",
@@ -26478,9 +26599,34 @@ var MODEL_CARD_DEFINITIONS = [
     kind: "video",
     defaultAspectRatio: "16:9",
     description: "Grok Imagine 1.5 image-to-video from the current Pika catalog.",
-    parameters: [{ id: "duration", label: "Duration", type: "select", options: [5, 10].map((value) => ({ label: `${value}s`, value })), defaultValue: 5 }],
-    defaultParams: { duration: 5 },
-    input: { requiresPrompt: true, inputMode: { startEnd: {} }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING }
+    parameters: [
+      {
+        id: "duration",
+        label: "Duration",
+        type: "number",
+        min: 1,
+        max: 15,
+        step: 1,
+        defaultValue: 6
+      },
+      {
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: [
+          { label: "480p", value: "480p" },
+          { label: "720p", value: "720p" }
+        ],
+        defaultValue: "720p"
+      }
+    ],
+    defaultParams: { duration: 6, resolution: "720p" },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { min: 1, max: 1 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    }
   },
   {
     id: "lyria-3-pro",
@@ -26491,18 +26637,8 @@ var MODEL_CARD_DEFINITIONS = [
     kind: "audio",
     defaultAspectRatio: "1:1",
     description: "Google Lyria 3 Pro music generation from the current Pika catalog.",
-    parameters: [
-      {
-        id: "duration",
-        label: "Duration",
-        type: "number",
-        min: 10,
-        max: 180,
-        step: 1,
-        defaultValue: 30
-      }
-    ],
-    defaultParams: { duration: 30 },
+    parameters: [],
+    defaultParams: {},
     input: { requiresPrompt: true, inputMode: {} }
   },
   {
@@ -26519,10 +26655,10 @@ var MODEL_CARD_DEFINITIONS = [
         id: "voice_id",
         label: "Voice ID",
         type: "text",
-        defaultValue: "English_Graceful_Lady"
+        required: true
       }
     ],
-    defaultParams: { voice_id: "English_Graceful_Lady" },
+    defaultParams: {},
     input: { requiresPrompt: true, inputMode: {} }
   },
   // ─── Image: Nano Banana 2 (fal.ai) ──────────────────────────
@@ -26596,14 +26732,22 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: NANO_BANANA_LITE_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: NANO_BANANA_LITE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       }
     ],
     defaultParams: {
       aspect_ratio: "16:9"
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 14 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING }
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 14 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    }
   },
   // ─── Image: GPT Image 2 (OpenAI) ────────────────────────────
   {
@@ -26872,15 +27016,22 @@ var MODEL_CARD_DEFINITIONS = [
         id: "duration",
         label: "Duration",
         type: "select",
-        options: [{ label: "5s", value: 5 }],
-        defaultValue: 5
+        options: [
+          { label: "5s", value: 5 },
+          { label: "10s (requires image)", value: 10 }
+        ],
+        defaultValue: 5,
+        description: "Text-to-video supports 5s; image-to-video supports 5s or 10s."
       },
       {
         id: "resolution",
         label: "Resolution",
         type: "select",
-        options: [{ label: "720p", value: "720p" }, { label: "1080p", value: "1080p" }],
-        defaultValue: "720p"
+        options: [
+          { label: "720p", value: "720p" },
+          { label: "1080p", value: "1080p" }
+        ],
+        defaultValue: "1080p"
       },
       {
         id: "negative_prompt",
@@ -26897,7 +27048,7 @@ var MODEL_CARD_DEFINITIONS = [
     ],
     defaultParams: {
       duration: 5,
-      resolution: "720p"
+      resolution: "1080p"
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 1 } } }
   },
@@ -26930,7 +27081,10 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: SORA_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: SORA_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       },
       {
@@ -27202,10 +27356,12 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: ["auto", "1:1", "3:4", "16:9", "4:3", "9:16", "21:9"].map((value) => ({
-          label: value === "auto" ? "Auto" : value,
-          value
-        })),
+        options: ["auto", "1:1", "3:4", "16:9", "4:3", "9:16", "21:9"].map(
+          (value) => ({
+            label: value === "auto" ? "Auto" : value,
+            value
+          })
+        ),
         defaultValue: "16:9"
       },
       {
@@ -27248,7 +27404,19 @@ var MODEL_CARD_DEFINITIONS = [
         videos: {
           max: 10,
           constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 3e4 },
-          maxTotalDurationMs: 3e4
+          maxTotalDurationMs: 3e4,
+          conditional: [
+            {
+              when: [{ field: "modelParams.edit_mode", equals: true }],
+              min: 1,
+              max: 1,
+              constraints: {
+                minPixels: 407696,
+                minDurationMs: 4e3,
+                maxDurationMs: 3e4
+              }
+            }
+          ]
         },
         audios: {
           max: 10,
@@ -27403,7 +27571,10 @@ var MODEL_CARD_DEFINITIONS = [
         type: "select",
         options: [
           { label: "Auto", value: "adaptive" },
-          ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({ label: value, value }))
+          ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
+            label: value,
+            value
+          }))
         ],
         defaultValue: "adaptive"
       },
@@ -27658,14 +27829,22 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: IMAGEN_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: IMAGEN_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       }
     ],
     defaultParams: {
       aspect_ratio: "16:9"
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ["text", "image"], referenceBinding: GROUPED_REFERENCE_BINDING }
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 8 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING
+    }
   },
   // ─── Video: Veo 3.1 (Google native via Vercel AI SDK) ──────
   //
@@ -27696,7 +27875,10 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: VEO3_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: VEO3_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       },
       {
@@ -27729,7 +27911,10 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: VEO3_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: VEO3_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       },
       {
@@ -27762,7 +27947,10 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: VEO3_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: VEO3_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       },
       {
@@ -27795,7 +27983,10 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: VEO3_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: VEO3_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       },
       {
@@ -29094,17 +29285,28 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: KLING_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: KLING_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       },
       {
         id: "mode",
         label: "Mode",
         type: "select",
-        options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+        options: [
+          { label: "Standard", value: "std" },
+          { label: "Pro", value: "pro" }
+        ],
         defaultValue: "pro"
       },
-      { id: "multi_shot", label: "Multi-shot", type: "boolean", defaultValue: false }
+      {
+        id: "multi_shot",
+        label: "Multi-shot",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
     defaultParams: { duration: 5, aspect_ratio: "16:9", mode: "pro", multi_shot: false },
     input: {
@@ -29129,18 +29331,34 @@ var MODEL_CARD_DEFINITIONS = [
         id: "aspect_ratio",
         label: "Aspect Ratio",
         type: "select",
-        options: KLING_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
+        options: KLING_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value
+        })),
         defaultValue: "16:9"
       },
       {
         id: "mode",
         label: "Mode",
         type: "select",
-        options: [{ label: "Standard", value: "std" }, { label: "Pro", value: "pro" }],
+        options: [
+          { label: "Standard", value: "std" },
+          { label: "Pro", value: "pro" }
+        ],
         defaultValue: "pro"
       },
-      { id: "generate_audio", label: "Native audio", type: "boolean", defaultValue: false },
-      { id: "multi_shot", label: "Multi-shot", type: "boolean", defaultValue: false }
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false
+      },
+      {
+        id: "multi_shot",
+        label: "Multi-shot",
+        type: "boolean",
+        defaultValue: false
+      }
     ],
     defaultParams: { duration: 5, aspect_ratio: "16:9", mode: "pro", generate_audio: false, multi_shot: false },
     input: {
@@ -29260,9 +29478,33 @@ var MODEL_CARD_DEFINITIONS = [
         defaultValue: "",
         description: "Optional Doubao TTS or voice-clone speaker ID."
       },
-      { id: "speed", label: "Speed", type: "slider", min: 0.5, max: 2, step: 0.05, defaultValue: 1 },
-      { id: "volume", label: "Volume", type: "slider", min: 0.5, max: 2, step: 0.05, defaultValue: 1 },
-      { id: "pitch", label: "Pitch", type: "slider", min: -12, max: 12, step: 1, defaultValue: 0 },
+      {
+        id: "speed",
+        label: "Speed",
+        type: "slider",
+        min: 0.5,
+        max: 2,
+        step: 0.05,
+        defaultValue: 1
+      },
+      {
+        id: "volume",
+        label: "Volume",
+        type: "slider",
+        min: 0.5,
+        max: 2,
+        step: 0.05,
+        defaultValue: 1
+      },
+      {
+        id: "pitch",
+        label: "Pitch",
+        type: "slider",
+        min: -12,
+        max: 12,
+        step: 1,
+        defaultValue: 0
+      },
       {
         id: "sample_rate",
         label: "Sample Rate",
@@ -29383,9 +29625,201 @@ var MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES = [
     description: "Auto is supported when at least one image, video, or audio reference is attached.",
     options: [
       { label: "Auto (with reference)", value: "adaptive" },
-      ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({ label: value, value }))
+      ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
+        label: value,
+        value
+      }))
     ],
     defaultValue: "16:9"
+  }
+];
+var PIKA_EXECUTOR_OPTIONS = {
+  executorPluginId: "clash.pika",
+  executorExportId: "pika-execute",
+  assetInputs: [
+    {
+      match: { kinds: ["image", "video", "audio"] },
+      representations: ["provider-url", "bytes"]
+    }
+  ]
+};
+var IMAGE_PROVIDER_ASSET_INPUTS = [
+  {
+    match: { kinds: ["image"] },
+    representations: ["provider-url", "bytes"]
+  }
+];
+var VIDEO_PROVIDER_URL_ONLY_ASSET_INPUTS = [
+  {
+    match: { kinds: ["video"] },
+    representations: ["provider-url"]
+  }
+];
+var IMAGE_AUDIO_PROVIDER_ASSET_INPUTS = [
+  {
+    match: { kinds: ["image", "audio"] },
+    representations: ["bytes"]
+  }
+];
+var MEDIA_PROVIDER_ASSET_INPUTS = [
+  {
+    match: { kinds: ["image", "video", "audio"] },
+    representations: ["provider-url", "bytes"]
+  }
+];
+var IMAGE_BYTES_PROVIDER_ASSET_INPUTS = [
+  {
+    match: { kinds: ["image"] },
+    representations: ["bytes"]
+  }
+];
+var VOLCENGINE_MEDIA_PROVIDER_ASSET_INPUTS = [
+  ...VIDEO_PROVIDER_URL_ONLY_ASSET_INPUTS,
+  ...IMAGE_AUDIO_PROVIDER_ASSET_INPUTS
+];
+var PIKA_NANO_BANANA_PARAMETER_OVERRIDES = [
+  {
+    id: "aspect_ratio",
+    label: "Aspect Ratio",
+    type: "select",
+    required: false,
+    options: [
+      ...NANO_BANANA_ASPECT_RATIOS.map(({ label, value }) => ({
+        label,
+        value
+      })),
+      { label: "Auto", value: "auto" }
+    ],
+    defaultValue: "16:9"
+  },
+  {
+    id: "resolution",
+    label: "Resolution",
+    type: "select",
+    required: false,
+    options: ["512", "1K", "2K", "4K"].map((value) => ({
+      label: value,
+      value
+    })),
+    defaultValue: "1K"
+  },
+  {
+    id: "count",
+    label: "Count",
+    type: "number",
+    required: false,
+    min: 1,
+    max: 1,
+    step: 1,
+    defaultValue: 1
+  }
+];
+var PIKA_GPT_IMAGE_PARAMETER_OVERRIDES = [
+  {
+    id: "aspect_ratio",
+    label: "Aspect Ratio",
+    type: "select",
+    required: false,
+    options: [
+      "1:1",
+      "2:3",
+      "3:2",
+      "3:4",
+      "4:3",
+      "4:5",
+      "5:4",
+      "9:16",
+      "16:9",
+      "21:9"
+    ].map((value) => ({ label: value, value })),
+    defaultValue: "1:1"
+  },
+  {
+    id: "resolution",
+    label: "Resolution",
+    type: "select",
+    required: false,
+    options: ["1K", "2K", "4K"].map((value) => ({ label: value, value })),
+    defaultValue: "1K"
+  },
+  {
+    id: "quality",
+    label: "Quality",
+    type: "select",
+    required: false,
+    options: [
+      { label: "Auto", value: "auto" },
+      { label: "Low", value: "low" },
+      { label: "Medium", value: "medium" },
+      { label: "High", value: "high" }
+    ],
+    defaultValue: "medium"
+  },
+  {
+    id: "background",
+    label: "Background",
+    type: "select",
+    required: false,
+    options: [
+      { label: "Auto", value: "auto" },
+      { label: "Opaque", value: "opaque" },
+      { label: "Transparent", value: "transparent" }
+    ],
+    defaultValue: "auto"
+  },
+  {
+    id: "count",
+    label: "Count",
+    type: "number",
+    required: false,
+    min: 1,
+    max: 10,
+    step: 1,
+    defaultValue: 1
+  }
+];
+var PIKA_SEEDANCE_PARAMETER_OVERRIDES = [
+  {
+    id: "duration",
+    label: "Duration",
+    type: "select",
+    required: false,
+    options: [
+      { label: "Auto", value: "auto" },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        label: `${index + 4}s`,
+        value: index + 4
+      }))
+    ],
+    defaultValue: "auto"
+  },
+  {
+    id: "resolution",
+    label: "Resolution",
+    type: "select",
+    required: false,
+    options: ["480p", "720p", "1080p", "4k"].map((value) => ({
+      label: value,
+      value
+    })),
+    defaultValue: "720p"
+  }
+];
+var PIKA_SEEDANCE_REFERENCE_PARAMETER_OVERRIDES = [
+  ...PIKA_SEEDANCE_PARAMETER_OVERRIDES,
+  {
+    id: "aspect_ratio",
+    label: "Aspect Ratio",
+    type: "select",
+    required: false,
+    options: [
+      { label: "Adaptive", value: "adaptive" },
+      ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
+        label: value,
+        value
+      }))
+    ],
+    defaultValue: "adaptive"
   }
 ];
 var SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES = [
@@ -29454,26 +29888,164 @@ var SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES = [
   }
 ];
 var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
-  ["sensevoice-small-asr", "local", "local", "local-asr", "iic/SenseVoiceSmall", 1],
-  ["whisper-large-v3-turbo-asr", "local", "local", "local-asr", "mlx-community/whisper-large-v3-turbo", 1],
-  ["whisper-small-asr", "local", "local", "local-asr", "mlx-community/whisper-small-mlx", 1],
-  ["parakeet-tdt-0.6b-v3-asr", "local", "local", "local-asr", "mlx-community/parakeet-tdt-0.6b-v3", 1],
-  ["vibevoice-asr", "local", "local", "local-asr", "mlx-community/VibeVoice-ASR-4bit", 1],
-  ["kokoro-82m-tts", "local", "local", "local-tts", "mlx-community/Kokoro-82M-4bit", 1],
+  [
+    "sensevoice-small-asr",
+    "local",
+    "local",
+    "local-asr",
+    "iic/SenseVoiceSmall",
+    1
+  ],
+  [
+    "whisper-large-v3-turbo-asr",
+    "local",
+    "local",
+    "local-asr",
+    "mlx-community/whisper-large-v3-turbo",
+    1
+  ],
+  [
+    "whisper-small-asr",
+    "local",
+    "local",
+    "local-asr",
+    "mlx-community/whisper-small-mlx",
+    1
+  ],
+  [
+    "parakeet-tdt-0.6b-v3-asr",
+    "local",
+    "local",
+    "local-asr",
+    "mlx-community/parakeet-tdt-0.6b-v3",
+    1
+  ],
+  [
+    "vibevoice-asr",
+    "local",
+    "local",
+    "local-asr",
+    "mlx-community/VibeVoice-ASR-4bit",
+    1
+  ],
+  [
+    "kokoro-82m-tts",
+    "local",
+    "local",
+    "local-tts",
+    "mlx-community/Kokoro-82M-4bit",
+    1
+  ],
   ["piper-huayan-tts", "local", "local", "local-tts", "zh_CN-huayan-medium", 1],
   ["piper-lessac-tts", "local", "local", "local-tts", "en_US-lessac-medium", 1],
-  ["flux-schnell", "fal", "fal", "fal", "fal-ai/flux/schnell", 20, { credentials: ["apiKey"] }],
-  ["flux-dev", "fal", "fal", "fal", "fal-ai/flux/dev", 20, { credentials: ["apiKey"] }],
-  ["gpt-image-2", "fal", "fal", "fal", "openai/gpt-image-2", 20, { credentials: ["apiKey"] }],
-  ["nano-banana-2", "fal", "fal", "fal", "fal-ai/nano-banana-2", 20, { credentials: ["apiKey"] }],
-  ["seedream-4.5", "fal", "fal", "fal", "fal-ai/bytedance/seedream/v4.5/text-to-image", 20, { credentials: ["apiKey"] }],
-  ["recraft-v4", "fal", "fal", "fal", "fal-ai/recraft/v4/pro/text-to-image", 20, { credentials: ["apiKey"] }],
-  ["flux-2-pro", "fal", "fal", "fal", "fal-ai/flux-2-pro", 20, { credentials: ["apiKey"] }],
-  ["sora-2", "fal", "fal", "fal", "fal-ai/sora-2/text-to-video", 20, { credentials: ["apiKey"] }],
-  ["kling-3", "fal", "fal", "fal", "fal-ai/kling-video/v3/pro/image-to-video", 20, { credentials: ["apiKey"] }],
-  ["flux-3-video", "fal", "fal", "fal", "blackforestlabs/flux-3/text-to-video", 20, { credentials: ["apiKey"] }],
-  ["flux-3-video-keyframes", "fal", "fal", "fal", "blackforestlabs/flux-3/keyframes-to-video", 20, { credentials: ["apiKey"] }],
-  ["flux-3-video-continue", "fal", "fal", "fal", "blackforestlabs/flux-3/extend-video", 20, { credentials: ["apiKey"] }],
+  [
+    "flux-schnell",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/flux/schnell",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "flux-dev",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/flux/dev",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "gpt-image-2",
+    "fal",
+    "fal",
+    "fal",
+    "openai/gpt-image-2",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "nano-banana-2",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/nano-banana-2",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "seedream-4.5",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/bytedance/seedream/v4.5/text-to-image",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "recraft-v4",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/recraft/v4/pro/text-to-image",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "flux-2-pro",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/flux-2-pro",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "sora-2",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/sora-2/text-to-video",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "kling-3",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/kling-video/v3/pro/image-to-video",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "flux-3-video",
+    "fal",
+    "fal",
+    "fal",
+    "blackforestlabs/flux-3/text-to-video",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "flux-3-video-keyframes",
+    "fal",
+    "fal",
+    "fal",
+    "blackforestlabs/flux-3/keyframes-to-video",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "flux-3-video-continue",
+    "fal",
+    "fal",
+    "fal",
+    "blackforestlabs/flux-3/extend-video",
+    20,
+    { credentials: ["apiKey"] }
+  ],
   [
     "seedance-2-startend",
     "fal",
@@ -29506,66 +30078,373 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
       }
     }
   ],
-  ["minimax-tts", "fal", "fal", "fal", "fal-ai/minimax/speech-02-hd", 20, { credentials: ["apiKey"] }],
-  ["pika-2.5", "pika", "pika", "pika", "pika/pika-2.5/image-to-video", 18, { credentials: ["apiKey"] }],
-  ["nano-banana-2", "pika", "pika", "pika", "google/gemini-3.1-flash-image/text-to-image", 18, { credentials: ["apiKey"] }],
-  ["gpt-image-2", "pika", "pika", "pika", "openai/gpt-image-2/text-to-image", 18, { credentials: ["apiKey"] }],
-  ["seedance-2-startend", "pika", "pika", "pika", "bytedance/seedance-2.0/image-to-video", 18, {
-    credentials: ["apiKey"],
-    excludedParameterIds: ["seed"]
-  }],
-  ["seedance-2-ref", "pika", "pika", "pika", "bytedance/seedance-2.0/reference-to-video", 18, {
-    credentials: ["apiKey"],
-    excludedParameterIds: ["seed", "edit_mode"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" }
+  [
+    "minimax-tts",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/minimax/speech-02-hd",
+    20,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "pika-2.5",
+    "pika",
+    "pika",
+    "pika",
+    "pika/pika-2.5/image-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
     }
-  }],
-  ["minimax-h3", "pika", "pika", "pika", "minimax/h3/reference-to-video", 18, {
-    credentials: ["apiKey"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" }
+  ],
+  [
+    "nano-banana-2",
+    "pika",
+    "pika",
+    "pika",
+    "google/gemini-3.1-flash-image/text-to-image",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      parameterOverrides: PIKA_NANO_BANANA_PARAMETER_OVERRIDES,
+      defaultParamOverrides: {
+        aspect_ratio: "16:9",
+        resolution: "1K",
+        count: 1
+      }
     }
-  }],
-  ["minimax-h3-startend", "pika", "pika", "pika", "minimax/h3/image-to-video", 18, { credentials: ["apiKey"] }],
-  ["minimax-music-3", "pika", "pika", "pika", "minimax/minimax-music-3.0/text-to-audio", 18, {
-    credentials: ["apiKey"],
-    excludedParameterIds: ["aigc_watermark"]
-  }],
-  ["gpt-5.6-sol", "pika", "pika", "pika-chat", "openai/gpt-5.6-sol", 18, { credentials: ["apiKey"] }],
-  ["claude-sonnet-5", "pika", "pika", "pika-chat", "anthropic/claude-sonnet-5", 18, { credentials: ["apiKey"] }],
-  ["gemini-3.6-flash", "pika", "pika", "pika-chat", "google/gemini-3.6-flash", 18, { credentials: ["apiKey"] }],
-  ["deepseek-v4-pro", "pika", "pika", "pika-chat", "deepseek/deepseek-v4-pro", 18, { credentials: ["apiKey"] }],
-  ["kimi-k3", "pika", "pika", "pika-chat", "moonshotai/kimi-k3", 18, { credentials: ["apiKey"] }],
-  ["glm-5.2", "pika", "pika", "pika-chat", "z-ai/glm-5.2", 18, { credentials: ["apiKey"] }],
-  ["seedream-5-pro", "pika", "pika", "pika", "bytedance/seedream-5.0-pro/text-to-image", 18, { credentials: ["apiKey"] }],
-  ["grok-imagine-quality", "pika", "pika", "pika", "x-ai/grok-imagine-image-quality/text-to-image", 18, { credentials: ["apiKey"] }],
-  ["grok-imagine-video-1.5", "pika", "pika", "pika", "x-ai/grok-imagine-video-1.5/image-to-video", 18, { credentials: ["apiKey"] }],
-  ["flux-3-video", "pika", "pika", "pika", "black-forest-labs/flux-3-video/text-to-video", 18, { credentials: ["apiKey"] }],
-  ["kling-3", "pika", "pika", "pika", "kling/kling-3.0/text-to-video", 18, { credentials: ["apiKey"] }],
-  ["recraft-v4", "pika", "pika", "pika", "recraft/recraft-4.1/text-to-image", 22, { credentials: ["apiKey"] }],
-  ["lyria-3-pro", "pika", "pika", "pika", "google/lyria-3-pro/text-to-audio", 18, { credentials: ["apiKey"] }],
-  ["minimax-speech-2.8-hd", "pika", "pika", "pika", "minimax/minimax-speech-2.8-hd/text-to-speech", 18, { credentials: ["apiKey"] }],
-  ["nano-banana-2", "replicate", "replicate", "replicate", "google/nano-banana-2", 25, { credentials: ["apiKey"] }],
-  ["gpt-image-2", "replicate", "replicate", "replicate", "openai/gpt-image-2", 25, { credentials: ["apiKey"] }],
-  ["flux-schnell", "replicate", "replicate", "replicate", "black-forest-labs/flux-schnell", 25, { credentials: ["apiKey"] }],
-  ["seedance-2-startend", "replicate", "replicate", "replicate", "bytedance/seedance-2.0", 25, {
-    credentials: ["apiKey"],
-    excludedParameterIds: ["seed"]
-  }],
-  ["seedance-2-ref", "replicate", "replicate", "replicate", "bytedance/seedance-2.0", 25, {
-    credentials: ["apiKey"],
-    excludedParameterIds: ["seed", "edit_mode"],
-    referenceBinding: {
-      type: "positional-tokens",
-      modalityScopedIndexes: true,
-      tokens: { image: "[Image{n}]", video: "[Video{n}]", audio: "[Audio{n}]" }
+  ],
+  [
+    "gpt-image-2",
+    "pika",
+    "pika",
+    "pika",
+    "openai/gpt-image-2/text-to-image",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      parameterOverrides: PIKA_GPT_IMAGE_PARAMETER_OVERRIDES,
+      defaultParamOverrides: {
+        aspect_ratio: "1:1",
+        resolution: "1K",
+        quality: "medium",
+        background: "auto",
+        count: 1
+      },
+      excludedParameterIds: ["moderation"]
     }
-  }],
+  ],
+  [
+    "seedance-2-startend",
+    "pika",
+    "pika",
+    "pika",
+    "bytedance/seedance-2.0/image-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      parameterOverrides: PIKA_SEEDANCE_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: "auto", resolution: "720p" },
+      excludedParameterIds: ["seed"]
+    }
+  ],
+  [
+    "seedance-2-ref",
+    "pika",
+    "pika",
+    "pika",
+    "bytedance/seedance-2.0/reference-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      parameterOverrides: PIKA_SEEDANCE_REFERENCE_PARAMETER_OVERRIDES,
+      defaultParamOverrides: {
+        duration: "auto",
+        aspect_ratio: "adaptive",
+        resolution: "720p"
+      },
+      excludedParameterIds: ["seed", "edit_mode"],
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" }
+      }
+    }
+  ],
+  [
+    "minimax-h3",
+    "pika",
+    "pika",
+    "pika",
+    "minimax/h3/reference-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" }
+      }
+    }
+  ],
+  [
+    "minimax-h3-startend",
+    "pika",
+    "pika",
+    "pika",
+    "minimax/h3/image-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "minimax-music-3",
+    "pika",
+    "pika",
+    "pika",
+    "minimax/minimax-music-3.0/text-to-audio",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      excludedParameterIds: ["aigc_watermark"]
+    }
+  ],
+  [
+    "gpt-5.6-sol",
+    "pika",
+    "pika",
+    "pika-chat",
+    "openai/gpt-5.6-sol",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "claude-sonnet-5",
+    "pika",
+    "pika",
+    "pika-chat",
+    "anthropic/claude-sonnet-5",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "gemini-3.6-flash",
+    "pika",
+    "pika",
+    "pika-chat",
+    "google/gemini-3.6-flash",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "deepseek-v4-pro",
+    "pika",
+    "pika",
+    "pika-chat",
+    "deepseek/deepseek-v4-pro",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "kimi-k3",
+    "pika",
+    "pika",
+    "pika-chat",
+    "moonshotai/kimi-k3",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "glm-5.2",
+    "pika",
+    "pika",
+    "pika-chat",
+    "z-ai/glm-5.2",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "seedream-5-pro",
+    "pika",
+    "pika",
+    "pika",
+    "bytedance/seedream-5.0-pro/text-to-image",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "grok-imagine-quality",
+    "pika",
+    "pika",
+    "pika",
+    "x-ai/grok-imagine-image-quality/text-to-image",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "grok-imagine-video-1.5",
+    "pika",
+    "pika",
+    "pika",
+    "x-ai/grok-imagine-video-1.5/image-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "flux-3-video",
+    "pika",
+    "pika",
+    "pika",
+    "black-forest-labs/flux-3-video/text-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      excludedParameterIds: ["safety_tolerance"]
+    }
+  ],
+  [
+    "kling-3",
+    "pika",
+    "pika",
+    "pika",
+    "kling/kling-3.0/text-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      defaultParamOverrides: { generate_audio: false }
+    }
+  ],
+  [
+    "recraft-v4",
+    "pika",
+    "pika",
+    "pika",
+    "recraft/recraft-4.1/text-to-image",
+    22,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "lyria-3-pro",
+    "pika",
+    "pika",
+    "pika",
+    "google/lyria-3-pro/text-to-audio",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "minimax-speech-2.8-hd",
+    "pika",
+    "pika",
+    "pika",
+    "minimax/minimax-speech-2.8-hd/text-to-speech",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS
+    }
+  ],
+  [
+    "nano-banana-2",
+    "replicate",
+    "replicate",
+    "replicate",
+    "google/nano-banana-2",
+    25,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "gpt-image-2",
+    "replicate",
+    "replicate",
+    "replicate",
+    "openai/gpt-image-2",
+    25,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "flux-schnell",
+    "replicate",
+    "replicate",
+    "replicate",
+    "black-forest-labs/flux-schnell",
+    25,
+    { credentials: ["apiKey"] }
+  ],
+  [
+    "seedance-2-startend",
+    "replicate",
+    "replicate",
+    "replicate",
+    "bytedance/seedance-2.0",
+    25,
+    {
+      credentials: ["apiKey"],
+      excludedParameterIds: ["seed"]
+    }
+  ],
+  [
+    "seedance-2-ref",
+    "replicate",
+    "replicate",
+    "replicate",
+    "bytedance/seedance-2.0",
+    25,
+    {
+      credentials: ["apiKey"],
+      excludedParameterIds: ["seed", "edit_mode"],
+      referenceBinding: {
+        type: "positional-tokens",
+        modalityScopedIndexes: true,
+        tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" }
+      }
+    }
+  ],
   // `anyOf`, because Google accepts either credential and an account holds one or the other. A plain
   // `credentials` list means all of them, and duplicating the route per credential makes one model
   // match two conformance targets -- the ambiguity check is right to refuse that.
@@ -29584,13 +30463,38 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
   ],
-  ["flux-3-video", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
-  ["flux-3-video-keyframes", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
-  ["flux-3-video-continue", "official", "bfl", "bfl", "flux-3-video", 10, { region: "global", credentials: ["apiKey"] }],
+  [
+    "flux-3-video",
+    "official",
+    "bfl",
+    "bfl",
+    "flux-3-video",
+    10,
+    { region: "global", credentials: ["apiKey"] }
+  ],
+  [
+    "flux-3-video-keyframes",
+    "official",
+    "bfl",
+    "bfl",
+    "flux-3-video",
+    10,
+    { region: "global", credentials: ["apiKey"] }
+  ],
+  [
+    "flux-3-video-continue",
+    "official",
+    "bfl",
+    "bfl",
+    "flux-3-video",
+    10,
+    { region: "global", credentials: ["apiKey"] }
+  ],
   [
     "nano-banana-pro",
     "official",
@@ -29601,6 +30505,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
@@ -29643,6 +30548,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
@@ -29657,6 +30563,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
@@ -29671,6 +30578,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
@@ -29685,6 +30593,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
@@ -29699,6 +30608,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
@@ -29736,6 +30646,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
@@ -29750,6 +30661,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
@@ -29764,6 +30676,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
@@ -29783,16 +30696,65 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       executorPluginId: "clash.google",
       executorExportId: "google-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS,
       region: "global",
       credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] }
     }
   ],
-  ["gpt-image-2", "official", "openai", "openai-images", "gpt-image-2", 10, { region: "global", credentials: ["apiKey"] }],
-  ["gpt-5.4", "official", "openai", "openai-compatible", "gpt-5.4", 10, { region: "global", credentials: ["apiKey"] }],
-  ["openai-compatible-text", "official", "openai", "openai-compatible", "gpt-5.4", 15, { region: "global", credentials: ["apiKey"] }],
-  ["claude-sonnet-4", "official", "anthropic", "anthropic-compatible", "claude-sonnet-4-20250514", 10, { region: "global", credentials: ["apiKey"] }],
-  ["anthropic-compatible-text", "official", "anthropic", "anthropic-compatible", "claude-sonnet-4-20250514", 15, { region: "global", credentials: ["apiKey"] }],
-  ["kling-3", "kling", "kling", "kling", "kling-v3", 8, { credentials: ["accessKey", "secretKey"] }],
+  [
+    "gpt-image-2",
+    "official",
+    "openai",
+    "openai-images",
+    "gpt-image-2",
+    10,
+    { region: "global", credentials: ["apiKey"] }
+  ],
+  [
+    "gpt-5.4",
+    "official",
+    "openai",
+    "openai-compatible",
+    "gpt-5.4",
+    10,
+    { region: "global", credentials: ["apiKey"] }
+  ],
+  [
+    "openai-compatible-text",
+    "official",
+    "openai",
+    "openai-compatible",
+    "gpt-5.4",
+    15,
+    { region: "global", credentials: ["apiKey"] }
+  ],
+  [
+    "claude-sonnet-4",
+    "official",
+    "anthropic",
+    "anthropic-compatible",
+    "claude-sonnet-4-20250514",
+    10,
+    { region: "global", credentials: ["apiKey"] }
+  ],
+  [
+    "anthropic-compatible-text",
+    "official",
+    "anthropic",
+    "anthropic-compatible",
+    "claude-sonnet-4-20250514",
+    15,
+    { region: "global", credentials: ["apiKey"] }
+  ],
+  [
+    "kling-3",
+    "kling",
+    "kling",
+    "kling",
+    "kling-v3",
+    8,
+    { credentials: ["accessKey", "secretKey"] }
+  ],
   [
     "seed-audio-1",
     "volcengine-speech",
@@ -29803,7 +30765,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       credentials: ["apiKey"],
       executorPluginId: "clash.volcengine",
-      executorExportId: "volcengine-speech-execute"
+      executorExportId: "volcengine-speech-execute",
+      assetInputs: IMAGE_AUDIO_PROVIDER_ASSET_INPUTS
     }
   ],
   [
@@ -29817,6 +30780,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
       credentials: ["apiKey"],
       executorPluginId: "clash.volcengine",
       executorExportId: "volcengine-execute",
+      assetInputs: IMAGE_BYTES_PROVIDER_ASSET_INPUTS,
       parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
       defaultParamOverrides: { duration: "auto", resolution: "720p" },
       excludedParameterIds: ["seed"]
@@ -29833,7 +30797,11 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
       credentials: ["apiKey"],
       executorPluginId: "clash.volcengine",
       executorExportId: "volcengine-execute",
-      parameterOverrides: [...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
+      assetInputs: VOLCENGINE_MEDIA_PROVIDER_ASSET_INPUTS,
+      parameterOverrides: [
+        ...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
+        SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER
+      ],
       defaultParamOverrides: {
         duration: "auto",
         aspect_ratio: "auto",
@@ -29858,6 +30826,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
       credentials: ["apiKey"],
       executorPluginId: "clash.volcengine",
       executorExportId: "volcengine-execute",
+      assetInputs: VIDEO_PROVIDER_URL_ONLY_ASSET_INPUTS,
       referenceBinding: {
         type: "positional-tokens",
         modalityScopedIndexes: true,
@@ -29876,7 +30845,11 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
       credentials: ["apiKey"],
       executorPluginId: "clash.volcengine",
       executorExportId: "volcengine-execute",
-      parameterOverrides: [...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
+      assetInputs: VOLCENGINE_MEDIA_PROVIDER_ASSET_INPUTS,
+      parameterOverrides: [
+        ...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
+        SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER
+      ],
       defaultParamOverrides: {
         duration: "auto",
         aspect_ratio: "auto",
@@ -29900,6 +30873,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
       credentials: ["apiKey"],
       executorPluginId: "clash.volcengine",
       executorExportId: "volcengine-execute",
+      assetInputs: IMAGE_BYTES_PROVIDER_ASSET_INPUTS,
       parameterOverrides: SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
       defaultParamOverrides: {
         duration: "auto",
@@ -29918,6 +30892,7 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
       credentials: ["apiKey"],
       executorPluginId: "clash.volcengine",
       executorExportId: "volcengine-execute",
+      assetInputs: VIDEO_PROVIDER_URL_ONLY_ASSET_INPUTS,
       referenceBinding: {
         type: "positional-tokens",
         modalityScopedIndexes: true,
@@ -29974,7 +30949,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       credentials: ["apiKey"],
       executorPluginId: "clash.minimax",
-      executorExportId: "minimax-execute"
+      executorExportId: "minimax-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS
     }
   ],
   [
@@ -29987,7 +30963,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
     {
       credentials: ["apiKey"],
       executorPluginId: "clash.minimax",
-      executorExportId: "minimax-execute"
+      executorExportId: "minimax-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS
     }
   ],
   [
@@ -30033,8 +31010,24 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
       defaultParamOverrides: { duration: 5 }
     }
   ],
-  ["suno-v5.5", "suno", "suno", "suno", "V5_5", 8, { credentials: ["apiKey", "callbackUrl"] }],
-  ["elevenlabs-tts", "elevenlabs", "elevenlabs", "elevenlabs", "eleven_v3", 8, { credentials: ["apiKey"] }]
+  [
+    "suno-v5.5",
+    "suno",
+    "suno",
+    "suno",
+    "V5_5",
+    8,
+    { credentials: ["apiKey", "callbackUrl"] }
+  ],
+  [
+    "elevenlabs-tts",
+    "elevenlabs",
+    "elevenlabs",
+    "elevenlabs",
+    "eleven_v3",
+    8,
+    { credentials: ["apiKey"] }
+  ]
 ];
 function implementationFromRow(row) {
   const [, providerId, upstreamId, apiShape, upstreamModel, priority, options] = row;
@@ -30049,7 +31042,9 @@ function implementationFromRow(row) {
     ...options?.credentialRequirements ? {
       credentialRequirements: {
         ...options.credentialRequirements,
-        anyOf: options.credentialRequirements.anyOf.map((credentials) => [...credentials])
+        anyOf: options.credentialRequirements.anyOf.map((credentials) => [
+          ...credentials
+        ])
       }
     } : {},
     ...options?.oauth?.length ? { requiredOAuth: [...options.oauth] } : {},
@@ -30064,6 +31059,16 @@ function implementationFromRow(row) {
           }
         } : {}
       }
+    } : {},
+    ...options?.assetInputs?.length ? {
+      assetInputs: options.assetInputs.map((input) => ({
+        match: {
+          ...input.match.kinds ? { kinds: [...input.match.kinds] } : {},
+          ...input.match.slots ? { slots: [...input.match.slots] } : {}
+        },
+        representations: [...input.representations],
+        ...input.mediaTypes ? { mediaTypes: [...input.mediaTypes] } : {}
+      }))
     } : {},
     // Which plugin executor owns this route's submit/poll lifecycle. Without this the executors are
     // built, tested and unreachable, and the host answers from its own path instead.
@@ -30157,7 +31162,9 @@ function isSafePluginRelativePath(value) {
   if (!value || value.startsWith("/") || value.startsWith("\\")) return false;
   if (value.includes("\\") || value.includes("\0")) return false;
   const segments = value.split("/");
-  return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+  return segments.every(
+    (segment) => segment.length > 0 && segment !== "." && segment !== ".."
+  );
 }
 var PluginRelativePathSchema = z.string().trim().min(1).refine(
   isSafePluginRelativePath,
@@ -30319,12 +31326,27 @@ var ExecutableActionCardSchema = z.object({
   };
   for (const [index, rule] of (action.constraints ?? []).entries()) {
     if (rule.type === "mutually-exclusive") {
-      rule.fields.forEach((field2, fieldIndex) => validateConstraintField(field2, ["constraints", index, "fields", fieldIndex]));
+      rule.fields.forEach(
+        (field2, fieldIndex) => validateConstraintField(field2, [
+          "constraints",
+          index,
+          "fields",
+          fieldIndex
+        ])
+      );
       continue;
     }
     validateConstraintField(rule.field, ["constraints", index, "field"]);
     if (rule.type === "required") {
-      rule.when.forEach((condition, conditionIndex) => validateConstraintField(condition.field, ["constraints", index, "when", conditionIndex, "field"]));
+      rule.when.forEach(
+        (condition, conditionIndex) => validateConstraintField(condition.field, [
+          "constraints",
+          index,
+          "when",
+          conditionIndex,
+          "field"
+        ])
+      );
     }
   }
 });
@@ -30377,7 +31399,9 @@ var ExecutablePluginProviderDefinitionSchema = z.object({
   bindingDefaults: z.object({
     priority: z.number().nonnegative().optional(),
     weight: z.number().nonnegative().optional(),
-    region: z.string().trim().min(1).optional()
+    region: z.string().trim().min(1).optional(),
+    /** Host delivery forms this Provider implementation accepts for typed media inputs. */
+    assetInputs: z.array(ProviderAssetInputSchema).optional()
   }).strict().optional()
 }).strict();
 var ExecutablePluginProviderDocumentSchema = z.object({
@@ -30408,6 +31432,7 @@ var ExecutablePluginModelBindingInputSchema = z.object({
   apiShape: z.string().trim().min(1).optional(),
   executorExportId: z.string().trim().min(1).optional(),
   requiredOAuth: z.array(z.string()).optional(),
+  assetInputs: z.array(ProviderAssetInputSchema).optional(),
   priority: z.number().optional(),
   weight: z.number().optional(),
   region: z.string().trim().min(1).optional()
@@ -30437,6 +31462,19 @@ function resolveModelBindingFromProvider(binding, provider) {
     if (value === void 0) delete resolved[key];
     else resolved[key] = value;
   }
+  const assetInputs = parsed.assetInputs ?? defaults.assetInputs;
+  if (assetInputs === void 0) {
+    delete resolved.assetInputs;
+  } else {
+    resolved.assetInputs = assetInputs.map((input) => ({
+      match: {
+        ...input.match.kinds ? { kinds: [...input.match.kinds] } : {},
+        ...input.match.slots ? { slots: [...input.match.slots] } : {}
+      },
+      representations: [...input.representations],
+      ...input.mediaTypes ? { mediaTypes: [...input.mediaTypes] } : {}
+    }));
+  }
   return resolved;
 }
 var ExecutablePluginModelBindingDocumentSchema = z.object({
@@ -30446,16 +31484,11 @@ var ExecutablePluginModelBindingDocumentSchema = z.object({
 }).strict();
 var PLUGIN_ENTRY_OPERATIONS = ["submit", "poll", "callback"];
 var PluginEntryOperationSchema = z.enum(PLUGIN_ENTRY_OPERATIONS);
-var ExecutablePluginHostDependencySchema = z.enum([
-  "public-asset-storage"
-]);
 var ExecutablePluginFunctionExportSchema = z.object({
   id: z.string().trim().regex(PLUGIN_ID_PATTERN),
   kind: z.enum(["action", "provider-projector", "provider-executor"]),
   /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
-  operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"]),
-  /** Optional machine capabilities this one entry point requires before it may run. */
-  requires: z.array(ExecutablePluginHostDependencySchema).default([])
+  operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"])
 }).strict().superRefine((entry, ctx) => {
   if (!entry.operations.includes("submit")) {
     ctx.addIssue({
@@ -30511,71 +31544,9 @@ var ExecutablePluginAssetHandleObjectSchema = z.object({
   assetId: z.string().trim().min(1),
   uri: z.string().regex(/^clash-asset:\/\/.+/),
   kind: AssetKindSchema,
-  mediaType: z.string().trim().min(1).optional(),
-  /**
-   * Where the bytes are, when the host has not stored them yet.
-   *
-   * A generation plugin ends up with a link its upstream published, and returning it through the
-   * asset channel keeps the media type a declared field instead of a hand-rolled one. Absent for a
-   * handle that names an asset the host already holds.
-   */
-  url: z.string().url().optional(),
-  /** Who can fetch `url`. The host cannot retrieve an address only the plugin can see. */
-  reach: z.enum(["public", "private"]).optional()
+  mediaType: z.string().trim().min(1).optional()
 }).strict();
-var ExecutablePluginAssetHandleSchema = ExecutablePluginAssetHandleObjectSchema.superRefine((handle, ctx) => {
-  if (handle.url && !handle.reach) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "An asset handle with a url must state its reach."
-    });
-  }
-  if (!handle.url && handle.reach) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "An asset handle's reach applies to a url."
-    });
-  }
-});
-var ExecutablePluginAssetReadResultSchema = z.object({
-  handle: z.string().trim().min(1),
-  kind: AssetKindSchema,
-  mediaType: z.string().trim().min(1).optional(),
-  byteLength: z.number().int().nonnegative(),
-  /** Fetchable by the plugin. A `clash-asset://` handle is the request, not an answer. */
-  url: z.string().url().refine((value) => !value.startsWith("clash-asset://"), {
-    message: "asset.read url must be fetchable, not another asset handle."
-  }).optional(),
-  /**
-   * Who can fetch `url`.
-   *
-   * `public` means the provider can retrieve it directly, so it may be forwarded upstream.
-   * `private` means only this plugin process can -- a local asset served on loopback, say --
-   * and forwarding it would hand the provider an address that answers for somebody else.
-   * Both are `https?://` strings, so nothing downstream can tell them apart by inspection.
-   */
-  reach: z.enum(["public", "private"]).optional(),
-  dataBase64: z.string().optional()
-}).strict().superRefine((result, ctx) => {
-  if (Boolean(result.url) === Boolean(result.dataBase64)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "asset.read returns exactly one of url or dataBase64."
-    });
-  }
-  if (result.url && !result.reach) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "asset.read url requires a reach of public or private."
-    });
-  }
-  if (result.dataBase64 && result.reach) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "asset.read reach applies to a url; bytes have none."
-    });
-  }
-});
+var ExecutablePluginAssetHandleSchema = ExecutablePluginAssetHandleObjectSchema;
 var ExecutablePluginReferenceBaseSchema = z.object({
   slot: z.string().trim().min(1),
   index: z.number().int().nonnegative()
@@ -30591,6 +31562,25 @@ var ExecutablePluginReferenceSchema = z.union([
     }).strict()
   }).strict()
 ]);
+var ExecutablePluginBrokerResolvedReferenceSchema = z.discriminatedUnion("form", [
+  z.object({
+    form: z.literal("provider-url"),
+    providerUrl: z.string().url(),
+    expiresAt: z.string().datetime(),
+    kind: AssetKindSchema.optional(),
+    mediaType: z.string().trim().min(1).optional()
+  }).strict(),
+  z.object({
+    form: z.literal("bytes"),
+    bytesBase64: z.string(),
+    kind: AssetKindSchema.optional(),
+    mediaType: z.string().trim().min(1).optional()
+  }).strict(),
+  z.object({
+    form: z.literal("text"),
+    text: z.string()
+  }).strict()
+]);
 var ExecutablePluginInvocationSchema = z.object({
   protocol: z.literal("clash.plugin.invoke/v1"),
   invocationId: z.string().trim().min(1),
@@ -30604,6 +31594,8 @@ var ExecutablePluginInvocationSchema = z.object({
     values: z.record(ExecutablePluginJsonValueSchema).default({}),
     references: z.array(ExecutablePluginReferenceSchema).default([])
   }).strict(),
+  /** Delivery contract copied from the exact selected Provider binding. */
+  assetInputs: z.array(ProviderAssetInputSchema).default([]),
   actor: z.object({
     kind: z.enum(["user", "agent", "system"]),
     id: z.string().trim().min(1).optional()
@@ -30622,30 +31614,28 @@ var ExecutablePluginInvocationSchema = z.object({
    */
   operation: z.enum(["submit", "poll", "callback"]).default("submit"),
   /**
-   * Where the provider should report completion, issued by the host at submit time.
+   * Reserved future callback address, issued by a callback-capable Host at submit time.
    *
    * The plugin cannot supply this. It has no address: a `local` plugin listens on nothing, and a
    * short-lived translator has nowhere to keep a listener even if it did. The same reasoning already
    * governs upload targets -- the host issues the address, so reachability holds by construction
    * rather than by a plugin's claim about itself.
    *
-   * Absent when the host cannot receive callbacks, which is the local single-user case today. A
-   * plugin that sees no callback URL submits for polling instead; both paths end in `accepted`.
+   * Current Hosts always omit this field and collect asynchronous work through polling. A future
+   * adapter may set it only for an entry that also retains a working poll path.
    */
   callbackUrl: z.string().url().optional(),
   /** The opaque state the plugin returned when it accepted the work. Required by `poll`. */
   pollState: ExecutablePluginJsonValueSchema.optional(),
   /**
-   * The provider's own callback body, verbatim, for the plugin to translate.
+   * Reserved future Provider callback body, verbatim, for the plugin to translate.
    *
-   * The host receives this on the address it issued and cannot read it: the payload is in the
-   * provider's shape, which is exactly the thing this plugin exists to translate. So the host routes
-   * it back rather than parsing it, and the plugin answers with the same `completed` or `failed` it
-   * would have returned from a poll.
+   * A future callback adapter would receive this on the address it issued and route it without
+   * interpreting the Provider-specific shape. Current Hosts never construct callback invocations.
    */
   callbackPayload: ExecutablePluginJsonValueSchema.optional(),
   /**
-   * The callback request's headers, so the plugin can decide whether to believe it.
+   * Reserved future callback request headers, for Provider signature verification.
    *
    * Providers sign callbacks, and they sign them in headers -- an HMAC over the raw body, a
    * timestamp, a key id. Only the plugin knows which scheme this provider uses, so only the plugin
@@ -30653,9 +31643,9 @@ var ExecutablePluginInvocationSchema = z.object({
    * standing: that the address is hard to guess. An address travels through the provider's logs,
    * any proxy in between, and a referrer header, so it is a weak thing to rest on by itself.
    *
-   * A plugin that cannot verify a callback returns `failed`, and the work stays pending until a poll
-   * settles it. Refusing to believe an unverified message is not a failure to make progress -- the
-   * poll path is still there, and it authenticates in the other direction.
+   * The future callback adapter must reject an unverified callback channel without settling the
+   * Provider run; polling remains the recovery path. That channel-level rejection semantics is not
+   * implemented by the current Host.
    */
   callbackHeaders: z.record(z.string()).optional()
 }).strict().superRefine((invocation, ctx) => {
@@ -30698,7 +31688,7 @@ var ExecutablePluginInvocationSchema = z.object({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["callbackUrl"],
-      message: "A callback address is issued when the work is submitted, not afterwards."
+      message: "A future callback address may be supplied only when work is submitted."
     });
   }
 });
@@ -30761,8 +31751,8 @@ var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
    * billed. Naming the task hands the host something durable to resume from, and moves the retry
    * loop out of every plugin that currently rewrites it.
    *
-   * How the host learns the answer is deliberately unspecified here. Polling and a cloud callback
-   * differ only in what wakes the host; the plugin's shape is the same either way.
+   * How the host learns the answer is deliberately unspecified here. Polling is implemented today;
+   * a future callback adapter may use the reserved callback ABI without changing this result shape.
    */
   z.object({
     protocol: z.literal("clash.plugin.result/v1"),
@@ -30789,8 +31779,8 @@ var ExecutablePluginResultSchema = z.discriminatedUnion("status", [
 ]);
 var ExecutablePluginBrokerOperationSchema = z.union([
   z.object({
-    kind: z.literal("asset.read"),
-    asset: ExecutablePluginAssetHandleSchema
+    kind: z.literal("asset.resolve"),
+    reference: ExecutablePluginReferenceSchema
   }).strict(),
   /**
    * Somewhere to put bytes that is not this message.
@@ -30871,9 +31861,10 @@ var ExecutablePluginBrokerOperationSchema = z.union([
      * `hilo-hub-media` does, and why its media type is hardcoded per model kind instead of read
      * from the response.
      */
-    url: z.string().url().optional(),
-    /** Who can fetch `url`. A host cannot retrieve an address only the plugin can see. */
-    reach: z.enum(["public", "private"]).optional(),
+    url: z.string().trim().url().refine(
+      (value) => value.startsWith("https://"),
+      "The host will ingest this address, so it must be https."
+    ).optional(),
     /** Set when the bytes were already streamed to a slot; the write only names them. */
     assetId: z.string().trim().min(1).optional(),
     dataBase64: z.string().regex(
@@ -30881,23 +31872,15 @@ var ExecutablePluginBrokerOperationSchema = z.union([
       "Plugin asset data must be canonical base64."
     ).optional()
   }).strict().superRefine((operation, ctx) => {
-    const sources = [operation.url, operation.dataBase64, operation.assetId].filter((source) => source !== void 0).length;
+    const sources = [
+      operation.url,
+      operation.dataBase64,
+      operation.assetId
+    ].filter((source) => source !== void 0).length;
     if (sources !== 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "asset.write requires exactly one of url, dataBase64 or assetId."
-      });
-    }
-    if (operation.url && !operation.reach) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "asset.write url requires a reach of public or private."
-      });
-    }
-    if (!operation.url && operation.reach) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "asset.write reach applies to a url."
       });
     }
   }),
@@ -30906,9 +31889,11 @@ var ExecutablePluginBrokerOperationSchema = z.union([
     prompt: z.string().trim().min(1).max(2e4),
     aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
     slot: z.string().trim().min(1),
-    references: z.array(ExecutablePluginAssetHandleObjectSchema.extend({
-      kind: z.literal("image")
-    }).strict()).max(5).default([])
+    references: z.array(
+      ExecutablePluginAssetHandleObjectSchema.extend({
+        kind: z.literal("image")
+      }).strict()
+    ).max(5).default([])
   }).strict()
 ]);
 var ExecutablePluginBrokerRequestSchema = z.object({
@@ -30917,23 +31902,26 @@ var ExecutablePluginBrokerRequestSchema = z.object({
   invocationId: z.string().trim().min(1),
   operation: ExecutablePluginBrokerOperationSchema
 }).strict();
-var ExecutablePluginBrokerResponseSchema = z.discriminatedUnion("status", [
-  z.object({
-    protocol: z.literal("clash.plugin.broker-response/v1"),
-    requestId: z.string().trim().min(1),
-    status: z.literal("ok"),
-    result: ExecutablePluginJsonValueSchema
-  }).strict(),
-  z.object({
-    protocol: z.literal("clash.plugin.broker-response/v1"),
-    requestId: z.string().trim().min(1),
-    status: z.literal("error"),
-    error: z.object({
-      code: z.string().trim().min(1),
-      message: z.string().trim().min(1)
+var ExecutablePluginBrokerResponseSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({
+      protocol: z.literal("clash.plugin.broker-response/v1"),
+      requestId: z.string().trim().min(1),
+      status: z.literal("ok"),
+      result: ExecutablePluginJsonValueSchema
+    }).strict(),
+    z.object({
+      protocol: z.literal("clash.plugin.broker-response/v1"),
+      requestId: z.string().trim().min(1),
+      status: z.literal("error"),
+      error: z.object({
+        code: z.string().trim().min(1),
+        message: z.string().trim().min(1)
+      }).strict()
     }).strict()
-  }).strict()
-]);
+  ]
+);
 var ExecutablePluginContractBrokerFixtureSchema = z.object({
   operation: ExecutablePluginBrokerOperationSchema,
   response: z.discriminatedUnion("status", [
@@ -31092,11 +32080,16 @@ function inheritBindingRoute(input, providers, bindingExportId) {
       `Model Provider binding ${bindingExportId} must name its providerId: this package exports ${definitions.length} providers.`
     );
   }
-  return { ...document, spec: resolveModelBindingFromProvider(spec, owner) };
+  return {
+    ...document,
+    spec: resolveModelBindingFromProvider(spec, owner)
+  };
 }
 function validateExecutablePluginPackage(manifestInput, cardDocuments, contractTestDocuments = {}, artifacts = {}) {
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
-  const functions = new Map(manifest.contributes.functions.map((entry) => [entry.id, entry]));
+  const functions = new Map(
+    manifest.contributes.functions.map((entry) => [entry.id, entry])
+  );
   const cards = {};
   const providers = {};
   const modelBindings = {};
@@ -31105,12 +32098,18 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
       throw new Error(`Missing declared Card document: ${cardExport.path}`);
     }
-    const card = ExecutablePluginCardDocumentSchema.parse(cardDocuments[cardExport.path]);
+    const card = ExecutablePluginCardDocumentSchema.parse(
+      cardDocuments[cardExport.path]
+    );
     if (card.kind !== cardExport.kind) {
-      throw new Error(`Card ${cardExport.path} kind ${card.kind} does not match export kind ${cardExport.kind}.`);
+      throw new Error(
+        `Card ${cardExport.path} kind ${card.kind} does not match export kind ${cardExport.kind}.`
+      );
     }
     if (card.spec.id !== cardExport.id) {
-      throw new Error(`Card ${cardExport.path} id ${card.spec.id} does not match export id ${cardExport.id}.`);
+      throw new Error(
+        `Card ${cardExport.path} id ${card.spec.id} does not match export id ${cardExport.id}.`
+      );
     }
     if (card.kind === "action-card") {
       const implementation = functions.get(card.spec.functionExportId);
@@ -31122,7 +32121,8 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
     } else {
       for (const implementation of card.spec.providerImplementations ?? []) {
         if (!implementation.projectorExportId) continue;
-        if (implementation.projectorPluginId && implementation.projectorPluginId !== manifest.id) continue;
+        if (implementation.projectorPluginId && implementation.projectorPluginId !== manifest.id)
+          continue;
         const projector = functions.get(implementation.projectorExportId);
         if (!projector || projector.kind !== "provider-projector") {
           throw new Error(
@@ -31136,7 +32136,9 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
   for (const providerExport of manifest.contributes.providers) {
     const input = artifacts.providers?.[providerExport.path];
     if (input === void 0) {
-      throw new Error(`Missing declared Provider document: ${providerExport.path}`);
+      throw new Error(
+        `Missing declared Provider document: ${providerExport.path}`
+      );
     }
     const provider = ExecutablePluginProviderDocumentSchema.parse(input);
     if (provider.spec.id !== providerExport.id) {
@@ -31155,9 +32157,15 @@ function validateExecutablePluginPackage(manifestInput, cardDocuments, contractT
   for (const bindingExport of manifest.contributes.modelBindings) {
     const input = artifacts.modelBindings?.[bindingExport.path];
     if (input === void 0) {
-      throw new Error(`Missing declared model Provider binding: ${bindingExport.path}`);
+      throw new Error(
+        `Missing declared model Provider binding: ${bindingExport.path}`
+      );
     }
-    const bindingInput = inheritBindingRoute(input, providers, bindingExport.id);
+    const bindingInput = inheritBindingRoute(
+      input,
+      providers,
+      bindingExport.id
+    );
     const binding = ExecutablePluginModelBindingDocumentSchema.parse(bindingInput);
     if (binding.spec.id !== bindingExport.id) {
       throw new Error(
@@ -32116,7 +33124,7 @@ function parseObjectDef(def, refs) {
     type: "object",
     properties: {}
   };
-  const required3 = [];
+  const required4 = [];
   const shape = def.shape();
   for (const propName in shape) {
     let propDef = shape[propName];
@@ -32143,11 +33151,11 @@ function parseObjectDef(def, refs) {
     }
     result.properties[propName] = parsedDef;
     if (!propOptional) {
-      required3.push(propName);
+      required4.push(propName);
     }
   }
-  if (required3.length) {
-    result.required = required3;
+  if (required4.length) {
+    result.required = required4;
   }
   const additionalProperties = decideAdditionalProperties(def, refs);
   if (additionalProperties !== void 0) {
@@ -32482,7 +33490,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-RUA5QFGJ.js
+// ../../packages/shared-types/dist/chunk-22GF7SDG.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -32911,8 +33919,8 @@ function timelineDslAnnotatedObjectShape(fields, options = {}) {
   return Object.fromEntries(
     Object.entries(fields).map(([name, annotation2]) => {
       const executable = options.overrides?.[name] ?? annotation2.schema.describe(annotation2.description);
-      const required3 = requiredness === "runtime" ? annotation2.required : requiredness === "authored" ? annotation2.authoredRequired : false;
-      return [name, required3 ? executable : executable.optional()];
+      const required4 = requiredness === "runtime" ? annotation2.required : requiredness === "authored" ? annotation2.authoredRequired : false;
+      return [name, required4 ? executable : executable.optional()];
     })
   );
 }
@@ -33133,9 +34141,6 @@ var TimelineEditorAssetTranscriptSchema = z.object({
   modelId: NonEmptyStringSchema.optional(),
   language: NonEmptyStringSchema.optional()
 });
-var TimelineMediaAssetRefSchema = z.object({
-  assetId: NonEmptyStringSchema
-});
 var TimelineSequenceSchema = z.object({
   baseUrl: NonEmptyStringSchema,
   frameCount: PositiveFrameSchema,
@@ -33195,12 +34200,6 @@ var rootFields = {
     editor: noControl,
     runtimeConsumers: ["editor", "transcript", "caption-generation", "persistence"],
     defaultValue: {}
-  }),
-  mediaAssetRefs: derived(z.array(TimelineMediaAssetRefSchema), "Host-owned media asset references required to rehydrate Timeline assets; agents must preserve them.", {
-    required: false,
-    editor: noControl,
-    runtimeConsumers: ["editor", "asset-loader", "persistence"],
-    defaultValue: []
   })
 };
 var trackFields = {
@@ -35234,6 +36233,11 @@ var timelineKeyframeRangeRule = {
   minimum: 0,
   exclusiveMaximumPath: "durationInFrames"
 };
+var timelineRetiredAssetFieldRule = {
+  id: "timeline.asset.retired-field",
+  kind: "forbidden-paths",
+  paths: ["mediaAssetRefs", "tracks[].items[].backingAssetId"]
+};
 var timelineKeyframeUniqueFrameRule = {
   id: "timeline.keyframes.unique-frame",
   kind: "unique-key-by-channel",
@@ -35257,6 +36261,7 @@ var TIMELINE_DSL_SEMANTIC_RULES = {
     timelineKeyframeRangeRule,
     timelineKeyframeUniqueFrameRule,
     timelineItemFieldApplicabilityRule,
+    timelineRetiredAssetFieldRule,
     ...TIMELINE_DSL_GLOBAL_SEMANTIC_RULES
   ]
 };
@@ -35298,6 +36303,14 @@ function timelineMaskKeyframeSemanticIssues(item) {
 var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine(
   (item, ctx) => {
     const typedItem = item;
+    if (Object.prototype.hasOwnProperty.call(typedItem, "backingAssetId")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["backingAssetId"],
+        message: "backingAssetId was removed; use the item's Project Asset id",
+        params: { ruleId: timelineRetiredAssetFieldRule.id }
+      });
+    }
     for (const [fieldName, owners] of itemFieldOwners) {
       if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
         ctx.addIssue({
@@ -35330,6 +36343,14 @@ var TimelineDslSchemaBase = z.object(
 ).passthrough();
 var TimelineDslSchema = TimelineDslSchemaBase.superRefine(
   (timeline, context) => {
+    if (Object.prototype.hasOwnProperty.call(timeline, "mediaAssetRefs")) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["mediaAssetRefs"],
+        message: "mediaAssetRefs was removed; Timeline items bind Project Assets directly",
+        params: { ruleId: timelineRetiredAssetFieldRule.id }
+      });
+    }
     for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -35522,7 +36543,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 7,
+  schemaVersion: 9,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -37559,13 +38580,29 @@ function nonEmptyString2(value) {
 }
 function storageFreeMediaRecord(input, label) {
   const source = nonEmptyString2(input.src);
-  if (!source) return { ok: true, value: { ...input } };
-  const projectAssetId = nonEmptyString2(input.assetId) ?? nonEmptyString2(input.backingAssetId);
-  if (!projectAssetId && !source.startsWith("data:")) {
+  const projectAssetId = nonEmptyString2(input.assetId);
+  const itemType = nonEmptyString2(input.type);
+  const requiresProjectAsset = itemType === "video" || itemType === "audio" || itemType === "image" || itemType === "sticker";
+  if (Object.prototype.hasOwnProperty.call(input, "backingAssetId")) {
+    return {
+      ok: false,
+      error: `${label} contains the removed backingAssetId field; use assetId`
+    };
+  }
+  if (!projectAssetId && source) {
     return {
       ok: false,
       error: `${label} must reference a Project Asset before it can be persisted`
     };
+  }
+  if (requiresProjectAsset && !projectAssetId) {
+    return {
+      ok: false,
+      error: `${label} must reference a Project Asset before it can be persisted`
+    };
+  }
+  if (!projectAssetId && !source) {
+    return { ok: true, value: { ...input } };
   }
   if (!projectAssetId) return { ok: true, value: { ...input } };
   const {
@@ -37582,6 +38619,12 @@ function storageFreeMediaRecord(input, label) {
 }
 function normalizeProjectTimelinePersistenceState(input) {
   if (!isRecord3(input)) return { ok: true, state: input };
+  if (Object.prototype.hasOwnProperty.call(input, "mediaAssetRefs")) {
+    return {
+      ok: false,
+      error: "Timeline state contains the removed mediaAssetRefs collection; use item assetId bindings"
+    };
+  }
   const tracks = Array.isArray(input.tracks) ? input.tracks : void 0;
   if (!tracks) return { ok: true, state: structuredClone(input) };
   const nextTracks = [];
@@ -37606,27 +38649,12 @@ function normalizeProjectTimelinePersistenceState(input) {
     }
     nextTracks.push({ ...structuredClone(track), items });
   }
+  const cloned = structuredClone(input);
+  const { assets: _assets, ...root } = cloned;
   const next = {
-    ...structuredClone(input),
+    ...root,
     tracks: nextTracks
   };
-  if (Array.isArray(input.assets)) {
-    const assets = [];
-    for (const candidate of input.assets) {
-      if (!isRecord3(candidate)) {
-        assets.push(structuredClone(candidate));
-        continue;
-      }
-      const assetId = nonEmptyString2(candidate.backingAssetId) ?? nonEmptyString2(candidate.assetId) ?? nonEmptyString2(candidate.id) ?? "<unknown>";
-      const normalized = storageFreeMediaRecord(
-        candidate,
-        `Timeline Asset ${assetId}`
-      );
-      if (!normalized.ok) return normalized;
-      assets.push(normalized.value);
-    }
-    next.assets = assets;
-  }
   return { ok: true, state: next };
 }
 var DEFAULT_CANVAS_ID = "main";
@@ -38600,6 +39628,16 @@ function routesFromModelCard(model) {
           }
         } : {}
       }
+    } : {},
+    ...implementation.assetInputs?.length ? {
+      assetInputs: implementation.assetInputs.map((input) => ({
+        match: {
+          ...input.match.kinds ? { kinds: [...input.match.kinds] } : {},
+          ...input.match.slots ? { slots: [...input.match.slots] } : {}
+        },
+        representations: [...input.representations],
+        ...input.mediaTypes ? { mediaTypes: [...input.mediaTypes] } : {}
+      }))
     } : {},
     ...implementation.parameterOverrides?.length ? { parameterOverrides: implementation.parameterOverrides.map((parameter) => ({ ...parameter })) } : {},
     ...implementation.defaultParamOverrides ? { defaultParamOverrides: { ...implementation.defaultParamOverrides } } : {},
@@ -39843,16 +40881,170 @@ function createProjectAssetHttpClient(options = {}) {
   };
 }
 
+// ../../packages/asset-sdk/dist/personal-global-asset-http-client.js
+function cleanErrorField2(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+var PersonalGlobalAssetHttpError = class extends Error {
+  status;
+  body;
+  constructor(status, body) {
+    const record2 = body !== null && typeof body === "object" ? body : void 0;
+    const reason = [
+      cleanErrorField2(record2?.code),
+      cleanErrorField2(record2?.error)
+    ].filter(Boolean).join(": ");
+    super(reason ? `${reason} (Personal Global Asset HTTP ${status})` : `Personal Global Asset request failed with HTTP ${status}`);
+    this.status = status;
+    this.body = body;
+    this.name = "PersonalGlobalAssetHttpError";
+  }
+};
+function required2(value, label) {
+  const normalized = value?.trim();
+  if (!normalized)
+    throw new Error(`${label} is required`);
+  return normalized;
+}
+function libraryAssetsUrl(endpoint) {
+  return `${endpoint.trim().replace(/\/+$/, "")}/api/v1/libraries/personal/assets`;
+}
+function fileNameOf2(file2) {
+  return "name" in file2 && typeof file2.name === "string" ? file2.name : void 0;
+}
+function createPersonalGlobalAssetHttpClient(options = {}) {
+  const fetch2 = options.fetch ?? globalThis.fetch;
+  const connection = async () => {
+    if (options.resolveConnection)
+      return options.resolveConnection();
+    return {
+      endpoint: options.endpoint?.trim() ?? "",
+      ...options.token?.trim() ? { token: options.token.trim() } : {}
+    };
+  };
+  const target = async (suffix = "") => {
+    const connected = await connection();
+    return {
+      connected,
+      url: `${libraryAssetsUrl(connected.endpoint)}${suffix}`
+    };
+  };
+  const headers = (connected, additions = {}) => ({
+    ...connected.token ? { authorization: `Bearer ${connected.token}` } : {},
+    ...additions
+  });
+  const requestInit = (input) => ({
+    ...input,
+    ...options.credentials === void 0 ? {} : { credentials: options.credentials }
+  });
+  const responseBody = async (response) => {
+    const body = await response.json().catch(() => void 0);
+    if (!response.ok) {
+      throw options.createHttpError?.(response.status, body) ?? new PersonalGlobalAssetHttpError(response.status, body);
+    }
+    return body;
+  };
+  const resolvedAsset = async (response) => ResolvedAssetSchema.parse(await responseBody(response));
+  return {
+    async list() {
+      const { connected, url: url3 } = await target();
+      const response = await fetch2(url3, requestInit({ method: "GET", headers: headers(connected) }));
+      const body = await responseBody(response);
+      return ResolvedAssetSchema.array().parse(body.assets);
+    },
+    async get(input) {
+      const globalAssetId = required2(input.globalAssetId, "global asset id");
+      const { connected, url: url3 } = await target(`/${encodeURIComponent(globalAssetId)}`);
+      return resolvedAsset(await fetch2(url3, requestInit({ method: "GET", headers: headers(connected) })));
+    },
+    async importFile(input) {
+      const fileName = required2(input.fileName ?? fileNameOf2(input.file), "file name");
+      const { connected, url: url3 } = await target("/import-file");
+      const form = new FormData();
+      if (input.fileName === void 0 && fileNameOf2(input.file) === fileName) {
+        form.append("file", input.file);
+      } else {
+        form.append("file", input.file, fileName);
+      }
+      form.append("kind", input.kind);
+      return resolvedAsset(await fetch2(url3, requestInit({
+        method: "POST",
+        headers: headers(connected),
+        body: form
+      })));
+    },
+    async publish(input) {
+      const projectId = required2(input.projectId, "project id");
+      const projectAssetId = required2(input.projectAssetId, "project asset id");
+      const { connected, url: url3 } = await target("/publish");
+      return resolvedAsset(await fetch2(url3, requestInit({
+        method: "POST",
+        headers: headers(connected, {
+          "content-type": "application/json"
+        }),
+        body: JSON.stringify({ projectId, projectAssetId })
+      })));
+    },
+    async trash(input) {
+      const globalAssetId = required2(input.globalAssetId, "global asset id");
+      const { connected, url: url3 } = await target(`/${encodeURIComponent(globalAssetId)}`);
+      return resolvedAsset(await fetch2(url3, requestInit({ method: "DELETE", headers: headers(connected) })));
+    },
+    async restore(input) {
+      const globalAssetId = required2(input.globalAssetId, "global asset id");
+      const { connected, url: url3 } = await target(`/${encodeURIComponent(globalAssetId)}/restore`);
+      return resolvedAsset(await fetch2(url3, requestInit({ method: "POST", headers: headers(connected) })));
+    }
+  };
+}
+
 // ../../packages/shared-runtime/dist/project-host-client.js
 var import_promises3 = require("node:fs/promises");
 var import_node_path3 = require("node:path");
+var INTERNAL_HOST_RECEIPT_FIELDS = /* @__PURE__ */ new Set([
+  "ifMatch",
+  "observedVersion",
+  "readToken",
+  "receipt",
+  "textReadToken"
+]);
+var INTERNAL_HOST_MUTATION_FIELDS = /* @__PURE__ */ new Set([
+  "afterHash",
+  "afterReadToken",
+  "beforeHash",
+  "beforeReadToken",
+  "expectedHash",
+  "expectedReadToken"
+]);
+function publicProjectHostValue(value) {
+  return sanitizeProjectHostValue(value, "result");
+}
+function sanitizeProjectHostValue(value, context) {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeProjectHostValue(item, "nested"));
+  }
+  if (!value || typeof value !== "object")
+    return value;
+  return Object.fromEntries(Object.entries(value).flatMap(([key, child]) => {
+    if (INTERNAL_HOST_RECEIPT_FIELDS.has(key))
+      return [];
+    if (context === "result" && (key === "version" || key === "versions")) {
+      return [];
+    }
+    if (context === "mutation" && INTERNAL_HOST_MUTATION_FIELDS.has(key)) {
+      return [];
+    }
+    const childContext = key === "mutation" ? "mutation" : key === "replaceResult" ? "result" : "nested";
+    return [[key, sanitizeProjectHostValue(child, childContext)]];
+  }));
+}
 var ProjectHostHttpError = class extends Error {
   status;
   body;
   constructor(status, body) {
     const record2 = body !== null && typeof body === "object" ? body : void 0;
-    const code = cleanErrorField2(record2?.code);
-    const detail = cleanErrorField2(record2?.error);
+    const code = cleanErrorField3(record2?.code);
+    const detail = cleanErrorField3(record2?.error);
     const reason = [code, detail].filter(Boolean).join(": ");
     super(reason ? `${reason} (Project host HTTP ${status})` : `Project host request failed with HTTP ${status}`);
     this.status = status;
@@ -39860,7 +41052,7 @@ var ProjectHostHttpError = class extends Error {
     this.name = "ProjectHostHttpError";
   }
 };
-function cleanErrorField2(value) {
+function cleanErrorField3(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
 function projectHostCommandUrl(endpoint, projectId) {
@@ -39950,9 +41142,51 @@ async function sendProjectHostCommand(options) {
 }
 
 // ../../packages/shared-runtime/dist/project-asset-client.js
-function createProjectAssetHostClient(options = {}) {
+var ASSET_IMPORT_FILE_TYPES = {
+  ".png": { kind: "image", contentType: "image/png" },
+  ".jpg": { kind: "image", contentType: "image/jpeg" },
+  ".jpeg": { kind: "image", contentType: "image/jpeg" },
+  ".gif": { kind: "image", contentType: "image/gif" },
+  ".webp": { kind: "image", contentType: "image/webp" },
+  ".svg": { kind: "image", contentType: "image/svg+xml" },
+  ".avif": { kind: "image", contentType: "image/avif" },
+  ".mp4": { kind: "video", contentType: "video/mp4" },
+  ".webm": { kind: "video", contentType: "video/webm" },
+  ".mov": { kind: "video", contentType: "video/quicktime" },
+  ".m4v": { kind: "video", contentType: "video/x-m4v" },
+  ".mkv": { kind: "video", contentType: "video/x-matroska" },
+  ".mp3": { kind: "audio", contentType: "audio/mpeg" },
+  ".wav": { kind: "audio", contentType: "audio/wav" },
+  ".m4a": { kind: "audio", contentType: "audio/mp4" },
+  ".aac": { kind: "audio", contentType: "audio/aac" },
+  ".flac": { kind: "audio", contentType: "audio/flac" },
+  ".ogg": { kind: "audio", contentType: "audio/ogg" },
+  ".glb": { kind: "model", contentType: "model/gltf-binary" },
+  ".gltf": { kind: "model", contentType: "model/gltf+json" },
+  ".fbx": { kind: "model", contentType: "application/octet-stream" },
+  ".bvh": { kind: "model", contentType: "application/octet-stream" },
+  ".obj": { kind: "model", contentType: "text/plain" },
+  ".usdz": { kind: "model", contentType: "model/vnd.usdz+zip" }
+};
+function resolveAssetImportFileType(filePath, requestedKind) {
+  const fileName = filePath.replace(/^.*[/\\]/u, "");
+  const dot = fileName.lastIndexOf(".");
+  const extension = dot > 0 ? fileName.slice(dot).toLowerCase() : "";
+  const inferred = ASSET_IMPORT_FILE_TYPES[extension];
+  if (!inferred) {
+    if (requestedKind) {
+      return { kind: requestedKind, contentType: "application/octet-stream" };
+    }
+    throw new Error(`Asset file type is unsupported: ${filePath}`);
+  }
+  if (requestedKind && requestedKind !== inferred.kind) {
+    throw new Error(`Asset kind ${requestedKind} does not match the selected ${inferred.kind} file`);
+  }
+  return { ...inferred, ...requestedKind ? { kind: requestedKind } : {} };
+}
+function createAssetHostConnectionResolver(options) {
   const env = options.env ?? process.env;
-  const connection = async () => {
+  return async () => {
     if (options.hostClient?.resolveConnection) {
       return options.hostClient.resolveConnection();
     }
@@ -39963,6 +41197,10 @@ function createProjectAssetHostClient(options = {}) {
       ...options.token?.trim() || env.CLASH_API_KEY?.trim() ? { token: options.token?.trim() || env.CLASH_API_KEY?.trim() } : {}
     };
   };
+}
+function createProjectAssetHostClient(options = {}) {
+  const env = options.env ?? process.env;
+  const connection = createAssetHostConnectionResolver(options);
   const context = (input = {}) => options.hostClient ? options.hostClient.resolveContext(input) : resolveProjectHostContext({
     cwd: input.cwd,
     projectId: input.projectId,
@@ -40023,6 +41261,13 @@ function createProjectAssetHostClient(options = {}) {
         kind: input.kind
       }));
     },
+    async admit(input) {
+      const resolved = await context(input);
+      return result(resolved, await http.admit({
+        projectId: resolved.projectId,
+        globalAssetId: input.globalAssetId
+      }));
+    },
     async trash(input) {
       const resolved = await context(input);
       const observed2 = await http.trash({
@@ -40049,6 +41294,27 @@ function createProjectAssetHostClient(options = {}) {
         receipt: observed2.receipt
       };
     }
+  };
+}
+function createPersonalGlobalAssetHostClient(options = {}) {
+  const connection = createAssetHostConnectionResolver(options);
+  const http = createPersonalGlobalAssetHttpClient({
+    fetch: options.fetch,
+    resolveConnection: connection,
+    createHttpError: (status, body) => new ProjectHostHttpError(status, body)
+  });
+  return {
+    list: () => http.list(),
+    get: (input) => http.get(input),
+    async importFile(input) {
+      const bytes = input.bytes.slice().buffer;
+      return http.importFile({
+        file: new Blob([bytes], { type: input.contentType }),
+        fileName: input.fileName,
+        kind: input.kind
+      });
+    },
+    publish: (input) => http.publish(input)
   };
 }
 
@@ -40815,6 +42081,12 @@ function createCliProjectAssetHostClient(options = {}) {
     ...options.fetch ? { fetch: options.fetch } : {}
   });
 }
+function createCliPersonalGlobalAssetHostClient(options = {}) {
+  return createPersonalGlobalAssetHostClient({
+    resolveConnection: async () => resolveCliProjectHostConnection(),
+    ...options.fetch ? { fetch: options.fetch } : {}
+  });
+}
 function sendProjectCommand(projectId, command2) {
   const { endpoint, token } = resolveCliProjectHostConnection();
   return sendProjectHostCommand({
@@ -41316,39 +42588,11 @@ function normalize(value, label) {
 }
 
 // ../../packages/cli/src/lib/agent-worktree-observation.ts
-var INTERNAL_RECEIPT_FIELDS = /* @__PURE__ */ new Set([
-  "observedVersion",
-  "readToken",
-  "textReadToken"
-]);
-var INTERNAL_MUTATION_FIELDS = /* @__PURE__ */ new Set([
-  "afterHash",
-  "afterReadToken",
-  "beforeHash",
-  "beforeReadToken",
-  "expectedHash",
-  "expectedReadToken"
-]);
 function isAgentInvocation(env = process.env) {
   return Boolean(env.CLASH_AGENT_MEMBER_ID?.trim());
 }
 function publicAgentCommandResult(result) {
-  return sanitizePublicValue(result, "result");
-}
-function sanitizePublicValue(value, context) {
-  if (Array.isArray(value))
-    return value.map((item) => sanitizePublicValue(item, "nested"));
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value).flatMap(([key, child]) => {
-      if (INTERNAL_RECEIPT_FIELDS.has(key)) return [];
-      if (context === "result" && key === "version") return [];
-      if (context === "mutation" && INTERNAL_MUTATION_FIELDS.has(key))
-        return [];
-      const childContext = key === "mutation" ? "mutation" : key === "replaceResult" ? "result" : "nested";
-      return [[key, sanitizePublicValue(child, childContext)]];
-    })
-  );
+  return publicProjectHostValue(result);
 }
 async function recordAgentObservation(options) {
   const env = options.env ?? process.env;
@@ -42760,7 +44004,7 @@ __export(util_exports, {
   promiseAllObject: () => promiseAllObject,
   propertyKeyTypes: () => propertyKeyTypes,
   randomString: () => randomString,
-  required: () => required2,
+  required: () => required3,
   safeExtend: () => safeExtend,
   shallowClone: () => shallowClone,
   slugify: () => slugify,
@@ -43231,7 +44475,7 @@ function partial(Class2, schema, mask) {
   });
   return clone(schema, def);
 }
-function required2(Class2, schema, mask) {
+function required3(Class2, schema, mask) {
   const def = mergeDefs(schema._zod.def, {
     get shape() {
       const oldShape = schema._zod.def.shape;
@@ -57604,19 +58848,22 @@ async function importAssetFile(options) {
     env: options.env,
     homeDir: options.homeDir
   });
-  const kind = normalizeAssetKind(
-    options.kind ?? inferAssetKind(sourcePath) ?? void 0
-  );
-  if (!kind) {
+  const requestedKind = normalizeAssetKind(options.kind);
+  if (options.kind !== void 0 && !requestedKind) {
     throw new Error(
       "asset kind must be image, video, audio, or model to import through the Host"
     );
   }
+  const fileType = resolveAssetImportFileType(
+    sourcePath,
+    requestedKind ?? void 0
+  );
+  const kind = fileType.kind;
   const imported = await (options.client ?? createCliProjectAssetHostClient()).importFile({
     projectId: status.projectId,
     bytes: new Uint8Array((0, import_node_fs7.readFileSync)(sourcePath)),
     fileName: (0, import_node_path20.basename)(sourcePath),
-    contentType: contentTypeForPath(sourcePath),
+    contentType: fileType.contentType,
     kind
   });
   const assetId = imported.value.id;
@@ -57712,6 +58959,47 @@ async function restoreProjectAsset(options) {
   await options.onObservation?.(observed2.receipt);
   return observed2.value;
 }
+async function listPersonalGlobalAssetRecords(options = {}) {
+  return (options.client ?? createCliPersonalGlobalAssetHostClient()).list();
+}
+async function fetchPersonalGlobalAssetRecord(options) {
+  return (options.client ?? createCliPersonalGlobalAssetHostClient()).get({
+    globalAssetId: options.globalAssetId
+  });
+}
+async function importPersonalGlobalAssetFile(options) {
+  const sourcePath = (0, import_node_path20.resolve)(options.filePath);
+  const info = (0, import_node_fs7.statSync)(sourcePath);
+  if (!info.isFile()) {
+    throw new Error(`Global Asset import source is not a file: ${sourcePath}`);
+  }
+  const requestedKind = normalizeAssetKind(options.kind);
+  if (options.kind !== void 0 && !requestedKind) {
+    throw new Error("Global Asset kind must be image, video, audio, or model");
+  }
+  const fileType = resolveAssetImportFileType(
+    sourcePath,
+    requestedKind ?? void 0
+  );
+  return (options.client ?? createCliPersonalGlobalAssetHostClient()).importFile({
+    bytes: new Uint8Array((0, import_node_fs7.readFileSync)(sourcePath)),
+    fileName: (0, import_node_path20.basename)(sourcePath),
+    contentType: fileType.contentType,
+    kind: fileType.kind
+  });
+}
+async function admitPersonalGlobalAsset(options) {
+  return (await (options.client ?? createCliProjectAssetHostClient()).admit({
+    projectId: options.projectId,
+    globalAssetId: options.globalAssetId
+  })).value;
+}
+async function publishProjectAssetToPersonalGlobal(options) {
+  return (options.client ?? createCliPersonalGlobalAssetHostClient()).publish({
+    projectId: options.projectId,
+    projectAssetId: options.projectAssetId
+  });
+}
 async function replaceAssetFile(options) {
   const imported = await (options.importFile ?? importAssetFile)({
     filePath: options.filePath,
@@ -57740,35 +59028,7 @@ function normalizeAssetKind(kind) {
   const normalized = kind?.trim().toLowerCase();
   return normalized === "image" || normalized === "video" || normalized === "audio" || normalized === "model" ? normalized : null;
 }
-function inferAssetKind(path) {
-  const extension = (0, import_node_path20.extname)(path).toLowerCase();
-  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension))
-    return "image";
-  if ([".mp4", ".mov", ".webm", ".m4v"].includes(extension)) return "video";
-  if ([".mp3", ".wav", ".m4a", ".aac", ".flac"].includes(extension))
-    return "audio";
-  if ([".glb", ".gltf"].includes(extension)) return "model";
-  return null;
-}
-function contentTypeForPath(path) {
-  const extension = (0, import_node_path20.extname)(path).toLowerCase();
-  if (extension === ".png") return "image/png";
-  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
-  if (extension === ".gif") return "image/gif";
-  if (extension === ".webp") return "image/webp";
-  if (extension === ".svg") return "image/svg+xml";
-  if (extension === ".mp4") return "video/mp4";
-  if (extension === ".mov") return "video/quicktime";
-  if (extension === ".webm") return "video/webm";
-  if (extension === ".mp3") return "audio/mpeg";
-  if (extension === ".wav") return "audio/wav";
-  if (extension === ".m4a") return "audio/mp4";
-  if (extension === ".flac") return "audio/flac";
-  if (extension === ".glb") return "model/gltf-binary";
-  if (extension === ".gltf") return "model/gltf+json";
-  return "application/octet-stream";
-}
-var assetsCommand = new Command("assets").alias("asset").description("Inspect and link project assets");
+var assetsCommand = new Command("assets").alias("asset").description("Inspect and transfer Project and personal Global Assets");
 function publicAssetResult(result) {
   return publicAgentCommandResult(
     result
@@ -57951,6 +59211,54 @@ assetsCommand.command("refs").description("Show authoritative Action Asset bindi
     }
   }
 );
+assetsCommand.command("admit").description("Admit a personal Global Asset into the selected Project").requiredOption("--global-asset <id>", "Global Asset ID").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--json", "Output result as JSON").action(
+  async (options) => {
+    try {
+      const projectId = await resolveAssetProjectId(options.project);
+      const result = await admitPersonalGlobalAsset({
+        projectId,
+        globalAssetId: options.globalAsset
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(
+          `admitted Global Asset ${options.globalAsset} as Project Asset ${result.id}`
+        );
+      }
+    } catch (error51) {
+      console.error(error51 instanceof Error ? error51.message : String(error51));
+      process.exit(1);
+    }
+  }
+);
+assetsCommand.command("publish").description("Publish a Project Asset to the personal Global library").requiredOption("--asset <id>", "Project Asset ID").option(
+  "--project <id>",
+  "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
+).option("--json", "Output result as JSON").action(
+  async (options) => {
+    try {
+      const projectId = await resolveAssetProjectId(options.project);
+      const result = await publishProjectAssetToPersonalGlobal({
+        projectId,
+        projectAssetId: options.asset
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(
+          `published Project Asset ${options.asset} as Global Asset ${result.id}`
+        );
+      }
+    } catch (error51) {
+      console.error(error51 instanceof Error ? error51.message : String(error51));
+      process.exit(1);
+    }
+  }
+);
 assetsCommand.command("delete").description("Move an unreferenced Project Asset to the recovery window").requiredOption("--asset <id>", "Asset ID").option(
   "--project <id>",
   "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)"
@@ -58012,6 +59320,58 @@ assetsCommand.command("restore").description("Restore a trashed Project Asset du
     }
   }
 );
+var personalGlobalAssetsCommand = new Command("global").description(
+  "Inspect and import personal Global Assets"
+);
+personalGlobalAssetsCommand.command("list").description("List personal Global Assets resolved by the current Host").option("--json", "Output result as JSON").action(async (options) => {
+  try {
+    const assets = await listPersonalGlobalAssetRecords();
+    if (isJsonMode(options)) {
+      printJson({ assets });
+    } else if (assets.length === 0) {
+      console.log("No personal Global Assets");
+    } else {
+      for (const asset of assets) {
+        console.log(`${asset.id} ${asset.kind} ${asset.status}`);
+      }
+    }
+  } catch (error51) {
+    console.error(error51 instanceof Error ? error51.message : String(error51));
+    process.exit(1);
+  }
+});
+personalGlobalAssetsCommand.command("get").description("Read one personal Global Asset resolved by the current Host").requiredOption("--asset <id>", "Global Asset ID").option("--json", "Output result as JSON").action(async (options) => {
+  try {
+    const result = await fetchPersonalGlobalAssetRecord({
+      globalAssetId: options.asset
+    });
+    if (isJsonMode(options)) {
+      printJson(publicAssetResult(result));
+    } else {
+      console.log(`${result.id} ${result.kind} ${result.status}`);
+    }
+  } catch (error51) {
+    console.error(error51 instanceof Error ? error51.message : String(error51));
+    process.exit(1);
+  }
+});
+personalGlobalAssetsCommand.command("import").description("Import a local file into the personal Global Asset library").requiredOption("--file <path>", "Local file to import").option("--kind <kind>", "Asset kind: image, video, audio, or model").option("--json", "Output result as JSON").action(async (options) => {
+  try {
+    const result = await importPersonalGlobalAssetFile({
+      filePath: options.file,
+      kind: options.kind
+    });
+    if (isJsonMode(options)) {
+      printJson(publicAssetResult(result));
+    } else {
+      console.log(`imported Global Asset ${result.id}`);
+    }
+  } catch (error51) {
+    console.error(error51 instanceof Error ? error51.message : String(error51));
+    process.exit(1);
+  }
+});
+assetsCommand.addCommand(personalGlobalAssetsCommand);
 assetsCommand.addCommand(assetMetadataCommand);
 
 // ../../packages/cli/src/commands/audit.ts
@@ -61915,6 +63275,151 @@ effectCommand.command("install").description("Install a validated, immutable eff
   console.log(`Bundle: ${(0, import_node_path26.basename)(bundle)}`);
 });
 
+// ../../packages/cli/src/commands/public-storage.ts
+var import_node_fs9 = require("node:fs");
+var PUBLIC_STORAGE_PROVIDERS = /* @__PURE__ */ new Set([
+  "r2",
+  "aws-s3",
+  "tos",
+  "custom-s3"
+]);
+function asProvider(value) {
+  if (PUBLIC_STORAGE_PROVIDERS.has(value)) {
+    return value;
+  }
+  throw new Error(
+    `Unknown public-storage provider "${value}". Choose r2, aws-s3, tos, or custom-s3.`
+  );
+}
+function normalizedCredentialKey(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function unquote(value) {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && (trimmed.startsWith('"') && trimmed.endsWith('"') || trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+function credentialRecordFromFile(path) {
+  let contents;
+  try {
+    contents = (0, import_node_fs9.readFileSync)(path, "utf8").trim();
+  } catch {
+    throw new Error(`Cannot read public-storage credentials file ${path}.`);
+  }
+  if (!contents) throw new Error(`Public-storage credentials file ${path} is empty.`);
+  try {
+    const parsed = JSON.parse(contents);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return Object.fromEntries(
+        Object.entries(parsed).filter((entry) => typeof entry[1] === "string").map(([key, value]) => [normalizedCredentialKey(key), unquote(value)])
+      );
+    }
+  } catch {
+  }
+  const entries = [];
+  for (const line of contents.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || /^\[[^\]]+\]$/.test(trimmed)) continue;
+    const match = /^([^:=\t]+?)\s*(?:=|:|\t)\s*(.+)$/.exec(trimmed);
+    if (!match) continue;
+    entries.push([normalizedCredentialKey(match[1]), unquote(match[2])]);
+  }
+  return Object.fromEntries(entries);
+}
+function readCredentialsFile(path) {
+  const values = credentialRecordFromFile(path);
+  const accessKeyId = values.accesskeyid ?? values.awsaccesskeyid;
+  const secretAccessKey = values.secretaccesskey ?? values.awssecretaccesskey;
+  const sessionToken = values.sessiontoken ?? values.awssessiontoken;
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error(
+      `Public-storage credentials file ${path} must contain AccessKeyId and SecretAccessKey.`
+    );
+  }
+  return {
+    accessKeyId,
+    secretAccessKey,
+    ...sessionToken ? { sessionToken } : {}
+  };
+}
+async function activeHostEndpoint() {
+  const state = await getHostDiscoveryStatus();
+  if (state.status !== "active") {
+    throw new Error("No local-api host is active; open Clash Desktop or start local-api first.");
+  }
+  return state.record.endpoint;
+}
+async function requestPublicStorage(path, init) {
+  const endpoint = await activeHostEndpoint();
+  const response = await fetch(`${endpoint}${path}`, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...init.headers
+    }
+  });
+  if (!response.ok) {
+    const message2 = await response.text();
+    throw new Error(`Local host rejected public-storage configuration (${response.status}): ${message2}`);
+  }
+  return await response.json();
+}
+async function runPublicStorageConfigure(options) {
+  const provider = asProvider(options.provider);
+  const region = provider === "r2" ? "auto" : options.region?.trim();
+  if (!region) throw new Error(`--region is required for ${provider}.`);
+  if (provider === "r2" && !options.accountId?.trim()) {
+    throw new Error("--account-id is required for r2.");
+  }
+  if (provider === "custom-s3" && !options.endpoint?.trim()) {
+    throw new Error("--endpoint is required for custom-s3.");
+  }
+  const credentials = options.credentialsFile ? readCredentialsFile(options.credentialsFile) : void 0;
+  const body = {
+    mode: "byos",
+    provider,
+    bucket: options.bucket.trim(),
+    region,
+    key_prefix: options.keyPrefix?.trim() || "clash-temporary",
+    force_path_style: provider === "custom-s3" && options.pathStyle === true,
+    ...options.accountId?.trim() ? { account_id: options.accountId.trim() } : {},
+    ...options.endpoint?.trim() ? { endpoint: options.endpoint.trim() } : {},
+    ...credentials ? {
+      access_key_id: credentials.accessKeyId,
+      secret_access_key: credentials.secretAccessKey,
+      ...credentials.sessionToken ? { session_token: credentials.sessionToken } : {}
+    } : {}
+  };
+  const config2 = await requestPublicStorage("/api/v1/local/public-storage", {
+    method: "PATCH",
+    body: JSON.stringify(body)
+  });
+  if (options.json) printJson(config2);
+  else console.log(`Configured public storage: ${config2.provider} ${config2.bucket} (${config2.region}).`);
+  return config2;
+}
+async function runPublicStorageTest(options = {}) {
+  const result = await requestPublicStorage(
+    "/api/v1/local/public-storage/test",
+    { method: "POST" }
+  );
+  if (options.json) printJson(result);
+  else console.log("Public storage connection succeeded.");
+  return result;
+}
+var publicStorageCommand = new Command("public-storage").description("Configure the local Host's public Asset storage");
+publicStorageCommand.command("configure").description("Configure an S3-compatible BYOS backend").requiredOption("--provider <provider>", "r2, aws-s3, tos, or custom-s3").requiredOption("--bucket <bucket>", "Bucket name").option("--region <region>", "Bucket region (not needed for R2)").option("--account-id <accountId>", "Cloudflare account id for R2").option("--endpoint <url>", "Endpoint for custom-s3").option("--key-prefix <prefix>", "Object key prefix", "clash-temporary").option("--path-style", "Use path-style addressing for custom-s3").option(
+  "--credentials-file <path>",
+  "JSON, AWS credentials, or key/value file containing AccessKeyId and SecretAccessKey"
+).option("--json", "Machine-readable output").action(async (options) => {
+  await runPublicStorageConfigure(options);
+});
+publicStorageCommand.command("test").description("Test the configured backend").option("--json", "Machine-readable output").action(async (options) => {
+  await runPublicStorageTest(options);
+});
+
 // ../../packages/cli/src/commands/host.ts
 async function runHostStatus(options = {}) {
   const stdout = options.stdout ?? console.log;
@@ -61949,6 +63454,7 @@ async function runHostStatus(options = {}) {
   return output;
 }
 var hostCommand = new Command("host").description("Inspect the local Clash host");
+hostCommand.addCommand(publicStorageCommand);
 hostCommand.command("status").description("Show local host discovery status").option("--json", "Output as JSON").action(async (options) => {
   await runHostStatus({ json: options.json });
 });
@@ -63074,7 +64580,7 @@ async function confirm(question) {
 }
 
 // ../../packages/cli/src/commands/projection.ts
-var import_node_fs12 = require("node:fs");
+var import_node_fs13 = require("node:fs");
 var import_node_path36 = require("node:path");
 
 // ../../packages/cli/src/lib/timeline-projection.ts
@@ -63170,8 +64676,7 @@ function normalizeTimelineDslForYaml(raw) {
         durationInFrames: (value) => typeof value === "number" ? value : skeleton.durationInFrames,
         primaryTrackId: (value) => value === null ? null : typeof value === "string" && value.length > 0 ? value : OMIT_TIMELINE_FIELD,
         tracks: () => tracks.map((track, index) => normalizeTrackForYaml(track, index)),
-        assetTranscripts: (value) => value && typeof value === "object" && !Array.isArray(value) ? value : OMIT_TIMELINE_FIELD,
-        mediaAssetRefs: (value) => Array.isArray(value) ? value : OMIT_TIMELINE_FIELD
+        assetTranscripts: (value) => value && typeof value === "object" && !Array.isArray(value) ? value : OMIT_TIMELINE_FIELD
       }
     )
   };
@@ -63238,12 +64743,12 @@ function normalizeItemForYaml(item, trackId, itemIndex) {
 
 // ../../packages/cli/src/commands/timeline.ts
 var import_node_crypto14 = require("node:crypto");
-var import_node_fs10 = require("node:fs");
+var import_node_fs11 = require("node:fs");
 var import_node_path32 = require("node:path");
 
 // ../../packages/cli/src/lib/timeline-transcript-projection.ts
 var import_node_crypto13 = require("node:crypto");
-var import_node_fs9 = require("node:fs");
+var import_node_fs10 = require("node:fs");
 var import_promises17 = require("node:fs/promises");
 var import_node_path31 = require("node:path");
 
@@ -63421,8 +64926,8 @@ async function writeTimelineTranscriptProjection(input) {
         );
         const sourceContents = `${JSON.stringify(timedTranscript, null, 2)}
 `;
-        (0, import_node_fs9.mkdirSync)(sourceDirectory, { recursive: true });
-        (0, import_node_fs9.writeFileSync)(sourceFilePath, sourceContents, "utf8");
+        (0, import_node_fs10.mkdirSync)(sourceDirectory, { recursive: true });
+        (0, import_node_fs10.writeFileSync)(sourceFilePath, sourceContents, "utf8");
         source = {
           sourcePath: projectRelativePath(input.cwd, sourceFilePath),
           sourceHash: `sha256:${(0, import_node_crypto13.createHash)("sha256").update(sourceContents).digest("hex")}`,
@@ -63462,8 +64967,8 @@ async function writeTimelineTranscriptProjection(input) {
     (0, import_node_path31.dirname)(input.timelineFilePath),
     `${timelineProjectionStem(input.timelineFilePath)}.transcript.json`
   );
-  (0, import_node_fs9.mkdirSync)((0, import_node_path31.dirname)(filePath), { recursive: true });
-  (0, import_node_fs9.writeFileSync)(filePath, `${JSON.stringify(projection, null, 2)}
+  (0, import_node_fs10.mkdirSync)((0, import_node_path31.dirname)(filePath), { recursive: true });
+  (0, import_node_fs10.writeFileSync)(filePath, `${JSON.stringify(projection, null, 2)}
 `, "utf8");
   return {
     filePath,
@@ -63535,7 +65040,7 @@ timelineCommand.command("schema").description(TIMELINE_OPERATION_CATALOG.agent["
 });
 timelineCommand.command("validate").description(TIMELINE_OPERATION_CATALOG.agent["timeline.validate"].description).requiredOption("--file <path>", "Timeline YAML or JSON projection to validate").option("--json", "Output the validation result as JSON").action((options) => {
   const filePath = String(options.file);
-  const parsed = parseTimelineFileForApply((0, import_node_fs10.readFileSync)(filePath, "utf8"));
+  const parsed = parseTimelineFileForApply((0, import_node_fs11.readFileSync)(filePath, "utf8"));
   if (!parsed.ok) throw new Error(`TIMELINE_DSL_INVALID: ${parsed.error}`);
   const result = {
     ok: true,
@@ -63813,8 +65318,8 @@ timelineCommand.command("pull").description(TIMELINE_OPERATION_CATALOG.agent["ti
   const currentDsl = normalizeTimelineDslForYaml(timeline.state);
   const yaml = timelineDslToYaml(currentDsl);
   const version2 = listed.versions[timeline.id] ?? projectTimelineReadToken(timeline);
-  (0, import_node_fs10.mkdirSync)((0, import_node_path32.dirname)(filePath), { recursive: true });
-  (0, import_node_fs10.writeFileSync)(filePath, yaml, "utf8");
+  (0, import_node_fs11.mkdirSync)((0, import_node_path32.dirname)(filePath), { recursive: true });
+  (0, import_node_fs11.writeFileSync)(filePath, yaml, "utf8");
   const transcriptProjection = await writeTimelineTranscriptProjection({
     cwd: process.cwd(),
     timelineFilePath: filePath,
@@ -63854,7 +65359,7 @@ timelineCommand.command("apply").description(TIMELINE_OPERATION_CATALOG.agent["t
     file: options.file,
     timeline: options.timeline
   });
-  const content = (0, import_node_fs10.readFileSync)(filePath, "utf8");
+  const content = (0, import_node_fs11.readFileSync)(filePath, "utf8");
   const parsed = parseTimelineFileForApply(content);
   if (!parsed.ok) {
     console.error(`error: ${parsed.error}`);
@@ -63959,7 +65464,7 @@ var TIMELINE_CLI_OPERATION_EXECUTORS = Object.freeze({
 });
 
 // ../../packages/cli/src/commands/text.ts
-var import_node_fs11 = require("node:fs");
+var import_node_fs12 = require("node:fs");
 var import_node_path34 = require("node:path");
 
 // ../../packages/cli/src/lib/text-projection.ts
@@ -64107,8 +65612,8 @@ textCommand.command("pull").description("Export a canvas text node's content to 
   }
   const content = textContentFromNode(node);
   const version2 = node.readToken ?? textReadToken({ projectId, nodeId: options.node, content });
-  (0, import_node_fs11.mkdirSync)((0, import_node_path34.dirname)(filePath), { recursive: true });
-  (0, import_node_fs11.writeFileSync)(filePath, content, "utf8");
+  (0, import_node_fs12.mkdirSync)((0, import_node_path34.dirname)(filePath), { recursive: true });
+  (0, import_node_fs12.writeFileSync)(filePath, content, "utf8");
   await recordTextObservation(context, options.node, version2);
   const payload = {
     pulled: true,
@@ -64135,7 +65640,7 @@ textCommand.command("apply").description("Apply a Markdown file back to the canv
   const actor = await resolveCanvasActor();
   try {
     const observedVersion = await requireTextObservation(context, options.node);
-    content = (0, import_node_fs11.readFileSync)(filePath, "utf8");
+    content = (0, import_node_fs12.readFileSync)(filePath, "utf8");
     result = await applyTextContent(projectId, options.node, content, {
       observedVersion,
       filePath,
@@ -64191,7 +65696,7 @@ textCommand.command("replace").description("Create a copy-on-write replacement t
   const actor = await resolveCanvasActor();
   try {
     const observedVersion = await requireTextObservation(context, options.node);
-    content = (0, import_node_fs11.readFileSync)(filePath, "utf8");
+    content = (0, import_node_fs12.readFileSync)(filePath, "utf8");
     result = await replaceTextContent(projectId, options.node, content, {
       observedVersion,
       filePath,
@@ -64281,8 +65786,8 @@ textCommand.command("content").description("Fetch an applied text revision's Mar
         filePath: options.out,
         writeVerb: "Text revision content output"
       });
-      (0, import_node_fs11.mkdirSync)((0, import_node_path34.dirname)(filePath), { recursive: true });
-      (0, import_node_fs11.writeFileSync)(filePath, content, "utf8");
+      (0, import_node_fs12.mkdirSync)((0, import_node_path34.dirname)(filePath), { recursive: true });
+      (0, import_node_fs12.writeFileSync)(filePath, content, "utf8");
       const payload = {
         projectId,
         revisionId: options.revision,
@@ -64432,8 +65937,8 @@ async function restoreTextRevisionContent(options, deps = {}) {
   const apply = deps.apply ?? applyTextContent;
   const replace = deps.replace ?? replaceTextContent;
   const register = deps.register ?? registerTextRevisionIndex;
-  const mkdir11 = deps.mkdir ?? import_node_fs11.mkdirSync;
-  const writeFile9 = deps.writeFile ?? import_node_fs11.writeFileSync;
+  const mkdir11 = deps.mkdir ?? import_node_fs12.mkdirSync;
+  const writeFile9 = deps.writeFile ?? import_node_fs12.writeFileSync;
   const filePath = resolveTextFilePath({
     cwd: options.cwd,
     nodeId: options.nodeId,
@@ -64839,8 +66344,8 @@ projectionCommand.command("pull").description("Write a projectable entity to an 
     const projectId = context.projectId;
     const filePath = options.file ?? projectionFilePath({ cwd: process.cwd(), kind: declared.kind, entityId: options.id });
     const { content, revision: version2, immutable } = await readProjection(declared, context, options.id);
-    (0, import_node_fs12.mkdirSync)((0, import_node_path36.dirname)(filePath), { recursive: true });
-    (0, import_node_fs12.writeFileSync)(filePath, content, "utf8");
+    (0, import_node_fs13.mkdirSync)((0, import_node_path36.dirname)(filePath), { recursive: true });
+    (0, import_node_fs13.writeFileSync)(filePath, content, "utf8");
     await recordProjectionObservation(context, declared.kind, options.id, version2);
     const payload = {
       pulled: true,
@@ -64867,7 +66372,7 @@ projectionCommand.command("apply").description("Apply an edited projection back 
     const projectId = context.projectId;
     const filePath = options.file ?? projectionFilePath({ cwd: process.cwd(), kind: declared.kind, entityId: options.id });
     const expectedVersion = await requireProjectionObservation(context, declared.kind, options.id);
-    const content = (0, import_node_fs12.readFileSync)(filePath, "utf8");
+    const content = (0, import_node_fs13.readFileSync)(filePath, "utf8");
     const written = await writeProjection(
       declared,
       context,
@@ -64928,7 +66433,7 @@ function assertDeclaredSetting(declaration, key, value) {
 }
 
 // ../../packages/cli/src/commands/providers.ts
-var import_node_fs13 = require("node:fs");
+var import_node_fs14 = require("node:fs");
 async function currentAccounts() {
   try {
     return await apiJson("/api/v1/model-providers");
@@ -64943,7 +66448,7 @@ async function currentAccounts() {
 }
 function resolveValue(raw) {
   if (raw === "-") {
-    const piped = (0, import_node_fs13.readFileSync)(0, "utf8").trim();
+    const piped = (0, import_node_fs14.readFileSync)(0, "utf8").trim();
     if (!piped) throw new Error("Nothing arrived on stdin.");
     return piped;
   }
@@ -64951,7 +66456,7 @@ function resolveValue(raw) {
     const path = raw.slice(1);
     let contents;
     try {
-      contents = (0, import_node_fs13.readFileSync)(path, "utf8").trim();
+      contents = (0, import_node_fs14.readFileSync)(path, "utf8").trim();
     } catch {
       throw new Error(
         `Cannot read the credential file ${path}. A value starting with @ is read from that path; pass the value directly if it is not a file.`
@@ -65187,12 +66692,12 @@ tasksCommand.command("wait").description("Wait for a task to complete").required
 });
 
 // ../../packages/cli/src/lib/cli-trace.ts
-var import_node_fs14 = require("node:fs");
+var import_node_fs15 = require("node:fs");
 var import_node_path37 = require("node:path");
 function appendTrace(path, event) {
   try {
-    (0, import_node_fs14.mkdirSync)((0, import_node_path37.dirname)(path), { recursive: true });
-    (0, import_node_fs14.appendFileSync)(path, `${JSON.stringify(event)}
+    (0, import_node_fs15.mkdirSync)((0, import_node_path37.dirname)(path), { recursive: true });
+    (0, import_node_fs15.appendFileSync)(path, `${JSON.stringify(event)}
 `, "utf8");
   } catch {
   }

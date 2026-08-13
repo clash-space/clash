@@ -41,6 +41,7 @@
     "@clash-plugin/fal": "workspace:*",
     "@clash-plugin/google": "workspace:*",
     "@clash-plugin/minimax": "workspace:*",
+    "@clash-plugin/pika": "workspace:*",
     "@clash-plugin/volcengine": "workspace:*",
     "@clash/asset-sdk": "workspace:*",
     "@clash/sdk": "workspace:*",

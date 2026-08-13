@@ -85,6 +85,34 @@ describe("NodeProcessor - processPendingNodes", () => {
     vi.restoreAllMocks();
   });
 
+  it("applies parameter-conditioned Model Card validation before dispatch", async () => {
+    const doc = makeDoc([
+      {
+        id: "seedance-edit",
+        type: "video",
+        data: {
+          status: "pending",
+          prompt: "Edit this clip",
+          modelId: "seedance-2.5-ref",
+          modelParams: { edit_mode: true },
+          actorType: "user",
+          actorUserId: "u-test",
+        },
+      },
+    ]);
+    const env = makeEnv();
+
+    await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
+
+    expect(env.GENERATION_WORKFLOW.create).not.toHaveBeenCalled();
+    expect(doc.getMap("nodes").get("seedance-edit")).toMatchObject({
+      data: {
+        status: "failed",
+        error: expect.stringMatching(/at least 1 reference video/i),
+      },
+    });
+  });
+
   it("skips non-generation node types (text)", async () => {
     const doc = makeDoc([
       { id: "n1", type: "text", data: { label: "hello" } },

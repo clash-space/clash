@@ -2,7 +2,7 @@ import {
   executablePluginDependencyError,
   type PluginBroker,
 } from "./runtime/host/lib/actions-loader.js";
-import { ExecutablePluginResolvedReferenceSchema } from "@clash/shared-types";
+import { ExecutablePluginBrokerResolvedReferenceSchema } from "@clash/shared-types";
 import type {
   AssetKind,
   ExecutablePluginAssetHandle,
@@ -30,10 +30,9 @@ export interface LocalPluginBrokerAuditRecord {
   occurredAt: string;
 }
 
-export interface LocalPluginBrokerAssetReadResult {
+export interface LocalPluginBrokerResolvedAsset {
   kind: AssetKind;
   mediaType?: string;
-  resourceDigest: string;
   bytes: Uint8Array;
   providerUrl?: { providerUrl: string; expiresAt: string };
 }
@@ -43,19 +42,18 @@ export interface LocalExecutablePluginBrokerOptions {
   readAsset?: (input: {
     assetId: string;
     projectId: string;
-  }) => Promise<LocalPluginBrokerAssetReadResult>;
-  /** Publish one immutable Resource when no reusable public projection exists. */
+  }) => Promise<LocalPluginBrokerResolvedAsset>;
+  /** Publish one immutable Resource when the binding requires a URL and no reusable one exists. */
   publishAsset?: (input: {
     pluginId: string;
     pluginVersion: string;
     projectId: string;
     invocationId: string;
     assetId: string;
-    resourceDigest: string;
     kind: AssetKind;
     mediaType?: string;
     bytes: Uint8Array;
-  }) => Promise<{ url: string; expiresAt: string }>;
+  }) => Promise<{ url: string; expiresAt: string } | undefined>;
   writeAsset?: (input: {
     pluginId: string;
     pluginVersion: string;
@@ -197,7 +195,7 @@ export function createLocalExecutablePluginBroker(
       const operation = request.operation;
       if (operation.kind === "asset.resolve") {
         if ("text" in operation.reference) {
-          result = ExecutablePluginResolvedReferenceSchema.parse({
+          result = ExecutablePluginBrokerResolvedReferenceSchema.parse({
             form: "text",
             text: operation.reference.text.value,
           });
@@ -232,21 +230,29 @@ export function createLocalExecutablePluginBroker(
           );
         }
         if (delivery.representations.includes("provider-url")) {
-          const published = asset.providerUrl ?? (options.publishAsset
-            ? await options.publishAsset({
-            pluginId: context.manifest.id,
-            pluginVersion: context.manifest.version,
-            projectId: context.invocation.projectId,
-            invocationId: context.invocation.invocationId,
-            assetId: reference.asset.assetId,
-            resourceDigest: asset.resourceDigest,
-            kind: asset.kind,
-            ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
-            bytes: asset.bytes,
-            })
-            : undefined);
+          // Accepting a URL does not authorise a new public copy. When bytes are also accepted,
+          // reuse an existing projection or stay local and send bytes. Publishing is reserved for
+          // URL-only bindings, where the Provider cannot execute without a fetchable projection.
+          const requiresProviderUrl =
+            !delivery.representations.includes("bytes");
+          const published =
+            asset.providerUrl ??
+            (requiresProviderUrl && options.publishAsset
+              ? await options.publishAsset({
+                  pluginId: context.manifest.id,
+                  pluginVersion: context.manifest.version,
+                  projectId: context.invocation.projectId,
+                  invocationId: context.invocation.invocationId,
+                  assetId: reference.asset.assetId,
+                  kind: asset.kind,
+                  ...(asset.mediaType
+                    ? { mediaType: asset.mediaType }
+                    : {}),
+                  bytes: asset.bytes,
+                })
+              : undefined);
           if (published) {
-            result = ExecutablePluginResolvedReferenceSchema.parse({
+            result = ExecutablePluginBrokerResolvedReferenceSchema.parse({
               form: "provider-url",
               providerUrl: "providerUrl" in published ? published.providerUrl : published.url,
               expiresAt: published.expiresAt,
@@ -258,7 +264,7 @@ export function createLocalExecutablePluginBroker(
           }
         }
         if (delivery.representations.includes("bytes")) {
-          result = ExecutablePluginResolvedReferenceSchema.parse({
+          result = ExecutablePluginBrokerResolvedReferenceSchema.parse({
             form: "bytes",
             bytesBase64: Buffer.from(asset.bytes).toString("base64"),
             kind: asset.kind,
@@ -357,6 +363,23 @@ export function createLocalExecutablePluginBroker(
             kind: operation.assetKind,
             ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
             assetId: operation.assetId,
+          })) as never;
+          await audit("ok");
+          return result;
+        }
+        if (operation.url) {
+          if (!options.openUploadSlot)
+            throw new Error("Local upload slots are unavailable.");
+          result = (await options.openUploadSlot({
+            pluginId: context.manifest.id,
+            pluginVersion: context.manifest.version,
+            projectId: context.invocation.projectId,
+            invocationId: context.invocation.invocationId,
+            taskId: context.invocation.taskId,
+            slot: operation.slot,
+            kind: operation.assetKind,
+            ...(operation.mediaType ? { mediaType: operation.mediaType } : {}),
+            url: operation.url,
           })) as never;
           await audit("ok");
           return result;

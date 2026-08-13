@@ -6,7 +6,7 @@ import process3 from 'process';
 import { CLASH_MCP_COMMAND_IDS, getClashMcpCommand, buildClashMcpCommandMenu, classifyClashMcpTool } from '@clash/shared-runtime';
 import { mkdir, writeFile } from 'fs/promises';
 import { parse as parse$1 } from 'yaml';
-import { createProjectHostClient } from '@clash/shared-runtime/project-host-client';
+import { createProjectHostClient, publicProjectHostValue } from '@clash/shared-runtime/project-host-client';
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -31517,7 +31517,7 @@ var LEGACY_CLASH_GROUP_TOOL_NAMES = {
 };
 var CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
-  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_ASSETS_TOOL_NAME} for Project Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
   "Call a dispatcher without operation for live contracts, then pass its command-local operation and arguments to execute exactly once.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
@@ -31573,7 +31573,7 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
         useWhen: "you need the compact Clash command menu or the stable dispatcher for a product command",
         effect: "returns command counts and navigation without expanding leaf operations into the advertised tool list",
         returns: "the command menu and selected Assets, Canvas, or composition dispatcher",
-        next: "call clash_assets for Project Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only"
+        next: "call clash_assets for Project or personal Global Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only"
       }),
       inputSchema: {
         command: external_exports.enum(CLASH_MCP_COMMAND_IDS).optional().describe("Root command to reveal; omit to show the root menu and fold leaf operations away"),
@@ -31623,9 +31623,9 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
     super.registerTool(CLASH_ASSETS_TOOL_NAME, {
       title: assetsDefinition.title,
       description: describeClashTool({
-        useWhen: "you need to inspect, import, trash, or restore Project Assets",
-        effect: "returns live Project Asset contracts when operation is omitted, or validates and executes one Asset leaf exactly once",
-        returns: "typed Project Asset operation contracts or the selected leaf operation's exact result",
+        useWhen: "you need to inspect, import, admit, publish, trash, or restore Project and personal Global Assets",
+        effect: "returns live Asset contracts when operation is omitted, or validates and executes one Asset leaf exactly once",
+        returns: "typed Project or Global Asset operation contracts or the selected leaf operation's exact result",
         next: "choose the smallest matching operation, then call clash_assets with operation and arguments"
       }),
       inputSchema: {
@@ -37280,7 +37280,7 @@ var zodToJsonSchema2 = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-RUA5QFGJ.js
+// ../../packages/shared-types/dist/chunk-22GF7SDG.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -37852,9 +37852,6 @@ var TimelineEditorAssetTranscriptSchema = z2.object({
   modelId: NonEmptyStringSchema.optional(),
   language: NonEmptyStringSchema.optional()
 });
-var TimelineMediaAssetRefSchema = z2.object({
-  assetId: NonEmptyStringSchema
-});
 var TimelineSequenceSchema = z2.object({
   baseUrl: NonEmptyStringSchema,
   frameCount: PositiveFrameSchema,
@@ -37914,12 +37911,6 @@ var rootFields = {
     editor: noControl,
     runtimeConsumers: ["editor", "transcript", "caption-generation", "persistence"],
     defaultValue: {}
-  }),
-  mediaAssetRefs: derived(z2.array(TimelineMediaAssetRefSchema), "Host-owned media asset references required to rehydrate Timeline assets; agents must preserve them.", {
-    required: false,
-    editor: noControl,
-    runtimeConsumers: ["editor", "asset-loader", "persistence"],
-    defaultValue: []
   })
 };
 var trackFields = {
@@ -39953,6 +39944,11 @@ var timelineKeyframeRangeRule = {
   minimum: 0,
   exclusiveMaximumPath: "durationInFrames"
 };
+var timelineRetiredAssetFieldRule = {
+  id: "timeline.asset.retired-field",
+  kind: "forbidden-paths",
+  paths: ["mediaAssetRefs", "tracks[].items[].backingAssetId"]
+};
 var timelineKeyframeUniqueFrameRule = {
   id: "timeline.keyframes.unique-frame",
   kind: "unique-key-by-channel",
@@ -39976,6 +39972,7 @@ var TIMELINE_DSL_SEMANTIC_RULES = {
     timelineKeyframeRangeRule,
     timelineKeyframeUniqueFrameRule,
     timelineItemFieldApplicabilityRule,
+    timelineRetiredAssetFieldRule,
     ...TIMELINE_DSL_GLOBAL_SEMANTIC_RULES
   ]
 };
@@ -40017,6 +40014,14 @@ function timelineMaskKeyframeSemanticIssues(item) {
 var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine(
   (item, ctx) => {
     const typedItem = item;
+    if (Object.prototype.hasOwnProperty.call(typedItem, "backingAssetId")) {
+      ctx.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["backingAssetId"],
+        message: "backingAssetId was removed; use the item's Project Asset id",
+        params: { ruleId: timelineRetiredAssetFieldRule.id }
+      });
+    }
     for (const [fieldName, owners] of itemFieldOwners) {
       if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
         ctx.addIssue({
@@ -40049,6 +40054,14 @@ var TimelineDslSchemaBase = z2.object(
 ).passthrough();
 var TimelineDslSchema = TimelineDslSchemaBase.superRefine(
   (timeline, context) => {
+    if (Object.prototype.hasOwnProperty.call(timeline, "mediaAssetRefs")) {
+      context.addIssue({
+        code: z2.ZodIssueCode.custom,
+        path: ["mediaAssetRefs"],
+        message: "mediaAssetRefs was removed; Timeline items bind Project Assets directly",
+        params: { ruleId: timelineRetiredAssetFieldRule.id }
+      });
+    }
     for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
       context.addIssue({
         code: z2.ZodIssueCode.custom,
@@ -40241,7 +40254,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 7,
+  schemaVersion: 9,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -40321,7 +40334,9 @@ var TIMELINE_PLUGIN_TOOL_NAMES = Object.freeze(
 );
 Object.freeze(
   Object.fromEntries(
-    Object.entries(TIMELINE_PLUGIN_SURFACE_BINDINGS).map(([toolName, binding]) => [toolName, binding.operationId])
+    Object.entries(TIMELINE_PLUGIN_SURFACE_BINDINGS).map(
+      ([toolName, binding]) => [toolName, binding.operationId]
+    )
   )
 );
 var TIMELINE_TRACK_CATEGORY_LABELS = {
@@ -40334,10 +40349,12 @@ var TIMELINE_TRACK_CATEGORY_LABELS = {
 var TIMELINE_APP_CONTRACT = Object.freeze({
   contractFingerprint: TIMELINE_DSL_DEFINITION.contractFingerprint,
   trackCategories: Object.freeze(
-    TIMELINE_DSL_DEFINITION.taxonomy.trackCategories.map((id) => Object.freeze({
-      id,
-      label: TIMELINE_TRACK_CATEGORY_LABELS[id]
-    }))
+    TIMELINE_DSL_DEFINITION.taxonomy.trackCategories.map(
+      (id) => Object.freeze({
+        id,
+        label: TIMELINE_TRACK_CATEGORY_LABELS[id]
+      })
+    )
   ),
   defaultTrackCategory: "visual",
   inspector: Object.freeze({
@@ -40416,7 +40433,9 @@ function timelineContractReferenceSchema(original) {
   if (!Array.isArray(variants)) return timelineReference;
   return {
     ...cloneJsonSchema(originalSchema),
-    anyOf: variants.map((variant) => variant && typeof variant === "object" && !Array.isArray(variant) && variant.type === "string" ? cloneJsonSchema(variant) : timelineReference)
+    anyOf: variants.map(
+      (variant) => variant && typeof variant === "object" && !Array.isArray(variant) && variant.type === "string" ? cloneJsonSchema(variant) : timelineReference
+    )
   };
 }
 function timelineOperationInputJsonSchema(operationId) {
@@ -40426,9 +40445,13 @@ function timelineOperationInputJsonSchema(operationId) {
   const properties = schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties) ? schema.properties : {};
   for (const fieldPath of Object.keys(operation.inputContractRefs ?? {})) {
     if (fieldPath.includes(".")) {
-      throw new Error(`Unsupported nested Timeline operation contract ref ${fieldPath}`);
+      throw new Error(
+        `Unsupported nested Timeline operation contract ref ${fieldPath}`
+      );
     }
-    properties[fieldPath] = timelineContractReferenceSchema(properties[fieldPath]);
+    properties[fieldPath] = timelineContractReferenceSchema(
+      properties[fieldPath]
+    );
   }
   schema.properties = {
     ...properties,
@@ -40445,13 +40468,31 @@ function timelineOperationInputSchema(operationId) {
   return external_exports.object(scopeShape).catchall(external_exports.unknown()).superRefine((input, context) => {
     const { cwd: _cwd, projectId: _projectId, ...operationInput } = input;
     const validation = operation.inputSchema.safeParse(operationInput);
-    if (validation.success) return;
-    for (const issue3 of validation.error.issues) {
-      context.addIssue({
-        code: "custom",
-        path: issue3.path,
-        message: issue3.message
-      });
+    if (!validation.success) {
+      for (const issue3 of validation.error.issues) {
+        context.addIssue({
+          code: "custom",
+          path: issue3.path,
+          message: issue3.message
+        });
+      }
+      return;
+    }
+    if (operation.access !== "write") return;
+    const validatedInput = validation.data;
+    for (const fieldPath of Object.keys(operation.inputContractRefs ?? {})) {
+      const state = validatedInput[fieldPath];
+      if (state === void 0 || typeof state === "string") continue;
+      const contractValidation = validateTimelineState(state);
+      if (contractValidation.ok) continue;
+      for (const issue3 of contractValidation.issues) {
+        context.addIssue({
+          code: "custom",
+          path: [fieldPath, ...issue3.path],
+          message: issue3.message,
+          params: { ruleId: issue3.ruleId }
+        });
+      }
     }
   }).meta(timelineOperationInputJsonSchema(operationId));
 }
@@ -40511,10 +40552,7 @@ function withTimelineToolErrorEnvelope(schema) {
         additionalProperties: true
       }
     },
-    anyOf: [
-      { required: normalRequired },
-      { required: ["error"] }
-    ]
+    anyOf: [{ required: normalRequired }, { required: ["error"] }]
   };
 }
 function timelineOperationOutputJsonSchema(operationId, transform2) {
@@ -40531,7 +40569,9 @@ function timelineOperationOutputJsonSchema(operationId, transform2) {
 function timelineOperationOutputSchema(operationId, transform2, projectSharedOutput = (output) => output) {
   const operation = TIMELINE_OPERATION_REGISTRY.agent[operationId];
   return external_exports.object({}).catchall(external_exports.unknown()).superRefine((output, context) => {
-    const validation = operation.outputSchema.safeParse(projectSharedOutput(output));
+    const validation = operation.outputSchema.safeParse(
+      projectSharedOutput(output)
+    );
     if (validation.success) return;
     for (const issue3 of validation.error.issues) {
       context.addIssue({
@@ -40543,9 +40583,7 @@ function timelineOperationOutputSchema(operationId, transform2, projectSharedOut
   }).meta(timelineOperationOutputJsonSchema(operationId, transform2));
 }
 var scopeShape = {
-  cwd: external_exports.string().min(1).optional().describe(
-    "Absolute project workspace path containing .clash/project.toml"
-  ),
+  cwd: external_exports.string().min(1).optional().describe("Absolute project workspace path containing .clash/project.toml"),
   projectId: external_exports.string().min(1).optional().describe(
     "Project ID override; normally resolved from the workspace marker"
   )
@@ -40592,11 +40630,13 @@ var TIMELINE_GET_OUTPUT_SCHEMA = timelineOperationOutputSchema(
           additionalProperties: true
         }
       },
-      required: [.../* @__PURE__ */ new Set([
-        ...Array.isArray(schema.required) ? schema.required : [],
-        "contract",
-        "validation"
-      ])]
+      required: [
+        .../* @__PURE__ */ new Set([
+          ...Array.isArray(schema.required) ? schema.required : [],
+          "contract",
+          "validation"
+        ])
+      ]
     };
   },
   (output) => ({ timeline: output.timeline })
@@ -40694,7 +40734,7 @@ function createTimelineAdapter(options = {}) {
         ...typeof entity?.revisionId === "string" ? { revisionId: entity.revisionId } : {}
       });
     }
-    return result.value;
+    return publicProjectHostValue(result.value);
   };
   return {
     schema: async () => structuredClone(TIMELINE_DSL_DEFINITION),
@@ -40721,17 +40761,26 @@ function createTimelineAdapter(options = {}) {
       if (!validation.ok) {
         throw new Error(`TIMELINE_DSL_INVALID: ${validation.issues[0]?.message ?? "invalid Timeline"}`);
       }
-      return (await request(input, { action: "validate_timeline", document: state })).value;
+      return publicProjectHostValue(
+        (await request(input, { action: "validate_timeline", document: state })).value
+      );
     },
     list,
     get,
     async create(input) {
+      const timelineId = required2(input, "timelineId");
       const result = await request(input, {
         action: "create_timeline",
-        timelineId: required2(input, "timelineId"),
+        timelineId,
         name: required2(input, "name")
       });
-      return result.value;
+      const receipt = typeof result.value.readToken === "string" ? result.value.readToken : typeof result.value.version === "string" ? result.value.version : void 0;
+      if (receipt) {
+        observations.set(observationKey(result.projectId, timelineId), {
+          receipt
+        });
+      }
+      return publicProjectHostValue(result.value);
     },
     async save(input) {
       const timelineId = required2(input, "timelineId");

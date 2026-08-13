@@ -259,11 +259,15 @@ describe("local API server configuration", () => {
             requestId: "read-live-asset",
             invocationId: "invocation-live-asset",
             operation: {
-              kind: "asset.read",
-              asset: {
-                assetId,
-                uri: `clash-asset://${assetId}`,
-                kind: "image",
+              kind: "asset.resolve",
+              reference: {
+                slot: "image",
+                index: 0,
+                asset: {
+                  assetId,
+                  uri: `clash-asset://${assetId}`,
+                  kind: "image",
+                },
               },
             },
           },
@@ -289,7 +293,6 @@ describe("local API server configuration", () => {
                     id: "run",
                     kind: "action",
                     operations: ["submit"],
-                    requires: [],
                   },
                 ],
                 hostTools: [],
@@ -307,17 +310,166 @@ describe("local API server configuration", () => {
                 schemaHash: `sha256:${"e".repeat(64)}`,
                 kind: "action",
               },
-              input: { values: {}, references: [] },
+              input: {
+                values: {},
+                references: [{
+                  slot: "image",
+                  index: 0,
+                  asset: {
+                    assetId,
+                    uri: `clash-asset://${assetId}`,
+                    kind: "image",
+                  },
+                }],
+              },
+              assetInputs: [{
+                match: { kinds: ["image"], slots: ["image"] },
+                representations: ["bytes"],
+              }],
               actor: { kind: "agent", id: "agent-live" },
               operation: "submit",
             },
           },
         ),
       ).resolves.toMatchObject({
+        form: "bytes",
         kind: "image",
-        byteLength: bytes.byteLength,
+        bytesBase64: Buffer.from(bytes).toString("base64"),
       });
       expect(projectAssetAuthorityVersion(liveDoc)).toBe(1);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("delivers reference bytes when public Asset storage is explicitly unavailable", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-plugin-private-reference-"));
+    try {
+      const projectId = "project-private-reference";
+      const staging = createLocalPluginAssetStagingStore({
+        dataDir,
+        clashRoot: clashHomeForLocalDataDir(dataDir),
+      });
+      const staged = await staging.stage({
+        projectId,
+        taskId: "reference-import",
+        slot: "image",
+        pluginId: "test.reference-import",
+        pluginVersion: "1.0.0",
+        invocationId: "reference-import-1",
+        kind: "image",
+        mediaType: "image/png",
+        bytes: new Uint8Array([1, 2, 3]),
+      });
+      const publish = vi.fn(async () => {
+        throw new Error("disabled public storage must not be called");
+      });
+      const publicAssetStorage = {
+        getPublicConfig: async () => ({
+          capability: "public-asset-storage" as const,
+          mode: "disabled" as const,
+          available: false,
+          provider: null,
+          account_id: null,
+          endpoint: null,
+          bucket: null,
+          region: null,
+          key_prefix: "clash-temporary",
+          force_path_style: false,
+          has_access_key_id: false,
+          has_secret_access_key: false,
+          has_session_token: false,
+          managed: { available: false, authenticated: false },
+        }),
+        publish,
+        updateFromRequest: async () => {
+          throw new Error("not used");
+        },
+        testConnection: async () => {
+          throw new Error("not used");
+        },
+        delete: async () => {
+          throw new Error("not used");
+        },
+      } satisfies NonNullable<Parameters<typeof createLocalPluginBrokerServices>[0]["publicAssetStorage"]>;
+      const broker = createLocalPluginBrokerServices({
+        dataDir,
+        assetStaging: staging,
+        publicAssetStorage,
+      });
+
+      await expect(broker(
+        {
+          protocol: "clash.plugin.broker-request/v1",
+          requestId: "private-reference-1",
+          invocationId: "private-reference-invocation",
+          operation: {
+            kind: "asset.resolve",
+            reference: {
+              slot: "image",
+              index: 0,
+              asset: {
+                assetId: staged.projectAssetId,
+                uri: `clash-asset://${staged.projectAssetId}`,
+                kind: "image",
+                mediaType: "image/png",
+              },
+            },
+          },
+        },
+        {
+          manifest: {
+            apiVersion: "clash.plugin/v1",
+            id: "test.reference-reader",
+            version: "1.0.0",
+            name: "Reference reader",
+            runtime: {
+              kind: "local",
+              transport: "stdio",
+              entrypoint: "handler.mjs",
+              args: [],
+            },
+            contractTests: [],
+            contributes: {
+              cards: [],
+              providers: [],
+              modelBindings: [],
+              functions: [{
+                id: "run",
+                kind: "provider-executor",
+                operations: ["submit"],
+              }],
+              hostTools: [],
+            },
+          },
+          invocation: {
+            protocol: "clash.plugin.invoke/v1",
+            invocationId: "private-reference-invocation",
+            taskId: "private-reference-task",
+            projectId,
+            target: {
+              pluginId: "test.reference-reader",
+              version: "1.0.0",
+              exportId: "run",
+              schemaHash: `sha256:${"f".repeat(64)}`,
+              kind: "provider-executor",
+            },
+            input: { values: {}, references: [] },
+            assetInputs: [{
+              match: { kinds: ["image"] },
+              representations: ["provider-url", "bytes"],
+            }],
+            actor: { kind: "system" },
+            operation: "submit",
+          },
+        },
+      )).resolves.toMatchObject({
+        form: "bytes",
+        bytesBase64: "AQID",
+        kind: "image",
+        mediaType: "image/png",
+      });
+      expect(publish).not.toHaveBeenCalled();
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

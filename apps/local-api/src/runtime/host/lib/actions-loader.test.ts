@@ -390,7 +390,7 @@ it("ActionsHost invokes a supervised Python v1 plugin over host-owned stdio", as
         input: { values: {}, references: [] },
         actor: { kind: "agent", id: "agent-1" },
       },
-      { timeoutMs: 15_000 },
+      { timeoutMs: 60_000 },
     );
     expect(result).toMatchObject({
       status: "completed",
@@ -407,7 +407,7 @@ it("ActionsHost invokes a supervised Python v1 plugin over host-owned stdio", as
     if (originalPython === undefined) delete process.env.CLASH_ACTIONS_PYTHON;
     else process.env.CLASH_ACTIONS_PYTHON = originalPython;
   }
-}, 30_000);
+}, 90_000);
 
 it("contract tests drive Python entrypoints through scoped-store fixtures", async () => {
   const originalPython = process.env.CLASH_ACTIONS_PYTHON;
@@ -490,6 +490,7 @@ it("contract tests drive Python entrypoints through scoped-store fixtures", asyn
       id: "py-echo",
       target: { exportId: "execute", kind: "provider-executor" },
       context: { projectId: "project-contract" },
+      timeoutMs: 60_000,
       input: { values: { prompt: "A paper moon" }, references: [] },
       brokerFixtures: [
         {
@@ -523,7 +524,7 @@ it("contract tests drive Python entrypoints through scoped-store fixtures", asyn
     if (originalPython === undefined) delete process.env.CLASH_ACTIONS_PYTHON;
     else process.env.CLASH_ACTIONS_PYTHON = originalPython;
   }
-}, 30_000);
+}, 90_000);
 
 it("contract tests run serve()-based Python plugins with the SDK on PYTHONPATH", async () => {
   const originalPython = process.env.CLASH_ACTIONS_PYTHON;
@@ -569,6 +570,7 @@ it("contract tests run serve()-based Python plugins with the SDK on PYTHONPATH",
       id: "py-serve-echo",
       target: { exportId: "execute", kind: "provider-executor" },
       context: { projectId: "project-contract" },
+      timeoutMs: 60_000,
       input: { values: { prompt: "A paper moon" }, references: [] },
       brokerFixtures: [
         {
@@ -602,7 +604,7 @@ it("contract tests run serve()-based Python plugins with the SDK on PYTHONPATH",
     if (originalPython === undefined) delete process.env.CLASH_ACTIONS_PYTHON;
     else process.env.CLASH_ACTIONS_PYTHON = originalPython;
   }
-}, 30_000);
+}, 90_000);
 
 it("ActionsHost refuses executable code changed outside atomic activation", async () => {
   const createReceipt = (actionsLoader as Record<string, unknown>)

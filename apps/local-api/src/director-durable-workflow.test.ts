@@ -144,8 +144,9 @@ describe("Director durable model generation", () => {
         binding,
         media: {
           assetId: staged.projectAssetId,
-          contentType: "model/gltf-binary",
-          requestId: "fal-request-1",
+          uri: `clash-asset://${staged.projectAssetId}`,
+          kind: "model",
+          mediaType: "model/gltf-binary",
         },
       };
     };

@@ -2,13 +2,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { ResolvedAsset } from "@clash/shared-types";
+import {
+  createProjectAsset,
+  markActionAssetBindingAuthority,
+  markProjectAssetAuthority,
+  type ResolvedAsset,
+} from "@clash/shared-types";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createLocalApiApp } from "./app.js";
 import { createLocalGlobalAssetService } from "./local-global-assets.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import { createLocalProjectAssetService } from "./local-project-assets.js";
+import { FileReplicaStore } from "./loro/file-replica-store.js";
 
 const temporaryDirectories: string[] = [];
 const origin = "http://127.0.0.1:49152";
@@ -48,6 +54,61 @@ afterEach(async () => {
 });
 
 describe("personal Global Asset routes", () => {
+  it("keeps Project cover identity independent from this device's byte availability", async () => {
+    const { app, clashRoot, dataDir } = await fixture();
+    const created = await app.request(`${origin}/api/v1/projects`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Unavailable cover" }),
+    });
+    const { id: projectId } = (await created.json()) as { id: string };
+    await new FileReplicaStore(join(dataDir, "projects")).updateSnapshotAtomic(
+      projectId,
+      (doc) => {
+        expect(
+          createProjectAsset(doc, {
+            id: "cover-on-another-device",
+            kind: "image",
+            source: {
+              kind: "linked",
+              resourceId: `sha256:${"a".repeat(64)}`,
+              origin: {
+                scope: "global",
+                entryId: "global-on-another-device",
+              },
+            },
+            lifecycle: { state: "active" },
+            metadata: { contentType: "image/png" },
+          }),
+        ).toMatchObject({ ok: true });
+        expect(markProjectAssetAuthority(doc)).toMatchObject({ ok: true });
+        expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+        return { value: undefined };
+      },
+    );
+    const unavailable = await createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: origin,
+    }).read(projectId, "cover-on-another-device");
+    expect(unavailable).not.toBeNull();
+    expect(unavailable?.status).toBe("unavailable");
+    if (!unavailable) throw new Error("Expected unavailable Project Asset");
+
+    const response = await app.request(
+      `${origin}/api/v1/projects/${encodeURIComponent(projectId)}/cover`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ coverAssetId: unavailable.id }),
+      },
+    );
+    expect(response.status, await response.clone().text()).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      coverAssetId: unavailable.id,
+    });
+  });
+
   it("uses Project-scoped ResolvedAsset previews for project list and detail reads", async () => {
     const { app } = await fixture();
     const created = await app.request(`${origin}/api/v1/projects`, {

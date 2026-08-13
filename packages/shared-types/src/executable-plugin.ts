@@ -21,7 +21,12 @@ export {
 // package index pulls in loro-crdt, which is CommonJS, and bundling that into an ESM plugin turns
 // its first import into "Dynamic require of ... is not supported" at spawn.
 export { AssetKindSchema, type AssetKind } from "./assets.js";
-export { aspectRatioLabel, parseAspectRatio, reduceAspectRatio, type AspectRatio } from "./aspect-ratio.js";
+export {
+  aspectRatioLabel,
+  parseAspectRatio,
+  reduceAspectRatio,
+  type AspectRatio,
+} from "./aspect-ratio.js";
 import {
   ModelCardSchema,
   ModelConstraintRuleSchema,
@@ -33,20 +38,27 @@ import {
 } from "./models.js";
 
 const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+const SEMVER_PATTERN =
+  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
 export function isSafePluginRelativePath(value: string): boolean {
   if (!value || value.startsWith("/") || value.startsWith("\\")) return false;
   if (value.includes("\\") || value.includes("\0")) return false;
   const segments = value.split("/");
-  return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+  return segments.every(
+    (segment) => segment.length > 0 && segment !== "." && segment !== "..",
+  );
 }
 
-export const PluginRelativePathSchema = z.string().trim().min(1).refine(
-  isSafePluginRelativePath,
-  "Plugin paths must be relative and cannot contain dot segments.",
-);
+export const PluginRelativePathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine(
+    isSafePluginRelativePath,
+    "Plugin paths must be relative and cannot contain dot segments.",
+  );
 
 export const ExecutablePluginRuntimeSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -74,9 +86,12 @@ export const ExecutablePluginRuntimeSchema = z.discriminatedUnion("kind", [
      * means the entrypoint is authored directly and the host never overwrites it --
      * which is the normal case for Python, and for a hand-written `.mjs`.
      */
-    build: z.object({
-      source: PluginRelativePathSchema,
-    }).strict().optional(),
+    build: z
+      .object({
+        source: PluginRelativePathSchema,
+      })
+      .strict()
+      .optional(),
   }),
   z.object({
     kind: z.literal("hosted"),
@@ -93,230 +108,301 @@ export const ExecutablePluginRuntimeSchema = z.discriminatedUnion("kind", [
  * `.ts` entrypoint was impossible and why the extension whitelist doubled as a
  * language dispatcher.
  */
-export function resolvePluginLanguage(
-  runtime: { kind: string; language?: "node" | "python"; entrypoint?: string },
-): "node" | "python" | undefined {
+export function resolvePluginLanguage(runtime: {
+  kind: string;
+  language?: "node" | "python";
+  entrypoint?: string;
+}): "node" | "python" | undefined {
   if (runtime.kind !== "local") return undefined;
   if (runtime.language) return runtime.language;
   const entrypoint = runtime.entrypoint ?? "";
   return entrypoint.toLowerCase().endsWith(".py") ? "python" : "node";
 }
 
-export const ExecutablePluginCardExportSchema = z.object({
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  kind: z.enum(["model-card", "action-card"]),
-  path: PluginRelativePathSchema,
-}).strict();
+export const ExecutablePluginCardExportSchema = z
+  .object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    kind: z.enum(["model-card", "action-card"]),
+    path: PluginRelativePathSchema,
+  })
+  .strict();
 
-export const ExecutablePluginProviderExportSchema = z.object({
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  kind: z.literal("provider"),
-  path: PluginRelativePathSchema,
-}).strict();
+export const ExecutablePluginProviderExportSchema = z
+  .object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    kind: z.literal("provider"),
+    path: PluginRelativePathSchema,
+  })
+  .strict();
 
-export const ExecutablePluginModelBindingExportSchema = z.object({
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  kind: z.literal("model-provider-binding"),
-  path: PluginRelativePathSchema,
-}).strict();
+export const ExecutablePluginModelBindingExportSchema = z
+  .object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    kind: z.literal("model-provider-binding"),
+    path: PluginRelativePathSchema,
+  })
+  .strict();
 
 export const ExecutableActionPresentationSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("form"),
-  }).strict(),
-  z.object({
-    type: z.literal("dialog"),
-    size: z.enum(["sm", "md", "lg", "xl"]).default("lg"),
-    title: z.string().trim().min(1).optional(),
-  }).strict(),
-  z.object({
-    type: z.literal("workspace"),
-    resourceUri: z.string().regex(/^ui:\/\/[a-z0-9][a-z0-9._/-]*$/),
-  }).strict(),
+  z
+    .object({
+      type: z.literal("form"),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("dialog"),
+      size: z.enum(["sm", "md", "lg", "xl"]).default("lg"),
+      title: z.string().trim().min(1).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("workspace"),
+      resourceUri: z.string().regex(/^ui:\/\/[a-z0-9][a-z0-9._/-]*$/),
+    })
+    .strict(),
 ]);
 
-export const ExecutableActionCardSchema = z.object({
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  name: z.string().trim().min(1),
-  description: z.string().optional(),
-  parameters: z.array(ModelParameterSchema).default([]),
-  outputType: z.enum(["image", "video", "audio", "text"]),
-  input: ModelInputRuleSchema.default({
-    requiresPrompt: true,
-    inputMode: {},
-    promptModalities: ["text"],
-  }),
-  constraints: z.array(ModelConstraintRuleSchema).optional(),
-  presentation: ExecutableActionPresentationSchema.default({ type: "form" }),
-  functionExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  maxRuntimeMs: z.number().int().positive().optional(),
-}).strict().superRefine((action, ctx) => {
-  const parameterIds = new Set<string>();
-  for (const [index, parameter] of action.parameters.entries()) {
-    if (parameterIds.has(parameter.id)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["parameters", index, "id"],
-        message: "Action parameter ids must be unique.",
-      });
-    }
-    parameterIds.add(parameter.id);
+export const ExecutableActionCardSchema = z
+  .object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    name: z.string().trim().min(1),
+    description: z.string().optional(),
+    parameters: z.array(ModelParameterSchema).default([]),
+    outputType: z.enum(["image", "video", "audio", "text"]),
+    input: ModelInputRuleSchema.default({
+      requiresPrompt: true,
+      inputMode: {},
+      promptModalities: ["text"],
+    }),
+    constraints: z.array(ModelConstraintRuleSchema).optional(),
+    presentation: ExecutableActionPresentationSchema.default({ type: "form" }),
+    functionExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    maxRuntimeMs: z.number().int().positive().optional(),
+  })
+  .strict()
+  .superRefine((action, ctx) => {
+    const parameterIds = new Set<string>();
+    for (const [index, parameter] of action.parameters.entries()) {
+      if (parameterIds.has(parameter.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["parameters", index, "id"],
+          message: "Action parameter ids must be unique.",
+        });
+      }
+      parameterIds.add(parameter.id);
 
-    if (parameter.type === "select") {
-      const candidates = parameter.options?.map((option) => option.value) ?? [];
-      if (candidates.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["parameters", index, "options"],
-          message: "Select parameters require at least one candidate.",
-        });
+      if (parameter.type === "select") {
+        const candidates =
+          parameter.options?.map((option) => option.value) ?? [];
+        if (candidates.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["parameters", index, "options"],
+            message: "Select parameters require at least one candidate.",
+          });
+        }
+        if (
+          new Set(candidates.map((value) => `${typeof value}:${String(value)}`))
+            .size !== candidates.length
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["parameters", index, "options"],
+            message: "Select parameter candidate values must be unique.",
+          });
+        }
+        if (
+          parameter.defaultValue !== undefined &&
+          !candidates.some((value) => value === parameter.defaultValue)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["parameters", index, "defaultValue"],
+            message: `${parameter.label} defaultValue must be one of its configured candidates.`,
+          });
+        }
       }
-      if (new Set(candidates.map((value) => `${typeof value}:${String(value)}`)).size !== candidates.length) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["parameters", index, "options"],
-          message: "Select parameter candidate values must be unique.",
-        });
-      }
-      if (parameter.defaultValue !== undefined && !candidates.some((value) => value === parameter.defaultValue)) {
+      if (parameter.readOnly && parameter.defaultValue === undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["parameters", index, "defaultValue"],
-          message: `${parameter.label} defaultValue must be one of its configured candidates.`,
+          message: `${parameter.label} is read-only and requires a fixed default.`,
         });
       }
-    }
-    if (parameter.readOnly && parameter.defaultValue === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["parameters", index, "defaultValue"],
-        message: `${parameter.label} is read-only and requires a fixed default.`,
-      });
-    }
-    if ((parameter.type === "number" || parameter.type === "slider") && parameter.defaultValue !== undefined) {
-      if (typeof parameter.defaultValue !== "number" || !Number.isFinite(parameter.defaultValue)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["parameters", index, "defaultValue"],
-          message: `${parameter.label} default must be a finite number.`,
-        });
-      } else if (
-        (parameter.min !== undefined && parameter.defaultValue < parameter.min)
-        || (parameter.max !== undefined && parameter.defaultValue > parameter.max)
+      if (
+        (parameter.type === "number" || parameter.type === "slider") &&
+        parameter.defaultValue !== undefined
+      ) {
+        if (
+          typeof parameter.defaultValue !== "number" ||
+          !Number.isFinite(parameter.defaultValue)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["parameters", index, "defaultValue"],
+            message: `${parameter.label} default must be a finite number.`,
+          });
+        } else if (
+          (parameter.min !== undefined &&
+            parameter.defaultValue < parameter.min) ||
+          (parameter.max !== undefined &&
+            parameter.defaultValue > parameter.max)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["parameters", index, "defaultValue"],
+            message: `${parameter.label} default must stay within its configured range.`,
+          });
+        }
+      }
+      if (
+        parameter.type === "boolean" &&
+        parameter.defaultValue !== undefined &&
+        typeof parameter.defaultValue !== "boolean"
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["parameters", index, "defaultValue"],
-          message: `${parameter.label} default must stay within its configured range.`,
+          message: `${parameter.label} default must be a boolean.`,
         });
       }
     }
-    if (parameter.type === "boolean" && parameter.defaultValue !== undefined && typeof parameter.defaultValue !== "boolean") {
+
+    const validateConstraintField = (
+      field: string,
+      path: Array<string | number>,
+    ) => {
+      if (!field.startsWith("modelParams.")) return;
+      if (parameterIds.has(field.slice("modelParams.".length))) return;
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["parameters", index, "defaultValue"],
-        message: `${parameter.label} default must be a boolean.`,
+        path,
+        message: `Action constraint ${field} must reference a declared parameter.`,
       });
+    };
+    for (const [index, rule] of (action.constraints ?? []).entries()) {
+      if (rule.type === "mutually-exclusive") {
+        rule.fields.forEach((field, fieldIndex) =>
+          validateConstraintField(field, [
+            "constraints",
+            index,
+            "fields",
+            fieldIndex,
+          ]),
+        );
+        continue;
+      }
+      validateConstraintField(rule.field, ["constraints", index, "field"]);
+      if (rule.type === "required") {
+        rule.when.forEach((condition, conditionIndex) =>
+          validateConstraintField(condition.field, [
+            "constraints",
+            index,
+            "when",
+            conditionIndex,
+            "field",
+          ]),
+        );
+      }
     }
-  }
+  });
 
-  const validateConstraintField = (field: string, path: Array<string | number>) => {
-    if (!field.startsWith("modelParams.")) return;
-    if (parameterIds.has(field.slice("modelParams.".length))) return;
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path,
-      message: `Action constraint ${field} must reference a declared parameter.`,
-    });
-  };
-  for (const [index, rule] of (action.constraints ?? []).entries()) {
-    if (rule.type === "mutually-exclusive") {
-      rule.fields.forEach((field, fieldIndex) =>
-        validateConstraintField(field, ["constraints", index, "fields", fieldIndex]));
-      continue;
-    }
-    validateConstraintField(rule.field, ["constraints", index, "field"]);
-    if (rule.type === "required") {
-      rule.when.forEach((condition, conditionIndex) =>
-        validateConstraintField(condition.field, ["constraints", index, "when", conditionIndex, "field"]));
-    }
-  }
-});
-
-export const ExecutablePluginCardDocumentSchema = z.discriminatedUnion("kind", [
-  z.object({
-    apiVersion: z.literal("clash.card/v1"),
-    kind: z.literal("model-card"),
-    spec: ModelCardSchema,
-  }).strict(),
-  z.object({
-    apiVersion: z.literal("clash.card/v1"),
-    kind: z.literal("action-card"),
-    spec: ExecutableActionCardSchema,
-  }).strict(),
-]).superRefine((document, ctx) => {
-  if (document.kind !== "model-card") return;
-  document.spec.providerImplementations?.forEach((implementation, index) => {
-    if (implementation.accountId === undefined) return;
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["spec", "providerImplementations", index, "accountId"],
-      message: "Plugin model Cards cannot select a Provider account; the Host selects it at runtime.",
+export const ExecutablePluginCardDocumentSchema = z
+  .discriminatedUnion("kind", [
+    z
+      .object({
+        apiVersion: z.literal("clash.card/v1"),
+        kind: z.literal("model-card"),
+        spec: ModelCardSchema,
+      })
+      .strict(),
+    z
+      .object({
+        apiVersion: z.literal("clash.card/v1"),
+        kind: z.literal("action-card"),
+        spec: ExecutableActionCardSchema,
+      })
+      .strict(),
+  ])
+  .superRefine((document, ctx) => {
+    if (document.kind !== "model-card") return;
+    document.spec.providerImplementations?.forEach((implementation, index) => {
+      if (implementation.accountId === undefined) return;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["spec", "providerImplementations", index, "accountId"],
+        message:
+          "Plugin model Cards cannot select a Provider account; the Host selects it at runtime.",
+      });
     });
   });
-});
 
-export const ExecutablePluginProviderDefinitionSchema = z.object({
-  /**
-   * What this provider needs to authenticate, and how to draw it.
-   *
-   * Optional because a provider may need nothing -- a local model has no credential. Present, it is
-   * the whole of what the host knows: it renders the form, stores the answers opaquely, wakes the
-   * plugin on the declared schedule, and never learns what any of the values mean.
-   */
-  auth: PluginAuthDeclarationSchema.optional(),
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  name: z.string().trim().min(1),
-  description: z.string().trim().min(1).optional(),
-  upstreamId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  apiShape: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  executorExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  /**
-   * Route values every binding of this provider inherits.
-   *
-   * A binding carries two facts: which catalogue model it routes, and the name that
-   * model has upstream. The rest of the route -- provider id, upstream, api shape,
-   * executor, credentials, priority -- belongs to the provider. Repeating it per
-   * binding produced no information and one real hazard: a single mistyped copy
-   * yields a route pointing at the wrong upstream while every sibling looks correct.
-   */
-  bindingDefaults: z.object({
-    priority: z.number().nonnegative().optional(),
-    weight: z.number().nonnegative().optional(),
-    region: z.string().trim().min(1).optional(),
-  }).strict().optional(),
-}).strict();
-
-export const ExecutablePluginProviderDocumentSchema = z.object({
-  apiVersion: z.literal("clash.provider/v1"),
-  kind: z.literal("provider"),
-  spec: ExecutablePluginProviderDefinitionSchema,
-}).strict();
-
-export const ExecutablePluginModelBindingSpecSchema = z.intersection(
-  z.object({
+export const ExecutablePluginProviderDefinitionSchema = z
+  .object({
+    /**
+     * What this provider needs to authenticate, and how to draw it.
+     *
+     * Optional because a provider may need nothing -- a local model has no credential. Present, it is
+     * the whole of what the host knows: it renders the form, stores the answers opaquely, wakes the
+     * plugin on the declared schedule, and never learns what any of the values mean.
+     */
+    auth: PluginAuthDeclarationSchema.optional(),
     id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    modelId: z.string().trim().min(1),
-  }),
-  ModelProviderImplementationSchema,
-).superRefine((binding, ctx) => {
-  if (binding.accountId === undefined) return;
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    path: ["accountId"],
-    message: "Plugin model bindings cannot select a Provider account; the Host selects it at runtime.",
+    name: z.string().trim().min(1),
+    description: z.string().trim().min(1).optional(),
+    upstreamId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    apiShape: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    executorExportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    /**
+     * Route values every binding of this provider inherits.
+     *
+     * A binding carries two facts: which catalogue model it routes, and the name that
+     * model has upstream. The rest of the route -- provider id, upstream, api shape,
+     * executor, credentials, priority -- belongs to the provider. Repeating it per
+     * binding produced no information and one real hazard: a single mistyped copy
+     * yields a route pointing at the wrong upstream while every sibling looks correct.
+     */
+    bindingDefaults: z
+      .object({
+        priority: z.number().nonnegative().optional(),
+        weight: z.number().nonnegative().optional(),
+        region: z.string().trim().min(1).optional(),
+        /** Host delivery forms this Provider implementation accepts for typed media inputs. */
+        assetInputs: z.array(ProviderAssetInputSchema).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export const ExecutablePluginProviderDocumentSchema = z
+  .object({
+    apiVersion: z.literal("clash.provider/v1"),
+    kind: z.literal("provider"),
+    spec: ExecutablePluginProviderDefinitionSchema,
+  })
+  .strict();
+
+export const ExecutablePluginModelBindingSpecSchema = z
+  .intersection(
+    z.object({
+      id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+      modelId: z.string().trim().min(1),
+    }),
+    ModelProviderImplementationSchema,
+  )
+  .superRefine((binding, ctx) => {
+    if (binding.accountId === undefined) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["accountId"],
+      message:
+        "Plugin model bindings cannot select a Provider account; the Host selects it at runtime.",
+    });
   });
-});
 
 /**
  * The two facts a binding actually carries.
@@ -324,26 +410,37 @@ export const ExecutablePluginModelBindingSpecSchema = z.intersection(
  * Everything else about a route -- provider id, upstream, api shape, executor,
  * credentials, priority -- belongs to the provider document that owns the binding.
  */
-export const ExecutablePluginModelBindingInputSchema = z.object({
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN).optional(),
-  modelId: z.string().trim().min(1, "A binding must name the model it routes (modelId)."),
-  upstreamModel: z.string().trim().min(1, "A binding must name its upstreamModel."),
-  providerId: z.string().trim().min(1).optional(),
-  upstreamId: z.string().trim().min(1).optional(),
-  apiShape: z.string().trim().min(1).optional(),
-  executorExportId: z.string().trim().min(1).optional(),
-  requiredOAuth: z.array(z.string()).optional(),
-  priority: z.number().optional(),
-  weight: z.number().optional(),
-  region: z.string().trim().min(1).optional(),
-}).passthrough().superRefine((binding, ctx) => {
-  if (binding.accountId === undefined) return;
-  ctx.addIssue({
-    code: z.ZodIssueCode.custom,
-    path: ["accountId"],
-    message: "Plugin model bindings cannot select a Provider account; the Host selects it at runtime.",
+export const ExecutablePluginModelBindingInputSchema = z
+  .object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN).optional(),
+    modelId: z
+      .string()
+      .trim()
+      .min(1, "A binding must name the model it routes (modelId)."),
+    upstreamModel: z
+      .string()
+      .trim()
+      .min(1, "A binding must name its upstreamModel."),
+    providerId: z.string().trim().min(1).optional(),
+    upstreamId: z.string().trim().min(1).optional(),
+    apiShape: z.string().trim().min(1).optional(),
+    executorExportId: z.string().trim().min(1).optional(),
+    requiredOAuth: z.array(z.string()).optional(),
+    assetInputs: z.array(ProviderAssetInputSchema).optional(),
+    priority: z.number().optional(),
+    weight: z.number().optional(),
+    region: z.string().trim().min(1).optional(),
+  })
+  .passthrough()
+  .superRefine((binding, ctx) => {
+    if (binding.accountId === undefined) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["accountId"],
+      message:
+        "Plugin model bindings cannot select a Provider account; the Host selects it at runtime.",
+    });
   });
-});
 
 /**
  * Fill a binding's route from the provider that owns it.
@@ -387,14 +484,30 @@ export function resolveModelBindingFromProvider(
     else resolved[key] = value;
   }
 
+  const assetInputs = parsed.assetInputs ?? defaults.assetInputs;
+  if (assetInputs === undefined) {
+    delete resolved.assetInputs;
+  } else {
+    resolved.assetInputs = assetInputs.map((input) => ({
+      match: {
+        ...(input.match.kinds ? { kinds: [...input.match.kinds] } : {}),
+        ...(input.match.slots ? { slots: [...input.match.slots] } : {}),
+      },
+      representations: [...input.representations],
+      ...(input.mediaTypes ? { mediaTypes: [...input.mediaTypes] } : {}),
+    }));
+  }
+
   return resolved;
 }
 
-export const ExecutablePluginModelBindingDocumentSchema = z.object({
-  apiVersion: z.literal("clash.binding/v1"),
-  kind: z.literal("model-provider-binding"),
-  spec: ExecutablePluginModelBindingSpecSchema,
-}).strict();
+export const ExecutablePluginModelBindingDocumentSchema = z
+  .object({
+    apiVersion: z.literal("clash.binding/v1"),
+    kind: z.literal("model-provider-binding"),
+    spec: ExecutablePluginModelBindingSpecSchema,
+  })
+  .strict();
 
 /**
  * The operations an entry point answers.
@@ -403,48 +516,60 @@ export const ExecutablePluginModelBindingDocumentSchema = z.object({
  * whether the plugin understands it -- after the work was submitted and billed, which is the worst
  * moment to learn that nobody can collect the result.
  *
- * It also governs what the host offers. A callback address goes only to an entry that says it
- * handles callbacks; handing one to a plugin that ignores it leaves a provider calling an address
- * nobody translates, while the node waits for an answer that already arrived.
+ * It also reserves what a future callback-capable Host may offer. A callback address may go only
+ * to an entry that says it handles callbacks; current Hosts do not issue callback addresses or
+ * deliver callback invocations.
  */
 export const PLUGIN_ENTRY_OPERATIONS = ["submit", "poll", "callback"] as const;
 
 export const PluginEntryOperationSchema = z.enum(PLUGIN_ENTRY_OPERATIONS);
 export type PluginEntryOperation = z.infer<typeof PluginEntryOperationSchema>;
 
-export const ExecutablePluginFunctionExportSchema = z.object({
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  kind: z.enum(["action", "provider-projector", "provider-executor"]),
-  /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
-  operations: z.array(PluginEntryOperationSchema).nonempty().default(["submit"]),
-}).strict().superRefine((entry, ctx) => {
-  if (!entry.operations.includes("submit")) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["operations"],
-      message: "An entry must handle submit; nothing can be polled that was never started.",
-    });
-  }
-  if (entry.operations.includes("callback") && !entry.operations.includes("poll")) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["operations"],
-      message:
-        "An entry handling callbacks must also handle poll. A callback that never arrives is an "
-        + "ordinary event -- providers drop them and networks partition -- and without a poll to "
-        + "fall back on the work is lost.",
-    });
-  }
-});
+export const ExecutablePluginFunctionExportSchema = z
+  .object({
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    kind: z.enum(["action", "provider-projector", "provider-executor"]),
+    /** Defaults to submit-only: the simplest plugin declares nothing and gets the simplest contract. */
+    operations: z
+      .array(PluginEntryOperationSchema)
+      .nonempty()
+      .default(["submit"]),
+  })
+  .strict()
+  .superRefine((entry, ctx) => {
+    if (!entry.operations.includes("submit")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["operations"],
+        message:
+          "An entry must handle submit; nothing can be polled that was never started.",
+      });
+    }
+    if (
+      entry.operations.includes("callback") &&
+      !entry.operations.includes("poll")
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["operations"],
+        message:
+          "An entry handling callbacks must also handle poll. A callback that never arrives is an " +
+          "ordinary event -- providers drop them and networks partition -- and without a poll to " +
+          "fall back on the work is lost.",
+      });
+    }
+  });
 
 /** Activated Card plus the exact package provenance that supplied it. */
-export const ExecutablePluginCardRegistrationSchema = z.object({
-  pluginId: pluginIdSchema,
-  version: z.string().trim().regex(SEMVER_PATTERN),
-  schemaHash: z.string().regex(SHA256_PATTERN),
-  runtime: ExecutablePluginRuntimeSchema,
-  document: ExecutablePluginCardDocumentSchema,
-}).strict();
+export const ExecutablePluginCardRegistrationSchema = z
+  .object({
+    pluginId: pluginIdSchema,
+    version: z.string().trim().regex(SEMVER_PATTERN),
+    schemaHash: z.string().regex(SHA256_PATTERN),
+    runtime: ExecutablePluginRuntimeSchema,
+    document: ExecutablePluginCardDocumentSchema,
+  })
+  .strict();
 
 const ExecutablePluginArtifactRegistrationBaseSchema = z.object({
   pluginId: pluginIdSchema,
@@ -474,10 +599,16 @@ export function composeExecutablePluginModelCards(
   modelBindingRegistrationsInput: readonly ExecutablePluginModelBindingRegistration[] = [],
 ): ModelCard[] {
   const baseModels = z.array(ModelCardSchema).parse(baseModelsInput);
-  const registrations = z.array(ExecutablePluginCardRegistrationSchema).parse(registrationsInput);
-  const modelBindingRegistrations = z.array(ExecutablePluginModelBindingRegistrationSchema)
+  const registrations = z
+    .array(ExecutablePluginCardRegistrationSchema)
+    .parse(registrationsInput);
+  const modelBindingRegistrations = z
+    .array(ExecutablePluginModelBindingRegistrationSchema)
     .parse(modelBindingRegistrationsInput);
-  const pluginModels = new Map<string, { pluginId: string; model: ModelCard }>();
+  const pluginModels = new Map<
+    string,
+    { pluginId: string; model: ModelCard }
+  >();
   for (const registration of registrations) {
     if (registration.document.kind !== "model-card") continue;
     const id = registration.document.spec.id;
@@ -489,15 +620,20 @@ export function composeExecutablePluginModelCards(
     }
     const model = ModelCardSchema.parse({
       ...registration.document.spec,
-      providerImplementations: registration.document.spec.providerImplementations?.map((implementation) => ({
-        ...implementation,
-        ...(implementation.projectorExportId && !implementation.projectorPluginId
-          ? { projectorPluginId: registration.pluginId }
-          : {}),
-        ...(implementation.executorExportId && !implementation.executorPluginId
-          ? { executorPluginId: registration.pluginId }
-          : {}),
-      })),
+      providerImplementations:
+        registration.document.spec.providerImplementations?.map(
+          (implementation) => ({
+            ...implementation,
+            ...(implementation.projectorExportId &&
+            !implementation.projectorPluginId
+              ? { projectorPluginId: registration.pluginId }
+              : {}),
+            ...(implementation.executorExportId &&
+            !implementation.executorPluginId
+              ? { executorPluginId: registration.pluginId }
+              : {}),
+          }),
+        ),
     });
     pluginModels.set(id, { pluginId: registration.pluginId, model });
   }
@@ -511,28 +647,42 @@ export function composeExecutablePluginModelCards(
       .sort((left, right) => left.id.localeCompare(right.id)),
   ];
 
-  const bindingsByModel = new Map<string, Array<{
-    pluginId: string;
-    implementation: z.infer<typeof ModelProviderImplementationSchema>;
-  }>>();
+  const bindingsByModel = new Map<
+    string,
+    Array<{
+      pluginId: string;
+      implementation: z.infer<typeof ModelProviderImplementationSchema>;
+    }>
+  >();
   for (const registration of modelBindingRegistrations) {
-    const { id: _id, modelId, ...implementationInput } = registration.document.spec;
+    const {
+      id: _id,
+      modelId,
+      ...implementationInput
+    } = registration.document.spec;
     const implementation = ModelProviderImplementationSchema.parse({
       ...implementationInput,
-      ...(implementationInput.projectorExportId && !implementationInput.projectorPluginId
+      ...(implementationInput.projectorExportId &&
+      !implementationInput.projectorPluginId
         ? { projectorPluginId: registration.pluginId }
         : {}),
-      ...(implementationInput.executorExportId && !implementationInput.executorPluginId
+      ...(implementationInput.executorExportId &&
+      !implementationInput.executorPluginId
         ? { executorPluginId: registration.pluginId }
         : {}),
     });
     const entries = bindingsByModel.get(modelId) ?? [];
-    const routeKey = [implementation.providerId, implementation.region ?? ""]
-      .join(":");
-    const duplicate = entries.find((entry) => [
-      entry.implementation.providerId,
-      entry.implementation.region ?? "",
-    ].join(":") === routeKey);
+    const routeKey = [
+      implementation.providerId,
+      implementation.region ?? "",
+    ].join(":");
+    const duplicate = entries.find(
+      (entry) =>
+        [
+          entry.implementation.providerId,
+          entry.implementation.region ?? "",
+        ].join(":") === routeKey,
+    );
     if (duplicate) {
       throw new Error(
         `Plugins ${duplicate.pluginId} and ${registration.pluginId} both bind model Card ${modelId} to ${routeKey}.`,
@@ -547,21 +697,28 @@ export function composeExecutablePluginModelCards(
     if (external.length === 0) return model;
     const implementations = [...(model.providerImplementations ?? [])];
     for (const entry of external) {
-      const routeKey = [entry.implementation.providerId, entry.implementation.region ?? ""]
-        .join(":");
-      const duplicate = implementations.some((implementation) => [
-        implementation.providerId,
-        implementation.region ?? "",
-      ].join(":") === routeKey);
+      const routeKey = [
+        entry.implementation.providerId,
+        entry.implementation.region ?? "",
+      ].join(":");
+      const duplicate = implementations.some(
+        (implementation) =>
+          [implementation.providerId, implementation.region ?? ""].join(":") ===
+          routeKey,
+      );
       if (duplicate) {
-        throw new Error(`Model Card ${model.id} already declares provider binding ${routeKey}.`);
+        throw new Error(
+          `Model Card ${model.id} already declares provider binding ${routeKey}.`,
+        );
       }
       implementations.push(entry.implementation);
     }
-    const availableProviders = [...new Set([
-      ...(model.availableProviders ?? []),
-      ...implementations.map((implementation) => implementation.providerId),
-    ])];
+    const availableProviders = [
+      ...new Set([
+        ...(model.availableProviders ?? []),
+        ...implementations.map((implementation) => implementation.providerId),
+      ]),
+    ];
     return ModelCardSchema.parse({
       ...model,
       availableProviders,
@@ -572,12 +729,14 @@ export function composeExecutablePluginModelCards(
 }
 
 /** Immutable reference stored with Canvas nodes and task invocations. */
-export const ExecutablePluginBindingSchema = z.object({
-  pluginId: pluginIdSchema,
-  version: z.string().trim().regex(SEMVER_PATTERN),
-  exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  schemaHash: z.string().regex(SHA256_PATTERN),
-}).strict();
+export const ExecutablePluginBindingSchema = z
+  .object({
+    pluginId: pluginIdSchema,
+    version: z.string().trim().regex(SEMVER_PATTERN),
+    exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    schemaHash: z.string().regex(SHA256_PATTERN),
+  })
+  .strict();
 
 export type ExecutablePluginJsonValue =
   | null
@@ -587,25 +746,29 @@ export type ExecutablePluginJsonValue =
   | ExecutablePluginJsonValue[]
   | { [key: string]: ExecutablePluginJsonValue };
 
-export const ExecutablePluginJsonValueSchema: z.ZodType<ExecutablePluginJsonValue> = z.lazy(() =>
-  z.union([
-    z.null(),
-    z.boolean(),
-    z.number().finite(),
-    z.string(),
-    z.array(ExecutablePluginJsonValueSchema),
-    z.record(ExecutablePluginJsonValueSchema),
-  ]),
-);
+export const ExecutablePluginJsonValueSchema: z.ZodType<ExecutablePluginJsonValue> =
+  z.lazy(() =>
+    z.union([
+      z.null(),
+      z.boolean(),
+      z.number().finite(),
+      z.string(),
+      z.array(ExecutablePluginJsonValueSchema),
+      z.record(ExecutablePluginJsonValueSchema),
+    ]),
+  );
 
-const ExecutablePluginAssetHandleObjectSchema = z.object({
-  assetId: z.string().trim().min(1),
-  uri: z.string().regex(/^clash-asset:\/\/.+/),
-  kind: AssetKindSchema,
-  mediaType: z.string().trim().min(1).optional(),
-}).strict();
+const ExecutablePluginAssetHandleObjectSchema = z
+  .object({
+    assetId: z.string().trim().min(1),
+    uri: z.string().regex(/^clash-asset:\/\/.+/),
+    kind: AssetKindSchema,
+    mediaType: z.string().trim().min(1).optional(),
+  })
+  .strict();
 
-export const ExecutablePluginAssetHandleSchema = ExecutablePluginAssetHandleObjectSchema;
+export const ExecutablePluginAssetHandleSchema =
+  ExecutablePluginAssetHandleObjectSchema;
 
 const ExecutablePluginReferenceBaseSchema = z.object({
   slot: z.string().trim().min(1),
@@ -617,159 +780,197 @@ export const ExecutablePluginReferenceSchema = z.union([
     asset: ExecutablePluginAssetHandleSchema,
   }).strict(),
   ExecutablePluginReferenceBaseSchema.extend({
-    text: z.object({
-      nodeId: z.string().trim().min(1),
-      value: z.string(),
-    }).strict(),
+    text: z
+      .object({
+        nodeId: z.string().trim().min(1),
+        value: z.string(),
+      })
+      .strict(),
   }).strict(),
 ]);
 
-/** JSON wire result for `asset.resolve`; SDKs decode bytes before plugin business code sees it. */
-export const ExecutablePluginResolvedReferenceSchema = z.discriminatedUnion("form", [
-  z.object({
-    form: z.literal("provider-url"),
-    providerUrl: z.string().url(),
-    expiresAt: z.string().datetime(),
-    kind: AssetKindSchema.optional(),
-    mediaType: z.string().trim().min(1).optional(),
-  }).strict(),
-  z.object({
-    form: z.literal("bytes"),
-    bytesBase64: z.string(),
-    kind: AssetKindSchema.optional(),
-    mediaType: z.string().trim().min(1).optional(),
-  }).strict(),
-  z.object({
-    form: z.literal("text"),
-    text: z.string(),
-  }).strict(),
-]);
+/**
+ * Asset delivery v0 broker result for `asset.resolve`; SDKs decode bytes before plugin business
+ * code sees it. There is no `url + reach` compatibility dialect.
+ */
+export const ExecutablePluginBrokerResolvedReferenceSchema =
+  z.discriminatedUnion("form", [
+    z
+      .object({
+        form: z.literal("provider-url"),
+        providerUrl: z.string().url(),
+        expiresAt: z.string().datetime(),
+        kind: AssetKindSchema.optional(),
+        mediaType: z.string().trim().min(1).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        form: z.literal("bytes"),
+        bytesBase64: z.string(),
+        kind: AssetKindSchema.optional(),
+        mediaType: z.string().trim().min(1).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        form: z.literal("text"),
+        text: z.string(),
+      })
+      .strict(),
+  ]);
 
-export const ExecutablePluginInvocationSchema = z.object({
-  protocol: z.literal("clash.plugin.invoke/v1"),
-  invocationId: z.string().trim().min(1),
-  taskId: z.string().trim().min(1),
-  projectId: z.string().trim().min(1),
-  nodeId: z.string().trim().min(1).optional(),
-  target: ExecutablePluginBindingSchema.extend({
-    kind: z.enum(["action", "provider-projector", "provider-executor"]),
-  }),
-  input: z.object({
-    values: z.record(ExecutablePluginJsonValueSchema).default({}),
-    references: z.array(ExecutablePluginReferenceSchema).default([]),
-  }).strict(),
-  /** Delivery contract copied from the exact selected Provider binding. */
-  assetInputs: z.array(ProviderAssetInputSchema).default([]),
-  actor: z.object({
-    kind: z.enum(["user", "agent", "system"]),
-    id: z.string().trim().min(1).optional(),
-  }).strict(),
-  /**
-   * Which translation the host wants: start the work, or report on work already started.
-   *
-   * A plugin at this level only converts shapes. `submit` turns Clash's request into the provider's
-   * request and reads back an id; `poll` turns that id into the provider's status request and reads
-   * back a verdict. Neither waits. The loop, the interval, the retry budget, and the durability are
-   * the host's, because none of them differ by provider -- and because only the host survives its
-   * own restart.
-   *
-   * Stated as a field rather than inferred from an absent one: a plugin that mistakes a status
-   * query for a submission bills the user twice.
-   */
-  operation: z.enum(["submit", "poll", "callback"]).default("submit"),
-  /**
-   * Where the provider should report completion, issued by the host at submit time.
-   *
-   * The plugin cannot supply this. It has no address: a `local` plugin listens on nothing, and a
-   * short-lived translator has nowhere to keep a listener even if it did. The same reasoning already
-   * governs upload targets -- the host issues the address, so reachability holds by construction
-   * rather than by a plugin's claim about itself.
-   *
-   * Absent when the host cannot receive callbacks, which is the local single-user case today. A
-   * plugin that sees no callback URL submits for polling instead; both paths end in `accepted`.
-   */
-  callbackUrl: z.string().url().optional(),
-  /** The opaque state the plugin returned when it accepted the work. Required by `poll`. */
-  pollState: ExecutablePluginJsonValueSchema.optional(),
-  /**
-   * The provider's own callback body, verbatim, for the plugin to translate.
-   *
-   * The host receives this on the address it issued and cannot read it: the payload is in the
-   * provider's shape, which is exactly the thing this plugin exists to translate. So the host routes
-   * it back rather than parsing it, and the plugin answers with the same `completed` or `failed` it
-   * would have returned from a poll.
-   */
-  callbackPayload: ExecutablePluginJsonValueSchema.optional(),
-  /**
-   * The callback request's headers, so the plugin can decide whether to believe it.
-   *
-   * Providers sign callbacks, and they sign them in headers -- an HMAC over the raw body, a
-   * timestamp, a key id. Only the plugin knows which scheme this provider uses, so only the plugin
-   * can verify, and it cannot verify from a body alone. Withholding these would leave one defence
-   * standing: that the address is hard to guess. An address travels through the provider's logs,
-   * any proxy in between, and a referrer header, so it is a weak thing to rest on by itself.
-   *
-   * A plugin that cannot verify a callback returns `failed`, and the work stays pending until a poll
-   * settles it. Refusing to believe an unverified message is not a failure to make progress -- the
-   * poll path is still there, and it authenticates in the other direction.
-   */
-  callbackHeaders: z.record(z.string()).optional(),
-}).strict().superRefine((invocation, ctx) => {
-  if (invocation.operation === "poll" && invocation.pollState === undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["pollState"],
-      message: "A poll must carry the state the plugin returned when it accepted the work.",
-    });
-  }
-  if (invocation.operation === "submit" && invocation.pollState !== undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["pollState"],
-      message: "A submit starts new work and cannot carry poll state.",
-    });
-  }
-  if (invocation.operation === "callback" && invocation.callbackPayload === undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["callbackPayload"],
-      message: "A callback must carry the body the provider sent.",
-    });
-  }
-  if (invocation.operation !== "callback" && invocation.callbackHeaders !== undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["callbackHeaders"],
-      message: "callbackHeaders belongs to a callback.",
-    });
-  }
-  if (invocation.operation !== "callback" && invocation.callbackPayload !== undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["callbackPayload"],
-      message: "callbackPayload belongs to a callback.",
-    });
-  }
-  if (invocation.operation !== "submit" && invocation.callbackUrl !== undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["callbackUrl"],
-      message: "A callback address is issued when the work is submitted, not afterwards.",
-    });
-  }
-});
+export const ExecutablePluginInvocationSchema = z
+  .object({
+    protocol: z.literal("clash.plugin.invoke/v1"),
+    invocationId: z.string().trim().min(1),
+    taskId: z.string().trim().min(1),
+    projectId: z.string().trim().min(1),
+    nodeId: z.string().trim().min(1).optional(),
+    target: ExecutablePluginBindingSchema.extend({
+      kind: z.enum(["action", "provider-projector", "provider-executor"]),
+    }),
+    input: z
+      .object({
+        values: z.record(ExecutablePluginJsonValueSchema).default({}),
+        references: z.array(ExecutablePluginReferenceSchema).default([]),
+      })
+      .strict(),
+    /** Delivery contract copied from the exact selected Provider binding. */
+    assetInputs: z.array(ProviderAssetInputSchema).default([]),
+    actor: z
+      .object({
+        kind: z.enum(["user", "agent", "system"]),
+        id: z.string().trim().min(1).optional(),
+      })
+      .strict(),
+    /**
+     * Which translation the host wants: start the work, or report on work already started.
+     *
+     * A plugin at this level only converts shapes. `submit` turns Clash's request into the provider's
+     * request and reads back an id; `poll` turns that id into the provider's status request and reads
+     * back a verdict. Neither waits. The loop, the interval, the retry budget, and the durability are
+     * the host's, because none of them differ by provider -- and because only the host survives its
+     * own restart.
+     *
+     * Stated as a field rather than inferred from an absent one: a plugin that mistakes a status
+     * query for a submission bills the user twice.
+     */
+    operation: z.enum(["submit", "poll", "callback"]).default("submit"),
+    /**
+     * Reserved future callback address, issued by a callback-capable Host at submit time.
+     *
+     * The plugin cannot supply this. It has no address: a `local` plugin listens on nothing, and a
+     * short-lived translator has nowhere to keep a listener even if it did. The same reasoning already
+     * governs upload targets -- the host issues the address, so reachability holds by construction
+     * rather than by a plugin's claim about itself.
+     *
+     * Current Hosts always omit this field and collect asynchronous work through polling. A future
+     * adapter may set it only for an entry that also retains a working poll path.
+     */
+    callbackUrl: z.string().url().optional(),
+    /** The opaque state the plugin returned when it accepted the work. Required by `poll`. */
+    pollState: ExecutablePluginJsonValueSchema.optional(),
+    /**
+     * Reserved future Provider callback body, verbatim, for the plugin to translate.
+     *
+     * A future callback adapter would receive this on the address it issued and route it without
+     * interpreting the Provider-specific shape. Current Hosts never construct callback invocations.
+     */
+    callbackPayload: ExecutablePluginJsonValueSchema.optional(),
+    /**
+     * Reserved future callback request headers, for Provider signature verification.
+     *
+     * Providers sign callbacks, and they sign them in headers -- an HMAC over the raw body, a
+     * timestamp, a key id. Only the plugin knows which scheme this provider uses, so only the plugin
+     * can verify, and it cannot verify from a body alone. Withholding these would leave one defence
+     * standing: that the address is hard to guess. An address travels through the provider's logs,
+     * any proxy in between, and a referrer header, so it is a weak thing to rest on by itself.
+     *
+     * The future callback adapter must reject an unverified callback channel without settling the
+     * Provider run; polling remains the recovery path. That channel-level rejection semantics is not
+     * implemented by the current Host.
+     */
+    callbackHeaders: z.record(z.string()).optional(),
+  })
+  .strict()
+  .superRefine((invocation, ctx) => {
+    if (invocation.operation === "poll" && invocation.pollState === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pollState"],
+        message:
+          "A poll must carry the state the plugin returned when it accepted the work.",
+      });
+    }
+    if (
+      invocation.operation === "submit" &&
+      invocation.pollState !== undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["pollState"],
+        message: "A submit starts new work and cannot carry poll state.",
+      });
+    }
+    if (
+      invocation.operation === "callback" &&
+      invocation.callbackPayload === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["callbackPayload"],
+        message: "A callback must carry the body the provider sent.",
+      });
+    }
+    if (
+      invocation.operation !== "callback" &&
+      invocation.callbackHeaders !== undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["callbackHeaders"],
+        message: "callbackHeaders belongs to a callback.",
+      });
+    }
+    if (
+      invocation.operation !== "callback" &&
+      invocation.callbackPayload !== undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["callbackPayload"],
+        message: "callbackPayload belongs to a callback.",
+      });
+    }
+    if (
+      invocation.operation !== "submit" &&
+      invocation.callbackUrl !== undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["callbackUrl"],
+        message:
+          "A future callback address may be supplied only when work is submitted.",
+      });
+    }
+  });
 
 export const ExecutablePluginOutputSchema = z.union([
-  z.object({
-    slot: z.string().trim().min(1),
-    kind: z.literal("asset"),
-    asset: ExecutablePluginAssetHandleSchema,
-  }).strict(),
-  z.object({
-    slot: z.string().trim().min(1),
-    kind: z.literal("value"),
-    value: ExecutablePluginJsonValueSchema,
-  }).strict(),
+  z
+    .object({
+      slot: z.string().trim().min(1),
+      kind: z.literal("asset"),
+      asset: ExecutablePluginAssetHandleSchema,
+    })
+    .strict(),
+  z
+    .object({
+      slot: z.string().trim().min(1),
+      kind: z.literal("value"),
+      value: ExecutablePluginJsonValueSchema,
+    })
+    .strict(),
 ]);
 
 /** Stable Host-level failure categories; raw upstream spellings belong in `providerCode`. */
@@ -797,24 +998,28 @@ export const ExecutablePluginFailureCodeSchema = z.enum([
 ]);
 
 /** Structured failure facts shared by runtime results and declarative contract expectations. */
-export const ExecutablePluginFailureErrorSchema = z.object({
-  /** Stable Clash category. Provider-specific spellings belong in `providerCode`. */
-  code: ExecutablePluginFailureCodeSchema,
-  message: z.string().trim().min(1),
-  retryable: z.boolean(),
-  /** Whether the provider definitely rejected, may have accepted, or later failed the work. */
-  requestState: z.enum(["rejected", "unknown", "accepted"]),
-  providerCode: z.string().trim().min(1).optional(),
-  details: ExecutablePluginJsonValueSchema.optional(),
-}).strict();
+export const ExecutablePluginFailureErrorSchema = z
+  .object({
+    /** Stable Clash category. Provider-specific spellings belong in `providerCode`. */
+    code: ExecutablePluginFailureCodeSchema,
+    message: z.string().trim().min(1),
+    retryable: z.boolean(),
+    /** Whether the provider definitely rejected, may have accepted, or later failed the work. */
+    requestState: z.enum(["rejected", "unknown", "accepted"]),
+    providerCode: z.string().trim().min(1).optional(),
+    details: ExecutablePluginJsonValueSchema.optional(),
+  })
+  .strict();
 
 export const ExecutablePluginResultSchema = z.discriminatedUnion("status", [
-  z.object({
-    protocol: z.literal("clash.plugin.result/v1"),
-    invocationId: z.string().trim().min(1),
-    status: z.literal("completed"),
-    outputs: z.array(ExecutablePluginOutputSchema).default([]),
-  }).strict(),
+  z
+    .object({
+      protocol: z.literal("clash.plugin.result/v1"),
+      invocationId: z.string().trim().min(1),
+      status: z.literal("completed"),
+      outputs: z.array(ExecutablePluginOutputSchema).default([]),
+    })
+    .strict(),
   /**
    * The provider took the work and has not finished it.
    *
@@ -823,38 +1028,44 @@ export const ExecutablePluginResultSchema = z.discriminatedUnion("status", [
    * billed. Naming the task hands the host something durable to resume from, and moves the retry
    * loop out of every plugin that currently rewrites it.
    *
-   * How the host learns the answer is deliberately unspecified here. Polling and a cloud callback
-   * differ only in what wakes the host; the plugin's shape is the same either way.
+   * How the host learns the answer is deliberately unspecified here. Polling is implemented today;
+   * a future callback adapter may use the reserved callback ABI without changing this result shape.
    */
-  z.object({
-    protocol: z.literal("clash.plugin.result/v1"),
-    invocationId: z.string().trim().min(1),
-    status: z.literal("accepted"),
-    /**
-     * Whatever this plugin needs to ask about the work again, stored verbatim and handed back.
-     *
-     * Not an id, because plenty of providers have no id: one returns a status URL, another needs a
-     * region alongside a job name, a third hands back a cursor. Any of those fits here, and the host
-     * reads none of it -- it persists the value and returns it on the next poll. Naming a field
-     * `taskId` would have forced every provider without one to fake it.
-     */
-    pollState: ExecutablePluginJsonValueSchema,
-    /** How long to wait before asking again, when the provider says. */
-    retryAfterMs: z.number().int().positive().optional(),
-  }).strict(),
-  z.object({
-    protocol: z.literal("clash.plugin.result/v1"),
-    invocationId: z.string().trim().min(1),
-    status: z.literal("failed"),
-    error: ExecutablePluginFailureErrorSchema,
-  }).strict(),
+  z
+    .object({
+      protocol: z.literal("clash.plugin.result/v1"),
+      invocationId: z.string().trim().min(1),
+      status: z.literal("accepted"),
+      /**
+       * Whatever this plugin needs to ask about the work again, stored verbatim and handed back.
+       *
+       * Not an id, because plenty of providers have no id: one returns a status URL, another needs a
+       * region alongside a job name, a third hands back a cursor. Any of those fits here, and the host
+       * reads none of it -- it persists the value and returns it on the next poll. Naming a field
+       * `taskId` would have forced every provider without one to fake it.
+       */
+      pollState: ExecutablePluginJsonValueSchema,
+      /** How long to wait before asking again, when the provider says. */
+      retryAfterMs: z.number().int().positive().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      protocol: z.literal("clash.plugin.result/v1"),
+      invocationId: z.string().trim().min(1),
+      status: z.literal("failed"),
+      error: ExecutablePluginFailureErrorSchema,
+    })
+    .strict(),
 ]);
 
 export const ExecutablePluginBrokerOperationSchema = z.union([
-  z.object({
-    kind: z.literal("asset.resolve"),
-    reference: ExecutablePluginReferenceSchema,
-  }).strict(),
+  z
+    .object({
+      kind: z.literal("asset.resolve"),
+      reference: ExecutablePluginReferenceSchema,
+    })
+    .strict(),
   /**
    * Somewhere to put bytes that is not this message.
    *
@@ -876,217 +1087,261 @@ export const ExecutablePluginBrokerOperationSchema = z.union([
    * api key on one surface and a bearer token on another, kling wants an access key and a secret --
    * and enumerating those here would mean editing the host every time a vendor changes its mind.
    */
-  z.object({
-    kind: z.literal("store.get"),
-    key: z.string().trim().min(1),
-  }).strict(),
+  z
+    .object({
+      kind: z.literal("store.get"),
+      key: z.string().trim().min(1),
+    })
+    .strict(),
   /** Write one back. Renewal is plugin code: it refreshes a token and stores it where it found it. */
-  z.object({
-    kind: z.literal("store.put"),
-    key: z.string().trim().min(1),
-    value: z.string(),
-    secret: z.boolean().optional(),
-    expiresAt: z.string().datetime().optional(),
-  }).strict(),
-  z.object({
-    kind: z.literal("asset.upload-slot"),
-    slot: z.string().trim().min(1),
-    assetKind: AssetKindSchema,
-    mediaType: z.string().trim().min(1).optional(),
-    /**
-     * How many bytes are coming, when the plugin holds them.
-     *
-     * Announced ahead of the payload so the host can refuse an oversized upload before receiving
-     * it rather than after.
-     */
-    byteLength: z.number().int().positive().optional(),
-    /**
-     * Where the bytes are, when the vendor answered with a link.
-     *
-     * A URL has no byte count until someone fetches it, and fetching it only to satisfy a schema
-     * pays for the transfer twice -- the host is the side that knows whether it wants a copy. This
-     * was required-`byteLength`-only, so the url form failed with "Cannot read properties of
-     * undefined (reading 'byteLength')" the first time a real vendor answered with a link, after
-     * the generation had completed and been paid for.
-     */
-    url: z.string().trim().url().refine(
-      (value) => value.startsWith("https://"),
-      "The host will fetch this address, so it must be https.",
-    ).optional(),
-  }).strict().refine(
-    (operation) => operation.byteLength !== undefined || operation.url !== undefined,
-    // Neither is a request for storage with nothing to store, and opens a slot that can only ever
-    // be abandoned.
-    { message: "An upload slot needs either a byte count or a url." },
-  ),
-  z.object({
-    kind: z.literal("asset.write"),
-    slot: z.string().trim().min(1),
-    assetKind: AssetKindSchema,
-    mediaType: z.string().trim().min(1).optional(),
-    /**
-     * Where the result already lives, for the host to fetch once.
-     *
-     * A generation plugin normally ends up with a link the upstream published, and passing that
-     * through means the bytes cross the wire exactly once and never touch the plugin. Without this
-     * field the only ways to return such a result were to download it and re-encode it inline, or
-     * to smuggle the link through a free-form `kind: "value"` output -- which is what
-     * `hilo-hub-media` does, and why its media type is hardcoded per model kind instead of read
-     * from the response.
-     */
-    url: z.string().url().optional(),
-    /** Who can fetch `url`. A host cannot retrieve an address only the plugin can see. */
-    reach: z.enum(["public", "private"]).optional(),
-    /** Set when the bytes were already streamed to a slot; the write only names them. */
-    assetId: z.string().trim().min(1).optional(),
-    dataBase64: z.string().regex(
-      /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
-      "Plugin asset data must be canonical base64.",
-    ).optional(),
-  }).strict().superRefine((operation, ctx) => {
-    const sources = [operation.url, operation.dataBase64, operation.assetId]
-      .filter((source) => source !== undefined).length;
-    if (sources !== 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "asset.write requires exactly one of url, dataBase64 or assetId.",
-      });
-    }
-    if (operation.url && !operation.reach) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "asset.write url requires a reach of public or private.",
-      });
-    }
-    if (!operation.url && operation.reach) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "asset.write reach applies to a url.",
-      });
-    }
-  }),
-  z.object({
-    kind: z.literal("codex.image.generate"),
-    prompt: z.string().trim().min(1).max(20_000),
-    aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"]).default("1:1"),
-    slot: z.string().trim().min(1),
-    references: z.array(ExecutablePluginAssetHandleObjectSchema.extend({
-      kind: z.literal("image"),
-    }).strict()).max(5).default([]),
-  }).strict(),
+  z
+    .object({
+      kind: z.literal("store.put"),
+      key: z.string().trim().min(1),
+      value: z.string(),
+      secret: z.boolean().optional(),
+      expiresAt: z.string().datetime().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("asset.upload-slot"),
+      slot: z.string().trim().min(1),
+      assetKind: AssetKindSchema,
+      mediaType: z.string().trim().min(1).optional(),
+      /**
+       * How many bytes are coming, when the plugin holds them.
+       *
+       * Announced ahead of the payload so the host can refuse an oversized upload before receiving
+       * it rather than after.
+       */
+      byteLength: z.number().int().positive().optional(),
+      /**
+       * Where the bytes are, when the vendor answered with a link.
+       *
+       * A URL has no byte count until someone fetches it, and fetching it only to satisfy a schema
+       * pays for the transfer twice -- the host is the side that knows whether it wants a copy. This
+       * was required-`byteLength`-only, so the url form failed with "Cannot read properties of
+       * undefined (reading 'byteLength')" the first time a real vendor answered with a link, after
+       * the generation had completed and been paid for.
+       */
+      url: z
+        .string()
+        .trim()
+        .url()
+        .refine(
+          (value) => value.startsWith("https://"),
+          "The host will fetch this address, so it must be https.",
+        )
+        .optional(),
+    })
+    .strict()
+    .refine(
+      (operation) =>
+        operation.byteLength !== undefined || operation.url !== undefined,
+      // Neither is a request for storage with nothing to store, and opens a slot that can only ever
+      // be abandoned.
+      { message: "An upload slot needs either a byte count or a url." },
+    ),
+  z
+    .object({
+      kind: z.literal("asset.write"),
+      slot: z.string().trim().min(1),
+      assetKind: AssetKindSchema,
+      mediaType: z.string().trim().min(1).optional(),
+      /**
+       * Where the result already lives, for the host to fetch once.
+       *
+       * A generation plugin normally ends up with a link the upstream published, and passing that
+       * through means the bytes cross the wire exactly once and never touch the plugin. Without this
+       * field the only ways to return such a result were to download it and re-encode it inline, or
+       * to smuggle the link through a free-form `kind: "value"` output -- which is what
+       * `hilo-hub-media` does, and why its media type is hardcoded per model kind instead of read
+       * from the response.
+       */
+      url: z
+        .string()
+        .trim()
+        .url()
+        .refine(
+          (value) => value.startsWith("https://"),
+          "The host will ingest this address, so it must be https.",
+        )
+        .optional(),
+      /** Set when the bytes were already streamed to a slot; the write only names them. */
+      assetId: z.string().trim().min(1).optional(),
+      dataBase64: z
+        .string()
+        .regex(
+          /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/,
+          "Plugin asset data must be canonical base64.",
+        )
+        .optional(),
+    })
+    .strict()
+    .superRefine((operation, ctx) => {
+      const sources = [
+        operation.url,
+        operation.dataBase64,
+        operation.assetId,
+      ].filter((source) => source !== undefined).length;
+      if (sources !== 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "asset.write requires exactly one of url, dataBase64 or assetId.",
+        });
+      }
+    }),
+  z
+    .object({
+      kind: z.literal("codex.image.generate"),
+      prompt: z.string().trim().min(1).max(20_000),
+      aspectRatio: z
+        .enum(["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"])
+        .default("1:1"),
+      slot: z.string().trim().min(1),
+      references: z
+        .array(
+          ExecutablePluginAssetHandleObjectSchema.extend({
+            kind: z.literal("image"),
+          }).strict(),
+        )
+        .max(5)
+        .default([]),
+    })
+    .strict(),
 ]);
 
-export const ExecutablePluginBrokerRequestSchema = z.object({
-  protocol: z.literal("clash.plugin.broker-request/v1"),
-  requestId: z.string().trim().min(1),
-  invocationId: z.string().trim().min(1),
-  operation: ExecutablePluginBrokerOperationSchema,
-}).strict();
-
-export const ExecutablePluginBrokerResponseSchema = z.discriminatedUnion("status", [
-  z.object({
-    protocol: z.literal("clash.plugin.broker-response/v1"),
+export const ExecutablePluginBrokerRequestSchema = z
+  .object({
+    protocol: z.literal("clash.plugin.broker-request/v1"),
     requestId: z.string().trim().min(1),
-    status: z.literal("ok"),
-    result: ExecutablePluginJsonValueSchema,
-  }).strict(),
-  z.object({
-    protocol: z.literal("clash.plugin.broker-response/v1"),
-    requestId: z.string().trim().min(1),
-    status: z.literal("error"),
-    error: z.object({
-      code: z.string().trim().min(1),
-      message: z.string().trim().min(1),
-    }).strict(),
-  }).strict(),
-]);
+    invocationId: z.string().trim().min(1),
+    operation: ExecutablePluginBrokerOperationSchema,
+  })
+  .strict();
 
-const ExecutablePluginContractBrokerFixtureSchema = z.object({
-  operation: ExecutablePluginBrokerOperationSchema,
-  response: z.discriminatedUnion("status", [
-    z.object({
-      status: z.literal("ok"),
-      result: ExecutablePluginJsonValueSchema,
-    }).strict(),
-    z.object({
-      status: z.literal("error"),
-      error: z.object({
-        code: z.string().trim().min(1),
-        message: z.string().trim().min(1),
-      }).strict(),
-    }).strict(),
-  ]),
-}).strict();
+export const ExecutablePluginBrokerResponseSchema = z.discriminatedUnion(
+  "status",
+  [
+    z
+      .object({
+        protocol: z.literal("clash.plugin.broker-response/v1"),
+        requestId: z.string().trim().min(1),
+        status: z.literal("ok"),
+        result: ExecutablePluginJsonValueSchema,
+      })
+      .strict(),
+    z
+      .object({
+        protocol: z.literal("clash.plugin.broker-response/v1"),
+        requestId: z.string().trim().min(1),
+        status: z.literal("error"),
+        error: z
+          .object({
+            code: z.string().trim().min(1),
+            message: z.string().trim().min(1),
+          })
+          .strict(),
+      })
+      .strict(),
+  ],
+);
+
+const ExecutablePluginContractBrokerFixtureSchema = z
+  .object({
+    operation: ExecutablePluginBrokerOperationSchema,
+    response: z.discriminatedUnion("status", [
+      z
+        .object({
+          status: z.literal("ok"),
+          result: ExecutablePluginJsonValueSchema,
+        })
+        .strict(),
+      z
+        .object({
+          status: z.literal("error"),
+          error: z
+            .object({
+              code: z.string().trim().min(1),
+              message: z.string().trim().min(1),
+            })
+            .strict(),
+        })
+        .strict(),
+    ]),
+  })
+  .strict();
 
 /**
  * A deterministic, declarative executable-plugin contract test. Broker
  * fixtures are inert test data: running a contract test never grants access to
  * a real credential, asset, network destination, or external write.
  */
-export const ExecutablePluginContractTestDocumentSchema = z.object({
-  apiVersion: z.literal("clash.plugin.contract-test/v1"),
-  id: z.string().trim().regex(PLUGIN_ID_PATTERN),
-  description: z.string().trim().min(1).optional(),
-  target: z.object({
-    exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
-    kind: z.enum(["action", "provider-projector", "provider-executor"]),
-  }).strict(),
-  context: z.object({
-    projectId: z.string().trim().min(1).default("contract-test-project"),
-    nodeId: z.string().trim().min(1).optional(),
-  }).strict().default({ projectId: "contract-test-project" }),
-  input: z.object({
-    values: z.record(ExecutablePluginJsonValueSchema).default({}),
-    references: z.array(ExecutablePluginReferenceSchema).default([]),
-  }).strict(),
-  /**
-   * Which half of an executor this case exercises.
-   *
-   * A poll is a different translation from a submit, with a different input and a different set of
-   * answers, so a suite that can only describe submits leaves the resuming path uncovered -- and
-   * that is the path that runs after a restart, when nobody is watching.
-   */
-  operation: z.enum(["submit", "poll", "callback"]).default("submit"),
-  /** The state a poll is asking about, as the plugin would have returned it. */
-  pollState: ExecutablePluginJsonValueSchema.optional(),
-  brokerFixtures: z.array(ExecutablePluginContractBrokerFixtureSchema).default([]),
-  expect: z.discriminatedUnion("status", [
-    z.object({
-      status: z.literal("completed"),
-      outputs: z.array(ExecutablePluginOutputSchema).default([]),
-    }).strict(),
-    // Pinning what a submit hands back is the only way to catch a plugin that silently changes how
-    // its own poll state is shaped, which would strand every generation already in flight.
-    z.object({
-      status: z.literal("accepted"),
-      pollState: ExecutablePluginJsonValueSchema,
-    }).strict(),
-    z.object({
-      status: z.literal("failed"),
-      error: ExecutablePluginFailureErrorSchema,
-    }).strict(),
-  ]),
-  timeoutMs: z.number().int().positive().max(120_000).default(10_000),
-}).strict();
+export const ExecutablePluginContractTestDocumentSchema = z
+  .object({
+    apiVersion: z.literal("clash.plugin.contract-test/v1"),
+    id: z.string().trim().regex(PLUGIN_ID_PATTERN),
+    description: z.string().trim().min(1).optional(),
+    target: z
+      .object({
+        exportId: z.string().trim().regex(PLUGIN_ID_PATTERN),
+        kind: z.enum(["action", "provider-projector", "provider-executor"]),
+      })
+      .strict(),
+    context: z
+      .object({
+        projectId: z.string().trim().min(1).default("contract-test-project"),
+        nodeId: z.string().trim().min(1).optional(),
+      })
+      .strict()
+      .default({ projectId: "contract-test-project" }),
+    input: z
+      .object({
+        values: z.record(ExecutablePluginJsonValueSchema).default({}),
+        references: z.array(ExecutablePluginReferenceSchema).default([]),
+      })
+      .strict(),
+    /**
+     * Which half of an executor this case exercises.
+     *
+     * A poll is a different translation from a submit, with a different input and a different set of
+     * answers, so a suite that can only describe submits leaves the resuming path uncovered -- and
+     * that is the path that runs after a restart, when nobody is watching.
+     */
+    operation: z.enum(["submit", "poll", "callback"]).default("submit"),
+    /** The state a poll is asking about, as the plugin would have returned it. */
+    pollState: ExecutablePluginJsonValueSchema.optional(),
+    brokerFixtures: z
+      .array(ExecutablePluginContractBrokerFixtureSchema)
+      .default([]),
+    expect: z.discriminatedUnion("status", [
+      z
+        .object({
+          status: z.literal("completed"),
+          outputs: z.array(ExecutablePluginOutputSchema).default([]),
+        })
+        .strict(),
+      // Pinning what a submit hands back is the only way to catch a plugin that silently changes how
+      // its own poll state is shaped, which would strand every generation already in flight.
+      z
+        .object({
+          status: z.literal("accepted"),
+          pollState: ExecutablePluginJsonValueSchema,
+        })
+        .strict(),
+      z
+        .object({
+          status: z.literal("failed"),
+          error: ExecutablePluginFailureErrorSchema,
+        })
+        .strict(),
+    ]),
+    timeoutMs: z.number().int().positive().max(120_000).default(10_000),
+  })
+  .strict();
 
-/**
- * What follows from a plugin's run mode.
- *
- * `runtime.kind` is mandatory and discriminates the manifest, so it is the one place run mode is
- * stated. Anything that differs between a plugin the host spawns here and one it calls over HTTP
- * belongs in this profile rather than in a second manifest field, which could only repeat this or
- * contradict it -- the same duplication as a binding restating its provider's route.
- *
- * Today the difference that has a consumer is reach: a `local` plugin shares the host's network
- * namespace, so the host's own asset endpoint is fetchable, while for a `hosted` plugin that same
- * address answers for something unrelated. Both are `https?://` strings, so nothing downstream can
- * tell them apart by inspection, and the host has to decide. Bytes need no entry here because both
- * modes can receive them; a hosted plugin merely pays to.
- *
- * The remaining `runtime.kind` branches in the codebase are structural, not capability-based --
- * whether to read `entrypoint` or `endpoint` -- and routing those through a profile would add a
- * layer without removing a decision.
- */
 /**
  * Where a plugin should PUT a result it holds as bytes, or undefined when no target exists.
  *
@@ -1112,95 +1367,89 @@ export function uploadTargetForRuntime(
   return undefined;
 }
 
-export function pluginRuntimeProfile(kind: "local" | "hosted"): {
-  assetReach: readonly ("public" | "private")[];
-} {
-  return kind === "local"
-    ? { assetReach: ["public", "private"] }
-    : { assetReach: ["public"] };
-}
+export const ExecutablePluginContributionsSchema = z
+  .object({
+    cards: z.array(ExecutablePluginCardExportSchema).default([]),
+    providers: z.array(ExecutablePluginProviderExportSchema).default([]),
+    modelBindings: z
+      .array(ExecutablePluginModelBindingExportSchema)
+      .default([]),
+    functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
+    hostTools: z.array(z.enum(["codex.imagegen"])).default([]),
+  })
+  .strict();
 
-/** Which URL reaches a plugin running in this mode. See {@link pluginRuntimeProfile}. */
-export function assetReachForRuntime(kind: "local" | "hosted"): readonly ("public" | "private")[] {
-  return pluginRuntimeProfile(kind).assetReach;
-}
-
-export const ExecutablePluginContributionsSchema = z.object({
-  cards: z.array(ExecutablePluginCardExportSchema).default([]),
-  providers: z.array(ExecutablePluginProviderExportSchema).default([]),
-  modelBindings: z.array(ExecutablePluginModelBindingExportSchema).default([]),
-  functions: z.array(ExecutablePluginFunctionExportSchema).default([]),
-  hostTools: z.array(z.enum(["codex.imagegen"])).default([]),
-}).strict();
-
-export const ExecutablePluginManifestSchema = z.object({
-  apiVersion: z.literal("clash.plugin/v1"),
-  /** `publisher.name`, like clash.google. The version travels beside it, never inside it. */
-  id: pluginIdSchema,
-  version: z.string().trim().regex(SEMVER_PATTERN),
-  name: z.string().trim().min(1),
-  description: z.string().optional(),
-  runtime: ExecutablePluginRuntimeSchema,
-  contributes: ExecutablePluginContributionsSchema,
-  contractTests: z.array(PluginRelativePathSchema).default([]),
-  author: z.string().trim().min(1).optional(),
-  repository: z.string().trim().min(1).optional(),
-}).strict().superRefine((manifest, ctx) => {
-  for (const [key, values] of [
-    ["cards", manifest.contributes.cards],
-    ["providers", manifest.contributes.providers],
-    ["modelBindings", manifest.contributes.modelBindings],
-    ["functions", manifest.contributes.functions],
-  ] as const) {
-    const ids = new Set<string>();
-    for (const value of values) {
-      if (ids.has(value.id)) {
+export const ExecutablePluginManifestSchema = z
+  .object({
+    apiVersion: z.literal("clash.plugin/v1"),
+    /** `publisher.name`, like clash.google. The version travels beside it, never inside it. */
+    id: pluginIdSchema,
+    version: z.string().trim().regex(SEMVER_PATTERN),
+    name: z.string().trim().min(1),
+    description: z.string().optional(),
+    runtime: ExecutablePluginRuntimeSchema,
+    contributes: ExecutablePluginContributionsSchema,
+    contractTests: z.array(PluginRelativePathSchema).default([]),
+    author: z.string().trim().min(1).optional(),
+    repository: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .superRefine((manifest, ctx) => {
+    for (const [key, values] of [
+      ["cards", manifest.contributes.cards],
+      ["providers", manifest.contributes.providers],
+      ["modelBindings", manifest.contributes.modelBindings],
+      ["functions", manifest.contributes.functions],
+    ] as const) {
+      const ids = new Set<string>();
+      for (const value of values) {
+        if (ids.has(value.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["contributes", key],
+            message: `Plugin ${key} contribution ids must be unique.`,
+          });
+        }
+        ids.add(value.id);
+      }
+    }
+    const cardPaths = new Set<string>();
+    for (const card of manifest.contributes.cards) {
+      if (cardPaths.has(card.path)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["contributes", key],
-          message: `Plugin ${key} contribution ids must be unique.`,
+          path: ["contributes", "cards"],
+          message: "Plugin Card contribution paths must be unique.",
         });
       }
-      ids.add(value.id);
+      cardPaths.add(card.path);
     }
-  }
-  const cardPaths = new Set<string>();
-  for (const card of manifest.contributes.cards) {
-    if (cardPaths.has(card.path)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["contributes", "cards"],
-        message: "Plugin Card contribution paths must be unique.",
-      });
+    const artifactPaths = new Set(cardPaths);
+    for (const artifact of [
+      ...manifest.contributes.providers,
+      ...manifest.contributes.modelBindings,
+    ]) {
+      if (artifactPaths.has(artifact.path)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["contributes"],
+          message: "Plugin declarative artifact paths must be unique.",
+        });
+      }
+      artifactPaths.add(artifact.path);
     }
-    cardPaths.add(card.path);
-  }
-  const artifactPaths = new Set(cardPaths);
-  for (const artifact of [
-    ...manifest.contributes.providers,
-    ...manifest.contributes.modelBindings,
-  ]) {
-    if (artifactPaths.has(artifact.path)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["contributes"],
-        message: "Plugin declarative artifact paths must be unique.",
-      });
+    const contractTestPaths = new Set<string>();
+    for (const path of manifest.contractTests) {
+      if (contractTestPaths.has(path)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["contractTests"],
+          message: "Plugin contract test paths must be unique.",
+        });
+      }
+      contractTestPaths.add(path);
     }
-    artifactPaths.add(artifact.path);
-  }
-  const contractTestPaths = new Set<string>();
-  for (const path of manifest.contractTests) {
-    if (contractTestPaths.has(path)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["contractTests"],
-        message: "Plugin contract test paths must be unique.",
-      });
-    }
-    contractTestPaths.add(path);
-  }
-});
+  });
 
 /**
  * The host dependency surface shared by local stdio and hosted HTTP runtimes.
@@ -1216,7 +1465,10 @@ export function executablePluginDependencyError(
   const operation = request.operation;
   const capabilities = pluginCapabilities(manifest.contributes);
 
-  if (operation.kind === "asset.write" || operation.kind === "asset.upload-slot") {
+  if (
+    operation.kind === "asset.write" ||
+    operation.kind === "asset.upload-slot"
+  ) {
     // A slot is a write that has not happened yet. Letting one through without the contribution would
     // put the check after the bytes are already stored.
     return capabilities.assets
@@ -1253,14 +1505,16 @@ export function executablePluginDependencyError(
 }
 
 /** Kernel-owned proof that one exact plugin directory passed activation. */
-export const ExecutablePluginActivationReceiptSchema = z.object({
-  apiVersion: z.literal("clash.plugin.activation/v1"),
-  pluginId: pluginIdSchema,
-  version: z.string().trim().regex(SEMVER_PATTERN),
-  schemaHash: z.string().regex(SHA256_PATTERN),
-  contentHash: z.string().regex(SHA256_PATTERN),
-  activatedAt: z.string().datetime(),
-}).strict();
+export const ExecutablePluginActivationReceiptSchema = z
+  .object({
+    apiVersion: z.literal("clash.plugin.activation/v1"),
+    pluginId: pluginIdSchema,
+    version: z.string().trim().regex(SEMVER_PATTERN),
+    schemaHash: z.string().regex(SHA256_PATTERN),
+    contentHash: z.string().regex(SHA256_PATTERN),
+    activatedAt: z.string().datetime(),
+  })
+  .strict();
 
 export interface ValidatedExecutablePluginPackage {
   manifest: ExecutablePluginManifest;
@@ -1281,7 +1535,10 @@ export interface ValidatedExecutablePluginPackage {
  */
 function inheritBindingRoute(
   input: unknown,
-  providers: Record<string, z.infer<typeof ExecutablePluginProviderDocumentSchema>>,
+  providers: Record<
+    string,
+    z.infer<typeof ExecutablePluginProviderDocumentSchema>
+  >,
   bindingExportId: string,
 ): unknown {
   if (typeof input !== "object" || input === null) return input;
@@ -1289,7 +1546,8 @@ function inheritBindingRoute(
   if (typeof document.spec !== "object" || document.spec === null) return input;
   const spec = document.spec as Record<string, unknown>;
 
-  const declared = typeof spec.providerId === "string" ? spec.providerId : undefined;
+  const declared =
+    typeof spec.providerId === "string" ? spec.providerId : undefined;
   const definitions = Object.values(providers).map((provider) => provider.spec);
   const owner = declared
     ? definitions.find((definition) => definition.id === declared)
@@ -1302,12 +1560,15 @@ function inheritBindingRoute(
     // provider in this package can supply defaults.
     if (declared || definitions.length === 0) return input;
     throw new Error(
-      `Model Provider binding ${bindingExportId} must name its providerId: `
-        + `this package exports ${definitions.length} providers.`,
+      `Model Provider binding ${bindingExportId} must name its providerId: ` +
+        `this package exports ${definitions.length} providers.`,
     );
   }
 
-  return { ...document, spec: resolveModelBindingFromProvider(spec as never, owner) };
+  return {
+    ...document,
+    spec: resolveModelBindingFromProvider(spec as never, owner),
+  };
 }
 
 export function validateExecutablePluginPackage(
@@ -1320,22 +1581,32 @@ export function validateExecutablePluginPackage(
   } = {},
 ): ValidatedExecutablePluginPackage {
   const manifest = ExecutablePluginManifestSchema.parse(manifestInput);
-  const functions = new Map(manifest.contributes.functions.map((entry) => [entry.id, entry]));
+  const functions = new Map(
+    manifest.contributes.functions.map((entry) => [entry.id, entry]),
+  );
   const cards: Record<string, ExecutablePluginCardDocument> = {};
   const providers: Record<string, ExecutablePluginProviderDocument> = {};
-  const modelBindings: Record<string, ExecutablePluginModelBindingDocument> = {};
-  const contractTests: Record<string, ExecutablePluginContractTestDocument> = {};
+  const modelBindings: Record<string, ExecutablePluginModelBindingDocument> =
+    {};
+  const contractTests: Record<string, ExecutablePluginContractTestDocument> =
+    {};
 
   for (const cardExport of manifest.contributes.cards) {
     if (!Object.prototype.hasOwnProperty.call(cardDocuments, cardExport.path)) {
       throw new Error(`Missing declared Card document: ${cardExport.path}`);
     }
-    const card = ExecutablePluginCardDocumentSchema.parse(cardDocuments[cardExport.path]);
+    const card = ExecutablePluginCardDocumentSchema.parse(
+      cardDocuments[cardExport.path],
+    );
     if (card.kind !== cardExport.kind) {
-      throw new Error(`Card ${cardExport.path} kind ${card.kind} does not match export kind ${cardExport.kind}.`);
+      throw new Error(
+        `Card ${cardExport.path} kind ${card.kind} does not match export kind ${cardExport.kind}.`,
+      );
     }
     if (card.spec.id !== cardExport.id) {
-      throw new Error(`Card ${cardExport.path} id ${card.spec.id} does not match export id ${cardExport.id}.`);
+      throw new Error(
+        `Card ${cardExport.path} id ${card.spec.id} does not match export id ${cardExport.id}.`,
+      );
     }
 
     if (card.kind === "action-card") {
@@ -1348,7 +1619,11 @@ export function validateExecutablePluginPackage(
     } else {
       for (const implementation of card.spec.providerImplementations ?? []) {
         if (!implementation.projectorExportId) continue;
-        if (implementation.projectorPluginId && implementation.projectorPluginId !== manifest.id) continue;
+        if (
+          implementation.projectorPluginId &&
+          implementation.projectorPluginId !== manifest.id
+        )
+          continue;
         const projector = functions.get(implementation.projectorExportId);
         if (!projector || projector.kind !== "provider-projector") {
           throw new Error(
@@ -1363,7 +1638,9 @@ export function validateExecutablePluginPackage(
   for (const providerExport of manifest.contributes.providers) {
     const input = artifacts.providers?.[providerExport.path];
     if (input === undefined) {
-      throw new Error(`Missing declared Provider document: ${providerExport.path}`);
+      throw new Error(
+        `Missing declared Provider document: ${providerExport.path}`,
+      );
     }
     const provider = ExecutablePluginProviderDocumentSchema.parse(input);
     if (provider.spec.id !== providerExport.id) {
@@ -1383,19 +1660,26 @@ export function validateExecutablePluginPackage(
   for (const bindingExport of manifest.contributes.modelBindings) {
     const input = artifacts.modelBindings?.[bindingExport.path];
     if (input === undefined) {
-      throw new Error(`Missing declared model Provider binding: ${bindingExport.path}`);
+      throw new Error(
+        `Missing declared model Provider binding: ${bindingExport.path}`,
+      );
     }
     // Fill the route from the provider before validating, so a binding may carry only the
     // two facts it owns: which catalogue model it routes and that model's upstream name.
     // Written out per binding, the shared route fields were 186 duplicated values across
     // one plugin's 31 files -- no added information, and one mistyped copy would point a
     // model at the wrong upstream while every sibling looked correct.
-    const bindingInput = inheritBindingRoute(input, providers, bindingExport.id);
-    const binding = ExecutablePluginModelBindingDocumentSchema.parse(bindingInput);
+    const bindingInput = inheritBindingRoute(
+      input,
+      providers,
+      bindingExport.id,
+    );
+    const binding =
+      ExecutablePluginModelBindingDocumentSchema.parse(bindingInput);
     if (binding.spec.id !== bindingExport.id) {
       throw new Error(
-        `Model Provider binding ${bindingExport.path} id ${binding.spec.id} `
-          + `does not match export id ${bindingExport.id}.`,
+        `Model Provider binding ${bindingExport.path} id ${binding.spec.id} ` +
+          `does not match export id ${bindingExport.id}.`,
       );
     }
     for (const [exportId, kind] of [
@@ -1403,9 +1687,10 @@ export function validateExecutablePluginPackage(
       [binding.spec.executorExportId, "provider-executor"],
     ] as const) {
       if (!exportId) continue;
-      const ownerId = kind === "provider-projector"
-        ? binding.spec.projectorPluginId
-        : binding.spec.executorPluginId;
+      const ownerId =
+        kind === "provider-projector"
+          ? binding.spec.projectorPluginId
+          : binding.spec.executorPluginId;
       if (ownerId && ownerId !== manifest.id) continue;
       const implementation = functions.get(exportId);
       if (!implementation || implementation.kind !== kind) {
@@ -1427,8 +1712,8 @@ export function validateExecutablePluginPackage(
     const implementation = functions.get(contractTest.target.exportId);
     if (!implementation || implementation.kind !== contractTest.target.kind) {
       throw new Error(
-        `Contract test ${contractTest.id} target ${contractTest.target.kind} `
-          + `${contractTest.target.exportId} does not match function export.`,
+        `Contract test ${contractTest.id} target ${contractTest.target.kind} ` +
+          `${contractTest.target.exportId} does not match function export.`,
       );
     }
     contractTests[path] = contractTest;
@@ -1437,46 +1722,94 @@ export function validateExecutablePluginPackage(
   return { manifest, cards, providers, modelBindings, contractTests };
 }
 
-export type ExecutablePluginRuntime = z.infer<typeof ExecutablePluginRuntimeSchema>;
+export type ExecutablePluginRuntime = z.infer<
+  typeof ExecutablePluginRuntimeSchema
+>;
 export type ExecutableActionCard = z.infer<typeof ExecutableActionCardSchema>;
-export type ExecutableActionPresentation = z.infer<typeof ExecutableActionPresentationSchema>;
-export type ExecutablePluginCardDocument = z.infer<typeof ExecutablePluginCardDocumentSchema>;
+export type ExecutableActionPresentation = z.infer<
+  typeof ExecutableActionPresentationSchema
+>;
+export type ExecutablePluginCardDocument = z.infer<
+  typeof ExecutablePluginCardDocumentSchema
+>;
 export type ExecutablePluginCardRegistration = z.infer<
   typeof ExecutablePluginCardRegistrationSchema
 >;
-export type ExecutablePluginProviderDefinition = z.infer<typeof ExecutablePluginProviderDefinitionSchema>;
-export type ExecutablePluginProviderDocument = z.infer<typeof ExecutablePluginProviderDocumentSchema>;
+export type ExecutablePluginProviderDefinition = z.infer<
+  typeof ExecutablePluginProviderDefinitionSchema
+>;
+export type ExecutablePluginProviderDocument = z.infer<
+  typeof ExecutablePluginProviderDocumentSchema
+>;
 export type ExecutablePluginProviderRegistration = z.infer<
   typeof ExecutablePluginProviderRegistrationSchema
 >;
-export type ExecutablePluginModelBindingSpec = z.infer<typeof ExecutablePluginModelBindingSpecSchema>;
+export type ExecutablePluginModelBindingSpec = z.infer<
+  typeof ExecutablePluginModelBindingSpecSchema
+>;
 export type ExecutablePluginModelBindingDocument = z.infer<
   typeof ExecutablePluginModelBindingDocumentSchema
 >;
 export type ExecutablePluginModelBindingRegistration = z.infer<
   typeof ExecutablePluginModelBindingRegistrationSchema
 >;
-export type ExecutablePluginBinding = z.infer<typeof ExecutablePluginBindingSchema>;
-export type ExecutablePluginAssetHandle = z.infer<typeof ExecutablePluginAssetHandleSchema>;
-export type ExecutablePluginResolvedReference = z.infer<typeof ExecutablePluginResolvedReferenceSchema>;
-export type ExecutablePluginReference = z.infer<typeof ExecutablePluginReferenceSchema>;
-export type ExecutablePluginInvocation = z.infer<typeof ExecutablePluginInvocationSchema>;
-export type ExecutablePluginOutput = z.infer<typeof ExecutablePluginOutputSchema>;
-export type ExecutablePluginFailureCode = z.infer<typeof ExecutablePluginFailureCodeSchema>;
-export type ExecutablePluginFailureError = z.infer<typeof ExecutablePluginFailureErrorSchema>;
-export type ExecutablePluginResult = z.infer<typeof ExecutablePluginResultSchema>;
-export type ExecutablePluginBrokerOperation = z.infer<typeof ExecutablePluginBrokerOperationSchema>;
-export type ExecutablePluginBrokerRequest = z.infer<typeof ExecutablePluginBrokerRequestSchema>;
-export type ExecutablePluginBrokerResponse = z.infer<typeof ExecutablePluginBrokerResponseSchema>;
+export type ExecutablePluginBinding = z.infer<
+  typeof ExecutablePluginBindingSchema
+>;
+export type ExecutablePluginAssetHandle = z.infer<
+  typeof ExecutablePluginAssetHandleSchema
+>;
+export type ExecutablePluginBrokerResolvedReference = z.infer<
+  typeof ExecutablePluginBrokerResolvedReferenceSchema
+>;
+export type ExecutablePluginReference = z.infer<
+  typeof ExecutablePluginReferenceSchema
+>;
+export type ExecutablePluginInvocation = z.infer<
+  typeof ExecutablePluginInvocationSchema
+>;
+export type ExecutablePluginOutput = z.infer<
+  typeof ExecutablePluginOutputSchema
+>;
+export type ExecutablePluginFailureCode = z.infer<
+  typeof ExecutablePluginFailureCodeSchema
+>;
+export type ExecutablePluginFailureError = z.infer<
+  typeof ExecutablePluginFailureErrorSchema
+>;
+export type ExecutablePluginResult = z.infer<
+  typeof ExecutablePluginResultSchema
+>;
+export type ExecutablePluginBrokerOperation = z.infer<
+  typeof ExecutablePluginBrokerOperationSchema
+>;
+export type ExecutablePluginBrokerRequest = z.infer<
+  typeof ExecutablePluginBrokerRequestSchema
+>;
+export type ExecutablePluginBrokerResponse = z.infer<
+  typeof ExecutablePluginBrokerResponseSchema
+>;
 export type ExecutablePluginContractTestDocument = z.infer<
   typeof ExecutablePluginContractTestDocumentSchema
 >;
-export type ExecutablePluginCardExport = z.infer<typeof ExecutablePluginCardExportSchema>;
-export type ExecutablePluginProviderExport = z.infer<typeof ExecutablePluginProviderExportSchema>;
-export type ExecutablePluginModelBindingExport = z.infer<typeof ExecutablePluginModelBindingExportSchema>;
-export type ExecutablePluginFunctionExport = z.infer<typeof ExecutablePluginFunctionExportSchema>;
-export type ExecutablePluginContributions = z.infer<typeof ExecutablePluginContributionsSchema>;
-export type ExecutablePluginManifest = z.infer<typeof ExecutablePluginManifestSchema>;
+export type ExecutablePluginCardExport = z.infer<
+  typeof ExecutablePluginCardExportSchema
+>;
+export type ExecutablePluginProviderExport = z.infer<
+  typeof ExecutablePluginProviderExportSchema
+>;
+export type ExecutablePluginModelBindingExport = z.infer<
+  typeof ExecutablePluginModelBindingExportSchema
+>;
+export type ExecutablePluginFunctionExport = z.infer<
+  typeof ExecutablePluginFunctionExportSchema
+>;
+export type ExecutablePluginContributions = z.infer<
+  typeof ExecutablePluginContributionsSchema
+>;
+export type ExecutablePluginManifest = z.infer<
+  typeof ExecutablePluginManifestSchema
+>;
 export type ExecutablePluginActivationReceipt = z.infer<
   typeof ExecutablePluginActivationReceiptSchema
 >;

@@ -1,0 +1,19 @@
+{
+  "summary": "First-party executable Provider plugin for Pika API Club text and media generation.",
+  "context_hints": [
+    "The plugin id is clash.pika and its Provider declaration is providers/pika.json",
+    "Media submit and poll are separate durable steps; retry scheduling belongs to the Host",
+    "Provider URLs pass through and private byte references upload through the Pika media upload API"
+  ],
+  "subdirectories": {
+    "providers": "Pika API Club Provider declaration and secure API-key form.",
+    "src": "Typed stdio entrypoint, reference upload, request translation, and submit/poll adapter.",
+    "contract-tests": "Declarative activation-gating ABI fixtures."
+  },
+  "key_files": {
+    "manifest.json": "Versioned executable package and contribution declarations.",
+    "providers/pika.json": "Provider metadata and API-key authentication form.",
+    "src/pika-adapter.ts": "Pika chat/media execution and durable polling translation."
+  },
+  "verification": ["pnpm --filter @clash-plugin/pika test"]
+}

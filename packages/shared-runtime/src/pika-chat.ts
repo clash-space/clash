@@ -32,7 +32,7 @@ export async function generatePikaChat(options: {
       messages: [{ role: "user", content: options.prompt }],
     };
   } else if (options.model.startsWith("google/")) {
-    path = `/genai/v1beta/models/${encodeURIComponent(options.model)}:generateContent`;
+    path = `/genai/v1beta/models/${encodeURIComponent(options.model.slice("google/".length))}:generateContent`;
     body = {
       ...(options.systemPrompt ? { systemInstruction: { parts: [{ text: options.systemPrompt }] } } : {}),
       contents: [{ role: "user", parts: [{ text: options.prompt }] }],

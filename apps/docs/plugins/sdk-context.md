@@ -51,7 +51,11 @@ that operation, and vendor error parsing. It does **not** own submit/poll retry
 loops, polling cadence, total run lifetime, restart recovery, or Project
 publication; the Host durable runner owns those concerns.
 
-## Typed references
+## Typed references: Asset delivery v0
+
+This contract is permanently named `v0`; it is not a temporary version label.
+Compatible changes extend `v0`; there is no parallel `reach` dialect or `v1`
+Asset-delivery alias.
 
 `context.reference(reference)` resolves a Clash reference without exposing a
 storage path. It returns one of the forms the Host can supply:
@@ -61,28 +65,34 @@ storage path. It returns one of the forms the Host can supply:
 - text.
 
 The plugin chooses the vendor-specific adaptation: inline the bytes, forward a
-`providerUrl`, or upload bytes to the vendor first. A generic `url` form and a
-separate `reach` flag are not part of this API: the Host returns
+`providerUrl`, or upload bytes to the vendor first. The Host returns
 `form: "provider-url"` only after it has produced an address the selected
 Provider may fetch.
 
-When an exported function cannot operate without an internet-reachable Asset,
-declare the machine dependency on that function:
+When a concrete Provider/model route can operate only on an
+internet-reachable Asset, declare that delivery requirement on the model
+binding:
 
 ```json
 {
-  "id": "video-reference-execute",
-  "kind": "provider-executor",
-  "requires": ["public-asset-storage"]
+  "assetInputs": [
+    {
+      "match": { "kinds": ["video"] },
+      "representations": ["provider-url"]
+    }
+  ]
 }
 ```
 
-The Host checks dependencies again immediately before invocation. For this
-dependency, `context.reference` may publish the local Asset through the active
-machine backend and return
+This contract belongs to the selected binding, not to the executable function
+or plugin manifest. The Host resolves it immediately before invocation. For a
+URL-only binding, `context.reference` may publish the local Asset through the
+active machine backend and return
 `{ form: "provider-url", providerUrl, expiresAt, ... }`. The plugin does not
 know whether the backend is user-owned R2/S3/TOS or future Clash-managed
-storage.
+storage. A binding that also accepts `bytes` does not authorize a new public
+copy: the Host reuses an existing Provider URL when one exists and otherwise
+delivers bytes.
 
 ## Typed outputs and uploads
 
@@ -90,6 +100,15 @@ Small results can be returned as typed media. For large bytes,
 `context.upload` obtains a Host upload slot so the stdio result carries only a
 canonical Asset handle. If the upstream already published a URL, pass that URL
 to `context.upload` and let the Host ingest it according to Project policy.
+`context.asset` is the lower-level small-result form for an inline base64 value
+or Provider URL; both methods return the same canonical output handle and never
+let the plugin choose a storage identity.
+
+A completed Provider media result must return that handle as
+`{ slot: "media", kind: "asset", asset: handle }`. The `value` channel is only
+for JSON values such as the canonical text result
+`{ slot: "text", kind: "value", value: "..." }`; a media URL or metadata object
+in `value` is a contract violation.
 
 These primitives keep local and hosted execution on one contract: plugin code
 does not know the database path, object-store bucket, or project replica

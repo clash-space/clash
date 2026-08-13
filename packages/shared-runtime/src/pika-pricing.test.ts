@@ -79,15 +79,27 @@ describe("Pika catalog pricing", () => {
   });
 
   it("fetches a public catalog entry and returns an unavailable quote without blocking on catalog errors", async () => {
-    const successFetch = async () => new Response(JSON.stringify({
-      api_id: "pika/pika-2.5/text-to-video",
-      display_pricing: { components: [] },
-    }), { headers: { "content-type": "application/json" } });
-    await expect(fetchPikaCatalogQuote({
-      operation: "pika/pika-2.5/text-to-video",
-      input: { duration_s: 5 },
-      fetch: successFetch as typeof fetch,
-    })).resolves.toMatchObject({ pricingSource: "pika-catalog", complete: true });
+    let requestedUrl = "";
+    const successFetch = async (input: RequestInfo | URL) => {
+      requestedUrl = String(input);
+      return new Response(
+        JSON.stringify({
+          api_id: "pika/pika-2.5/text-to-video",
+          display_pricing: { components: [] },
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    };
+    await expect(
+      fetchPikaCatalogQuote({
+        operation: "pika/pika-2.5/text-to-video",
+        input: { duration_s: 5 },
+        fetch: successFetch as typeof fetch,
+      }),
+    ).resolves.toMatchObject({ pricingSource: "pika-catalog", complete: true });
+    expect(requestedUrl).toBe(
+      "https://api.dev.pika.art/catalog/apis/pika/pika-2.5/text-to-video?expand=inputs",
+    );
 
     await expect(fetchPikaCatalogQuote({
       operation: "pika/pika-2.5/text-to-video",

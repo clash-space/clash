@@ -22,46 +22,40 @@ const completed = (outputs: unknown[]) => ({
   outputs,
 });
 
-const asset = (slot: string, url: string) => ({
+const asset = (slot: string, assetId: string) => ({
   slot,
   kind: "asset",
   asset: {
-    assetId: url.split("/").pop(),
-    uri: `clash-asset://${url.split("/").pop()}`,
+    assetId,
+    uri: `clash-asset://${assetId}`,
     kind: "image",
     mediaType: "image/png",
-    url,
-    reach: "public",
   },
 });
 
 describe("multiple media outputs", () => {
   it("returns every media asset, in the order the plugin produced them", () => {
     const media = mediaListFromResult(completed([
-      asset("media", "https://example.test/a.png"),
-      asset("media", "https://example.test/b.png"),
-      asset("media", "https://example.test/c.png"),
+      asset("media", "a"),
+      asset("media", "b"),
+      asset("media", "c"),
     ]));
-    expect(media.map((entry) => entry.url)).toEqual([
-      "https://example.test/a.png",
-      "https://example.test/b.png",
-      "https://example.test/c.png",
-    ]);
+    expect(media.map((entry) => entry.assetId)).toEqual(["a", "b", "c"]);
   });
 
   it("rejects multiple results at the one-slot Provider Run boundary instead of dropping them", () => {
     expect(() =>
       mediaFromResult(
         completed([
-          asset("media", "https://example.test/a.png"),
-          asset("media", "https://example.test/b.png"),
+          asset("media", "a"),
+          asset("media", "b"),
         ]),
       ),
     ).toThrow(/2 media outputs.*expected exactly one/i);
   });
 
   it("still returns one when there is one", () => {
-    const media = mediaListFromResult(completed([asset("media", "https://example.test/only.png")]));
+    const media = mediaListFromResult(completed([asset("media", "only")]));
     expect(media).toHaveLength(1);
   });
 
@@ -69,11 +63,11 @@ describe("multiple media outputs", () => {
     // A cover frame and the video it belongs to are not interchangeable; a plugin that names them
     // apart means them to stay apart.
     const media = mediaListFromResult(completed([
-      asset("media", "https://example.test/video.mp4"),
-      asset("thumbnail", "https://example.test/cover.png"),
+      asset("media", "video"),
+      asset("thumbnail", "cover"),
     ]));
     expect(media).toHaveLength(1);
-    expect(media[0]?.url).toBe("https://example.test/video.mp4");
+    expect(media[0]?.assetId).toBe("video");
   });
 
   it("refuses a completed result with no media at all", () => {

@@ -45,8 +45,11 @@ flowchart LR
   runtime --> mcpAdapter
 
   actionSdk --> google["Google plugin"]
+  actionSdk --> fal["fal plugin"]
   actionSdk --> minimax["MiniMax plugin"]
-  types --> imagegen["Codex ImageGen plugin"]
+  actionSdk --> pika["Pika plugin"]
+  runtime --> pika
+  actionSdk --> imagegen["Codex ImageGen plugin"]
 
   types --> cli["Clash CLI\nprotocol client"]
   runtime --> cli
@@ -55,8 +58,10 @@ flowchart LR
 
   types --> localApi["local-api\ndaemon + host runtime"]
   runtime --> localApi
+  fal --> localApi
   google --> localApi
   minimax --> localApi
+  pika --> localApi
   imagegen --> localApi
   localApi --> clashDist
 
@@ -121,6 +126,10 @@ source directly, Desktop launches the local host through its TypeScript developm
 `local-api` must not import CLI implementation. The host may inject the CLI source entry as an
 executable resource for child agents; that child CLI still calls the host protocol. Editing a shared
 package, CLI, or host module should be picked up by its watcher without a manual package build.
+Bundled executable plugins use attested development launchers that import their TypeScript source
+through `tsx`; the Host watches each plugin source plus the shared Action SDK/contracts it imports
+(and the shared runtime helpers imported by MiniMax and Pika) and recycles only that plugin child
+when one changes.
 
 Remotion compositions and the headless Director viewport are browser programs even though the
 daemon invokes them. In a source runtime, the daemon fingerprints their workspace source before
@@ -146,6 +155,9 @@ pnpm build
 
 # One package and the dependencies required by its build task
 pnpm build:package @clash/local-api
+
+# The complete headless distribution, including exact first-party plugin payloads
+pnpm build:package clash
 
 # One package's tests; the root task graph prepares build outputs first
 pnpm test:package @clash/cli

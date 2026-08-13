@@ -191,6 +191,7 @@ describe("local plugin host IPC", () => {
         projectId: "project-ipc-1",
         target: { ...binding, kind: "provider-projector" as const },
         input: { values: { prompt: "hello" }, references: [] },
+        assetInputs: [],
         actor: { kind: "agent" as const, id: "agent-1" },
         operation: "submit" as const,
       };
@@ -273,6 +274,7 @@ describe("local plugin host IPC", () => {
         projectId: "slow-project",
         target: { ...binding, kind: "action" },
         input: { values: {}, references: [] },
+        assetInputs: [],
         actor: { kind: "user" },
         operation: "submit" as const,
       }, { timeoutMs: 100 })).resolves.toMatchObject({ status: "completed" });

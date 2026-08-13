@@ -1,6 +1,8 @@
 import type { ProjectHostCommand } from "@clash/shared-types";
 import {
+  createPersonalGlobalAssetHostClient,
   createProjectAssetHostClient,
+  type PersonalGlobalAssetHostClient,
   type ProjectAssetHostClient,
 } from "@clash/shared-runtime/project-asset-client";
 import {
@@ -18,10 +20,23 @@ export function resolveCliProjectHostConnection(): ProjectHostConnection {
   };
 }
 
-export function createCliProjectAssetHostClient(options: {
-  fetch?: typeof globalThis.fetch;
-} = {}): ProjectAssetHostClient {
+export function createCliProjectAssetHostClient(
+  options: {
+    fetch?: typeof globalThis.fetch;
+  } = {},
+): ProjectAssetHostClient {
   return createProjectAssetHostClient({
+    resolveConnection: async () => resolveCliProjectHostConnection(),
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+  });
+}
+
+export function createCliPersonalGlobalAssetHostClient(
+  options: {
+    fetch?: typeof globalThis.fetch;
+  } = {},
+): PersonalGlobalAssetHostClient {
+  return createPersonalGlobalAssetHostClient({
     resolveConnection: async () => resolveCliProjectHostConnection(),
     ...(options.fetch ? { fetch: options.fetch } : {}),
   });

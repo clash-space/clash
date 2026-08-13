@@ -1,3 +1,5 @@
+import { publicProjectHostValue } from "@clash/shared-runtime/project-host-client";
+
 import { resolveProjectContext } from "./project-context";
 import {
   forgetWorktreeObservation,
@@ -17,21 +19,6 @@ type AgentObservationWriteOptions = AgentObservationOptions & {
   revision: unknown;
 };
 
-const INTERNAL_RECEIPT_FIELDS = new Set([
-  "observedVersion",
-  "readToken",
-  "textReadToken",
-]);
-
-const INTERNAL_MUTATION_FIELDS = new Set([
-  "afterHash",
-  "afterReadToken",
-  "beforeHash",
-  "beforeReadToken",
-  "expectedHash",
-  "expectedReadToken",
-]);
-
 export function isAgentInvocation(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
@@ -41,31 +28,7 @@ export function isAgentInvocation(
 export function publicAgentCommandResult<T extends Record<string, unknown>>(
   result: T,
 ): Record<string, unknown> {
-  return sanitizePublicValue(result, "result") as Record<string, unknown>;
-}
-
-function sanitizePublicValue(
-  value: unknown,
-  context: "nested" | "mutation" | "result",
-): unknown {
-  if (Array.isArray(value))
-    return value.map((item) => sanitizePublicValue(item, "nested"));
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value).flatMap(([key, child]) => {
-      if (INTERNAL_RECEIPT_FIELDS.has(key)) return [];
-      if (context === "result" && key === "version") return [];
-      if (context === "mutation" && INTERNAL_MUTATION_FIELDS.has(key))
-        return [];
-      const childContext =
-        key === "mutation"
-          ? "mutation"
-          : key === "replaceResult"
-            ? "result"
-            : "nested";
-      return [[key, sanitizePublicValue(child, childContext)]];
-    }),
-  );
+  return publicProjectHostValue(result) as Record<string, unknown>;
 }
 
 export async function recordAgentObservation(

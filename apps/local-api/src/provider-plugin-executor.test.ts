@@ -34,7 +34,7 @@ const textRequest = (kind: "text" | "video" = "text") => ({
 });
 
 describe("provider plugin executor", () => {
-  it("invokes a pinned provider executor and validates its media result", async () => {
+  it("invokes a pinned provider executor and validates its typed Asset result", async () => {
     const binding = {
       pluginId: "hilo.hub-media",
       version: "1.0.0",
@@ -49,11 +49,12 @@ describe("provider plugin executor", () => {
       outputs: [
         {
           slot: "media",
-          kind: "value" as const,
-          value: {
-            url: "https://hub-cdn.test/h3.mp4",
-            contentType: "video/mp4",
-            requestId: "hub-task-1",
+          kind: "asset" as const,
+          asset: {
+            assetId: "plugin-output:hub-task-1",
+            uri: "clash-asset://plugin-output:hub-task-1",
+            kind: "video" as const,
+            mediaType: "video/mp4",
           },
         },
       ],
@@ -73,17 +74,23 @@ describe("provider plugin executor", () => {
         nodeId: "node-1",
         binding,
         timeoutMs: 12_345,
+        assetInputs: [{
+          match: { kinds: ["image"], slots: ["startFrame"] },
+          representations: ["provider-url", "bytes"],
+          mediaTypes: ["image/png"],
+        }],
         input: { values: { modelId: "minimax-h3" }, references: [] },
-      }),
+      } as never),
     ).resolves.toEqual({
       // A completed response now says so: the same call may instead come back accepted, and a
       // caller that cannot tell them apart would read media that is not there.
       status: "completed",
       binding,
       media: {
-        url: "https://hub-cdn.test/h3.mp4",
-        contentType: "video/mp4",
-        requestId: "hub-task-1",
+        assetId: "plugin-output:hub-task-1",
+        uri: "clash-asset://plugin-output:hub-task-1",
+        kind: "video",
+        mediaType: "video/mp4",
       },
     });
     expect(resolveBinding).not.toHaveBeenCalled();
@@ -95,6 +102,11 @@ describe("provider plugin executor", () => {
           values: { modelId: "minimax-h3", kind: "video" },
           references: [],
         },
+        assetInputs: [{
+          match: { kinds: ["image"], slots: ["startFrame"] },
+          representations: ["provider-url", "bytes"],
+          mediaTypes: ["image/png"],
+        }],
       }),
       { timeoutMs: 12_345 },
     );
@@ -124,7 +136,9 @@ describe("provider plugin executor", () => {
       binding: textBinding,
       media: {
         assetId: "plugin-output:model-1",
-        contentType: "model/gltf-binary",
+        uri: "clash-asset://plugin-output:model-1",
+        kind: "model",
+        mediaType: "model/gltf-binary",
       },
     });
   });
@@ -299,8 +313,6 @@ describe("provider plugin executor", () => {
             uri: "clash-asset://wrong-kind",
             kind: "image",
             mediaType: "image/png",
-            url: "https://example.test/wrong.png",
-            reach: "public",
           },
         },
       ])(textRequest("video")),
@@ -318,8 +330,6 @@ describe("provider plugin executor", () => {
             uri: "clash-asset://wrong-mime",
             kind: "video",
             mediaType: "image/png",
-            url: "https://example.test/wrong.mp4",
-            reach: "public",
           },
         },
       ])(textRequest("video")),

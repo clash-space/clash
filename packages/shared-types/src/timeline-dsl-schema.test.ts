@@ -62,7 +62,7 @@ describe("agent-facing Timeline DSL schema", () => {
       .TIMELINE_DSL_DEFINITION as any;
 
     expect(definition).toBeDefined();
-    expect(definition.schemaVersion).toBe(8);
+    expect(definition.schemaVersion).toBe(9);
     expect(definition.format).toBe("clash.timeline.yaml");
     expect(definition.features.clipMask).toMatchObject({
       yamlPath: "tracks[].items[]",
@@ -234,7 +234,7 @@ describe("agent-facing Timeline DSL schema", () => {
     ).toBe(true);
   });
 
-  it("publishes structured semantic rules and executes the same four apply constraints", () => {
+  it("publishes structured semantic rules aligned with executable validation", () => {
     const definition = (shared as Record<string, unknown>)
       .TIMELINE_DSL_DEFINITION as any;
     const semanticRules = definition.jsonSchema["x-clash-semantic-rules"];
@@ -261,6 +261,11 @@ describe("agent-facing Timeline DSL schema", () => {
           id: "timeline.keyframes.unique-frame",
           kind: "unique-key-by-channel",
           key: "frame",
+        }),
+        expect.objectContaining({
+          id: "timeline.asset.retired-field",
+          kind: "forbidden-paths",
+          paths: ["mediaAssetRefs", "tracks[].items[].backingAssetId"],
         }),
       ]),
     });
@@ -357,6 +362,35 @@ describe("agent-facing Timeline DSL schema", () => {
           ],
         },
       },
+      {
+        expectedRule: "timeline.asset.retired-field",
+        expectedPath: ["mediaAssetRefs"],
+        state: {
+          mediaAssetRefs: [{ assetId: "asset-video" }],
+          tracks: [],
+        },
+      },
+      {
+        expectedRule: "timeline.asset.retired-field",
+        expectedPath: ["tracks", 0, "items", 0, "backingAssetId"],
+        state: {
+          tracks: [
+            {
+              id: "visual",
+              items: [
+                {
+                  id: "retired-backing-asset",
+                  type: "image",
+                  from: 0,
+                  durationInFrames: 10,
+                  assetId: "asset-image",
+                  backingAssetId: "storage-row",
+                },
+              ],
+            },
+          ],
+        },
+      },
     ] as const;
 
     for (const invalidCase of invalidCases) {
@@ -366,6 +400,14 @@ describe("agent-facing Timeline DSL schema", () => {
       expect(result.issues.map((issue) => issue.ruleId)).toContain(
         invalidCase.expectedRule,
       );
+      if ("expectedPath" in invalidCase) {
+        expect(result.issues).toContainEqual(
+          expect.objectContaining({
+            ruleId: invalidCase.expectedRule,
+            path: invalidCase.expectedPath,
+          }),
+        );
+      }
     }
   });
 
@@ -386,6 +428,7 @@ describe("agent-facing Timeline DSL schema", () => {
       6: "fnv1a32:cefec01e",
       7: "fnv1a32:20e70cf2",
       8: "fnv1a32:bef614be",
+      9: "fnv1a32:e79b87fb",
     };
     expect(contractFingerprint).toBe(
       releasedContractFingerprints[definition.schemaVersion],

@@ -291,6 +291,42 @@ describe("Timeline field descriptor consumers", () => {
     ).toBe(false);
   });
 
+  it("rejects retired Asset indexes while preserving unrelated extensions", () => {
+    expect(
+      TimelineDslSchema.safeParse({
+        mediaAssetRefs: [{ assetId: "speech" }],
+        tracks: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      TimelineDslSchema.safeParse({
+        "x-project-extension": { keep: true },
+        tracks: [
+          {
+            id: "visual",
+            name: "Visual",
+            items: [
+              {
+                id: "clip",
+                type: "image",
+                from: 0,
+                durationInFrames: 10,
+                assetId: "asset-image",
+                backingAssetId: "retired-storage-row",
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      TimelineDslSchema.safeParse({
+        "x-project-extension": { keep: true },
+        tracks: [],
+      }).success,
+    ).toBe(true);
+  });
+
   it("generates JavaDoc-style documentation for every field group", () => {
     const markdown = renderTimelineDslMarkdown();
 

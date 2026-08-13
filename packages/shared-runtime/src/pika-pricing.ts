@@ -148,7 +148,7 @@ export async function fetchPikaCatalogQuote(options: {
     const fetchImpl = options.fetch ?? globalThis.fetch;
     const root = (options.baseUrl?.trim() || PIKA_CATALOG_BASE_URL).replace(/\/+$/, "");
     const response = await fetchImpl(
-      `${root}/catalog/apis/${encodeURIComponent(options.operation)}?expand=inputs`,
+      `${root}/catalog/apis/${options.operation}?expand=inputs`,
     );
     if (!response.ok) throw new Error(`Pika catalog returned ${response.status}`);
     const catalog = await response.json() as PikaCatalogEntry;

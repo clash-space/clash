@@ -89,80 +89,15 @@ type CompletedOutput = Extract<
 >["outputs"][number];
 
 function mediaFromOutput(output: CompletedOutput): ProviderPluginExecutorMedia {
-  // The asset channel is the typed one: the media type is a declared field and the URL states who
-  // can fetch it. The value channel stays supported because installed plugins use it -- it was the
-  // only way to return a published link before the asset channel accepted a url.
+  // The Asset channel carries only the staging receipt and immutable media facts. A URL is a Host
+  // projection, not Asset identity; the durable publication step resolves the receipt through the
+  // Asset service instead of teaching this executor where local or cloud storage lives.
   if (output.kind === "asset") {
-    const { asset } = output;
-
-    // The storage adapter owns projection. A local adapter returns its loopback `/assets/*`
-    // projection with `reach: private`; object storage can return a signed public projection.
-    // This layer consumes that opaque address and never derives a path from assetId.
-    if (asset.url && (asset.reach === "public" || asset.reach === "private")) {
-      return {
-        assetId: asset.assetId,
-        url: new URL(asset.url).toString(),
-        ...(asset.mediaType ? { contentType: asset.mediaType } : {}),
-      };
-    }
-    // A local Host has already installed these bytes in CAS and issued a project-scoped staging
-    // receipt. The durable output step consumes that receipt directly, so requiring a loopback URL
-    // here would force the Host to download its own immutable Resource a second time.
-    return {
-      assetId: asset.assetId,
-      ...(asset.mediaType ? { contentType: asset.mediaType } : {}),
-    };
+    return output.asset;
   }
-
-  if (
-    !output.value ||
-    typeof output.value !== "object" ||
-    Array.isArray(output.value)
-  ) {
-    throw new Error("Provider plugin returned no media value output.");
-  }
-  const value = output.value as Record<string, unknown>;
-  if (typeof value.url !== "string") {
-    throw new Error("Provider plugin media URL must be a string.");
-  }
-  const url = new URL(value.url).toString();
-  const optionalString = (key: string) =>
-    typeof value[key] === "string" && value[key]
-      ? String(value[key])
-      : undefined;
-  const optionalNumber = (key: string) =>
-    typeof value[key] === "number" && Number.isFinite(value[key])
-      ? Number(value[key])
-      : undefined;
-  const waveform =
-    Array.isArray(value.waveform) &&
-    value.waveform.every(
-      (entry) => typeof entry === "number" && Number.isFinite(entry),
-    )
-      ? (value.waveform as number[])
-      : undefined;
-  return {
-    url,
-    ...(optionalString("contentType")
-      ? { contentType: optionalString("contentType") }
-      : {}),
-    ...(optionalString("requestId")
-      ? { requestId: optionalString("requestId") }
-      : {}),
-    ...(optionalNumber("width") !== undefined
-      ? { width: optionalNumber("width") }
-      : {}),
-    ...(optionalNumber("height") !== undefined
-      ? { height: optionalNumber("height") }
-      : {}),
-    ...(optionalNumber("durationMs") !== undefined
-      ? { durationMs: optionalNumber("durationMs") }
-      : {}),
-    ...(waveform ? { waveform } : {}),
-    ...(optionalString("transcript")
-      ? { transcript: optionalString("transcript") }
-      : {}),
-  };
+  throw new Error(
+    'Provider plugin slot "media" must use the canonical Asset output envelope.',
+  );
 }
 
 function assertMediaOutputsMatchKind(
@@ -190,18 +125,10 @@ function assertMediaOutputsMatchKind(
       }
       continue;
     }
-    const value = output.value;
-    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-    const contentType = (value as Record<string, unknown>).contentType;
-    if (
-      typeof contentType === "string" &&
-      contentType &&
-      !contentType.startsWith(expectedPrefix)
-    ) {
-      throw new Error(
-        `Provider plugin ${target} returned media type ${contentType} for a ${expectedKind} route.`,
-      );
-    }
+    throw new Error(
+      `Provider plugin ${target} returned slot "media" through the value channel; ` +
+        'media must use the canonical Asset output envelope.',
+    );
   }
 }
 
@@ -274,6 +201,7 @@ export function createProviderPluginExecutor(options: {
       projectId: request.projectId,
       ...(request.nodeId ? { nodeId: request.nodeId } : {}),
       target: { ...binding, kind: "provider-executor" },
+      assetInputs: request.assetInputs ?? [],
       input: {
         ...request.input,
         values: {

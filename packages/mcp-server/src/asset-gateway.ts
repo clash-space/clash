@@ -1,8 +1,11 @@
 import { readFile, stat } from "node:fs/promises";
-import { basename, extname, resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import type { AssetKind } from "@clash/shared-types";
 import {
+  createPersonalGlobalAssetHostClient,
   createProjectAssetHostClient,
+  resolveAssetImportFileType,
+  type PersonalGlobalAssetHostClient,
   type ProjectAssetHostClient,
   type ProjectAssetHostScope,
 } from "@clash/shared-runtime/project-asset-client";
@@ -13,38 +16,9 @@ export type AssetProjectHostGateway = {
   invoke(name: AssetMcpToolName, input: AssetToolInput): Promise<unknown>;
 };
 
-type FileType = { kind: AssetKind; contentType: string };
-
-const FILE_TYPES: Record<string, FileType> = {
-  ".png": { kind: "image", contentType: "image/png" },
-  ".jpg": { kind: "image", contentType: "image/jpeg" },
-  ".jpeg": { kind: "image", contentType: "image/jpeg" },
-  ".gif": { kind: "image", contentType: "image/gif" },
-  ".webp": { kind: "image", contentType: "image/webp" },
-  ".svg": { kind: "image", contentType: "image/svg+xml" },
-  ".avif": { kind: "image", contentType: "image/avif" },
-  ".mp4": { kind: "video", contentType: "video/mp4" },
-  ".webm": { kind: "video", contentType: "video/webm" },
-  ".mov": { kind: "video", contentType: "video/quicktime" },
-  ".m4v": { kind: "video", contentType: "video/x-m4v" },
-  ".mkv": { kind: "video", contentType: "video/x-matroska" },
-  ".mp3": { kind: "audio", contentType: "audio/mpeg" },
-  ".wav": { kind: "audio", contentType: "audio/wav" },
-  ".m4a": { kind: "audio", contentType: "audio/mp4" },
-  ".aac": { kind: "audio", contentType: "audio/aac" },
-  ".flac": { kind: "audio", contentType: "audio/flac" },
-  ".ogg": { kind: "audio", contentType: "audio/ogg" },
-  ".glb": { kind: "model", contentType: "model/gltf-binary" },
-  ".gltf": { kind: "model", contentType: "model/gltf+json" },
-  ".fbx": { kind: "model", contentType: "application/octet-stream" },
-  ".bvh": { kind: "model", contentType: "application/octet-stream" },
-  ".obj": { kind: "model", contentType: "text/plain" },
-  ".usdz": { kind: "model", contentType: "model/vnd.usdz+zip" },
-};
-
 function requiredString(
   input: AssetToolInput,
-  key: "assetId" | "filePath",
+  key: "assetId" | "projectAssetId" | "globalAssetId" | "filePath",
 ): string {
   const value = input[key];
   if (typeof value !== "string" || !value.trim()) {
@@ -53,9 +27,34 @@ function requiredString(
   return value.trim();
 }
 
+async function readAssetImportFile(
+  input: AssetToolInput,
+  workspaceRoot: string,
+): Promise<{
+  bytes: Uint8Array;
+  fileName: string;
+  contentType: string;
+  kind: AssetKind;
+}> {
+  const requestedPath = requiredString(input, "filePath");
+  const filePath = resolve(workspaceRoot, requestedPath);
+  const info = await stat(filePath);
+  if (!info.isFile()) {
+    throw new Error(`Asset import source is not a file: ${filePath}`);
+  }
+  const fileType = resolveAssetImportFileType(filePath, input.kind);
+  return {
+    bytes: new Uint8Array(await readFile(filePath)),
+    fileName: basename(filePath),
+    contentType: fileType.contentType,
+    kind: fileType.kind,
+  };
+}
+
 /** Direct Project Asset transport with MCP-session read receipts and no CLI process. */
 export function createAssetProjectHostGateway(
   client: ProjectAssetHostClient = createProjectAssetHostClient(),
+  globalClient: PersonalGlobalAssetHostClient = createPersonalGlobalAssetHostClient(),
 ): AssetProjectHostGateway {
   const observations = new Map<string, string>();
   const scope = async (input: AssetToolInput) => {
@@ -86,11 +85,13 @@ export function createAssetProjectHostGateway(
 
   return {
     async invoke(name, input) {
-      const resolved = await scope(input);
       switch (name) {
-        case "clash_assets_list":
+        case "clash_assets_list": {
+          const resolved = await scope(input);
           return (await client.list(resolved.requestScope)).value;
+        }
         case "clash_assets_get": {
+          const resolved = await scope(input);
           const assetId = requiredString(input, "assetId");
           const observed = await client.get({
             ...resolved.requestScope,
@@ -100,6 +101,7 @@ export function createAssetProjectHostGateway(
           return observed.value;
         }
         case "clash_assets_references": {
+          const resolved = await scope(input);
           const assetId = requiredString(input, "assetId");
           const observed = await client.references({
             ...resolved.requestScope,
@@ -109,38 +111,34 @@ export function createAssetProjectHostGateway(
           return { projectAssetId: assetId, references: observed.value };
         }
         case "clash_assets_import_file": {
-          const requestedPath = requiredString(input, "filePath");
+          const resolved = await scope(input);
           const workspaceRoot =
             input.cwd?.trim() ||
             resolved.context.workspaceRoot ||
             process.cwd();
-          const filePath = resolve(workspaceRoot, requestedPath);
-          const info = await stat(filePath);
-          if (!info.isFile()) {
-            throw new Error(
-              `Project Asset import source is not a file: ${filePath}`,
-            );
-          }
-          const inferred = FILE_TYPES[extname(filePath).toLowerCase()];
-          if (!inferred) {
-            throw new Error(
-              `Project Asset file type is unsupported: ${filePath}`,
-            );
-          }
-          if (input.kind && input.kind !== inferred.kind) {
-            throw new Error(
-              `Project Asset kind ${input.kind} does not match the selected ${inferred.kind} file`,
-            );
-          }
+          const file = await readAssetImportFile(input, workspaceRoot);
           return (
             await client.importFile({
               ...resolved.requestScope,
-              bytes: new Uint8Array(await readFile(filePath)),
-              fileName: basename(filePath),
-              contentType: inferred.contentType,
-              kind: input.kind ?? inferred.kind,
+              ...file,
             })
           ).value;
+        }
+        case "clash_assets_admit": {
+          const resolved = await scope(input);
+          return (
+            await client.admit({
+              ...resolved.requestScope,
+              globalAssetId: requiredString(input, "globalAssetId"),
+            })
+          ).value;
+        }
+        case "clash_assets_publish": {
+          const resolved = await scope(input);
+          return globalClient.publish({
+            projectId: resolved.context.projectId,
+            projectAssetId: requiredString(input, "projectAssetId"),
+          });
         }
         case "clash_assets_trash": {
           const assetId = requiredString(input, "assetId");
@@ -165,6 +163,18 @@ export function createAssetProjectHostGateway(
           });
           observations.set(guarded.observationKey(assetId), observed.receipt);
           return observed.value;
+        }
+        case "clash_assets_global_list":
+          return globalClient.list();
+        case "clash_assets_global_get":
+          return globalClient.get({
+            globalAssetId: requiredString(input, "globalAssetId"),
+          });
+        case "clash_assets_global_import_file": {
+          const workspaceRoot = input.cwd?.trim() || process.cwd();
+          return globalClient.importFile(
+            await readAssetImportFile(input, workspaceRoot),
+          );
         }
       }
     },

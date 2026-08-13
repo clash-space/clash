@@ -22,10 +22,12 @@ function mcpSurfaceBindings(): Record<string, TimelinePluginSurfaceBinding> {
   const bindings: Record<string, TimelinePluginSurfaceBinding> = {};
   for (const [operationId, annotation] of Object.entries(
     TIMELINE_OPERATION_REGISTRY.agent,
-  ) as Array<[
-    TimelineAgentOperationId,
-    (typeof TIMELINE_OPERATION_REGISTRY.agent)[TimelineAgentOperationId],
-  ]>) {
+  ) as Array<
+    [
+      TimelineAgentOperationId,
+      (typeof TIMELINE_OPERATION_REGISTRY.agent)[TimelineAgentOperationId],
+    ]
+  >) {
     for (const surface of annotation.surfaceBindings ?? []) {
       if (!surface.startsWith("mcp:")) continue;
       const toolName = surface.slice("mcp:".length);
@@ -41,7 +43,8 @@ function mcpSurfaceBindings(): Record<string, TimelinePluginSurfaceBinding> {
   return bindings;
 }
 
-export const TIMELINE_PLUGIN_SURFACE_BINDINGS = Object.freeze(mcpSurfaceBindings());
+export const TIMELINE_PLUGIN_SURFACE_BINDINGS =
+  Object.freeze(mcpSurfaceBindings());
 
 export type TimelinePluginSurfaceToolName = `clash_timeline_${string}`;
 
@@ -51,8 +54,9 @@ export const TIMELINE_PLUGIN_TOOL_NAMES = Object.freeze(
 
 export const TIMELINE_PLUGIN_OPERATION_IDS = Object.freeze(
   Object.fromEntries(
-    Object.entries(TIMELINE_PLUGIN_SURFACE_BINDINGS)
-      .map(([toolName, binding]) => [toolName, binding.operationId]),
+    Object.entries(TIMELINE_PLUGIN_SURFACE_BINDINGS).map(
+      ([toolName, binding]) => [toolName, binding.operationId],
+    ),
   ),
 ) as Readonly<Record<TimelinePluginSurfaceToolName, TimelineAgentOperationId>>;
 
@@ -71,10 +75,12 @@ const TIMELINE_TRACK_CATEGORY_LABELS = {
 export const TIMELINE_APP_CONTRACT = Object.freeze({
   contractFingerprint: TIMELINE_DSL_DEFINITION.contractFingerprint,
   trackCategories: Object.freeze(
-    TIMELINE_DSL_DEFINITION.taxonomy.trackCategories.map((id) => Object.freeze({
-      id,
-      label: TIMELINE_TRACK_CATEGORY_LABELS[id],
-    })),
+    TIMELINE_DSL_DEFINITION.taxonomy.trackCategories.map((id) =>
+      Object.freeze({
+        id,
+        label: TIMELINE_TRACK_CATEGORY_LABELS[id],
+      }),
+    ),
   ),
   defaultTrackCategory: "visual" as TimelineDslTrackCategory,
   inspector: Object.freeze({
@@ -153,12 +159,14 @@ const TIMELINE_MCP_SCOPE_JSON_SCHEMA = Object.freeze({
   cwd: {
     type: "string",
     minLength: 1,
-    description: "Absolute project workspace path containing .clash/project.toml",
+    description:
+      "Absolute project workspace path containing .clash/project.toml",
   },
   projectId: {
     type: "string",
     minLength: 1,
-    description: "Project ID override; normally resolved from the workspace marker",
+    description:
+      "Project ID override; normally resolved from the workspace marker",
   },
 });
 
@@ -176,7 +184,9 @@ function compactTimelineStateSchema(): Record<string, unknown> {
   };
 }
 
-function timelineContractReferenceSchema(original: unknown): Record<string, unknown> {
+function timelineContractReferenceSchema(
+  original: unknown,
+): Record<string, unknown> {
   const timelineReference = compactTimelineStateSchema();
   if (!original || typeof original !== "object" || Array.isArray(original)) {
     return timelineReference;
@@ -186,12 +196,14 @@ function timelineContractReferenceSchema(original: unknown): Record<string, unkn
   if (!Array.isArray(variants)) return timelineReference;
   return {
     ...cloneJsonSchema(originalSchema),
-    anyOf: variants.map((variant) => (
-      variant && typeof variant === "object" && !Array.isArray(variant)
-        && (variant as Record<string, unknown>).type === "string"
+    anyOf: variants.map((variant) =>
+      variant &&
+      typeof variant === "object" &&
+      !Array.isArray(variant) &&
+      (variant as Record<string, unknown>).type === "string"
         ? cloneJsonSchema(variant)
-        : timelineReference
-    )),
+        : timelineReference,
+    ),
   };
 }
 
@@ -201,16 +213,25 @@ export function timelineOperationInputJsonSchema(
 ): Record<string, unknown> {
   const operation = TIMELINE_OPERATION_REGISTRY.agent[operationId];
   const catalog = TIMELINE_DSL_DEFINITION.operationCatalog.agent[operationId];
-  const schema = cloneJsonSchema(catalog.inputJsonSchema) as Record<string, unknown>;
-  const properties = schema.properties && typeof schema.properties === "object"
-    && !Array.isArray(schema.properties)
-    ? schema.properties as Record<string, unknown>
-    : {};
+  const schema = cloneJsonSchema(catalog.inputJsonSchema) as Record<
+    string,
+    unknown
+  >;
+  const properties =
+    schema.properties &&
+    typeof schema.properties === "object" &&
+    !Array.isArray(schema.properties)
+      ? (schema.properties as Record<string, unknown>)
+      : {};
   for (const fieldPath of Object.keys(operation.inputContractRefs ?? {})) {
     if (fieldPath.includes(".")) {
-      throw new Error(`Unsupported nested Timeline operation contract ref ${fieldPath}`);
+      throw new Error(
+        `Unsupported nested Timeline operation contract ref ${fieldPath}`,
+      );
     }
-    properties[fieldPath] = timelineContractReferenceSchema(properties[fieldPath]);
+    properties[fieldPath] = timelineContractReferenceSchema(
+      properties[fieldPath],
+    );
   }
   schema.properties = {
     ...properties,
@@ -231,18 +252,40 @@ export function timelineOperationInputSchema(
   operationId: TimelineAgentOperationId,
 ): TimelineMcpZodSchema {
   const operation = TIMELINE_OPERATION_REGISTRY.agent[operationId];
-  return z.object(scopeShape).catchall(z.unknown()).superRefine((input, context) => {
-    const { cwd: _cwd, projectId: _projectId, ...operationInput } = input;
-    const validation = operation.inputSchema.safeParse(operationInput);
-    if (validation.success) return;
-    for (const issue of validation.error.issues) {
-      context.addIssue({
-        code: "custom",
-        path: issue.path,
-        message: issue.message,
-      });
-    }
-  }).meta(timelineOperationInputJsonSchema(operationId));
+  return z
+    .object(scopeShape)
+    .catchall(z.unknown())
+    .superRefine((input, context) => {
+      const { cwd: _cwd, projectId: _projectId, ...operationInput } = input;
+      const validation = operation.inputSchema.safeParse(operationInput);
+      if (!validation.success) {
+        for (const issue of validation.error.issues) {
+          context.addIssue({
+            code: "custom",
+            path: issue.path,
+            message: issue.message,
+          });
+        }
+        return;
+      }
+      if (operation.access !== "write") return;
+      const validatedInput = validation.data as Record<string, unknown>;
+      for (const fieldPath of Object.keys(operation.inputContractRefs ?? {})) {
+        const state = validatedInput[fieldPath];
+        if (state === undefined || typeof state === "string") continue;
+        const contractValidation = validateTimelineState(state);
+        if (contractValidation.ok) continue;
+        for (const issue of contractValidation.issues) {
+          context.addIssue({
+            code: "custom",
+            path: [fieldPath, ...issue.path],
+            message: issue.message,
+            params: { ruleId: issue.ruleId },
+          });
+        }
+      }
+    })
+    .meta(timelineOperationInputJsonSchema(operationId));
 }
 
 function expandTimelineEntityStateSchemas(value: unknown): boolean {
@@ -255,11 +298,18 @@ function expandTimelineEntityStateSchemas(value: unknown): boolean {
   }
   const schema = value as Record<string, unknown>;
   let expanded = false;
-  const properties = schema.properties && typeof schema.properties === "object"
-    && !Array.isArray(schema.properties)
-    ? schema.properties as Record<string, unknown>
-    : undefined;
-  if (properties?.state && properties.id && properties.name && properties.owner) {
+  const properties =
+    schema.properties &&
+    typeof schema.properties === "object" &&
+    !Array.isArray(schema.properties)
+      ? (schema.properties as Record<string, unknown>)
+      : undefined;
+  if (
+    properties?.state &&
+    properties.id &&
+    properties.name &&
+    properties.owner
+  ) {
     properties.state = compactTimelineStateSchema();
     expanded = true;
   }
@@ -272,12 +322,14 @@ function expandTimelineEntityStateSchemas(value: unknown): boolean {
 function withTimelineToolErrorEnvelope(
   schema: Record<string, unknown>,
 ): Record<string, unknown> {
-  const properties = schema.properties && typeof schema.properties === "object"
-    && !Array.isArray(schema.properties)
-    ? schema.properties as Record<string, unknown>
-    : {};
+  const properties =
+    schema.properties &&
+    typeof schema.properties === "object" &&
+    !Array.isArray(schema.properties)
+      ? (schema.properties as Record<string, unknown>)
+      : {};
   const normalRequired = Array.isArray(schema.required)
-    ? [...schema.required] as string[]
+    ? ([...schema.required] as string[])
     : [];
   const { required: _required, ...withoutRootRequired } = schema;
   return {
@@ -312,10 +364,7 @@ function withTimelineToolErrorEnvelope(
         additionalProperties: true,
       },
     },
-    anyOf: [
-      { required: normalRequired },
-      { required: ["error"] },
-    ],
+    anyOf: [{ required: normalRequired }, { required: ["error"] }],
   };
 }
 
@@ -324,7 +373,10 @@ export function timelineOperationOutputJsonSchema(
   transform?: (schema: Record<string, unknown>) => Record<string, unknown>,
 ): Record<string, unknown> {
   const catalog = TIMELINE_DSL_DEFINITION.operationCatalog.agent[operationId];
-  const catalogSchema = cloneJsonSchema(catalog.outputJsonSchema) as Record<string, unknown>;
+  const catalogSchema = cloneJsonSchema(catalog.outputJsonSchema) as Record<
+    string,
+    unknown
+  >;
   let schema = transform ? transform(catalogSchema) : catalogSchema;
   if (expandTimelineEntityStateSchemas(schema)) {
     Object.assign(schema, timelineContractJsonSchemaMetadata());
@@ -337,38 +389,54 @@ export function timelineOperationOutputJsonSchema(
 export function timelineOperationOutputSchema(
   operationId: TimelineAgentOperationId,
   transform?: (schema: Record<string, unknown>) => Record<string, unknown>,
-  projectSharedOutput: (output: Record<string, unknown>) => unknown = (output) => output,
+  projectSharedOutput: (output: Record<string, unknown>) => unknown = (
+    output,
+  ) => output,
 ): TimelineMcpZodSchema {
   const operation = TIMELINE_OPERATION_REGISTRY.agent[operationId];
-  return z.object({}).catchall(z.unknown()).superRefine((output, context) => {
-    const validation = operation.outputSchema.safeParse(projectSharedOutput(output));
-    if (validation.success) return;
-    for (const issue of validation.error.issues) {
-      context.addIssue({
-        code: "custom",
-        path: issue.path,
-        message: issue.message,
-      });
-    }
-  }).meta(timelineOperationOutputJsonSchema(operationId, transform));
+  return z
+    .object({})
+    .catchall(z.unknown())
+    .superRefine((output, context) => {
+      const validation = operation.outputSchema.safeParse(
+        projectSharedOutput(output),
+      );
+      if (validation.success) return;
+      for (const issue of validation.error.issues) {
+        context.addIssue({
+          code: "custom",
+          path: issue.path,
+          message: issue.message,
+        });
+      }
+    })
+    .meta(timelineOperationOutputJsonSchema(operationId, transform));
 }
 
 const scopeShape = {
-  cwd: z.string().min(1).optional().describe(
-    "Absolute project workspace path containing .clash/project.toml",
-  ),
-  projectId: z.string().min(1).optional().describe(
-    "Project ID override; normally resolved from the workspace marker",
-  ),
+  cwd: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Absolute project workspace path containing .clash/project.toml"),
+  projectId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Project ID override; normally resolved from the workspace marker",
+    ),
 };
 
 export const TIMELINE_GET_OUTPUT_SCHEMA = timelineOperationOutputSchema(
   "timeline.get",
   (schema) => {
-    const properties = schema.properties && typeof schema.properties === "object"
-      && !Array.isArray(schema.properties)
-      ? schema.properties as Record<string, unknown>
-      : {};
+    const properties =
+      schema.properties &&
+      typeof schema.properties === "object" &&
+      !Array.isArray(schema.properties)
+        ? (schema.properties as Record<string, unknown>)
+        : {};
     return {
       ...schema,
       properties: {
@@ -407,11 +475,15 @@ export const TIMELINE_GET_OUTPUT_SCHEMA = timelineOperationOutputSchema(
           additionalProperties: true,
         },
       },
-      required: [...new Set([
-        ...(Array.isArray(schema.required) ? schema.required as string[] : []),
-        "contract",
-        "validation",
-      ])],
+      required: [
+        ...new Set([
+          ...(Array.isArray(schema.required)
+            ? (schema.required as string[])
+            : []),
+          "contract",
+          "validation",
+        ]),
+      ],
     };
   },
   (output) => ({ timeline: output.timeline }),

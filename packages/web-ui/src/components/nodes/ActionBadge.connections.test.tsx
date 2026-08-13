@@ -1017,6 +1017,141 @@ describe("ActionBadge canvas subscriptions", () => {
     expect(spawnAssetMock.spawnPending).not.toHaveBeenCalled();
   });
 
+  it("shows a media compatibility error as soon as the model changes", async () => {
+    reactFlowMock.nodeConnections.push({
+      edgeId: "video-long-action-1",
+      source: "video-long",
+      target: "action-1",
+    });
+    reactFlowMock.getNode.mockImplementation((id: string) =>
+      id === "video-long"
+        ? {
+            id,
+            type: "video",
+            data: {
+              assetId: "asset-long",
+              naturalWidth: 1280,
+              naturalHeight: 720,
+              metadata: { durationMs: 20_000, contentType: "video/mp4" },
+            },
+          }
+        : undefined,
+    );
+
+    const { rerender } = render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="action-1"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Restyle this clip",
+            label: "Restyle",
+            modelId: "seedance-2.5-ref",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    expect(screen.queryByText(/at most 15 seconds/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
+    fireEvent.click(
+      screen.getByRole("option", { name: "MiniMax H3 (全能参考)" }),
+    );
+
+    await waitFor(() => {
+      const persisted = reactFlowMock.setNodes.mock.calls.some(([update]) => {
+        if (typeof update !== "function") return false;
+        const [nextNode] = update([{ id: "action-1", data: {} }]);
+        return nextNode?.data?.modelId === "minimax-h3";
+      });
+      expect(persisted).toBe(true);
+    });
+    rerender(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="action-1"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Restyle this clip",
+            label: "Restyle",
+            modelId: "minimax-h3",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    expect(await screen.findByText(/at most 15 seconds/i)).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Run action" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(reactFlowMock.setEdges).not.toHaveBeenCalled();
+  });
+
+  it("shows a conditional media error as soon as edit mode is enabled", async () => {
+    reactFlowMock.nodeConnections.push({
+      edgeId: "video-short-action-1",
+      source: "video-short",
+      target: "action-1",
+    });
+    reactFlowMock.getNode.mockImplementation((id: string) =>
+      id === "video-short"
+        ? {
+            id,
+            type: "video",
+            data: {
+              assetId: "asset-short",
+              naturalWidth: 640,
+              naturalHeight: 640,
+              metadata: { durationMs: 3_999, contentType: "video/mp4" },
+            },
+          }
+        : undefined,
+    );
+
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="action-1"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Edit this clip",
+            label: "Edit",
+            modelId: "seedance-2.5-ref",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /5s .* 720p .* On .* Off/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Edit referenced video.*Off/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "Edit referenced video" }),
+    );
+    fireEvent.click(screen.getByRole("option", { name: "On" }));
+
+    expect(await screen.findByText(/at least 4 seconds/i)).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Run action" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(reactFlowMock.setEdges).not.toHaveBeenCalled();
+  });
+
   it("turns Director Shot packets into one visual Shot Group and one generation per Shot", async () => {
     const packet = (shotId: string, assetId: string) => ({
       schemaVersion: 1 as const,

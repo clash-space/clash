@@ -1,9 +1,31 @@
-import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { describe, it } from "node:test";
 
-import { describe, expect, it } from "vitest";
+import { assertDependencyDistIsFresh } from "./host-runtime-freshness.js";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
+
+function writeFixtureFile(
+  packageDir: string,
+  relativePath: string,
+  mtimeMs: number,
+): void {
+  const path = join(packageDir, relativePath);
+  mkdirSync(join(path, ".."), { recursive: true });
+  writeFileSync(path, relativePath, "utf8");
+  const stamp = new Date(mtimeMs);
+  utimesSync(path, stamp, stamp);
+}
 
 /**
  * The host bundle must not be buildable from stale dependency output.
@@ -29,33 +51,41 @@ describe("host runtime build freshness", () => {
   };
 
   it("declares the Clash CLI runtime as a private build input", () => {
-    expect(manifest.devDependencies["@clash/cli"]).toBe("workspace:*");
-    expect(manifest.dependencies).not.toHaveProperty("@clash/cli");
+    assert.equal(manifest.devDependencies["@clash/cli"], "workspace:*");
+    assert.ok(!Object.hasOwn(manifest.dependencies, "@clash/cli"));
   });
 
   it("does not recursively rebuild workspace dependencies", () => {
-    expect(manifest.scripts).not.toHaveProperty("build:deps");
-    expect(manifest.scripts.build).not.toContain("--filter");
+    assert.ok(!Object.hasOwn(manifest.scripts, "build:deps"));
+    assert.ok(!manifest.scripts.build.includes("--filter"));
   });
 
-  it("refuses to bundle when a dependency's dist is older than its source", () => {
-    // The guard the three debugging rounds were missing: a stale dist is a build error, not a
-    // runtime mystery.
-    const guard = readFileSync(
-      join(repoRoot, "plugins", "clash", "scripts", "build-host-runtime.ts"),
-      "utf8",
-    );
-    expect(guard).toContain("assertDependencyDistIsFresh");
+  it("ignores colocated test and spec sources that package builds do not emit", () => {
+    const packageDir = mkdtempSync(join(tmpdir(), "clash-freshness-"));
+    try {
+      writeFixtureFile(packageDir, "src/index.ts", 100_000);
+      writeFixtureFile(packageDir, "dist/index.js", 200_000);
+      writeFixtureFile(packageDir, "src/nested/index.test.ts", 300_000);
+      writeFixtureFile(packageDir, "src/view.spec.tsx", 400_000);
+
+      assert.doesNotThrow(() => assertDependencyDistIsFresh([packageDir]));
+    } finally {
+      rmSync(packageDir, { recursive: true, force: true });
+    }
   });
 
-  it("copies every official Provider into the shipped host runtime", () => {
-    const builder = readFileSync(
-      join(repoRoot, "plugins", "clash", "scripts", "build-host-runtime.ts"),
-      "utf8",
-    );
-    expect(builder).toContain("BUNDLED_PLUGINS");
-    expect(builder).toContain("bundled-plugins");
-    expect(builder).toContain("manifest.runtime?.entrypoint");
-    expect(builder).toContain("manifest.contributes?.providers");
+  it("refuses to bundle when emitted production source is newer than dist", () => {
+    const packageDir = mkdtempSync(join(tmpdir(), "clash-freshness-"));
+    try {
+      writeFixtureFile(packageDir, "dist/index.js", 200_000);
+      writeFixtureFile(packageDir, "src/index.ts", 300_000);
+
+      assert.throws(
+        () => assertDependencyDistIsFresh([packageDir]),
+        /dist is older than src/,
+      );
+    } finally {
+      rmSync(packageDir, { recursive: true, force: true });
+    }
   });
 });

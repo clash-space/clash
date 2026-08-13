@@ -90,24 +90,17 @@ function pikaJobError(job: PikaMediaJob): Error {
   return new Error(`Pika media job failed${code}: ${job.error?.message ?? "unknown error"}`);
 }
 
-export async function waitForPikaMediaJob(options: PikaRequestOptions & {
-  jobId: string;
-  pollIntervalMs?: number;
-  maxAttempts?: number;
-}): Promise<PikaMediaJob> {
-  const fetchImpl = options.fetch ?? globalThis.fetch;
-  const jobId = encodeURIComponent(options.jobId);
+export async function waitForPikaMediaJob(
+  options: PikaRequestOptions & {
+    jobId: string;
+    pollIntervalMs?: number;
+    maxAttempts?: number;
+  },
+): Promise<PikaMediaJob> {
   const maxAttempts = options.maxAttempts ?? 240;
   const pollIntervalMs = options.pollIntervalMs ?? 1_000;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const response = await fetchImpl(`${baseUrl(options.baseUrl)}/v1/media/jobs/${jobId}`, {
-      headers: { "x-api-key": requireApiKey(options.apiKey) },
-    });
-    const body = await json(response);
-    if (!response.ok) {
-      throw new Error(`Pika media status failed: ${errorMessage(body, response.statusText)}`);
-    }
-    const job = parseJob(body);
+    const job = await getPikaMediaJob(options);
     if (job.status === "completed") return job;
     if (job.status === "failed") throw pikaJobError(job);
     if (pollIntervalMs > 0) {
@@ -117,9 +110,32 @@ export async function waitForPikaMediaJob(options: PikaRequestOptions & {
   throw new Error(`Pika media job timed out: ${options.jobId}`);
 }
 
-export async function getPikaMediaContent(options: PikaRequestOptions & {
-  jobId: string;
-}): Promise<{ url: string }> {
+export async function getPikaMediaJob(
+  options: PikaRequestOptions & {
+    jobId: string;
+  },
+): Promise<PikaMediaJob> {
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const response = await fetchImpl(
+    `${baseUrl(options.baseUrl)}/v1/media/jobs/${encodeURIComponent(options.jobId)}`,
+    { headers: { "x-api-key": requireApiKey(options.apiKey) } },
+  );
+  const body = await json(response);
+  if (!response.ok) {
+    throw new Error(
+      `Pika media status failed: ${errorMessage(body, response.statusText)}`,
+    );
+  }
+  const job = parseJob(body);
+  if (job.status === "failed") throw pikaJobError(job);
+  return job;
+}
+
+export async function getPikaMediaContent(
+  options: PikaRequestOptions & {
+    jobId: string;
+  },
+): Promise<{ url: string }> {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const response = await fetchImpl(
     `${baseUrl(options.baseUrl)}/v1/media/jobs/${encodeURIComponent(options.jobId)}/content`,

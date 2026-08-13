@@ -47,7 +47,11 @@ Credentials come from `context.store`, not invocation values or process
 environment variables. The Host owns account selection, retry policy, poll
 cadence, total run lifetime, restart recovery, and Project publication.
 
-## References and outputs
+## References and outputs: Asset delivery v0
+
+The Python SDK implements the same permanently named Asset delivery `v0`
+contract as the TypeScript SDK. Compatible changes extend `v0`; the SDK does
+not expose a `v1` alias or accept the retired `url + reach` shape.
 
 - `await context.reference(reference)` sends the complete reference to the Host
   and returns typed text, decoded `bytes`, or

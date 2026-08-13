@@ -52,6 +52,34 @@ describe("v0 SDK Asset resolution", () => {
       mediaType: "image/png",
     });
     expect(resolved.form === "bytes" ? [...resolved.bytes] : []).toEqual([1, 2, 3]);
+    expect(resolved).not.toHaveProperty("bytesBase64");
+  });
+
+  it("rejects an incomplete Provider URL at the SDK boundary", async () => {
+    const context = executorContextFrom({}, async () => ({
+      form: "provider-url",
+      providerUrl: "https://objects.example.test/reference.png?sig=1",
+    }));
+
+    await expect(context.reference(reference)).rejects.toThrow(/resolved reference/i);
+  });
+
+  it("rejects a Host projection masquerading as an Asset output handle", async () => {
+    const context = executorContextFrom({}, async () => ({
+      assetId: "asset-output",
+      uri: "clash-asset://asset-output",
+      kind: "image",
+      mediaType: "image/png",
+      url: "https://objects.example.test/output.png",
+      reach: "public",
+    }));
+
+    await expect(context.upload({
+      slot: "media",
+      kind: "image",
+      mediaType: "image/png",
+      url: "https://provider.example.test/output.png",
+    })).rejects.toThrow(/Asset handle/i);
   });
 
   it("passes typed text references through the same Host resolver", async () => {

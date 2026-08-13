@@ -72,14 +72,12 @@ test("keeps plugin source inside the package and does not import Canvas MCP inte
   assert.doesNotMatch(bundledServer, /loro-crdt|loro_wasm/);
 });
 
-test("Canvas App does not embed Timeline while the shared plugin keeps a headless Timeline CLI", () => {
+test("Canvas App does not embed Timeline", () => {
   const canvasHtml = readFileSync(join(repoRoot, "packages", "mcp-server", "src", "canvas-app.ts"), "utf8");
   const canvasClient = readFileSync(join(repoRoot, "packages", "mcp-server", "src", "canvas-app-client.ts"), "utf8");
-  const cliEntrypoint = readFileSync(join(repoRoot, "packages", "cli", "src", "index.ts"), "utf8");
 
   assert.doesNotMatch(canvasHtml, /data-surface="timeline"|data-timeline-list/);
   assert.doesNotMatch(canvasClient, /clash_cli_timeline|refreshTimelines|renderTimelines/);
-  assert.match(cliEntrypoint, /program\.addCommand\(timelineCommand\)/);
 });
 
 test("built runtime preserves structured host error codes", async () => {

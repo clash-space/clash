@@ -54,6 +54,7 @@ describe("bundled plugins", () => {
     expect(ids).toContain("clash.fal");
     expect(ids).toContain("clash.google");
     expect(ids).toContain("clash.minimax");
+    expect(ids).toContain("clash.pika");
     expect(ids).toContain("clash.volcengine");
   });
 

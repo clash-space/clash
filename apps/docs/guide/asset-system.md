@@ -84,7 +84,7 @@ flowchart LR
     room["ProjectRoom\nLoro metadata"]
     registry["Resource Registry\nstatus + claims"]
     oss["OSS\nimmutable bytes"]
-    cloudRun["Cloud Action runtime"]
+    cloudRun["Cloud Action runtime<br/>future design"]
   end
 
   web["Any member · Web"] --> cloudRun
@@ -147,7 +147,7 @@ sequenceDiagram
   participant R as Resource Registry
   participant O as OSS
   participant RH as Member B / another-device Host
-  participant C as Cloud Action runtime
+  participant C as Cloud Action runtime (future design)
 
   rect rgb(245, 247, 250)
     Note over LA,RH: Local-origin Asset
@@ -165,7 +165,7 @@ sequenceDiagram
   end
 
   rect rgb(250, 247, 242)
-    Note over C,RH: Cloud/Web-origin output
+    Note over C,RH: Future Cloud/Web-origin output (design only)
     C->>P: Sync ActionRun + output placeholder node
     P-->>RH: Show running/pending structure
     C->>O: Persist bytes with runId + outputSlot
@@ -553,8 +553,10 @@ Project membership. A crash before the Loro write therefore leaves only reusable
 lease that expires. A crash after the Loro write is repaired by reconciliation. There is no
 distributed transaction between Project Loro and the Resource Registry.
 
-The current `ensureProjectReference(assetId)` model must therefore become an
-identity-producing operation:
+The canonical admission path is now an identity-producing operation. A GUI
+adapter may still use `ensureProjectReference` as an internal callback name,
+but it returns the newly admitted Project Asset identity and is not a second
+storage-row protocol:
 
 ```text
 admitToProject(source) -> projectAssetId
@@ -730,19 +732,29 @@ Project state and media bytes use different replication planes.
 
 ### Execution follows the initiating surface
 
+> Delivery status: Local execution is implemented. Every Cloud/Web execution,
+> Workflow, OSS-staging, and hosted publication flow in this section is target
+> design only; there is no Cloud Durable Run adapter in the current product.
+> Local currently has no standalone Project Loro `ActionRun` entity. The
+> five-state coarse model below is the unified public design contract; current
+> Local execution projects progress/outcome onto the Canvas node and records
+> immutable input/output lineage in `ActionAssetBinding`. A synchronized Cloud
+> `ActionRun` entity is design only.
+
 Project synchronization does not move task execution between machines. The
 surface that submits a run fixes its execution realm:
 
 | Submitting surface | Execution owner                       |
 | ------------------ | ------------------------------------- |
-| Web                | Cloud task runtime                    |
+| Web                | Cloud task runtime (future design)    |
 | Desktop            | The local `local-api` Host            |
 | CLI                | The discovered local `local-api` Host |
 | MCP                | The discovered local `local-api` Host |
 
 An Action is shared editable Project state. An ActionRevision is an immutable
-snapshot of its parameters and input bindings. An ActionRun is a one-time
-execution owned by exactly one cloud or local runtime:
+snapshot of its parameters and input bindings. The unified public design models
+an ActionRun as a one-time execution owned by exactly one cloud or local
+runtime:
 
 ```ts
 type ActionRun = Readonly<{
@@ -752,16 +764,16 @@ type ActionRun = Readonly<{
   execution:
     Readonly<{ realm: "cloud" }> | Readonly<{ realm: "local"; hostId: string }>;
   requestedBy: string;
-  status:
-    "queued" | "preparing" | "running" | "finalizing" | "succeeded" | "failed";
+  status: "queued" | "running" | "finalizing" | "succeeded" | "failed";
 }>;
 ```
 
 Only the designated execution owner may advance the run or attach output
-bindings. Receiving an Action or ActionRun through Project sync is never an
-instruction to execute it. There is no automatic cloud fallback for a local
-run and no automatic local takeover of a cloud run. A deliberate retry creates
-a new ActionRun with its own identity.
+bindings. In the future entity design, receiving an ActionRun through Project
+sync is never an instruction to execute it. Current Local sync carries the
+Canvas node and `ActionAssetBinding`, not that standalone entity. There is no
+automatic cloud fallback for a local run and no automatic local takeover of a
+cloud run. A deliberate retry creates a new owner-private run identity.
 
 The executing Host selects the Provider account from its own account scope and
 available plugin set. Credentials, private account identifiers, process state,
@@ -771,9 +783,14 @@ submission is disabled when that local Host lacks it.
 
 Before execution, the owner resolves every frozen Action input:
 
-- the cloud runtime reads Resources through Project claims in team storage;
-- a local Host uses its CAS and downloads any missing admitted Resource before
-  changing the run from `preparing` to `running`.
+- the future cloud runtime reads Resources through Project claims in team storage;
+- a local Host changes the current Canvas node status to `generating` before
+  input admission, then uses its CAS and downloads any missing admitted Resource.
+
+Input admission has no separate synchronized `preparing` state. Its detailed
+steps remain in the owner-private journal. Current collaborators see the Canvas
+node's `generating` projection; a future standalone `ActionRun` entity would
+use coarse `running`.
 
 A cloud run may publish its ActionRun and output placeholder node immediately,
 then writes the output to an idempotent staging Resource keyed by
@@ -782,13 +799,16 @@ ProjectAsset entry and run output binding. The Registry derives the Project
 claim from that Loro state and promotes the staging Resource. A local run writes
 outputs to local CAS immediately, publishes the stable ProjectAsset identity
 and output binding through the metadata-first sequence below, then uploads
-silently. Other devices never poll or resume a run they do not own; they observe
-synchronized status and outputs. The owning local Host persists provider task
-state so restart recovery and polling remain local to that Host.
+silently. Other devices never poll or resume a run they do not own; today they
+observe synchronized Canvas node status and `ActionAssetBinding` outputs. A
+future Cloud path may additionally synchronize the standalone coarse run
+entity. The owning local Host persists Provider task state so restart recovery
+and polling remain local to that Host.
 
 ### Restart and finalization recovery
 
-Local and cloud execution expose the same coarse Project status model:
+The unified public `ActionRun` design contract has one coarse Project status
+model:
 
 ```text
 queued -> running -> finalizing -> succeeded
@@ -796,17 +816,19 @@ queued -> running -> finalizing -> succeeded
     \---------\--------------------> failed
 ```
 
-This is the collaboration projection, not the owner-private journal state
-machine. The shared Durable Run Engine uses
+This is not a standalone Local collaboration entity yet. Current Local code
+projects the corresponding product outcome through Canvas node
+`pending/generating/completed/failed` plus `ActionAssetBinding`. The shared
+Durable Run Engine uses
 `queued -> submitting -> polling -> finalizing -> succeeded|failed`; `running`
 is the coarse product status that covers input admission and multiple private
 Provider attempts. `finalizing` means the Provider result is checkpointed, but
-every required output has not yet been durably installed and published. Local
-and cloud execution share that one Durable Run Engine and one private step
-graph; only the step storage adapter differs. local-api persists steps in
-SQLite and local CAS, while the cloud adapter uses Workflow state and OSS
-staging. Provider task tokens, polling cursors, local paths, and staging details
-remain owner-private and never enter Project Loro.
+every required output has not yet been durably installed and published. The
+Local adapter uses that shared engine now; a future Cloud adapter must reuse the
+same graph and change only the step storage ports. local-api persists steps in
+SQLite and local CAS, while the future Cloud adapter uses Workflow state and
+OSS staging. Provider task tokens, polling cursors, local paths, and staging
+details remain owner-private and never enter Project Loro.
 
 The shared runner applies normal durable-step retry semantics. One attempt calls
 the Provider submit operation once. A network error, timeout, or process crash
@@ -829,12 +851,14 @@ durably start attempt
 ```
 
 No transaction remains open across the Provider request, and Project Loro is
-not a transaction coordinator. Project Loro synchronizes only the ActionRun ID,
-execution owner, coarse `queued/running/finalizing/succeeded/failed` status, and
-published output bindings. Attempt numbers, retry scheduling, transport errors,
-Provider task tokens, and polling cursors live only in the owner's durable step
-journal. Therefore a slow or retried Provider request never blocks CRDT merge or
-requires a compensating Project mutation.
+not a transaction coordinator. Current Local Project Loro synchronizes Canvas
+node status and published `ActionAssetBinding` lineage; the binding carries the
+run and Action revision identities. It does not yet carry an execution owner or
+the standalone coarse `queued/running/finalizing/succeeded/failed` entity. Those
+fields belong to the future public `ActionRun` design. Attempt numbers, retry
+scheduling, transport errors, Provider task tokens, and polling cursors live
+only in the owner's durable step journal. Therefore a slow or retried Provider
+request never blocks CRDT merge or requires a compensating Project mutation.
 
 Before the request is sent, retry is unambiguous. After the task token or result
 is checkpointed, recovery is also unambiguous and never submits again. Only an
@@ -913,7 +937,7 @@ an OSS object uploaded before a crash can be verified and rebound without
 duplicating logical media. Product UI must expose the persistent failure rather
 than silently pretending that the Asset is ready.
 
-### Cloud-origin output
+### Cloud-origin output (future design)
 
 A Web-submitted ActionRun executes in the cloud, where OSS is the only durable
 media store. The Action, node, frozen revision, and running status may
@@ -1004,19 +1028,21 @@ and do not construct URLs or know storage topology.
 ### CLI and MCP
 
 CLI and MCP are peer clients of local-api. Their currently implemented,
-equivalent Project Asset surface is deliberately smaller than the complete
-Host API:
+equivalent Asset surface includes:
 
 - list or read a Project Asset;
 - import local bytes into a Project;
 - list Action references;
-- trash or restore a Project Asset with structured conflict reporting.
+- trash or restore a Project Asset with structured conflict reporting;
+- list or read personal Global Assets and import local bytes into that library;
+- admit a Global Asset into a Project; and
+- publish a Project Asset into the personal Global library.
 
-Global-library reads, Project admission, and Project-to-Global publication
-remain Host/GUI capabilities or future CLI/MCP commands. The CLI additionally
-offers a local workspace-file projection and Canvas copy-on-write replacement;
-MCP does not expose those filesystem conveniences. These client-specific
-commands are not part of the equivalent peer surface.
+Both peers use the same Host SDK operations and return the same storage-neutral
+resolved shapes. The CLI additionally offers a local workspace-file projection
+and Canvas copy-on-write replacement; MCP does not expose those filesystem
+conveniences. Terminal purge is still below the Local HTTP/SDK transport
+boundary and is not exposed by either peer.
 
 The CLI may create a workspace file projection. MCP normally returns the same
 resolved descriptor or asks the Host for an invocation-scoped readable handle;
@@ -1151,8 +1177,8 @@ object key, storage key, or force/CAS-bypass mutation input. Its atomic boundary
 Project authority adapter. Registry staging and later claim reconciliation are idempotent external
 steps, not part of a cross-system transaction. local-api implements this boundary. The Web hook
 adds only React caching over the shared HTTP client; shared-runtime adds only cwd/Host discovery
-and result envelopes; GUI Global-library and admit/publish flows use the same SDK transports, while
-CLI and MCP consume the Project wrapper. api-cf remains the future Cloud adapter.
+and result envelopes; GUI, CLI, and MCP Global-library/admit/publish flows use the same SDK
+transports and Host connection discovery. api-cf remains the future Cloud adapter.
 
 ## Delivery status and deliberate gaps
 
@@ -1169,6 +1195,10 @@ The Local authority foundation is implemented; the product cutover status is:
   they are never rescanned as a live index after cutover. Timeline and Director
   mutations now update their draft input bindings directly in the same Loro
   transaction, including owner attach/detach and terminal unbind semantics;
+- Local durable execution state lives in the owner-private SQLite journal. No
+  standalone Project Loro `ActionRun` entity is delivered; Local currently
+  projects product-visible status through Canvas nodes and lineage through
+  `ActionAssetBinding`;
 - imports, generation, edits, Director output, Timeline/render output, covers,
   GUI, CLI, MCP, and executable-plugin Asset capabilities resolve through the
   same Project Asset service and `ResolvedAsset` shape;
@@ -1193,14 +1223,16 @@ The following are intentionally **not implemented** in this work:
 - OSS upload/finalization and the Cloud Resource Registry;
 - ProjectRoom claim reconciliation and Resource readiness events;
 - verified multi-device download and per-device availability projection;
+- the standalone Project Loro `ActionRun` entity and its five-state coarse
+  collaboration projection; this remains a unified Local/Cloud design contract;
 - Cloud/Web Durable Run staging and publication; and
 - asynchronous physical deletion after every Project/library claim and undo
   window has expired.
 
-Those are Cloud delivery items, not alternate Local APIs. The design in this
-document fixes their required identities, state transitions, collaboration
-rules, and failure behavior so they can be implemented without creating a
-second Asset model.
+Those are deferred collaboration and Cloud delivery items, not alternate Local
+APIs. The design in this document fixes their required identities, state
+transitions, collaboration rules, and failure behavior so they can be
+implemented without creating a second Asset model.
 
 ## Migration plan
 
@@ -1365,9 +1397,11 @@ conflict may invent a Resource or silently fall back to `asset_refs` after cutov
   between device unavailability and Trash, and recovery; the Project navigator verifies the same
   lifecycle/availability split and its Trash/Restore actions. Route and Host-client tests separately
   verify lifecycle-required decoding, observed-CAS mutation, and structured `ASSET_IN_USE` delivery.
-- **Complete in both CLI and MCP:** list/read, import, inspect references, and logical
-  delete/restore. Admission, publication, and Global-library reads remain future peer-client
-  commands. Workspace projection is intentionally CLI-only today.
+- **Complete in both CLI and MCP:** Project list/read/import, reference inspection,
+  logical delete/restore, personal Global list/read/import, Global-to-Project
+  admission, and Project-to-Global publication. Workspace projection is
+  intentionally CLI-only today. Terminal purge remains the explicit Local
+  transport gap described in Phase 7.
 - **Complete for Local:** make Project cover selection stable and ProjectAsset-based.
 
 ## Acceptance invariants

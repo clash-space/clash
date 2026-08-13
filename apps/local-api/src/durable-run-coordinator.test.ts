@@ -52,6 +52,11 @@ function createCommand() {
       kind: "video" as const,
       projectId: "project-1",
       nodeId: "node-1",
+      assetInputs: [{
+        match: { kinds: ["image" as const], slots: ["startFrame"] },
+        representations: ["provider-url" as const, "bytes" as const],
+        mediaTypes: ["image/png"],
+      }],
       input: {
         values: {
           modelId: "minimax-h3",
@@ -181,6 +186,7 @@ describe("Local Durable Run coordinator", () => {
       },
     });
     command.executor.input.values.prompt = "mutated after create";
+    command.executor.assetInputs[0]!.representations = ["bytes"];
 
     await first.coordinator.coordinate({
       type: "advance",
@@ -197,6 +203,11 @@ describe("Local Durable Run coordinator", () => {
         timeoutMs: 9_900,
         accountId: "minimax-primary",
         binding,
+        assetInputs: [{
+          match: { kinds: ["image"], slots: ["startFrame"] },
+          representations: ["provider-url", "bytes"],
+          mediaTypes: ["image/png"],
+        }],
         input: {
           values: expect.objectContaining({ prompt: "A frozen prompt" }),
           references: [],
@@ -212,8 +223,10 @@ describe("Local Durable Run coordinator", () => {
         status: "completed",
         binding,
         media: {
-          url: "https://provider.test/result.mp4",
-          contentType: "video/mp4",
+          assetId: "plugin-output:result-video",
+          uri: "clash-asset://plugin-output:result-video",
+          kind: "video",
+          mediaType: "video/mp4",
         },
       };
     };
@@ -233,10 +246,12 @@ describe("Local Durable Run coordinator", () => {
       providerOutputs: [
         {
           slot: "media",
-          kind: "value",
-          value: {
-            url: "https://provider.test/result.mp4",
-            contentType: "video/mp4",
+          kind: "asset",
+          asset: {
+            assetId: "plugin-output:result-video",
+            uri: "clash-asset://plugin-output:result-video",
+            kind: "video",
+            mediaType: "video/mp4",
           },
         },
       ],
@@ -477,8 +492,10 @@ describe("Local Durable Run coordinator", () => {
               status: "completed",
               binding,
               media: {
-                url: "https://provider.test/recovered.mp4",
-                contentType: "video/mp4",
+                assetId: "plugin-output:recovered-video",
+                uri: "clash-asset://plugin-output:recovered-video",
+                kind: "video",
+                mediaType: "video/mp4",
               },
             };
       },

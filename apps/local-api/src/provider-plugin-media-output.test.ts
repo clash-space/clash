@@ -5,17 +5,8 @@ import { mediaFromResult } from "./provider-plugin-executor";
 /**
  * A generation result arrives through the asset channel, not through a free-form value.
  *
- * `kind: "asset"` is the typed channel: its media type is a declared field, its URL carries a
- * stated reach, and zod checks both. Before the write contract had a `url`, a plugin whose upstream
- * published the result had no way to say so there, so it used `kind: "value"` and hand-rolled the
- * payload -- which is why `hilo.hub-media` guesses the media type from the model kind:
- *
- *   contentType: route.kind === "audio" ? "audio/mpeg" : ...
- *
- * That guess is the same one that broke reference audio at the other end of the pipe: the bytes were
- * an MP3, `audio/mpeg` is MP3's registered type, and the upstream derived `.mpeg` from it and
- * refused the file. Reading the response's own `content-type` is the fix, and it only becomes
- * expressible once the asset channel accepts a URL.
+ * `kind: "asset"` is the typed channel: its identity is the Host-issued staging receipt and its
+ * media type is an immutable fact. URL projections do not cross this boundary.
  */
 describe("provider plugin media output", () => {
   function result(outputs: unknown[]) {
@@ -27,7 +18,7 @@ describe("provider plugin media output", () => {
     };
   }
 
-  it("reads a published URL from the asset channel", () => {
+  it("reads a Host staging receipt from the asset channel", () => {
     const media = mediaFromResult(result([{
       slot: "media",
       kind: "asset",
@@ -36,29 +27,28 @@ describe("provider plugin media output", () => {
         uri: "clash-asset://upstream-1",
         kind: "video",
         mediaType: "video/mp4",
-        url: "https://cdn.example/out.mp4",
-        reach: "public",
       },
     }]));
-    expect(media.url).toBe("https://cdn.example/out.mp4");
-    expect(media.contentType).toBe("video/mp4");
+    expect(media).toEqual({
+      assetId: "upstream-1",
+      uri: "clash-asset://upstream-1",
+      kind: "video",
+      mediaType: "video/mp4",
+    });
   });
 
-  it("uses the private projection returned by the local storage adapter", () => {
-    const media = mediaFromResult(result([{
+  it("rejects the retired URL/reach Asset projection", () => {
+    expect(() => mediaFromResult(result([{
       slot: "media",
       kind: "asset",
       asset: {
         assetId: "upstream-2",
         uri: "clash-asset://upstream-2",
         kind: "video",
-        url: "http://127.0.0.1:8787/assets/projects/p/plugins/out.mp4",
+        url: "https://cdn.example/out.mp4",
         reach: "private",
       },
-    }]));
-    expect(media.url).toBe(
-      "http://127.0.0.1:8787/assets/projects/p/plugins/out.mp4",
-    );
+    }]))).toThrow();
   });
 
   it("preserves a Host staging receipt without requiring a loopback projection", () => {
@@ -70,16 +60,18 @@ describe("provider plugin media output", () => {
         uri: "clash-asset://upstream-2",
         kind: "video",
       },
-    }]))).toEqual({ assetId: "upstream-2" });
+    }]))).toEqual({
+      assetId: "upstream-2",
+      uri: "clash-asset://upstream-2",
+      kind: "video",
+    });
   });
 
-  it("still accepts the value channel so installed plugins keep working", () => {
-    const media = mediaFromResult(result([{
+  it("rejects the retired free-form URL value channel", () => {
+    expect(() => mediaFromResult(result([{
       slot: "media",
       kind: "value",
       value: { url: "https://cdn.example/out.png", contentType: "image/png" },
-    }]));
-    expect(media.url).toBe("https://cdn.example/out.png");
-    expect(media.contentType).toBe("image/png");
+    }]))).toThrow(/canonical Asset output envelope/i);
   });
 });

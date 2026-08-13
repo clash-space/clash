@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ExecutablePluginInvocationSchema,
@@ -67,7 +67,11 @@ function request() {
 }
 
 describe("local Host Provider Asset resolution", () => {
-  it("chooses a Provider URL before bytes when the binding accepts both", async () => {
+  it("reuses an existing Provider URL when the binding accepts URL or bytes", async () => {
+    const publishAsset = vi.fn(async () => ({
+      url: "https://objects.example.test/unexpected.png?sig=2",
+      expiresAt: "2026-08-13T13:00:00.000Z",
+    }));
     const broker = createLocalExecutablePluginBroker({
       loadProviderAccounts: async () => [],
       readAsset: async () => ({
@@ -75,11 +79,12 @@ describe("local Host Provider Asset resolution", () => {
         mediaType: "image/png",
         resourceDigest: "a".repeat(64),
         bytes: new Uint8Array([1, 2, 3]),
+        providerUrl: {
+          providerUrl: "https://objects.example.test/reference.png?sig=1",
+          expiresAt: "2026-08-13T12:00:00.000Z",
+        },
       }),
-      publishAsset: async () => ({
-        url: "https://objects.example.test/reference.png?sig=1",
-        expiresAt: "2026-08-13T12:00:00.000Z",
-      }),
+      publishAsset,
     });
 
     await expect(
@@ -91,9 +96,65 @@ describe("local Host Provider Asset resolution", () => {
       kind: "image",
       mediaType: "image/png",
     });
+    expect(publishAsset).not.toHaveBeenCalled();
   });
 
-  it("falls back to bytes when no public projection is available", async () => {
+  it("uses bytes without publishing when an URL-or-bytes binding has no existing URL", async () => {
+    const publishAsset = vi.fn(async () => ({
+      url: "https://objects.example.test/reference.png?sig=1",
+      expiresAt: "2026-08-13T12:00:00.000Z",
+    }));
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [],
+      readAsset: async () => ({
+        kind: "image",
+        mediaType: "image/png",
+        resourceDigest: "a".repeat(64),
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
+      publishAsset,
+    });
+
+    await expect(
+      broker(request(), context(["provider-url", "bytes"])),
+    ).resolves.toEqual({
+      form: "bytes",
+      bytesBase64: "AQID",
+      kind: "image",
+      mediaType: "image/png",
+    });
+    expect(publishAsset).not.toHaveBeenCalled();
+  });
+
+  it("publishes bytes when the binding requires a Provider URL", async () => {
+    const publishAsset = vi.fn(async () => ({
+      url: "https://objects.example.test/reference.png?sig=1",
+      expiresAt: "2026-08-13T12:00:00.000Z",
+    }));
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [],
+      readAsset: async () => ({
+        kind: "image",
+        mediaType: "image/png",
+        resourceDigest: "a".repeat(64),
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
+      publishAsset,
+    });
+
+    await expect(
+      broker(request(), context(["provider-url"])),
+    ).resolves.toEqual({
+      form: "provider-url",
+      providerUrl: "https://objects.example.test/reference.png?sig=1",
+      expiresAt: "2026-08-13T12:00:00.000Z",
+      kind: "image",
+      mediaType: "image/png",
+    });
+    expect(publishAsset).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an URL-only binding when public storage is not configured", async () => {
     const broker = createLocalExecutablePluginBroker({
       loadProviderAccounts: async () => [],
       readAsset: async () => ({
@@ -105,13 +166,27 @@ describe("local Host Provider Asset resolution", () => {
     });
 
     await expect(
-      broker(request(), context(["provider-url", "bytes"])),
-    ).resolves.toEqual({
-      form: "bytes",
-      bytesBase64: "AQID",
-      kind: "image",
-      mediaType: "image/png",
+      broker(request(), context(["provider-url"])),
+    ).rejects.toThrow(/requires a public URL.*cannot provide one/i);
+  });
+
+  it("fails the invocation with the configured storage upload error", async () => {
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [],
+      readAsset: async () => ({
+        kind: "image",
+        mediaType: "image/png",
+        resourceDigest: "a".repeat(64),
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
+      publishAsset: async () => {
+        throw new Error("TOS upload failed");
+      },
     });
+
+    await expect(
+      broker(request(), context(["provider-url"])),
+    ).rejects.toThrow("TOS upload failed");
   });
 
   it("rejects an Asset whose slot has no delivery declaration", async () => {

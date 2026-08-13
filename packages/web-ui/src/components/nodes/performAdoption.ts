@@ -108,6 +108,7 @@ export function computeAdoption({
       referenceImageAssetIds: refImgAssetIds,
       referenceVideoAssetIds: refVidAssetIds,
       referenceAudioAssetIds: refAudAssetIds,
+      modelParams,
       modelCard: selectedModel,
     });
     if (err) return { ok: false, error: err };

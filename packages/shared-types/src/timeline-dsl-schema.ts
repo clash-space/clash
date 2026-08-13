@@ -122,6 +122,11 @@ const timelineKeyframeRangeRule = {
   minimum: 0,
   exclusiveMaximumPath: "durationInFrames",
 } as const;
+const timelineRetiredAssetFieldRule = {
+  id: "timeline.asset.retired-field",
+  kind: "forbidden-paths",
+  paths: ["mediaAssetRefs", "tracks[].items[].backingAssetId"],
+} as const;
 const timelineKeyframeUniqueFrameRule = {
   id: "timeline.keyframes.unique-frame",
   kind: "unique-key-by-channel",
@@ -147,6 +152,7 @@ export const TIMELINE_DSL_SEMANTIC_RULES = {
     timelineKeyframeRangeRule,
     timelineKeyframeUniqueFrameRule,
     timelineItemFieldApplicabilityRule,
+    timelineRetiredAssetFieldRule,
     ...TIMELINE_DSL_GLOBAL_SEMANTIC_RULES,
   ],
 } as const;
@@ -222,6 +228,14 @@ export const TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine(
       mask?: unknown;
       keyframes?: TimelineItemKeyframes;
     };
+    if (Object.prototype.hasOwnProperty.call(typedItem, "backingAssetId")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["backingAssetId"],
+        message: "backingAssetId was removed; use the item's Project Asset id",
+        params: { ruleId: timelineRetiredAssetFieldRule.id },
+      });
+    }
     for (const [fieldName, owners] of itemFieldOwners) {
       if (
         Object.prototype.hasOwnProperty.call(typedItem, fieldName) &&
@@ -265,6 +279,15 @@ const TimelineDslSchemaBase = z
 
 export const TimelineDslSchema = TimelineDslSchemaBase.superRefine(
   (timeline, context) => {
+    if (Object.prototype.hasOwnProperty.call(timeline, "mediaAssetRefs")) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["mediaAssetRefs"],
+        message:
+          "mediaAssetRefs was removed; Timeline items bind Project Assets directly",
+        params: { ruleId: timelineRetiredAssetFieldRule.id },
+      });
+    }
     for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -504,7 +527,7 @@ function timelineDslContractFingerprint(value: unknown): string {
 }
 
 const timelineDslSerializableDefinition = {
-  schemaVersion: 8,
+  schemaVersion: 9,
   format: "clash.timeline.yaml",
   description:
     "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",

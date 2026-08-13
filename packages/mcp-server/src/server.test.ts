@@ -196,7 +196,19 @@ test("bundled MCP wires the Assets dispatcher to the direct Host peer gateway", 
         operations: Array<{ operation: string }>;
       }
     ).operations.map(({ operation }) => operation),
-    ["get", "import_file", "list", "references", "restore", "trash"],
+    [
+      "admit",
+      "get",
+      "global_get",
+      "global_import_file",
+      "global_list",
+      "import_file",
+      "list",
+      "publish",
+      "references",
+      "restore",
+      "trash",
+    ],
   );
   const listed = await client.callTool({
     name: "clash_assets",

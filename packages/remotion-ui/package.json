@@ -52,6 +52,7 @@
     "react-moveable": "^0.56.0"
   },
   "devDependencies": {
+    "@clash/gui": "workspace:*",
     "@remotion/player": "4.0.507",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

@@ -32,6 +32,12 @@ const trashedAsset: ResolvedAsset = {
   status: "unavailable",
 };
 
+const globalAsset: ResolvedAsset = {
+  ...asset,
+  id: "global:one",
+  url: "http://127.0.0.1:8789/api/v1/libraries/personal/assets/global%3Aone/media",
+};
+
 function fakeClient(
   calls: Array<{ method: string; input: unknown }>,
 ): ProjectAssetHostClient {
@@ -70,6 +76,10 @@ function fakeClient(
     },
     async importFile(input) {
       calls.push({ method: "importFile", input });
+      return result(asset);
+    },
+    async admit(input) {
+      calls.push({ method: "admit", input });
       return result(asset);
     },
     async trash(input) {
@@ -209,4 +219,127 @@ test("MCP imports a local workspace file through Host import-file without CLI ex
       bytes: [4, 5, 6],
     },
   );
+});
+
+test("MCP lists and reads the personal Global library without requiring Project context", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const projectCalls: Array<{ method: string; input: unknown }> = [];
+  const globalCalls: Array<{ method: string; input?: unknown }> = [];
+  const projectClient = fakeClient(projectCalls);
+  projectClient.resolveContext = async () => {
+    throw new Error("Global library reads must not resolve a Project");
+  };
+  const gateway = createAssetProjectHostGateway(projectClient, {
+    async list() {
+      globalCalls.push({ method: "list" });
+      return [globalAsset];
+    },
+    async get(input: { globalAssetId: string }) {
+      globalCalls.push({ method: "get", input });
+      return globalAsset;
+    },
+  } as never) as unknown as {
+    invoke(name: string, input: Record<string, unknown>): Promise<unknown>;
+  };
+
+  assert.deepEqual(await gateway.invoke("clash_assets_global_list", {}), [
+    globalAsset,
+  ]);
+  assert.deepEqual(
+    await gateway.invoke("clash_assets_global_get", {
+      globalAssetId: "global:one",
+    }),
+    globalAsset,
+  );
+  assert.deepEqual(projectCalls, []);
+  assert.deepEqual(globalCalls, [
+    { method: "list" },
+    { method: "get", input: { globalAssetId: "global:one" } },
+  ]);
+});
+
+test("MCP imports a local file directly into the personal Global library", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const workspace = await mkdtemp(join(tmpdir(), "clash-mcp-global-assets-"));
+  const filePath = join(workspace, "voice.mp3");
+  await writeFile(filePath, new Uint8Array([7, 8, 9]));
+  const globalCalls: Array<{ method: string; input: any }> = [];
+  const gateway = createAssetProjectHostGateway(fakeClient([]), {
+    async importFile(input: any) {
+      globalCalls.push({ method: "importFile", input });
+      return globalAsset;
+    },
+  } as never) as unknown as {
+    invoke(name: string, input: Record<string, unknown>): Promise<unknown>;
+  };
+
+  assert.deepEqual(
+    await gateway.invoke("clash_assets_global_import_file", {
+      cwd: workspace,
+      filePath: "voice.mp3",
+    }),
+    globalAsset,
+  );
+  assert.equal(globalCalls.length, 1);
+  assert.deepEqual(
+    {
+      method: globalCalls[0]?.method,
+      kind: globalCalls[0]?.input.kind,
+      fileName: globalCalls[0]?.input.fileName,
+      contentType: globalCalls[0]?.input.contentType,
+      bytes: Array.from(globalCalls[0]?.input.bytes ?? []),
+    },
+    {
+      method: "importFile",
+      kind: "audio",
+      fileName: "voice.mp3",
+      contentType: "audio/mpeg",
+      bytes: [7, 8, 9],
+    },
+  );
+});
+
+test("MCP admits Global Assets and publishes Project Assets through the shared Host clients", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const calls: Array<{ method: string; input: unknown }> = [];
+  const projectClient = fakeClient(calls) as ProjectAssetHostClient & {
+    admit(input: unknown): Promise<ProjectAssetHostResult<ResolvedAsset>>;
+  };
+  projectClient.admit = async (input) => {
+    calls.push({ method: "admit", input });
+    return { projectId: "project-a", value: asset };
+  };
+  const gateway = createAssetProjectHostGateway(projectClient, {
+    async publish(input: unknown) {
+      calls.push({ method: "publish", input });
+      return globalAsset;
+    },
+  } as never) as unknown as {
+    invoke(name: string, input: Record<string, unknown>): Promise<unknown>;
+  };
+
+  assert.deepEqual(
+    await gateway.invoke("clash_assets_admit", {
+      projectId: "project-a",
+      globalAssetId: "global:one",
+    }),
+    asset,
+  );
+  assert.deepEqual(
+    await gateway.invoke("clash_assets_publish", {
+      projectId: "project-a",
+      projectAssetId: "asset:one",
+    }),
+    globalAsset,
+  );
+  assert.deepEqual(calls, [
+    {
+      method: "admit",
+      input: { projectId: "project-a", globalAssetId: "global:one" },
+    },
+    {
+      method: "publish",
+      input: { projectId: "project-a", projectAssetId: "asset:one" },
+    },
+  ]);
 });

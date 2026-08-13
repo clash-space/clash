@@ -55,8 +55,6 @@ function stubClient(captured: CapturedCall[]) {
               uri: "clash-asset://a-1",
               kind: "image" as const,
               mediaType: "image/png",
-              url: "https://cdn.example.test/a.png",
-              reach: "public" as const,
             },
           },
         ],

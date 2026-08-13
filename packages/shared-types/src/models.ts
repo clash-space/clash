@@ -114,8 +114,8 @@ export function aspectRatioParameter(spec: {
     ...(spec.description ? { description: spec.description } : {}),
     ...(spec.required === undefined ? {} : { required: spec.required }),
     options: [
-      ...(spec.auto ? [{ label: spec.auto.label, value: 'auto' }] : []),
-      ...spec.ratios.map(value => ({ label: value, value })),
+      ...(spec.auto ? [{ label: spec.auto.label, value: "auto" }] : []),
+      ...spec.ratios.map((value) => ({ label: value, value })),
     ],
     defaultValue: spec.defaultValue,
   };
@@ -132,8 +132,10 @@ export function durationParameter(spec: {
     label: 'Duration',
     type: 'select' as const,
     options: [
-      ...(spec.auto ? [{ label: spec.auto.label, value: 'auto' as const }] : []),
-      ...spec.seconds.map(value => ({ label: `${value}s`, value })),
+      ...(spec.auto
+        ? [{ label: spec.auto.label, value: "auto" as const }]
+        : []),
+      ...spec.seconds.map((value) => ({ label: `${value}s`, value })),
     ],
     defaultValue: spec.defaultValue,
   };
@@ -154,10 +156,13 @@ export function resolutionParameter(spec: {
   defaultValue: string;
 }) {
   return {
-    id: 'resolution',
-    label: 'Resolution',
-    type: 'select' as const,
-    options: spec.tiers.map(tier => ({ label: tier.label, value: tier.value })),
+    id: "resolution",
+    label: "Resolution",
+    type: "select" as const,
+    options: spec.tiers.map((tier) => ({
+      label: tier.label,
+      value: tier.value,
+    })),
     defaultValue: spec.defaultValue,
   };
 }
@@ -180,10 +185,10 @@ export const VEO3_ASPECT_RATIOS = [
 ] as const;
 
 const VEO3_DURATION_PARAMETER = {
-  id: 'duration',
-  label: 'Duration',
-  type: 'select',
-  options: [4, 6, 8].map(value => ({ label: `${value}s`, value })),
+  id: "duration",
+  label: "Duration",
+  type: "select",
+  options: [4, 6, 8].map((value) => ({ label: `${value}s`, value })),
   defaultValue: 4,
 } as const;
 
@@ -375,7 +380,7 @@ export const ModelParameterSchema = z.object({
       z.object({
         label: z.string(),
         value: z.union([z.string(), z.number()]),
-      })
+      }),
     )
     .optional(),
   min: z.number().optional(),
@@ -412,6 +417,10 @@ const ReferenceMediaConstraintsSchema = z.object({
   maxWidth: z.number().int().positive().optional(),
   minHeight: z.number().int().positive().optional(),
   maxHeight: z.number().int().positive().optional(),
+  /** Total decoded pixel area (width × height). Use this when the upstream
+   * publishes an area floor rather than independent edge floors. */
+  minPixels: z.number().int().positive().optional(),
+  maxPixels: z.number().int().positive().optional(),
   minAspectRatio: z.number().positive().optional(),
   maxAspectRatio: z.number().positive().optional(),
   minDurationMs: z.number().int().nonnegative().optional(),
@@ -422,6 +431,37 @@ const ReferenceMediaConstraintsSchema = z.object({
   audioCodecs: z.array(z.string().min(1)).optional(),
 });
 
+const ReferenceMediaConditionSchema = z.object({
+  field: z
+    .string()
+    .regex(
+      /^modelParams\.[A-Za-z0-9_.-]+$/,
+      "Reference media conditions must target modelParams.<id>.",
+    ),
+  equals: z.union([z.string(), z.number(), z.boolean()]),
+});
+
+const ConditionalRefSpecSchema = z
+  .object({
+    when: z.array(ReferenceMediaConditionSchema).min(1),
+    min: z.number().int().nonnegative().optional(),
+    max: z.number().int().positive().optional(),
+    constraints: ReferenceMediaConstraintsSchema.optional(),
+  })
+  .superRefine((conditional, ctx) => {
+    if (
+      conditional.min === undefined &&
+      conditional.max === undefined &&
+      conditional.constraints === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "A conditional reference rule must override bounds or media constraints.",
+      });
+    }
+  });
+
 const RefSpecSchema = z.object({
   max: z.number().int().positive(),
   min: z.number().int().nonnegative().optional(),
@@ -430,6 +470,9 @@ const RefSpecSchema = z.object({
   requiresAnyOf: z.array(z.enum(['image', 'video', 'audio'])).min(1).optional(),
   constraints: ReferenceMediaConstraintsSchema.optional(),
   maxTotalDurationMs: z.number().int().positive().optional(),
+  /** Parameter-conditioned refinements for one input mode (for example,
+   * Seedance edit mode tightens the video count, duration, and pixel floor). */
+  conditional: z.array(ConditionalRefSpecSchema).optional(),
 });
 
 export const ModelInputModeSchema = z.object({
@@ -681,9 +724,12 @@ export const ModelCardSchema = z
       source: string,
     ) => {
       if (value === undefined) return;
-      if (parameter.type === 'select') {
-        const optionValues = parameter.options?.map(option => option.value) ?? [];
-        if (!optionValues.some(candidate => sameCandidate(candidate, value))) {
+      if (parameter.type === "select") {
+        const optionValues =
+          parameter.options?.map((option) => option.value) ?? [];
+        if (
+          !optionValues.some((candidate) => sameCandidate(candidate, value))
+        ) {
           ctx.addIssue({
             code: 'custom',
             path,
@@ -743,8 +789,13 @@ export const ModelCardSchema = z
             message: 'Select parameters require at least one candidate.',
           });
         }
-        const optionValues = parameter.options?.map(option => option.value) ?? [];
-        if (new Set(optionValues.map(value => `${typeof value}:${String(value)}`)).size !== optionValues.length) {
+        const optionValues =
+          parameter.options?.map((option) => option.value) ?? [];
+        if (
+          new Set(
+            optionValues.map((value) => `${typeof value}:${String(value)}`),
+          ).size !== optionValues.length
+        ) {
           ctx.addIssue({
             code: 'custom',
             path: ['parameters', index, 'options'],
@@ -755,7 +806,10 @@ export const ModelCardSchema = z
           ['defaultValue', parameter.defaultValue],
           ['defaultParams', model.defaultParams[parameter.id]],
         ] as const) {
-          if (value !== undefined && !optionValues.some(candidate => sameCandidate(candidate, value))) {
+          if (
+            value !== undefined &&
+            !optionValues.some((candidate) => sameCandidate(candidate, value))
+          ) {
             ctx.addIssue({
               code: 'custom',
               path: source === 'defaultValue' ? ['parameters', index, 'defaultValue'] : ['defaultParams', parameter.id],
@@ -811,9 +865,38 @@ export const ModelCardSchema = z
         rule.fields.forEach((field, fieldIndex) => validateConstraintField(field, ['constraints', index, 'fields', fieldIndex]));
         continue;
       }
-      validateConstraintField(rule.field, ['constraints', index, 'field']);
-      if (rule.type === 'required') {
-        rule.when.forEach((condition, conditionIndex) => validateConstraintField(condition.field, ['constraints', index, 'when', conditionIndex, 'field']));
+      validateConstraintField(rule.field, ["constraints", index, "field"]);
+      if (rule.type === "required") {
+        rule.when.forEach((condition, conditionIndex) =>
+          validateConstraintField(condition.field, [
+            "constraints",
+            index,
+            "when",
+            conditionIndex,
+            "field",
+          ]),
+        );
+      }
+    }
+
+    for (const [bucket, spec] of [
+      ["images", model.input.inputMode.images],
+      ["videos", model.input.inputMode.videos],
+      ["audios", model.input.inputMode.audios],
+    ] as const) {
+      for (const [ruleIndex, rule] of (spec?.conditional ?? []).entries()) {
+        rule.when.forEach((condition, conditionIndex) =>
+          validateConstraintField(condition.field, [
+            "input",
+            "inputMode",
+            bucket,
+            "conditional",
+            ruleIndex,
+            "when",
+            conditionIndex,
+            "field",
+          ]),
+        );
       }
     }
 
@@ -933,13 +1016,13 @@ export function resolveAspectRatio(
   modelId: string,
   modelParams: Record<string, string | number | boolean>,
 ): string {
-  const card = MODEL_CARDS.find(c => c.id === modelId);
-  if (!card) return '16:9';
+  const card = MODEL_CARDS.find((c) => c.id === modelId);
+  if (!card) return "16:9";
 
   // Every card names the ratio parameter `aspect_ratio`; provider spellings are the
   // adapter's business.
-  const paramId = 'aspect_ratio';
-  const arParam = card.parameters.find(p => p.id === paramId);
+  const paramId = "aspect_ratio";
+  const arParam = card.parameters.find((p) => p.id === paramId);
   if (!arParam) return card.defaultAspectRatio;
 
   // Get current value from modelParams
@@ -954,7 +1037,7 @@ export function resolveAspectRatio(
   if (value === 'auto') return value;
 
   // Reverse-lookup: provider value → our label
-  const option = arParam.options?.find(o => o.value === value);
+  const option = arParam.options?.find((o) => o.value === value);
   return option?.label ?? card.defaultAspectRatio;
 }
 
@@ -973,14 +1056,17 @@ export function snapAspectRatio(
   height: number,
 ): { paramId: string; value: string | number; canonical: string } | null {
   if (!width || !height) return null;
-  const card = MODEL_CARDS.find(c => c.id === modelId);
+  const card = MODEL_CARDS.find((c) => c.id === modelId);
   if (!card) return null;
-  const paramId = 'aspect_ratio';
-  const arParam = card.parameters.find(p => p.id === paramId);
+  const paramId = "aspect_ratio";
+  const arParam = card.parameters.find((p) => p.id === paramId);
   if (!arParam?.options?.length) return null;
 
   const ratio = width / height;
-  let best: { option: (typeof arParam.options)[number]; canonical: string } | null = null;
+  let best: {
+    option: (typeof arParam.options)[number];
+    canonical: string;
+  } | null = null;
   let bestDiff = Infinity;
   for (const opt of arParam.options) {
     // Parse canonical ratio from the option's label (preferred) or value.
@@ -1115,14 +1201,16 @@ const POSITIONAL_REFERENCE_BINDING = {
   modalityScopedIndexes: true,
 } as const;
 
-const PIKA_2026_TEXT_MODEL_CARDS: any[] = [
-  ['gpt-5.6-sol', 'GPT-5.6 Sol', 'OpenAI'],
-  ['claude-sonnet-5', 'Claude Sonnet 5', 'Anthropic'],
-  ['gemini-3.6-flash', 'Gemini 3.6 Flash', 'Google'],
-  ['deepseek-v4-pro', 'DeepSeek V4 Pro', 'DeepSeek'],
-  ['kimi-k3', 'Kimi K3', 'Moonshot AI'],
-  ['glm-5.2', 'GLM-5.2', 'Z.ai'],
-].map(([id, name, provider]) => ({
+const PIKA_2026_TEXT_MODEL_CARDS = (
+  [
+    ["gpt-5.6-sol", "GPT-5.6 Sol", "OpenAI"],
+    ["claude-sonnet-5", "Claude Sonnet 5", "Anthropic"],
+    ["gemini-3.6-flash", "Gemini 3.6 Flash", "Google"],
+    ["deepseek-v4-pro", "DeepSeek V4 Pro", "DeepSeek"],
+    ["kimi-k3", "Kimi K3", "Moonshot AI"],
+    ["glm-5.2", "GLM-5.2", "Z.ai"],
+  ] as const
+).map(([id, name, provider]): z.input<typeof ModelCardSchema> => ({
   id,
   name,
   provider,
@@ -1154,59 +1242,117 @@ const MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: '16:9',
     description: 'Seedream 5.0 Pro image generation and editing from the current Pika catalog.',
     parameters: [
-      { id: 'resolution', label: 'Resolution', type: 'select', options: ['2K', '4K'].map(value => ({ label: value, value })), defaultValue: '2K' },
-      { id: 'count', label: 'Count', type: 'number', min: 1, max: 4, step: 1, defaultValue: 1 },
-    ],
-    defaultParams: { resolution: '2K', count: 1 },
-    input: { requiresPrompt: true, inputMode: { images: { max: 10 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
-  },
-  {
-    id: 'grok-imagine-quality',
-    name: 'Grok Imagine Image Quality',
-    provider: 'xAI',
-    availableProviders: ['pika'],
-    defaultProvider: 'pika',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'High-quality Grok Imagine image generation and editing.',
-    parameters: [{ id: 'count', label: 'Count', type: 'number', min: 1, max: 4, step: 1, defaultValue: 1 }],
-    defaultParams: { count: 1 },
-    input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
-  },
-  {
-    id: 'grok-imagine-video-1.5',
-    name: 'Grok Imagine Video 1.5',
-    provider: 'xAI',
-    availableProviders: ['pika'],
-    defaultProvider: 'pika',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Grok Imagine 1.5 image-to-video from the current Pika catalog.',
-    parameters: [{ id: 'duration', label: 'Duration', type: 'select', options: [5, 10].map(value => ({ label: `${value}s`, value })), defaultValue: 5 }],
-    defaultParams: { duration: 5 },
-    input: { requiresPrompt: true, inputMode: { startEnd: {} }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
-  },
-  {
-    id: 'lyria-3-pro',
-    name: 'Lyria 3 Pro',
-    provider: 'Google',
-    availableProviders: ['pika'],
-    defaultProvider: 'pika',
-    kind: 'audio',
-    defaultAspectRatio: '1:1',
-    description: 'Google Lyria 3 Pro music generation from the current Pika catalog.',
-    parameters: [
       {
-        id: 'duration',
-        label: 'Duration',
-        type: 'number',
-        min: 10,
-        max: 180,
+        id: "size",
+        label: "Size",
+        type: "select",
+        options: ["1K", "2K"].map((value) => ({ label: value, value })),
+        defaultValue: "2K",
+      },
+      {
+        id: "count",
+        label: "Count",
+        type: "number",
+        min: 1,
+        max: 6,
         step: 1,
-        defaultValue: 30,
+        defaultValue: 1,
       },
     ],
-    defaultParams: { duration: 30 },
+    defaultParams: { size: "2K", count: 1 },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 10 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING,
+    },
+  },
+  {
+    id: "grok-imagine-quality",
+    name: "Grok Imagine Image Quality",
+    provider: "xAI",
+    availableProviders: ["pika"],
+    defaultProvider: "pika",
+    kind: "image",
+    defaultAspectRatio: "16:9",
+    description: "High-quality Grok Imagine image generation and editing.",
+    parameters: [
+      {
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: ["1K", "2K"].map((value) => ({ label: value, value })),
+        defaultValue: "1K",
+      },
+      {
+        id: "count",
+        label: "Count",
+        type: "number",
+        min: 1,
+        max: 10,
+        step: 1,
+        defaultValue: 1,
+      },
+    ],
+    defaultParams: { resolution: "1K", count: 1 },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 3 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING,
+    },
+  },
+  {
+    id: "grok-imagine-video-1.5",
+    name: "Grok Imagine Video 1.5",
+    provider: "xAI",
+    availableProviders: ["pika"],
+    defaultProvider: "pika",
+    kind: "video",
+    defaultAspectRatio: "16:9",
+    description:
+      "Grok Imagine 1.5 image-to-video from the current Pika catalog.",
+    parameters: [
+      {
+        id: "duration",
+        label: "Duration",
+        type: "number",
+        min: 1,
+        max: 15,
+        step: 1,
+        defaultValue: 6,
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '480p', value: '480p' },
+          { label: '720p', value: '720p' },
+        ],
+        defaultValue: "720p",
+      },
+    ],
+    defaultParams: { duration: 6, resolution: "720p" },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { min: 1, max: 1 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING,
+    },
+  },
+  {
+    id: "lyria-3-pro",
+    name: "Lyria 3 Pro",
+    provider: "Google",
+    availableProviders: ["pika"],
+    defaultProvider: "pika",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description:
+      "Google Lyria 3 Pro music generation from the current Pika catalog.",
+    parameters: [],
+    defaultParams: {},
     input: { requiresPrompt: true, inputMode: {} },
   },
   {
@@ -1220,13 +1366,13 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'MiniMax Speech 2.8 HD text-to-speech from the current Pika catalog.',
     parameters: [
       {
-        id: 'voice_id',
-        label: 'Voice ID',
-        type: 'text',
-        defaultValue: 'English_Graceful_Lady',
+        id: "voice_id",
+        label: "Voice ID",
+        type: "text",
+        required: true,
       },
     ],
-    defaultParams: { voice_id: 'English_Graceful_Lady' },
+    defaultParams: {},
     input: { requiresPrompt: true, inputMode: {} },
   },
   // ─── Image: Nano Banana 2 (fal.ai) ──────────────────────────
@@ -1242,20 +1388,20 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'State-of-the-art fast image generation and editing.',
     parameters: [
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: NANO_BANANA_ASPECT_RATIOS.map(r => ({
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: NANO_BANANA_ASPECT_RATIOS.map((r) => ({
           label: r.label,
           value: r.value,
         })),
         defaultValue: '16:9',
       },
       {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: NANO_BANANA_RESOLUTIONS.map(s => ({
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: NANO_BANANA_RESOLUTIONS.map((s) => ({
           label: s.label,
           value: s.value,
         })),
@@ -1297,17 +1443,25 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'Fast Gemini 3.1 Flash-Lite image generation.',
     parameters: [
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: NANO_BANANA_LITE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: NANO_BANANA_LITE_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value,
+        })),
+        defaultValue: "16:9",
       },
     ],
     defaultParams: {
-      aspect_ratio: '16:9',
+      aspect_ratio: "16:9",
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 14 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 14 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING,
+    },
   },
   // ─── Image: GPT Image 2 (OpenAI) ────────────────────────────
   {
@@ -1321,20 +1475,20 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'OpenAI GPT Image 2 — high-quality image generation and editing.',
     parameters: [
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: GPT_IMAGE_ASPECT_RATIOS.map(r => ({
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: GPT_IMAGE_ASPECT_RATIOS.map((r) => ({
           label: r.label,
           value: r.value,
         })),
         defaultValue: '1:1',
       },
       {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: GPT_IMAGE_RESOLUTION_TIERS.map(t => ({
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: GPT_IMAGE_RESOLUTION_TIERS.map((t) => ({
           label: t.label,
           value: t.value,
         })),
@@ -1422,9 +1576,9 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'ByteDance Seedream 4.5 image generation and editing through fal.ai.',
     parameters: [
       aspectRatioParameter({
-        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
-        defaultValue: 'auto',
-        auto: { label: 'Auto' },
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "auto",
+        auto: { label: "Auto" },
       }),
       {
         // Seedream's own tier, kept separate from the ratio the way minimax-h3
@@ -1478,8 +1632,8 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'Ultra-fast image generation, ~1s per image.',
     parameters: [
       aspectRatioParameter({
-        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
-        defaultValue: '16:9',
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "16:9",
       }),
       {
         id: 'num_inference_steps',
@@ -1520,8 +1674,8 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'High-quality image generation with great prompt following.',
     parameters: [
       aspectRatioParameter({
-        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
-        defaultValue: '16:9',
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "16:9",
       }),
       {
         id: 'num_inference_steps',
@@ -1576,15 +1730,23 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'duration',
         label: 'Duration',
         type: 'select',
-        options: [{ label: '5s', value: 5 }],
+        options: [
+          { label: "5s", value: 5 },
+          { label: "10s (requires image)", value: 10 },
+        ],
         defaultValue: 5,
+        description:
+          "Text-to-video supports 5s; image-to-video supports 5s or 10s.",
       },
       {
         id: 'resolution',
         label: 'Resolution',
         type: 'select',
-        options: [{ label: '720p', value: '720p' }, { label: '1080p', value: '1080p' }],
-        defaultValue: '720p',
+        options: [
+          { label: "720p", value: "720p" },
+          { label: "1080p", value: "1080p" },
+        ],
+        defaultValue: "1080p",
       },
       {
         id: 'negative_prompt',
@@ -1601,7 +1763,7 @@ const MODEL_CARD_DEFINITIONS = [
     ],
     defaultParams: {
       duration: 5,
-      resolution: '720p',
+      resolution: "1080p",
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
   },
@@ -1631,11 +1793,14 @@ const MODEL_CARD_DEFINITIONS = [
         defaultValue: 4,
       },
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: SORA_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SORA_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value,
+        })),
+        defaultValue: "16:9",
       },
       {
         id: 'resolution',
@@ -1747,10 +1912,10 @@ const MODEL_CARD_DEFINITIONS = [
         defaultValue: 'auto',
       },
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: SEEDANCE_ASPECT_RATIOS.map(r => ({
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
           label: r.label,
           value: r.value,
         })),
@@ -1842,10 +2007,10 @@ const MODEL_CARD_DEFINITIONS = [
         defaultValue: 'auto',
       },
       {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: ['480p', '720p', '1080p', '4k'].map(value => ({
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: ["480p", "720p", "1080p", "4k"].map((value) => ({
           label: value,
           value,
         })),
@@ -1903,14 +2068,16 @@ const MODEL_CARD_DEFINITIONS = [
         defaultValue: 5,
       },
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: ['auto', '1:1', '3:4', '16:9', '4:3', '9:16', '21:9'].map(value => ({
-          label: value === 'auto' ? 'Auto' : value,
-          value,
-        })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: ["auto", "1:1", "3:4", "16:9", "4:3", "9:16", "21:9"].map(
+          (value) => ({
+            label: value === "auto" ? "Auto" : value,
+            value,
+          }),
+        ),
+        defaultValue: "16:9",
       },
       {
         id: 'resolution',
@@ -1953,6 +2120,18 @@ const MODEL_CARD_DEFINITIONS = [
           max: 10,
           constraints: { ...SEEDANCE_VIDEO_CONSTRAINTS, maxDurationMs: 30_000 },
           maxTotalDurationMs: 30_000,
+          conditional: [
+            {
+              when: [{ field: "modelParams.edit_mode", equals: true }],
+              min: 1,
+              max: 1,
+              constraints: {
+                minPixels: 407_696,
+                minDurationMs: 4_000,
+                maxDurationMs: 30_000,
+              },
+            },
+          ],
         },
         audios: {
           max: 10,
@@ -2043,11 +2222,11 @@ const MODEL_CARD_DEFINITIONS = [
         defaultValue: 'auto',
       },
       {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: ['480p', '720p'].map(value => ({ label: value, value })),
-        defaultValue: '720p',
+        id: "resolution",
+        label: "Resolution",
+        type: "select",
+        options: ["480p", "720p"].map((value) => ({ label: value, value })),
+        defaultValue: "720p",
       },
       {
         id: 'generate_audio',
@@ -2106,8 +2285,11 @@ const MODEL_CARD_DEFINITIONS = [
         label: 'Aspect Ratio',
         type: 'select',
         options: [
-          { label: 'Auto', value: 'adaptive' },
-          ...['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].map(value => ({ label: value, value })),
+          { label: "Auto", value: "adaptive" },
+          ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
+            label: value,
+            value,
+          })),
         ],
         defaultValue: 'adaptive',
       },
@@ -2297,8 +2479,8 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'Designer-grade image generation with color control and text rendering.',
     parameters: [
       aspectRatioParameter({
-        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
-        defaultValue: '16:9',
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "16:9",
       }),
     ],
     defaultParams: {
@@ -2318,8 +2500,8 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'Latest FLUX flagship — high-quality image generation.',
     parameters: [
       aspectRatioParameter({
-        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map(r => r.value),
-        defaultValue: '16:9',
+        ratios: CANONICAL_IMAGE_ASPECT_RATIOS.map((r) => r.value),
+        defaultValue: "16:9",
       }),
       {
         id: 'safety_tolerance',
@@ -2359,17 +2541,25 @@ const MODEL_CARD_DEFINITIONS = [
     description: 'Highest quality Google image generation and editing.',
     parameters: [
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: IMAGEN_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: IMAGEN_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value,
+        })),
+        defaultValue: "16:9",
       },
     ],
     defaultParams: {
-      aspect_ratio: '16:9',
+      aspect_ratio: "16:9",
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 8 } },
+      promptModalities: ["text", "image"],
+      referenceBinding: GROUPED_REFERENCE_BINDING,
+    },
   },
   // ─── Video: Veo 3.1 (Google native via Vercel AI SDK) ──────
   //
@@ -2398,11 +2588,14 @@ const MODEL_CARD_DEFINITIONS = [
     parameters: [
       VEO3_DURATION_PARAMETER,
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: VEO3_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value,
+        })),
+        defaultValue: "16:9",
       },
       {
         id: 'generate_audio',
@@ -2431,11 +2624,14 @@ const MODEL_CARD_DEFINITIONS = [
     parameters: [
       VEO3_DURATION_PARAMETER,
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: VEO3_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value,
+        })),
+        defaultValue: "16:9",
       },
       {
         id: 'generate_audio',
@@ -2464,11 +2660,14 @@ const MODEL_CARD_DEFINITIONS = [
     parameters: [
       VEO3_DURATION_PARAMETER,
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: VEO3_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value,
+        })),
+        defaultValue: "16:9",
       },
       {
         id: 'generate_audio',
@@ -2497,11 +2696,14 @@ const MODEL_CARD_DEFINITIONS = [
     parameters: [
       VEO3_DURATION_PARAMETER,
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: VEO3_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value,
+        })),
+        defaultValue: "16:9",
       },
       {
         id: 'generate_audio',
@@ -3164,20 +3366,20 @@ const MODEL_CARD_DEFINITIONS = [
         defaultValue: false,
       },
       {
-        id: 'sample_rate',
-        label: 'Sample Rate',
-        type: 'select',
-        options: [16000, 24000, 32000, 44100].map(value => ({
-          label: value === 44100 ? '44.1 kHz' : `${value / 1000} kHz`,
+        id: "sample_rate",
+        label: "Sample Rate",
+        type: "select",
+        options: [16000, 24000, 32000, 44100].map((value) => ({
+          label: value === 44100 ? "44.1 kHz" : `${value / 1000} kHz`,
           value,
         })),
         defaultValue: 44100,
       },
       {
-        id: 'bitrate',
-        label: 'Bitrate',
-        type: 'select',
-        options: [32000, 64000, 128000, 256000].map(value => ({
+        id: "bitrate",
+        label: "Bitrate",
+        type: "select",
+        options: [32000, 64000, 128000, 256000].map((value) => ({
           label: `${value / 1000} kbps`,
           value,
         })),
@@ -3589,10 +3791,10 @@ const MODEL_CARD_DEFINITIONS = [
         auto: { label: 'Auto' },
       }),
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: SEEDANCE_ASPECT_RATIOS.map(r => ({
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
           label: r.label,
           value: r.value,
         })),
@@ -3646,10 +3848,10 @@ const MODEL_CARD_DEFINITIONS = [
         auto: { label: 'Auto' },
       }),
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: SEEDANCE_ASPECT_RATIOS.map(r => ({
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
           label: r.label,
           value: r.value,
         })),
@@ -3693,10 +3895,10 @@ const MODEL_CARD_DEFINITIONS = [
         auto: { label: 'Auto' },
       }),
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: SEEDANCE_ASPECT_RATIOS.map(r => ({
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
           label: r.label,
           value: r.value,
         })),
@@ -3750,10 +3952,10 @@ const MODEL_CARD_DEFINITIONS = [
         auto: { label: 'Auto' },
       }),
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: SEEDANCE_ASPECT_RATIOS.map(r => ({
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: SEEDANCE_ASPECT_RATIOS.map((r) => ({
           label: r.label,
           value: r.value,
         })),
@@ -3796,20 +3998,31 @@ const MODEL_CARD_DEFINITIONS = [
     parameters: [
       durationParameter({ seconds: [5, 10], defaultValue: 5 }),
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: KLING_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: KLING_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value,
+        })),
+        defaultValue: "16:9",
       },
       {
-        id: 'mode',
-        label: 'Mode',
-        type: 'select',
-        options: [{ label: 'Standard', value: 'std' }, { label: 'Pro', value: 'pro' }],
-        defaultValue: 'pro',
+        id: "mode",
+        label: "Mode",
+        type: "select",
+        options: [
+          { label: "Standard", value: "std" },
+          { label: "Pro", value: "pro" },
+        ],
+        defaultValue: "pro",
       },
-      { id: 'multi_shot', label: 'Multi-shot', type: 'boolean', defaultValue: false },
+      {
+        id: "multi_shot",
+        label: "Multi-shot",
+        type: "boolean",
+        defaultValue: false,
+      },
     ],
     defaultParams: { duration: 5, aspect_ratio: '16:9', mode: 'pro', multi_shot: false },
     input: {
@@ -3831,21 +4044,37 @@ const MODEL_CARD_DEFINITIONS = [
     parameters: [
       durationParameter({ seconds: [5, 10], defaultValue: 5 }),
       {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: KLING_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: KLING_ASPECT_RATIOS.map((r) => ({
+          label: r.label,
+          value: r.value,
+        })),
+        defaultValue: "16:9",
       },
       {
-        id: 'mode',
-        label: 'Mode',
-        type: 'select',
-        options: [{ label: 'Standard', value: 'std' }, { label: 'Pro', value: 'pro' }],
-        defaultValue: 'pro',
+        id: "mode",
+        label: "Mode",
+        type: "select",
+        options: [
+          { label: "Standard", value: "std" },
+          { label: "Pro", value: "pro" },
+        ],
+        defaultValue: "pro",
       },
-      { id: 'generate_audio', label: 'Native audio', type: 'boolean', defaultValue: false },
-      { id: 'multi_shot', label: 'Multi-shot', type: 'boolean', defaultValue: false },
+      {
+        id: "generate_audio",
+        label: "Native audio",
+        type: "boolean",
+        defaultValue: false,
+      },
+      {
+        id: "multi_shot",
+        label: "Multi-shot",
+        type: "boolean",
+        defaultValue: false,
+      },
     ],
     defaultParams: { duration: 5, aspect_ratio: '16:9', mode: 'pro', generate_audio: false, multi_shot: false },
     input: {
@@ -3965,15 +4194,39 @@ const MODEL_CARD_DEFINITIONS = [
         defaultValue: '',
         description: 'Optional Doubao TTS or voice-clone speaker ID.',
       },
-      { id: 'speed', label: 'Speed', type: 'slider', min: 0.5, max: 2, step: 0.05, defaultValue: 1 },
-      { id: 'volume', label: 'Volume', type: 'slider', min: 0.5, max: 2, step: 0.05, defaultValue: 1 },
-      { id: 'pitch', label: 'Pitch', type: 'slider', min: -12, max: 12, step: 1, defaultValue: 0 },
       {
-        id: 'sample_rate',
-        label: 'Sample Rate',
-        type: 'select',
-        options: [8000, 16000, 24000, 32000, 44100, 48000].map(value => ({
-          label: value === 44100 ? '44.1 kHz' : `${value / 1000} kHz`,
+        id: "speed",
+        label: "Speed",
+        type: "slider",
+        min: 0.5,
+        max: 2,
+        step: 0.05,
+        defaultValue: 1,
+      },
+      {
+        id: "volume",
+        label: "Volume",
+        type: "slider",
+        min: 0.5,
+        max: 2,
+        step: 0.05,
+        defaultValue: 1,
+      },
+      {
+        id: "pitch",
+        label: "Pitch",
+        type: "slider",
+        min: -12,
+        max: 12,
+        step: 1,
+        defaultValue: 0,
+      },
+      {
+        id: "sample_rate",
+        label: "Sample Rate",
+        type: "select",
+        options: [8000, 16000, 24000, 32000, 44100, 48000].map((value) => ({
+          label: value === 44100 ? "44.1 kHz" : `${value / 1000} kHz`,
           value,
         })),
       },
@@ -4052,7 +4305,7 @@ const MODEL_CARD_DEFINITIONS = [
       inputMode: { audios: { max: 1 } },
       promptModalities: ['text', 'audio'],
     },
-  }
+  },
 ];
 
 type ModelProviderImplementationRow = readonly [
@@ -4069,6 +4322,7 @@ type ModelProviderImplementationRow = readonly [
     oauth?: string[];
     referenceBinding?: ReferenceBinding;
     inputAdaptation?: ProviderInputAdaptation;
+    assetInputs?: ProviderAssetInput[];
     parameterOverrides?: ModelParameter[];
     defaultParamOverrides?: Record<string, string | number | boolean>;
     excludedParameterIds?: string[];
@@ -4114,10 +4368,213 @@ const MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES: ModelParameter[] = [
     required: false,
     description: 'Auto is supported when at least one image, video, or audio reference is attached.',
     options: [
-      { label: 'Auto (with reference)', value: 'adaptive' },
-      ...['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].map(value => ({ label: value, value })),
+      { label: "Auto (with reference)", value: "adaptive" },
+      ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
+        label: value,
+        value,
+      })),
     ],
-    defaultValue: '16:9',
+    defaultValue: "16:9",
+  },
+];
+
+const PIKA_EXECUTOR_OPTIONS = {
+  executorPluginId: "clash.pika",
+  executorExportId: "pika-execute",
+  assetInputs: [
+    {
+      match: { kinds: ["image", "video", "audio"] },
+      representations: ["provider-url", "bytes"],
+    },
+  ] as ProviderAssetInput[],
+} as const;
+
+// A Provider route must state which canonical Host delivery forms its executor accepts. These
+// declarations describe the existing first-party adapters. A route accepting both forms reuses an
+// existing Provider URL and otherwise consumes bytes; only an URL-only route authorises the Host to
+// publish a new public projection. Kind-specific lists keep a route from gaining access to media
+// its model card cannot accept.
+const IMAGE_PROVIDER_ASSET_INPUTS: ProviderAssetInput[] = [
+  {
+    match: { kinds: ["image"] },
+    representations: ["provider-url", "bytes"],
+  },
+];
+const VIDEO_PROVIDER_URL_ONLY_ASSET_INPUTS: ProviderAssetInput[] = [
+  {
+    match: { kinds: ["video"] },
+    representations: ["provider-url"],
+  },
+];
+const IMAGE_AUDIO_PROVIDER_ASSET_INPUTS: ProviderAssetInput[] = [
+  {
+    match: { kinds: ["image", "audio"] },
+    representations: ["bytes"],
+  },
+];
+const MEDIA_PROVIDER_ASSET_INPUTS: ProviderAssetInput[] = [
+  {
+    match: { kinds: ["image", "video", "audio"] },
+    representations: ["provider-url", "bytes"],
+  },
+];
+const IMAGE_BYTES_PROVIDER_ASSET_INPUTS: ProviderAssetInput[] = [
+  {
+    match: { kinds: ["image"] },
+    representations: ["bytes"],
+  },
+];
+const VOLCENGINE_MEDIA_PROVIDER_ASSET_INPUTS: ProviderAssetInput[] = [
+  ...VIDEO_PROVIDER_URL_ONLY_ASSET_INPUTS,
+  ...IMAGE_AUDIO_PROVIDER_ASSET_INPUTS,
+];
+
+const PIKA_NANO_BANANA_PARAMETER_OVERRIDES: ModelParameter[] = [
+  {
+    id: "aspect_ratio",
+    label: "Aspect Ratio",
+    type: "select",
+    required: false,
+    options: [
+      ...NANO_BANANA_ASPECT_RATIOS.map(({ label, value }) => ({
+        label,
+        value,
+      })),
+      { label: "Auto", value: "auto" },
+    ],
+    defaultValue: "16:9",
+  },
+  {
+    id: 'resolution',
+    label: 'Resolution',
+    type: 'select',
+    required: false,
+    options: ["512", "1K", "2K", "4K"].map((value) => ({
+      label: value,
+      value,
+    })),
+    defaultValue: "1K",
+  },
+  {
+    id: "count",
+    label: "Count",
+    type: "number",
+    required: false,
+    min: 1,
+    max: 1,
+    step: 1,
+    defaultValue: 1,
+  },
+];
+
+const PIKA_GPT_IMAGE_PARAMETER_OVERRIDES: ModelParameter[] = [
+  {
+    id: "aspect_ratio",
+    label: "Aspect Ratio",
+    type: "select",
+    required: false,
+    options: [
+      "1:1",
+      "2:3",
+      "3:2",
+      "3:4",
+      "4:3",
+      "4:5",
+      "5:4",
+      "9:16",
+      "16:9",
+      "21:9",
+    ].map((value) => ({ label: value, value })),
+    defaultValue: "1:1",
+  },
+  {
+    id: 'resolution',
+    label: 'Resolution',
+    type: 'select',
+    required: false,
+    options: ["1K", "2K", "4K"].map((value) => ({ label: value, value })),
+    defaultValue: "1K",
+  },
+  {
+    id: "quality",
+    label: "Quality",
+    type: "select",
+    required: false,
+    options: [
+      { label: "Auto", value: "auto" },
+      { label: "Low", value: "low" },
+      { label: "Medium", value: "medium" },
+      { label: "High", value: "high" },
+    ],
+    defaultValue: "medium",
+  },
+  {
+    id: "background",
+    label: "Background",
+    type: "select",
+    required: false,
+    options: [
+      { label: "Auto", value: "auto" },
+      { label: "Opaque", value: "opaque" },
+      { label: "Transparent", value: "transparent" },
+    ],
+    defaultValue: "auto",
+  },
+  {
+    id: "count",
+    label: "Count",
+    type: "number",
+    required: false,
+    min: 1,
+    max: 10,
+    step: 1,
+    defaultValue: 1,
+  },
+];
+
+const PIKA_SEEDANCE_PARAMETER_OVERRIDES: ModelParameter[] = [
+  {
+    id: "duration",
+    label: "Duration",
+    type: "select",
+    required: false,
+    options: [
+      { label: 'Auto', value: 'auto' },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        label: `${index + 4}s`,
+        value: index + 4,
+      })),
+    ],
+    defaultValue: 'auto',
+  },
+  {
+    id: 'resolution',
+    label: 'Resolution',
+    type: 'select',
+    required: false,
+    options: ["480p", "720p", "1080p", "4k"].map((value) => ({
+      label: value,
+      value,
+    })),
+    defaultValue: '720p',
+  },
+];
+
+const PIKA_SEEDANCE_REFERENCE_PARAMETER_OVERRIDES: ModelParameter[] = [
+  ...PIKA_SEEDANCE_PARAMETER_OVERRIDES,
+  {
+    id: "aspect_ratio",
+    label: "Aspect Ratio",
+    type: "select",
+    required: false,
+    options: [
+      { label: "Adaptive", value: "adaptive" },
+      ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
+        label: value,
+        value,
+      })),
+    ],
+    defaultValue: "adaptive",
   },
 ];
 
@@ -4141,7 +4598,7 @@ const SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES: ModelParameter[] = [
     label: 'Resolution',
     type: 'select',
     required: false,
-    options: ['480p', '720p', '1080p', '4k'].map(value => ({
+    options: ["480p", "720p", "1080p", "4k"].map((value) => ({
       label: value,
       value,
     })),
@@ -4155,7 +4612,7 @@ const SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER: ModelParameter = {
   type: 'select',
   required: false,
   options: [
-    ...['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].map(value => ({
+    ...["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].map((value) => ({
       label: value,
       value,
     })),
@@ -4184,38 +4641,176 @@ const SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES: ModelParameter[] = [
     label: 'Resolution',
     type: 'select',
     required: false,
-    options: ['480p', '720p'].map(value => ({ label: value, value })),
-    defaultValue: '720p',
+    options: ["480p", "720p"].map((value) => ({ label: value, value })),
+    defaultValue: "720p",
   },
 ];
 
 const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
-  ['sensevoice-small-asr', 'local', 'local', 'local-asr', 'iic/SenseVoiceSmall', 1],
-  ['whisper-large-v3-turbo-asr', 'local', 'local', 'local-asr', 'mlx-community/whisper-large-v3-turbo', 1],
-  ['whisper-small-asr', 'local', 'local', 'local-asr', 'mlx-community/whisper-small-mlx', 1],
-  ['parakeet-tdt-0.6b-v3-asr', 'local', 'local', 'local-asr', 'mlx-community/parakeet-tdt-0.6b-v3', 1],
-  ['vibevoice-asr', 'local', 'local', 'local-asr', 'mlx-community/VibeVoice-ASR-4bit', 1],
-  ['kokoro-82m-tts', 'local', 'local', 'local-tts', 'mlx-community/Kokoro-82M-4bit', 1],
-  ['piper-huayan-tts', 'local', 'local', 'local-tts', 'zh_CN-huayan-medium', 1],
-  ['piper-lessac-tts', 'local', 'local', 'local-tts', 'en_US-lessac-medium', 1],
-  ['flux-schnell', 'fal', 'fal', 'fal', 'fal-ai/flux/schnell', 20, { credentials: ['apiKey'] }],
-  ['flux-dev', 'fal', 'fal', 'fal', 'fal-ai/flux/dev', 20, { credentials: ['apiKey'] }],
-  ['gpt-image-2', 'fal', 'fal', 'fal', 'openai/gpt-image-2', 20, { credentials: ['apiKey'] }],
-  ['nano-banana-2', 'fal', 'fal', 'fal', 'fal-ai/nano-banana-2', 20, { credentials: ['apiKey'] }],
-  ['seedream-4.5', 'fal', 'fal', 'fal', 'fal-ai/bytedance/seedream/v4.5/text-to-image', 20, { credentials: ['apiKey'] }],
-  ['recraft-v4', 'fal', 'fal', 'fal', 'fal-ai/recraft/v4/pro/text-to-image', 20, { credentials: ['apiKey'] }],
-  ['flux-2-pro', 'fal', 'fal', 'fal', 'fal-ai/flux-2-pro', 20, { credentials: ['apiKey'] }],
-  ['sora-2', 'fal', 'fal', 'fal', 'fal-ai/sora-2/text-to-video', 20, { credentials: ['apiKey'] }],
-  ['kling-3', 'fal', 'fal', 'fal', 'fal-ai/kling-video/v3/pro/image-to-video', 20, { credentials: ['apiKey'] }],
-  ['flux-3-video', 'fal', 'fal', 'fal', 'blackforestlabs/flux-3/text-to-video', 20, { credentials: ['apiKey'] }],
-  ['flux-3-video-keyframes', 'fal', 'fal', 'fal', 'blackforestlabs/flux-3/keyframes-to-video', 20, { credentials: ['apiKey'] }],
-  ['flux-3-video-continue', 'fal', 'fal', 'fal', 'blackforestlabs/flux-3/extend-video', 20, { credentials: ['apiKey'] }],
   [
-    'seedance-2-startend',
-    'fal',
-    'fal',
-    'fal',
-    'bytedance/seedance-2.0/image-to-video',
+    "sensevoice-small-asr",
+    "local",
+    "local",
+    "local-asr",
+    "iic/SenseVoiceSmall",
+    1,
+  ],
+  [
+    "whisper-large-v3-turbo-asr",
+    "local",
+    "local",
+    "local-asr",
+    "mlx-community/whisper-large-v3-turbo",
+    1,
+  ],
+  [
+    "whisper-small-asr",
+    "local",
+    "local",
+    "local-asr",
+    "mlx-community/whisper-small-mlx",
+    1,
+  ],
+  [
+    "parakeet-tdt-0.6b-v3-asr",
+    "local",
+    "local",
+    "local-asr",
+    "mlx-community/parakeet-tdt-0.6b-v3",
+    1,
+  ],
+  [
+    "vibevoice-asr",
+    "local",
+    "local",
+    "local-asr",
+    "mlx-community/VibeVoice-ASR-4bit",
+    1,
+  ],
+  [
+    "kokoro-82m-tts",
+    "local",
+    "local",
+    "local-tts",
+    "mlx-community/Kokoro-82M-4bit",
+    1,
+  ],
+  ["piper-huayan-tts", "local", "local", "local-tts", "zh_CN-huayan-medium", 1],
+  ["piper-lessac-tts", "local", "local", "local-tts", "en_US-lessac-medium", 1],
+  [
+    "flux-schnell",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/flux/schnell",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "flux-dev",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/flux/dev",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "gpt-image-2",
+    "fal",
+    "fal",
+    "fal",
+    "openai/gpt-image-2",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "nano-banana-2",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/nano-banana-2",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "seedream-4.5",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/bytedance/seedream/v4.5/text-to-image",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "recraft-v4",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/recraft/v4/pro/text-to-image",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "flux-2-pro",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/flux-2-pro",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "sora-2",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/sora-2/text-to-video",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "kling-3",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/kling-video/v3/pro/image-to-video",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "flux-3-video",
+    "fal",
+    "fal",
+    "fal",
+    "blackforestlabs/flux-3/text-to-video",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "flux-3-video-keyframes",
+    "fal",
+    "fal",
+    "fal",
+    "blackforestlabs/flux-3/keyframes-to-video",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "flux-3-video-continue",
+    "fal",
+    "fal",
+    "fal",
+    "blackforestlabs/flux-3/extend-video",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "seedance-2-startend",
+    "fal",
+    "fal",
+    "fal",
+    "bytedance/seedance-2.0/image-to-video",
     20,
     {
       credentials: ['apiKey'],
@@ -4242,66 +4837,373 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
       },
     },
   ],
-  ['minimax-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 20, { credentials: ['apiKey'] }],
-  ['pika-2.5', 'pika', 'pika', 'pika', 'pika/pika-2.5/image-to-video', 18, { credentials: ['apiKey'] }],
-  ['nano-banana-2', 'pika', 'pika', 'pika', 'google/gemini-3.1-flash-image/text-to-image', 18, { credentials: ['apiKey'] }],
-  ['gpt-image-2', 'pika', 'pika', 'pika', 'openai/gpt-image-2/text-to-image', 18, { credentials: ['apiKey'] }],
-  ['seedance-2-startend', 'pika', 'pika', 'pika', 'bytedance/seedance-2.0/image-to-video', 18, {
-    credentials: ['apiKey'],
-    excludedParameterIds: ['seed'],
-  }],
-  ['seedance-2-ref', 'pika', 'pika', 'pika', 'bytedance/seedance-2.0/reference-to-video', 18, {
-    credentials: ['apiKey'],
-    excludedParameterIds: ['seed', 'edit_mode'],
-    referenceBinding: {
-      type: 'positional-tokens',
-      modalityScopedIndexes: true,
-      tokens: { image: '@Image{n}', video: '@Video{n}', audio: '@Audio{n}' },
+  [
+    "minimax-tts",
+    "fal",
+    "fal",
+    "fal",
+    "fal-ai/minimax/speech-02-hd",
+    20,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "pika-2.5",
+    "pika",
+    "pika",
+    "pika",
+    "pika/pika-2.5/image-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
     },
-  }],
-  ['minimax-h3', 'pika', 'pika', 'pika', 'minimax/h3/reference-to-video', 18, {
-    credentials: ['apiKey'],
-    referenceBinding: {
-      type: 'positional-tokens',
-      modalityScopedIndexes: true,
-      tokens: { image: '@Image{n}', video: '@Video{n}', audio: '@Audio{n}' },
+  ],
+  [
+    "nano-banana-2",
+    "pika",
+    "pika",
+    "pika",
+    "google/gemini-3.1-flash-image/text-to-image",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      parameterOverrides: PIKA_NANO_BANANA_PARAMETER_OVERRIDES,
+      defaultParamOverrides: {
+        aspect_ratio: "16:9",
+        resolution: "1K",
+        count: 1,
+      },
     },
-  }],
-  ['minimax-h3-startend', 'pika', 'pika', 'pika', 'minimax/h3/image-to-video', 18, { credentials: ['apiKey'] }],
-  ['minimax-music-3', 'pika', 'pika', 'pika', 'minimax/minimax-music-3.0/text-to-audio', 18, {
-    credentials: ['apiKey'],
-    excludedParameterIds: ['aigc_watermark'],
-  }],
-  ['gpt-5.6-sol', 'pika', 'pika', 'pika-chat', 'openai/gpt-5.6-sol', 18, { credentials: ['apiKey'] }],
-  ['claude-sonnet-5', 'pika', 'pika', 'pika-chat', 'anthropic/claude-sonnet-5', 18, { credentials: ['apiKey'] }],
-  ['gemini-3.6-flash', 'pika', 'pika', 'pika-chat', 'google/gemini-3.6-flash', 18, { credentials: ['apiKey'] }],
-  ['deepseek-v4-pro', 'pika', 'pika', 'pika-chat', 'deepseek/deepseek-v4-pro', 18, { credentials: ['apiKey'] }],
-  ['kimi-k3', 'pika', 'pika', 'pika-chat', 'moonshotai/kimi-k3', 18, { credentials: ['apiKey'] }],
-  ['glm-5.2', 'pika', 'pika', 'pika-chat', 'z-ai/glm-5.2', 18, { credentials: ['apiKey'] }],
-  ['seedream-5-pro', 'pika', 'pika', 'pika', 'bytedance/seedream-5.0-pro/text-to-image', 18, { credentials: ['apiKey'] }],
-  ['grok-imagine-quality', 'pika', 'pika', 'pika', 'x-ai/grok-imagine-image-quality/text-to-image', 18, { credentials: ['apiKey'] }],
-  ['grok-imagine-video-1.5', 'pika', 'pika', 'pika', 'x-ai/grok-imagine-video-1.5/image-to-video', 18, { credentials: ['apiKey'] }],
-  ['flux-3-video', 'pika', 'pika', 'pika', 'black-forest-labs/flux-3-video/text-to-video', 18, { credentials: ['apiKey'] }],
-  ['kling-3', 'pika', 'pika', 'pika', 'kling/kling-3.0/text-to-video', 18, { credentials: ['apiKey'] }],
-  ['recraft-v4', 'pika', 'pika', 'pika', 'recraft/recraft-4.1/text-to-image', 22, { credentials: ['apiKey'] }],
-  ['lyria-3-pro', 'pika', 'pika', 'pika', 'google/lyria-3-pro/text-to-audio', 18, { credentials: ['apiKey'] }],
-  ['minimax-speech-2.8-hd', 'pika', 'pika', 'pika', 'minimax/minimax-speech-2.8-hd/text-to-speech', 18, { credentials: ['apiKey'] }],
-  ['nano-banana-2', 'replicate', 'replicate', 'replicate', 'google/nano-banana-2', 25, { credentials: ['apiKey'] }],
-  ['gpt-image-2', 'replicate', 'replicate', 'replicate', 'openai/gpt-image-2', 25, { credentials: ['apiKey'] }],
-  ['flux-schnell', 'replicate', 'replicate', 'replicate', 'black-forest-labs/flux-schnell', 25, { credentials: ['apiKey'] }],
-  ['seedance-2-startend', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, {
-    credentials: ['apiKey'],
-    excludedParameterIds: ['seed'],
-  }],
-  ['seedance-2-ref', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, {
-    credentials: ['apiKey'],
-    excludedParameterIds: ['seed', 'edit_mode'],
-    referenceBinding: {
-      type: 'positional-tokens',
-      modalityScopedIndexes: true,
-      tokens: { image: '[Image{n}]', video: '[Video{n}]', audio: '[Audio{n}]' },
+  ],
+  [
+    "gpt-image-2",
+    "pika",
+    "pika",
+    "pika",
+    "openai/gpt-image-2/text-to-image",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      parameterOverrides: PIKA_GPT_IMAGE_PARAMETER_OVERRIDES,
+      defaultParamOverrides: {
+        aspect_ratio: "1:1",
+        resolution: "1K",
+        quality: "medium",
+        background: "auto",
+        count: 1,
+      },
+      excludedParameterIds: ["moderation"],
     },
-  }],
+  ],
+  [
+    "seedance-2-startend",
+    "pika",
+    "pika",
+    "pika",
+    "bytedance/seedance-2.0/image-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      parameterOverrides: PIKA_SEEDANCE_PARAMETER_OVERRIDES,
+      defaultParamOverrides: { duration: "auto", resolution: "720p" },
+      excludedParameterIds: ["seed"],
+    },
+  ],
+  [
+    "seedance-2-ref",
+    "pika",
+    "pika",
+    "pika",
+    "bytedance/seedance-2.0/reference-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      parameterOverrides: PIKA_SEEDANCE_REFERENCE_PARAMETER_OVERRIDES,
+      defaultParamOverrides: {
+        duration: "auto",
+        aspect_ratio: "adaptive",
+        resolution: "720p",
+      },
+      excludedParameterIds: ["seed", "edit_mode"],
+      referenceBinding: {
+        type: 'positional-tokens',
+        modalityScopedIndexes: true,
+        tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" },
+      },
+    },
+  ],
+  [
+    "minimax-h3",
+    "pika",
+    "pika",
+    "pika",
+    "minimax/h3/reference-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      referenceBinding: {
+        type: 'positional-tokens',
+        modalityScopedIndexes: true,
+        tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" },
+      },
+    },
+  ],
+  [
+    "minimax-h3-startend",
+    "pika",
+    "pika",
+    "pika",
+    "minimax/h3/image-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "minimax-music-3",
+    "pika",
+    "pika",
+    "pika",
+    "minimax/minimax-music-3.0/text-to-audio",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      excludedParameterIds: ["aigc_watermark"],
+    },
+  ],
+  [
+    "gpt-5.6-sol",
+    "pika",
+    "pika",
+    "pika-chat",
+    "openai/gpt-5.6-sol",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "claude-sonnet-5",
+    "pika",
+    "pika",
+    "pika-chat",
+    "anthropic/claude-sonnet-5",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "gemini-3.6-flash",
+    "pika",
+    "pika",
+    "pika-chat",
+    "google/gemini-3.6-flash",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "deepseek-v4-pro",
+    "pika",
+    "pika",
+    "pika-chat",
+    "deepseek/deepseek-v4-pro",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "kimi-k3",
+    "pika",
+    "pika",
+    "pika-chat",
+    "moonshotai/kimi-k3",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "glm-5.2",
+    "pika",
+    "pika",
+    "pika-chat",
+    "z-ai/glm-5.2",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "seedream-5-pro",
+    "pika",
+    "pika",
+    "pika",
+    "bytedance/seedream-5.0-pro/text-to-image",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "grok-imagine-quality",
+    "pika",
+    "pika",
+    "pika",
+    "x-ai/grok-imagine-image-quality/text-to-image",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "grok-imagine-video-1.5",
+    "pika",
+    "pika",
+    "pika",
+    "x-ai/grok-imagine-video-1.5/image-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "flux-3-video",
+    "pika",
+    "pika",
+    "pika",
+    "black-forest-labs/flux-3-video/text-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      excludedParameterIds: ["safety_tolerance"],
+    },
+  ],
+  [
+    "kling-3",
+    "pika",
+    "pika",
+    "pika",
+    "kling/kling-3.0/text-to-video",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+      defaultParamOverrides: { generate_audio: false },
+    },
+  ],
+  [
+    "recraft-v4",
+    "pika",
+    "pika",
+    "pika",
+    "recraft/recraft-4.1/text-to-image",
+    22,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "lyria-3-pro",
+    "pika",
+    "pika",
+    "pika",
+    "google/lyria-3-pro/text-to-audio",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "minimax-speech-2.8-hd",
+    "pika",
+    "pika",
+    "pika",
+    "minimax/minimax-speech-2.8-hd/text-to-speech",
+    18,
+    {
+      credentials: ["apiKey"],
+      ...PIKA_EXECUTOR_OPTIONS,
+    },
+  ],
+  [
+    "nano-banana-2",
+    "replicate",
+    "replicate",
+    "replicate",
+    "google/nano-banana-2",
+    25,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "gpt-image-2",
+    "replicate",
+    "replicate",
+    "replicate",
+    "openai/gpt-image-2",
+    25,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "flux-schnell",
+    "replicate",
+    "replicate",
+    "replicate",
+    "black-forest-labs/flux-schnell",
+    25,
+    { credentials: ["apiKey"] },
+  ],
+  [
+    "seedance-2-startend",
+    "replicate",
+    "replicate",
+    "replicate",
+    "bytedance/seedance-2.0",
+    25,
+    {
+      credentials: ["apiKey"],
+      excludedParameterIds: ["seed"],
+    },
+  ],
+  [
+    "seedance-2-ref",
+    "replicate",
+    "replicate",
+    "replicate",
+    "bytedance/seedance-2.0",
+    25,
+    {
+      credentials: ["apiKey"],
+      excludedParameterIds: ["seed", "edit_mode"],
+      referenceBinding: {
+        type: 'positional-tokens',
+        modalityScopedIndexes: true,
+        tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" },
+      },
+    },
+  ],
   // `anyOf`, because Google accepts either credential and an account holds one or the other. A plain
   // `credentials` list means all of them, and duplicating the route per credential makes one model
   // match two conformance targets -- the ambiguity check is right to refuse that.
@@ -4318,27 +5220,53 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'gemini-3.1-flash-image',
     12,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
-  ['flux-3-video', 'official', 'bfl', 'bfl', 'flux-3-video', 10, { region: 'global', credentials: ['apiKey'] }],
-  ['flux-3-video-keyframes', 'official', 'bfl', 'bfl', 'flux-3-video', 10, { region: 'global', credentials: ['apiKey'] }],
-  ['flux-3-video-continue', 'official', 'bfl', 'bfl', 'flux-3-video', 10, { region: 'global', credentials: ['apiKey'] }],
   [
-    'nano-banana-pro',
-    'official',
-    'google-ai-studio',
-    'google-ai-studio',
-    'gemini-3-pro-image',
+    "flux-3-video",
+    "official",
+    "bfl",
+    "bfl",
+    "flux-3-video",
+    10,
+    { region: "global", credentials: ["apiKey"] },
+  ],
+  [
+    "flux-3-video-keyframes",
+    "official",
+    "bfl",
+    "bfl",
+    "flux-3-video",
+    10,
+    { region: "global", credentials: ["apiKey"] },
+  ],
+  [
+    "flux-3-video-continue",
+    "official",
+    "bfl",
+    "bfl",
+    "flux-3-video",
+    10,
+    { region: "global", credentials: ["apiKey"] },
+  ],
+  [
+    "nano-banana-pro",
+    "official",
+    "google-ai-studio",
+    "google-ai-studio",
+    "gemini-3-pro-image",
     12,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
   [
@@ -4377,10 +5305,11 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'gemini-3.1-flash-lite-image',
     10,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
   [
@@ -4391,10 +5320,11 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'veo-3.1-generate-001',
     10,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
   [
@@ -4405,10 +5335,11 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'veo-3.1-generate-001',
     10,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
   [
@@ -4419,10 +5350,11 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'veo-3.1-fast-generate-001',
     10,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
   [
@@ -4433,10 +5365,11 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'veo-3.1-fast-generate-001',
     10,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
   // Two surfaces serve this model and they take different credentials, both measured:
@@ -4470,10 +5403,11 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'gemini-3.5-flash',
     10,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
   [
@@ -4484,10 +5418,11 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'gemini-3.1-pro-preview',
     10,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
   [
@@ -4498,10 +5433,11 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'gemini-3-flash-preview',
     10,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
   // The eleven `google-agent-platform` routes that followed are gone. Google is one Provider:
@@ -4517,29 +5453,79 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'gemini-3.1-flash-lite',
     10,
     {
-      executorPluginId: 'clash.google',
-      executorExportId: 'google-execute',
-      region: 'global',
-      credentialRequirements: { anyOf: [['apiKey'], ['serviceAccountKey']] },
+      executorPluginId: "clash.google",
+      executorExportId: "google-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS,
+      region: "global",
+      credentialRequirements: { anyOf: [["apiKey"], ["serviceAccountKey"]] },
     },
   ],
-  ['gpt-image-2', 'official', 'openai', 'openai-images', 'gpt-image-2', 10, { region: 'global', credentials: ['apiKey'] }],
-  ['gpt-5.4', 'official', 'openai', 'openai-compatible', 'gpt-5.4', 10, { region: 'global', credentials: ['apiKey'] }],
-  ['openai-compatible-text', 'official', 'openai', 'openai-compatible', 'gpt-5.4', 15, { region: 'global', credentials: ['apiKey'] }],
-  ['claude-sonnet-4', 'official', 'anthropic', 'anthropic-compatible', 'claude-sonnet-4-20250514', 10, { region: 'global', credentials: ['apiKey'] }],
-  ['anthropic-compatible-text', 'official', 'anthropic', 'anthropic-compatible', 'claude-sonnet-4-20250514', 15, { region: 'global', credentials: ['apiKey'] }],
-  ['kling-3', 'kling', 'kling', 'kling', 'kling-v3', 8, { credentials: ['accessKey', 'secretKey'] }],
   [
-    'seed-audio-1',
-    'volcengine-speech',
-    'volcengine-speech',
-    'volcengine-speech',
-    'seed-audio-1.0',
+    "gpt-image-2",
+    "official",
+    "openai",
+    "openai-images",
+    "gpt-image-2",
+    10,
+    { region: "global", credentials: ["apiKey"] },
+  ],
+  [
+    "gpt-5.4",
+    "official",
+    "openai",
+    "openai-compatible",
+    "gpt-5.4",
+    10,
+    { region: "global", credentials: ["apiKey"] },
+  ],
+  [
+    "openai-compatible-text",
+    "official",
+    "openai",
+    "openai-compatible",
+    "gpt-5.4",
+    15,
+    { region: "global", credentials: ["apiKey"] },
+  ],
+  [
+    "claude-sonnet-4",
+    "official",
+    "anthropic",
+    "anthropic-compatible",
+    "claude-sonnet-4-20250514",
+    10,
+    { region: "global", credentials: ["apiKey"] },
+  ],
+  [
+    "anthropic-compatible-text",
+    "official",
+    "anthropic",
+    "anthropic-compatible",
+    "claude-sonnet-4-20250514",
+    15,
+    { region: "global", credentials: ["apiKey"] },
+  ],
+  [
+    "kling-3",
+    "kling",
+    "kling",
+    "kling",
+    "kling-v3",
+    8,
+    { credentials: ["accessKey", "secretKey"] },
+  ],
+  [
+    "seed-audio-1",
+    "volcengine-speech",
+    "volcengine-speech",
+    "volcengine-speech",
+    "seed-audio-1.0",
     9,
     {
-      credentials: ['apiKey'],
-      executorPluginId: 'clash.volcengine',
-      executorExportId: 'volcengine-speech-execute',
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-speech-execute",
+      assetInputs: IMAGE_AUDIO_PROVIDER_ASSET_INPUTS,
     },
   ],
   [
@@ -4550,9 +5536,10 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'doubao-seedance-2-0-260128',
     9,
     {
-      credentials: ['apiKey'],
-      executorPluginId: 'clash.volcengine',
-      executorExportId: 'volcengine-execute',
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      assetInputs: IMAGE_BYTES_PROVIDER_ASSET_INPUTS,
       parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
       defaultParamOverrides: { duration: 'auto', resolution: '720p' },
       excludedParameterIds: ['seed'],
@@ -4566,10 +5553,14 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'doubao-seedance-2-0-260128',
     9,
     {
-      credentials: ['apiKey'],
-      executorPluginId: 'clash.volcengine',
-      executorExportId: 'volcengine-execute',
-      parameterOverrides: [...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      assetInputs: VOLCENGINE_MEDIA_PROVIDER_ASSET_INPUTS,
+      parameterOverrides: [
+        ...SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
+        SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER,
+      ],
       defaultParamOverrides: {
         duration: 'auto',
         aspect_ratio: 'auto',
@@ -4591,9 +5582,10 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'doubao-seedance-2-0-260128',
     9,
     {
-      credentials: ['apiKey'],
-      executorPluginId: 'clash.volcengine',
-      executorExportId: 'volcengine-execute',
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      assetInputs: VIDEO_PROVIDER_URL_ONLY_ASSET_INPUTS,
       referenceBinding: {
         type: 'positional-tokens',
         modalityScopedIndexes: true,
@@ -4609,10 +5601,14 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'doubao-seedance-2-5-260628',
     9,
     {
-      credentials: ['apiKey'],
-      executorPluginId: 'clash.volcengine',
-      executorExportId: 'volcengine-execute',
-      parameterOverrides: [...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES, SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER],
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      assetInputs: VOLCENGINE_MEDIA_PROVIDER_ASSET_INPUTS,
+      parameterOverrides: [
+        ...SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
+        SEEDANCE_VOLCENGINE_ASPECT_RATIO_PARAMETER,
+      ],
       defaultParamOverrides: {
         duration: 'auto',
         aspect_ratio: 'auto',
@@ -4633,9 +5629,10 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'doubao-seedance-2-5-260628',
     9,
     {
-      credentials: ['apiKey'],
-      executorPluginId: 'clash.volcengine',
-      executorExportId: 'volcengine-execute',
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      assetInputs: IMAGE_BYTES_PROVIDER_ASSET_INPUTS,
       parameterOverrides: SEEDANCE_2_5_VOLCENGINE_COMMON_PARAMETER_OVERRIDES,
       defaultParamOverrides: {
         duration: 'auto',
@@ -4651,9 +5648,10 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'doubao-seedance-2-5-260628',
     9,
     {
-      credentials: ['apiKey'],
-      executorPluginId: 'clash.volcengine',
-      executorExportId: 'volcengine-execute',
+      credentials: ["apiKey"],
+      executorPluginId: "clash.volcengine",
+      executorExportId: "volcengine-execute",
+      assetInputs: VIDEO_PROVIDER_URL_ONLY_ASSET_INPUTS,
       referenceBinding: {
         type: 'positional-tokens',
         modalityScopedIndexes: true,
@@ -4708,9 +5706,10 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'MiniMax-H3',
     8,
     {
-      credentials: ['apiKey'],
-      executorPluginId: 'clash.minimax',
-      executorExportId: 'minimax-execute',
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute",
+      assetInputs: MEDIA_PROVIDER_ASSET_INPUTS,
     },
   ],
   [
@@ -4721,9 +5720,10 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
     'MiniMax-H3',
     8,
     {
-      credentials: ['apiKey'],
-      executorPluginId: 'clash.minimax',
-      executorExportId: 'minimax-execute',
+      credentials: ["apiKey"],
+      executorPluginId: "clash.minimax",
+      executorExportId: "minimax-execute",
+      assetInputs: IMAGE_PROVIDER_ASSET_INPUTS,
     },
   ],
   [
@@ -4769,8 +5769,24 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
       defaultParamOverrides: { duration: 5 },
     },
   ],
-  ['suno-v5.5', 'suno', 'suno', 'suno', 'V5_5', 8, { credentials: ['apiKey', 'callbackUrl'] }],
-  ['elevenlabs-tts', 'elevenlabs', 'elevenlabs', 'elevenlabs', 'eleven_v3', 8, { credentials: ['apiKey'] }]
+  [
+    "suno-v5.5",
+    "suno",
+    "suno",
+    "suno",
+    "V5_5",
+    8,
+    { credentials: ["apiKey", "callbackUrl"] },
+  ],
+  [
+    "elevenlabs-tts",
+    "elevenlabs",
+    "elevenlabs",
+    "elevenlabs",
+    "eleven_v3",
+    8,
+    { credentials: ["apiKey"] },
+  ],
 ];
 
 function implementationFromRow(row: ModelProviderImplementationRow): ModelProviderImplementation {
@@ -4787,7 +5803,9 @@ function implementationFromRow(row: ModelProviderImplementationRow): ModelProvid
       ? {
           credentialRequirements: {
             ...options.credentialRequirements,
-            anyOf: options.credentialRequirements.anyOf.map(credentials => [...credentials]),
+            anyOf: options.credentialRequirements.anyOf.map((credentials) => [
+              ...credentials,
+            ]),
           },
         }
       : {}),
@@ -4806,6 +5824,18 @@ function implementationFromRow(row: ModelProviderImplementationRow): ModelProvid
                 }
               : {}),
           },
+        }
+      : {}),
+    ...(options?.assetInputs?.length
+      ? {
+          assetInputs: options.assetInputs.map((input) => ({
+            match: {
+              ...(input.match.kinds ? { kinds: [...input.match.kinds] } : {}),
+              ...(input.match.slots ? { slots: [...input.match.slots] } : {}),
+            },
+            representations: [...input.representations],
+            ...(input.mediaTypes ? { mediaTypes: [...input.mediaTypes] } : {}),
+          })),
         }
       : {}),
     // Which plugin executor owns this route's submit/poll lifecycle. Without this the executors are

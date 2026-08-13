@@ -10,11 +10,11 @@ survives its own restart.
 Providers answer in one of three ways. The protocol holds all three, and you implement
 whichever ones your provider actually offers.
 
-| | Provider behaviour | You return | Host does |
-|---|---|---|---|
-| **Synchronous** | Answers within the call | `completed` | Nothing more |
-| **Polled** | Takes the work, exposes a status check | `accepted` + `pollState` | Asks you again on a timer |
-| **Callback (future)** | Takes the work, calls back when done | `accepted` + `pollState` | Current Host keeps polling; a future callback adapter may deliver the signed message |
+|                       | Provider behaviour                     | You return               | Host does                                                                            |
+| --------------------- | -------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------ |
+| **Synchronous**       | Answers within the call                | `completed`              | Nothing more                                                                         |
+| **Polled**            | Takes the work, exposes a status check | `accepted` + `pollState` | Asks you again on a timer                                                            |
+| **Callback (future)** | Takes the work, calls back when done   | `accepted` + `pollState` | Current Host keeps polling; a future callback adapter may deliver the signed message |
 
 ### Synchronous
 
@@ -144,8 +144,10 @@ through Loro sync.
 
 ## Callbacks
 
-This section defines a future extension; neither `callbackUrl` nor a callback
-operation exists in the current invocation schema. Today every asynchronous
+This section defines a future Host extension. The v1 wire schema and Action SDK
+already reserve `callbackUrl`, callback payload/headers, and a `callback`
+operation so a later Host adapter does not require a second plugin ABI. The
+current Host does not issue or deliver them, however. Today every asynchronous
 Provider must return `accepted` with poll state and remain collectable through
 polling.
 
@@ -194,15 +196,12 @@ Return `completed` when the provider genuinely answers within the call. Return `
 when it does not. The threshold is not a duration to tune: it is whether losing the host
 mid-call would lose the work. If it would, the work needs a name the host can keep.
 
-
-
 ## Saying what the provider said
 
 Whether a generation is still alive is your plugin's answer, written in code, next to the response
 it read. It cannot be a table of words somewhere else, because a status is rarely one word: Hub
 reports `message="success"` on the envelope while the task underneath has failed, MiniMax carries a
-second verdict in `base_resp.status_code`, and some providers bury application failures inside HTTP
-200. A mapping from a flat string cannot describe any of those, and a plugin forced to fill one in
+second verdict in `base_resp.status_code`, and some providers bury application failures inside HTTP 200. A mapping from a flat string cannot describe any of those, and a plugin forced to fill one in
 would be answering a different question than the one being asked.
 
 What the protocol fixes is the shape of your answer -- `completed`, `accepted`, `failed` -- and one
@@ -217,12 +216,12 @@ return {
   ...ack,
   status: "failed",
   error: {
-    code: "execution_failed",       // stable Clash category
+    code: "execution_failed", // stable Clash category
     message: "The provider refused the request.",
     retryable: true,
     requestState: "rejected",
     providerCode: "quota_exceeded", // optional provider spelling
-    details: { limit: 10 },          // optional JSON diagnostics
+    details: { limit: 10 }, // optional JSON diagnostics
   },
 };
 ```
@@ -232,11 +231,11 @@ error spelling into it; preserve that spelling as `providerCode`. `retryable` sa
 condition may succeed later. It does not by itself authorize resubmission: the host also needs
 `requestState` to know what happened at the submission boundary.
 
-| `requestState` | Meaning | Submission consequence |
-|---|---|---|
-| `rejected` | The provider definitely did not accept the request | Host policy may submit again when `retryable` permits |
-| `unknown` | The boundary was ambiguous; the provider may have accepted | Reuse the same `actionRunId`, output slot, and idempotency key; reconcile when the provider supports it, otherwise Host policy may resubmit and must accept that duplicate upstream work is possible |
-| `accepted` | The provider accepted the task and it later failed | Never resubmit as though the original request was rejected |
+| `requestState` | Meaning                                                    | Submission consequence                                                                                                                                                                               |
+| -------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rejected`     | The provider definitely did not accept the request         | Host policy may submit again when `retryable` permits                                                                                                                                                |
+| `unknown`      | The boundary was ambiguous; the provider may have accepted | Reuse the same `actionRunId`, output slot, and idempotency key; reconcile when the provider supports it, otherwise Host policy may resubmit and must accept that duplicate upstream work is possible |
+| `accepted`     | The provider accepted the task and it later failed         | Never resubmit as though the original request was rejected                                                                                                                                           |
 
 `retryable` is an input to Host policy, not the policy itself. In particular, it cannot make an
 `accepted` request safe to submit again. For `unknown`, a durable owner first uses the same stable
@@ -245,28 +244,28 @@ Host policy choose a fresh attempt with the explicit trade-off that upstream wor
 
 Use one of these canonical `code` values. Put a provider's own code in `providerCode`.
 
-| `code` | Use when |
-|---|---|
-| `invalid_request` | The submitted values or operation are invalid |
-| `authentication_failed` | Provider credentials are missing, expired, or rejected |
-| `permission_denied` | Identity is known but not allowed to perform the operation |
-| `content_rejected` | Provider safety or content policy rejected the input |
-| `rate_limited` | A request-rate limit was reached |
-| `quota_exhausted` | A credit, balance, or usage quota was exhausted |
-| `provider_unavailable` | The provider service is temporarily unavailable |
-| `provider_failed` | The provider reported a terminal task failure without a narrower category |
-| `task_not_found` | Previously accepted provider work no longer exists |
-| `task_expired` | Previously accepted provider work expired |
-| `transport_timeout` | A provider network operation timed out |
-| `transport_error` | Another provider network or protocol transport failed |
-| `invalid_response` | The provider response could not be validated or interpreted |
-| `execution_failed` | Plugin execution failed without a narrower category |
-| `contract_violation` | A plugin or Host boundary violated the executable-plugin contract |
-| `cancelled` | The operation was cancelled |
-| `plugin_unavailable` | The Host could not start or reach the plugin process |
-| `deadline_exceeded` | The Host's overall run deadline expired |
-| `output_persistence_failed` | Finished output could not be stored durably |
-| `publication_failed` | Stored output could not be published or attached to its destination |
+| `code`                      | Use when                                                                  |
+| --------------------------- | ------------------------------------------------------------------------- |
+| `invalid_request`           | The submitted values or operation are invalid                             |
+| `authentication_failed`     | Provider credentials are missing, expired, or rejected                    |
+| `permission_denied`         | Identity is known but not allowed to perform the operation                |
+| `content_rejected`          | Provider safety or content policy rejected the input                      |
+| `rate_limited`              | A request-rate limit was reached                                          |
+| `quota_exhausted`           | A credit, balance, or usage quota was exhausted                           |
+| `provider_unavailable`      | The provider service is temporarily unavailable                           |
+| `provider_failed`           | The provider reported a terminal task failure without a narrower category |
+| `task_not_found`            | Previously accepted provider work no longer exists                        |
+| `task_expired`              | Previously accepted provider work expired                                 |
+| `transport_timeout`         | A provider network operation timed out                                    |
+| `transport_error`           | Another provider network or protocol transport failed                     |
+| `invalid_response`          | The provider response could not be validated or interpreted               |
+| `execution_failed`          | Plugin execution failed without a narrower category                       |
+| `contract_violation`        | A plugin or Host boundary violated the executable-plugin contract         |
+| `cancelled`                 | The operation was cancelled                                               |
+| `plugin_unavailable`        | The Host could not start or reach the plugin process                      |
+| `deadline_exceeded`         | The Host's overall run deadline expired                                   |
+| `output_persistence_failed` | Finished output could not be stored durably                               |
+| `publication_failed`        | Stored output could not be published or attached to its destination       |
 
 A polling error does not erase known acceptance. Report a transient transport problem as a
 retryable failure with `requestState: "accepted"`; the host may retry the poll, but must not submit
@@ -281,7 +280,17 @@ ever happens.
 
 ```ts
 if (!RUNNING_STATUSES.has(status)) {
-  throw new Error(`Task ${id} reported status "${status}", which this plugin does not recognise.`);
+  return {
+    ...ack,
+    status: "failed",
+    error: {
+      code: "invalid_response",
+      message: `Task ${id} reported status "${status}", which this plugin does not recognise.`,
+      retryable: false,
+      requestState: "accepted",
+      providerCode: status,
+    },
+  };
 }
 return { status: "accepted", pollState: { taskId: id } };
 ```

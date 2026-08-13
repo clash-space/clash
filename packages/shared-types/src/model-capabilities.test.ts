@@ -5,7 +5,12 @@
  * flavor of `inputMode` the schema permits.
  */
 import { describe, it, expect } from "vitest";
-import { MODEL_CARDS, ModelInputModeSchema, type ModelCard } from "./models.js";
+import {
+  MODEL_CARDS,
+  ModelCardSchema,
+  ModelInputModeSchema,
+  type ModelCard,
+} from "./models.js";
 import * as modelCapabilities from "./model-capabilities.js";
 import { capability, capabilityFromCustom, validateReferenceMedia, validateRefs, partitionRefs, pickDefaultModel } from "./model-capabilities.js";
 import { CustomActionDefinitionSchema } from "./canvas.js";
@@ -393,6 +398,90 @@ describe("compatible model discovery", () => {
 
 describe("reference media constraints", () => {
   const h3 = MODEL_CARDS.find((candidate) => candidate.id === "minimax-h3")!;
+
+  it("applies parameter-conditioned bounds and media constraints", () => {
+    const editCard = ModelCardSchema.parse({
+      id: "conditional-video-edit",
+      name: "Conditional Video Edit",
+      provider: "test",
+      kind: "video",
+      parameters: [
+        {
+          id: "edit_mode",
+          label: "Edit referenced video",
+          type: "boolean",
+          defaultValue: false,
+        },
+      ],
+      defaultParams: { edit_mode: false },
+      input: {
+        inputMode: {
+          videos: {
+            max: 1,
+            constraints: { minDurationMs: 2_000 },
+            conditional: [
+              {
+                when: [{ field: "modelParams.edit_mode", equals: true }],
+                min: 1,
+                constraints: {
+                  minDurationMs: 4_000,
+                  minPixels: 407_696,
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+    const shortReference = {
+      modality: "video" as const,
+      contentType: "video/mp4",
+      durationMs: 3_000,
+      width: 640,
+      height: 638,
+    };
+
+    expect(
+      validateReferenceMedia(editCard, [shortReference], {
+        modelParams: { edit_mode: false },
+      }),
+    ).toBeNull();
+    expect(
+      validateRefs(
+        editCard,
+        { video: 0 },
+        {
+          modelParams: { edit_mode: true },
+        },
+      ),
+    ).toMatch(/at least 1 reference video/i);
+    expect(
+      validateReferenceMedia(editCard, [shortReference], {
+        modelParams: { edit_mode: true },
+      }),
+    ).toMatch(/at least 4 seconds/i);
+    expect(
+      validateReferenceMedia(
+        editCard,
+        [
+          {
+            ...shortReference,
+            durationMs: 4_000,
+            width: 640,
+            height: 637,
+          },
+        ],
+        { modelParams: { edit_mode: true } },
+      ),
+    ).toMatch(/407,696 total pixels/i);
+    expect(
+      validateReferenceMedia(
+        editCard,
+        [{ ...shortReference, durationMs: 4_000 }],
+        { modelParams: { edit_mode: true } },
+      ),
+    ).toBeNull();
+  });
 
   it("keeps MiniMax H3 media limits in the unified Model Card", () => {
     const parsed = ModelInputModeSchema.parse(h3.input.inputMode);

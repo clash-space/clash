@@ -30,6 +30,7 @@
     ]
   },
   "contractTests": [
-    "contract-tests/minimax-execute.json"
+    "contract-tests/minimax-execute.json",
+    "contract-tests/minimax-submit-requires-key.json"
   ]
 }

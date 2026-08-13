@@ -126,7 +126,7 @@ async function activePackageMatches(
 }
 
 /**
- * Install source-backed launchers for the three bundled plugins into the isolated development
+ * Install source-backed launchers for the bundled plugins into the isolated development
  * profile. Each launcher is still validated, contract-tested, copied into daemon-owned storage and
  * attested by the normal activation path. The only development exception is what its JS imports:
  * workspace TypeScript through tsx instead of a previously built `dist/stdio.mjs`.
@@ -173,12 +173,12 @@ export async function prepareDevelopmentBundledPlugins(options: {
     });
     watchRoots[plugin.id] = [
       join(pluginRoot, "src"),
-      ...(plugin.id === "clash.google" ||
-      plugin.id === "clash.minimax" ||
-      plugin.id === "clash.volcengine"
-        ? [actionSdkSource]
+      // Every bundled executable imports the shared Action SDK. Its source is loaded directly by
+      // the development launcher, so an SDK edit must recycle every affected long-lived child.
+      actionSdkSource,
+      ...(plugin.id === "clash.minimax" || plugin.id === "clash.pika"
+        ? [sharedRuntimeSource]
         : []),
-      ...(plugin.id === "clash.minimax" ? [sharedRuntimeSource] : []),
       sharedTypesSource,
     ];
     if (await activePackageMatches(options.actionsRoot, input)) continue;

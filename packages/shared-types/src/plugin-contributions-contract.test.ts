@@ -247,10 +247,14 @@ describe("executable plugin contributions contract", () => {
     for (const operation of [
       { kind: "store.get", key: "apiKey" },
       { kind: "store.put", key: "apiKey", value: "secret", secret: true },
-      { kind: "asset.read", asset: {
-        assetId: "asset-1",
-        uri: "clash-asset://asset-1",
-        kind: "image",
+      { kind: "asset.resolve", reference: {
+        slot: "image",
+        index: 0,
+        asset: {
+          assetId: "asset-1",
+          uri: "clash-asset://asset-1",
+          kind: "image",
+        },
       } },
       { kind: "asset.write", slot: "image", assetKind: "image", dataBase64: "AA==" },
       { kind: "asset.upload-slot", slot: "image", assetKind: "image", byteLength: 1 },
@@ -267,6 +271,14 @@ describe("executable plugin contributions contract", () => {
       kind: "network.fetch",
       url: "https://api.example.test",
       credentialHandle: "clash-secret://secret",
+    }).success).toBe(false);
+    expect(ExecutablePluginBrokerOperationSchema.safeParse({
+      kind: "asset.read",
+      asset: {
+        assetId: "asset-1",
+        uri: "clash-asset://asset-1",
+        kind: "image",
+      },
     }).success).toBe(false);
   });
 

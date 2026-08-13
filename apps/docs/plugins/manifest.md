@@ -49,7 +49,8 @@ rejected.
 - A Provider's `executorExportId` must match a contributed
   `provider-executor` function.
 - Declare the lifecycle arms the entrypoint implements in `operations`.
-  `submit` is the default; callbacks also require `poll` as a fallback.
+  `submit` is the default. `callback` is reserved for a future Host adapter and
+  also requires `poll`; current Hosts never issue `callbackUrl`.
 - `hostTools` is for named Host functionality such as `codex.imagegen`. It is
   an explicit product contribution.
 
@@ -94,8 +95,17 @@ Host stores the selected account's values and scopes `context.store` to it.
 The executor reads only the keys its declaration names:
 
 ```ts
+import { ProviderExecutionError } from "@clash/action-sdk";
+
 const apiKey = await context.store?.get("apiKey");
-if (!apiKey) throw new Error("This Acme account has no apiKey stored.");
+if (!apiKey) {
+  throw new ProviderExecutionError({
+    code: "authentication_failed",
+    message: "This Acme account has no apiKey stored.",
+    retryable: false,
+    requestState: "rejected",
+  });
+}
 
 const response = await globalThis.fetch("https://api.acme.example/generate", {
   method: "POST",

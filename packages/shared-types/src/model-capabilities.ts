@@ -44,6 +44,7 @@ export interface RefBound {
   /** If this ref is present, at least one listed companion modality is required. */
   requiresAnyOf?: ReadonlyArray<Modality>;
   constraints?: ReferenceMediaConstraints;
+  conditional?: ReadonlyArray<ConditionalReferenceRule>;
   maxTotalDurationMs?: number;
   /** True iff the image bucket is satisfied via the start/end frame
    *  convention (start required, end optional). */
@@ -66,11 +67,17 @@ export interface Capability {
   promptModalities: ReadonlyArray<Modality>;
   /** Provider binding used when serializing inline references. */
   referenceBinding?: ModelCard["input"]["referenceBinding"];
+  /** Parameter defaults used when evaluating conditional input rules. */
+  defaultModelParams?: Readonly<Record<string, string | number | boolean>>;
 }
 
 export type ReferenceMediaConstraints = NonNullable<
   NonNullable<ModelInputMode["images"]>["constraints"]
 >;
+
+export type ConditionalReferenceRule = NonNullable<
+  NonNullable<ModelInputMode["images"]>["conditional"]
+>[number];
 
 export interface ReferenceMediaMetadata {
   modality: Exclude<Modality, "text">;
@@ -123,6 +130,7 @@ export function capability(card: ModelCard): Capability {
       max: im.images.max,
       requiresAnyOf: im.images.requiresAnyOf,
       constraints: im.images.constraints,
+      conditional: im.images.conditional,
       maxTotalDurationMs: im.images.maxTotalDurationMs,
     };
   } else {
@@ -136,6 +144,7 @@ export function capability(card: ModelCard): Capability {
         max: im.videos.max,
         requiresAnyOf: im.videos.requiresAnyOf,
         constraints: im.videos.constraints,
+        conditional: im.videos.conditional,
         maxTotalDurationMs: im.videos.maxTotalDurationMs,
       }
     : NO_BOUND;
@@ -147,6 +156,7 @@ export function capability(card: ModelCard): Capability {
         max: im.audios.max,
         requiresAnyOf: im.audios.requiresAnyOf,
         constraints: im.audios.constraints,
+        conditional: im.audios.conditional,
         maxTotalDurationMs: im.audios.maxTotalDurationMs,
       }
     : NO_BOUND;
@@ -163,7 +173,45 @@ export function capability(card: ModelCard): Capability {
     maxEmbeddedRequestBytes: im.maxEmbeddedRequestBytes,
     promptModalities,
     referenceBinding: card.input.referenceBinding,
+    defaultModelParams: card.defaultParams,
   };
+}
+
+export interface ReferenceValidationOptions {
+  modelParams?: Readonly<Record<string, string | number | boolean | undefined>>;
+}
+
+function conditionalRuleApplies(
+  cap: Capability,
+  rule: ConditionalReferenceRule,
+  modelParams: ReferenceValidationOptions["modelParams"],
+): boolean {
+  return rule.when.every((condition) => {
+    const parameterId = condition.field.slice("modelParams.".length);
+    const value =
+      modelParams?.[parameterId] ?? cap.defaultModelParams?.[parameterId];
+    return value === condition.equals;
+  });
+}
+
+function effectiveRefBound(
+  cap: Capability,
+  modality: Modality,
+  modelParams: ReferenceValidationOptions["modelParams"],
+): RefBound {
+  const base = cap.ref[modality];
+  let min = base.min;
+  let max = base.max;
+  let constraints = base.constraints;
+  for (const rule of base.conditional ?? []) {
+    if (!conditionalRuleApplies(cap, rule, modelParams)) continue;
+    min = rule.min ?? min;
+    max = rule.max ?? max;
+    if (rule.constraints) {
+      constraints = { ...constraints, ...rule.constraints };
+    }
+  }
+  return { ...base, min, max, constraints };
 }
 
 function mediaLabel(modality: ReferenceMediaMetadata["modality"]): string {
@@ -184,6 +232,7 @@ function normalizedExtension(fileName: string | undefined): string | undefined {
 export function validateReferenceMedia(
   cardOrCap: ModelCard | Capability,
   references: ReadonlyArray<ReferenceMediaMetadata>,
+  options: ReferenceValidationOptions = {},
 ): string | null {
   const cap: Capability =
     typeof (cardOrCap as Capability).requiresPrompt === "boolean"
@@ -191,7 +240,11 @@ export function validateReferenceMedia(
       : capability(cardOrCap as ModelCard);
 
   for (const reference of references) {
-    const constraints = cap.ref[reference.modality].constraints;
+    const constraints = effectiveRefBound(
+      cap,
+      reference.modality,
+      options.modelParams,
+    ).constraints;
     if (!constraints) continue;
     const label = mediaLabel(reference.modality);
     const contentType = reference.contentType
@@ -246,6 +299,15 @@ export function validateReferenceMedia(
       reference.height > constraints.maxHeight
     ) {
       return `${label} height must be at most ${constraints.maxHeight}px.`;
+    }
+    if (reference.width != null && reference.height != null) {
+      const pixels = reference.width * reference.height;
+      if (constraints.minPixels != null && pixels < constraints.minPixels) {
+        return `${label} must contain at least ${constraints.minPixels.toLocaleString("en-US")} total pixels (width × height).`;
+      }
+      if (constraints.maxPixels != null && pixels > constraints.maxPixels) {
+        return `${label} must contain at most ${constraints.maxPixels.toLocaleString("en-US")} total pixels (width × height).`;
+      }
     }
     if (
       reference.width != null &&
@@ -363,7 +425,18 @@ export function capabilityFromCustom(def: CustomActionDefinition): Capability {
     ),
     promptModalities,
   };
-  return capability({ kind: def.outputType, input } as ModelCard);
+  const defaultModelParams = Object.fromEntries(
+    def.parameters.flatMap((parameter) =>
+      parameter.defaultValue === undefined
+        ? []
+        : [[parameter.id, parameter.defaultValue]],
+    ),
+  );
+  return capability({
+    kind: def.outputType,
+    input,
+    defaultParams: defaultModelParams,
+  } as ModelCard);
 }
 
 /**
@@ -376,7 +449,11 @@ export function capabilityFromCustom(def: CustomActionDefinition): Capability {
 export function validateRefs(
   cardOrCap: ModelCard | Capability,
   counts: { text?: number; image?: number; video?: number; audio?: number },
-  opts: { prompt?: string; enforceMinimums?: boolean } = {},
+  opts: {
+    prompt?: string;
+    enforceMinimums?: boolean;
+    modelParams?: ReferenceValidationOptions["modelParams"];
+  } = {},
 ): string | null {
   // Accept either a card (legacy callers) or a pre-derived capability
   // (the new path for custom actions). Detection: capabilities have a
@@ -399,6 +476,12 @@ export function validateRefs(
     image: imgCount,
     video: vidCount,
     audio: audCount,
+  };
+  const ref = {
+    text: effectiveRefBound(cap, "text", opts.modelParams),
+    image: effectiveRefBound(cap, "image", opts.modelParams),
+    video: effectiveRefBound(cap, "video", opts.modelParams),
+    audio: effectiveRefBound(cap, "audio", opts.modelParams),
   };
 
   const totalMediaReferences = imgCount + vidCount + audCount;
@@ -423,21 +506,21 @@ export function validateRefs(
     return `Selected model requires at least one ${requirement}.`;
   }
 
-  if (textCount > 0 && !cap.ref.text.accepts) {
+  if (textCount > 0 && !ref.text.accepts) {
     return "Selected model does not accept reference text.";
   }
-  if (imgCount > 0 && !cap.ref.image.accepts) {
+  if (imgCount > 0 && !ref.image.accepts) {
     return "Selected model does not accept reference images.";
   }
-  if (vidCount > 0 && !cap.ref.video.accepts) {
+  if (vidCount > 0 && !ref.video.accepts) {
     return "Selected model does not accept reference videos.";
   }
-  if (audCount > 0 && !cap.ref.audio.accepts) {
+  if (audCount > 0 && !ref.audio.accepts) {
     return "Selected model does not accept reference audio.";
   }
 
   for (const modality of ["image", "video", "audio"] as const) {
-    const required = cap.ref[modality].requiresAnyOf;
+    const required = ref[modality].requiresAnyOf;
     if (countsByModality[modality] === 0 || !required?.length) continue;
     if (!required.some((companion) => countsByModality[companion] > 0)) {
       const requirement =
@@ -450,15 +533,15 @@ export function validateRefs(
 
   const enforceMinimums = opts.enforceMinimums ?? true;
 
-  if (cap.ref.image.isStartEnd) {
+  if (ref.image.isStartEnd) {
     if (enforceMinimums && imgCount < 1) {
       return "Selected model needs a start frame. Attach one via @-mention in the prompt.";
     }
     if (imgCount > 2) {
       return "Selected model uses at most two frames (start + optional end).";
     }
-  } else if (cap.ref.image.accepts) {
-    const { min, max } = cap.ref.image;
+  } else if (ref.image.accepts) {
+    const { min, max } = ref.image;
     if (enforceMinimums && imgCount < min) {
       return min === 1
         ? "Selected model requires a reference image. Attach one via @-mention in the prompt."
@@ -469,24 +552,24 @@ export function validateRefs(
     }
   }
 
-  if (cap.ref.video.accepts) {
-    const { min, max } = cap.ref.video;
+  if (ref.video.accepts) {
+    const { min, max } = ref.video;
     if (enforceMinimums && vidCount < min)
       return `Selected model requires at least ${min} reference video(s).`;
     if (vidCount > max) {
       return `Selected model accepts at most ${max} reference video(s) (got ${vidCount}).`;
     }
   }
-  if (cap.ref.audio.accepts) {
-    const { min, max } = cap.ref.audio;
+  if (ref.audio.accepts) {
+    const { min, max } = ref.audio;
     if (enforceMinimums && audCount < min)
       return `Selected model requires at least ${min} reference audio clip(s).`;
     if (audCount > max) {
       return `Selected model accepts at most ${max} reference audio clip(s) (got ${audCount}).`;
     }
   }
-  if (cap.ref.text.accepts) {
-    const { min, max } = cap.ref.text;
+  if (ref.text.accepts) {
+    const { min, max } = ref.text;
     if (enforceMinimums && textCount < min)
       return `Selected model requires at least ${min} reference text node(s).`;
     if (textCount > max) {

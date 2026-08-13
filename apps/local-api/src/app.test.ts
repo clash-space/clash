@@ -28,6 +28,7 @@ import { createMockFalQueueService } from "./fal-mock";
 import { FileReplicaStore } from "./loro/file-replica-store";
 import { createLocalSyncConfigStore } from "./sync-config";
 import { createLocalProviderStore } from "./local-provider-store";
+import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging";
 import { openPluginStore } from "./plugin-store";
 
 let dataDir = "";
@@ -1366,16 +1367,23 @@ describe("local API app", () => {
       providerPluginExecutor: async (request) => {
         executions.push(request as unknown as Record<string, any>);
         const [audioReference] = request.input.references;
+        const asset =
+          audioReference && "asset" in audioReference
+            ? (audioReference.asset as unknown as Record<string, unknown>)
+            : undefined;
         if (
           !audioReference ||
           !("asset" in audioReference) ||
           audioReference.slot !== "audio" ||
           audioReference.asset.kind !== "audio" ||
-          typeof audioReference.asset.url !== "string" ||
-          !audioReference.asset.url.startsWith("data:audio/webm;base64,")
+          asset?.mediaType !== "audio/webm" ||
+          typeof asset.assetId !== "string" ||
+          !String(asset.uri).startsWith("clash-asset://") ||
+          "url" in asset ||
+          "reach" in asset
         ) {
           throw new Error(
-            "Voice input did not reach the Provider plugin as inline audio.",
+            "Voice input did not reach the Provider plugin as a canonical Asset handle.",
           );
         }
         return {
@@ -1475,15 +1483,28 @@ describe("local API app", () => {
         slot: "audio",
         index: 0,
         asset: {
-          assetId: expect.stringMatching(/^inline-audio:/),
-          uri: expect.stringMatching(/^clash-asset:\/\/inline-audio:/),
+          assetId: expect.stringMatching(/^plugin-output:/),
+          uri: expect.stringMatching(/^clash-asset:\/\/plugin-output:/),
           kind: "audio",
           mediaType: "audio/webm",
-          url: `data:audio/webm;base64,${Buffer.from("voice-bytes").toString("base64")}`,
-          reach: "public",
         },
       },
     ]);
+    const stagedReference = await createLocalPluginAssetStagingStore({
+      dataDir,
+    }).resolve({
+      projectId: "local",
+      projectAssetId: executions[0]!.input.references[0].asset.assetId,
+    });
+    expect(stagedReference).toMatchObject({
+      pluginId: "clash.host",
+      slot: "input:audio:0",
+      kind: "audio",
+      mediaType: "audio/webm",
+    });
+    await expect(readFile(stagedReference!.projection.path)).resolves.toEqual(
+      Buffer.from("voice-bytes"),
+    );
   }, 10_000);
 
   it("records rejected mutation envelopes for local ASR transcription failures", async () => {

@@ -10,6 +10,8 @@ import {
   type ModelKind,
   type ModelUpstreamRoute,
   type ProviderAccountAvailability,
+  type ProviderAssetInput,
+  type ExecutablePluginAssetHandle,
   type ExecutablePluginBinding,
   type ExecutablePluginReference,
   type ExecutablePluginResult,
@@ -64,10 +66,6 @@ export interface MockMediaGenerationInput {
   providerAccountId?: string;
   /** Frozen typed inputs. Media bytes/URLs are resolved only through context.reference. */
   references?: ExecutablePluginReference[];
-  referenceAudio?: {
-    bytes: Uint8Array;
-    contentType: string;
-  };
   /** Exact plugin contract selected when the node was authored. */
   pluginBinding?: ExecutablePluginBinding;
 }
@@ -106,7 +104,7 @@ const REFERENCE_MIME_ALIASES: Readonly<Record<string, string>> = {
   "image/jpg": "image/jpeg",
 };
 
-export function referenceDataUrlMimeType(contentType: string): string {
+export function normalizeProviderReferenceMediaType(contentType: string): string {
   return REFERENCE_MIME_ALIASES[contentType] ?? contentType;
 }
 
@@ -174,6 +172,7 @@ export interface MockTextGenerationResult {
 export interface ProviderPluginExecutionPlan {
   binding: ExecutablePluginBinding;
   accountId?: string;
+  assetInputs: ProviderAssetInput[];
   kind: ModelKind;
   projectId: string;
   nodeId?: string;
@@ -210,7 +209,6 @@ export interface MockFalExternalAigcServiceOptions {
   origin?: string;
   providerAccounts?: () => Promise<RuntimeProviderAccountAvailability[]>;
   modelCards?: () => Promise<ModelCard[]>;
-  fetch?: typeof fetch;
   localTts?: (
     input: MockMediaGenerationInput,
   ) => Promise<MockMediaGenerationResult>;
@@ -277,6 +275,8 @@ export interface ProviderPluginExecutorRequest {
   projectId: string;
   nodeId?: string;
   binding?: ExecutablePluginBinding;
+  /** Delivery declaration copied from the exact selected Provider route. */
+  assetInputs?: ProviderAssetInput[];
   input: {
     values: Record<string, unknown>;
     references: ExecutablePluginReference[];
@@ -298,19 +298,8 @@ export interface ProviderPluginExecutorRequest {
   timeoutMs?: number;
 }
 
-export interface ProviderPluginExecutorMedia {
-  /** Host-issued staged ProjectAsset receipt. Preferred for local execution. */
-  assetId?: string;
-  /** External or storage projection used when no Host staging receipt is available. */
-  url?: string;
-  contentType?: string;
-  requestId?: string;
-  width?: number;
-  height?: number;
-  durationMs?: number;
-  waveform?: number[];
-  transcript?: string;
-}
+/** Media crosses the Provider boundary only as the Host-issued canonical Asset handle. */
+export type ProviderPluginExecutorMedia = ExecutablePluginAssetHandle;
 
 /** The protocol's canonical synchronous text envelope. */
 export interface ProviderPluginExecutorTextOutput {
@@ -477,29 +466,6 @@ function providerVisibleModelParams(
   return visible;
 }
 
-function providerReferences(
-  input: MockMediaGenerationInput,
-): ExecutablePluginReference[] {
-  const references = [...(input.references ?? [])];
-  if (!input.referenceAudio) return references;
-  const index = references.filter((reference) => reference.slot === "audio").length;
-  const mediaType = referenceDataUrlMimeType(input.referenceAudio.contentType);
-  const assetId = `inline-audio:${input.taskId}:${index}`;
-  references.push({
-    slot: "audio",
-    index,
-    asset: {
-      assetId,
-      uri: `clash-asset://${assetId}`,
-      kind: "audio",
-      mediaType,
-      url: `data:${mediaType};base64,${Buffer.from(input.referenceAudio.bytes).toString("base64")}`,
-      reach: "public",
-    },
-  });
-  return references;
-}
-
 function providerPluginExecutorRequest(
   input: MockMediaGenerationInput,
   kind: ModelKind,
@@ -529,6 +495,7 @@ function providerPluginExecutorRequest(
     projectId: input.projectId ?? "local",
     ...(input.nodeId ? { nodeId: input.nodeId } : {}),
     ...(input.pluginBinding ? { binding: input.pluginBinding } : {}),
+    assetInputs: route.assetInputs ?? [],
     // Carried through untouched. Dropping it here silently turns every resume into a fresh
     // submission: the node keeps its record, the plugin never sees it, and the same generation is
     // bought again on every restart.
@@ -544,7 +511,7 @@ function providerPluginExecutorRequest(
         ...(input.duration !== undefined ? { duration: input.duration } : {}),
         modelParams: providerVisibleModelParams(input.modelParams),
       },
-      references: providerReferences(input),
+      references: [...(input.references ?? [])],
     },
   };
 }
@@ -577,7 +544,7 @@ async function generatePluginProviderMedia(
   kind: ModelKind,
   route: ModelUpstreamRoute,
   options: Required<
-    Pick<MockFalExternalAigcServiceOptions, "fetch" | "providerPluginExecutor">
+    Pick<MockFalExternalAigcServiceOptions, "providerPluginExecutor">
   > &
     Pick<MockFalExternalAigcServiceOptions, "resolveProviderPluginStagedAsset">,
   // The one path that can come back unfinished: a plugin may hand the work to a provider that
@@ -665,8 +632,12 @@ async function generatePluginProviderMedia(
       "Provider plugin returned media for text generation; expected a text value.",
     );
   }
+  if (response.media.kind !== kind) {
+    throw new Error(
+      `Provider plugin returned ${response.media.kind} output for a ${kind} route.`,
+    );
+  }
   const staged =
-    response.media.assetId &&
     typeof input.projectId === "string" &&
     input.projectId &&
     options.resolveProviderPluginStagedAsset
@@ -680,72 +651,26 @@ async function generatePluginProviderMedia(
       `Provider plugin staged ${staged.kind} output for a ${kind} route.`,
     );
   }
-  if (!staged && !response.media.url) {
+  if (!staged) {
     throw new Error(
-      `Provider plugin media asset ${response.media.assetId ?? "unknown"} has no Host staging receipt or readable URL.`,
+      `Provider plugin media asset ${response.media.assetId} has no Host staging receipt.`,
     );
   }
-  const downloaded = staged
-    ? {
-        bytes: staged.bytes,
-        contentType:
-          staged.contentType ??
-          response.media.contentType ??
-          (kind === "video"
-            ? "video/mp4"
-            : kind === "audio"
-              ? "audio/mpeg"
-              : "image/png"),
-      }
-    : await downloadProviderMedia(options.fetch, response.media.url!, kind);
   return {
-    ...downloaded,
-    ...(response.media.contentType
-      ? { contentType: response.media.contentType }
-      : {}),
-    ...(response.media.width !== undefined
-      ? { width: response.media.width }
-      : {}),
-    ...(response.media.height !== undefined
-      ? { height: response.media.height }
-      : {}),
-    ...(response.media.durationMs !== undefined
-      ? { durationMs: response.media.durationMs }
-      : {}),
-    ...(response.media.waveform ? { waveform: response.media.waveform } : {}),
-    ...(response.media.transcript
-      ? { transcript: response.media.transcript }
-      : {}),
+    bytes: staged.bytes,
+    contentType:
+      staged.contentType ??
+      response.media.mediaType ??
+      (kind === "video"
+        ? "video/mp4"
+        : kind === "audio"
+          ? "audio/mpeg"
+          : "image/png"),
     status: "completed" as const,
-    requestId: response.media.requestId ?? input.taskId,
+    requestId: input.taskId,
     provider: route.providerId ?? route.upstreamId,
     modelEndpoint: route.upstreamModel,
     pluginBinding: response.binding,
-  };
-}
-
-function defaultContentType(kind: ProviderPluginExecutorKind): string {
-  if (kind === "video") return "video/mp4";
-  if (kind === "audio") return "audio/mpeg";
-  if (kind === "model") return "model/gltf-binary";
-  return "image/png";
-}
-
-export async function downloadProviderMedia(
-  fetchImpl: typeof fetch,
-  mediaUrl: string,
-  kind: ProviderPluginExecutorKind,
-): Promise<
-  Pick<MockMediaGenerationCompleted, "bytes" | "contentType" | "remoteUrl">
-> {
-  const mediaResponse = await fetchImpl(mediaUrl);
-  if (!mediaResponse.ok)
-    throw new Error(`provider media download failed: ${mediaResponse.status}`);
-  return {
-    bytes: new Uint8Array(await mediaResponse.arrayBuffer()),
-    contentType:
-      mediaResponse.headers.get("content-type") ?? defaultContentType(kind),
-    remoteUrl: mediaUrl,
   };
 }
 
@@ -795,7 +720,6 @@ export function createMockExternalAigcService(
   options: MockFalExternalAigcServiceOptions = {},
 ): ExternalAigcService {
   const fal = options.fal ?? createMockFalQueueService();
-  const fetchImpl = options.fetch ?? fetch;
   const loadProviderAccounts = options.providerAccounts;
   const loadModelCards = options.modelCards;
   async function resolveGenerationRoute(
@@ -949,7 +873,6 @@ export function createMockExternalAigcService(
         );
       }
       return generatePluginProviderMedia(input, kind, route, {
-        fetch: fetchImpl,
         providerPluginExecutor: options.providerPluginExecutor,
         ...(options.resolveProviderPluginStagedAsset
           ? {
@@ -1014,6 +937,7 @@ export function createMockExternalAigcService(
       return {
         binding,
         ...(request.accountId ? { accountId: request.accountId } : {}),
+        assetInputs: request.assetInputs ?? [],
         kind,
         projectId: request.projectId,
         ...(request.nodeId ? { nodeId: request.nodeId } : {}),

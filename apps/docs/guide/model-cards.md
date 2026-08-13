@@ -28,6 +28,42 @@ one gateway's behaviour. Example: `minimax-h3` declares `duration` 4–15,
 `resolution` `768P | 2K`, and ratio options including `adaptive` — exactly the
 official MiniMax-H3 enums.
 
+### Parameter-conditioned reference constraints
+
+When a user-facing parameter changes the model's reference contract, keep one
+model card and declare the condition under the affected reference modality.
+Do not create a second card for what is only a mode switch, and do not hide the
+rule in a provider adapter. For example, Seedance 2.5 keeps Edit on
+`seedance-2.5-ref` and declares the captured edit-video floor like this:
+
+```ts
+videos: {
+  max: 10,
+  constraints: { /* ordinary reference-video limits */ },
+  conditional: [{
+    when: [{ field: "modelParams.edit_mode", equals: true }],
+    min: 1,
+    max: 1,
+    constraints: {
+      minPixels: 407_696,
+      minDurationMs: 4_000,
+      maxDurationMs: 30_000,
+    },
+  }],
+}
+```
+
+A matching conditional rule overrides only the fields it declares; all other
+base bounds and media constraints remain in effect. The shared reference
+validator evaluates the same rule in GUI, CLI/MCP payload construction, local
+execution, and hosted execution.
+
+The GUI revalidates immediately when the model or a relevant parameter changes.
+It keeps the attached references, displays the concrete incompatibility, and
+disables Run until the inputs are valid. It must never silently detach an asset
+to make a switch pass. Local and hosted Hosts repeat the validation immediately
+before dispatch so non-GUI callers have the same contract.
+
 ## `ratio + resolution = size`
 
 A generated frame has two independent properties: the shape the caller composed
@@ -154,9 +190,10 @@ diverges from what the UI shows, and breaks the next provider that needs the
 opposite. The same applies to a provider's sentinel: MiniMax spells "match the
 reference" as `adaptive`, so the card says `adaptive`. Renaming it to a
 house-style `auto` and translating it back in the adapter moves a value the UI
-shows into code the UI cannot see. Executors may only enforce **conditional** upstream rules that a
-static default cannot express (e.g. H3 rejects `adaptive` only when the request
-has no references).
+shows into code the UI cannot see. Parameter-conditioned input bounds and media
+requirements belong in the card's conditional reference constraints. An
+executor may still defend an upstream-only request invariant, but it must not
+be the first place a product-visible input rule exists.
 
 ## Plugin model binding — the external implementation
 

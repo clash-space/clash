@@ -1,6 +1,7 @@
 import { defineConfig } from "vitepress";
+import { withMermaid } from "vitepress-plugin-mermaid";
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   title: "Clash Developer Docs",
   description:
     "Model cards, providers, executable plugins, and SDKs for the Clash local-first video production platform.",
@@ -88,4 +89,4 @@ export default defineConfig({
     outline: { level: [2, 3] },
     search: { provider: "local" },
   },
-});
+}));

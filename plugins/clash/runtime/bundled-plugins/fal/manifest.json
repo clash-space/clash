@@ -26,5 +26,8 @@
       }
     ]
   },
-  "contractTests": ["contract-tests/fal-execute.json"]
+  "contractTests": [
+    "contract-tests/fal-execute.json",
+    "contract-tests/fal-submit-requires-key.json"
+  ]
 }

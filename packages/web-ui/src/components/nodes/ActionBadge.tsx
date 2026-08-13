@@ -67,6 +67,7 @@ import {
   referenceAssetId,
   referenceModality,
   validateReferenceMedia,
+  validateRefs,
   type DirectorReferencePacket,
   type ExecutablePluginBinding,
   type ModelCard,
@@ -1168,6 +1169,35 @@ const PromptActionNode = ({
     }
     return byKind;
   }, [refNodeIds, getNode]);
+
+  const referenceValidationError = useMemo(() => {
+    if (!cap) return null;
+    const validationTarget = selectedModel ?? cap;
+    const activeParams = isCustom ? customActionParams : modelParams;
+    const countError = validateRefs(validationTarget, refKindCounts, {
+      modelParams: activeParams,
+    });
+    if (countError) return countError;
+    const references = refNodeIds
+      .map((nodeId) => getNode(nodeId))
+      .filter((node): node is NonNullable<typeof node> => !!node)
+      .map(referenceMediaMetadata)
+      .filter(
+        (metadata): metadata is ReferenceMediaMetadata => !!metadata,
+      );
+    return validateReferenceMedia(validationTarget, references, {
+      modelParams: activeParams,
+    });
+  }, [
+    cap,
+    customActionParams,
+    getNode,
+    isCustom,
+    modelParams,
+    refKindCounts,
+    refNodeIds,
+    selectedModel,
+  ]);
 
   const compatibleModelIds = useMemo(
     () =>
@@ -2314,19 +2344,8 @@ const PromptActionNode = ({
     setError(null);
 
     try {
-      if (cap) {
-        const mediaValidationError = validateReferenceMedia(
-          cap,
-          refNodeIds
-            .map((nodeId) => getNode(nodeId))
-            .filter((node): node is NonNullable<typeof node> => !!node)
-            .map(referenceMediaMetadata)
-            .filter(
-              (metadata): metadata is ReferenceMediaMetadata => !!metadata,
-            ),
-        );
-        if (mediaValidationError) throw new Error(mediaValidationError);
-      }
+      if (referenceValidationError)
+        throw new Error(referenceValidationError);
       // Capture and clear pre-allocated asset ID (provided by backend; treat as single-use)
       const preAllocatedAssetId = data.preAllocatedAssetId as
         string | undefined;
@@ -2497,6 +2516,7 @@ const PromptActionNode = ({
     projectId,
     addNodeWithAutoLayout,
     cap,
+    referenceValidationError,
   ]);
 
   // Helper to extract meaningful label from prompt content (already moved outside)
@@ -3922,7 +3942,11 @@ const PromptActionNode = ({
                       if (customActionOffline) return;
                       handleExecute();
                     }}
-                    disabled={isExecuting || customActionOffline}
+                    disabled={
+                      isExecuting ||
+                      customActionOffline ||
+                      !!referenceValidationError
+                    }
                     leftIcon={
                       isExecuting ? (
                         <Spinner
@@ -3938,7 +3962,9 @@ const PromptActionNode = ({
                     shape="pill"
                     className="clash-node-primary h-7 min-h-7 flex-shrink-0 px-3 text-xs font-semibold"
                     aria-label={checkpointRunLabel}
-                    aria-disabled={customActionOffline || undefined}
+                    aria-disabled={
+                      customActionOffline || !!referenceValidationError || undefined
+                    }
                   >
                     Run
                   </Button>
@@ -4011,9 +4037,15 @@ const PromptActionNode = ({
                       if (customActionOffline) return;
                       handleExecute();
                     }}
-                    disabled={isExecuting || customActionOffline}
+                    disabled={
+                      isExecuting ||
+                      customActionOffline ||
+                      !!referenceValidationError
+                    }
                     aria-label={panelRunLabel}
-                    aria-disabled={customActionOffline || undefined}
+                    aria-disabled={
+                      customActionOffline || !!referenceValidationError || undefined
+                    }
                     leftIcon={
                       isExecuting ? (
                         <Spinner size={12} className="animate-spin" />
@@ -4031,9 +4063,12 @@ const PromptActionNode = ({
             </div>
           </div>
 
-          {error && (
-            <div className="px-3 pb-1.5 text-[10px] text-red-500 truncate">
-              {error}
+          {(referenceValidationError || error) && (
+            <div
+              role="alert"
+              className="px-3 pb-2 text-[10px] leading-tight text-red-500"
+            >
+              {referenceValidationError || error}
             </div>
           )}
         </div>

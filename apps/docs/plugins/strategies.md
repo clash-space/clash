@@ -10,62 +10,58 @@ which one to pick and why.
 
 ## Waiting: synchronous, polled, or callback
 
-| Provider behaviour | Return | Host does |
-|---|---|---|
-| Answers within the call | `completed` | Nothing more |
-| Takes the work, exposes a status check | `accepted` + `pollState` | Asks again on a timer |
-| Takes the work, calls back | `accepted` + `pollState` | Waits, then hands you the message |
+| Provider behaviour                          | Return                   | Current Host does     |
+| ------------------------------------------- | ------------------------ | --------------------- |
+| Answers within the call                     | `completed`              | Nothing more          |
+| Takes the work, exposes a status check      | `accepted` + `pollState` | Asks again on a timer |
+| Takes the work, supports callbacks (future) | `accepted` + `pollState` | Keeps polling today   |
 
 Pick synchronous only when losing the host mid-call would not lose the work. Everything
 slower returns `accepted` with whatever the provider needs to be asked again — an id, a
 status URL, a job plus its region. The host stores it without reading it.
+
+Callback transport is reserved for a future Host adapter. The current Host
+does not issue `callbackUrl` and does not receive Provider callbacks, so every
+asynchronous executor must implement `poll` and return usable `pollState`.
+Declaring callback support does not change that requirement today.
 
 Never loop inside the plugin. A blocking wait keeps the upstream's identity in one call's
 stack, so a crash strands work that has already been billed.
 
 See [Waiting for a Provider](/plugins/waiting).
 
-## Returning a result: bytes, URL, or handle
+## Returning a result: ingest, upload, or handle
 
-| You have | Return | Constraint |
-|---|---|---|
-| The provider published a public URL | `url` + `reach: "public"` | Must be reachable from outside the host |
-| Bytes in hand | `dataBase64` | No reach — bytes have no address |
-| An asset the host already knows | `sourceHandle` | Nothing to transfer |
+| You have                            | Return                               | Constraint                                    |
+| ----------------------------------- | ------------------------------------ | --------------------------------------------- |
+| The Provider published an HTTPS URL | `context.upload({ url, ... })`       | The Host ingests it before returning a handle |
+| Small bytes in hand                 | `context.asset({ dataBase64, ... })` | Suitable only for a small broker frame        |
+| Large bytes in hand                 | `context.upload({ bytes, ... })`     | The Host issues the upload target             |
+| An Asset handle the Host issued     | typed `kind: "asset"` output         | Nothing to transfer                           |
 
-A URL and a reach travel together and cannot be separated. A host-private loopback address
-and a published one are both `https://` strings, and forwarding the first to a provider
-points it at whatever answers on its own network. Reach cannot be recovered by inspection,
-so the protocol carries it.
+A URL supplied as output is only an ingestion source. It never becomes Asset identity and is
+never forwarded as an Asset projection. The Host copies the bytes into its staging store and
+returns `{ assetId, uri, kind, mediaType? }`; durable publication consumes that receipt.
 
-For uploads the direction reverses: the host issues the target address. An address the host
-issues is reachable by construction; an address a plugin claims is a claim.
+References travel in the other direction through the permanently named Asset
+delivery `v0` API: `context.reference(reference)`. Compatible changes extend
+`v0`; there is no `v1` Asset-delivery alias.
+The Host returns decoded `bytes`, `text`, or a `provider-url` whose `providerUrl` and expiry
+are already valid for the selected Provider binding. There is no generic URL reference form.
 
 See [Manifest & Artifacts](/plugins/manifest).
 
 ## Runtime: local or hosted
 
-This is not a capability list you compose. `runtime.kind` fixes what the plugin can reach,
-and three separate-looking decisions all fall out of it:
-
-| | Governed by reach |
-|---|---|
-| **Material coming in** | A `local` plugin may be handed the host's own address; a `hosted` one gets a published URL or bytes |
-| **Results going out** | A `url` must state its reach; bytes state none |
-| **Callback address** | Issued only by a host a provider can actually reach |
-
-They are one fact wearing three hats. A `local` plugin shares the host's network namespace,
-so a loopback address means something to it; a `hosted` plugin is somewhere else, where that
-same string points at whatever answers on its own network.
-
-Do not declare reach separately. Two attempts to add a second declaration for it were built
-and deleted, because run mode already answers the question and a second answer can disagree
-with the first — and a disagreement here is not a type error, it is a private address handed
-to a stranger.
+This is not a capability list you compose. `runtime.kind` chooses the transport structure:
+a local entrypoint uses stdio and a hosted entrypoint uses its declared remote transport.
+The SDK business contract remains the same in both cases. The Host adapts reference delivery,
+issues upload targets, ingests Provider result URLs, and returns canonical handles. A future
+callback adapter may additionally issue a callback target; the current Host never does.
 
 Nor should a plugin detect which host it is under. Everything it needs is already in what it
-was handed: material arrives in a form it can use, and a callback address is present exactly
-when one would work.
+was handed: references arrive in a declared form and upload targets come from the Host. Plugins
+must treat an absent `callbackUrl` as the current normal case and submit work for polling.
 
 See [Overview](/plugins/overview).
 

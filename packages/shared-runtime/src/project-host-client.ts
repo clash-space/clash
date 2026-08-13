@@ -44,6 +44,60 @@ export type ProjectHostClient = {
   ): Promise<ProjectHostRequestResult<T>>;
 };
 
+const INTERNAL_HOST_RECEIPT_FIELDS = new Set([
+  "ifMatch",
+  "observedVersion",
+  "readToken",
+  "receipt",
+  "textReadToken",
+]);
+
+const INTERNAL_HOST_MUTATION_FIELDS = new Set([
+  "afterHash",
+  "afterReadToken",
+  "beforeHash",
+  "beforeReadToken",
+  "expectedHash",
+  "expectedReadToken",
+]);
+
+/**
+ * Removes Host-private concurrency evidence before a CLI, MCP server, or app plugin returns data
+ * to an agent. Callers retain the original response long enough to rotate their private
+ * observation; this projection is output-only and never authorizes a later mutation.
+ */
+export function publicProjectHostValue(value: unknown): unknown {
+  return sanitizeProjectHostValue(value, "result");
+}
+
+function sanitizeProjectHostValue(
+  value: unknown,
+  context: "nested" | "mutation" | "result",
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeProjectHostValue(item, "nested"));
+  }
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, child]) => {
+      if (INTERNAL_HOST_RECEIPT_FIELDS.has(key)) return [];
+      if (context === "result" && (key === "version" || key === "versions")) {
+        return [];
+      }
+      if (context === "mutation" && INTERNAL_HOST_MUTATION_FIELDS.has(key)) {
+        return [];
+      }
+      const childContext =
+        key === "mutation"
+          ? "mutation"
+          : key === "replaceResult"
+            ? "result"
+            : "nested";
+      return [[key, sanitizeProjectHostValue(child, childContext)]];
+    }),
+  );
+}
+
 export class ProjectHostHttpError extends Error {
   constructor(
     readonly status: number,

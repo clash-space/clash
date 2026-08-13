@@ -29,6 +29,8 @@ export interface ExecutablePluginActionRequest {
     references: ExecutablePluginReference[];
   };
   actor: ExecutablePluginInvocation["actor"];
+  /** Host-owned remaining durable attempt budget. */
+  timeoutMs?: number;
 }
 
 export type ExecutablePluginActionInvoker = (
@@ -53,7 +55,7 @@ export function createExecutablePluginActionInvoker(options: {
     });
     return ExecutablePluginResultSchema.parse(
       await options.client.invoke(binding.pluginId, invocation, {
-        timeoutMs: options.timeoutMs ?? 1_800_000,
+        timeoutMs: request.timeoutMs ?? options.timeoutMs ?? 1_800_000,
       }),
     );
   };

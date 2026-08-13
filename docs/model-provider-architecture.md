@@ -202,12 +202,18 @@ Current Volcengine execution:
 
 For built-in providers, Clash owns:
 
-- the adapter implementation
-- request/response mapping
-- retries and polling
-- media upload/download handling
-- asset persistence
-- provider-specific parameter mapping
+- the bundled adapter implementation;
+- Provider-specific request/response and parameter mapping;
+- exactly one upstream `submit` or `poll` translation per executor invocation;
+  and
+- Provider-specific input upload, result download, and error parsing needed by
+  that one invocation.
+
+The Host, rather than the Provider plugin, owns account selection, retry policy,
+poll cadence, total run lifetime, durable checkpoints, restart recovery, Asset
+staging, and idempotent Project publication. A plugin may follow bounded HTTP
+redirects or fetch the file named by one successful status response; it must
+not run the task-level retry or polling loop itself.
 
 The user may still supply keys for a built-in provider when BYOK is supported,
 but the provider is not "custom" just because the key is user-owned. Built-in

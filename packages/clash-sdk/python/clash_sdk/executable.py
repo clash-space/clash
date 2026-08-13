@@ -17,9 +17,12 @@ A v1 executable plugin speaks newline-delimited JSON over stdio:
             api_key=account,
             prompt=invocation["input"]["values"]["prompt"],
         )
-        return [{"slot": "media", "kind": "value",
-                 "value": {"url": response["body"]["url"],
-                           "contentType": "image/png"}}]
+        return [await context.upload({
+            "slot": "media",
+            "kind": "image",
+            "url": response["body"]["url"],
+            "mediaType": "image/png",
+        })]
 
     if __name__ == "__main__":
         serve({"my-gateway-execute": {"submit": submit}})
@@ -36,12 +39,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import inspect
 import json
+import re
 import sys
 import traceback
 import urllib.request
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Iterable, Mapping, TextIO
+from urllib.parse import urlparse
 
 INVOKE_PROTOCOL = "clash.plugin.invoke/v1"
 RESULT_PROTOCOL = "clash.plugin.result/v1"
@@ -59,6 +66,138 @@ class HostDependencyError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+def _asset_handle_from_host(answer: Any) -> dict[str, Any]:
+    """Validate the canonical handle before plugin business code can observe it."""
+    if not isinstance(answer, Mapping):
+        raise HostDependencyError("invalid_asset", "The Host returned an invalid Asset handle.")
+    allowed = {"assetId", "uri", "kind", "mediaType"}
+    if set(answer) - allowed:
+        raise HostDependencyError("invalid_asset", "The Host returned an invalid Asset handle.")
+    asset_id = answer.get("assetId")
+    uri = answer.get("uri")
+    kind = answer.get("kind")
+    media_type = answer.get("mediaType")
+    if (
+        not isinstance(asset_id, str) or not asset_id.strip()
+        or not isinstance(uri, str) or not uri.startswith("clash-asset://")
+        or uri == "clash-asset://"
+        or kind not in {"image", "video", "audio", "model"}
+        or (
+            "mediaType" in answer
+            and (not isinstance(media_type, str) or not media_type.strip())
+        )
+    ):
+        raise HostDependencyError("invalid_asset", "The Host returned an invalid Asset handle.")
+    return dict(answer)
+
+
+def _resolved_reference_from_host(answer: Any) -> dict[str, Any]:
+    """Validate and decode the permanently named Asset delivery v0 result."""
+    if not isinstance(answer, Mapping):
+        raise HostDependencyError(
+            "invalid_asset",
+            "The Host returned an invalid resolved reference.",
+        )
+
+    form = answer.get("form")
+    common = {"form", "kind", "mediaType"}
+    if form == "provider-url":
+        if set(answer) - (common | {"providerUrl", "expiresAt"}):
+            raise HostDependencyError(
+                "invalid_asset",
+                "The Host returned an invalid resolved reference.",
+            )
+        provider_url = answer.get("providerUrl")
+        expires_at = answer.get("expiresAt")
+        if (
+            not isinstance(provider_url, str) or not _valid_url(provider_url)
+            or not isinstance(expires_at, str) or not _valid_utc_datetime(expires_at)
+        ):
+            raise HostDependencyError(
+                "invalid_asset",
+                "The Host returned an incomplete Provider URL.",
+            )
+        result = dict(answer)
+    elif form == "bytes":
+        if set(answer) - (common | {"bytesBase64"}):
+            raise HostDependencyError(
+                "invalid_asset",
+                "The Host returned an invalid resolved reference.",
+            )
+        encoded = answer.get("bytesBase64")
+        if not isinstance(encoded, str):
+            raise HostDependencyError(
+                "invalid_asset",
+                "The Host returned no supported Asset representation.",
+            )
+        try:
+            decoded = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as error:
+            raise HostDependencyError(
+                "invalid_asset",
+                "The Host returned invalid Asset bytes.",
+            ) from error
+        result = {
+            "form": "bytes",
+            "bytes": decoded,
+            **({"kind": answer["kind"]} if answer.get("kind") else {}),
+            **({"mediaType": answer["mediaType"]} if answer.get("mediaType") else {}),
+        }
+    elif form == "text":
+        if set(answer) != {"form", "text"} or not isinstance(answer.get("text"), str):
+            raise HostDependencyError(
+                "invalid_asset",
+                "The Host returned an invalid text reference.",
+            )
+        return {"form": "text", "text": answer["text"]}
+    else:
+        raise HostDependencyError(
+            "invalid_asset",
+            "The Host returned no supported Asset representation.",
+        )
+
+    kind = answer.get("kind")
+    media_type = answer.get("mediaType")
+    if (
+        (
+            "kind" in answer
+            and kind not in {"image", "video", "audio", "model"}
+        )
+        or (
+            "mediaType" in answer
+            and (not isinstance(media_type, str) or not media_type.strip())
+        )
+    ):
+        raise HostDependencyError(
+            "invalid_asset",
+            "The Host returned an invalid resolved reference.",
+        )
+    return result
+
+
+def _valid_url(value: str) -> bool:
+    """Match the absolute-URL requirement of the TypeScript v0 schema."""
+    parsed = urlparse(value)
+    return bool(
+        parsed.scheme
+        and (parsed.netloc or parsed.path or parsed.params or parsed.query or parsed.fragment)
+    )
+
+
+def _valid_utc_datetime(value: str) -> bool:
+    """Match Zod's default datetime form: ISO date/time with a trailing Z."""
+    if not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z",
+        value,
+    ):
+        return False
+    try:
+        datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return True
 
 
 def _write_line(out: TextIO, payload: Mapping[str, Any]) -> None:
@@ -146,7 +285,9 @@ class CodexImagegenTool:
         self._request_host = request_host
 
     async def generate(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
-        return await self._request_host({"kind": "codex.image.generate", **dict(request)})
+        return _asset_handle_from_host(
+            await self._request_host({"kind": "codex.image.generate", **dict(request)})
+        )
 
 
 class PluginHostTools:
@@ -163,35 +304,11 @@ class ExecutablePluginContext:
         self.host_tools = PluginHostTools(request_host)
 
     async def reference(self, reference: Mapping[str, Any]) -> Mapping[str, Any]:
-        answer = await self._request_host(
-            {"kind": "asset.resolve", "reference": dict(reference)}
+        return _resolved_reference_from_host(
+            await self._request_host(
+                {"kind": "asset.resolve", "reference": dict(reference)}
+            )
         )
-        if not isinstance(answer, Mapping):
-            raise HostDependencyError(
-                "invalid_asset",
-                "The Host returned an invalid resolved reference.",
-            )
-        form = answer.get("form")
-        if form == "provider-url":
-            if not answer.get("providerUrl") or not answer.get("expiresAt"):
-                raise HostDependencyError(
-                    "invalid_asset",
-                    "The Host returned an incomplete Provider URL.",
-                )
-            return dict(answer)
-        if form == "text":
-            return {"form": "text", "text": str(answer.get("text", ""))}
-        if form != "bytes" or not answer.get("bytesBase64"):
-            raise HostDependencyError(
-                "invalid_asset",
-                "The Host returned no supported Asset representation.",
-            )
-        return {
-            "form": "bytes",
-            "bytes": base64.b64decode(str(answer["bytesBase64"])),
-            **({"mediaType": answer["mediaType"]} if answer.get("mediaType") else {}),
-            **({"kind": answer["kind"]} if answer.get("kind") else {}),
-        }
 
     async def asset(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         slot = str(request["slot"])
@@ -207,7 +324,7 @@ class ExecutablePluginContext:
         ):
             if request.get(source) is not None:
                 operation[target] = request[source]
-        handle = await self._request_host(operation)
+        handle = _asset_handle_from_host(await self._request_host(operation))
         return {"slot": slot, "kind": "asset", "asset": handle}
 
     async def upload(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -229,7 +346,7 @@ class ExecutablePluginContext:
         if not isinstance(opened, Mapping):
             raise HostDependencyError("invalid_upload_slot", "The Host returned an invalid upload slot.")
         if url is not None and opened.get("assetId"):
-            return {"slot": slot, "kind": "asset", "asset": dict(opened)}
+            return {"slot": slot, "kind": "asset", "asset": _asset_handle_from_host(opened)}
         if raw_bytes is None or not opened.get("uploadUrl") or not opened.get("assetId"):
             raise HostDependencyError(
                 "invalid_upload_slot",
@@ -248,13 +365,13 @@ class ExecutablePluginContext:
                     raise RuntimeError(f"Uploading {slot} failed with HTTP {response.status}.")
 
         await asyncio.to_thread(put_bytes)
-        handle = await self._request_host({
+        handle = _asset_handle_from_host(await self._request_host({
             "kind": "asset.write",
             "slot": slot,
             "assetKind": request["kind"],
             **({"mediaType": request["mediaType"]} if request.get("mediaType") else {}),
             "assetId": opened["assetId"],
-        })
+        }))
         return {"slot": slot, "kind": "asset", "asset": handle}
 
 

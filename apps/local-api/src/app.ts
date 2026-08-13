@@ -175,14 +175,15 @@ import {
 import {
   createMockExternalAigcService,
   localExecutableModelCards,
+  normalizeProviderReferenceMediaType,
   requireCompletedGeneration,
   type MockMediaGenerationCompleted,
   type MockMediaGenerationInput,
   type MockMediaGenerationResult,
   type ProviderPluginExecutionPlan,
   type ProviderPluginExecutor,
-  type ProviderPluginExecutorMedia,
 } from "./local-aigc.js";
+import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import {
   createLocalAudioConfigStore,
   LocalAudioConfigError,
@@ -298,7 +299,6 @@ export interface LocalApiOptions {
   providerGenerationDeadlineMs?: number;
   /** Wake the shared project room after an HTTP command creates pending backend work. */
   processProjectWork?: (projectId: string) => Promise<void>;
-  voiceInputFetch?: typeof fetch;
   resolvePluginBinding?: (
     pluginId: string,
     exportId: string,
@@ -3106,13 +3106,12 @@ function providerTestExecutableOutput(
   plan: ProviderPluginExecutionPlan,
   output: ExecutablePluginOutput,
 ): ModelProviderTestOutputSummary {
-  if (output.kind !== "value") {
-    throw new Error(
-      `Provider test output ${output.slot} must use the canonical value envelope.`,
-    );
-  }
   if (shape === "text") {
-    if (typeof output.value !== "string" || !output.value.trim()) {
+    if (
+      output.kind !== "value" ||
+      typeof output.value !== "string" ||
+      !output.value.trim()
+    ) {
       throw new Error("Provider test text output must be a non-empty string.");
     }
     return {
@@ -3122,12 +3121,19 @@ function providerTestExecutableOutput(
       text: output.value,
     };
   }
-  if (!output.value || typeof output.value !== "object" || Array.isArray(output.value)) {
-    throw new Error(`Provider test ${shape} output must be a media object.`);
+  if (output.kind !== "asset") {
+    throw new Error(
+      `Provider test ${shape} output must use the canonical Asset envelope.`,
+    );
   }
-  const media = output.value as ProviderPluginExecutorMedia;
+  const media = output.asset;
+  if (media.kind !== shape) {
+    throw new Error(
+      `Provider test ${shape} output cannot use a ${media.kind} Asset.`,
+    );
+  }
   const contentType =
-    media.contentType ??
+    media.mediaType ??
     (shape === "video"
       ? "video/mp4"
       : shape === "audio"
@@ -3137,17 +3143,7 @@ function providerTestExecutableOutput(
     shape,
     provider: plan.provider,
     endpoint: plan.modelEndpoint,
-    ...(media.requestId ? { requestId: media.requestId } : {}),
-    ...(media.url ? { url: media.url } : {}),
     contentType,
-    ...(typeof media.width === "number" ? { width: media.width } : {}),
-    ...(typeof media.height === "number" ? { height: media.height } : {}),
-    ...(typeof media.durationMs === "number"
-      ? { durationMs: media.durationMs }
-      : {}),
-    ...(shape === "audio" && media.transcript
-      ? { transcript: media.transcript }
-      : {}),
   };
 }
 
@@ -3209,6 +3205,7 @@ async function waitForDurableProviderTest(input: {
     executor: {
       binding: input.plan.binding,
       ...(input.plan.accountId ? { accountId: input.plan.accountId } : {}),
+      assetInputs: input.plan.assetInputs,
       kind: input.plan.kind,
       projectId: input.plan.projectId,
       ...(input.plan.nodeId ? { nodeId: input.plan.nodeId } : {}),
@@ -3502,6 +3499,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     options.dataDir,
   );
   const durableRunJournal = createSqliteDurableRunJournal(options.dataDir);
+  const providerReferenceAssets = createLocalPluginAssetStagingStore({
+    dataDir: options.dataDir,
+    clashRoot,
+  });
   const providerGenerationDeadlineMs =
     options.providerGenerationDeadlineMs ??
     DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS;
@@ -3611,7 +3612,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         options.listPluginModelBindings,
       );
     },
-    fetch: options.voiceInputFetch,
     providerPluginExecutor: options.providerPluginExecutor,
   });
   const syncConfig =
@@ -6727,18 +6727,45 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                   409,
                 );
               }
+              const taskId = randomUUID();
+              const projectId = "local";
+              const mediaType = normalizeProviderReferenceMediaType(
+                file.type || "application/octet-stream",
+              );
+              const stagedReference = await providerReferenceAssets.stage({
+                projectId,
+                taskId,
+                slot: "input:audio:0",
+                pluginId: "clash.host",
+                pluginVersion: "1.0.0",
+                invocationId: taskId,
+                kind: "audio",
+                mediaType,
+                bytes: new Uint8Array(await file.arrayBuffer()),
+              });
               const generated = await voiceInputAigc.generateText({
-                taskId: randomUUID(),
+                taskId,
+                projectId,
                 prompt:
                   typeof language === "string" && language.trim()
                     ? `Transcribe the attached audio verbatim in ${language.trim()}. Return only the transcript.`
                     : "Transcribe the attached audio verbatim. Return only the transcript.",
                 model: entry.model.id,
                 modelParams: { require_real_provider: true },
-                referenceAudio: {
-                  bytes: new Uint8Array(await file.arrayBuffer()),
-                  contentType: file.type || "application/octet-stream",
-                },
+                references: [
+                  {
+                    slot: "audio",
+                    index: 0,
+                    asset: {
+                      assetId: stagedReference.projectAssetId,
+                      uri: `clash-asset://${stagedReference.projectAssetId}`,
+                      kind: "audio",
+                      ...(stagedReference.mediaType
+                        ? { mediaType: stagedReference.mediaType }
+                        : {}),
+                    },
+                  },
+                ],
               });
               const text = generated.text.trim();
               if (!text)
@@ -8433,7 +8460,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     try {
       const service = projectAssetServiceAt(requestOrigin(c));
       if (coverAssetId) {
-        const coverAsset = await service.read(projectId, coverAssetId);
+        const coverAsset = await service.readEntry(projectId, coverAssetId);
         if (!coverAsset) {
           return c.json(
             {
@@ -8444,12 +8471,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           );
         }
         if (
-          (coverAsset.kind !== "image" && coverAsset.kind !== "video") ||
-          coverAsset.status !== "ready"
+          coverAsset.lifecycle.state !== "active" ||
+          (coverAsset.kind !== "image" && coverAsset.kind !== "video")
         ) {
           return c.json(
             {
-              error: "Project cover must be a ready image or video Asset",
+              error: "Project cover must be an active image or video Asset",
               code: "INVALID_PROJECT_COVER",
             },
             400,

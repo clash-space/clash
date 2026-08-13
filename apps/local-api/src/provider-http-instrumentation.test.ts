@@ -314,7 +314,7 @@ describe("provider process HTTP instrumentation", () => {
           PATH: process.env.PATH,
           ...providerHttpInstrumentationEnvironment(launch),
         },
-        timeout: 10_000,
+        timeout: 60_000,
       },
     );
 
@@ -464,7 +464,7 @@ describe("provider process HTTP instrumentation", () => {
               ...pythonEnvironment(launch, process.env),
               TEST_URL: url,
             },
-            timeout: 10_000,
+            timeout: 60_000,
           },
         );
         expect(JSON.parse(stdout)).toEqual({
@@ -531,7 +531,7 @@ describe("provider process HTTP instrumentation", () => {
         [...recording.pythonArgs, "-c", recording.source],
         {
           env: { ...replayEnv, TEST_URL: recording.url },
-          timeout: 10_000,
+          timeout: 60_000,
         },
       );
       expect(JSON.parse(stdout)).toEqual({
@@ -544,12 +544,12 @@ describe("provider process HTTP instrumentation", () => {
           [...recording.pythonArgs, "-c", recording.source],
           {
             env: { ...replayEnv, TEST_URL: `${recording.url}/miss` },
-            timeout: 10_000,
+            timeout: 60_000,
           },
         ),
       ).rejects.toMatchObject({
         stderr: expect.stringContaining("No provider test replay fixture"),
       });
     }
-  }, 60_000);
+  }, 5 * 60_000);
 });

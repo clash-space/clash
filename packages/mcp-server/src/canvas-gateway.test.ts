@@ -51,8 +51,15 @@ test("Canvas reads and mutations use typed ProjectHost commands with the host re
   }), {
     updated: true,
     nodeId: "note-1",
-    readToken: "host-receipt-note-2",
   });
+  assert.doesNotMatch(
+    JSON.stringify(await gateway.invoke("clash_canvas_get", {
+      projectId: "project-1",
+      canvasId: "main",
+      nodeId: "note-1",
+    })),
+    /readToken|receipt|ifMatch|observedVersion/i,
+  );
   assert.deepEqual(calls.map(({ command }) => command), [
     { action: "list", canvasId: "main" },
     {
@@ -64,6 +71,7 @@ test("Canvas reads and mutations use typed ProjectHost commands with the host re
       observedVersion: "host-receipt-note-1",
       ifMatch: "host-receipt-note-1",
     },
+    { action: "get", canvasId: "main", nodeId: "note-1" },
   ]);
 });
 
@@ -93,10 +101,10 @@ test("Canvas batch deletion consumes the exact delete-plan receipt", async () =>
       : { deleted: true, nodeIds: ["a", "b"] }
   ), calls));
 
-  await gateway.invoke("clash_canvas_delete_plan", {
+  assert.deepEqual(await gateway.invoke("clash_canvas_delete_plan", {
     projectId: "project-1",
     nodeIds: ["b", "a", "a"],
-  });
+  }), { nodeIds: ["a", "b"], nodes: [], edges: [] });
   await gateway.invoke("clash_canvas_delete_batch", {
     projectId: "project-1",
     nodeIds: ["a", "b"],

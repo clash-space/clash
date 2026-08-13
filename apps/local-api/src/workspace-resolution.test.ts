@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 
 /**
- * The three bundled plugins must be resolvable the way the host resolves them.
+ * Bundled plugins must be resolvable the way the host resolves them.
  *
  * `ensureBundledPlugin` finds each plugin with `require.resolve`, which is Node's own resolution --
  * not Vite's. That matters because `@clash/shared-types` declares a `development` export condition
@@ -17,6 +17,7 @@ import { createRequire } from "node:module";
 const PLUGINS = [
   "@clash-plugin/google",
   "@clash-plugin/minimax",
+  "@clash-plugin/pika",
   "@clash-plugin/volcengine",
   "@clash-plugin/codex-imagegen",
 ];
@@ -47,6 +48,9 @@ describe("bundled plugin resolution", () => {
     // does, with no bundler in the way.
     await expect(
       import(require.resolve("@clash-plugin/google/stdio")),
+    ).resolves.toBeTruthy();
+    await expect(
+      import(require.resolve("@clash-plugin/pika/stdio")),
     ).resolves.toBeTruthy();
   });
 });

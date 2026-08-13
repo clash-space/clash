@@ -50,10 +50,13 @@ it("prepares every bundled plugin from workspace source without a manual dist bu
   expect(first.watchRoots["clash.minimax"]).toContain(
     join(workspaceRoot, "packages", "shared-runtime", "src"),
   );
+  expect(first.watchRoots["clash.pika"]).toContain(
+    join(workspaceRoot, "packages", "shared-runtime", "src"),
+  );
   expect(first.watchRoots["clash.volcengine"]).toContain(
     join(workspaceRoot, "packages", "action-sdk", "src"),
   );
-  expect(first.watchRoots["clash.codex-imagegen"]).not.toContain(
+  expect(first.watchRoots["clash.codex-imagegen"]).toContain(
     join(workspaceRoot, "packages", "action-sdk", "src"),
   );
 
@@ -66,4 +69,21 @@ it("prepares every bundled plugin from workspace source without a manual dist bu
       root: workspaceRoot,
     }),
   ).resolves.toMatchObject({ refreshed: [] });
+}, 30_000);
+
+it("watches Action SDK source for every bundled plugin that imports it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "clash-development-sdk-watch-"));
+  const workspaceRoot = join(__dirname, "../../..");
+  const prepared = await prepareDevelopmentBundledPlugins({
+    actionsRoot: join(root, "actions"),
+    tsconfigPath: join(__dirname, "../tsconfig.dev.json"),
+    root: workspaceRoot,
+    pluginIds: ["clash.fal", "clash.codex-imagegen"],
+  });
+  const actionSdkSource = join(workspaceRoot, "packages", "action-sdk", "src");
+
+  expect(prepared.watchRoots["clash.fal"]).toContain(actionSdkSource);
+  expect(prepared.watchRoots["clash.codex-imagegen"]).toContain(
+    actionSdkSource,
+  );
 }, 30_000);

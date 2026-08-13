@@ -33,14 +33,28 @@ test("maps MCP tools to the executable annotation registry", async () => {
     assert.equal(metadata.id, operationId);
     assert.equal(
       metadata.description,
-      (TIMELINE_OPERATION_REGISTRY.agent as Record<string, { description: string }>)[operationId]
-        .description,
+      (
+        TIMELINE_OPERATION_REGISTRY.agent as Record<
+          string,
+          { description: string }
+        >
+      )[operationId].description,
     );
-    assert.deepEqual(metadata,
-      (TIMELINE_DSL_DEFINITION.operationCatalog.agent as Record<string, unknown>)[operationId]);
+    assert.deepEqual(
+      metadata,
+      (
+        TIMELINE_DSL_DEFINITION.operationCatalog.agent as Record<
+          string,
+          unknown
+        >
+      )[operationId],
+    );
   }
 
-  assert.equal(module.timelineOperationMetadata("clash_timeline_unknown"), undefined);
+  assert.equal(
+    module.timelineOperationMetadata("clash_timeline_unknown"),
+    undefined,
+  );
 });
 
 test("publishes the complete annotation-generated Timeline state schema without copied field lists", async () => {
@@ -62,7 +76,9 @@ test("publishes the complete annotation-generated Timeline state schema without 
   );
 
   const itemVariants = track.properties.items.items.anyOf;
-  const itemTypes = itemVariants.map((variant: any) => variant.properties.type.const);
+  const itemTypes = itemVariants.map(
+    (variant: any) => variant.properties.type.const,
+  );
   assert.deepEqual(new Set(itemTypes), new Set(definition.taxonomy.itemTypes));
   for (const variant of itemVariants) {
     const type = variant.properties.type.const as string;
@@ -70,7 +86,11 @@ test("publishes the complete annotation-generated Timeline state schema without 
       ...Object.keys(definition.fieldCatalog.itemBase.fields),
       ...Object.keys(definition.fieldCatalog.itemTypes[type].fields),
     ]);
-    assert.deepEqual(new Set(Object.keys(variant.properties)), expectedFields, type);
+    assert.deepEqual(
+      new Set(Object.keys(variant.properties)),
+      expectedFields,
+      type,
+    );
   }
 });
 
@@ -80,17 +100,21 @@ test("adapts shared Zod v3 validation into stable MCP rule ids", async () => {
   assert.deepEqual(valid, { ok: true, issues: [] });
 
   const invalidState = {
-    tracks: [{
-      id: "visual",
-      items: [{
-        id: "bad-fit",
-        type: "image",
-        from: 0,
-        durationInFrames: 10,
-        sourceNodeId: "asset-node",
-        mediaFit: "stretch",
-      }],
-    }],
+    tracks: [
+      {
+        id: "visual",
+        items: [
+          {
+            id: "bad-fit",
+            type: "image",
+            from: 0,
+            durationInFrames: 10,
+            sourceNodeId: "asset-node",
+            mediaFit: "stretch",
+          },
+        ],
+      },
+    ],
   };
   const invalid = module.validateTimelineState(invalidState);
 
@@ -99,12 +123,13 @@ test("adapts shared Zod v3 validation into stable MCP rule ids", async () => {
   assert.deepEqual(invalid.issues[0].path.slice(-1), ["mediaFit"]);
   assert.throws(
     () => module.assertTimelineState(invalidState),
-    (error: any) => error?.code === "TIMELINE_DSL_INVALID"
-      && error?.issues?.[0]?.ruleId === "timeline.dsl.structure",
+    (error: any) =>
+      error?.code === "TIMELINE_DSL_INVALID" &&
+      error?.issues?.[0]?.ruleId === "timeline.dsl.structure",
   );
 });
 
-test("runtime validation preserves every authoritative Timeline field", async () => {
+test("runtime validation preserves authoritative fields and rejects retired Asset fields", async () => {
   const module = await adapterModule();
   const state = {
     compositionWidth: 1080,
@@ -122,26 +147,76 @@ test("runtime validation preserves every authoritative Timeline field", async ()
         words: [{ id: "w1", text: "hello", startMs: 0, endMs: 500 }],
       },
     },
-    mediaAssetRefs: [{ assetId: "speech" }],
     "x-project-extension": { keep: true },
-    tracks: [{
-      id: "voice",
-      name: "Voice",
-      role: "narration",
-      category: "audio",
-      hidden: false,
-      locked: false,
-      "x-track-extension": { keep: true },
-      items: [],
-    }],
+    tracks: [
+      {
+        id: "voice",
+        name: "Voice",
+        role: "narration",
+        category: "audio",
+        hidden: false,
+        locked: false,
+        "x-track-extension": { keep: true },
+        items: [],
+      },
+    ],
   };
 
-  const parsed = module.timelineOperationInputSchema("timeline.save").safeParse({
-    timelineId: "rough-cut",
-    baseRevisionId: "revision-1",
-    state,
-  });
+  const parsed = module
+    .timelineOperationInputSchema("timeline.save")
+    .safeParse({
+      timelineId: "rough-cut",
+      baseRevisionId: "revision-1",
+      state,
+    });
 
   assert.equal(parsed.success, true);
   assert.deepEqual(parsed.data.state, state);
+
+  const retiredStates = [
+    {
+      ...state,
+      mediaAssetRefs: [{ assetId: "speech" }],
+    },
+    {
+      ...state,
+      tracks: [
+        {
+          id: "visual",
+          items: [
+            {
+              id: "image",
+              type: "image",
+              from: 0,
+              durationInFrames: 10,
+              assetId: "asset-image",
+              backingAssetId: "storage-row",
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  for (const retiredState of retiredStates) {
+    assert.equal(
+      module.timelineOperationInputSchema("timeline.validate").safeParse({
+        document: retiredState,
+      }).success,
+      true,
+    );
+    const retired = module
+      .timelineOperationInputSchema("timeline.save")
+      .safeParse({
+        timelineId: "rough-cut",
+        baseRevisionId: "revision-1",
+        state: retiredState,
+      });
+    assert.equal(retired.success, false);
+    assert.deepEqual(
+      module
+        .validateTimelineState(retiredState)
+        .issues.map((issue: { ruleId: string }) => issue.ruleId),
+      ["timeline.asset.retired-field"],
+    );
+  }
 });

@@ -18,6 +18,28 @@ import { MODEL_CARDS } from './models.js';
 describe('routes bind to plugin executors', () => {
   const routes = MODEL_CARDS.flatMap((card) => card.providerImplementations ?? []);
 
+  it('gives every media-capable plugin route an Asset delivery for each accepted kind', () => {
+    const uncovered = MODEL_CARDS.flatMap((card) => {
+      const inputMode = card.input.inputMode;
+      const acceptedKinds = [
+        ...(inputMode.images || inputMode.startEnd ? ['image' as const] : []),
+        ...(inputMode.videos ? ['video' as const] : []),
+        ...(inputMode.audios ? ['audio' as const] : []),
+      ];
+      if (acceptedKinds.length === 0) return [];
+
+      return (card.providerImplementations ?? [])
+        .filter((route) => route.executorPluginId)
+        .flatMap((route) => acceptedKinds
+          .filter((kind) => !(route.assetInputs ?? []).some((delivery) =>
+            !delivery.match.kinds?.length || delivery.match.kinds.includes(kind),
+          ))
+          .map((kind) => `${card.id}:${route.providerId}:${kind}`));
+    });
+
+    expect(uncovered).toEqual([]);
+  });
+
   it('sends generateContent models to the google executor', () => {
     const google = routes.filter((route) => route.apiShape === 'google-ai-studio');
     expect(google.length).toBeGreaterThan(0);
@@ -49,8 +71,21 @@ describe('routes bind to plugin executors', () => {
     }
   });
 
-  it('routes MiniMax M3 text generation through the official MiniMax executor', () => {
-    const card = MODEL_CARDS.find((candidate) => candidate.id === 'minimax-m3');
+  it("sends every Pika API Club route to the Pika executor", () => {
+    const pika = routes.filter(
+      (route) =>
+        route.providerId === "pika" &&
+        (route.apiShape === "pika" || route.apiShape === "pika-chat"),
+    );
+    expect(pika.length).toBeGreaterThan(0);
+    for (const route of pika) {
+      expect(route.executorExportId).toBe("pika-execute");
+      expect(route.executorPluginId).toBe("clash.pika");
+    }
+  });
+
+  it("routes MiniMax M3 text generation through the official MiniMax executor", () => {
+    const card = MODEL_CARDS.find((candidate) => candidate.id === "minimax-m3");
     expect(card).toMatchObject({
       kind: 'text',
       availableProviders: ['minimax'],

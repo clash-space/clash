@@ -4,15 +4,34 @@
 > delivered in the current work. The Cloud adapter described here is a future
 > port; this document does not claim that Cloud execution or failover exists.
 
+The Local implementation does **not** create a standalone `ActionRun` entity in
+Project Loro today. Its owner-private SQLite journal is the durable run record;
+the current public projection is the Canvas node's
+`pending/generating/completed/failed` status where a node exists, plus stable
+`ActionAssetBinding` input/output lineage. The five-state coarse `ActionRun`
+model below is the unified public design contract for a future Project entity,
+including the future Cloud adapter, not a claim that such an entity already
+synchronizes.
+
 The current Local implementation is not a second, local-only state machine.
 `@clash/shared-runtime` owns the executable graph, phases, compare-and-set
 transitions, retry decisions, and `(actionRunId, outputSlot)` publication key.
 `local-api` supplies the SQLite journal, local Resource CAS, Project publisher,
-owner guard, and restart scheduler. First-party Google, MiniMax, and fal
+owner guard, and restart scheduler. First-party Google, MiniMax, fal, and Pika
 executors, plus the installed Hilo peer, implement the Provider step contract
 below. Volcengine migration is tracked and verified separately and is not
 claimed by this delivery. A future Cloud adapter must reuse this engine and
 replace only those durability ports.
+
+Pika's bundled Local executor is covered by contract tests derived from the
+public catalog schemas and deterministic HTTP fixtures. There is currently no
+credentialed Pika live cassette, so this delivery does not claim that a real
+paid upstream Pika generation was recorded and replayed. The older hosted
+`apps/api-cf/src/services/pika-media.ts` path still waits in-process through
+`waitForPikaMediaJob`; it is migration debt outside the Cloud design below,
+not an implementation of the shared Durable Run Engine. A future Cloud port
+must split that call into the same journaled one-submit/one-poll steps instead
+of preserving the wait loop.
 
 The retired ClashAgent path is not a Cloud adapter. `/api/v1/actions` no
 longer distributes Python handlers, `/api/custom-action/upload` returns `410`,
@@ -61,14 +80,16 @@ flowchart LR
   graph --> localPort["Local adapter<br/>SQLite journal + local CAS"]
   graph -. future .-> cloudPort["Cloud adapter<br/>Workflow journal + OSS staging"]
   localPort --> localPublisher["Local ProjectPublisher"]
-  localPublisher --> localLoro["Local Project Loro<br/>coarse run state + output bindings"]
+  localPublisher --> localLoro["Local Project Loro<br/>Canvas node status + ActionAssetBinding"]
   localLoro -. "optional CRDT replication" .-> room["ProjectRoom<br/>remote sequencer + fan-out"]
   cloudPort -. future .-> cloudPublisher["Hosted ProjectPublisher"]
   cloudPublisher -. future .-> room
 ```
 
 The two owner arrows are exclusive for a particular `actionRunId`. The diagram
-does not describe fallback from one owner to the other.
+does not describe fallback from one owner to the other. Only the Local owner
+and Local durability ports are implemented; every Cloud owner/Workflow/OSS
+arrow is target design for a future adapter.
 
 ## One graph, realm-specific durability ports
 
@@ -83,14 +104,16 @@ Every owner advances the following logical steps:
 6. Checkpoint the Provider result, then verify and stage each output.
 7. Publish Project Asset entries and output bindings through
    `ProjectPublisher`.
-8. Publish the terminal coarse run state.
+8. Publish the public outcome. A conforming future Project `ActionRun` entity
+   uses the terminal coarse state; the current Local adapter updates the Canvas
+   node when present and publishes stable `ActionAssetBinding` lineage.
 
 The graph owns transition rules, checkpoint meaning, idempotency keys, and
 recovery decisions. An adapter owns persistence and byte staging only:
 
 | Realm | Journal                 | Byte staging                    | Project publication | Delivery status |
 | ----- | ----------------------- | ------------------------------- | ------------------- | --------------- |
-| Local | SQLite run/step journal | Local content-addressed storage | `ProjectPublisher`  | Current work    |
+| Local | SQLite run/step journal | Local content-addressed storage | Canvas + bindings   | Current work    |
 | Cloud | Workflow journal        | OSS staging                     | `ProjectPublisher`  | Future port     |
 
 Cloud must implement these three ports together: **Workflow journal + OSS
@@ -154,9 +177,12 @@ type ProviderFailure = Readonly<{
 }>;
 ```
 
-`code` and `requestState` are Host decisions; `providerCode` retains the raw
-upstream spelling for diagnostics. A plugin must not call a terminal Provider
-verdict retryable merely because another submission could be made.
+`code` and `requestState` are Clash policy facts, not raw Provider spellings.
+Provider adapters classify explicit upstream verdicts through the shared SDK;
+the Host validates that result, classifies transport/process failures it owns,
+and normalizes an invalid poll boundary to `accepted`. `providerCode` retains
+the raw upstream spelling for diagnostics. A plugin must not call a terminal
+Provider verdict retryable merely because another submission could be made.
 
 The engine applies the following decision matrix. `retryable` is an input to
 bounded Host policy, never a command to retry on its own:
@@ -235,6 +261,14 @@ is a product fact, while staging alone is not:
 Thus terminal outcome never depends on a later `advance()` noticing that the
 clock moved between an external success and its checkpoint.
 
+The public `ActionRun` design contract uses only these coarse product states:
+
+```text
+queued -> running -> finalizing -> succeeded
+   \         \          \----------> failed
+    \---------\--------------------> failed
+```
+
 The private durable phases are:
 
 ```text
@@ -267,10 +301,14 @@ request and the owner's durable checkpoint:
 - Project publication happens only through `ProjectPublisher`; no Provider
   request holds a Loro transaction open.
 
-Loro is therefore the collaboration projection, not the attempt journal. It
-may show that a run is queued, running, succeeded, failed, or cancelled, and it
-may carry stable output bindings. It cannot authorize a Provider request or
-prove that one did or did not happen.
+Loro is therefore the collaboration projection, not the attempt journal. A
+future standalone Project `ActionRun` entity must use exactly `queued`,
+`running`, `finalizing`, `succeeded`, or `failed` and may carry stable output
+bindings. The current Local projection instead synchronizes Canvas node status
+and `ActionAssetBinding` lineage; it does not materialize that five-state
+entity. Neither form can authorize a Provider request or prove that one did or
+did not happen. `submitting` and `polling` remain owner-private journal phases,
+not additional Project states.
 
 ## Checkpoints and idempotent publication
 
@@ -305,19 +343,19 @@ future Cloud `ProjectPublisher` will publish through the room because the cloud
 realm has no local Project authority. The room never runs Provider steps and
 does not become the owner of Local runs.
 
-Multi-device and multi-user collaboration synchronizes only public product
-facts:
-
-- `actionRunId`, Action revision identity, immutable owner realm, and coarse
-  run state;
-- sanitized terminal failure information suitable for collaborators; and
-- stable `(actionRunId, outputSlot)` Project Asset/output bindings.
+Current Local multi-device and multi-user collaboration synchronizes only the
+public Canvas node outcome, sanitized node failure information, and stable
+`ActionAssetBinding` lineage containing `actionRunId`, Action revision identity,
+and Project Asset/output bindings. It does not synchronize a standalone run
+entity or owner realm. The future public `ActionRun` entity may additionally
+carry the immutable owner realm and the five-state coarse status contract.
 
 Provider account identity and credentials, API/session tokens, Provider task
 tokens, attempt numbers, backoff state, raw responses, local paths, staging
 keys, and execution logs remain private to the owner. They never enter Project
-Loro. Another device can observe a run and consume its published outputs, but
-cannot poll, retry, cancel, or resume it using replicated state.
+Loro. Another device can observe the current node/binding projection and consume
+its published outputs, but cannot poll, retry, cancel, or resume it using
+replicated state.
 
 ## Crash recovery
 

@@ -20,9 +20,13 @@ import {
   ExecutablePluginJsonValueSchema,
   ExecutablePluginOutputSchema,
   ExecutablePluginReferenceSchema,
+  ProviderAssetInputSchema,
   type ExecutablePluginBinding,
+  type ExecutablePluginInvocation,
   type ExecutablePluginJsonValue,
   type ExecutablePluginReference,
+  type ExecutablePluginResult,
+  type ProviderAssetInput,
 } from "@clash/shared-types";
 
 import type { SqliteDurableRunJournal } from "./durable-run-journal";
@@ -32,6 +36,10 @@ import type {
   ProviderPluginExecutorResponse,
 } from "./local-aigc";
 import { ProviderPluginHostUnavailableError } from "./local-aigc";
+import type {
+  ExecutablePluginActionInvoker,
+  ExecutablePluginActionRequest,
+} from "./plugin-action-runtime";
 
 type ProviderKind = ProviderPluginExecutorRequest["kind"];
 
@@ -50,11 +58,19 @@ export interface FrozenProjectAssetDelivery {
 
 export interface FrozenLocalProviderExecutorInput {
   schemaVersion: 1;
+  /** Omitted by records created before custom Actions joined the shared durable graph. */
+  targetKind?: "provider-executor" | "action";
   binding: ExecutablePluginBinding;
+  /** Product Action definition identity; execution ownership remains the Canvas node/run. */
+  actionId?: string;
+  /** User/agent attribution is frozen with a custom Action revision. */
+  actor?: ExecutablePluginInvocation["actor"];
   accountId?: string;
   kind: ProviderKind;
   projectId: string;
   nodeId?: string;
+  /** Exact selected Provider binding delivery contract, frozen with the Action input. */
+  assetInputs?: ProviderAssetInput[];
   delivery?: FrozenProjectAssetDelivery;
   provider?: string;
   modelEndpoint?: string;
@@ -93,6 +109,7 @@ export interface LocalDurableRunCoordinatorOptions {
   ownerId: string;
   journal: SqliteDurableRunJournal;
   providerPluginExecutor: ProviderPluginExecutor;
+  executablePluginAction?: ExecutablePluginActionInvoker;
   outputStore: DurableOutputStore;
   publisher: DurableProjectPublisher;
   retryPolicy: DurableRetryPolicy;
@@ -138,6 +155,12 @@ function parseFrozenExecutorInputUnchecked(
     );
   }
   const binding = ExecutablePluginBindingSchema.parse(json.binding);
+  const targetKind = json.targetKind ?? "provider-executor";
+  if (targetKind !== "provider-executor" && targetKind !== "action") {
+    throw new FrozenExecutorInputError(
+      "Frozen executable targetKind is not recognized.",
+    );
+  }
   if (
     typeof json.kind !== "string" ||
     !PROVIDER_KINDS.has(json.kind as ProviderKind)
@@ -169,6 +192,18 @@ function parseFrozenExecutorInputUnchecked(
   }
   const accountId = json.accountId;
   const nodeId = json.nodeId;
+  const actionId = json.actionId;
+  const actor = json.actor;
+  const assetInputs =
+    json.assetInputs === undefined
+      ? []
+      : Array.isArray(json.assetInputs)
+        ? json.assetInputs.map((input) => ProviderAssetInputSchema.parse(input))
+        : (() => {
+            throw new FrozenExecutorInputError(
+              "Frozen Provider executor assetInputs must be an array.",
+            );
+          })();
   const delivery = json.delivery;
   const provider = json.provider;
   const modelEndpoint = json.modelEndpoint;
@@ -198,9 +233,54 @@ function parseFrozenExecutorInputUnchecked(
       "Frozen Provider executor cannot target both a Canvas node and a direct Project Asset delivery.",
     );
   }
+  let parsedActor: ExecutablePluginInvocation["actor"] | undefined;
+  if (actor !== undefined) {
+    if (!actor || typeof actor !== "object" || Array.isArray(actor)) {
+      throw new FrozenExecutorInputError(
+        "Frozen executable actor must be an object.",
+      );
+    }
+    if (
+      actor.kind !== "user" &&
+      actor.kind !== "agent" &&
+      actor.kind !== "system"
+    ) {
+      throw new FrozenExecutorInputError(
+        "Frozen executable actor.kind is not recognized.",
+      );
+    }
+    parsedActor = {
+      kind: actor.kind,
+      ...(actor.id === undefined
+        ? {}
+        : { id: nonEmptyString(actor.id, "actor.id") }),
+    };
+  }
+  if (targetKind === "action") {
+    if (actionId === undefined) {
+      throw new FrozenExecutorInputError(
+        "Frozen Action executor actionId is missing.",
+      );
+    }
+    if (!parsedActor) {
+      throw new FrozenExecutorInputError(
+        "Frozen Action executor actor is missing.",
+      );
+    }
+    if (!nodeId) {
+      throw new FrozenExecutorInputError(
+        "Frozen Action executor nodeId is missing.",
+      );
+    }
+  }
   return {
     schemaVersion: 1,
+    ...(targetKind === "action" ? { targetKind } : {}),
     binding,
+    ...(actionId === undefined
+      ? {}
+      : { actionId: nonEmptyString(actionId, "actionId") }),
+    ...(parsedActor ? { actor: parsedActor } : {}),
     ...(accountId === undefined
       ? {}
       : { accountId: nonEmptyString(accountId, "accountId") }),
@@ -209,6 +289,7 @@ function parseFrozenExecutorInputUnchecked(
     ...(nodeId === undefined
       ? {}
       : { nodeId: nonEmptyString(nodeId, "nodeId") }),
+    assetInputs,
     ...(parsedDelivery ? { delivery: parsedDelivery } : {}),
     ...(provider === undefined
       ? {}
@@ -289,13 +370,125 @@ function providerStep(
         }
       : {
           slot: run.outputSlot,
-          kind: "value" as const,
-          value: ExecutablePluginJsonValueSchema.parse(response.media),
+          kind: "asset" as const,
+          asset: response.media,
         };
   return {
     status: "completed",
     outputs: [ExecutablePluginOutputSchema.parse(output)],
   };
+}
+
+function customActionText(value: ExecutablePluginJsonValue): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    if (typeof value.text === "string") return value.text;
+    if (typeof value.content === "string") return value.content;
+  }
+  return JSON.stringify(value);
+}
+
+function customActionStep(
+  run: DurableRunRecord,
+  result: ExecutablePluginResult,
+): DurableProviderStep {
+  const frozen = parseFrozenExecutorInput(run.executorInput);
+  if (result.status === "failed") {
+    return { status: "failed", error: result.error };
+  }
+  if (result.status === "accepted") {
+    return {
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        message:
+          `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} accepted work, ` +
+          "but custom Actions do not declare a poll operation.",
+        retryable: false,
+        requestState: "accepted",
+      },
+    };
+  }
+  if (frozen.kind === "text") {
+    const output = result.outputs.find(
+      (candidate) => candidate.kind === "value",
+    );
+    if (!output || output.kind !== "value") {
+      return {
+        status: "failed",
+        error: {
+          code: "contract_violation",
+          message:
+            `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} ` +
+            "returned no text value output.",
+          retryable: false,
+          requestState: "accepted",
+        },
+      };
+    }
+    return {
+      status: "completed",
+      outputs: [
+        {
+          slot: run.outputSlot,
+          kind: "value",
+          value: customActionText(output.value),
+        },
+      ],
+    };
+  }
+  const output = result.outputs.find((candidate) => candidate.kind === "asset");
+  if (!output || output.kind !== "asset") {
+    return {
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        message:
+          `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} ` +
+          `returned no ${frozen.kind} Asset output.`,
+        retryable: false,
+        requestState: "accepted",
+      },
+    };
+  }
+  if (output.asset.kind !== frozen.kind) {
+    return {
+      status: "failed",
+      error: {
+        code: "contract_violation",
+        message:
+          `Action plugin ${frozen.binding.pluginId}/${frozen.binding.exportId} returned ` +
+          `${output.asset.kind} for a ${frozen.kind} Action.`,
+        retryable: false,
+        requestState: "accepted",
+      },
+    };
+  }
+  return {
+    status: "completed",
+    outputs: [{ ...output, slot: run.outputSlot }],
+  };
+}
+
+function remainingAttemptTimeoutMs(run: DurableRunRecord, now: number): number {
+  const attempt = run.activeAttempt;
+  if (!attempt) {
+    throw new FrozenExecutorInputError(
+      "An executable request requires a checkpointed active attempt.",
+    );
+  }
+  const timeoutMs = Math.ceil(attempt.expiresAt - now);
+  if (!Number.isSafeInteger(timeoutMs)) {
+    throw new FrozenExecutorInputError(
+      "An executable request has an invalid remaining attempt budget.",
+    );
+  }
+  if (timeoutMs <= 0) {
+    throw new Error(
+      "Plugin invocation attempt timed out before it could be dispatched.",
+    );
+  }
+  return timeoutMs;
 }
 
 function providerRequest(
@@ -305,18 +498,7 @@ function providerRequest(
   pollState?: ExecutablePluginJsonValue,
 ): ProviderPluginExecutorRequest {
   const frozen = parseFrozenExecutorInput(run.executorInput);
-  const attempt = run.activeAttempt;
-  if (!attempt) {
-    throw new FrozenExecutorInputError(
-      "A Provider request requires a checkpointed active attempt.",
-    );
-  }
-  const timeoutMs = Math.max(1, Math.ceil(attempt.expiresAt - now));
-  if (!Number.isSafeInteger(timeoutMs)) {
-    throw new FrozenExecutorInputError(
-      "A Provider request has an invalid remaining attempt budget.",
-    );
-  }
+  const timeoutMs = remainingAttemptTimeoutMs(run, now);
   return {
     pluginId: frozen.binding.pluginId,
     exportId: frozen.binding.exportId,
@@ -327,8 +509,30 @@ function providerRequest(
     timeoutMs,
     projectId: frozen.projectId,
     ...(frozen.nodeId ? { nodeId: frozen.nodeId } : {}),
+    assetInputs: frozen.assetInputs ?? [],
     input: frozen.input,
     ...(pollState === undefined ? {} : { pollState }),
+  };
+}
+
+function customActionRequest(
+  run: DurableRunRecord,
+  now: number,
+): ExecutablePluginActionRequest {
+  const frozen = parseFrozenExecutorInput(run.executorInput);
+  if (frozen.targetKind !== "action" || !frozen.actor) {
+    throw new FrozenExecutorInputError(
+      "A custom Action request requires a frozen Action target and actor.",
+    );
+  }
+  return {
+    binding: frozen.binding,
+    taskId: run.actionRunId,
+    projectId: frozen.projectId,
+    ...(frozen.nodeId ? { nodeId: frozen.nodeId } : {}),
+    input: frozen.input,
+    actor: frozen.actor,
+    timeoutMs: remainingAttemptTimeoutMs(run, now),
   };
 }
 
@@ -370,9 +574,10 @@ function classifyThrownError(
     };
   }
   return {
-    code: operation === "stage"
-      ? "output_persistence_failed"
-      : "publication_failed",
+    code:
+      operation === "stage"
+        ? "output_persistence_failed"
+        : "publication_failed",
     message,
     retryable: true,
     requestState: "accepted",
@@ -455,12 +660,38 @@ export function createLocalDurableRunCoordinator(
     journal: options.journal,
     provider: {
       async submit({ run, idempotencyKey }) {
+        const frozen = parseFrozenExecutorInput(run.executorInput);
+        if (frozen.targetKind === "action") {
+          if (!options.executablePluginAction) {
+            throw new ProviderPluginHostUnavailableError(
+              "Executable plugin Action runtime is unavailable.",
+            );
+          }
+          return customActionStep(
+            run,
+            await options.executablePluginAction(
+              customActionRequest(run, clock.now()),
+            ),
+          );
+        }
         const response = await options.providerPluginExecutor(
           providerRequest(run, idempotencyKey, clock.now()),
         );
         return providerStep(run, response);
       },
       async poll({ run, pollState }) {
+        const frozen = parseFrozenExecutorInput(run.executorInput);
+        if (frozen.targetKind === "action") {
+          return {
+            status: "failed",
+            error: {
+              code: "contract_violation",
+              message: "Custom Actions do not support durable polling.",
+              retryable: false,
+              requestState: "accepted",
+            },
+          };
+        }
         const idempotencyKey = durableRunIdempotencyKey(run);
         const response = await options.providerPluginExecutor(
           providerRequest(run, idempotencyKey, clock.now(), pollState),

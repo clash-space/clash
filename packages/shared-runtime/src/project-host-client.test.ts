@@ -4,12 +4,39 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   createProjectHostClient,
+  publicProjectHostValue,
   projectHostCommandUrl,
   resolveProjectHostContext,
   sendProjectHostCommand,
 } from "./project-host-client.js";
 
 describe("project host client", () => {
+  it("projects Host responses without exposing private concurrency evidence", () => {
+    expect(publicProjectHostValue({
+      updated: true,
+      version: "private-top-level-version",
+      versions: { "node-1": "private-list-receipt" },
+      readToken: "private-read-token",
+      receipt: "private-receipt",
+      node: { id: "node-1", version: "semantic-node-version" },
+      mutation: {
+        accepted: true,
+        expectedReadToken: "private-expected",
+        beforeReadToken: "private-before",
+        afterReadToken: "private-after",
+      },
+      replaceResult: {
+        nodeId: "node-2",
+        version: "private-replace-version",
+      },
+    })).toEqual({
+      updated: true,
+      node: { id: "node-1", version: "semantic-node-version" },
+      mutation: { accepted: true },
+      replaceResult: { nodeId: "node-2" },
+    });
+  });
+
   it("addresses the project-scoped neutral command route", () => {
     expect(projectHostCommandUrl("http://127.0.0.1:8789/", "project/one"))
       .toBe("http://127.0.0.1:8789/api/v1/projects/project%2Fone/host-command");

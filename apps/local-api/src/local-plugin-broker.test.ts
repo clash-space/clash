@@ -43,30 +43,60 @@ function context() {
         kind: "provider-executor",
       },
       input: { values: {}, references: [] },
+      assetInputs: [{
+        match: { kinds: ["image"], slots: ["image"] },
+        representations: ["bytes"],
+      }],
       actor: { kind: "agent", id: "agent-1" },
     }),
     accountId: "provider-account-1",
   };
 }
 
-function publicStorageContext() {
-  const storageManifest = ExecutablePluginManifestSchema.parse({
-    ...manifest,
-    contributes: {
-      ...manifest.contributes,
-      functions: [{
-        id: "run",
-        kind: "provider-executor",
-        operations: ["submit", "poll"],
-        requires: ["public-asset-storage"],
-      }],
-    },
-  });
-  return { ...context(), manifest: storageManifest };
-}
-
 describe("local executable plugin host dependencies", () => {
-  it("reads only project-scoped assets through the host context", async () => {
+  it("ingests an asset.write URL without trusting a reach assertion", async () => {
+    const openUploadSlot = vi.fn(async () => ({
+      assetId: "asset-output-url",
+      uri: "clash-asset://asset-output-url",
+      kind: "image" as const,
+      mediaType: "image/png",
+    }));
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [],
+      openUploadSlot,
+    });
+
+    await expect(
+      broker(
+        {
+          protocol: "clash.plugin.broker-request/v1",
+          requestId: "asset-write-url",
+          invocationId: "invocation-1",
+          operation: {
+            kind: "asset.write",
+            slot: "image",
+            assetKind: "image",
+            mediaType: "image/png",
+            url: "https://cdn.example.test/output.png",
+          },
+        },
+        context(),
+      ),
+    ).resolves.toEqual({
+      assetId: "asset-output-url",
+      uri: "clash-asset://asset-output-url",
+      kind: "image",
+      mediaType: "image/png",
+    });
+    expect(openUploadSlot).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      invocationId: "invocation-1",
+      slot: "image",
+      url: "https://cdn.example.test/output.png",
+    }));
+  });
+
+  it("resolves only project-scoped assets through the Host context", async () => {
     const broker = createLocalExecutablePluginBroker({
       loadProviderAccounts: async () => [],
       readAsset: async ({ assetId, projectId }) => {
@@ -89,74 +119,26 @@ describe("local executable plugin host dependencies", () => {
           requestId: "asset-1",
           invocationId: "invocation-1",
           operation: {
-            kind: "asset.read",
-            asset: {
-              assetId: "asset-1",
-              uri: "clash-asset://asset-1",
-              kind: "image",
+            kind: "asset.resolve",
+            reference: {
+              slot: "image",
+              index: 0,
+              asset: {
+                assetId: "asset-1",
+                uri: "clash-asset://asset-1",
+                kind: "image",
+              },
             },
           },
         },
         context(),
       ),
     ).resolves.toMatchObject({
-      handle: expect.stringMatching(/^clash-plugin-asset:\/\//),
+      form: "bytes",
       kind: "image",
       mediaType: "image/png",
-      byteLength: 3,
-      dataBase64: "AQID",
+      bytesBase64: "AQID",
     });
-  });
-
-  it("publishes asset reads for a function that requires public Asset storage", async () => {
-    // Regression caught: satisfying the launch gate alone still handed Volcengine base64, while
-    // its video reference contract can consume only an internet-reachable URL.
-    const publishAsset = vi.fn(async () => ({
-      url: "https://objects.example.test/reference.png?signature=test",
-      expiresAt: "2026-08-13T12:00:00.000Z",
-    }));
-    const broker = createLocalExecutablePluginBroker({
-      loadProviderAccounts: async () => [],
-      readAsset: async () => ({
-        kind: "image",
-        mediaType: "image/png",
-        bytes: new Uint8Array([1, 2, 3]),
-      }),
-      publishAsset,
-    });
-
-    await expect(
-      broker(
-        {
-          protocol: "clash.plugin.broker-request/v1",
-          requestId: "public-asset-1",
-          invocationId: "invocation-1",
-          operation: {
-            kind: "asset.read",
-            asset: {
-              assetId: "asset-1",
-              uri: "clash-asset://asset-1",
-              kind: "image",
-            },
-          },
-        },
-        publicStorageContext(),
-      ),
-    ).resolves.toMatchObject({
-      kind: "image",
-      mediaType: "image/png",
-      byteLength: 3,
-      url: "https://objects.example.test/reference.png?signature=test",
-      reach: "public",
-    });
-    expect(publishAsset).toHaveBeenCalledWith(expect.objectContaining({
-      pluginId: manifest.id,
-      projectId: "project-1",
-      invocationId: "invocation-1",
-      assetId: "asset-1",
-      bytes: new Uint8Array([1, 2, 3]),
-      mediaType: "image/png",
-    }));
   });
 
   it("writes plugin-produced bytes through the project asset context", async () => {

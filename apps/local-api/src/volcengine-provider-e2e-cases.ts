@@ -11,6 +11,12 @@ export const VOLCENGINE_SEED_AUDIO_REPLAY_FIXTURE_PATH = fileURLToPath(
 export const VOLCENGINE_MODELARK_REPLAY_FIXTURE_PATH = fileURLToPath(
   new URL("./fixtures/volcengine-modelark-live-traffic.jsonl", import.meta.url),
 );
+export const VOLCENGINE_PUBLIC_VIDEO_REPLAY_FIXTURE_PATH = fileURLToPath(
+  new URL(
+    "./fixtures/volcengine-public-video-live-traffic.jsonl",
+    import.meta.url,
+  ),
+);
 
 function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;

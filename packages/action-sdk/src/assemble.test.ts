@@ -138,6 +138,7 @@ describe("assembling a plugin from its manifest", () => {
         schemaHash: `sha256:${"a".repeat(64)}`,
         kind: "provider-executor",
       },
+      assetInputs: [],
       input: { values: {}, references: [] },
       actor: { kind: "system", id: "host" },
     });

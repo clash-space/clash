@@ -2,7 +2,7 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { isAbsolute, resolve, join, dirname } from 'path';
 import { parse as parse$1 } from 'yaml';
-import { createProjectHostClient } from '@clash/shared-runtime/project-host-client';
+import { createProjectHostClient, publicProjectHostValue } from '@clash/shared-runtime/project-host-client';
 
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
@@ -5345,7 +5345,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-RUA5QFGJ.js
+// ../../packages/shared-types/dist/chunk-22GF7SDG.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -5917,9 +5917,6 @@ var TimelineEditorAssetTranscriptSchema = z.object({
   modelId: NonEmptyStringSchema.optional(),
   language: NonEmptyStringSchema.optional()
 });
-var TimelineMediaAssetRefSchema = z.object({
-  assetId: NonEmptyStringSchema
-});
 var TimelineSequenceSchema = z.object({
   baseUrl: NonEmptyStringSchema,
   frameCount: PositiveFrameSchema,
@@ -5979,12 +5976,6 @@ var rootFields = {
     editor: noControl,
     runtimeConsumers: ["editor", "transcript", "caption-generation", "persistence"],
     defaultValue: {}
-  }),
-  mediaAssetRefs: derived(z.array(TimelineMediaAssetRefSchema), "Host-owned media asset references required to rehydrate Timeline assets; agents must preserve them.", {
-    required: false,
-    editor: noControl,
-    runtimeConsumers: ["editor", "asset-loader", "persistence"],
-    defaultValue: []
   })
 };
 var trackFields = {
@@ -8018,6 +8009,11 @@ var timelineKeyframeRangeRule = {
   minimum: 0,
   exclusiveMaximumPath: "durationInFrames"
 };
+var timelineRetiredAssetFieldRule = {
+  id: "timeline.asset.retired-field",
+  kind: "forbidden-paths",
+  paths: ["mediaAssetRefs", "tracks[].items[].backingAssetId"]
+};
 var timelineKeyframeUniqueFrameRule = {
   id: "timeline.keyframes.unique-frame",
   kind: "unique-key-by-channel",
@@ -8041,6 +8037,7 @@ var TIMELINE_DSL_SEMANTIC_RULES = {
     timelineKeyframeRangeRule,
     timelineKeyframeUniqueFrameRule,
     timelineItemFieldApplicabilityRule,
+    timelineRetiredAssetFieldRule,
     ...TIMELINE_DSL_GLOBAL_SEMANTIC_RULES
   ]
 };
@@ -8082,6 +8079,14 @@ function timelineMaskKeyframeSemanticIssues(item) {
 var TimelineDslItemSchema = TimelineDslItemVariantSchema.superRefine(
   (item, ctx) => {
     const typedItem = item;
+    if (Object.prototype.hasOwnProperty.call(typedItem, "backingAssetId")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["backingAssetId"],
+        message: "backingAssetId was removed; use the item's Project Asset id",
+        params: { ruleId: timelineRetiredAssetFieldRule.id }
+      });
+    }
     for (const [fieldName, owners] of itemFieldOwners) {
       if (Object.prototype.hasOwnProperty.call(typedItem, fieldName) && !owners.has(typedItem.type)) {
         ctx.addIssue({
@@ -8114,6 +8119,14 @@ var TimelineDslSchemaBase = z.object(
 ).passthrough();
 var TimelineDslSchema = TimelineDslSchemaBase.superRefine(
   (timeline, context) => {
+    if (Object.prototype.hasOwnProperty.call(timeline, "mediaAssetRefs")) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["mediaAssetRefs"],
+        message: "mediaAssetRefs was removed; Timeline items bind Project Assets directly",
+        params: { ruleId: timelineRetiredAssetFieldRule.id }
+      });
+    }
     for (const semanticIssue of timelineDslSemanticIssues(timeline)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -8306,7 +8319,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 7,
+  schemaVersion: 9,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -22893,7 +22906,9 @@ Object.freeze(
 );
 Object.freeze(
   Object.fromEntries(
-    Object.entries(TIMELINE_PLUGIN_SURFACE_BINDINGS).map(([toolName, binding]) => [toolName, binding.operationId])
+    Object.entries(TIMELINE_PLUGIN_SURFACE_BINDINGS).map(
+      ([toolName, binding]) => [toolName, binding.operationId]
+    )
   )
 );
 var TIMELINE_TRACK_CATEGORY_LABELS = {
@@ -22906,10 +22921,12 @@ var TIMELINE_TRACK_CATEGORY_LABELS = {
 Object.freeze({
   contractFingerprint: TIMELINE_DSL_DEFINITION.contractFingerprint,
   trackCategories: Object.freeze(
-    TIMELINE_DSL_DEFINITION.taxonomy.trackCategories.map((id) => Object.freeze({
-      id,
-      label: TIMELINE_TRACK_CATEGORY_LABELS[id]
-    }))
+    TIMELINE_DSL_DEFINITION.taxonomy.trackCategories.map(
+      (id) => Object.freeze({
+        id,
+        label: TIMELINE_TRACK_CATEGORY_LABELS[id]
+      })
+    )
   ),
   defaultTrackCategory: "visual",
   inspector: Object.freeze({
@@ -23017,10 +23034,7 @@ function withTimelineToolErrorEnvelope(schema) {
         additionalProperties: true
       }
     },
-    anyOf: [
-      { required: normalRequired },
-      { required: ["error"] }
-    ]
+    anyOf: [{ required: normalRequired }, { required: ["error"] }]
   };
 }
 function timelineOperationOutputJsonSchema(operationId, transform2) {
@@ -23037,7 +23051,9 @@ function timelineOperationOutputJsonSchema(operationId, transform2) {
 function timelineOperationOutputSchema(operationId, transform2, projectSharedOutput = (output) => output) {
   const operation = TIMELINE_OPERATION_REGISTRY.agent[operationId];
   return external_exports.object({}).catchall(external_exports.unknown()).superRefine((output, context) => {
-    const validation = operation.outputSchema.safeParse(projectSharedOutput(output));
+    const validation = operation.outputSchema.safeParse(
+      projectSharedOutput(output)
+    );
     if (validation.success) return;
     for (const issue3 of validation.error.issues) {
       context.addIssue({
@@ -23049,9 +23065,7 @@ function timelineOperationOutputSchema(operationId, transform2, projectSharedOut
   }).meta(timelineOperationOutputJsonSchema(operationId, transform2));
 }
 ({
-  cwd: external_exports.string().min(1).optional().describe(
-    "Absolute project workspace path containing .clash/project.toml"
-  ),
+  cwd: external_exports.string().min(1).optional().describe("Absolute project workspace path containing .clash/project.toml"),
   projectId: external_exports.string().min(1).optional().describe(
     "Project ID override; normally resolved from the workspace marker"
   )
@@ -23098,11 +23112,13 @@ timelineOperationOutputSchema(
           additionalProperties: true
         }
       },
-      required: [.../* @__PURE__ */ new Set([
-        ...Array.isArray(schema.required) ? schema.required : [],
-        "contract",
-        "validation"
-      ])]
+      required: [
+        .../* @__PURE__ */ new Set([
+          ...Array.isArray(schema.required) ? schema.required : [],
+          "contract",
+          "validation"
+        ])
+      ]
     };
   },
   (output) => ({ timeline: output.timeline })
@@ -23200,7 +23216,7 @@ function createTimelineAdapter(options = {}) {
         ...typeof entity?.revisionId === "string" ? { revisionId: entity.revisionId } : {}
       });
     }
-    return result.value;
+    return publicProjectHostValue(result.value);
   };
   return {
     schema: async () => structuredClone(TIMELINE_DSL_DEFINITION),
@@ -23227,17 +23243,26 @@ function createTimelineAdapter(options = {}) {
       if (!validation.ok) {
         throw new Error(`TIMELINE_DSL_INVALID: ${validation.issues[0]?.message ?? "invalid Timeline"}`);
       }
-      return (await request(input, { action: "validate_timeline", document: state })).value;
+      return publicProjectHostValue(
+        (await request(input, { action: "validate_timeline", document: state })).value
+      );
     },
     list,
     get,
     async create(input) {
+      const timelineId = required2(input, "timelineId");
       const result = await request(input, {
         action: "create_timeline",
-        timelineId: required2(input, "timelineId"),
+        timelineId,
         name: required2(input, "name")
       });
-      return result.value;
+      const receipt = typeof result.value.readToken === "string" ? result.value.readToken : typeof result.value.version === "string" ? result.value.version : void 0;
+      if (receipt) {
+        observations.set(observationKey(result.projectId, timelineId), {
+          receipt
+        });
+      }
+      return publicProjectHostValue(result.value);
     },
     async save(input) {
       const timelineId = required2(input, "timelineId");

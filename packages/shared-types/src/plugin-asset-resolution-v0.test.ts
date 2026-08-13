@@ -100,7 +100,7 @@ describe("v0 Provider Asset delivery contract", () => {
       string,
       { parse(input: unknown): unknown } | undefined
     >;
-    const schema = contract.ExecutablePluginResolvedReferenceSchema;
+    const schema = contract.ExecutablePluginBrokerResolvedReferenceSchema;
 
     expect(schema).toBeDefined();
     expect(

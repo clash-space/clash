@@ -158,6 +158,32 @@ describe('binding inheritance', () => {
 });
 
 describe('provider binding defaults', () => {
+  it('carries the Provider asset delivery contract into every owned binding', () => {
+    const providerWithAssetDelivery = ExecutablePluginProviderDefinitionSchema.parse({
+      id: 'acme',
+      name: 'Acme',
+      upstreamId: 'acme',
+      apiShape: 'acme',
+      executorExportId: 'acme-execute',
+      bindingDefaults: {
+        assetInputs: [{
+          match: { kinds: ['image', 'audio'] },
+          representations: ['provider-url', 'bytes'],
+        }],
+      },
+    });
+
+    expect(resolveModelBindingFromProvider(
+      { modelId: 'media-model', upstreamModel: 'media-model-v1' },
+      providerWithAssetDelivery,
+    )).toMatchObject({
+      assetInputs: [{
+        match: { kinds: ['image', 'audio'] },
+        representations: ['provider-url', 'bytes'],
+      }],
+    });
+  });
+
   it('rejects defaults the binding schema would not accept', () => {
     expect(() =>
       ExecutablePluginProviderDefinitionSchema.parse({

@@ -8,6 +8,7 @@ import {
   CustomActionParameterSchema,
   normalizeActionProviderId,
   NodeDataSchema,
+  validateGenerationInput,
   ACTION_TYPE,
   AGENT_NODE_TYPE_MAP,
   RF_NODE_TYPE,
@@ -38,6 +39,29 @@ describe("ACTION_TYPE", () => {
   it("has built-in audio and text generation types", () => {
     expect(ACTION_TYPE.AudioGen).toBe("audio-gen");
     expect(ACTION_TYPE.TextGen).toBe("text-gen");
+  });
+});
+
+describe("validateGenerationInput", () => {
+  it("applies parameter-conditioned reference requirements", () => {
+    const modelCard = MODEL_CARDS.find(
+      (model) => model.id === "seedance-2.5-ref",
+    )!;
+
+    expect(
+      validateGenerationInput({
+        prompt: "Edit this clip",
+        modelCard,
+        modelParams: { edit_mode: false },
+      }),
+    ).toBeNull();
+    expect(
+      validateGenerationInput({
+        prompt: "Edit this clip",
+        modelCard,
+        modelParams: { edit_mode: true },
+      }),
+    ).toMatch(/at least 1 reference video/i);
   });
 });
 

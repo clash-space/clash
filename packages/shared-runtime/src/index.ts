@@ -105,6 +105,7 @@ export {
 
 export {
   createPikaMediaJob,
+  getPikaMediaJob,
   getPikaMediaContent,
   PIKA_MEDIA_BASE_URL,
   uploadPikaMedia,
@@ -112,6 +113,12 @@ export {
   type PikaMediaJob,
   type PikaMediaStatus,
 } from "./pika-media.js";
+
+export {
+  buildPikaMediaRequest,
+  type PikaMediaRequest,
+  type PikaMediaRequestInput,
+} from "./pika-request.js";
 
 export { generatePikaChat, type PikaChatResult } from "./pika-chat.js";
 
@@ -169,7 +176,11 @@ export {
 
 export {
   PROJECT_ASSET_READ_RECEIPT_HEADER,
+  createPersonalGlobalAssetHostClient,
   createProjectAssetHostClient,
+  resolveAssetImportFileType,
+  type AssetImportFileType,
+  type PersonalGlobalAssetHostClient,
   type ProjectAssetHostClient,
   type ProjectAssetHostObservation,
   type ProjectAssetHostResult,

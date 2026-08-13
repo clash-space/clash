@@ -24,8 +24,9 @@ export const CLASH_MCP_COMMANDS: readonly ClashMcpCommand[] = [
   },
   {
     id: "assets",
-    title: "Project Assets",
-    useWhen: "importing, finding, reading, or managing immutable Project media",
+    title: "Assets",
+    useWhen:
+      "importing, finding, reading, admitting, or publishing immutable Project and personal Global media",
   },
   {
     id: "canvas",

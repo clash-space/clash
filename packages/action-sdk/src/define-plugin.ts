@@ -1,16 +1,22 @@
 import type { Readable, Writable } from "node:stream";
 
-import type {
-  ExecutablePluginReference,
-  ExecutablePluginAssetHandle,
-  ExecutablePluginBrokerOperation,
-  ExecutablePluginInvocation,
-  ExecutablePluginJsonValue,
-  ExecutablePluginOutput,
-  ExecutablePluginResult,
+import {
+  ExecutablePluginBrokerResolvedReferenceSchema,
+  ExecutablePluginAssetHandleSchema,
+  type ExecutablePluginBrokerResolvedReference,
+  type ExecutablePluginReference,
+  type ExecutablePluginAssetHandle,
+  type ExecutablePluginBrokerOperation,
+  type ExecutablePluginInvocation,
+  type ExecutablePluginJsonValue,
+  type ExecutablePluginOutput,
+  type ExecutablePluginResult,
 } from "@clash/shared-types/executable-plugin";
 
-import { defineStdioExecutablePlugin, type StdioExecutablePluginOptions } from "./stdio-plugin.js";
+import {
+  defineStdioExecutablePlugin,
+  type StdioExecutablePluginOptions,
+} from "./stdio-plugin.js";
 import { unsupportedAcceptedOperation } from "./executable-failure.js";
 
 /**
@@ -59,7 +65,12 @@ export type ResolvedReference =
       mediaType?: string;
       kind?: AssetKindName;
     }
-  | { form: "bytes"; bytes: Uint8Array; mediaType?: string; kind?: AssetKindName }
+  | {
+      form: "bytes";
+      bytes: Uint8Array;
+      mediaType?: string;
+      kind?: AssetKindName;
+    }
   | { form: "text"; text: string };
 
 /**
@@ -76,7 +87,11 @@ export type ExecutorStep =
   | { status: "completed"; outputs: ExecutablePluginOutput[] }
   /** Files, named by the plugin. The SDK uploads them and builds the outputs. */
   | { status: "completed"; media: Record<string, MediaData> }
-  | { status: "accepted"; pollState: ExecutablePluginJsonValue; retryAfterMs?: number }
+  | {
+      status: "accepted";
+      pollState: ExecutablePluginJsonValue;
+      retryAfterMs?: number;
+    }
   | {
       status: "failed";
       error: Extract<ExecutablePluginResult, { status: "failed" }>["error"];
@@ -92,7 +107,11 @@ export type ExecutorStep =
  */
 export interface PluginStoreHandle {
   get(key: string): Promise<string | undefined>;
-  put(key: string, value: string, options?: { secret?: boolean; expiresAt?: number }): Promise<void>;
+  put(
+    key: string,
+    value: string,
+    options?: { secret?: boolean; expiresAt?: number },
+  ): Promise<void>;
   remove(key: string): Promise<void>;
 }
 
@@ -126,7 +145,9 @@ export interface CodexImageGenerateRequest {
 
 export interface PluginHostTools {
   codexImagegen: {
-    generate(request: CodexImageGenerateRequest): Promise<ExecutablePluginAssetHandle>;
+    generate(
+      request: CodexImageGenerateRequest,
+    ): Promise<ExecutablePluginAssetHandle>;
   };
 }
 
@@ -165,11 +186,20 @@ export interface ExecutorContext {
 }
 
 export interface Executor {
-  submit(invocation: ExecutablePluginInvocation, context: ExecutorContext): Promise<ExecutorStep>;
+  submit(
+    invocation: ExecutablePluginInvocation,
+    context: ExecutorContext,
+  ): Promise<ExecutorStep>;
   /** Only for providers that answer later. Omitting it says this one answers at once. */
-  poll?(invocation: ExecutablePluginInvocation, context: ExecutorContext): Promise<ExecutorStep>;
-  /** Translate a provider callback for work the Host already recorded as accepted. */
-  callback?(invocation: ExecutablePluginInvocation, context: ExecutorContext): Promise<ExecutorStep>;
+  poll?(
+    invocation: ExecutablePluginInvocation,
+    context: ExecutorContext,
+  ): Promise<ExecutorStep>;
+  /** Reserved future ABI: translate a Provider callback for already-accepted work. */
+  callback?(
+    invocation: ExecutablePluginInvocation,
+    context: ExecutorContext,
+  ): Promise<ExecutorStep>;
 }
 
 export interface PluginDefinition {
@@ -214,7 +244,9 @@ export async function outputsFor(
     };
 
     if ("url" in file && file.url) {
-      outputs.push(await context.upload!({ ...request, url: file.url } as never));
+      outputs.push(
+        await context.upload!({ ...request, url: file.url } as never),
+      );
       continue;
     }
     if ("bytes" in file && file.bytes) {
@@ -222,10 +254,12 @@ export async function outputsFor(
       continue;
     }
     if ("base64" in file && file.base64) {
-      outputs.push(await context.upload!({
-        ...request,
-        bytes: Uint8Array.from(Buffer.from(file.base64, "base64")),
-      }));
+      outputs.push(
+        await context.upload!({
+          ...request,
+          bytes: Uint8Array.from(Buffer.from(file.base64, "base64")),
+        }),
+      );
       continue;
     }
     // A name with nothing behind it would upload an empty asset and report success.
@@ -245,7 +279,9 @@ async function resultFor(
       invocationId: invocation.invocationId,
       status: "accepted",
       pollState: step.pollState,
-      ...(step.retryAfterMs === undefined ? {} : { retryAfterMs: step.retryAfterMs }),
+      ...(step.retryAfterMs === undefined
+        ? {}
+        : { retryAfterMs: step.retryAfterMs }),
     } satisfies ExecutablePluginResult;
   }
   if (step.status === "failed") {
@@ -260,10 +296,10 @@ async function resultFor(
     protocol: "clash.plugin.result/v1",
     invocationId: invocation.invocationId,
     status: "completed",
-    outputs: "media" in step ? await outputsFor(step.media, context) : step.outputs,
+    outputs:
+      "media" in step ? await outputsFor(step.media, context) : step.outputs,
   } satisfies ExecutablePluginResult;
 }
-
 
 /**
  * Build the runtime context an executor sees, from whatever the host handed in.
@@ -278,168 +314,197 @@ type HostDependencyRequest = (
   operation: ExecutablePluginBrokerOperation,
 ) => Promise<ExecutablePluginJsonValue>;
 
+function assetHandleFromHost(input: unknown): ExecutablePluginAssetHandle {
+  try {
+    return ExecutablePluginAssetHandleSchema.parse(input);
+  } catch (error) {
+    throw new Error("The Host returned an invalid Asset handle.", {
+      cause: error,
+    });
+  }
+}
+
 export function executorContextFrom(
   merged: Partial<ExecutorContext> = {},
   requestHost?: HostDependencyRequest,
 ): ExecutorContext {
-  const host = requestHost ?? (async () => {
-    throw new Error("This invocation arrived without injected Host dependencies.");
-  });
+  const host =
+    requestHost ??
+    (async () => {
+      throw new Error(
+        "This invocation arrived without injected Host dependencies.",
+      );
+    });
 
   return {
-        ...merged,
-        reference: merged.reference ?? (async (reference) => {
-          const resolved = await host({ kind: "asset.resolve", reference }) as unknown as
-            | {
-                form: "provider-url";
-                providerUrl: string;
-                expiresAt: string;
-                kind?: AssetKindName;
-                mediaType?: string;
-              }
-            | {
-                form: "bytes";
-                bytesBase64: string;
-                kind?: AssetKindName;
-                mediaType?: string;
-              }
-            | { form: "text"; text: string };
-          if (resolved.form === "provider-url" || resolved.form === "text") {
-            return resolved;
-          }
-          return {
-            form: "bytes",
-            bytes: Uint8Array.from(Buffer.from(resolved.bytesBase64, "base64")),
-            ...(resolved.mediaType ? { mediaType: resolved.mediaType } : {}),
-            ...(resolved.kind ? { kind: resolved.kind } : {}),
-          };
-        }),
-        // Two calls, keyed by nothing but a key. Which plugin and which account is decided by the
-        // spawn, so there is no field here for one to name another's credentials.
-        store: merged.store ?? {
-          get: async (key) => {
-            const answer = await host({ kind: "store.get", key } as never) as
-              unknown as { value?: string };
-            // Missing stays missing. Turning it into "" is how an unset credential used to reach a
-            // vendor and come back as a 401 that named the wrong problem.
-            return answer?.value;
-          },
-          remove: async (key) => {
-            await host({ kind: "store.put", key, value: "" } as never);
-          },
-          put: async (key, value, options) => {
-            await host({
-              kind: "store.put",
-              key,
-              value,
-              ...(options?.secret === undefined ? {} : { secret: options.secret }),
-              ...(options?.expiresAt === undefined
-                ? {}
-                : { expiresAt: new Date(options.expiresAt).toISOString() }),
-            } as never);
-          },
-        },
-        upload: merged.upload ?? (async (request) => {
-          // A vendor that answers with a link never hands over bytes, so there is nothing to count.
-          // Announcing `request.bytes.byteLength` unconditionally is what made the url form die on
-          // "Cannot read properties of undefined (reading 'byteLength')" -- after a real generation
-          // had completed upstream, so the work was done and the result dropped on the way home.
-          const bytes = (request as { bytes?: Uint8Array }).bytes;
-          const url = (request as { url?: string }).url;
-
-          const slot = await host({
-            kind: "asset.upload-slot",
-            slot: request.slot,
-            assetKind: request.kind,
-            ...(request.mediaType ? { mediaType: request.mediaType } : {}),
-            ...(bytes ? { byteLength: bytes.byteLength } : {}),
-            // Passed through rather than fetched. Downloading it to hand the host something it can
-            // fetch itself pays for the transfer twice, and the host is the side that knows whether
-            // it wants a copy.
-            ...(url ? { url } : {}),
-          } as never) as unknown as {
-            uploadUrl?: string;
-            assetId?: string;
-            uri?: string;
-            kind?: AssetKindName;
-            mediaType?: string;
-            url?: string;
-            reach?: "public" | "private";
-          };
-
-          if (url && slot.assetId) {
-            // The host fetched it, stored it, and returned the complete handle. Preserve that
-            // descriptor verbatim: its url is the storage adapter's current projection, not a path
-            // the SDK can reconstruct from assetId.
-            return {
-              slot: request.slot,
-              kind: "asset",
-              asset: slot,
-            } as never;
-          }
-
-          if (!slot.uploadUrl || !slot.assetId) {
-            throw new Error("The host did not provide an upload slot for this asset.");
-          }
-
-          if (!request.bytes) {
-            throw new Error(`Uploading ${request.slot} requires bytes or a provider URL.`);
-          }
-          const response = await globalThis.fetch(slot.uploadUrl, {
-            method: "PUT",
-            headers: {
-              "content-type": request.mediaType ?? "application/octet-stream",
-              "content-length": String(request.bytes.byteLength),
-            },
-            body: request.bytes as unknown as BodyInit,
+    ...merged,
+    reference:
+      merged.reference ??
+      (async (reference) => {
+        let resolved: ExecutablePluginBrokerResolvedReference;
+        try {
+          resolved = ExecutablePluginBrokerResolvedReferenceSchema.parse(
+            await host({ kind: "asset.resolve", reference }),
+          );
+        } catch (error) {
+          throw new Error("The Host returned an invalid resolved reference.", {
+            cause: error,
           });
-          if (!response.ok) {
-            // A refused upload reported as completed would attach an empty asset and close a task
-            // the provider has already been paid for.
-            throw new Error(
-              `Uploading ${request.slot} failed: ${response.status} ${response.statusText}.`,
-            );
-          }
+        }
+        if (resolved.form === "provider-url" || resolved.form === "text") {
+          return resolved;
+        }
+        return {
+          form: "bytes",
+          bytes: Uint8Array.from(Buffer.from(resolved.bytesBase64, "base64")),
+          ...(resolved.mediaType ? { mediaType: resolved.mediaType } : {}),
+          ...(resolved.kind ? { kind: resolved.kind } : {}),
+        };
+      }),
+    // Two calls, keyed by nothing but a key. Which plugin and which account is decided by the
+    // spawn, so there is no field here for one to name another's credentials.
+    store: merged.store ?? {
+      get: async (key) => {
+        const answer = (await host({
+          kind: "store.get",
+          key,
+        } as never)) as unknown as { value?: string };
+        // Missing stays missing. Turning it into "" is how an unset credential used to reach a
+        // vendor and come back as a 401 that named the wrong problem.
+        return answer?.value;
+      },
+      remove: async (key) => {
+        await host({ kind: "store.put", key, value: "" } as never);
+      },
+      put: async (key, value, options) => {
+        await host({
+          kind: "store.put",
+          key,
+          value,
+          ...(options?.secret === undefined ? {} : { secret: options.secret }),
+          ...(options?.expiresAt === undefined
+            ? {}
+            : { expiresAt: new Date(options.expiresAt).toISOString() }),
+        } as never);
+      },
+    },
+    upload:
+      merged.upload ??
+      (async (request) => {
+        // A vendor that answers with a link never hands over bytes, so there is nothing to count.
+        // Announcing `request.bytes.byteLength` unconditionally is what made the url form die on
+        // "Cannot read properties of undefined (reading 'byteLength')" -- after a real generation
+        // had completed upstream, so the work was done and the result dropped on the way home.
+        const bytes = (request as { bytes?: Uint8Array }).bytes;
+        const url = (request as { url?: string }).url;
 
-          const handle = await host({
+        const slot = (await host({
+          kind: "asset.upload-slot",
+          slot: request.slot,
+          assetKind: request.kind,
+          ...(request.mediaType ? { mediaType: request.mediaType } : {}),
+          ...(bytes ? { byteLength: bytes.byteLength } : {}),
+          // Passed through rather than fetched. Downloading it to hand the host something it can
+          // fetch itself pays for the transfer twice, and the host is the side that knows whether
+          // it wants a copy.
+          ...(url ? { url } : {}),
+        } as never)) as unknown as {
+          uploadUrl?: string;
+          assetId?: string;
+          uri?: string;
+          kind?: AssetKindName;
+          mediaType?: string;
+        };
+
+        if (url && slot.assetId) {
+          return {
+            slot: request.slot,
+            kind: "asset",
+            asset: assetHandleFromHost(slot),
+          };
+        }
+
+        if (!slot.uploadUrl || !slot.assetId) {
+          throw new Error(
+            "The host did not provide an upload slot for this asset.",
+          );
+        }
+
+        if (!request.bytes) {
+          throw new Error(
+            `Uploading ${request.slot} requires bytes or a provider URL.`,
+          );
+        }
+        const response = await globalThis.fetch(slot.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "content-type": request.mediaType ?? "application/octet-stream",
+            "content-length": String(request.bytes.byteLength),
+          },
+          body: request.bytes as unknown as BodyInit,
+        });
+        if (!response.ok) {
+          // A refused upload reported as completed would attach an empty asset and close a task
+          // the provider has already been paid for.
+          throw new Error(
+            `Uploading ${request.slot} failed: ${response.status} ${response.statusText}.`,
+          );
+        }
+
+        const handle = assetHandleFromHost(
+          await host({
             kind: "asset.write",
             slot: request.slot,
             assetKind: request.kind,
             ...(request.mediaType ? { mediaType: request.mediaType } : {}),
             assetId: slot.assetId,
-          } as never) as unknown as Record<string, unknown>;
-          return { slot: request.slot, kind: "asset", asset: handle } as ExecutablePluginOutput;
-        }),
+          } as never),
+        );
+        return { slot: request.slot, kind: "asset", asset: handle };
+      }),
 
-        asset: merged.asset ?? (async (request) => {
-          const handle = await host({
+    asset:
+      merged.asset ??
+      (async (request) => {
+        const handle = assetHandleFromHost(
+          await host({
             kind: "asset.write",
             slot: request.slot,
             assetKind: request.kind,
             ...(request.mediaType ? { mediaType: request.mediaType } : {}),
             ...(request.dataBase64 ? { dataBase64: request.dataBase64 } : {}),
             ...(request.url ? { url: request.url } : {}),
-          } as never) as unknown as Record<string, unknown>;
-          return { slot: request.slot, kind: "asset", asset: handle } as ExecutablePluginOutput;
-        }),
+          } as never),
+        );
+        return { slot: request.slot, kind: "asset", asset: handle };
+      }),
 
-        hostTools: {
-          ...merged.hostTools,
-          codexImagegen: merged.hostTools?.codexImagegen ?? {
-            generate: async (request) => await host({
+    hostTools: {
+      ...merged.hostTools,
+      codexImagegen: merged.hostTools?.codexImagegen ?? {
+        generate: async (request) =>
+          assetHandleFromHost(
+            await host({
               kind: "codex.image.generate",
               prompt: request.prompt,
               aspectRatio: request.aspectRatio,
               slot: request.slot,
               references: request.references ?? [],
-            } as never) as unknown as ExecutablePluginAssetHandle,
-          },
-        },
-      };
+            } as never),
+          ),
+      },
+    },
+  };
 }
 
 export function definePlugin(definition: PluginDefinition): DefinedPlugin {
-  const handlers: Record<string, (invocation: ExecutablePluginInvocation, ctx: ExecutorContext) => Promise<ExecutablePluginResult>> = {};
+  const handlers: Record<
+    string,
+    (
+      invocation: ExecutablePluginInvocation,
+      ctx: ExecutorContext,
+    ) => Promise<ExecutablePluginResult>
+  > = {};
 
   for (const [exportId, executor] of Object.entries(definition.executors)) {
     handlers[exportId] = async (invocation, hostContext) => {
@@ -456,7 +521,11 @@ export function definePlugin(definition: PluginDefinition): DefinedPlugin {
             `${exportId} answers at once and has no poll operation, but the host asked it to poll.`,
           );
         }
-        return resultFor(invocation, await executor.poll(invocation, context), context);
+        return resultFor(
+          invocation,
+          await executor.poll(invocation, context),
+          context,
+        );
       }
 
       if (invocation.operation === "callback") {
@@ -469,7 +538,11 @@ export function definePlugin(definition: PluginDefinition): DefinedPlugin {
         return resultFor(invocation, step, context);
       }
 
-      return resultFor(invocation, await executor.submit(invocation, context), context);
+      return resultFor(
+        invocation,
+        await executor.submit(invocation, context),
+        context,
+      );
     };
   }
 

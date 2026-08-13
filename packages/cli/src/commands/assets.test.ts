@@ -15,6 +15,7 @@ import {
   restoreProjectAsset,
   trashProjectAsset,
 } from "./assets";
+import * as assetCommands from "./assets";
 import type { ProjectAssetHostClient } from "@clash/shared-runtime/project-asset-client";
 import { initProject } from "./projects";
 
@@ -33,10 +34,21 @@ test("assets command registers link subcommand", () => {
       "import",
       "replace",
       "refs",
+      "admit",
+      "publish",
       "delete",
       "restore",
+      "global",
       "metadata",
     ],
+  );
+  const global = assetsCommand.commands.find(
+    (command) => command.name() === "global",
+  );
+  assert.ok(global);
+  assert.deepEqual(
+    global.commands.map((command) => command.name()),
+    ["list", "get", "import"],
   );
   const get = assetsCommand.commands.find(
     (command) => command.name() === "get",
@@ -72,6 +84,234 @@ test("assets command registers link subcommand", () => {
   assert.ok(!restore.options.some((option) => option.long === "--force"));
   assert.ok(!restore.options.some((option) => option.long === "--if-match"));
   assert.ok(!restore.options.some((option) => option.long === "--read-token"));
+});
+
+test("global asset list and read use the personal-library client without Project scope", async () => {
+  const calls: unknown[] = [];
+  const globalAsset = {
+    id: "global:one",
+    kind: "image" as const,
+    lifecycle: { state: "active" as const },
+    status: "ready" as const,
+    metadata: { bytes: 4, contentType: "image/png" },
+  };
+  const module = assetCommands as unknown as {
+    listPersonalGlobalAssetRecords?: (options: {
+      client: {
+        list(): Promise<(typeof globalAsset)[]>;
+      };
+    }) => Promise<(typeof globalAsset)[]>;
+    fetchPersonalGlobalAssetRecord?: (options: {
+      globalAssetId: string;
+      client: {
+        get(input: { globalAssetId: string }): Promise<typeof globalAsset>;
+      };
+    }) => Promise<typeof globalAsset>;
+  };
+
+  assert.equal(typeof module.listPersonalGlobalAssetRecords, "function");
+  assert.equal(typeof module.fetchPersonalGlobalAssetRecord, "function");
+  if (
+    !module.listPersonalGlobalAssetRecords ||
+    !module.fetchPersonalGlobalAssetRecord
+  )
+    return;
+  const client = {
+    async list() {
+      calls.push({ method: "list" });
+      return [globalAsset];
+    },
+    async get(input: { globalAssetId: string }) {
+      calls.push({ method: "get", input });
+      return globalAsset;
+    },
+  };
+
+  assert.deepEqual(await module.listPersonalGlobalAssetRecords({ client }), [
+    globalAsset,
+  ]);
+  assert.deepEqual(
+    await module.fetchPersonalGlobalAssetRecord({
+      globalAssetId: "global:one",
+      client,
+    }),
+    globalAsset,
+  );
+  assert.deepEqual(calls, [
+    { method: "list" },
+    { method: "get", input: { globalAssetId: "global:one" } },
+  ]);
+});
+
+test("global asset import sends local bytes through the personal-library client", async () => {
+  const source = join(await tempDir(), "voice.mp3");
+  await writeFile(source, new Uint8Array([4, 5, 6]));
+  const calls: unknown[] = [];
+  const globalAsset = {
+    id: "global:voice",
+    kind: "audio" as const,
+    lifecycle: { state: "active" as const },
+    status: "ready" as const,
+    metadata: { bytes: 3, contentType: "audio/mpeg" },
+  };
+  const importGlobal = (
+    assetCommands as unknown as {
+      importPersonalGlobalAssetFile?: (options: {
+        filePath: string;
+        client: {
+          importFile(input: {
+            bytes: Uint8Array;
+            fileName: string;
+            contentType: string;
+            kind: "audio";
+          }): Promise<typeof globalAsset>;
+        };
+      }) => Promise<typeof globalAsset>;
+    }
+  ).importPersonalGlobalAssetFile;
+
+  assert.equal(typeof importGlobal, "function");
+  if (!importGlobal) return;
+  const result = await importGlobal({
+    filePath: source,
+    client: {
+      async importFile(input) {
+        calls.push({ ...input, bytes: Array.from(input.bytes) });
+        return globalAsset;
+      },
+    },
+  });
+
+  assert.deepEqual(result, globalAsset);
+  assert.deepEqual(calls, [
+    {
+      bytes: [4, 5, 6],
+      fileName: "voice.mp3",
+      contentType: "audio/mpeg",
+      kind: "audio",
+    },
+  ]);
+});
+
+test("CLI Global import accepts the same OGG audio representation as MCP", async () => {
+  const source = join(await tempDir(), "voice.ogg");
+  await writeFile(source, new Uint8Array([10, 11, 12]));
+  const imports: unknown[] = [];
+
+  await assetCommands.importPersonalGlobalAssetFile({
+    filePath: source,
+    client: {
+      async importFile(input) {
+        imports.push({
+          ...input,
+          bytes: Array.from(input.bytes),
+        });
+        return {
+          id: "global:ogg",
+          kind: "audio",
+          lifecycle: { state: "active" },
+          status: "ready",
+          metadata: { bytes: 3, contentType: "audio/ogg" },
+        };
+      },
+      async list() {
+        return [];
+      },
+      async get() {
+        throw new Error("not used");
+      },
+      async publish() {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  assert.deepEqual(imports, [
+    {
+      bytes: [10, 11, 12],
+      fileName: "voice.ogg",
+      contentType: "audio/ogg",
+      kind: "audio",
+    },
+  ]);
+});
+
+test("global admission and publication preserve the two independent Asset identities", async () => {
+  const calls: unknown[] = [];
+  const projectAsset = {
+    id: "asset:admitted",
+    kind: "image" as const,
+    lifecycle: { state: "active" as const },
+    status: "ready" as const,
+    metadata: { bytes: 4, contentType: "image/png" },
+  };
+  const globalAsset = { ...projectAsset, id: "global:published" };
+  const module = assetCommands as unknown as {
+    admitPersonalGlobalAsset?: (options: {
+      projectId: string;
+      globalAssetId: string;
+      client: {
+        admit(input: {
+          projectId: string;
+          globalAssetId: string;
+        }): Promise<{ value: typeof projectAsset }>;
+      };
+    }) => Promise<typeof projectAsset>;
+    publishProjectAssetToPersonalGlobal?: (options: {
+      projectId: string;
+      projectAssetId: string;
+      client: {
+        publish(input: {
+          projectId: string;
+          projectAssetId: string;
+        }): Promise<typeof globalAsset>;
+      };
+    }) => Promise<typeof globalAsset>;
+  };
+
+  assert.equal(typeof module.admitPersonalGlobalAsset, "function");
+  assert.equal(typeof module.publishProjectAssetToPersonalGlobal, "function");
+  if (
+    !module.admitPersonalGlobalAsset ||
+    !module.publishProjectAssetToPersonalGlobal
+  )
+    return;
+  assert.deepEqual(
+    await module.admitPersonalGlobalAsset({
+      projectId: "project-a",
+      globalAssetId: "global:source",
+      client: {
+        async admit(input) {
+          calls.push({ method: "admit", input });
+          return { value: projectAsset };
+        },
+      },
+    }),
+    projectAsset,
+  );
+  assert.deepEqual(
+    await module.publishProjectAssetToPersonalGlobal({
+      projectId: "project-a",
+      projectAssetId: "asset:source",
+      client: {
+        async publish(input) {
+          calls.push({ method: "publish", input });
+          return globalAsset;
+        },
+      },
+    }),
+    globalAsset,
+  );
+  assert.deepEqual(calls, [
+    {
+      method: "admit",
+      input: { projectId: "project-a", globalAssetId: "global:source" },
+    },
+    {
+      method: "publish",
+      input: { projectId: "project-a", projectAssetId: "asset:source" },
+    },
+  ]);
 });
 
 test("asset link names must stay inside the project asset links directory", () => {

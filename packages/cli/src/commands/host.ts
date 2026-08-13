@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { getHostDiscoveryStatus } from "../lib/host-discovery";
 import { resolveClashProfile, type ClashRuntimeProfile } from "@clash/shared-runtime/local-paths";
+import { publicStorageCommand } from "./public-storage";
 
 export interface HostStatusOutput {
   status: "active" | "inactive";
@@ -58,6 +59,8 @@ export async function runHostStatus(options: {
 
 export const hostCommand = new Command("host")
   .description("Inspect the local Clash host");
+
+hostCommand.addCommand(publicStorageCommand);
 
 hostCommand
   .command("status")

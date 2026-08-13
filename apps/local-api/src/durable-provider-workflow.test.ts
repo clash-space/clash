@@ -9,6 +9,7 @@ import {
   createProjectAsset,
   listActionAssetReferences,
   listProjectAssets,
+  MODEL_CARDS,
   readProjectAsset,
 } from "@clash/shared-types";
 
@@ -50,6 +51,7 @@ const binding = {
 const plan: ProviderPluginExecutionPlan = {
   binding,
   accountId: "private-account",
+  assetInputs: [],
   kind: "video",
   projectId: "project-1",
   nodeId: "node-1",
@@ -93,6 +95,35 @@ function pendingDoc(): LoroDoc {
 }
 
 describe("durable executable Provider generation", () => {
+  it("applies parameter-conditioned Model Card validation before planning", async () => {
+    const dataDir = await temporaryDataDir();
+    const doc = pendingDoc();
+    const nodes = doc.getMap("nodes");
+    const node = nodes.get("node-1") as Record<string, any>;
+    nodes.set("node-1", {
+      ...node,
+      data: {
+        ...node.data,
+        modelId: "seedance-2.5-ref",
+        modelParams: { edit_mode: true },
+      },
+    });
+    const planner = vi.fn(async () => plan);
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      modelCards: async () => MODEL_CARDS,
+      aigc: aigc(planner),
+    });
+
+    await processor.process({ doc, projectId: "project-1" });
+
+    expect((nodes.get("node-1") as Record<string, any>).data).toMatchObject({
+      status: "failed",
+      error: expect.stringMatching(/at least 1 reference video/i),
+    });
+    expect(planner).not.toHaveBeenCalled();
+  });
+
   it("fails closed before submit when a Provider plan has no durable coordinator", async () => {
     const dataDir = await temporaryDataDir();
     const doc = pendingDoc();
@@ -163,15 +194,17 @@ describe("durable executable Provider generation", () => {
       ...plan,
       input: {
         ...plan.input,
-        references: [{
-          slot: "image",
-          index: 0,
-          asset: {
-            assetId: "reference-asset",
-            uri: "clash-asset://reference-asset",
-            kind: "image",
+        references: [
+          {
+            slot: "image",
+            index: 0,
+            asset: {
+              assetId: "reference-asset",
+              uri: "clash-asset://reference-asset",
+              kind: "image",
+            },
           },
-        }],
+        ],
       },
     };
     const processor = createLocalWorkflowProcessor({
@@ -402,18 +435,22 @@ describe("durable executable Provider generation", () => {
       label: "Private account routing",
       prompt: "Private account routing",
     });
-    const action = await added.json() as { node_id: string };
-    expect(action).toEqual(expect.objectContaining({ node_id: expect.any(String) }));
+    const action = (await added.json()) as { node_id: string };
+    expect(action).toEqual(
+      expect.objectContaining({ node_id: expect.any(String) }),
+    );
     const executed = await command({
       action: "execute",
       canvasId: "main",
       nodeId: action.node_id,
       providerAccountId: "private-account",
     });
-    const execution = await executed.json() as { childNodeId: string };
-    expect(execution).toEqual(expect.objectContaining({
-      childNodeId: expect.any(String),
-    }));
+    const execution = (await executed.json()) as { childNodeId: string };
+    expect(execution).toEqual(
+      expect.objectContaining({
+        childNodeId: expect.any(String),
+      }),
+    );
 
     const replica = await new FileReplicaStore(join(dataDir, "projects"))
       .recover("project-private-account");
@@ -428,22 +465,28 @@ describe("durable executable Provider generation", () => {
       ),
     ).resolves.toMatchObject({ accountId: "private-account" });
 
-    const planner = vi.fn(async (input: Parameters<NonNullable<ExternalAigcService["planProviderPlugin"]>>[0]) => ({
-      ...plan,
-      accountId: input.providerAccountId,
-      kind: "image" as const,
-      projectId: "project-private-account",
-      nodeId: execution.childNodeId,
-      input: {
-        values: {
-          modelId: input.model,
-          upstreamModel: "image-v1",
-          prompt: input.prompt,
-          modelParams: input.modelParams ?? {},
+    const planner = vi.fn(
+      async (
+        input: Parameters<
+          NonNullable<ExternalAigcService["planProviderPlugin"]>
+        >[0],
+      ) => ({
+        ...plan,
+        accountId: input.providerAccountId,
+        kind: "image" as const,
+        projectId: "project-private-account",
+        nodeId: execution.childNodeId,
+        input: {
+          values: {
+            modelId: input.model,
+            upstreamModel: "image-v1",
+            prompt: input.prompt,
+            modelParams: input.modelParams ?? {},
+          },
+          references: [],
         },
-        references: [],
-      },
-    }));
+      }),
+    );
     const processor = createLocalWorkflowProcessor({
       dataDir,
       modelCards: async () => [],
@@ -592,6 +635,17 @@ describe("durable executable Provider generation", () => {
     await expect(first.nextWakeAt!("project-1")).resolves.toBe(105);
 
     now.value = 106;
+    const staged = await createLocalPluginAssetStagingStore({ dataDir }).stage({
+      projectId: "project-1",
+      taskId: "project:project-1:node:node-1:media",
+      slot: "media",
+      pluginId: binding.pluginId,
+      pluginVersion: binding.version,
+      invocationId: "provider-poll-result",
+      kind: "video",
+      mediaType: "video/mp4",
+      bytes: new Uint8Array([0, 0, 0, 24]),
+    });
     const reopenedPlanner = vi.fn(async () => plan);
     const reopenedExecutor: ProviderPluginExecutor = async (request) => {
       requests.push(structuredClone(request));
@@ -599,9 +653,10 @@ describe("durable executable Provider generation", () => {
         status: "completed",
         binding,
         media: {
-          url: "https://provider.test/result.mp4",
-          contentType: "video/mp4",
-          requestId: "provider-task-1",
+          assetId: staged.projectAssetId,
+          uri: `clash-asset://${staged.projectAssetId}`,
+          kind: "video",
+          mediaType: "video/mp4",
         },
       };
     };
@@ -612,10 +667,6 @@ describe("durable executable Provider generation", () => {
         ownerId: "local-api",
         providerPluginExecutor: reopenedExecutor,
         now: () => now.value,
-        fetch: async () => new Response(new Uint8Array([0, 0, 0, 24]), {
-          status: 200,
-          headers: { "content-type": "video/mp4" },
-        }),
       },
     });
 
@@ -632,7 +683,7 @@ describe("durable executable Provider generation", () => {
     const completed = doc.getMap("nodes").get("node-1") as Record<string, any>;
     expect(completed.data).toMatchObject({
       status: "completed",
-      assetId: "local-asset-project-project-1-node-node-1-media",
+      assetId: staged.projectAssetId,
     });
     expect(readProjectAsset(doc, completed.data.assetId)).toMatchObject({
       id: completed.data.assetId,
@@ -670,9 +721,6 @@ describe("durable executable Provider generation", () => {
       mediaType: "video/mp4",
       bytes: new Uint8Array([0, 0, 0, 24]),
     });
-    const fetchLocalBytes = vi.fn(async () => {
-      throw new Error("the durable publisher must not fetch its own CAS bytes");
-    });
     const processor = createLocalWorkflowProcessor({
       dataDir,
       aigc: aigc(async () => plan),
@@ -683,10 +731,11 @@ describe("durable executable Provider generation", () => {
           binding,
           media: {
             assetId: staged.projectAssetId,
-            contentType: "video/mp4",
+            uri: `clash-asset://${staged.projectAssetId}`,
+            kind: "video",
+            mediaType: "video/mp4",
           },
         }),
-        fetch: fetchLocalBytes as typeof fetch,
         now: () => 100,
       },
     });
@@ -694,7 +743,6 @@ describe("durable executable Provider generation", () => {
 
     await expect(processor.process({ doc, projectId: "project-1" })).resolves.toBe(true);
 
-    expect(fetchLocalBytes).not.toHaveBeenCalled();
     expect(doc.getMap("nodes").get("node-1")).toMatchObject({
       data: { status: "completed", assetId: staged.projectAssetId },
     });
@@ -754,7 +802,9 @@ describe("durable executable Provider generation", () => {
           binding,
           media: {
             assetId: staged.projectAssetId,
-            contentType: "video/mp4",
+            uri: `clash-asset://${staged.projectAssetId}`,
+            kind: "video",
+            mediaType: "video/mp4",
           },
         }),
         now: () => 100,
@@ -784,12 +834,25 @@ describe("durable executable Provider generation", () => {
         references: [],
       },
     };
+    const staged = await createLocalPluginAssetStagingStore({ dataDir }).stage({
+      projectId: "project-1",
+      taskId: "project:project-1:node:node-1:media",
+      slot: "media",
+      pluginId: binding.pluginId,
+      pluginVersion: binding.version,
+      invocationId: "image-provider-result",
+      kind: "image",
+      mediaType: "image/png",
+      bytes: new Uint8Array([137, 80, 78, 71]),
+    });
     const execute = vi.fn<ProviderPluginExecutor>(async () => ({
       status: "completed",
       binding,
       media: {
-        url: "https://provider.test/result.png",
-        contentType: "image/png",
+        assetId: staged.projectAssetId,
+        uri: `clash-asset://${staged.projectAssetId}`,
+        kind: "image",
+        mediaType: "image/png",
       },
     }));
     const doc = new LoroDoc();
@@ -818,10 +881,6 @@ describe("durable executable Provider generation", () => {
         ownerId: "local-api",
         providerPluginExecutor: execute,
         now: () => now.value,
-        fetch: async () => new Response(new Uint8Array([137, 80, 78, 71]), {
-          status: 200,
-          headers: { "content-type": "image/png" },
-        }),
       },
     });
     const identity = {
@@ -846,8 +905,11 @@ describe("durable executable Provider generation", () => {
     });
     expect(listProjectAssets(doc)).toEqual([
       expect.objectContaining({
-        id: "local-asset-project-project-1-node-node-1-media",
-        source: { kind: "owned", resourceId: expect.stringMatching(/^sha256:/) },
+        id: staged.projectAssetId,
+        source: {
+          kind: "owned",
+          resourceId: expect.stringMatching(/^sha256:/),
+        },
       }),
     ]);
   });

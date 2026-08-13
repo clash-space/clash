@@ -580,7 +580,7 @@ export async function processPendingNodes(
             image: referenceImageAssetIds.length,
             video: referenceVideoAssetIds.length,
             audio: referenceAudioAssetIds.length,
-          }, { prompt: rawPrompt });
+          }, { prompt: rawPrompt, modelParams });
           if (msg) {
             log.warn('gen.preflight_failed', { ...tag, reason: msg });
             updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: msg }, broadcast);
@@ -654,7 +654,9 @@ export async function processPendingNodes(
               audioCodec: metadata.audioCodec,
             }];
           });
-          const mediaError = validateReferenceMedia(modelCard, mediaReferences);
+          const mediaError = validateReferenceMedia(modelCard, mediaReferences, {
+            modelParams,
+          });
           if (mediaError) {
             log.warn('gen.preflight_failed', { ...tag, reason: mediaError });
             updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: mediaError }, broadcast);

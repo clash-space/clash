@@ -35,7 +35,7 @@ client; they do not call a Host network API.
 ## What to cover
 
 1. Every operation declared by the contribution: synchronous `submit`, queued
-   `submit`, `poll`, and `callback` where applicable.
+   `submit`, `poll`, and the reserved future `callback` ABI when declared.
 2. Request projection: vendor model name, parameters, ordered references, and
    auth headers derived from scoped store values.
 3. Response projection: text, each media kind, queued state, terminal vendor

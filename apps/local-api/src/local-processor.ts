@@ -27,10 +27,8 @@ import type {
 import type { AssetKind } from "@clash/shared-types/assets";
 import {
   createMockExternalAigcService,
-  downloadProviderMedia,
   type ExternalAigcService,
   type ProviderPluginExecutor,
-  type ProviderPluginExecutorMedia,
 } from "./local-aigc.js";
 import {
   createLocalDurableRunCoordinator,
@@ -77,7 +75,6 @@ export interface LocalWorkflowProcessorOptions {
   durableProviderRuns?: {
     ownerId: string;
     providerPluginExecutor: ProviderPluginExecutor;
-    fetch?: typeof fetch;
     now?: () => number;
   };
   /** Host-owned lifetime for the whole generation run, never a plugin HTTP-call timeout. */
@@ -118,10 +115,14 @@ function sanitizeStorageSegment(value: string): string {
   );
 }
 
-function modelParams(data: Record<string, unknown>): Record<string, unknown> {
+function modelParams(
+  data: Record<string, unknown>,
+): Record<string, string | number | boolean | undefined> {
   const params = data.modelParams;
   if (!params || typeof params !== "object" || Array.isArray(params)) return {};
-  const projectVisibleParams = { ...(params as Record<string, unknown>) };
+  const projectVisibleParams = {
+    ...(params as Record<string, string | number | boolean | undefined>),
+  };
   // Concrete provider/account routing is owner-private execution state. A legacy replica may still
   // contain this field, but it must never regain authority over a new run.
   delete projectVisibleParams.provider_id;
@@ -270,7 +271,9 @@ function durableActionOwner(
   const actionId =
     frozen.delivery?.actionId ?? `node:${frozen.nodeId ?? "project"}`;
   const publicRevision = {
+    targetKind: frozen.targetKind ?? "provider-executor",
     binding: frozen.binding,
+    ...(frozen.actionId ? { actionId: frozen.actionId } : {}),
     kind: frozen.kind,
     projectId: frozen.projectId,
     ...(frozen.nodeId ? { nodeId: frozen.nodeId } : {}),
@@ -416,9 +419,9 @@ function mixedContentReferences(input: {
   nodeId: string;
   promptParts: ReturnType<typeof parsePromptParts>;
   globalReferences: ProviderMediaReference[];
-  resolveMention(nodeId: string):
-    | { assetId: string; kind: ProcessableKind }
-    | undefined;
+  resolveMention(
+    nodeId: string,
+  ): { assetId: string; kind: ProcessableKind } | undefined;
 }): ExecutablePluginReference[] {
   const keyOf = (kind: ProcessableKind, assetId: string) =>
     `${kind}\u0000${assetId}`;
@@ -432,8 +435,7 @@ function mixedContentReferences(input: {
 
   const consumedGlobalByKey = new Map<string, number>();
   const ordered: Array<
-    | { text: { nodeId: string; value: string } }
-    | { asset: ProjectAssetEntry }
+    { text: { nodeId: string; value: string } } | { asset: ProjectAssetEntry }
   > = [];
   for (const [partIndex, part] of input.promptParts.entries()) {
     if (part.type === "text") {
@@ -670,7 +672,7 @@ function ownedProjectAssetEntry(options: {
     `local-asset-${sanitizeStorageSegment(options.taskId)}`;
   const model = options.nodeData
     ? modelFromData(options.nodeData, `mock-${options.kind}`)
-    : options.modelEndpoint ?? options.kind;
+    : (options.modelEndpoint ?? options.kind);
   const prompt =
     options.prompt ??
     (options.nodeData
@@ -886,7 +888,13 @@ export function createLocalWorkflowProcessor(
   );
   const aigc = options.aigc ?? createMockExternalAigcService();
   const userId = options.userId ?? "local-user";
-  const durableJournal = options.durableProviderRuns
+  // Provider executors and custom executable Actions share one owner-private journal and graph.
+  // Production supplies the explicit Provider owner; an isolated Action host keeps the same local
+  // semantics without needing to invent a dummy Provider adapter.
+  const durableOwnerId =
+    options.durableProviderRuns?.ownerId ??
+    (options.executablePluginAction ? "local-api" : undefined);
+  const durableJournal = durableOwnerId
     ? createSqliteDurableRunJournal(options.dataDir)
     : undefined;
   const providerExecutionHandoffs = createProviderExecutionHandoffStore(
@@ -910,11 +918,8 @@ export function createLocalWorkflowProcessor(
       ? {}
       : { minimumPollDelayMs: options.providerPollDelayCapMs }),
     async nextWakeAt(projectId) {
-      if (!durableJournal || !options.durableProviderRuns) return undefined;
-      return durableJournal.nextWakeAt(
-        options.durableProviderRuns.ownerId,
-        projectId,
-      );
+      if (!durableJournal || !durableOwnerId) return undefined;
+      return durableJournal.nextWakeAt(durableOwnerId, projectId);
     },
 
     async process(input) {
@@ -926,11 +931,16 @@ export function createLocalWorkflowProcessor(
       let changed = await projectAssets.materializeDoc(projectId, doc);
       const durable = options.durableProviderRuns;
       const coordinator =
-        durable && durableJournal
+        durableOwnerId && durableJournal
           ? createLocalDurableRunCoordinator({
-              ownerId: durable.ownerId,
+              ownerId: durableOwnerId,
               journal: durableJournal,
               providerPluginExecutor: async (request) => {
+                if (!durable) {
+                  throw new Error(
+                    "Durable Provider runtime is unavailable in this Action-only Host.",
+                  );
+                }
                 const response = await durable.providerPluginExecutor(request);
                 if (
                   response.status !== "accepted" ||
@@ -946,6 +956,9 @@ export function createLocalWorkflowProcessor(
                   ),
                 };
               },
+              ...(options.executablePluginAction
+                ? { executablePluginAction: options.executablePluginAction }
+                : {}),
               outputStore: {
                 async stage({ run, idempotencyKey, outputs }) {
                   const frozen = frozenExecutorInput(run);
@@ -956,8 +969,7 @@ export function createLocalWorkflowProcessor(
                   }
                   const rawTarget = frozen.nodeId
                     ? (nodes.get(frozen.nodeId) as
-                        | Record<string, any>
-                        | undefined)
+                        Record<string, any> | undefined)
                     : undefined;
                   if (
                     frozen.nodeId &&
@@ -970,12 +982,17 @@ export function createLocalWorkflowProcessor(
                   const output = outputs.find(
                     (candidate) => candidate.slot === run.outputSlot,
                   );
-                  if (!output || output.kind !== "value") {
+                  if (!output) {
                     throw new Error(
-                      `Durable Provider output slot ${run.outputSlot} is missing a value.`,
+                      `Durable Provider output slot ${run.outputSlot} is missing.`,
                     );
                   }
                   if (frozen.kind === "text") {
+                    if (output.kind !== "value") {
+                      throw new Error(
+                        `Durable Provider text output slot ${run.outputSlot} is not a value.`,
+                      );
+                    }
                     if (!frozen.nodeId || !rawTarget?.data) {
                       throw new Error(
                         "A durable Provider text output requires a target node.",
@@ -994,7 +1011,16 @@ export function createLocalWorkflowProcessor(
                       userId,
                       projectId: frozen.projectId,
                       nodeId: frozen.nodeId,
-                      nodeData: rawTarget.data as Record<string, unknown>,
+                      nodeData:
+                        frozen.targetKind === "action"
+                          ? {
+                              actorType: frozen.actor?.kind,
+                              ...(frozen.actor?.kind === "agent" &&
+                              frozen.actor.id
+                                ? { actorAgentId: frozen.actor.id }
+                                : {}),
+                            }
+                          : (rawTarget.data as Record<string, unknown>),
                       content: output.value,
                       createdAt: new Date(run.createdAt).toISOString(),
                       auditId: `durable:${idempotencyKey}:text`,
@@ -1005,76 +1031,44 @@ export function createLocalWorkflowProcessor(
                       revisionId: revision.revisionId,
                     } as ExecutablePluginJsonValue;
                   }
-                  if (
-                    !output.value ||
-                    typeof output.value !== "object" ||
-                    Array.isArray(output.value)
-                  ) {
+                  if (output.kind !== "asset") {
                     throw new Error(
-                      "Durable Provider media output must be an object.",
+                      "Durable Provider media output must be a canonical Asset handle.",
                     );
                   }
-                  const media =
-                    output.value as unknown as ProviderPluginExecutorMedia;
-                  const staged =
-                    typeof media.assetId === "string" && media.assetId
-                      ? await pluginAssetStaging.resolve({
-                          projectId: frozen.projectId,
-                          projectAssetId: media.assetId,
-                        })
-                      : undefined;
+                  const media = output.asset;
+                  const staged = await pluginAssetStaging.resolve({
+                    projectId: frozen.projectId,
+                    projectAssetId: media.assetId,
+                  });
                   if (staged && staged.kind !== frozen.kind) {
                     throw new Error(
                       `Durable Provider staged ${staged.kind} output for a ${frozen.kind} run.`,
                     );
                   }
-                  if (
-                    !staged &&
-                    (typeof media.url !== "string" || !media.url)
-                  ) {
+                  if (!staged) {
                     throw new Error(
-                      "Durable Provider media output requires a Host staging receipt or readable URL.",
+                      "Durable Provider media output requires a Host staging receipt.",
                     );
                   }
-                  const downloaded = staged
-                    ? undefined
-                    : await downloadProviderMedia(
-                        durable.fetch ?? fetch,
-                        media.url!,
-                        frozen.kind,
-                      );
-                  const contentType =
-                    staged?.projection.resource.contentType ??
-                    media.contentType ??
-                    downloaded?.contentType ??
-                    (frozen.kind === "video"
-                      ? "video/mp4"
-                      : frozen.kind === "audio"
-                        ? "audio/mpeg"
-                        : frozen.kind === "model"
-                          ? "model/gltf-binary"
-                          : "image/png");
-                  const assetId =
-                    staged?.projectAssetId ??
-                    `local-asset-${sanitizeStorageSegment(idempotencyKey)}`;
-                  const projection = staged
-                    ? await projectAssets.resolveStagedOwned(staged.resourceId)
-                    : await projectAssets.stageOwned({
-                        kind: frozen.kind,
-                        bytes: downloaded!.bytes,
-                        contentType,
-                        name: `${assetId}${extensionForContentType(contentType)}`,
-                      });
+                  const assetId = staged.projectAssetId;
+                  const projection = await projectAssets.resolveStagedOwned(
+                    staged.resourceId,
+                  );
                   const projectAsset = ownedProjectAssetEntry({
                     projectAssetId: assetId,
                     projectId: frozen.projectId,
                     taskId: idempotencyKey,
                     actionRunId: run.actionRunId,
                     kind: frozen.kind,
-                    ...(rawTarget?.data
+                    ...(rawTarget?.data && frozen.targetKind !== "action"
                       ? {
                           nodeData: rawTarget.data as Record<string, unknown>,
                         }
+                      : {}),
+                    ...(frozen.targetKind === "action" &&
+                    typeof frozen.input.values.prompt === "string"
+                      ? { prompt: frozen.input.values.prompt }
                       : {}),
                     ...(frozen.delivery?.name
                       ? { name: frozen.delivery.name }
@@ -1083,26 +1077,9 @@ export function createLocalWorkflowProcessor(
                       ? { prompt: frozen.delivery.prompt }
                       : {}),
                     projection,
-                    ...(media.width === undefined
-                      ? {}
-                      : { width: media.width }),
-                    ...(media.height === undefined
-                      ? {}
-                      : { height: media.height }),
-                    ...(media.durationMs === undefined
-                      ? {}
-                      : { durationMs: media.durationMs }),
-                    ...(media.waveform ? { waveform: media.waveform } : {}),
-                    ...(media.transcript
-                      ? { transcript: media.transcript }
-                      : {}),
-                    ...(media.requestId ? { requestId: media.requestId } : {}),
                     ...(frozen.provider ? { provider: frozen.provider } : {}),
                     ...(frozen.modelEndpoint
                       ? { modelEndpoint: frozen.modelEndpoint }
-                      : {}),
-                    ...(downloaded?.remoteUrl
-                      ? { remoteUrl: downloaded.remoteUrl }
                       : {}),
                   });
                   return {
@@ -1121,8 +1098,7 @@ export function createLocalWorkflowProcessor(
                   }
                   const target = frozen.nodeId
                     ? (nodes.get(frozen.nodeId) as
-                        | Record<string, any>
-                        | undefined)
+                        Record<string, any> | undefined)
                     : undefined;
                   if (
                     frozen.nodeId &&
@@ -1152,19 +1128,19 @@ export function createLocalWorkflowProcessor(
                         `Durable Provider staged Project Asset is invalid: ${parsed.error.issues[0]?.message ?? "invalid entry"}`,
                       );
                     }
-                    const publication =
-                      publishLocalProjectAssetWithBindings(doc, parsed.data, [
+                    const publication = publishLocalProjectAssetWithBindings(
+                      doc,
+                      parsed.data,
+                      [
                         {
                           id: `action-asset:${run.actionRunId}:${run.outputSlot}:output`,
-                          owner: durableActionOwner(
-                            frozen,
-                            run.actionRunId,
-                          ),
+                          owner: durableActionOwner(frozen, run.actionRunId),
                           direction: "output",
                           slot: run.outputSlot,
                           projectAssetId: parsed.data.id,
                         },
-                      ]);
+                      ],
+                    );
                     publishedAsset = publication.entry;
                     changed = publication.changed || changed;
                   }
@@ -1247,7 +1223,7 @@ export function createLocalWorkflowProcessor(
                 baseDelayMs: 1_000,
                 maxDelayMs: 60_000,
               }),
-              ...(durable.now ? { clock: { now: durable.now } } : {}),
+              ...(durable?.now ? { clock: { now: durable.now } } : {}),
             })
           : undefined;
 
@@ -1291,17 +1267,15 @@ export function createLocalWorkflowProcessor(
         for (const reference of frozen.input.references) {
           if (!("asset" in reference)) continue;
           const ensured = ensureActionAssetBinding(doc, {
-              id: `action-asset:${identity.actionRunId}:${reference.slot}:${reference.index}:input`,
-              owner,
-              direction: "input",
-              slot: `${reference.slot}:${reference.index}`,
-              projectAssetId: reference.asset.assetId,
-              role: "reference",
-            });
+            id: `action-asset:${identity.actionRunId}:${reference.slot}:${reference.index}:input`,
+            owner,
+            direction: "input",
+            slot: `${reference.slot}:${reference.index}`,
+            projectAssetId: reference.asset.assetId,
+            role: "reference",
+          });
           if (!ensured.ok) {
-            throw new Error(
-              `${ensured.error.code}: ${ensured.error.message}`,
-            );
+            throw new Error(`${ensured.error.code}: ${ensured.error.message}`);
           }
           bindingsChanged = ensured.changed || bindingsChanged;
         }
@@ -1333,7 +1307,12 @@ export function createLocalWorkflowProcessor(
           const parsedBinding = ExecutablePluginBindingSchema.safeParse(
             data.pluginBinding,
           );
-          if (parsedBinding.success && options.executablePluginAction) {
+          if (
+            parsedBinding.success &&
+            options.executablePluginAction &&
+            coordinator &&
+            durableJournal
+          ) {
             try {
               const references = [
                 ...stringList(data.referenceImageAssetIds).map(
@@ -1385,181 +1364,70 @@ export function createLocalWorkflowProcessor(
                 !Array.isArray(data.customActionParams)
                   ? (data.customActionParams as Record<string, any>)
                   : {};
-              const taskId = `local-custom-${sanitizeStorageSegment(nodeId)}`;
-              const result = await options.executablePluginAction({
-                binding: parsedBinding.data,
-                taskId,
-                projectId,
-                nodeId,
-                input: {
-                  values: { prompt, ...params },
-                  references,
-                },
-                actor:
-                  data.actorType === "agent"
-                    ? {
-                        kind: "agent",
-                        ...(typeof data.actorAgentId === "string"
-                          ? { id: data.actorAgentId }
-                          : {}),
-                      }
-                    : {
-                        kind: "user",
-                        ...(typeof data.actorUserId === "string"
-                          ? { id: data.actorUserId }
-                          : {}),
-                      },
-              });
-              if (result.status === "failed") {
-                throw new Error(
-                  `Plugin action failed (${result.error.code}): ${result.error.message}`,
-                );
-              }
-              if (result.status === "accepted") {
-                // This path has no poll loop yet, so accepting work here would strand it: the node
-                // would report success while nothing ever collects the result. Refusing is the
-                // honest answer until the loop below owns every kind of task.
-                throw new Error(
-                  "Plugin action returned accepted, which this path cannot resume yet.",
-                );
-              }
-              const assetOutput = result.outputs.find(
-                (output) => output.kind === "asset",
-              );
-              const valueOutput = result.outputs.find(
-                (output) => output.kind === "value",
-              );
-              const nextData: Record<string, unknown> = {
-                ...data,
-                status: "completed",
-              };
-              if (assetOutput?.kind === "asset") {
-                if (
-                  custom.outputType !== "image" &&
-                  custom.outputType !== "video" &&
-                  custom.outputType !== "audio"
-                ) {
-                  throw new Error(
-                    `Plugin action ${custom.actionId} returned media for a ${custom.outputType} output.`,
-                  );
-                }
-                if (assetOutput.asset.kind !== custom.outputType) {
-                  throw new Error(
-                    `Plugin action ${custom.actionId} returned ${assetOutput.asset.kind} for a ${custom.outputType} output.`,
-                  );
-                }
-                const staged = await pluginAssetStaging.resolve({
-                  projectId,
-                  projectAssetId: assetOutput.asset.assetId,
-                });
-                if (!staged && !assetOutput.asset.url) {
-                  throw new Error(
-                    `Plugin action ${custom.actionId} returned an Asset without a Host staging receipt or readable URL.`,
-                  );
-                }
-                const downloaded = staged
-                  ? undefined
-                  : await downloadProviderMedia(
-                      options.durableProviderRuns?.fetch ?? fetch,
-                      assetOutput.asset.url!,
-                      custom.outputType,
-                    );
-                const contentType =
-                  staged?.projection.resource.contentType ??
-                  assetOutput.asset.mediaType ??
-                  downloaded?.contentType ??
-                  (custom.outputType === "video"
-                    ? "video/mp4"
-                    : custom.outputType === "audio"
-                      ? "audio/mpeg"
-                      : "image/png");
-                const projectAssetId =
-                  staged?.projectAssetId ??
-                  `local-asset-${sanitizeStorageSegment(taskId)}`;
-                const projection = staged
-                  ? await projectAssets.resolveStagedOwned(staged.resourceId)
-                  : await projectAssets.stageOwned({
-                      kind: custom.outputType,
-                      bytes: downloaded!.bytes,
-                      contentType,
-                      name: `${projectAssetId}${extensionForContentType(contentType)}`,
-                    });
-                const entry = ownedProjectAssetEntry({
-                  projectAssetId,
-                  projectId,
-                  taskId,
-                  kind: custom.outputType,
-                  nodeData: data,
-                  projection,
-                  provider: `plugin:${parsedBinding.data.pluginId}`,
-                });
-                const owner = nodeActionOwner({
-                  projectId,
-                  nodeId,
-                  actionRunId: taskId,
-                  kind: custom.outputType,
-                  nodeData: data,
-                });
-                const publication = publishLocalProjectAssetWithBindings(
-                  doc,
-                  entry,
-                  [
-                    ...references.map((reference) => ({
-                    id: `action-asset:${taskId}:${reference.slot}:${reference.index}:input`,
-                    owner,
-                    direction: "input",
-                    slot: `${reference.slot}:${reference.index}`,
-                    projectAssetId: reference.asset.assetId,
-                    role: "reference",
-                    }) satisfies ActionAssetBinding),
-                    {
-                      id: `action-asset:${taskId}:${assetOutput.slot}:output`,
-                      owner,
-                      direction: "output",
-                      slot: assetOutput.slot,
-                      projectAssetId: entry.id,
-                    },
-                  ],
-                );
-                changed = publication.changed || changed;
-                nextData.assetId = publication.entry.id;
-              } else if (
-                custom.outputType === "text" &&
-                valueOutput?.kind === "value"
+              const taskIdPrefix = `local-custom-${sanitizeStorageSegment(nodeId)}`;
+              const outputSlot =
+                custom.outputType === "text" ? "text" : "media";
+              let runNumber = 1;
+              let taskId = taskIdPrefix;
+              let identity = { actionRunId: taskId, outputSlot };
+              let existingRun = await durableJournal.load(identity);
+              while (
+                existingRun?.phase === "succeeded" ||
+                (existingRun?.phase === "failed" &&
+                  existingRun.projectedAt !== undefined)
               ) {
-                const value = valueOutput.value;
-                const text =
-                  typeof value === "string"
-                    ? value
-                    : value &&
-                        typeof value === "object" &&
-                        !Array.isArray(value) &&
-                        typeof value.text === "string"
-                      ? value.text
-                      : value &&
-                          typeof value === "object" &&
-                          !Array.isArray(value) &&
-                          typeof value.content === "string"
-                        ? value.content
-                        : JSON.stringify(value);
-                await recordGeneratedTextRevision({
-                  dataDir: options.dataDir,
-                  userId,
-                  projectId,
-                  nodeId,
-                  nodeData: data,
-                  content: text,
-                });
-                nextData.content = text;
-              } else {
-                throw new Error(
-                  `Plugin action ${custom.actionId} returned no ${custom.outputType} output.`,
-                );
+                runNumber += 1;
+                taskId = `${taskIdPrefix}:${runNumber}`;
+                identity = { actionRunId: taskId, outputSlot };
+                existingRun = await durableJournal.load(identity);
               }
-              delete nextData.pendingTask;
-              delete nextData.pendingTaskAt;
-              delete nextData.error;
-              nodes.set(nodeId, { ...node, data: nextData });
+              const actor =
+                data.actorType === "agent"
+                  ? {
+                      kind: "agent" as const,
+                      ...(typeof data.actorAgentId === "string"
+                        ? { id: data.actorAgentId }
+                        : {}),
+                    }
+                  : {
+                      kind: "user" as const,
+                      ...(typeof data.actorUserId === "string"
+                        ? { id: data.actorUserId }
+                        : {}),
+                    };
+              if (!existingRun) {
+                const createdAt = durable?.now?.() ?? Date.now();
+                await coordinator.coordinate({
+                  type: "create",
+                  ...identity,
+                  deadlineAt: createdAt + generationDeadlineMs,
+                  executor: {
+                    targetKind: "action",
+                    binding: parsedBinding.data,
+                    actionId: custom.actionId,
+                    actor,
+                    kind: custom.outputType,
+                    projectId,
+                    nodeId,
+                    provider: `plugin:${parsedBinding.data.pluginId}`,
+                    modelEndpoint: custom.actionId,
+                    input: {
+                      values: { prompt, ...params },
+                      references,
+                    },
+                  },
+                });
+              }
+              await ensureDurableInputBindings(identity);
+              nodes.set(nodeId, {
+                ...node,
+                data: durableProviderNodeData(data, { status: "generating" }),
+              });
+              changed = true;
+              // The frozen journal, synchronized input bindings, and coarse run state all survive
+              // before the custom plugin receives its first invocation.
+              await input.checkpoint?.();
+              await driveDurableRun(identity);
             } catch (error) {
               const nextData: Record<string, unknown> = {
                 ...data,
@@ -1707,6 +1575,7 @@ export function createLocalWorkflowProcessor(
           const modelCard = modelCards.find(
             (card) => card.id === normalizedModel,
           );
+          const effectiveModelParams = modelParams(data);
           const isStartEnd = !!modelCard?.input.inputMode.startEnd;
           const referenceImageAssetIds = stringList(
             data.referenceImageAssetIds,
@@ -1725,7 +1594,7 @@ export function createLocalWorkflowProcessor(
                 video: referenceVideoAssetIds.length,
                 audio: referenceAudioAssetIds.length,
               },
-              { prompt },
+              { prompt, modelParams: effectiveModelParams },
             );
             if (referenceError) throw new Error(referenceError);
           }
@@ -1736,21 +1605,20 @@ export function createLocalWorkflowProcessor(
             ids: string[],
             kind: ProcessableKind,
           ): ProjectAssetEntry[] =>
-            ids
-              .map((assetId) => {
-                const asset = projectAssetById.get(assetId);
-                if (!asset || asset.lifecycle.state !== "active") {
-                  throw new Error(
-                    `Reference Project Asset ${assetId} is not available in Project ${projectId}.`,
-                  );
-                }
-                if (asset.kind !== kind) {
-                  throw new Error(
-                    `Reference Project Asset ${assetId} is ${asset.kind}, not ${kind}.`,
-                  );
-                }
-                return asset;
-              });
+            ids.map((assetId) => {
+              const asset = projectAssetById.get(assetId);
+              if (!asset || asset.lifecycle.state !== "active") {
+                throw new Error(
+                  `Reference Project Asset ${assetId} is not available in Project ${projectId}.`,
+                );
+              }
+              if (asset.kind !== kind) {
+                throw new Error(
+                  `Reference Project Asset ${assetId} is ${asset.kind}, not ${kind}.`,
+                );
+              }
+              return asset;
+            });
           const referenceImageEntries = referenceEntries(
             referenceImageAssetIds,
             "image",
@@ -1793,6 +1661,7 @@ export function createLocalWorkflowProcessor(
             const mediaError = validateReferenceMedia(
               modelCard,
               mediaReferences,
+              { modelParams: effectiveModelParams },
             );
             if (mediaError) throw new Error(mediaError);
           }
@@ -1897,7 +1766,7 @@ export function createLocalWorkflowProcessor(
             ...(requestedDuration !== undefined
               ? { duration: requestedDuration }
               : {}),
-            modelParams: modelParams(data),
+            modelParams: effectiveModelParams,
             // Host-private command handoff. The selected account survives restart in SQLite and
             // is frozen into the durable run before Provider submit; it never enters Loro or the
             // plugin-visible values bag.
@@ -1919,7 +1788,7 @@ export function createLocalWorkflowProcessor(
           if (!usesLocalTextAgent && aigc.planProviderPlugin) {
             const plan = await aigc.planProviderPlugin(commonInput, kind);
             if (plan) {
-              if (!coordinator) {
+              if (!durable || !coordinator) {
                 throw new Error(
                   "Provider-backed generation requires the Host durable run coordinator before submit.",
                 );
@@ -1936,6 +1805,7 @@ export function createLocalWorkflowProcessor(
                 ...(plan.nodeId ? { nodeId: plan.nodeId } : {}),
                 provider: plan.provider,
                 modelEndpoint: plan.modelEndpoint,
+                assetInputs: plan.assetInputs,
                 input: plan.input as FrozenLocalProviderExecutorInput["input"],
               };
               await coordinator.coordinate({
@@ -1966,7 +1836,7 @@ export function createLocalWorkflowProcessor(
                     projectId,
                     prompt,
                     modelId: model,
-                    modelParams: modelParams(data),
+                    modelParams: effectiveModelParams,
                     actorAgentId:
                       typeof data.actorAgentId === "string"
                         ? data.actorAgentId

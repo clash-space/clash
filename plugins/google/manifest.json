@@ -30,6 +30,7 @@
     ]
   },
   "contractTests": [
-    "contract-tests/google-execute.json"
+    "contract-tests/google-execute.json",
+    "contract-tests/google-poll-rejects-state.json"
   ]
 }

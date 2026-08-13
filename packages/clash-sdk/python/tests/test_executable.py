@@ -3,7 +3,13 @@
 import io
 import json
 
-from clash_sdk.executable import serve
+import pytest
+
+from clash_sdk.executable import (
+    HostDependencyError,
+    _resolved_reference_from_host,
+    serve,
+)
 
 
 def _lines(*messages):
@@ -209,6 +215,105 @@ def test_reference_decodes_host_bytes_base64_before_plugin_code_sees_it():
     assert result["status"] == "completed"
 
 
+def test_reference_preserves_an_empty_bytes_representation():
+    out = io.StringIO()
+    invocation = _invoke()
+    reference = {
+        "slot": "reference",
+        "index": 0,
+        "asset": {
+            "assetId": "empty-asset",
+            "uri": "clash-asset://empty-asset",
+            "kind": "image",
+        },
+    }
+    invocation["input"]["references"] = [reference]
+    seen = {}
+
+    async def submit(current, context):
+        seen["resolved"] = await context.reference(current["input"]["references"][0])
+        return []
+
+    serve(
+        {"execute": {"submit": submit}},
+        stdin=_lines(
+            invocation,
+            {
+                "protocol": "clash.plugin.broker-response/v1",
+                "requestId": "py-inv-1-1",
+                "status": "ok",
+                "result": {"form": "bytes", "bytesBase64": "", "kind": "image"},
+            },
+        ),
+        stdout=out,
+    )
+    _request, result = _parse(out)
+    assert seen["resolved"] == {"form": "bytes", "bytes": b"", "kind": "image"}
+    assert result["status"] == "completed"
+
+
+def test_reference_rejects_the_retired_url_reach_dialect():
+    out = io.StringIO()
+    invocation = _invoke()
+    reference = {
+        "slot": "reference",
+        "index": 0,
+        "asset": {
+            "assetId": "asset-1",
+            "uri": "clash-asset://asset-1",
+            "kind": "image",
+        },
+    }
+    invocation["input"]["references"] = [reference]
+
+    async def submit(current, context):
+        await context.reference(current["input"]["references"][0])
+        return []
+
+    serve(
+        {"execute": {"submit": submit}},
+        stdin=_lines(
+            invocation,
+            {
+                "protocol": "clash.plugin.broker-response/v1",
+                "requestId": "py-inv-1-1",
+                "status": "ok",
+                "result": {
+                    "form": "provider-url",
+                    "providerUrl": "https://objects.example.test/reference.png?sig=1",
+                    "expiresAt": "2026-08-13T12:00:00.000Z",
+                    "url": "https://objects.example.test/legacy.png",
+                    "reach": "public",
+                },
+            },
+        ),
+        stdout=out,
+    )
+    _request, result = _parse(out)
+    assert result["status"] == "failed"
+    assert result["error"]["code"] == "invalid_asset"
+
+
+@pytest.mark.parametrize(
+    ("provider_url", "expires_at"),
+    [
+        ("not-an-absolute-url", "2026-08-13T12:00:00.000Z"),
+        ("https://", "2026-08-13T12:00:00.000Z"),
+        ("https://objects.example.test/reference.png", "2026-02-31T12:00:00Z"),
+    ],
+)
+def test_reference_rejects_an_invalid_provider_url_or_expiry(
+    provider_url,
+    expires_at,
+):
+    with pytest.raises(HostDependencyError):
+        _resolved_reference_from_host({
+            "form": "provider-url",
+            "providerUrl": provider_url,
+            "expiresAt": expires_at,
+        })
+
+
 def test_reference_resolves_text_through_the_host_instead_of_short_circuiting():
     out = io.StringIO()
     invocation = _invoke()
@@ -329,3 +434,29 @@ def test_typed_asset_and_host_tool_methods_hide_raw_operations():
     assert [entry["asset"]["assetId"] for entry in result["outputs"]] == [
         "generated", "copied",
     ]
+
+
+def test_asset_helper_rejects_a_host_projection_instead_of_exposing_it():
+    out = io.StringIO()
+
+    async def submit(_invocation, context):
+        return [await context.asset({
+            "slot": "media", "kind": "image", "dataBase64": "AAAA",
+        })]
+
+    serve(
+        {"execute": {"submit": submit}},
+        stdin=_lines(
+            _invoke(),
+            {"protocol": "clash.plugin.broker-response/v1",
+             "requestId": "py-inv-1-1", "status": "ok",
+             "result": {"assetId": "legacy", "uri": "clash-asset://legacy",
+                        "kind": "image", "url": "https://assets.example/legacy.png",
+                        "reach": "public"}},
+        ),
+        stdout=out,
+    )
+    _request, result = _parse(out)
+    assert result["status"] == "failed"
+    assert result["error"]["code"] == "invalid_asset"
+    assert "Asset handle" in result["error"]["message"]

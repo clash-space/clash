@@ -1558,10 +1558,9 @@ export async function pollHubModel(
 /**
  * The finished shape, shared by the call that never needed to wait and the poll that did.
  *
- * Named files rather than a hand-built output. The plugin used to construct the whole asset --
- * `assetId`, a `clash-asset://` uri it invented, and `reach: "public"` asserted about a URL it had
- * not checked. All three were the host's to decide; what the plugin knows is the address Hub
- * published and what kind of media it is.
+ * Named files rather than a hand-built output. The plugin used to invent the Asset identity and
+ * assert that its upstream URL was publicly accessible. Both are the Host's to decide; what the
+ * plugin knows is the address Hub published and what kind of media it is.
  */
 function completedResult(route: Route, url: string): HubStep {
   return {

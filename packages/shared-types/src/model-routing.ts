@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard, type ModelKind, type ModelParameter, type ProviderCredentialRequirements, type ProviderInputAdaptation, type ReferenceBinding } from "./models.js";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard, type ModelKind, type ModelParameter, type ProviderAssetInput, type ProviderCredentialRequirements, type ProviderInputAdaptation, type ReferenceBinding } from "./models.js";
 import { findCompatibleModels, type Modality } from "./model-capabilities.js";
 import type { ExecutablePluginBinding } from "./executable-plugin.js";
 
@@ -100,6 +100,8 @@ export interface ModelUpstreamRoute {
   referenceBinding?: ReferenceBinding;
   /** Provider-wire input spellings applied only for this selected implementation. */
   inputAdaptation?: ProviderInputAdaptation;
+  /** Asset delivery forms accepted by this exact Provider/model binding. */
+  assetInputs?: ProviderAssetInput[];
   /** Provider-specific replacements for user-configurable candidates/ranges. */
   parameterOverrides?: ModelParameter[];
   /** Provider-specific defaults paired with parameterOverrides. */
@@ -407,6 +409,16 @@ function routesFromModelCard(model: ModelCard): ModelUpstreamRoute[] {
           },
         } : {}),
       },
+    } : {}),
+    ...(implementation.assetInputs?.length ? {
+      assetInputs: implementation.assetInputs.map((input) => ({
+        match: {
+          ...(input.match.kinds ? { kinds: [...input.match.kinds] } : {}),
+          ...(input.match.slots ? { slots: [...input.match.slots] } : {}),
+        },
+        representations: [...input.representations],
+        ...(input.mediaTypes ? { mediaTypes: [...input.mediaTypes] } : {}),
+      })),
     } : {}),
     ...(implementation.parameterOverrides?.length
       ? { parameterOverrides: implementation.parameterOverrides.map((parameter) => ({ ...parameter })) }

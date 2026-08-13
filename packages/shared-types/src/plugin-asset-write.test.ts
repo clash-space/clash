@@ -16,10 +16,10 @@ import {
  *   url     the upstream published it; the host fetches once, and the plugin never touches it
  *   upload  the plugin has bytes too large to pass inline, so it PUTs them where the host said
  *
- * `url` alone is not enough: it requires the host to reach an address the plugin chose. `upload`
- * inverts that -- the host issues the target, so it is reachable by construction, and the plugin
- * needs no idea whether it is running here or in someone else's cloud. That inversion is what
- * makes one code path serve both run modes.
+ * A result URL is an ingestion source, never an Asset projection. The Host fetches it into the
+ * Project's staging store and the plugin receives only the resulting Asset handle. There is no
+ * `reach` assertion for plugin code to make: the protocol accepts HTTPS ingestion sources and
+ * never forwards this URL as the Asset identity.
  *
  * Before this, the only asset shapes were inline base64 and an internal output handle, so a plugin
  * whose upstream returned a CDN link had to smuggle it through a free-form `kind: "value"` output.
@@ -40,23 +40,29 @@ describe('asset write accepts bytes, a URL, or an upload', () => {
       ...base,
       mediaType: 'image/png',
       url: 'https://cdn.example/out.png',
-      reach: 'public',
     });
     expect(parsed).toMatchObject({ kind: 'asset.write' });
   });
 
-  it('refuses a URL whose reach is unstated', () => {
+  it('refuses the retired reach assertion', () => {
     expect(() => ExecutablePluginBrokerOperationSchema.parse({
       ...base,
       url: 'https://cdn.example/out.png',
-    })).toThrow(/reach/i);
+      reach: 'public',
+    })).toThrow();
+  });
+
+  it('refuses a plaintext ingestion source', () => {
+    expect(() => ExecutablePluginBrokerOperationSchema.parse({
+      ...base,
+      url: 'http://cdn.example/out.png',
+    })).toThrow();
   });
 
   it('refuses more than one source', () => {
     expect(() => ExecutablePluginBrokerOperationSchema.parse({
       ...base,
       url: 'https://cdn.example/out.png',
-      reach: 'public',
       dataBase64: 'AAAA',
     })).toThrow(/exactly one/i);
   });

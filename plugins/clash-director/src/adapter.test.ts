@@ -51,12 +51,16 @@ test("Director list receipt is supplied to a direct full-state host save", async
   });
 
   await adapter.get({ cwd: "/workspace", stageId: "stage-1" });
-  await adapter.save({
+  const saved = await adapter.save({
     cwd: "/workspace",
     stageId: "stage-1",
     baseRevisionId: "revision-1",
     state,
   });
+  assert.doesNotMatch(
+    JSON.stringify(saved),
+    /readToken|receipt|ifMatch|observedVersion/i,
+  );
 
   assert.equal(writes[0]?.path, join("/workspace", "director-stages", "stage-1.director-stage.json"));
   assert.deepEqual(calls.map(({ command }) => command), [
@@ -128,7 +132,7 @@ test("typed Director object mutation retains the complete object and uses one ho
 test("Director capture calls the typed host renderer command directly", async () => {
   const { createDirectorAdapter } = await import("./adapter.js");
   const calls: ProjectHostRequest[] = [];
-  const writes: string[] = [];
+  const writes: Array<{ path: string; content: string | Uint8Array }> = [];
   const adapter = createDirectorAdapter({
     client: hostClient(calls, (request) => request.command.action === "list_director_stages"
       ? { stages: [stage], versions: { "stage-1": "director-host-receipt" } }
@@ -138,6 +142,8 @@ test("Director capture calls the typed host renderer command directly", async ()
           sourceStageRevisionId: "revision-1",
           renderer: { id: "clash-director-viewport-webgl", contractVersion: 1 },
           stateSha256: "state-hash",
+          readToken: "capture-internal-receipt",
+          version: "capture-internal-version",
           frames: [{
             label: "opening",
             timeSeconds: 0,
@@ -149,7 +155,7 @@ test("Director capture calls the typed host renderer command directly", async ()
             sha256: "frame-hash",
           }],
         }),
-    writeProjection: async (path) => { writes.push(path); },
+    writeProjection: async (path, content) => { writes.push({ path, content }); },
   });
 
   await adapter.get({ cwd: "/workspace", stageId: "stage-1" });
@@ -171,6 +177,15 @@ test("Director capture calls the typed host renderer command directly", async ()
     ifMatch: "director-host-receipt",
   });
   assert.equal((result as { stageId?: string }).stageId, "stage-1");
-  assert.ok(writes.some((path) => path.endsWith("opening.png")));
-  assert.ok(writes.some((path) => path.endsWith("capture.json")));
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /readToken|receipt.*capture-internal|capture-internal-version/i,
+  );
+  assert.ok(writes.some(({ path }) => path.endsWith("opening.png")));
+  const captureReceipt = writes.find(({ path }) => path.endsWith("capture.json"));
+  assert.ok(captureReceipt);
+  assert.doesNotMatch(
+    String(captureReceipt.content),
+    /readToken|capture-internal-receipt|capture-internal-version/i,
+  );
 });

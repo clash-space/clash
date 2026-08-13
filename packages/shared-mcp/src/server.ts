@@ -48,7 +48,7 @@ type ClashCompositionKind = "timeline" | "director-stage";
 
 export const CLASH_MCP_INSTRUCTIONS = [
   "Clash discloses product operations progressively.",
-  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_ASSETS_TOOL_NAME} for Project Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
+  `Use the root ${CLASH_ROOT_TOOL_NAME} tool for command navigation, ${CLASH_ASSETS_TOOL_NAME} for Project and personal Global Assets, ${CLASH_CANVAS_TOOL_NAME} for Canvas nodes, and ${CLASH_COMPOSITION_TOOL_NAME} for Timeline or Director Stage composition.`,
   "Timeline is temporal composition; Director Stage is spatial composition.",
   "Call a dispatcher without operation for live contracts, then pass its command-local operation and arguments to execute exactly once.",
   "Composition disclosure and short operations require kind=timeline or kind=director-stage; a complete clash_* leaf name remains accepted for compatibility.",
@@ -159,7 +159,7 @@ export class ClashMcpServer extends McpServer {
             "returns command counts and navigation without expanding leaf operations into the advertised tool list",
           returns:
             "the command menu and selected Assets, Canvas, or composition dispatcher",
-          next: "call clash_assets for Project Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only",
+          next: "call clash_assets for Project or personal Global Assets, clash_canvas for Canvas, or clash_composition with kind for Timeline or Director Stage; complete leaf execution remains compatibility-only",
         }),
         inputSchema: {
           command: z
@@ -237,11 +237,11 @@ export class ClashMcpServer extends McpServer {
         title: assetsDefinition.title,
         description: describeClashTool({
           useWhen:
-            "you need to inspect, import, trash, or restore Project Assets",
+            "you need to inspect, import, admit, publish, trash, or restore Project and personal Global Assets",
           effect:
-            "returns live Project Asset contracts when operation is omitted, or validates and executes one Asset leaf exactly once",
+            "returns live Asset contracts when operation is omitted, or validates and executes one Asset leaf exactly once",
           returns:
-            "typed Project Asset operation contracts or the selected leaf operation's exact result",
+            "typed Project or Global Asset operation contracts or the selected leaf operation's exact result",
           next: "choose the smallest matching operation, then call clash_assets with operation and arguments",
         }),
         inputSchema: {

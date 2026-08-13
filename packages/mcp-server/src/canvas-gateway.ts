@@ -1,6 +1,7 @@
 import type { ProjectHostCommand } from "@clash/shared-types";
 import {
   createProjectHostClient,
+  publicProjectHostValue,
   type ProjectHostClient,
   type ProjectHostResponse,
 } from "@clash/shared-runtime/project-host-client";
@@ -120,7 +121,7 @@ export function createCanvasProjectHostGateway(
           observations.set(`${resolved.key}\0node\0${nodeId}`, receipt);
           return value.node && typeof value.node === "object"
             ? { ...value.node as Record<string, unknown>, immutable: value.immutable === true }
-            : value;
+            : publicProjectHostValue(value);
         }
         case "clash_canvas_search": {
           const value = await request(input, {
@@ -131,8 +132,8 @@ export function createCanvasProjectHostGateway(
           });
           return Array.isArray(value.nodes) ? value.nodes : [];
         }
-        case "clash_canvas_add":
-          return request(input, {
+        case "clash_canvas_add": {
+          const value = await request(input, {
             action: "add",
             canvasId,
             type: requiredString(input, "type") as "text",
@@ -146,10 +147,18 @@ export function createCanvasProjectHostGateway(
             ...(input.params ? { params: input.params } : {}),
             actorClientType: "mcp",
           });
+          const resultId =
+            typeof value.nodeId === "string" ? value.nodeId : undefined;
+          const nextReceipt = readToken(value);
+          if (resultId && nextReceipt) {
+            observations.set(`${resolved.key}\0node\0${resultId}`, nextReceipt);
+          }
+          return publicProjectHostValue(value);
+        }
         case "clash_canvas_execute": {
           const nodeId = requiredString(input, "nodeId");
           const receipt = await requireNodeReceipt(input, nodeId);
-          return request(input, {
+          const value = await request(input, {
             action: "execute",
             canvasId,
             nodeId,
@@ -157,6 +166,11 @@ export function createCanvasProjectHostGateway(
             observedVersion: receipt,
             ifMatch: receipt,
           } as ProjectHostCommand);
+          const nextReceipt = readToken(value);
+          if (nextReceipt) {
+            observations.set(`${resolved.key}\0node\0${nodeId}`, nextReceipt);
+          }
+          return publicProjectHostValue(value);
         }
         case "clash_canvas_update": {
           const nodeId = requiredString(input, "nodeId");
@@ -178,7 +192,7 @@ export function createCanvasProjectHostGateway(
           });
           const nextReceipt = readToken(value);
           if (nextReceipt) observations.set(`${resolved.key}\0node\0${nodeId}`, nextReceipt);
-          return value;
+          return publicProjectHostValue(value);
         }
         case "clash_canvas_move": {
           const nodeId = requiredString(input, "nodeId");
@@ -197,7 +211,7 @@ export function createCanvasProjectHostGateway(
           });
           const nextReceipt = readToken(value);
           if (nextReceipt) observations.set(`${resolved.key}\0node\0${nodeId}`, nextReceipt);
-          return value;
+          return publicProjectHostValue(value);
         }
         case "clash_canvas_copy": {
           const nodeId = requiredString(input, "nodeId");
@@ -214,7 +228,7 @@ export function createCanvasProjectHostGateway(
           const resultId = typeof value.newNodeId === "string" ? value.newNodeId : undefined;
           const nextReceipt = readToken(value);
           if (resultId && nextReceipt) observations.set(`${resolved.key}\0node\0${resultId}`, nextReceipt);
-          return value;
+          return publicProjectHostValue(value);
         }
         case "clash_canvas_replace_asset": {
           const nodeId = requiredString(input, "nodeId");
@@ -233,7 +247,7 @@ export function createCanvasProjectHostGateway(
           const resultId = typeof value.newNodeId === "string" ? value.newNodeId : undefined;
           const nextReceipt = readToken(value);
           if (resultId && nextReceipt) observations.set(`${resolved.key}\0node\0${resultId}`, nextReceipt);
-          return value;
+          return publicProjectHostValue(value);
         }
         case "clash_canvas_delete_plan": {
           const ids = nodeIds(input);
@@ -241,7 +255,7 @@ export function createCanvasProjectHostGateway(
           const receipt = readToken(value);
           if (!receipt) throw new Error("Host delete plan did not return a receipt");
           observations.set(`${resolved.key}\0batch\0${ids.join(",")}`, receipt);
-          return value;
+          return publicProjectHostValue(value);
         }
         case "clash_canvas_delete_batch": {
           const ids = nodeIds(input);
@@ -249,7 +263,7 @@ export function createCanvasProjectHostGateway(
           if (!receipt) {
             throw new Error("READ_REQUIRED: Run clash_canvas_delete_plan for this exact node batch first.");
           }
-          return request(input, {
+          const value = await request(input, {
             action: "delete_batch",
             canvasId,
             nodeIds: ids,
@@ -257,11 +271,16 @@ export function createCanvasProjectHostGateway(
             observedVersion: receipt,
             ifMatch: receipt,
           });
+          for (const id of ids) {
+            observations.delete(`${resolved.key}\0node\0${id}`);
+          }
+          observations.delete(`${resolved.key}\0batch\0${ids.join(",")}`);
+          return publicProjectHostValue(value);
         }
         case "clash_canvas_delete": {
           const nodeId = requiredString(input, "nodeId");
           const receipt = await requireNodeReceipt(input, nodeId);
-          return request(input, {
+          const value = await request(input, {
             action: "delete",
             canvasId,
             nodeId,
@@ -269,6 +288,8 @@ export function createCanvasProjectHostGateway(
             observedVersion: receipt,
             ifMatch: receipt,
           });
+          observations.delete(`${resolved.key}\0node\0${nodeId}`);
+          return publicProjectHostValue(value);
         }
       }
     },

@@ -1,5 +1,27 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import {
+  normalizeSource,
+  sourceContains,
+} from "@clash/gui/test-support/source-match";
+
+expect.extend({
+  toContainSource(received: unknown, expected: string) {
+    const pass =
+      typeof received === "string" && sourceContains(received, expected);
+    return {
+      pass,
+      message: () =>
+        `expected source ${pass ? "not " : ""}to contain normalized snippet:\n${expected}`,
+    };
+  },
+});
+
+declare module "vitest" {
+  interface Assertion<T = any> {
+    toContainSource(expected: string): T;
+  }
+}
 
 describe("Editor embedded layout", () => {
   it("protects Preview width by sharing horizontal compression with both side panels", () => {
@@ -8,16 +30,24 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("'--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : 'min(12rem,25%)'");
-    expect(source).toContain("'--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`");
-    expect(source).toContain("'--clash-timeline-preview-min-width': 'min(21rem,42%)'");
-    expect(source).toContain(
+    expect(source).toContainSource(
+      "'--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : 'min(12rem,25%)'",
+    );
+    expect(source).toContainSource(
+      "'--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`",
+    );
+    expect(source).toContainSource(
+      "'--clash-timeline-preview-min-width': 'min(21rem,42%)'",
+    );
+    expect(source).toContainSource(
       "'--clash-timeline-inspector-min-width': inspectorCollapsed ? '0px' : 'min(13rem,28%)'",
     );
-    expect(source).toContain(
-      '[grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))]',
+    expect(source).toContainSource(
+      "[grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))]",
     );
-    expect(source).not.toContain('data-[side-panel-collapsed=true]:[grid-template-columns:');
+    expect(source).not.toContainSource(
+      "data-[side-panel-collapsed=true]:[grid-template-columns:",
+    );
   });
 
   it("promotes the Timeline Library into a Jianying-style top-level tool rail", () => {
@@ -26,28 +56,36 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain('data-editor-primary-nav=""');
-    expect(source).toContain('aria-label="Timeline editing tools"');
-    expect(source).toContain('data-editor-primary-tool={tool.id}');
-    expect(source).toContain('TIMELINE_PRIMARY_TOOLS.map((tool)');
-    expect(source).toContain("id: 'sound-effects', label: 'Audio'");
-    expect(source).toContain("id: 'text', label: 'Text'");
-    expect(source).toContain("id: 'stickers', label: 'Graphics'");
-    expect(source).toContain("id: 'fx', label: 'Effects'");
-    expect(source).toContain("id: 'captions', label: 'Captions'");
-    expect(source).not.toContain("id: 'transcript', label: 'Transcript'");
-    expect(source).toContain("captions: 'captions'");
-    expect(source).toContain('data-editor-region="captions"');
-    expect(source).toContain('<CaptionWorkspace');
-    expect(source).not.toContain('<TextWorkspaceTabs');
-    expect(source).toContain("id: 'filters', label: 'Color'");
-    expect(source).not.toContain("id: 'transitions', label: 'Transitions'");
-    expect(source).not.toContain("id: 'templates', label: 'Templates'");
-    expect(source).not.toContain("id: 'adjustments', label: 'Adjust'");
-    expect(source).not.toContain("id: 'motion-graphics', label: 'Motion'");
-    expect(source).toContain('selectedCategory={libraryCategory}');
-    expect(source).toContain('onSelectedCategoryChange={setLibraryCategory}');
-    expect(source).not.toContain("(['media', 'library', 'transcript'] as const)");
+    expect(source).toContainSource('data-editor-primary-nav=""');
+    expect(source).toContainSource('aria-label="Timeline editing tools"');
+    expect(source).toContainSource("data-editor-primary-tool={tool.id}");
+    expect(source).toContainSource("TIMELINE_PRIMARY_TOOLS.map((tool)");
+    expect(source).toContainSource("id: 'sound-effects', label: 'Audio'");
+    expect(source).toContainSource("id: 'text', label: 'Text'");
+    expect(source).toContainSource("id: 'stickers', label: 'Graphics'");
+    expect(source).toContainSource("id: 'fx', label: 'Effects'");
+    expect(source).toContainSource("id: 'captions', label: 'Captions'");
+    expect(source).not.toContainSource("id: 'transcript', label: 'Transcript'");
+    expect(source).toContainSource("captions: 'captions'");
+    expect(source).toContainSource('data-editor-region="captions"');
+    expect(source).toContainSource("<CaptionWorkspace");
+    expect(source).not.toContainSource("<TextWorkspaceTabs");
+    expect(source).toContainSource("id: 'filters', label: 'Color'");
+    expect(source).not.toContainSource(
+      "id: 'transitions', label: 'Transitions'",
+    );
+    expect(source).not.toContainSource("id: 'templates', label: 'Templates'");
+    expect(source).not.toContainSource("id: 'adjustments', label: 'Adjust'");
+    expect(source).not.toContainSource(
+      "id: 'motion-graphics', label: 'Motion'",
+    );
+    expect(source).toContainSource("selectedCategory={libraryCategory}");
+    expect(source).toContainSource(
+      "onSelectedCategoryChange={setLibraryCategory}",
+    );
+    expect(source).not.toContainSource(
+      "(['media', 'library', 'transcript'] as const)",
+    );
   });
 
   it("keeps the promoted tools icon-only at their natural width across the page", () => {
@@ -56,24 +94,40 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain('<Tooltip key={tool.id} label={tool.label}>');
-    expect(source).toContain('aria-label={tool.label}');
-    expect(source).not.toContain('whitespace-nowrap text-[length:var(--clash-editor-text-caption)]');
-    expect(source).toContain('data-editor-primary-toolbar=""');
-    expect(source).toContain('data-editor-command-bar-content=""');
-    expect(source).toContain('className="clash-project-chrome-header-content flex min-w-0 flex-1 items-center gap-1"');
-    expect(source).toContain('[grid-column:1/4] [grid-row:1]');
-    expect(source).not.toContain('[mask-image:linear-gradient(to_right');
-    expect(source).not.toContain('data-editor-primary-nav=""\n                    aria-label="Timeline editing tools"\n                    role="tablist"\n                    aria-orientation="horizontal"\n                    className="flex min-w-0 flex-1 items-center gap-0 overflow-x-auto');
-    expect(source).toContain('className="flex flex-none items-center gap-0.5"');
-    expect(source).toContain('className={`clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center');
-    expect(source).toContain('clash-workbench-control-button');
-    expect(source).not.toContain('justify-center rounded-matrix transition-colors');
-    expect(source).toContain("const [sidePanelWidth, setSidePanelWidth]");
-    expect(source).toContain("'--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`");
-    expect(source).toContain('data-editor-resize-handle="side-panel"');
-    expect(source).toContain('aria-label="Resize editor panel"');
-    expect(source).toContain(
+    expect(source).toContainSource(
+      "<Tooltip key={tool.id} label={tool.label}>",
+    );
+    expect(source).toContainSource("aria-label={tool.label}");
+    expect(source).not.toContainSource(
+      "whitespace-nowrap text-[length:var(--clash-editor-text-caption)]",
+    );
+    expect(source).toContainSource('data-editor-primary-toolbar=""');
+    expect(source).toContainSource('data-editor-command-bar-content=""');
+    expect(source).toContainSource(
+      'className="clash-project-chrome-header-content flex min-w-0 flex-1 items-center gap-1"',
+    );
+    expect(source).toContainSource("[grid-column:1/4] [grid-row:1]");
+    expect(source).not.toContainSource("[mask-image:linear-gradient(to_right");
+    expect(source).not.toContainSource(
+      'data-editor-primary-nav=""\n                    aria-label="Timeline editing tools"\n                    role="tablist"\n                    aria-orientation="horizontal"\n                    className="flex min-w-0 flex-1 items-center gap-0 overflow-x-auto',
+    );
+    expect(source).toContainSource(
+      'className="flex flex-none items-center gap-0.5"',
+    );
+    expect(source).toContainSource(
+      "className={`clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center",
+    );
+    expect(source).toContainSource("clash-workbench-control-button");
+    expect(source).not.toContainSource(
+      "justify-center rounded-matrix transition-colors",
+    );
+    expect(source).toContainSource("const [sidePanelWidth, setSidePanelWidth]");
+    expect(source).toContainSource(
+      "'--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`",
+    );
+    expect(source).toContainSource('data-editor-resize-handle="side-panel"');
+    expect(source).toContainSource('aria-label="Resize editor panel"');
+    expect(source).toContainSource(
       'className="flex h-[var(--clash-project-sidebar-header-height,2.5rem)] min-h-0 min-w-0 items-center gap-1 overflow-hidden bg-warm-page [grid-column:1/4] [grid-row:1]"',
     );
   });
@@ -85,10 +139,10 @@ describe("Editor embedded layout", () => {
     ].map((url) => readFileSync(url, "utf8"));
 
     for (const source of sources) {
-      expect(source).not.toContain("hover:bg-black/[0.035]");
-      expect(source).toContain("text-content-muted");
-      expect(source).toContain("hover:bg-warm-hover");
-      expect(source).toContain("hover:text-content-primary");
+      expect(source).not.toContainSource("hover:bg-black/[0.035]");
+      expect(source).toContainSource("text-content-muted");
+      expect(source).toContainSource("hover:bg-warm-hover");
+      expect(source).toContainSource("hover:text-content-primary");
     }
   });
 
@@ -98,13 +152,19 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("const [timelineHeight, setTimelineHeight]");
-    expect(source).toContain("'--clash-timeline-height': `${timelineHeight}px`");
-    expect(source).toContain('data-editor-resize-handle="timeline"');
-    expect(source).toContain('aria-label="Resize Timeline height"');
-    expect(source).toContain('[grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)]');
-    expect(source).toContain('[grid-column:1/4]');
-    expect(source).toContain("bg-warm-page [grid-row:2] ${transcriptWorkspaceActive ? '[grid-column:1/4]' : '[grid-column:1]'} ${panelCollapseTransitionClass}");
+    expect(source).toContainSource("const [timelineHeight, setTimelineHeight]");
+    expect(source).toContainSource(
+      "'--clash-timeline-height': `${timelineHeight}px`",
+    );
+    expect(source).toContainSource('data-editor-resize-handle="timeline"');
+    expect(source).toContainSource('aria-label="Resize Timeline height"');
+    expect(source).toContainSource(
+      "[grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)]",
+    );
+    expect(source).toContainSource("[grid-column:1/4]");
+    expect(source).toContainSource(
+      "bg-warm-page [grid-row:2] ${transcriptWorkspaceActive ? '[grid-column:1/4]' : '[grid-column:1]'} ${panelCollapseTransitionClass}",
+    );
   });
 
   it("promotes Timeline text editing across the upper workspace while preserving the full-width Timeline", () => {
@@ -113,15 +173,27 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("const [transcriptWorkspaceExpanded, setTranscriptWorkspaceExpanded]");
-    expect(source).toContain("const transcriptWorkspaceActive = transcriptWorkspaceExpanded && !sidePanelCollapsed && embeddedPanel === 'captions'");
-    expect(source).toContain("data-transcript-workspace-expanded={transcriptWorkspaceActive ? 'true' : 'false'}");
-    expect(source).toContain("onTimelineEditModeChange={setTranscriptWorkspaceExpanded}");
-    expect(source).toContain("transcriptWorkspaceActive ? '[grid-column:1/4]' : '[grid-column:1]'");
-    expect(source).toContain("aria-hidden={transcriptWorkspaceActive}");
-    expect(source).toContain("aria-hidden={inspectorCollapsed || transcriptWorkspaceActive}");
-    expect(source).toContain('[grid-column:1/4]');
-    expect(source).toContain('[grid-row:3]');
+    expect(source).toContainSource(
+      "const [transcriptWorkspaceExpanded, setTranscriptWorkspaceExpanded]",
+    );
+    expect(source).toContainSource(
+      "const transcriptWorkspaceActive = transcriptWorkspaceExpanded && !sidePanelCollapsed && embeddedPanel === 'captions'",
+    );
+    expect(source).toContainSource(
+      "data-transcript-workspace-expanded={transcriptWorkspaceActive ? 'true' : 'false'}",
+    );
+    expect(source).toContainSource(
+      "onTimelineEditModeChange={setTranscriptWorkspaceExpanded}",
+    );
+    expect(source).toContainSource(
+      "transcriptWorkspaceActive ? '[grid-column:1/4]' : '[grid-column:1]'",
+    );
+    expect(source).toContainSource("aria-hidden={transcriptWorkspaceActive}");
+    expect(source).toContainSource(
+      "aria-hidden={inspectorCollapsed || transcriptWorkspaceActive}",
+    );
+    expect(source).toContainSource("[grid-column:1/4]");
+    expect(source).toContainSource("[grid-row:3]");
   });
 
   it("uses global up and down arrows to move between Assets, Canvas, and Timeline workspaces", () => {
@@ -130,11 +202,15 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain('data-editor-workspace="assets"');
-    expect(source).toContain('data-editor-workspace="canvas"');
-    expect(source).toContain('data-editor-workspace="timeline"');
-    expect(source).toContain("event.key !== 'ArrowUp' && event.key !== 'ArrowDown'");
-    expect(source).toContain("isEditableEditorShortcutTarget(event.target)");
+    expect(source).toContainSource('data-editor-workspace="assets"');
+    expect(source).toContainSource('data-editor-workspace="canvas"');
+    expect(source).toContainSource('data-editor-workspace="timeline"');
+    expect(source).toContainSource(
+      "event.key !== 'ArrowUp' && event.key !== 'ArrowDown'",
+    );
+    expect(source).toContainSource(
+      "isEditableEditorShortcutTarget(event.target)",
+    );
   });
 
   it("keeps top-level editing tools connected to the left workspace and Inspector", () => {
@@ -143,40 +219,52 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("layout?: 'standalone' | 'embedded'");
-    expect(source).toContain("data-layout={layout}");
-    expect(source).toContain('role="tablist"');
-    expect(source).toContain('aria-label="Timeline editing tools"');
-    expect(source).toContain("headerLeadingAction?: React.ReactNode");
-    expect(source).toContain("{headerLeadingAction}");
-    expect(source).toContain("TIMELINE_PRIMARY_TOOLS.map((tool)");
-    expect(source).toContain('data-editor-region="library"');
-    expect(source).toContain('TimelineLibraryPanel');
-    expect(source).toContain('data-editor-region="inspector"');
-    expect(source).toContain('aria-label="Timeline Properties"');
-    expect(source).toContain('<PropertiesPanel title="Properties" headerAction={collapseInspectorButton} />');
-    expect(source).toContain("compact");
-    expect(source).toContain('data-editor-region="media"');
-    expect(source).toContain('data-editor-region="preview"');
-    expect(source).toContain('data-editor-region="timeline"');
-    expect(source).toContain("clash-timeline-floating-surface");
-    expect(source).toContain('data-editor-grid=""');
-    expect(source).toContain('data-side-panel-collapsed={sidePanelCollapsed ? \'true\' : \'false\'}');
-    expect(source).toContain('[grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)]');
-    expect(source).not.toContain('_clamp(280px,42%,400px)]');
-    expect(source).not.toContain('data-[side-panel-collapsed=true]:[grid-template-columns:');
-    expect(source).toContain('data-editor-region="command-bar"');
-    expect(source).toContain('data-editor-region="timeline"');
-    expect(source).toContain('[grid-column:1/4]');
-    expect(source).toContain('[grid-row:3]');
-    expect(source).toContain('data-editor-region="inspector"');
-    expect(source).toContain('[grid-column:3]');
-    expect(source).toContain('[grid-row:2]');
-    expect(source).not.toContain("style={{ height: 'clamp(280px, 46%, 440px)' }}");
-    expect(source).toContain("onRequestAsset?: () => void");
-    expect(source).toContain("onRequestAsset={onRequestAsset}");
-    expect(source).toContain("projectAssetDropActive?: boolean");
-    expect(source).toContain('data-timeline-project-asset-drop-indicator=""');
+    expect(source).toContainSource("layout?: 'standalone' | 'embedded'");
+    expect(source).toContainSource("data-layout={layout}");
+    expect(source).toContainSource('role="tablist"');
+    expect(source).toContainSource('aria-label="Timeline editing tools"');
+    expect(source).toContainSource("headerLeadingAction?: React.ReactNode");
+    expect(source).toContainSource("{headerLeadingAction}");
+    expect(source).toContainSource("TIMELINE_PRIMARY_TOOLS.map((tool)");
+    expect(source).toContainSource('data-editor-region="library"');
+    expect(source).toContainSource("TimelineLibraryPanel");
+    expect(source).toContainSource('data-editor-region="inspector"');
+    expect(source).toContainSource('aria-label="Timeline Properties"');
+    expect(source).toContainSource(
+      '<PropertiesPanel title="Properties" headerAction={collapseInspectorButton} />',
+    );
+    expect(source).toContainSource("compact");
+    expect(source).toContainSource('data-editor-region="media"');
+    expect(source).toContainSource('data-editor-region="preview"');
+    expect(source).toContainSource('data-editor-region="timeline"');
+    expect(source).toContainSource("clash-timeline-floating-surface");
+    expect(source).toContainSource('data-editor-grid=""');
+    expect(source).toContainSource(
+      "data-side-panel-collapsed={sidePanelCollapsed ? 'true' : 'false'}",
+    );
+    expect(source).toContainSource(
+      "[grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)]",
+    );
+    expect(source).not.toContainSource("_clamp(280px,42%,400px)]");
+    expect(source).not.toContainSource(
+      "data-[side-panel-collapsed=true]:[grid-template-columns:",
+    );
+    expect(source).toContainSource('data-editor-region="command-bar"');
+    expect(source).toContainSource('data-editor-region="timeline"');
+    expect(source).toContainSource("[grid-column:1/4]");
+    expect(source).toContainSource("[grid-row:3]");
+    expect(source).toContainSource('data-editor-region="inspector"');
+    expect(source).toContainSource("[grid-column:3]");
+    expect(source).toContainSource("[grid-row:2]");
+    expect(source).not.toContainSource(
+      "style={{ height: 'clamp(280px, 46%, 440px)' }}",
+    );
+    expect(source).toContainSource("onRequestAsset?: () => void");
+    expect(source).toContainSource("onRequestAsset={onRequestAsset}");
+    expect(source).toContainSource("projectAssetDropActive?: boolean");
+    expect(source).toContainSource(
+      'data-timeline-project-asset-drop-indicator=""',
+    );
   });
 
   it("collapses the left workspace while keeping its boundary controls available", () => {
@@ -185,25 +273,41 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("const [sidePanelCollapsed, setSidePanelCollapsed]");
-    expect(source).toContain('aria-label="Expand editor panel"');
-    expect(source).toContain('aria-label="Collapse editor panel"');
-    expect(source).toContain('data-editor-primary-nav=""');
-    expect(source).toContain("setSidePanelCollapsed(false)");
-    expect(source).toContain('showHeader={false}');
-    expect(source).toContain('const sidePanelRevealButton = (');
-    expect(source).toContain('const collapseSidePanelButton = (');
-    expect(source).toContain('headerTrailingAction={collapseSidePanelButton}');
-    expect(source).toContain('<EditorPanelToggleIcon collapsed={true} />');
-    expect(source).toContain('<EditorPanelToggleIcon collapsed={false} />');
-    expect(source).not.toContain("const collapsedSidePanelWidth = '0px'");
-    expect(source).not.toContain("'--clash-timeline-collapsed-width'");
-    expect(source).not.toContain('data-[side-panel-collapsed=true]:[grid-template-columns:');
-    expect(source).toContain("'--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : 'min(12rem,25%)'");
-    expect(source).toContain("'--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`");
-    expect(source).toContain("group/timeline-editor");
-    expect(source).not.toContain("const previewGridColumnClass = sidePanelCollapsed");
-    expect(source).toContain('bg-warm-page [grid-column:2] [grid-row:2]');
+    expect(source).toContainSource(
+      "const [sidePanelCollapsed, setSidePanelCollapsed]",
+    );
+    expect(source).toContainSource('aria-label="Expand editor panel"');
+    expect(source).toContainSource('aria-label="Collapse editor panel"');
+    expect(source).toContainSource('data-editor-primary-nav=""');
+    expect(source).toContainSource("setSidePanelCollapsed(false)");
+    expect(source).toContainSource("showHeader={false}");
+    expect(source).toContainSource("const sidePanelRevealButton = (");
+    expect(source).toContainSource("const collapseSidePanelButton = (");
+    expect(source).toContainSource(
+      "headerTrailingAction={collapseSidePanelButton}",
+    );
+    expect(source).toContainSource(
+      "<EditorPanelToggleIcon collapsed={true} />",
+    );
+    expect(source).toContainSource(
+      "<EditorPanelToggleIcon collapsed={false} />",
+    );
+    expect(source).not.toContainSource("const collapsedSidePanelWidth = '0px'");
+    expect(source).not.toContainSource("'--clash-timeline-collapsed-width'");
+    expect(source).not.toContainSource(
+      "data-[side-panel-collapsed=true]:[grid-template-columns:",
+    );
+    expect(source).toContainSource(
+      "'--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : 'min(12rem,25%)'",
+    );
+    expect(source).toContainSource(
+      "'--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`",
+    );
+    expect(source).toContainSource("group/timeline-editor");
+    expect(source).not.toContainSource(
+      "const previewGridColumnClass = sidePanelCollapsed",
+    );
+    expect(source).toContainSource("bg-warm-page [grid-column:2] [grid-row:2]");
   });
 
   it("pins the tool rail independently of the resizable side-panel width", () => {
@@ -212,14 +316,14 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain('data-editor-panel-controls=""');
-    expect(source).not.toContain(
+    expect(source).toContainSource('data-editor-panel-controls=""');
+    expect(source).not.toContainSource(
       "minWidth: sidePanelCollapsed ? 'auto' : 'var(--clash-timeline-side-panel-width)'",
     );
-    expect(source).not.toContain(
+    expect(source).not.toContainSource(
       "width: sidePanelCollapsed ? 'auto' : 'var(--clash-timeline-side-panel-width)'",
     );
-    expect(source).toContain(
+    expect(source).toContainSource(
       'className="flex w-max shrink-0 items-center gap-[var(--clash-timeline-control-gap)]"',
     );
   });
@@ -231,7 +335,9 @@ describe("Editor embedded layout", () => {
     );
     const panelControlsIndex = source.indexOf('data-editor-panel-controls=""');
     const primaryNavIndex = source.indexOf('data-editor-primary-nav=""');
-    const inspectorActionsIndex = source.indexOf('data-editor-region="inspector-actions"');
+    const inspectorActionsIndex = source.indexOf(
+      'data-editor-region="inspector-actions"',
+    );
 
     expect(panelControlsIndex).toBeGreaterThan(-1);
     expect(primaryNavIndex).toBeGreaterThan(panelControlsIndex);
@@ -243,11 +349,23 @@ describe("Editor embedded layout", () => {
       new URL("./Editor.tsx", import.meta.url),
       "utf8",
     );
+    const branchStart = source.indexOf("{!sidePanelCollapsed ? (");
+    const revealIndex = source.indexOf("sidePanelRevealButton", branchStart);
+    const branchEnd = source.indexOf(")}", revealIndex);
 
-    expect(source).toMatch(
-      /\{!sidePanelCollapsed \? \(\s+<nav[\s\S]*?data-editor-primary-nav=""/,
+    expect(branchStart).toBeGreaterThan(-1);
+    expect(revealIndex).toBeGreaterThan(branchStart);
+    expect(branchEnd).toBeGreaterThan(branchStart);
+    const collapsedPanelBranch = source.slice(
+      branchStart,
+      branchEnd + ")}".length,
     );
-    expect(source).toMatch(/<\/nav>\s+\) : sidePanelRevealButton\}/);
+    expect(collapsedPanelBranch).toContainSource(
+      '{!sidePanelCollapsed ? (<nav data-editor-primary-nav=""',
+    );
+    expect(collapsedPanelBranch).toContainSource(
+      "</nav>) : (sidePanelRevealButton)}",
+    );
   });
 
   it("keeps the first creative tool in the same slot as the collapsed reveal control", () => {
@@ -256,8 +374,12 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain('className="flex flex-none items-center gap-0.5"');
-    expect(source).not.toContain('className="flex flex-none items-center gap-0.5 px-2"');
+    expect(source).toContainSource(
+      'className="flex flex-none items-center gap-0.5"',
+    );
+    expect(source).not.toContainSource(
+      'className="flex flex-none items-center gap-0.5 px-2"',
+    );
   });
 
   it("uses one mirrored collapse motion contract for the left panel and Inspector", () => {
@@ -266,14 +388,22 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("const panelCollapseTransitionClass = 'transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none';");
+    expect(source).toContainSource(
+      "const panelCollapseTransitionClass = 'transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none';",
+    );
     expect(source.match(/\$\{panelCollapseTransitionClass\}/g)).toHaveLength(2);
-    expect(source).toContain('aria-hidden={sidePanelCollapsed}');
-    expect(source).toContain("'pointer-events-none -translate-x-2 opacity-0'");
-    expect(source).toContain("'pointer-events-none translate-x-2 opacity-0'");
-    expect(source).toContain("'translate-x-0 opacity-100'");
-    expect(source).not.toContain('const previewGridColumnClass = sidePanelCollapsed');
-    expect(source).toContain('bg-warm-page [grid-column:2] [grid-row:2]');
+    expect(source).toContainSource("aria-hidden={sidePanelCollapsed}");
+    expect(source).toContainSource(
+      "'pointer-events-none -translate-x-2 opacity-0'",
+    );
+    expect(source).toContainSource(
+      "'pointer-events-none translate-x-2 opacity-0'",
+    );
+    expect(source).toContainSource("'translate-x-0 opacity-100'");
+    expect(source).not.toContainSource(
+      "const previewGridColumnClass = sidePanelCollapsed",
+    );
+    expect(source).toContainSource("bg-warm-page [grid-column:2] [grid-row:2]");
   });
 
   it("collapses Inspector without leaving its grid column behind", () => {
@@ -282,35 +412,51 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("const [inspectorCollapsed, setInspectorCollapsed]");
-    expect(source).toContain(
+    expect(source).toContainSource(
+      "const [inspectorCollapsed, setInspectorCollapsed]",
+    );
+    expect(source).toContainSource(
       "data-inspector-collapsed={inspectorCollapsed ? 'true' : 'false'}",
     );
-    expect(source).toContain(
+    expect(source).toContainSource(
       "'--clash-timeline-inspector-width': inspectorCollapsed ? '0px' : 'clamp(280px,22%,340px)'",
     );
-    expect(source).toContain("var(--clash-timeline-inspector-width)");
-    expect(source).toContain('aria-label="Expand Properties"');
-    expect(source).toContain('aria-label="Collapse Properties"');
-    expect(source).toContain("setInspectorCollapsed((collapsed) => !collapsed)");
-    expect(source).toContain('const InspectorRevealIcon: React.FC');
-    expect(source).toContain('const inspectorRevealButton = (');
-    expect(source).toContain('const collapseInspectorButton = (');
-    expect(source).toContain('<InspectorRevealIcon />');
-    expect(source).toContain('<InspectorPanelToggleIcon collapsed={false} />');
-    expect(source).toContain('bg-brand/[0.09] text-brand transition-colors hover:bg-brand/[0.14]');
-    expect(source).toContain("aria-hidden={inspectorCollapsed || transcriptWorkspaceActive}");
-    expect(source).toContain('panelCollapseTransitionClass');
-    expect(source).toContain("'pointer-events-none translate-x-2 opacity-0'");
-    expect(source).toContain("'translate-x-0 opacity-100'");
-    expect(source).not.toContain("const previewGridColumnClass = sidePanelCollapsed");
-    expect(source).not.toContain("const previewGridColumnClass = inspectorCollapsed");
-    expect(source).toContain('[grid-column:1/4]');
-    expect(source).toContain('headerAction={collapseInspectorButton}');
-    expect(source.indexOf('{inspectorCollapsed ? inspectorRevealButton : null}')).toBeLessThan(
-      source.indexOf('<OpenInMenu'),
+    expect(source).toContainSource("var(--clash-timeline-inspector-width)");
+    expect(source).toContainSource('aria-label="Expand Properties"');
+    expect(source).toContainSource('aria-label="Collapse Properties"');
+    expect(source).toContainSource(
+      "setInspectorCollapsed((collapsed) => !collapsed)",
     );
-    expect(source).toContain(
+    expect(source).toContainSource("const InspectorRevealIcon: React.FC");
+    expect(source).toContainSource("const inspectorRevealButton = (");
+    expect(source).toContainSource("const collapseInspectorButton = (");
+    expect(source).toContainSource("<InspectorRevealIcon />");
+    expect(source).toContainSource(
+      "<InspectorPanelToggleIcon collapsed={false} />",
+    );
+    expect(source).toContainSource(
+      "bg-brand/[0.09] text-brand transition-colors hover:bg-brand/[0.14]",
+    );
+    expect(source).toContainSource(
+      "aria-hidden={inspectorCollapsed || transcriptWorkspaceActive}",
+    );
+    expect(source).toContainSource("panelCollapseTransitionClass");
+    expect(source).toContainSource(
+      "'pointer-events-none translate-x-2 opacity-0'",
+    );
+    expect(source).toContainSource("'translate-x-0 opacity-100'");
+    expect(source).not.toContainSource(
+      "const previewGridColumnClass = sidePanelCollapsed",
+    );
+    expect(source).not.toContainSource(
+      "const previewGridColumnClass = inspectorCollapsed",
+    );
+    expect(source).toContainSource("[grid-column:1/4]");
+    expect(source).toContainSource("headerAction={collapseInspectorButton}");
+    expect(
+      source.indexOf("{inspectorCollapsed ? inspectorRevealButton : null}"),
+    ).toBeLessThan(source.indexOf("<OpenInMenu"));
+    expect(source).toContainSource(
       'className="ml-auto flex w-max shrink-0 items-center justify-end gap-2"',
     );
   });
@@ -325,14 +471,16 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain('data-editor-primary-nav=""');
-    expect(source).not.toContain('[mask-image:linear-gradient(to_right');
-    expect(source).not.toContain("sideToolbarSurfaceClassName");
-    expect(source).not.toContain("clash-timeline-toolbar-surface");
-    expect(source).not.toContain("rounded-lg p-[3px]");
-    expect(source).toContain("clash-timeline-panel-surface");
-    expect(assetPanelSource).toContain("clash-timeline-panel-surface");
-    expect(source).toContain("'bg-brand/[0.09] text-brand hover:bg-brand/[0.14]'");
+    expect(source).toContainSource('data-editor-primary-nav=""');
+    expect(source).not.toContainSource("[mask-image:linear-gradient(to_right");
+    expect(source).not.toContainSource("sideToolbarSurfaceClassName");
+    expect(source).not.toContainSource("clash-timeline-toolbar-surface");
+    expect(source).not.toContainSource("rounded-lg p-[3px]");
+    expect(source).toContainSource("clash-timeline-panel-surface");
+    expect(assetPanelSource).toContainSource("clash-timeline-panel-surface");
+    expect(source).toContainSource(
+      "'bg-brand/[0.09] text-brand hover:bg-brand/[0.14]'",
+    );
   });
 
   it("uses a continuous pane workspace instead of a rounded-card matrix", () => {
@@ -342,26 +490,43 @@ describe("Editor embedded layout", () => {
     );
     const embeddedLayout = source.slice(
       source.indexOf('data-editor-grid=""'),
-      source.indexOf('<div className="flex h-full gap-3', source.indexOf('data-editor-grid=""')),
+      source.indexOf(
+        '<div className="flex h-full gap-3',
+        source.indexOf('data-editor-grid=""'),
+      ),
     );
 
-    expect(embeddedLayout).toContain("gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page");
-    expect(embeddedLayout).toContain("pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)]");
-    expect(embeddedLayout).not.toContain(
+    expect(embeddedLayout).toContainSource(
+      "gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page",
+    );
+    expect(embeddedLayout).toContainSource(
+      "pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)]",
+    );
+    expect(embeddedLayout).not.toContainSource(
       "pl-[var(--clash-timeline-gutter)] pr-[var(--clash-timeline-gutter)] motion-reduce",
     );
-    expect(embeddedLayout).not.toContain("pt-[var(--clash-timeline-gutter)]");
-    expect(embeddedLayout).toContain("bg-warm-page [grid-row:2] ${transcriptWorkspaceActive ? '[grid-column:1/4]' : '[grid-column:1]'} ${panelCollapseTransitionClass}");
-    expect(embeddedLayout).toContain("[--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)]");
-    expect(embeddedLayout).toContain("[--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)]");
-    expect(embeddedLayout).not.toContain("--clash-timeline-header-inset");
-    expect(embeddedLayout).toContain('data-editor-region="command-bar"');
-    expect(embeddedLayout).toContain('[grid-column:1/4] [grid-row:1]');
-    expect(embeddedLayout).not.toContain("[--clash-project-chrome-gutter:0.5rem]");
-    expect(embeddedLayout).not.toContain("clash-canvas-overlay-panel");
-    expect(embeddedLayout).not.toContain("clash-canvas-toolbar-surface");
-    expect(embeddedLayout).not.toContain("clash-canvas-menu-surface");
-    expect(embeddedLayout).not.toContain("shadow-[0_8px_24px");
+    expect(embeddedLayout).not.toContainSource(
+      "pt-[var(--clash-timeline-gutter)]",
+    );
+    expect(embeddedLayout).toContainSource(
+      "bg-warm-page [grid-row:2] ${transcriptWorkspaceActive ? '[grid-column:1/4]' : '[grid-column:1]'} ${panelCollapseTransitionClass}",
+    );
+    expect(embeddedLayout).toContainSource(
+      "[--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)]",
+    );
+    expect(embeddedLayout).toContainSource(
+      "[--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)]",
+    );
+    expect(embeddedLayout).not.toContainSource("--clash-timeline-header-inset");
+    expect(embeddedLayout).toContainSource('data-editor-region="command-bar"');
+    expect(embeddedLayout).toContainSource("[grid-column:1/4] [grid-row:1]");
+    expect(embeddedLayout).not.toContainSource(
+      "[--clash-project-chrome-gutter:0.5rem]",
+    );
+    expect(embeddedLayout).not.toContainSource("clash-canvas-overlay-panel");
+    expect(embeddedLayout).not.toContainSource("clash-canvas-toolbar-surface");
+    expect(embeddedLayout).not.toContainSource("clash-canvas-menu-surface");
+    expect(embeddedLayout).not.toContainSource("shadow-[0_8px_24px");
   });
 
   it("uses a right gutter only when the external Copilot launcher is collapsed into the header", () => {
@@ -372,19 +537,22 @@ describe("Editor embedded layout", () => {
 
     const embeddedLayout = source.slice(
       source.indexOf('data-editor-grid=""'),
-      source.indexOf('<div className="flex h-full gap-3', source.indexOf('data-editor-grid=""')),
+      source.indexOf(
+        '<div className="flex h-full gap-3',
+        source.indexOf('data-editor-grid=""'),
+      ),
     );
 
-    expect(source).toContain(
+    expect(source).toContainSource(
       "const reserveHeaderEndGutter = headerEndInset > 0;",
     );
-    expect(embeddedLayout).toContain(
+    expect(embeddedLayout).toContainSource(
       "${reserveHeaderEndGutter ? 'pr-[var(--clash-timeline-gutter)]' : ''}",
     );
-    expect(embeddedLayout).not.toContain(
+    expect(embeddedLayout).not.toContainSource(
       "pl-[var(--clash-timeline-gutter)] pr-[var(--clash-timeline-gutter)] motion-reduce",
     );
-    expect(embeddedLayout).not.toContain("overflow-visible");
+    expect(embeddedLayout).not.toContainSource("overflow-visible");
   });
 
   it("contains compact media rows instead of clipping them behind the Preview boundary", () => {
@@ -393,13 +561,13 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain(
+    expect(source).toContainSource(
       "clash-timeline-panel-surface rounded-matrix bg-warm-surface p-2 min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto",
     );
-    expect(source).toContain(
+    expect(source).toContainSource(
       'data-asset-list="" className={`flex min-w-0 flex-col',
     );
-    expect(source).toContain(
+    expect(source).toContainSource(
       "group flex w-full min-w-0 cursor-move items-center overflow-hidden",
     );
   });
@@ -409,20 +577,35 @@ describe("Editor embedded layout", () => {
       new URL("./Editor.tsx", import.meta.url),
       "utf8",
     );
+    const normalizedSource = normalizeSource(source);
 
-    expect(source).toContain("onOpenInNle?: (target: NleTarget) => Promise<void>");
-    expect(source).toContain('data-editor-region="command-bar"');
-    expect(source).toContain('data-editor-region="inspector-actions"');
-    expect(source).toContain('<OpenInMenu');
-    expect(source).toContain('onExport={onExport}');
-    expect(source).not.toContain('onClick={() => void runExport()}');
-    expect(source).toContain('availability={nleAvailability}');
-    expect(source).toContain('onRefreshAvailability={onRefreshNleAvailability}');
-    expect(source.indexOf('{inspectorCollapsed ? inspectorRevealButton : null}')).toBeLessThan(
-      source.indexOf('<OpenInMenu'),
+    expect(source).toContainSource(
+      "onOpenInNle?: (target: NleTarget) => Promise<void>",
     );
-    expect(source.indexOf('data-editor-region="command-bar"')).toBeLessThan(
-      source.indexOf('<PropertiesPanel title="Properties" headerAction={collapseInspectorButton} />'),
+    expect(source).toContainSource('data-editor-region="command-bar"');
+    expect(source).toContainSource('data-editor-region="inspector-actions"');
+    expect(source).toContainSource("<OpenInMenu");
+    expect(source).toContainSource("onExport={onExport}");
+    expect(source).not.toContainSource("onClick={() => void runExport()}");
+    expect(source).toContainSource("availability={nleAvailability}");
+    expect(source).toContainSource(
+      "onRefreshAvailability={onRefreshNleAvailability}",
+    );
+    expect(
+      normalizedSource.indexOf(
+        normalizeSource("{inspectorCollapsed ? inspectorRevealButton : null}"),
+      ),
+    ).toBeLessThan(normalizedSource.indexOf(normalizeSource("<OpenInMenu")));
+    expect(
+      normalizedSource.indexOf(
+        normalizeSource('data-editor-region="command-bar"'),
+      ),
+    ).toBeLessThan(
+      normalizedSource.indexOf(
+        normalizeSource(
+          '<PropertiesPanel title="Properties" headerAction={collapseInspectorButton} />',
+        ),
+      ),
     );
   });
 
@@ -431,14 +614,15 @@ describe("Editor embedded layout", () => {
       new URL("./Editor.tsx", import.meta.url),
       "utf8",
     );
-    const commandBarClass = source.match(
-      /data-editor-region="command-bar"\s+className="([^"]+)"/,
-    )?.[1] ?? "";
+    const commandBarClass =
+      source.match(
+        /data-editor-region="command-bar"\s+className="([^"]+)"/,
+      )?.[1] ?? "";
 
     expect(commandBarClass).toBe(
       "flex h-[var(--clash-project-sidebar-header-height,2.5rem)] min-h-0 min-w-0 items-center gap-1 overflow-hidden bg-warm-page [grid-column:1/4] [grid-row:1]",
     );
-    expect(commandBarClass).not.toContain("px-2");
+    expect(commandBarClass).not.toContainSource("px-2");
   });
 
   it("matches the Copilot shell top inset without moving the editor panels", () => {
@@ -447,8 +631,10 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain('[grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)]');
-    expect(source).not.toContain('pt-[var(--clash-timeline-gutter)]');
+    expect(source).toContainSource(
+      "[grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)]",
+    );
+    expect(source).not.toContainSource("pt-[var(--clash-timeline-gutter)]");
   });
 
   it("rounds the Inspector content without pulling its command bar into the panel", () => {
@@ -457,14 +643,24 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
     const commandBarIndex = source.indexOf('data-editor-region="command-bar"');
-    const inspectorPanelIndex = source.indexOf('data-editor-inspector-panel=""');
+    const inspectorPanelIndex = source.indexOf(
+      'data-editor-inspector-panel=""',
+    );
 
     expect(inspectorPanelIndex).toBeGreaterThan(commandBarIndex);
-    expect(source).toContain('data-editor-inspector-panel=""');
-    expect(source).toContain('clash-timeline-panel-surface min-h-0 flex-1 overflow-hidden bg-warm-surface');
-    expect(source).toContain('clash-timeline-preview-surface clash-timeline-panel-surface h-full w-full overflow-hidden bg-warm-surface');
-    expect(source).toContain('clash-timeline-floating-surface clash-timeline-panel-surface relative flex min-h-0 min-w-0 overflow-hidden bg-warm-surface');
-    expect(source).not.toContain('data-editor-inspector-panel=""\n                className="m-2 min-h-0 flex-1 overflow-hidden rounded-xl border');
+    expect(source).toContainSource('data-editor-inspector-panel=""');
+    expect(source).toContainSource(
+      "clash-timeline-panel-surface min-h-0 flex-1 overflow-hidden bg-warm-surface",
+    );
+    expect(source).toContainSource(
+      "clash-timeline-preview-surface clash-timeline-panel-surface h-full w-full overflow-hidden bg-warm-surface",
+    );
+    expect(source).toContainSource(
+      "clash-timeline-floating-surface clash-timeline-panel-surface relative flex min-h-0 min-w-0 overflow-hidden bg-warm-surface",
+    );
+    expect(source).not.toContainSource(
+      'data-editor-inspector-panel=""\n                className="m-2 min-h-0 flex-1 overflow-hidden rounded-xl border',
+    );
   });
 
   it("keeps Text and Captions separate while transcript powers the caption workflow", () => {
@@ -477,27 +673,47 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).not.toContain("panel: 'transcript'");
-    expect(source).not.toContain("TranscriptEditor");
-    expect(captionWorkspaceSource).toContain('deriveTimelineTranscriptWords');
-    expect(captionWorkspaceSource).toContain("type CaptionWorkspaceView = 'recognize' | 'edit' | 'import' | 'styles'");
-    expect(source).toContain('[grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))]');
-    expect(source).toContain('data-editor-primary-nav=""');
-    expect(source).toContain('aria-orientation="horizontal"');
-    expect(source).toContain("{ id: 'media', label: 'Media', panel: 'media' }");
-    expect(source).not.toContain("{ id: 'transcript', label: 'Transcript', panel: 'transcript' }");
-    expect(source).toContain("{ id: 'captions', label: 'Captions', panel: 'captions' }");
-    expect(source).toContain("type EmbeddedPanel = 'media' | 'library' | 'captions'");
-    expect(source).toContain('data-editor-region="captions"');
-    expect(captionWorkspaceSource).toContain('data-editor-caption-workspace=""');
-    expect(source).toContain('onTranscribeAsset={onTranscribeAsset}');
-    expect(source).not.toContain('const isTextWorkspace =');
-    expect(source).not.toContain('active={textWorkspaceView}');
-    expect(source).not.toContain("width: embeddedPanel");
-    expect(source).not.toContain("grid-cols-3 rounded-md bg-slate-100");
-    expect(captionWorkspaceSource).toContain('aria-label="Import subtitle file"');
-    expect(captionWorkspaceSource).toContain('aria-label={`Caption sentence ${index + 1} text`}');
-    expect(source).not.toContain("Apply transcript edits");
+    expect(source).not.toContainSource("panel: 'transcript'");
+    expect(source).not.toContainSource("TranscriptEditor");
+    expect(captionWorkspaceSource).toContainSource(
+      "deriveTimelineTranscriptWords",
+    );
+    expect(captionWorkspaceSource).toContainSource(
+      "type CaptionWorkspaceView = 'recognize' | 'edit' | 'import' | 'styles'",
+    );
+    expect(source).toContainSource(
+      "[grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))]",
+    );
+    expect(source).toContainSource('data-editor-primary-nav=""');
+    expect(source).toContainSource('aria-orientation="horizontal"');
+    expect(source).toContainSource(
+      "{ id: 'media', label: 'Media', panel: 'media' }",
+    );
+    expect(source).not.toContainSource(
+      "{ id: 'transcript', label: 'Transcript', panel: 'transcript' }",
+    );
+    expect(source).toContainSource(
+      "{ id: 'captions', label: 'Captions', panel: 'captions' }",
+    );
+    expect(source).toContainSource(
+      "type EmbeddedPanel = 'media' | 'library' | 'captions'",
+    );
+    expect(source).toContainSource('data-editor-region="captions"');
+    expect(captionWorkspaceSource).toContainSource(
+      'data-editor-caption-workspace=""',
+    );
+    expect(source).toContainSource("onTranscribeAsset={onTranscribeAsset}");
+    expect(source).not.toContainSource("const isTextWorkspace =");
+    expect(source).not.toContainSource("active={textWorkspaceView}");
+    expect(source).not.toContainSource("width: embeddedPanel");
+    expect(source).not.toContainSource("grid-cols-3 rounded-md bg-slate-100");
+    expect(captionWorkspaceSource).toContainSource(
+      'aria-label="Import subtitle file"',
+    );
+    expect(captionWorkspaceSource).toContainSource(
+      "aria-label={`Caption sentence ${index + 1} text`}",
+    );
+    expect(source).not.toContainSource("Apply transcript edits");
   });
 
   it("delegates scoped media selection to the host workspace", () => {
@@ -505,9 +721,9 @@ describe("Editor embedded layout", () => {
       new URL("./AssetPanel.tsx", import.meta.url),
       "utf8",
     );
-    expect(source).toContain("onRequestAsset?: () => void");
-    expect(source).toContain("onClick={onRequestAsset}");
-    expect(source).toContain("Add media");
+    expect(source).toContainSource("onRequestAsset?: () => void");
+    expect(source).toContainSource("onClick={onRequestAsset}");
+    expect(source).toContainSource("Add media");
   });
 
   it("uses a concise, locale-consistent empty Timeline state", () => {
@@ -516,12 +732,12 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("Drop media to start editing");
-    expect(source).toContain(
+    expect(source).toContainSource("Drop media to start editing");
+    expect(source).toContainSource(
       "Drag from Media, or add text and color from Quick add.",
     );
-    expect(source).not.toContain("轨道标签");
-    expect(source).not.toContain("开始你的创作");
+    expect(source).not.toContainSource("轨道标签");
+    expect(source).not.toContainSource("开始你的创作");
   });
 
   it("remeasures the Timeline viewport when its parent surface is squeezed", () => {
@@ -530,9 +746,9 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("new ResizeObserver(measure)");
-    expect(source).toContain("resizeObserver?.observe(el)");
-    expect(source).toContain("resizeObserver?.disconnect()");
+    expect(source).toContainSource("new ResizeObserver(measure)");
+    expect(source).toContainSource("resizeObserver?.observe(el)");
+    expect(source).toContainSource("resizeObserver?.disconnect()");
   });
 
   it("reserves only a compact header slot for an external Copilot launcher", () => {
@@ -541,7 +757,7 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("headerEndInset?: number");
-    expect(source).toContain("style={{ paddingRight: headerEndInset }}");
+    expect(source).toContainSource("headerEndInset?: number");
+    expect(source).toContainSource("style={{ paddingRight: headerEndInset }}");
   });
 });

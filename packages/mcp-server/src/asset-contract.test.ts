@@ -28,6 +28,22 @@ test("MCP exposes the Project Asset peer surface without public CAS inputs", asy
     },
   });
 
+  assert.deepEqual(
+    [...ASSET_MCP_TOOL_NAMES],
+    [
+      "clash_assets_list",
+      "clash_assets_get",
+      "clash_assets_references",
+      "clash_assets_import_file",
+      "clash_assets_admit",
+      "clash_assets_publish",
+      "clash_assets_trash",
+      "clash_assets_restore",
+      "clash_assets_global_list",
+      "clash_assets_global_get",
+      "clash_assets_global_import_file",
+    ],
+  );
   assert.deepEqual([...tools.keys()], [...ASSET_MCP_TOOL_NAMES]);
   for (const { config } of tools.values()) {
     const schema = JSON.stringify(config.inputSchema);

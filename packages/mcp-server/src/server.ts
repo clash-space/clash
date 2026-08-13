@@ -6,11 +6,13 @@ import {
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { ClashMcpServer, describeClashTool } from "@clash/shared-mcp";
+import { initializeClashWorkspace } from "@clash/shared-runtime";
 import {
+  createPersonalGlobalAssetHostClient,
   createProjectAssetHostClient,
-  initializeClashWorkspace,
+  type PersonalGlobalAssetHostClient,
   type ProjectAssetHostClient,
-} from "@clash/shared-runtime";
+} from "@clash/shared-runtime/project-asset-client";
 import {
   createProjectHostClient,
   type ProjectHostClient,
@@ -145,6 +147,36 @@ const assetToolDefinitions: Record<
         ),
     },
   },
+  clash_assets_admit: {
+    title: "Admit Global Asset to Project",
+    description: describeClashTool({
+      useWhen:
+        "a personal Global Asset should become an independently identified member of the selected Project",
+      effect:
+        "asks the Host to admit the Global Asset's immutable Resource and create one linked Project Asset",
+      returns: "the newly admitted Project-scoped ResolvedAsset",
+      next: "use the returned Project Asset ID in Project Actions",
+    }),
+    inputSchema: {
+      ...assetScope,
+      globalAssetId: z.string().trim().min(1),
+    },
+  },
+  clash_assets_publish: {
+    title: "Publish Project Asset to Global library",
+    description: describeClashTool({
+      useWhen:
+        "an active Project Asset should become independently available in the personal Global library",
+      effect:
+        "asks the Host to publish the Project Asset's immutable Resource as one Global Asset",
+      returns: "the newly published personal Global ResolvedAsset",
+      next: "use the returned Global Asset ID for future Project admissions",
+    }),
+    inputSchema: {
+      ...assetScope,
+      projectAssetId: z.string().trim().min(1),
+    },
+  },
   clash_assets_trash: {
     title: "Trash Project Asset",
     description: describeClashTool({
@@ -168,6 +200,57 @@ const assetToolDefinitions: Record<
       next: "read it back before any later lifecycle mutation",
     }),
     inputSchema: { ...assetScope, assetId: z.string().trim().min(1) },
+  },
+  clash_assets_global_list: {
+    title: "List personal Global Assets",
+    description: describeClashTool({
+      useWhen:
+        "you need reusable media identities from the personal Global library",
+      effect:
+        "reads storage-neutral Global ResolvedAsset summaries without requiring Project context",
+      returns: "the personal Global library's ResolvedAsset list",
+      next: "read the selected Global Asset or admit it into a Project",
+    }),
+    inputSchema: {},
+    annotations: { readOnlyHint: true },
+  },
+  clash_assets_global_get: {
+    title: "Read personal Global Asset",
+    description: describeClashTool({
+      useWhen:
+        "you have a Global Asset ID and need its current resolved library state",
+      effect:
+        "reads one storage-neutral Global ResolvedAsset without requiring Project context",
+      returns: "one personal Global ResolvedAsset",
+      next: "admit it into a Project when Project-local membership is needed",
+    }),
+    inputSchema: { globalAssetId: z.string().trim().min(1) },
+    annotations: { readOnlyHint: true },
+  },
+  clash_assets_global_import_file: {
+    title: "Import personal Global Asset file",
+    description: describeClashTool({
+      useWhen:
+        "a local media file should become reusable outside any one Project",
+      effect:
+        "uploads the file once through the Host's canonical personal-library multipart route",
+      returns: "the newly created personal Global ResolvedAsset",
+      next: "admit the returned Global Asset into a Project when needed",
+    }),
+    inputSchema: {
+      cwd: scope.cwd,
+      filePath: z
+        .string()
+        .trim()
+        .min(1)
+        .describe("Absolute path or path relative to cwd"),
+      kind: z
+        .enum(["image", "video", "audio", "model"])
+        .optional()
+        .describe(
+          "Optional media kind; when omitted it is inferred from the file extension",
+        ),
+    },
   },
 };
 
@@ -425,9 +508,11 @@ function contentSummary(name: CanvasMcpToolName, value: unknown): string {
 }
 
 function assetContentSummary(name: AssetMcpToolName, value: unknown): string {
-  if (name === "clash_assets_list") {
+  if (name === "clash_assets_list" || name === "clash_assets_global_list") {
     const count = Array.isArray(value) ? value.length : 0;
-    return `Found ${count} Project Asset${count === 1 ? "" : "s"}.`;
+    const scope =
+      name === "clash_assets_global_list" ? "Global Asset" : "Project Asset";
+    return `Found ${count} ${scope}${count === 1 ? "" : "s"}.`;
   }
   if (name === "clash_assets_references") {
     const references = (value as { references?: unknown[] } | undefined)
@@ -755,6 +840,7 @@ export function createClashMcpServer(
   options: {
     client?: ProjectHostClient;
     assetClient?: ProjectAssetHostClient;
+    globalAssetClient?: PersonalGlobalAssetHostClient;
     assetGateway?: AssetProjectHostGateway;
     gateway?: CanvasProjectHostGateway;
     bundledAppJavascript?: string;
@@ -779,6 +865,10 @@ export function createClashMcpServer(
       createAssetProjectHostGateway(
         options.assetClient ??
           createProjectAssetHostClient({
+            ...(options.client ? { hostClient: options.client } : {}),
+          }),
+        options.globalAssetClient ??
+          createPersonalGlobalAssetHostClient({
             ...(options.client ? { hostClient: options.client } : {}),
           }),
       ),

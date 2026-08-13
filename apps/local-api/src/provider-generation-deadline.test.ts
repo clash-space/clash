@@ -39,6 +39,7 @@ describe("durable Provider generation deadline", () => {
     const plan: ProviderPluginExecutionPlan = {
       binding,
       accountId: "private-account",
+      assetInputs: [],
       kind: "image",
       projectId: "deadline-project",
       nodeId: "deadline-image",

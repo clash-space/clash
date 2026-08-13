@@ -5,6 +5,7 @@ import {
   definePlugin as definePluginWithoutStaticContext,
   type ExecutorContext,
   type PluginDefinition,
+  type ResolvedReference,
 } from "./define-plugin";
 
 /**
@@ -309,7 +310,7 @@ describe("asset outputs", () => {
  * Inline stays for small results. A 2 KB thumbnail does not need a round trip.
  */
 describe("upload slots", () => {
-  it("preserves the storage projection when the host ingests a provider url", async () => {
+  it("returns only the canonical handle when the Host ingests a Provider URL", async () => {
     const upload = vi.fn(async (request: { slot: string }) => ({
       slot: request.slot,
       kind: "asset" as const,
@@ -318,8 +319,6 @@ describe("upload slots", () => {
         uri: "clash-asset://asset-provider-url",
         kind: "video" as const,
         mediaType: "video/mp4",
-        url: "http://127.0.0.1:8787/assets/projects/p/plugins/out.mp4",
-        reach: "private" as const,
       },
     }));
     const plugin = definePlugin({
@@ -342,12 +341,16 @@ describe("upload slots", () => {
     const { written, started } = run(plugin, [invocation("x-execute")]);
     await started;
     const frame = JSON.parse(written.join("").trim()) as {
-      outputs: Array<{ asset: { url?: string; reach?: string } }>;
+      outputs: Array<{ asset: Record<string, unknown> }>;
     };
     expect(frame.outputs[0]?.asset).toMatchObject({
-      url: "http://127.0.0.1:8787/assets/projects/p/plugins/out.mp4",
-      reach: "private",
+      assetId: "asset-provider-url",
+      uri: "clash-asset://asset-provider-url",
+      kind: "video",
+      mediaType: "video/mp4",
     });
+    expect(frame.outputs[0]?.asset).not.toHaveProperty("url");
+    expect(frame.outputs[0]?.asset).not.toHaveProperty("reach");
   });
 
   it("hands bytes to the typed upload context and returns only the handle", async () => {
@@ -666,34 +669,24 @@ describe("store", () => {
  * reference arrived as a handle the plugin had to resolve itself, by sending a raw frame -- so
  * one plugin had two idioms: return data, but fetch data.
  *
- * The asymmetry is not cosmetic. `resolveAssetReference` had to be imported and remembered, and an
+ * The asymmetry is not cosmetic. A separate helper had to be imported and remembered, and an
  * executor that forgot produced a request carrying `clash-asset://...` where a vendor expected an
- * image. Handing the same three forms in as come out means neither side has an idiom to learn.
+ * image. The injected context keeps resolution on the one SDK surface every executor receives.
  */
 describe("references", () => {
-  function referenceContext(resolved: Record<string, unknown>) {
+  function referenceContext(resolved: Record<string, ResolvedReference>) {
     return {
       reference: async (input: unknown) => {
         const reference = input as {
           text?: { value?: string };
-          asset?: { assetId?: string; url?: string; reach?: string; kind?: string; mediaType?: string };
+          asset?: { assetId?: string };
         };
         if (reference.text) return { form: "text", text: reference.text.value ?? "" };
-        if (reference.asset?.url && reference.asset.reach === "public") {
-          return { form: "url", url: reference.asset.url, kind: reference.asset.kind };
-        }
-        const answer = resolved[reference.asset?.assetId ?? ""] as {
-          dataBase64?: string; kind?: string; mediaType?: string;
-        } | undefined;
+        const answer = resolved[reference.asset?.assetId ?? ""];
         // Loud rather than undefined: an unstubbed read used to surface as "expected undefined to
         // be bytes", which names the assertion and not the missing fixture.
-        if (!answer?.dataBase64) throw new Error(`no bytes for asset ${reference.asset?.assetId}`);
-        return {
-          form: "bytes",
-          bytes: Uint8Array.from(Buffer.from(answer.dataBase64, "base64")),
-          kind: answer.kind,
-          mediaType: answer.mediaType,
-        };
+        if (!answer) throw new Error(`no resolved reference for asset ${reference.asset?.assetId}`);
+        return answer;
       },
     } as never;
   }
@@ -710,7 +703,7 @@ describe("references", () => {
     return withReferences([{ slot: "image", index: 0, asset }]);
   }
 
-  it("hands a public url straight through, without fetching it", async () => {
+  it("hands a Provider URL straight through, without fetching it", async () => {
     // The bytes never enter the plugin. Downloading them to hand a vendor a URL it could have
     // fetched itself pays for a round trip twice.
     let seen: unknown;
@@ -723,19 +716,26 @@ describe("references", () => {
           },
         },
       },
-      context: referenceContext({}),
+      context: referenceContext({
+        a1: {
+          form: "provider-url",
+          providerUrl: "https://cdn.example.test/a.png",
+          expiresAt: "2026-08-13T12:00:00.000Z",
+          kind: "image",
+        },
+      }),
     });
     const { started } = run(plugin, [invocationWithReference({
       assetId: "a1", uri: "clash-asset://a1", kind: "image",
-      url: "https://cdn.example.test/a.png", reach: "public",
     })]);
     await started;
-    expect(seen).toMatchObject({ form: "url", url: "https://cdn.example.test/a.png" });
+    expect(seen).toMatchObject({
+      form: "provider-url",
+      providerUrl: "https://cdn.example.test/a.png",
+    });
   });
 
-  it("reads the bytes when only the host can reach them", async () => {
-    // A private asset's URL is useless to a vendor: it answers 403, and the generation fails for a
-    // reason naming the vendor rather than the reach.
+  it("hands decoded bytes to plugin business code", async () => {
     let seen: { form: string; bytes?: Uint8Array } | undefined;
     const plugin = definePlugin({
       executors: {
@@ -747,7 +747,12 @@ describe("references", () => {
         },
       },
       context: referenceContext({
-        a1: { kind: "image", mediaType: "image/png", dataBase64: Buffer.from("PNGDATA").toString("base64") },
+        a1: {
+          form: "bytes",
+          bytes: Uint8Array.from(Buffer.from("PNGDATA")),
+          kind: "image",
+          mediaType: "image/png",
+        },
       }),
     });
     const { written, started } = run(plugin, [invocationWithReference({
@@ -764,32 +769,6 @@ describe("references", () => {
     expect(Buffer.from(seen!.bytes!).toString()).toBe("PNGDATA");
   });
 
-  it("does not forward a url the vendor cannot reach", async () => {
-    // Caught by mutation: widening the reach check to accept anything still passed every test,
-    // because no case held a handle that had a url AND was private. That is the dangerous shape --
-    // an address that looks usable and answers 403 from the vendor's side.
-    let seen: { form: string } | undefined;
-    const plugin = definePlugin({
-      executors: {
-        "x-execute": {
-          submit: async (inv, ctx) => {
-            seen = await ctx.reference!(inv.input.references[0]!) as never;
-            return { status: "completed" as const, outputs: [] };
-          },
-        },
-      },
-      context: referenceContext({
-        a1: { kind: "image", mediaType: "image/png", dataBase64: Buffer.from("PRIVATE").toString("base64") },
-      }),
-    });
-    const { started } = run(plugin, [invocationWithReference({
-      assetId: "a1", uri: "clash-asset://a1", kind: "image",
-      url: "http://127.0.0.1:8788/assets/a1.png", reach: "private",
-    })]);
-    await started;
-    expect(seen?.form).toBe("bytes");
-  });
-
   it("says so when the host returns no bytes", async () => {
     // Caught by mutation: returning an empty Uint8Array instead of throwing passed everything.
     // Empty bytes reach the vendor and come back as a decode error attributed to the image, which
@@ -803,7 +782,7 @@ describe("references", () => {
           },
         },
       },
-      context: referenceContext({ a1: { kind: "image", mediaType: "image/png" } }),
+      context: referenceContext({}),
     });
     const { written, started } = run(plugin, [invocationWithReference({
       assetId: "a1", uri: "clash-asset://a1", kind: "image",

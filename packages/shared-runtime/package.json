@@ -42,6 +42,11 @@
       "types": "./dist/minimax-h3.d.ts",
       "import": "./dist/minimax-h3.js",
       "default": "./dist/minimax-h3.js"
+    },
+    "./pika": {
+      "types": "./dist/pika.d.ts",
+      "import": "./dist/pika.js",
+      "default": "./dist/pika.js"
     }
   },
   "engines": {

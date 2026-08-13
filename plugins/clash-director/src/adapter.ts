@@ -9,6 +9,7 @@ import {
 } from "@clash/shared-types";
 import {
   createProjectHostClient,
+  publicProjectHostValue,
   type ProjectHostClient,
   type ProjectHostResponse,
 } from "@clash/shared-runtime/project-host-client";
@@ -247,24 +248,32 @@ export function createDirectorAdapter(options: {
       receipt,
       ...(typeof nextStage?.revisionId === "string" ? { revisionId: nextStage.revisionId } : {}),
     });
-    return result.value;
+    return publicProjectHostValue(result.value) as Record<string, unknown>;
   };
 
   return {
     list,
     get,
     async create(input) {
-      return (await request(input, {
+      const stageId = requiredInputString(input, "stageId");
+      const result = await request(input, {
         action: "create_director_stage",
-        stageId: requiredInputString(input, "stageId"),
+        stageId,
         name: requiredInputString(input, "name"),
-      })).value;
+      });
+      const receipt = typeof result.value.readToken === "string"
+        ? result.value.readToken
+        : typeof result.value.version === "string"
+          ? result.value.version
+          : undefined;
+      if (receipt) observations.set(key(result.projectId, stageId), { receipt });
+      return publicProjectHostValue(result.value);
     },
     save,
     async attach(input) {
       const stageId = requiredInputString(input, "stageId");
       const observed = await requireObservation(input, stageId);
-      return (await request(input, {
+      const result = await request(input, {
         action: "attach_director_stage",
         stageId,
         canvasId: requiredInputString(input, "canvasId"),
@@ -272,18 +281,32 @@ export function createDirectorAdapter(options: {
         actorClientType: "mcp",
         observedVersion: observed.receipt,
         ifMatch: observed.receipt,
-      })).value;
+      });
+      const receipt = typeof result.value.readToken === "string"
+        ? result.value.readToken
+        : typeof result.value.version === "string"
+          ? result.value.version
+          : undefined;
+      if (receipt) observations.set(key(result.projectId, stageId), { receipt });
+      return publicProjectHostValue(result.value);
     },
     async detach(input) {
       const stageId = requiredInputString(input, "stageId");
       const observed = await requireObservation(input, stageId);
-      return (await request(input, {
+      const result = await request(input, {
         action: "detach_director_stage",
         stageId,
         actorClientType: "mcp",
         observedVersion: observed.receipt,
         ifMatch: observed.receipt,
-      })).value;
+      });
+      const receipt = typeof result.value.readToken === "string"
+        ? result.value.readToken
+        : typeof result.value.version === "string"
+          ? result.value.version
+          : undefined;
+      if (receipt) observations.set(key(result.projectId, stageId), { receipt });
+      return publicProjectHostValue(result.value);
     },
     async mutate(name, input) {
       const stage = await get(input);
@@ -327,7 +350,8 @@ export function createDirectorAdapter(options: {
         persistedFrames.push({ ...publicFrame, path });
       }
       const receiptPath = join(outputDir, "capture.json");
-      const receipt = { ...result.value, frames: persistedFrames, receiptPath };
+      const publicResult = publicProjectHostValue(result.value) as Record<string, unknown>;
+      const receipt = { ...publicResult, frames: persistedFrames, receiptPath };
       await writeProjection(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
       return receipt;
     },

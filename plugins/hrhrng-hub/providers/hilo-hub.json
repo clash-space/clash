@@ -56,7 +56,15 @@
       ]
     },
     "bindingDefaults": {
-      "priority": 5
+      "priority": 5,
+      "assetInputs": [
+        {
+          "match": {
+            "kinds": ["image", "video", "audio"]
+          },
+          "representations": ["provider-url", "bytes"]
+        }
+      ]
     }
   }
 }

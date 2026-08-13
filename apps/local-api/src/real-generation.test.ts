@@ -73,8 +73,6 @@ describe.runIf(REAL)("hrhrng.hub", () => {
             uri: `clash-asset://${name}`,
             kind: "image",
             mediaType,
-            url: `http://127.0.0.1:8787/assets/${name}`,
-            reach: "private",
           };
         },
       } as never),
@@ -127,11 +125,13 @@ describe.runIf(REAL)("hrhrng.hub", () => {
 
     expect(result.status).toBe("completed");
     if (result.status !== "completed" || !("media" in result)) return;
-    // What a completed generation hands back is an address the host can serve. The bytes came from
-    // the vendor, this host fetched and stored them, and the media points at its own asset
-    // endpoint -- not at a `clash-asset://` uri, which is the plugin-side handle and never left
-    // the broker.
-    expect(result.media?.url).toMatch(/^http:\/\/127\.0\.0\.1:8787\/api\/v1\/assets\//);
+    // The Provider boundary carries only the Host-issued Asset handle. A storage projection URL
+    // is resolved later by the product surface that needs it.
+    expect(result.media).toMatchObject({
+      assetId: expect.any(String),
+      uri: expect.stringMatching(/^clash-asset:\/\//),
+      kind: "image",
+    });
     console.log(`ARTEFACT: ${assets}`);
   }, 600_000);
 });

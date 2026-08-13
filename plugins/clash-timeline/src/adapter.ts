@@ -8,6 +8,7 @@ import type { ProjectHostCommand } from "@clash/shared-types";
 import { parse as parseYaml } from "yaml";
 import {
   createProjectHostClient,
+  publicProjectHostValue,
   type ProjectHostClient,
   type ProjectHostResponse,
 } from "@clash/shared-runtime/project-host-client";
@@ -147,7 +148,7 @@ export function createTimelineAdapter(options: {
         ...(typeof entity?.revisionId === "string" ? { revisionId: entity.revisionId } : {}),
       });
     }
-    return result.value;
+    return publicProjectHostValue(result.value) as Record<string, unknown>;
   };
 
   return {
@@ -175,17 +176,30 @@ export function createTimelineAdapter(options: {
       if (!validation.ok) {
         throw new Error(`TIMELINE_DSL_INVALID: ${validation.issues[0]?.message ?? "invalid Timeline"}`);
       }
-      return (await request(input, { action: "validate_timeline", document: state })).value;
+      return publicProjectHostValue(
+        (await request(input, { action: "validate_timeline", document: state })).value,
+      ) as Record<string, unknown>;
     },
     list,
     get,
     async create(input) {
+      const timelineId = required(input, "timelineId");
       const result = await request(input, {
         action: "create_timeline",
-        timelineId: required(input, "timelineId"),
+        timelineId,
         name: required(input, "name"),
       });
-      return result.value;
+      const receipt = typeof result.value.readToken === "string"
+        ? result.value.readToken
+        : typeof result.value.version === "string"
+          ? result.value.version
+          : undefined;
+      if (receipt) {
+        observations.set(observationKey(result.projectId, timelineId), {
+          receipt,
+        });
+      }
+      return publicProjectHostValue(result.value);
     },
     async save(input) {
       const timelineId = required(input, "timelineId");

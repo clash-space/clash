@@ -278,6 +278,7 @@ export interface ValidateGenerationInput {
   referenceImageAssetIds?: string[];
   referenceVideoAssetIds?: string[];
   referenceAudioAssetIds?: string[];
+  modelParams?: Record<string, string | number | boolean | undefined>;
   /** Either supply the raw ModelCard (legacy) or a pre-derived
    *  Capability (the new unified path that covers custom actions too). */
   modelCard?: ModelCard;
@@ -299,6 +300,7 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
     referenceImageAssetIds = [],
     referenceVideoAssetIds = [],
     referenceAudioAssetIds = [],
+    modelParams,
     modelCard,
     capability,
   } = input;
@@ -312,7 +314,7 @@ export function validateGenerationInput(input: ValidateGenerationInput): string 
       video: referenceVideoAssetIds.length,
       audio: referenceAudioAssetIds.length,
     },
-    { prompt },
+    { prompt, modelParams },
   );
 }
 
@@ -621,6 +623,9 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
         ? capabilityFromCard(input.config.modelCard)
         : undefined
       : capabilityFromCustom(input.config.customDef);
+  const referenceValidationModelParams = input.config.kind === 'model'
+    ? input.config.modelParams
+    : input.config.customActionParams;
 
   // Validate the graph edges before partitioning. partitionRefs intentionally
   // omits unsupported modalities from provider payloads, but treating that as
@@ -650,7 +655,9 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
     { text: 0, image: 0, video: 0, audio: 0 },
   );
   const attachedRefValidationError = cap
-    ? validateRefs(cap, attachedRefCounts)
+    ? validateRefs(cap, attachedRefCounts, {
+        modelParams: referenceValidationModelParams,
+      })
     : null;
   const unexportedDirectorStageError = input.refNodes.some(
     (node) =>
@@ -748,6 +755,7 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
         referenceImageAssetIds: partition.imageAssetIds,
         referenceVideoAssetIds: partition.videoAssetIds,
         referenceAudioAssetIds: partition.audioAssetIds,
+        modelParams: referenceValidationModelParams,
         capability: cap,
       })
     : null);
