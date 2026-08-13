@@ -1,4 +1,12 @@
-# Agent-First Local v1 Code Audit
+# Historical: Agent-First Local v1 Code Audit
+
+> **Status:** Point-in-time audit, not current completion evidence. Later Asset
+> SDK, Local CAS, Project binding, and Durable Run migrations changed both the
+> implementation and its tests. Current authority is the
+> [Asset system](../apps/docs/guide/asset-system.md) and
+> [Durable Run protocol](../apps/docs/guide/durable-run-protocol.md). In those
+> guides, Cloud storage, execution, and failover are design-only and must not
+> be inferred as complete from this older audit.
 
 Last updated: 2026-07-10
 

@@ -43810,7 +43810,7 @@ var z2 = /* @__PURE__ */ Object.freeze({
   ZodError: ZodError3
 });
 
-// ../../packages/shared-types/dist/chunk-4F43M35N.js
+// ../../packages/shared-types/dist/chunk-CGTXLVQX.js
 var AssetKindSchema = z2.enum(["image", "video", "audio", "model"]);
 var ResourceIdSchema = z2.string().trim().min(1);
 var ResourceSchema2 = z2.object({
@@ -43828,19 +43828,40 @@ var ProjectAssetMetadataSchema = z2.object({
   height: z2.number().int().nonnegative().optional(),
   durationMs: z2.number().int().nonnegative().optional(),
   bytes: z2.number().int().nonnegative().optional(),
+  /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
   waveform: z2.array(z2.number()).optional(),
   contentType: z2.string().trim().min(1).optional(),
   frameRate: z2.number().positive().optional(),
   videoCodec: z2.string().trim().min(1).optional(),
+  /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
+  hasAudio: z2.boolean().optional(),
   audioCodec: z2.string().trim().min(1).optional(),
   originalName: z2.string().trim().min(1).optional()
 }).strict();
+var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
 var ProjectAssetProvenanceSchema = z2.object({
   kind: z2.enum(["import", "generation", "edit", "render", "admission"]),
   actionRunId: z2.string().trim().min(1).optional(),
   model: z2.string().trim().min(1).optional(),
   prompt: z2.string().optional()
 }).strict();
+var ProjectAssetLinkedOriginSchema = z2.discriminatedUnion("scope", [
+  z2.object({
+    scope: z2.literal("global"),
+    libraryId: z2.string().trim().min(1),
+    entryId: z2.string().trim().min(1)
+  }).strict(),
+  z2.object({
+    scope: z2.literal("project"),
+    projectId: z2.string().trim().min(1),
+    entryId: z2.string().trim().min(1)
+  }).strict(),
+  z2.object({
+    scope: z2.literal("catalog"),
+    catalogId: z2.string().trim().min(1),
+    entryId: z2.string().trim().min(1)
+  }).strict()
+]);
 var ProjectAssetSourceSchema = z2.discriminatedUnion("kind", [
   z2.object({
     kind: z2.literal("owned"),
@@ -43849,10 +43870,7 @@ var ProjectAssetSourceSchema = z2.discriminatedUnion("kind", [
   z2.object({
     kind: z2.literal("linked"),
     resourceId: ResourceIdSchema,
-    origin: z2.object({
-      scope: z2.enum(["global", "catalog", "project"]),
-      entryId: z2.string().trim().min(1)
-    }).strict()
+    origin: ProjectAssetLinkedOriginSchema
   }).strict()
 ]);
 var ProjectAssetLifecycleSchema = z2.discriminatedUnion("state", [
@@ -43921,7 +43939,13 @@ var ResolvedAssetSchema = z2.object({
   provenance: ProjectAssetProvenanceSchema.optional(),
   /** Synchronized logical lifecycle; independent from current-Host byte availability. */
   lifecycle: ProjectAssetLifecycleSchema,
-  status: z2.enum(["uploading", "ready", "downloading", "unavailable", "failed"]),
+  status: z2.enum([
+    "uploading",
+    "ready",
+    "downloading",
+    "unavailable",
+    "failed"
+  ]),
   url: z2.string().url().optional(),
   thumbnailUrl: z2.string().url().optional(),
   progress: z2.number().min(0).max(1).optional(),
@@ -43932,10 +43956,12 @@ var AssetMetadataSchema = z2.object({
   height: z2.number().int().optional(),
   durationMs: z2.number().int().optional(),
   bytes: z2.number().int().optional(),
+  /** @deprecated Historical row payload; never emit from new publication. */
   waveform: z2.array(z2.number()).optional(),
   contentType: z2.string().optional(),
   frameRate: z2.number().positive().optional(),
   videoCodec: z2.string().optional(),
+  hasAudio: z2.boolean().optional(),
   audioCodec: z2.string().optional(),
   contentHash: z2.string().optional(),
   localBlobKey: z2.string().optional(),
@@ -43981,7 +44007,7 @@ var AssetRefRowSchema = z2.object({
   importedAt: z2.number()
 });
 
-// ../../packages/shared-types/dist/chunk-QTM5MBKX.js
+// ../../packages/shared-types/dist/chunk-Y7VKLK6W.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z2.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -51919,7 +51945,7 @@ var zodToJsonSchema2 = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-22GF7SDG.js
+// ../../packages/shared-types/dist/chunk-F5H437YY.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -52785,10 +52811,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z2.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z2.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     entranceAnimation: authored(TimelineClipAnimationSchema, "Seek-safe visual entrance animation.", {
       required: false,
@@ -52877,10 +52904,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z2.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z2.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     audioFadeInFrames: authored(NonnegativeFrameSchema, "Canonical audio fade-in duration in frames.", {
       required: false,
@@ -53155,11 +53183,7 @@ var TimelineRenderReceiptSchema = z2.object({
   renderNodeId: IdentifierSchema,
   target: TimelineRenderTargetSchema,
   status: z2.enum(["pending", "completed", "failed"]),
-  asset: z2.object({
-    id: IdentifierSchema,
-    signedUrl: IdentifierSchema.optional(),
-    srcR2Key: IdentifierSchema.optional()
-  }).passthrough().optional(),
+  asset: z2.object({ id: IdentifierSchema }).strict().optional(),
   error: z2.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z2.object({
@@ -54883,7 +54907,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 9,
+  schemaVersion: 11,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -55182,8 +55206,8 @@ import { LoroMap as LoroMap4 } from "loro-crdt";
 import { LoroMap as LoroMap2 } from "loro-crdt";
 import { LoroMap } from "loro-crdt";
 import { LoroMap as LoroMap3 } from "loro-crdt";
-var import_yaml = __toESM(require_dist2(), 1);
 import { LoroDoc } from "loro-crdt";
+var import_yaml = __toESM(require_dist2(), 1);
 var AgentAnnotationSurfaceSchema = z2.enum([
   "canvas",
   "timeline",
@@ -55231,6 +55255,22 @@ var AgentAnnotationPromptPayloadSchema = z2.object({
   kind: z2.literal("clash-agent-annotations"),
   annotations: z2.array(AgentAnnotationDraftSchema).min(1)
 });
+var ScopedIdSchema = z2.string().trim().min(1);
+var ProjectAssetMetadataTargetSchema = z2.object({
+  kind: z2.literal("project-asset"),
+  projectId: ScopedIdSchema,
+  assetId: ScopedIdSchema
+}).strict();
+var ActionRevisionMetadataTargetSchema = z2.object({
+  kind: z2.literal("action-revision"),
+  projectId: ScopedIdSchema,
+  actionId: ScopedIdSchema,
+  actionRevisionId: ScopedIdSchema
+}).strict();
+var MetadataAttachmentTargetSchema = z2.discriminatedUnion("kind", [
+  ProjectAssetMetadataTargetSchema,
+  ActionRevisionMetadataTargetSchema
+]);
 var FrameRangeSchema = z2.object({
   startFrame: z2.number().int().min(0),
   endFrame: z2.number().int().min(0)
@@ -55286,7 +55326,13 @@ var AudioBeatMetadataSchema = z2.object({
   sections: z2.array(AudioSectionSchema).default([]),
   energyCurve: z2.array(AudioEnergyPointSchema).default([])
 });
-var AudioStemTypeSchema = z2.enum(["vocal", "instrumental", "drums", "bass", "other"]);
+var AudioStemTypeSchema = z2.enum([
+  "vocal",
+  "instrumental",
+  "drums",
+  "bass",
+  "other"
+]);
 var AudioStemAssetSchema = z2.object({
   stemAssetId: z2.string().min(1),
   stemType: AudioStemTypeSchema,
@@ -55462,17 +55508,19 @@ var TalkingHeadMetadataSchema = z2.object({
   words: z2.array(TranscriptWordSchema),
   cuts: z2.array(TextCutSchema).default([]),
   captionCues: z2.array(CaptionCueSchema).default([]),
-  disfluencies: z2.array(z2.object({
-    id: z2.string().optional(),
-    wordId: z2.string().optional(),
-    startFrame: z2.number().int().min(0).optional(),
-    endFrame: z2.number().int().min(0).optional(),
-    text: z2.string().optional(),
-    type: z2.enum(["filler", "silence", "tone-particle", "repeat"]),
-    requiresReview: z2.boolean().default(false),
-    confidence: z2.number().min(0).max(1).optional(),
-    detectionSource: z2.string().min(1).optional()
-  })).default([])
+  disfluencies: z2.array(
+    z2.object({
+      id: z2.string().optional(),
+      wordId: z2.string().optional(),
+      startFrame: z2.number().int().min(0).optional(),
+      endFrame: z2.number().int().min(0).optional(),
+      text: z2.string().optional(),
+      type: z2.enum(["filler", "silence", "tone-particle", "repeat"]),
+      requiresReview: z2.boolean().default(false),
+      confidence: z2.number().min(0).max(1).optional(),
+      detectionSource: z2.string().min(1).optional()
+    })
+  ).default([])
 });
 var RightsMetadataSchema = z2.object({
   license: z2.string().min(1),
@@ -55572,26 +55620,32 @@ var CharacterReferenceViewSchema = z2.object({
 });
 var ImageStoryboardMetadataSchema = z2.object({
   kind: z2.literal("image.storyboard-consistency"),
-  characters: z2.array(z2.object({
-    id: z2.string().min(1),
-    name: z2.string().min(1),
-    referenceAssetIds: z2.array(z2.string()).min(1),
-    requiredViews: z2.array(CharacterReferenceViewKindSchema).default([]),
-    referenceViews: z2.array(CharacterReferenceViewSchema).default([])
-  })).default([]),
-  scenes: z2.array(z2.object({
-    id: z2.string().min(1),
-    referenceAssetIds: z2.array(z2.string()).default([]),
-    prompt: z2.string().min(1)
-  })).default([]),
-  panels: z2.array(z2.object({
-    id: z2.string().min(1),
-    sceneId: z2.string().min(1),
-    characterIds: z2.array(z2.string()).default([]),
-    assetId: z2.string().min(1),
-    path: z2.string().min(1).optional(),
-    consistencyScore: z2.number().min(0).max(1).optional()
-  })).default([])
+  characters: z2.array(
+    z2.object({
+      id: z2.string().min(1),
+      name: z2.string().min(1),
+      referenceAssetIds: z2.array(z2.string()).min(1),
+      requiredViews: z2.array(CharacterReferenceViewKindSchema).default([]),
+      referenceViews: z2.array(CharacterReferenceViewSchema).default([])
+    })
+  ).default([]),
+  scenes: z2.array(
+    z2.object({
+      id: z2.string().min(1),
+      referenceAssetIds: z2.array(z2.string()).default([]),
+      prompt: z2.string().min(1)
+    })
+  ).default([]),
+  panels: z2.array(
+    z2.object({
+      id: z2.string().min(1),
+      sceneId: z2.string().min(1),
+      characterIds: z2.array(z2.string()).default([]),
+      assetId: z2.string().min(1),
+      path: z2.string().min(1).optional(),
+      consistencyScore: z2.number().min(0).max(1).optional()
+    })
+  ).default([])
 });
 var SemanticReferenceRoleKindSchema = z2.enum([
   "identity-front",
@@ -55697,7 +55751,11 @@ var AnalysisBackendBenchmarkMetadataSchema = z2.object({
   blockedReasons: z2.array(z2.string().min(1)).default([]),
   decisionLog: z2.array(z2.string().min(1)).default([])
 });
-var ImageEmbeddingDistanceMetricSchema = z2.enum(["cosine", "dot", "euclidean"]);
+var ImageEmbeddingDistanceMetricSchema = z2.enum([
+  "cosine",
+  "dot",
+  "euclidean"
+]);
 var ImageEmbeddingBaselineForSchema = z2.enum([
   "identity",
   "product",
@@ -55727,7 +55785,10 @@ var ImageEmbeddingStoreMetadataSchema = z2.object({
   items: z2.array(ImageEmbeddingStoreItemSchema).min(1),
   copyOnWriteRequired: z2.boolean()
 });
-var ImageComfyuiApiFormatSchema = z2.enum(["comfyui-api-json", "comfyui-ui-json"]);
+var ImageComfyuiApiFormatSchema = z2.enum([
+  "comfyui-api-json",
+  "comfyui-ui-json"
+]);
 var ImageComfyuiModelTypeSchema = z2.enum([
   "checkpoint",
   "vae",
@@ -55772,8 +55833,16 @@ var ImageComfyuiInputSlotSchema = z2.object({
   assetId: z2.string().min(1).optional(),
   path: z2.string().min(1).optional()
 });
-var ImageComfyuiOutputStatusSchema = z2.enum(["planned", "materialized"]);
-var ImageComfyuiOutputMediaTypeSchema = z2.enum(["image", "image-sequence", "mask", "metadata"]);
+var ImageComfyuiOutputStatusSchema = z2.enum([
+  "planned",
+  "materialized"
+]);
+var ImageComfyuiOutputMediaTypeSchema = z2.enum([
+  "image",
+  "image-sequence",
+  "mask",
+  "metadata"
+]);
 var ImageComfyuiOutputSchema = z2.object({
   outputAssetId: z2.string().min(1),
   nodeId: z2.string().min(1),
@@ -55957,8 +56026,17 @@ var AdVisualQaMetadataSchema = z2.object({
   visualQa: AdDeliveryVisualQaReportSchema,
   decisionLog: z2.array(z2.string().min(1)).default([])
 });
-var ContentCredentialModeSchema = z2.enum(["unsigned-manifest", "signed-c2pa", "external"]);
-var ContentCredentialSignatureStatusSchema = z2.enum(["unsigned", "signed", "external", "failed"]);
+var ContentCredentialModeSchema = z2.enum([
+  "unsigned-manifest",
+  "signed-c2pa",
+  "external"
+]);
+var ContentCredentialSignatureStatusSchema = z2.enum([
+  "unsigned",
+  "signed",
+  "external",
+  "failed"
+]);
 var ContentCredentialIngredientRelationshipSchema = z2.enum([
   "source",
   "reference",
@@ -56031,12 +56109,12 @@ var ProductionMetadataSchema = ProductionMetadataBaseSchema.superRefine((metadat
 });
 var AssetMetadataFillActionSchema = z2.object({
   actionId: z2.string().min(1),
-  targetAssetId: z2.string().min(1),
+  target: MetadataAttachmentTargetSchema,
   metadataKind: z2.string().min(1),
   metadata: ProductionMetadataSchema,
   producer: z2.string().min(1),
   createdAt: z2.string().optional()
-});
+}).strict();
 var SourceHashSchema = z2.string().regex(/^sha256:[a-f0-9]{64}$/);
 var TimelineTranscriptSourceSchema = z2.object({
   assetId: z2.string().min(1),
@@ -56795,6 +56873,24 @@ var ProjectContextSchema = z2.object({
     type: z2.string().nullish()
   }))
 });
+var LegacyLinkedProjectAssetSourceSchema = z2.object({
+  kind: z2.literal("linked"),
+  resourceId: z2.string().trim().min(1),
+  origin: z2.discriminatedUnion("scope", [
+    z2.object({
+      scope: z2.literal("global"),
+      entryId: z2.string().trim().min(1)
+    }).strict(),
+    z2.object({
+      scope: z2.literal("project"),
+      entryId: z2.string().trim().min(1)
+    }).strict(),
+    z2.object({
+      scope: z2.literal("catalog"),
+      entryId: z2.string().trim().min(1)
+    }).strict()
+  ])
+}).strict();
 var DirectorStageVector3Schema = z2.tuple([
   z2.number().finite(),
   z2.number().finite(),
@@ -58296,7 +58392,10 @@ function registerAssetMetadataKind(declaration) {
     return result.success ? [] : result.error.issues;
   };
   const complainsAbout = (issues, field3) => issues.some((issue3) => issue3.path.length === 1 && issue3.path[0] === field3);
-  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+  if (complainsAbout(
+    issuesFor({ schemaVersion: 1, kind: declaration.kind }),
+    "kind"
+  )) {
     throw new Error(
       `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
     );
@@ -58309,13 +58408,13 @@ function registerAssetMetadataKind(declaration) {
   declaredKinds.set(declaration.kind, declaration);
 }
 var FillActionEnvelopeSchema = z2.object({
-  actionId: z2.string().min(1),
-  targetAssetId: z2.string().min(1),
-  metadataKind: z2.string().min(1),
-  metadata: z2.object({ kind: z2.string().min(1) }).passthrough(),
-  producer: z2.string().min(1),
+  actionId: z2.string().trim().min(1),
+  target: MetadataAttachmentTargetSchema,
+  metadataKind: z2.string().trim().min(1),
+  metadata: z2.object({ kind: z2.string().trim().min(1) }).passthrough(),
+  producer: z2.string().trim().min(1),
   createdAt: z2.string().optional()
-});
+}).strict();
 registerAssetMetadataKind({
   kind: "media.transcript",
   schema: MediaTranscriptMetadataSchema
@@ -58328,6 +58427,15 @@ registerAssetMetadataKind({
   kind: "media.render-lineage",
   schema: MediaRenderLineageMetadataSchema
 });
+var CopilotProjectAssetReferenceSchema = z2.object({
+  projectAssetId: z2.string().trim().min(1),
+  kind: AssetKindSchema,
+  label: z2.string().trim().min(1)
+}).strict();
+var CopilotProjectAssetSubmissionSchema = z2.object({
+  actionId: z2.string().trim().min(1),
+  assets: CopilotProjectAssetReferenceSchema.array().min(1)
+}).strict();
 var CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
   Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
     category,

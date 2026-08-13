@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import {
   createPersonalGlobalAssetHttpClient,
   createProjectAssetHttpClient,
@@ -22,6 +22,7 @@ type PendingAsset = ScopedAsset & {
  * Project, so every cache and in-flight key includes projectId.
  */
 const cache = new Map<string, ResolvedAsset>();
+const subscribers = new Map<string, Set<() => void>>();
 const inflight = new Map<string, Promise<ResolvedAsset>>();
 const pending = new Map<string, PendingAsset>();
 let pendingTimer: ReturnType<typeof setTimeout> | undefined;
@@ -41,7 +42,9 @@ const personalGlobalAssets = createPersonalGlobalAssetHttpClient({
 });
 
 function cacheAsset(projectId: string, asset: ResolvedAsset): void {
-  cache.set(scopedKey(projectId, asset.id), asset);
+  const key = scopedKey(projectId, asset.id);
+  cache.set(key, asset);
+  for (const notify of subscribers.get(key) ?? []) notify();
 }
 
 function scheduleFlush(): void {
@@ -108,10 +111,11 @@ async function flushPending(): Promise<void> {
 function getOrFetch(
   projectId: string,
   assetId: string,
+  options: { useCache?: boolean } = {},
 ): Promise<ResolvedAsset> {
   const key = scopedKey(projectId, assetId);
   const cached = cache.get(key);
-  if (cached) return Promise.resolve(cached);
+  if (options.useCache !== false && cached) return Promise.resolve(cached);
 
   let request = inflight.get(key);
   if (!request) {
@@ -130,26 +134,28 @@ export function useAsset(
   assetId: string | undefined,
 ): ResolvedAsset | undefined {
   const key = projectId && assetId ? scopedKey(projectId, assetId) : undefined;
-  const [asset, setAsset] = useState<ResolvedAsset | undefined>(() =>
-    key ? cache.get(key) : undefined,
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      if (!key) return () => undefined;
+      const scopedSubscribers = subscribers.get(key) ?? new Set<() => void>();
+      scopedSubscribers.add(notify);
+      subscribers.set(key, scopedSubscribers);
+      return () => {
+        scopedSubscribers.delete(notify);
+        if (scopedSubscribers.size === 0) subscribers.delete(key);
+      };
+    },
+    [key],
   );
+  const getSnapshot = useCallback(
+    () => (key ? cache.get(key) : undefined),
+    [key],
+  );
+  const asset = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
-    if (!projectId || !assetId) {
-      setAsset(undefined);
-      return;
-    }
-    let cancelled = false;
-    getOrFetch(projectId, assetId)
-      .then((resolved) => {
-        if (!cancelled) setAsset(resolved);
-      })
-      .catch(() => {
-        if (!cancelled) setAsset(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
+    if (!projectId || !assetId) return;
+    void getOrFetch(projectId, assetId).catch(() => undefined);
   }, [assetId, projectId]);
 
   return asset;
@@ -161,6 +167,7 @@ export function invalidateAsset(projectId: string, assetId: string): void {
   cache.delete(key);
   inflight.delete(key);
   pending.delete(key);
+  for (const notify of subscribers.get(key) ?? []) notify();
 }
 
 /** Imperative Project-scoped read for workflow callbacks. */
@@ -169,6 +176,68 @@ export async function getAsset(
   assetId: string,
 ): Promise<ResolvedAsset> {
   return getOrFetch(projectId, assetId);
+}
+
+/** Re-read the current Host projection, replacing any cached availability or URL. */
+export async function refreshAsset(
+  projectId: string,
+  assetId: string,
+): Promise<ResolvedAsset> {
+  return getOrFetch(projectId, assetId, { useCache: false });
+}
+
+export interface AssetProjectionWatchScheduler {
+  (run: () => void, delayMs: number): () => void;
+}
+
+function defaultAssetProjectionWatchScheduler(
+  run: () => void,
+  delayMs: number,
+): () => void {
+  const timer = setTimeout(run, delayMs);
+  return () => clearTimeout(timer);
+}
+
+/**
+ * Refresh a device-local projection until it becomes ready or fails terminally.
+ * Project identity/lifecycle remains in Loro; only Host availability is polled.
+ */
+export function watchAssetProjection(input: {
+  projectId: string;
+  assetId: string;
+  onProjection: (asset: ResolvedAsset) => void;
+  onError?: (error: unknown) => void;
+  intervalMs?: number;
+  schedule?: AssetProjectionWatchScheduler;
+}): () => void {
+  let stopped = false;
+  let cancelScheduled: (() => void) | undefined;
+  const schedule = input.schedule ?? defaultAssetProjectionWatchScheduler;
+
+  const run = () => {
+    if (stopped) return;
+    void refreshAsset(input.projectId, input.assetId)
+      .then((asset) => {
+        if (stopped) return;
+        input.onProjection(asset);
+        if (
+          asset.lifecycle.state === "active" &&
+          asset.status !== "ready" &&
+          asset.status !== "failed"
+        ) {
+          cancelScheduled = schedule(run, input.intervalMs ?? 2_000);
+        }
+      })
+      .catch((error) => {
+        if (!stopped) input.onError?.(error);
+      });
+  };
+
+  run();
+  return () => {
+    stopped = true;
+    cancelScheduled?.();
+  };
 }
 
 /**
@@ -268,15 +337,23 @@ export async function restoreProjectAsset(
 }
 
 /** Logically trash one personal Global Asset without affecting admitted Projects. */
-export function trashPersonalGlobalAsset(
-  globalAssetId: string,
-): Promise<ResolvedAsset> {
-  return personalGlobalAssets.trash({ globalAssetId });
+export function trashPersonalGlobalAsset(input: {
+  globalAssetId: string;
+}): Promise<ResolvedAsset> {
+  return personalGlobalAssets.trash(input);
 }
 
 /** Restore one personal Global Asset during its logical recovery window. */
-export function restorePersonalGlobalAsset(
+export async function restorePersonalGlobalAsset(
   globalAssetId: string,
+  observedDeleteOperationId: string,
 ): Promise<ResolvedAsset> {
-  return personalGlobalAssets.restore({ globalAssetId });
+  const deleteOperationId = observedDeleteOperationId.trim();
+  if (!deleteOperationId) {
+    throw new Error("Observed Global Asset delete operation is required");
+  }
+  return personalGlobalAssets.restore({
+    globalAssetId,
+    deleteOperationId,
+  });
 }

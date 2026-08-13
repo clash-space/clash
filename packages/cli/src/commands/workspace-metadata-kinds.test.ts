@@ -16,6 +16,11 @@ async function workspaceWithDeclaration(declaration: unknown) {
   const dataDir = await mkdtemp(join(tmpdir(), "clash-custom-kind-data-"));
   await mkdir(join(cwd, ".clash", "metadata-kinds"), { recursive: true });
   await writeFile(
+    join(cwd, ".clash", "project.toml"),
+    'schema_version = 1\nproject_id = "project-custom-metadata"\n',
+    "utf8",
+  );
+  await writeFile(
     join(cwd, ".clash", "metadata-kinds", "declaration.json"),
     JSON.stringify(declaration, null, 2),
     "utf8",
@@ -24,7 +29,9 @@ async function workspaceWithDeclaration(declaration: unknown) {
   await mkdir(join(cwd, "assets"), { recursive: true });
   await writeFile(
     assetsPath,
-    JSON.stringify({ assets: [{ id: "asset-clip", type: "video", metadata: {} }] }),
+    JSON.stringify({
+      assets: [{ id: "asset-clip", type: "video", metadata: {} }],
+    }),
     "utf8",
   );
   return { cwd, dataDir, assetsPath };
@@ -49,10 +56,15 @@ function shotNotesDeclaration(kind: string) {
 
 test("a workspace declares a custom kind as data and attaches through the generic trunk", async () => {
   const kind = `team.shot-notes-${++sequence}`;
-  const { cwd, dataDir, assetsPath } = await workspaceWithDeclaration(shotNotesDeclaration(kind));
+  const { cwd, dataDir, assetsPath } = await workspaceWithDeclaration(
+    shotNotesDeclaration(kind),
+  );
 
   const loaded = await loadWorkspaceMetadataKinds(cwd);
-  assert.deepEqual(loaded.map((entry) => entry.kind), [kind]);
+  assert.deepEqual(
+    loaded.map((entry) => entry.kind),
+    [kind],
+  );
   assert.ok(listDeclaredAssetMetadataKinds().includes(kind));
 
   const result = await attachAssetMetadata({
@@ -76,7 +88,9 @@ test("a workspace declares a custom kind as data and attaches through the generi
 
 test("rejects a custom-kind payload its own schema refuses", async () => {
   const kind = `team.shot-notes-${++sequence}`;
-  const { cwd, dataDir, assetsPath } = await workspaceWithDeclaration(shotNotesDeclaration(kind));
+  const { cwd, dataDir, assetsPath } = await workspaceWithDeclaration(
+    shotNotesDeclaration(kind),
+  );
 
   await assert.rejects(
     attachAssetMetadata({
@@ -98,7 +112,10 @@ test("refuses to redeclare a product-declared kind from a workspace", async () =
     schema: {
       type: "object",
       required: ["kind", "schemaVersion"],
-      properties: { kind: { const: "media.transcript" }, schemaVersion: { const: 1 } },
+      properties: {
+        kind: { const: "media.transcript" },
+        schemaVersion: { const: 1 },
+      },
     },
   });
 

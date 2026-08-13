@@ -5,6 +5,7 @@ import {
   link,
   mkdir,
   readFile,
+  rename,
   stat,
   unlink,
   writeFile,
@@ -326,7 +327,35 @@ export function createLocalResourceStore(options: {
             `Local Resource ${resourceId} already exists with different immutable facts.`,
           );
         }
-        return projection(existing);
+        try {
+          return await projection(existing);
+        } catch {
+          // The caller supplied the exact bytes identified by this immutable row,
+          // so a missing or externally corrupted CAS projection can be repaired
+          // without changing Resource identity or registry facts.
+          const path = await assetPathForWrite(
+            options.dataDir,
+            existing.storageKey,
+            options.clashRoot,
+          );
+          const temporaryPath = `${path}.repair-${randomUUID()}`;
+          await writeFile(temporaryPath, input.bytes, {
+            flag: "wx",
+            mode: 0o444,
+          });
+          try {
+            await verifyBytes({
+              path: temporaryPath,
+              digest,
+              byteLength: input.bytes.byteLength,
+            });
+            await rename(temporaryPath, path);
+          } finally {
+            await unlink(temporaryPath).catch(() => undefined);
+          }
+          await chmod(path, 0o444);
+          return projection(existing);
+        }
       }
 
       const storageKey = `local-blobs/${digest}/original${extensionFor(input)}`;

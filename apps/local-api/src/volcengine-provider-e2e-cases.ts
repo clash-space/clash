@@ -6,7 +6,10 @@ import { deflateSync } from "node:zlib";
 import type { ProviderReplayTestCase } from "./provider-replay-test-harness.js";
 
 export const VOLCENGINE_SEED_AUDIO_REPLAY_FIXTURE_PATH = fileURLToPath(
-  new URL("./fixtures/volcengine-seed-audio-live-traffic.jsonl", import.meta.url),
+  new URL(
+    "./fixtures/volcengine-seed-audio-live-traffic.jsonl",
+    import.meta.url,
+  ),
 );
 export const VOLCENGINE_MODELARK_REPLAY_FIXTURE_PATH = fileURLToPath(
   new URL("./fixtures/volcengine-modelark-live-traffic.jsonl", import.meta.url),
@@ -79,7 +82,9 @@ async function referenceVideo(): Promise<Uint8Array> {
  * Project-backend acceptances for every distinct ModelArk Seedance surface:
  * text, all-purpose references, first/last frames, editing, and extension.
  */
-export async function createVolcengineModelArkCases(): Promise<ProviderReplayTestCase[]> {
+export async function createVolcengineModelArkCases(): Promise<
+  ProviderReplayTestCase[]
+> {
   const firstFrame = solidPng(42, 101, 190);
   const lastFrame = solidPng(205, 73, 58);
   const referenceMp3 = await readFile(
@@ -114,7 +119,8 @@ export async function createVolcengineModelArkCases(): Promise<ProviderReplayTes
       id: "volcengine-seedance-2-text",
       type: "video_gen",
       modelId: "seedance-2-ref",
-      prompt: "A blue glass sphere rotates slowly on a matte white table, locked camera.",
+      prompt:
+        "A blue glass sphere rotates slowly on a matte white table, locked camera.",
       params: {
         duration: "auto",
         aspect_ratio: "auto",
@@ -167,7 +173,8 @@ export async function createVolcengineModelArkCases(): Promise<ProviderReplayTes
       id: "volcengine-seedance-2.5-text",
       type: "video_gen",
       modelId: "seedance-2.5-ref",
-      prompt: "A small red paper kite rises into a clear blue sky, gentle camera tilt.",
+      prompt:
+        "A small red paper kite rises into a clear blue sky, gentle camera tilt.",
       params: {
         duration: 4,
         aspect_ratio: "16:9",
@@ -235,8 +242,24 @@ export async function createVolcengineModelArkCases(): Promise<ProviderReplayTes
   ];
 }
 
+/** Successful Project-backend cases present in the committed ModelArk cassette. */
+export async function createVolcengineModelArkReplayCases(): Promise<
+  ProviderReplayTestCase[]
+> {
+  const recordedCaseIds = new Set([
+    "volcengine-seedance-2-text",
+    "volcengine-seedance-2-reference",
+    "volcengine-seedance-2-startend",
+  ]);
+  return (await createVolcengineModelArkCases()).filter(({ id }) =>
+    recordedCaseIds.has(id),
+  );
+}
+
 /** One Project-backend acceptance for each input mode published by Seed Audio 1.0. */
-export async function createVolcengineSeedAudioCases(): Promise<ProviderReplayTestCase[]> {
+export async function createVolcengineSeedAudioCases(): Promise<
+  ProviderReplayTestCase[]
+> {
   const referenceMp3 = await readFile(
     new URL("./fixtures/minimax-h3-reference.mp3", import.meta.url),
   );
@@ -272,7 +295,8 @@ export async function createVolcengineSeedAudioCases(): Promise<ProviderReplayTe
       id: "volcengine-seed-audio-audio",
       type: "audio_gen",
       modelId: "seed-audio-1",
-      prompt: "参考 @[节奏样本](node:volcengine-seed-audio-audio-ref) 的节奏，生成一段两秒的轻柔提示音。",
+      prompt:
+        "参考 @[节奏样本](node:volcengine-seed-audio-audio-ref) 的节奏，生成一段两秒的轻柔提示音。",
       params: { format: "mp3", sample_rate: 24_000 },
       refs: [
         {
@@ -288,20 +312,57 @@ export async function createVolcengineSeedAudioCases(): Promise<ProviderReplayTe
   ];
 }
 
+/** Text-only Project-backend requests present in the committed Seed Audio cassette. */
+export async function createVolcengineSeedAudioReplayCases(): Promise<
+  ProviderReplayTestCase[]
+> {
+  return [
+    {
+      id: "volcengine-seed-audio-recorded-prompt-1",
+      type: "audio_gen",
+      modelId: "seed-audio-1",
+      prompt: "生成一声简短、清脆的提示音，时长约两秒。",
+      params: { format: "mp3", sample_rate: 24_000 },
+      expect: { kind: "audio", mediaType: "audio/mpeg" },
+    },
+    {
+      id: "volcengine-seed-audio-recorded-prompt-2",
+      type: "audio_gen",
+      modelId: "seed-audio-1",
+      prompt: "根据蓝色画面生成一段安静、通透的环境音，时长约两秒。",
+      params: { format: "mp3", sample_rate: 24_000 },
+      expect: { kind: "audio", mediaType: "audio/mpeg" },
+    },
+    {
+      id: "volcengine-seed-audio-recorded-prompt-3",
+      type: "audio_gen",
+      modelId: "seed-audio-1",
+      prompt: "参考 节奏样本 的节奏，生成一段两秒的轻柔提示音。",
+      params: { format: "mp3", sample_rate: 24_000 },
+      expect: { kind: "audio", mediaType: "audio/mpeg" },
+    },
+  ];
+}
+
 export function selectVolcengineProviderCases(
   cases: readonly ProviderReplayTestCase[],
   targets: string | undefined,
 ): ProviderReplayTestCase[] {
   if (!targets?.trim()) return [...cases];
   const requested = [
-    ...new Set(targets.split(",").map((id) => id.trim()).filter(Boolean)),
+    ...new Set(
+      targets
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
   ];
   const known = new Set(cases.map(({ id }) => id));
   const unknown = requested.filter((id) => !known.has(id));
   if (unknown.length > 0) {
     throw new Error(
-      `Unknown CLASH_PROVIDER_E2E_TARGETS: ${unknown.join(", ")}. `
-        + `Expected one or more of: ${[...known].join(", ")}`,
+      `Unknown CLASH_PROVIDER_E2E_TARGETS: ${unknown.join(", ")}. ` +
+        `Expected one or more of: ${[...known].join(", ")}`,
     );
   }
   const selected = new Set(requested);

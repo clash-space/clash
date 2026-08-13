@@ -22,9 +22,16 @@ import {
   SpeechInputRecording,
   type SpeechInputCompletionIntent,
 } from "../ai-elements/speech-input";
-import type { AgentAnnotationDraft } from "@clash/shared-types";
+import type {
+  AgentAnnotationDraft,
+  CopilotProjectAssetReference,
+} from "@clash/shared-types";
 import type { MilkdownEditorHandle, MentionableNode } from "../MilkdownEditor";
 import { AgentAnnotationTray } from "./AgentAnnotationBlock";
+import {
+  normalizeCopilotAssetComposerValue,
+  projectAssetComposerMarker,
+} from "./projectAssetReferences";
 import {
   VoiceInputSetupPopover,
   type VoiceInputNotice,
@@ -35,16 +42,8 @@ const MilkdownEditor = lazy(() => import("../MilkdownEditor"));
 
 // ─── Types ───────────────────────────────────────────────────
 
-export interface UploadedAttachment {
-  id: string;
-  fileName: string;
-  fileType: string;
-  type: "image" | "video" | "audio";
-  assetId: string;
-  url: string;
-  naturalWidth?: number;
-  naturalHeight?: number;
-}
+/** @deprecated Use the storage-neutral shared Project Asset reference type. */
+export type UploadedAttachment = CopilotProjectAssetReference;
 
 interface ChatInputProps {
   input: string;
@@ -226,71 +225,13 @@ async function warmupLocalVoiceInput(): Promise<void> {
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function classifyFile(file: File): UploadedAttachment["type"] | undefined {
+function classifyFile(
+  file: File,
+): CopilotProjectAssetReference["kind"] | undefined {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("video/")) return "video";
   if (file.type.startsWith("audio/")) return "audio";
   return undefined;
-}
-
-const PROJECT_ASSET_MARKER_PREFIX = "clash-project-asset:";
-
-function projectAssetMarker(assetId: string): string {
-  return `${PROJECT_ASSET_MARKER_PREFIX}${encodeURIComponent(assetId)}`;
-}
-
-function projectAssetIdFromMarker(encodedAssetId: string): string | undefined {
-  try {
-    const assetId = decodeURIComponent(encodedAssetId);
-    return assetId || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Extract stable Project Asset identities from composer markdown. */
-function extractAssetKeys(markdown: string): UploadedAttachment[] {
-  const results: UploadedAttachment[] = [];
-  const seen = new Set<string>();
-  const addProjectAsset = (
-    fileName: string,
-    url: string,
-    type: "image" | "video" | "audio",
-    encodedAssetId: string | undefined,
-  ) => {
-    if (!encodedAssetId) return;
-    const assetId = projectAssetIdFromMarker(encodedAssetId);
-    if (!assetId || seen.has(assetId)) return;
-    seen.add(assetId);
-    results.push({ id: assetId, assetId, fileName, fileType: "", type, url });
-  };
-  for (const match of markdown.matchAll(
-    /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"clash-project-asset:([^"]+)")?\)/g,
-  )) {
-    addProjectAsset(match[1] || "image", match[2], "image", match[3]);
-  }
-  for (const match of markdown.matchAll(
-    /\[(🎬|🔊)\s+([^\]]+)\]\(([^)\s]+)(?:\s+"clash-project-asset:([^"]+)")?\)/g,
-  )) {
-    addProjectAsset(
-      match[2],
-      match[3],
-      match[1] === "🎬" ? "video" : "audio",
-      match[4],
-    );
-  }
-
-  return results;
-}
-
-/** Convert inline mention images ![mention:nodeId:label](url) back to @[label](node:id) */
-function restoreMentions(markdown: string): string {
-  return markdown.replace(
-    /!\[mention:([^:]+):([^\]]*)\]\([^)]*\)/g,
-    (_match, nodeId, label) => {
-      return `@[${label}](node:${nodeId})`;
-    },
-  );
 }
 
 const DROPZONE_ACCEPT = {
@@ -362,7 +303,7 @@ function ChatInputInner(
           });
           if (!asset.url)
             throw new Error("Imported Project Asset is not locally available");
-          const marker = projectAssetMarker(asset.id);
+          const marker = projectAssetComposerMarker(asset.id);
           if (type === "image") md = `![${name}](${asset.url} "${marker}")`;
           else if (type === "video")
             md = `[🎬 ${name}](${asset.url} "${marker}")`;
@@ -401,12 +342,14 @@ function ChatInputInner(
     const raw = input.trim();
     if ((!raw && !hasAnnotationContent) || uploading > 0 || submitLocked)
       return;
-    const text = restoreMentions(raw);
-    const attachments = extractAssetKeys(text);
+    const normalized = normalizeCopilotAssetComposerValue(
+      raw,
+      mentionableNodes ?? [],
+    );
     onInputChange("");
     editorRef.current?.clear();
     onCaretTargetChange?.(null);
-    onSubmit(text, attachments, annotationBlocks);
+    onSubmit(normalized.text, normalized.assets, annotationBlocks);
   }, [
     annotationBlocks,
     hasAnnotationContent,
@@ -414,6 +357,7 @@ function ChatInputInner(
     onCaretTargetChange,
     onInputChange,
     onSubmit,
+    mentionableNodes,
     submitLocked,
     uploading,
   ]);
@@ -559,15 +503,14 @@ function ChatInputInner(
         if (!text) return;
         const combinedText = input.trim() ? `${input.trim()} ${text}` : text;
         if (intent === "send") {
-          const submittedText = restoreMentions(combinedText);
+          const normalized = normalizeCopilotAssetComposerValue(
+            combinedText,
+            mentionableNodes ?? [],
+          );
           onInputChange("");
           editorRef.current?.clear();
           onCaretTargetChange?.(null);
-          onSubmit(
-            submittedText,
-            extractAssetKeys(submittedText),
-            annotationBlocks,
-          );
+          onSubmit(normalized.text, normalized.assets, annotationBlocks);
         } else {
           onInputChange(combinedText);
         }
@@ -582,6 +525,7 @@ function ChatInputInner(
       annotationBlocks,
       input,
       isTranscribing,
+      mentionableNodes,
       onCaretTargetChange,
       onInputChange,
       onSubmit,

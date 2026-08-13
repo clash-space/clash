@@ -57,6 +57,15 @@ export type ReplaceDraftActionAssetInputBindingsResult =
   | { ok: true; managed: boolean; bindings: ActionAssetBinding[] }
   | { ok: false; error: string };
 
+export type FreezeDraftActionAssetInputBindingsResult =
+  | {
+      ok: true;
+      owner: Extract<ActionBindingOwner, { kind: "run" }>;
+      bindings: ActionAssetBinding[];
+      changed: boolean;
+    }
+  | { ok: false; error: string };
+
 export interface AssetInUseError {
   code: "ASSET_IN_USE";
   projectAssetId: string;
@@ -423,6 +432,16 @@ function sameBindingOwner(
   return left.actionRunId === right.actionRunId;
 }
 
+/** Lists one exact editable, revision, or run owner's current binding facts. */
+export function listActionAssetBindingsForOwner(
+  doc: LoroDoc,
+  owner: ActionBindingOwner,
+): ActionAssetBinding[] {
+  return listActionAssetBindings(doc).filter((binding) =>
+    sameBindingOwner(binding.owner, owner),
+  );
+}
+
 function sameBindingFact(
   left: ActionAssetBinding,
   right: ActionAssetBinding,
@@ -475,6 +494,94 @@ export function ensureActionAssetBinding(
   const created = createActionAssetBinding(doc, parsed.data);
   if (!created.ok) return created;
   return { ok: true, binding: created.binding, changed: true };
+}
+
+function frozenRunInputBindingId(actionRunId: string, slot: string): string {
+  return (
+    `action-asset:run:${encodeURIComponent(actionRunId)}` +
+    `:input:${encodeURIComponent(slot)}`
+  );
+}
+
+/**
+ * Freezes one editable Action's authoritative input bindings for a concrete run.
+ *
+ * The draft owner is read once; later draft rewiring cannot change these immutable run facts.
+ * Retrying the freeze is idempotent, while reusing a run id for different inputs is an identity
+ * collision. Callers should preflight on a fork when they also create another Project entity in
+ * the same higher-level mutation.
+ */
+export function freezeDraftActionAssetInputBindings(
+  doc: LoroDoc,
+  input: {
+    actionId: string;
+    actionRevisionId: string;
+    actionRunId: string;
+  },
+): FreezeDraftActionAssetInputBindingsResult {
+  const actionId = input.actionId.trim();
+  const actionRevisionId = input.actionRevisionId.trim();
+  const actionRunId = input.actionRunId.trim();
+  if (!actionId || !actionRevisionId || !actionRunId) {
+    return {
+      ok: false,
+      error: "Action id, revision id, and run id are required to freeze Asset inputs",
+    };
+  }
+  if (
+    actionAssetBindingAuthorityVersion(doc) !==
+    ACTION_ASSET_BINDING_AUTHORITY_VERSION
+  ) {
+    return {
+      ok: false,
+      error:
+        "Action Asset binding authority is required before freezing run inputs",
+    };
+  }
+
+  const draftOwner: ActionBindingOwner = { kind: "draft", actionId };
+  const draftInputs = listActionAssetBindingsForOwner(doc, draftOwner).filter(
+    (binding) => binding.direction === "input",
+  );
+  const slots = new Set<string>();
+  for (const binding of draftInputs) {
+    if (slots.has(binding.slot)) {
+      return {
+        ok: false,
+        error: `Editable Action ${actionId} has duplicate Asset input slot ${binding.slot}`,
+      };
+    }
+    slots.add(binding.slot);
+  }
+
+  const owner = {
+    kind: "run" as const,
+    actionId,
+    actionRevisionId,
+    actionRunId,
+  };
+  const bindings: ActionAssetBinding[] = [];
+  let changed = false;
+  for (const draft of draftInputs) {
+    const frozen: ActionAssetBinding = {
+      id: frozenRunInputBindingId(actionRunId, draft.slot),
+      owner,
+      direction: "input",
+      slot: draft.slot,
+      projectAssetId: draft.projectAssetId,
+      ...(draft.role ? { role: draft.role } : {}),
+    };
+    const ensured = ensureActionAssetBinding(doc, frozen);
+    if (!ensured.ok) return { ok: false, error: ensured.error.message };
+    bindings.push(ensured.binding);
+    changed ||= ensured.changed;
+  }
+  return {
+    ok: true,
+    owner,
+    bindings: bindings.sort((left, right) => left.slot.localeCompare(right.slot)),
+    changed,
+  };
 }
 
 export function updateActionAssetBinding(

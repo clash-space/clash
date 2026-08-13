@@ -2,35 +2,38 @@
 
 > 基于 Cloudflare Workers + api-cf 的多智能体视频协作平台
 
+> **历史实现：** 当前 hosted 协作 authority 是 api-cf `ProjectRoom`。本包只保留
+> legacy sync 迁移证据，不提供 Asset 上传、raw-key delivery 或 R2 authority。
+
 ## 系统全景图 (Gateway Pattern)
 
-所有流量通过 `auth-gateway` 统一分发，共享 D1 数据库和 R2 存储。
+该服务是 legacy Loro 同步边界，只共享 D1/DO 状态。它不拥有 Asset
+authority、R2 binding、上传或按 storage key 读取接口。
 
 ```mermaid
 graph TD
     User((用户)) --> Gateway["Auth Gateway (:8788)"]
-    
+
     Gateway -->|/| Web["Frontend (Next.js :3000)"]
     Gateway -->|/sync/*| Sync["Loro Sync Server (:8787)"]
     Gateway -->|/api/*| API["api-cf Worker"]
-    Gateway -->|/assets/*| R2[("R2 Assets")]
-    
+
     subgraph "Infrastructure (Cloudflare)"
         D1[("D1 Database")]
         R2
         DO["Durable Objects (LoroRoom)"]
     end
-    
+
     subgraph "AI Generation (api-cf)"
         GenAgent["GenerationAgent DO"]
         API --> GenAgent
     end
-    
+
     Web -->|getCloudflareContext| D1
     Sync -->|Binding| D1
-    Sync -->|Binding| R2
     API -->|D1 Binding| D1
-    
+    API -->|Internal Resource transport| R2
+
     Sync <-->|WebSocket| DO
     Sync -->|Service Binding| API
 ```
@@ -49,7 +52,7 @@ sequenceDiagram
     Note over FE,Loro: 1. 节点创建
     FE->>Loro: WebSocket (status: generating)
     Loro->>Loro: NodeProcessor 检测节点
-    
+
     Note over Loro,Py: 2. 任务提交
     Loro->>Py: POST /api/tasks/submit
     Py-->>Loro: {task_id}
@@ -67,12 +70,12 @@ sequenceDiagram
 
 ## 核心组件
 
-| 组件 | 职责 |
-|------|------|
+| 组件              | 职责                                  |
+| ----------------- | ------------------------------------- |
 | **NodeProcessor** | 检测 `generating` 节点，提交到 api-cf |
-| **TaskPolling** | 轮询有 `pendingTask` 的节点状态 |
-| **api-cf** | 任务执行、R2 上传 |
-| **LoroRoom** | DO 编排器，WebSocket 同步 |
+| **TaskPolling**   | 轮询有 `pendingTask` 的节点状态       |
+| **api-cf**        | 任务执行、R2 上传                     |
+| **LoroRoom**      | DO 编排器，WebSocket 同步             |
 
 ## 状态流转
 
@@ -93,11 +96,13 @@ fin (有 description)
 系统使用 [Loro](https://loro.dev) 作为底层的 CRDT 引擎。状态存储在 `LoroRoom` (Durable Object) 中。
 
 ### 核心 Map 结构
+
 - `nodes`: 存储所有画布节点。包含 `position`, `type`, `data` (src, status, prompt, params 等)。
 - `edges`: 存储节点间的连接关系。
 - `tasks`: 存储后台任务的执行状态，作为前端与 Python API 异步协作的中转站。
 
 ### 协作机制
+
 - **增量更新**: 前端只发送 Loro 的 `update` 字节流，DO 接收并 `import`。
 - **冲突合并**: Loro 自动处理多人编辑冲突，通过 `export('update')` 与其他客户端同步。
 - **快照持久化**: DO 定期将完整快照保存到 D1 数据库。
@@ -119,6 +124,7 @@ fin (有 description)
 ### 画布即上下文 (Shared Brain)
 
 不同于传统的对话式 AI，这里的 Agent 不仅仅依赖短期记忆，而是将 Loro 画布视为 **"共同操作图" (Common Operating Picture)**：
+
 - **可观测性**: Agent 通过 API 实时读取画布上的节点（脚本、提示词、参考图），获取项目的全局视野。
 - **可操作性**: Agent 对画布的每一次修改（创建节点、更新内容）都会直接通过 `loro-sync-server` 同步给人类用户。
 - **协作媒介**: 专家 Agent 之间不需要复杂的内部通信，它们通过在画布上“留言”或创建下游任务节点来实现串联。
@@ -127,15 +133,15 @@ fin (有 description)
 
 Agent 通过 `CanvasMiddleware` 获得了一系列操作画布的工具：
 
-| 工具分类 | 工具名称 | 功能描述 |
-|------|------|------|
-| **感知 (Observation)** | `list_canvas_nodes` | 扫描画布，获取所有节点的元数据 |
-| | `read_canvas_node` | 读取特定节点的详细内容（如脚本原文） |
-| | `search_canvas` | 根据关键词在所有节点中搜索相关信息 |
-| **执行 (Action)** | `create_generation_node` | 创建 `PromptActionNode`，合并 Prompt 与生成配置 |
-| | `run_generation_node` | 触发该节点的 AIGC 生成流水线 |
-| **同步 (Coordination)** | `wait_for_generation` | 轮询等待生成任务完成（获取 Asset ID/URL） |
-| | `create_canvas_node` | 创建纯文本或 Group 节点（用于组织项目结构） |
+| 工具分类                | 工具名称                 | 功能描述                                        |
+| ----------------------- | ------------------------ | ----------------------------------------------- |
+| **感知 (Observation)**  | `list_canvas_nodes`      | 扫描画布，获取所有节点的元数据                  |
+|                         | `read_canvas_node`       | 读取特定节点的详细内容（如脚本原文）            |
+|                         | `search_canvas`          | 根据关键词在所有节点中搜索相关信息              |
+| **执行 (Action)**       | `create_generation_node` | 创建 `PromptActionNode`，合并 Prompt 与生成配置 |
+|                         | `run_generation_node`    | 触发该节点的 AIGC 生成流水线                    |
+| **同步 (Coordination)** | `wait_for_generation`    | 轮询等待生成任务完成（获取 Asset ID/URL）       |
+|                         | `create_canvas_node`     | 创建纯文本或 Group 节点（用于组织项目结构）     |
 
 ### 专家系统角色
 
@@ -178,12 +184,12 @@ apps/loro-sync-server/src/
 
 ## 环境变量
 
-| 变量 | 说明 |
-|------|------|
-| `API_CF` | Service binding to `api-cf` worker (production) |
-| `LORO_SYNC_URL` | Loro Sync 公网 URL (回调用) |
-| `KLING_ACCESS_KEY` | Kling AI 密钥 |
-| `GEMINI_API_KEY` | Gemini API 密钥 |
+| 变量               | 说明                                            |
+| ------------------ | ----------------------------------------------- |
+| `API_CF`           | Service binding to `api-cf` worker (production) |
+| `LORO_SYNC_URL`    | Loro Sync 公网 URL (回调用)                     |
+| `KLING_ACCESS_KEY` | Kling AI 密钥                                   |
+| `GEMINI_API_KEY`   | Gemini API 密钥                                 |
 
 ## 本地开发
 
@@ -192,12 +198,12 @@ apps/loro-sync-server/src/
 make dev-gateway-full
 ```
 
-| 服务 | 本地地址 |
-|------|----------|
-| **统一入口** | `http://localhost:8788` |
-| 前端 | `http://localhost:3000` |
-| Loro Sync | `http://localhost:8787` |
-| api-cf | (via `API_CF` service binding) |
+| 服务         | 本地地址                       |
+| ------------ | ------------------------------ |
+| **统一入口** | `http://localhost:8788`        |
+| 前端         | `http://localhost:3000`        |
+| Loro Sync    | `http://localhost:8787`        |
+| api-cf       | (via `API_CF` service binding) |
 
 ---
 
@@ -207,4 +213,4 @@ Clash 的核心初衷是实现 **Sleep-time Compute** (闲时计算)。
 
 当创作者在构思或休息（闲时）时，后台的 Multi-Agent 系统会根据当前的画布状态和历史上下文，自动进行深度思考、资产预生成、脚本优化等高能耗任务。当用户回到画布前，迎接他们的是更丰富的草案和半成品。
 
-*“让 AI 在你睡觉时为你工作，让计算永不停歇。”*
+_“让 AI 在你睡觉时为你工作，让计算永不停歇。”_

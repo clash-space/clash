@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UserMessage } from "./UserMessage";
+import { MediaViewerProvider } from "../MediaViewerContext";
 
 vi.mock("./AgentAnnotationBlock", () => ({
   AgentAnnotationTray: ({
@@ -16,7 +17,49 @@ vi.mock("./AgentAnnotationBlock", () => ({
   ),
 }));
 
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
 describe("UserMessage", () => {
+  it("does not sign an object-store key embedded in a legacy mention thumbnail", async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            url: "https://signed.clash.test/private.webp",
+            exp: Math.floor(Date.now() / 1000) + 3_600,
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const { container } = render(
+      <MediaViewerProvider>
+        <UserMessage
+          content="@[Private](node:image-1)"
+          mentionNodes={[
+            {
+              id: "image-1",
+              type: "image",
+              label: "Private",
+              thumbnail: "projects/project-1/private.webp",
+            },
+          ]}
+        />
+      </MediaViewerProvider>,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(container.querySelector("img")).toBeNull();
+  });
+
   it("renders only the submitted annotation GUI when a message has annotations", () => {
     render(
       <UserMessage

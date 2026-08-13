@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import React from 'react';
-import { act, cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { InteractiveCanvas } from './InteractiveCanvasV2';
+import React from "react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { InteractiveCanvas } from "./InteractiveCanvas";
 
 const playerApi = vi.hoisted(() => ({
   addEventListener: vi.fn(),
@@ -13,21 +13,23 @@ const playerApi = vi.hoisted(() => ({
   seekTo: vi.fn(),
 }));
 
-vi.mock('@remotion/player', async () => {
-  const ReactModule = await import('react');
-  const { createPortal } = await import('react-dom');
+vi.mock("@remotion/player", async () => {
+  const ReactModule = await import("react");
+  const { createPortal } = await import("react-dom");
   return {
-    Player: ReactModule.forwardRef((props: { numberOfSharedAudioTags?: number }, ref) => {
-      ReactModule.useImperativeHandle(ref, () => playerApi);
-      return createPortal(
-        <audio
-          data-testid="preview-audio"
-          data-timeline-audio=""
-          data-shared-audio-tags={props.numberOfSharedAudioTags}
-        />,
-        document.body,
-      );
-    }),
+    Player: ReactModule.forwardRef(
+      (props: { numberOfSharedAudioTags?: number }, ref) => {
+        ReactModule.useImperativeHandle(ref, () => playerApi);
+        return createPortal(
+          <audio
+            data-testid="preview-audio"
+            data-timeline-audio=""
+            data-shared-audio-tags={props.numberOfSharedAudioTags}
+          />,
+          document.body,
+        );
+      },
+    ),
   };
 });
 
@@ -45,7 +47,7 @@ const audioNode = () => ({
 });
 
 class AudioContextStub {
-  state: AudioContextState = 'running';
+  state: AudioContextState = "running";
   destination = audioNode() as unknown as AudioDestinationNode;
 
   createGain() {
@@ -76,7 +78,7 @@ class AudioContextStub {
   }
 
   close() {
-    this.state = 'closed';
+    this.state = "closed";
     return Promise.resolve();
   }
 }
@@ -85,13 +87,16 @@ beforeEach(() => {
   analyserIndex = 0;
   nextAnimationFrame = null;
   stoppedTrack.stop.mockClear();
-  vi.stubGlobal('AudioContext', AudioContextStub);
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
-    nextAnimationFrame = callback;
-    return 1;
-  }));
-  vi.stubGlobal('cancelAnimationFrame', vi.fn());
-  Object.defineProperty(HTMLMediaElement.prototype, 'captureStream', {
+  vi.stubGlobal("AudioContext", AudioContextStub);
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    vi.fn((callback: FrameRequestCallback) => {
+      nextAnimationFrame = callback;
+      return 1;
+    }),
+  );
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  Object.defineProperty(HTMLMediaElement.prototype, "captureStream", {
     configurable: true,
     value: vi.fn(() => capturedStream),
   });
@@ -101,11 +106,15 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  delete (HTMLMediaElement.prototype as HTMLMediaElement & { captureStream?: () => MediaStream }).captureStream;
+  delete (
+    HTMLMediaElement.prototype as HTMLMediaElement & {
+      captureStream?: () => MediaStream;
+    }
+  ).captureStream;
 });
 
-describe('InteractiveCanvas live audio meter', () => {
-  it('bypasses the shared audio pool so timeline sound uses a real media element', () => {
+describe("InteractiveCanvas live audio meter", () => {
+  it("bypasses the shared audio pool so timeline sound uses a real media element", () => {
     render(
       <InteractiveCanvas
         tracks={[]}
@@ -119,10 +128,14 @@ describe('InteractiveCanvas live audio meter', () => {
       />,
     );
 
-    expect(screen.getByTestId('preview-audio').getAttribute('data-shared-audio-tags')).toBe('0');
+    expect(
+      screen
+        .getByTestId("preview-audio")
+        .getAttribute("data-shared-audio-tags"),
+    ).toBe("0");
   });
 
-  it('reports current stereo RMS levels without using player volume controls', () => {
+  it("reports current stereo RMS levels without using player volume controls", () => {
     const onAudioLevelsChange = vi.fn();
     render(
       <InteractiveCanvas
@@ -147,7 +160,7 @@ describe('InteractiveCanvas live audio meter', () => {
     )?.[0];
     expect(liveSample?.left).toBeCloseTo(0.5, 4);
     expect(liveSample?.right).toBeCloseTo(0.25, 4);
-    expect('setVolume' in playerApi).toBe(false);
-    expect('mute' in playerApi).toBe(false);
+    expect("setVolume" in playerApi).toBe(false);
+    expect("mute" in playerApi).toBe(false);
   });
 });

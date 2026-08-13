@@ -12,6 +12,7 @@ import { defaultLocalApiDataDir } from "@clash/shared-runtime/local-paths";
 import { applyProductionMetadataAction } from "./production-actions";
 import { recordAgentObservation } from "./agent-worktree-observation";
 import { loadWorkspaceMetadataKinds } from "./workspace-metadata-kinds";
+import { resolveProjectContext } from "./project-context";
 
 /**
  * Attaching metadata is a product operation on an asset, not a document an agent
@@ -58,10 +59,15 @@ export type AttachAssetMetadataResult = {
  * this never fails an attach.
  */
 async function reportAssetMetadataIndex(input: {
-  assetId: string;
+  actionId: string;
+  target: {
+    kind: "project-asset";
+    projectId: string;
+    assetId: string;
+  };
   metadataKind: string;
   producer: string;
-  identity: Record<string, unknown>;
+  metadata: Record<string, unknown>;
 }): Promise<boolean> {
   const base = process.env.CLASH_API_URL?.trim() || "http://localhost:8788";
   try {
@@ -81,9 +87,14 @@ export async function attachAssetMetadata(
   options: AttachAssetMetadataOptions,
 ): Promise<AttachAssetMetadataResult> {
   await loadWorkspaceMetadataKinds(options.cwd);
+  const projectId = (await resolveProjectContext({ cwd: options.cwd }))
+    .projectId;
   const dataDir = options.dataDir ?? defaultLocalApiDataDir();
   const bodyHashField = options.bodyHashField ?? "bodyHash";
-  let metadata: Record<string, unknown> = { ...options.metadata, kind: options.metadataKind };
+  let metadata: Record<string, unknown> = {
+    ...options.metadata,
+    kind: options.metadataKind,
+  };
   let stored: Awaited<ReturnType<typeof storeMetadataBody>> | undefined;
 
   if (options.body !== undefined) {
@@ -93,17 +104,25 @@ export async function attachAssetMetadata(
       body: options.body,
       // If the caller already pinned the identity, a mismatch is a real error and
       // not something to quietly paper over by rehashing.
-      ...(typeof declared === "string" ? { expectedContentHash: declared } : {}),
+      ...(typeof declared === "string"
+        ? { expectedContentHash: declared }
+        : {}),
     });
     metadata = { ...metadata, [bodyHashField]: stored.contentHash };
   }
 
+  const actionId = `attach-${randomUUID()}`;
+  const target = {
+    kind: "project-asset" as const,
+    projectId,
+    assetId: options.assetId,
+  };
   const result = await applyProductionMetadataAction({
     cwd: options.cwd,
     ...(options.assetsPath ? { assetsPath: options.assetsPath } : {}),
     action: {
-      actionId: `attach-${randomUUID()}`,
-      targetAssetId: options.assetId,
+      actionId,
+      target,
       metadataKind: options.metadataKind,
       producer: options.producer,
       metadata,
@@ -119,10 +138,11 @@ export async function attachAssetMetadata(
     cwd: options.cwd,
   });
   const indexed = await reportAssetMetadataIndex({
-    assetId: options.assetId,
+    actionId,
+    target,
     metadataKind: options.metadataKind,
     producer: options.producer,
-    identity: metadata,
+    metadata,
   });
 
   return {

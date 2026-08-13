@@ -1,9 +1,9 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 /* eslint-disable @next/next/no-img-element */
 import { Handle, Position, NodeProps, Node, useReactFlow } from "@xyflow/react";
 import SourceHandleMenu from "./SourceHandleMenu";
 import DraftPlaceholder from "./DraftPlaceholder";
-import { ArrowClockwise, Eye, FilmSlate, TextT } from "@phosphor-icons/react";
+import { Eye, FilmSlate, TextT } from "@phosphor-icons/react";
 import { useMediaViewer } from "../MediaViewerContext";
 import { useOptionalLoroSyncContext } from "../LoroSyncContext";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@clash/web-ui/lib/assetStatus";
 import { useAsset } from "@clash/web-ui/lib/hooks/useAsset";
 import { useProject } from "../ProjectContext";
-import { thumbnailCache } from "@clash/web-ui/lib/utils/thumbnailCache";
+import { VideoPoster } from "../../features/assets/VideoPoster";
 import {
   calculateDimensionsFromAspectRatio,
   calculateScaledDimensions,
@@ -51,20 +51,7 @@ const VideoNode = ({
   const asset = useAsset(projectId, nodeAssetId);
   const videoUrl = asset?.url;
   const [description, setDescription] = useState(data.description || "");
-  const [localThumbnail, setLocalThumbnail] = useState<string | null>(
-    thumbnailCache.get(videoUrl),
-  );
   const posterUrl = asset?.thumbnailUrl;
-  const [isVideoReady, setIsVideoReady] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const lastReadyUrlRef = useRef<string | undefined>(undefined);
-  const pendingThumbnailCaptureRef = useRef(false);
-  const videoUrlRef = useRef(videoUrl);
-
-  // Keep ref in sync with state
-  useEffect(() => {
-    videoUrlRef.current = videoUrl;
-  }, [videoUrl]);
 
   const aspectRatioDimensions = calculateDimensionsFromAspectRatio(
     data.aspectRatio,
@@ -88,14 +75,6 @@ const VideoNode = ({
   const nodeWidth = currentSize.width;
   const nodeHeight = currentSize.height;
 
-  // Load from cache if src changes
-  useEffect(() => {
-    if (videoUrl) {
-      const cached = thumbnailCache.get(videoUrl);
-      if (cached) setLocalThumbnail(cached);
-    }
-  }, [videoUrl]);
-
   // Sync mutable presentation state from Loro data changes. Media itself is
   // always projected from the stable Project Asset id above.
   useEffect(() => {
@@ -107,120 +86,6 @@ const VideoNode = ({
       (data.description || "") !== prev ? data.description || "" : prev,
     );
   }, [data.status, data.description]);
-
-  useEffect(() => {
-    if (!videoUrl) {
-      setIsVideoReady(false);
-      lastReadyUrlRef.current = undefined;
-      return;
-    }
-    if (videoUrl !== lastReadyUrlRef.current) {
-      setIsVideoReady(false);
-    }
-  }, [videoUrl]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !videoUrl) return;
-
-    // Only set ready if we have data AND we're not waiting for a seek
-    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      // If we are currently seeking, wait for onSeeked
-      if (video.seeking) return;
-
-      // If the video is at 0s but is long enough to have a thumbnail at 1s,
-      // we probably haven't performed the initial seek yet (or onLoadedMetadata hasn't run).
-      // Don't show the video yet to avoid the "white frame 0" flash.
-      const duration = video.duration || 0;
-      if (duration >= 1.0 && video.currentTime < 0.1) {
-        return;
-      }
-
-      setIsVideoReady(true);
-      lastReadyUrlRef.current = videoUrl;
-    }
-  }, [videoUrl]);
-
-  const captureThumbnail = (
-    video: HTMLVideoElement,
-    url: string | undefined,
-    options: { overwrite?: boolean } = {},
-  ) => {
-    if (!url || !video.videoWidth) return;
-    try {
-      const canvas = document.createElement("canvas");
-      const maxSize = 512;
-      const ratio = video.videoWidth / video.videoHeight;
-      const baseWidth = Math.min(maxSize, video.videoWidth || maxSize);
-      canvas.width = baseWidth;
-      canvas.height = Math.max(1, Math.round(baseWidth / ratio));
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      let totalBrightness = 0;
-      for (let i = 0; i < data.length; i += 40) {
-        totalBrightness += (data[i] + data[i + 1] + data[i + 2]) / 3;
-      }
-      const avgBrightness = totalBrightness / (data.length / 40);
-
-      const thumbnail = canvas.toDataURL("image/jpeg", 0.7);
-      // IMPORTANT: Read directly from cache instead of using localThumbnail state
-      // to avoid stale closure values. This prevents overwriting good cached thumbnails
-      // with white/black frames from accidental seeks.
-      const existingThumbnail = thumbnailCache.get(url);
-      if ((options.overwrite || !existingThumbnail) && avgBrightness > 20) {
-        thumbnailCache.set(url, thumbnail);
-        setLocalThumbnail(thumbnail);
-      }
-    } catch (err) {
-      console.warn("[VideoNode] Thumbnail capture failed:", err);
-    }
-  };
-
-  const captureThumbnailAfterFrame = (
-    video: HTMLVideoElement,
-    overwrite = false,
-  ) => {
-    const doCapture = () =>
-      captureThumbnail(video, videoUrlRef.current, { overwrite });
-    if ("requestVideoFrameCallback" in video) {
-      // Use the modern API to wait for the next painted frame.
-      (video as any).requestVideoFrameCallback(doCapture);
-    } else {
-      // Fallback: allow the seeked frame to render before drawing.
-      setTimeout(doCapture, 100);
-    }
-  };
-
-  const refreshThumbnail = () => {
-    setLocalThumbnail(null);
-    const video = videoRef.current;
-    if (!video) return;
-
-    const duration = Number.isFinite(video.duration) ? video.duration : 0;
-    const maxSeek = Math.min(duration, 5);
-    if (maxSeek <= 0) {
-      captureThumbnailAfterFrame(video, true);
-      return;
-    }
-
-    const targetTime =
-      maxSeek > 0.1 ? 0.1 + Math.random() * (maxSeek - 0.1) : maxSeek;
-
-    const captureAfterSeek = () => captureThumbnailAfterFrame(video, true);
-    video.addEventListener("seeked", captureAfterSeek, { once: true });
-    if (Math.abs(video.currentTime - targetTime) < 0.01) {
-      video.removeEventListener("seeked", captureAfterSeek);
-      captureAfterSeek();
-    } else {
-      video.currentTime = targetTime;
-    }
-  };
-
-  const posterImage = localThumbnail || posterUrl;
 
   // Reconciliation — same pattern as ImageNode. asset.metadata is the
   // authoritative size; every time it's available compare against Loro's
@@ -265,7 +130,7 @@ const VideoNode = ({
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (videoUrl && status === "completed") {
+    if (videoUrl && asset?.status === "ready" && status === "completed") {
       openViewer("video", videoUrl, label);
     }
   };
@@ -318,82 +183,26 @@ const VideoNode = ({
       >
         {status === "draft" ? (
           <DraftPlaceholder nodeId={id} modality="video" />
-        ) : videoUrl ? (
+        ) : asset?.status === "ready" && videoUrl ? (
           // Same as ImageNode: prefer the resolved asset over a stale
           // `status:'failed'` state (asset row + R2 blob are intact).
           <div className="relative" style={{ width: "100%", height: "100%" }}>
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              poster={!isVideoReady && posterImage ? posterImage : undefined}
-              controls={false}
-              className="block pointer-events-none"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-              }}
-              crossOrigin="anonymous"
-              preload="metadata"
-              playsInline
-              onLoadedMetadata={(e) => {
-                const video = e.target as HTMLVideoElement;
-                const duration = video.duration || 0;
-
-                // Duration is owned by the asset row (server-probed at upload/generation).
-                // We intentionally do NOT write back video.duration to node data here.
-
-                // Trigger thumbnail generation if needed
-                if (!localThumbnail) {
-                  pendingThumbnailCaptureRef.current = true;
-                }
-
-                // Always seek to 1.0s if possible to match the thumbnail frame.
-                // This prevents the "white preview" issue where the video element
-                // displays the frame at 0s (often white/black) after loading,
-                // replacing the cached thumbnail which was captured at 1.0s.
-                if (duration >= 1.0) {
-                  video.currentTime = 1.0;
-                } else if (duration > 0) {
-                  // For very short videos, try to show something other than 0s if possible,
-                  // or just leave it. If we can't seek to 1.0, we probably didn't capture
-                  // a thumbnail at 1.0 either.
-                }
-
-                // Don't set isVideoReady(true) here - wait for onLoadedData/onCanPlay/onSeeked
-                // to ensure the frame is actually rendered. This prevents white flashes.
-              }}
-              onLoadedData={(e) => {
-                const video = e.target as HTMLVideoElement;
-                if (!video.seeking) {
-                  setIsVideoReady(true);
-                  lastReadyUrlRef.current = videoUrl;
-                }
-              }}
-              onCanPlay={(e) => {
-                const video = e.target as HTMLVideoElement;
-                if (!video.seeking) {
-                  setIsVideoReady(true);
-                  lastReadyUrlRef.current = videoUrl;
-                }
-              }}
-              onSeeked={(e) => {
-                const video = e.target as HTMLVideoElement;
-                setIsVideoReady(true);
-                lastReadyUrlRef.current = videoUrl;
-
-                // Only capture thumbnail at exactly 1.0 second (our explicit seek)
-                // This prevents capturing thumbnails from browser auto-seek or other operations
-                if (
-                  video.videoWidth > 0 &&
-                  Math.abs(video.currentTime - 1.0) < 0.1 &&
-                  pendingThumbnailCaptureRef.current
-                ) {
-                  pendingThumbnailCaptureRef.current = false;
-
-                  captureThumbnailAfterFrame(video);
-                }
-              }}
+            <VideoPoster
+              thumbnailSrc={posterUrl}
+              videoSrc={videoUrl}
+              status={asset.status}
+              alt={`${label} thumbnail`}
+              className="block h-full w-full object-contain pointer-events-none"
+              fallback={
+                <div className="absolute inset-0 flex items-center justify-center bg-black/25 backdrop-blur-[2px]">
+                  <div className="relative z-10 flex flex-col items-center gap-2">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+                    <span className="text-xs font-medium text-white animate-pulse">
+                      Preparing preview...
+                    </span>
+                  </div>
+                </div>
+              }
             />
 
             {/* Top Right Controls */}
@@ -425,16 +234,6 @@ const VideoNode = ({
                   />
                 </CollapsibleTrigger>
               </Tooltip>
-              <Tooltip label="Refresh thumbnail">
-                <IconButton
-                  label="Refresh thumbnail"
-                  icon={<ArrowClockwise className="h-4 w-4" weight="bold" />}
-                  size="sm"
-                  shape="circle"
-                  className={MEDIA_NODE_CONTROL_CLASS}
-                  onClick={refreshThumbnail}
-                />
-              </Tooltip>
               <div className="rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-white backdrop-blur-sm">
                 Video
               </div>
@@ -446,61 +245,16 @@ const VideoNode = ({
                 <FilmSlate size={24} className="text-white" weight="fill" />
               </div>
             </div>
-            {!isVideoReady && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/25 backdrop-blur-[2px]">
-                {posterImage && (
-                  <img
-                    src={posterImage}
-                    alt=""
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                )}
-                <div className="relative z-10 flex flex-col items-center gap-2">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/30 border-t-white" />
-                  <span className="text-xs font-medium text-white animate-pulse">
-                    Loading...
-                  </span>
-                </div>
-              </div>
-            )}
           </div>
         ) : status === "uploading" && data.previewUrl ? (
           <div className="relative" style={{ width: "100%", height: "100%" }}>
             <video
               src={data.previewUrl as string}
               controls={false}
-              className="block pointer-events-none opacity-70"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-              }}
+              className="block h-full w-full pointer-events-none object-contain opacity-70"
               preload="metadata"
+              muted
               playsInline
-              onLoadedMetadata={(e) => {
-                const video = e.target as HTMLVideoElement;
-                if (!localThumbnail) {
-                  pendingThumbnailCaptureRef.current = true;
-                  video.currentTime = 1.0;
-                }
-              }}
-              onSeeked={(e) => {
-                const video = e.target as HTMLVideoElement;
-                setIsVideoReady(true);
-                lastReadyUrlRef.current = videoUrl;
-
-                // Only capture thumbnail at exactly 1.0 second (our explicit seek)
-                // This prevents capturing thumbnails from browser auto-seek or other operations
-                if (
-                  video.videoWidth > 0 &&
-                  Math.abs(video.currentTime - 1.0) < 0.1 &&
-                  pendingThumbnailCaptureRef.current
-                ) {
-                  pendingThumbnailCaptureRef.current = false;
-
-                  captureThumbnailAfterFrame(video);
-                }
-              }}
             />
             {/* Loading Overlay */}
             <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px]">

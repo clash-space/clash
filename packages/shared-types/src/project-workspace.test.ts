@@ -26,6 +26,7 @@ describe("Project workspace model", () => {
                 assetId: "asset-video",
                 sourceNodeId: "canvas-video",
                 src: "https://host-a.invalid/signed/video.mp4?token=secret",
+                waveform: [0.1, 0.8, 0.2],
                 from: 0,
                 durationInFrames: 30,
               },
@@ -50,6 +51,12 @@ describe("Project workspace model", () => {
           .state as any
       ).tracks[0].items[0],
     ).not.toHaveProperty("src");
+    expect(
+      (
+        (workspace as any).readProjectTimeline(doc, "timeline-storage-free")
+          .state as any
+      ).tracks[0].items[0],
+    ).not.toHaveProperty("waveform");
   });
 
   it("does not accept backingAssetId as Timeline media identity", () => {
@@ -1157,6 +1164,7 @@ describe("Project workspace model", () => {
 
   it("renders a Canvas-owned Timeline from timeline state and places the output on its Canvas", () => {
     const doc = new LoroDoc();
+    markActionAssetBindingAuthority(doc);
     const canvas = new Canvas(doc, () => {}, "main");
     (workspace as any).createProjectTimeline(doc, {
       id: "timeline-1",
@@ -1199,6 +1207,35 @@ describe("Project workspace model", () => {
         },
       },
     });
+  });
+
+  it("fails Timeline render closed before Action Asset binding authority cutover", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {}, "main");
+    (workspace as any).createProjectTimeline(doc, {
+      id: "timeline-1",
+      name: "Episode 1",
+      state: {
+        fps: 30,
+        tracks: [{ items: [{ from: 0, durationInFrames: 30 }] }],
+      },
+    });
+    (workspace as any).attachTimelineToCanvas(doc, {
+      timelineId: "timeline-1",
+      canvasId: "main",
+      actionNodeId: "timeline-action-1",
+      position: { x: 0, y: 0 },
+    });
+
+    expect(canvas.execute("timeline-action-1", () => "render-1")).toMatchObject(
+      {
+        kind: null,
+        childNodeId: "",
+        error:
+          "Action Asset binding authority is required before freezing run inputs",
+      },
+    );
+    expect(canvas.readNode("render-1")).toBeNull();
   });
 
   it("does not treat an embedded node timelineDsl as canonical Timeline state", () => {

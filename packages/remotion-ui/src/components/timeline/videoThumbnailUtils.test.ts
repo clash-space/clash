@@ -7,7 +7,7 @@ import {
   getAdaptiveFilmstripSampleCount,
   getBoundedFilmstripCanvasWidth,
   getOrCreatePendingTask,
-  getPersistentVideoCacheId,
+  getPersistentMediaCacheId,
   renderFilmstripToCanvas,
   type FilmstripCacheEntry,
 } from './videoThumbnailUtils';
@@ -179,10 +179,33 @@ describe('getOrCreatePendingTask', () => {
   });
 });
 
-describe('getPersistentVideoCacheId', () => {
+describe('getPersistentMediaCacheId', () => {
+  it('isolates the same Project Asset row id across Project authorities', () => {
+    const projectA = getPersistentMediaCacheId(
+      'shared-entry-id',
+      'shared-source-node',
+      'https://media.example.test/shared.mp4',
+      'project-a',
+    );
+    const projectB = getPersistentMediaCacheId(
+      'shared-entry-id',
+      'shared-source-node',
+      'https://media.example.test/shared.mp4',
+      'project-b',
+    );
+    const otherAssetInProjectA = getPersistentMediaCacheId(
+      'other-entry-id',
+      'shared-source-node',
+      'https://media.example.test/shared.mp4',
+      'project-a',
+    );
+
+    expect(new Set([projectA, projectB, otherAssetInProjectA]).size).toBe(3);
+  });
+
   it('prefers the real asset row id when it is available', () => {
     expect(
-      getPersistentVideoCacheId(
+      getPersistentMediaCacheId(
         'asset-row-123',
         'source-node-123',
         'https://cdn.example.com/video.mp4?X-Amz-Signature=abc'
@@ -192,7 +215,7 @@ describe('getPersistentVideoCacheId', () => {
 
   it('falls back to the unsigned media url before using the source node id', () => {
     expect(
-      getPersistentVideoCacheId(
+      getPersistentMediaCacheId(
         undefined,
         'source-node-123',
         'https://cdn.example.com/video.mp4?X-Amz-Signature=abc&Expires=123'
@@ -202,7 +225,7 @@ describe('getPersistentVideoCacheId', () => {
 
   it('uses the source node id only when there is no stable media identity', () => {
     expect(
-      getPersistentVideoCacheId(
+      getPersistentMediaCacheId(
         undefined,
         'source-node-123',
         undefined

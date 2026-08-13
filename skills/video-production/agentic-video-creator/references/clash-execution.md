@@ -90,22 +90,23 @@ Create one action node per named candidate hypothesis when independent outputs
 and lineage matter. Execute all candidate nodes before waiting:
 
 ```bash
-clash canvas execute --project <project-id> --canvas sequence-01 --node <candidate-a-node> --json
-clash canvas execute --project <project-id> --canvas sequence-01 --node <candidate-b-node> --json
-clash canvas execute --project <project-id> --canvas sequence-01 --node <candidate-c-node> --json
+clash canvas execute --project <project-id> --node <candidate-a-node> --json
+clash canvas execute --project <project-id> --node <candidate-b-node> --json
+clash canvas execute --project <project-id> --node <candidate-c-node> --json
 ```
 
-Capture every returned task ID. Observe with realistic timeouts:
+Capture every returned `childNodeId`. Observe each durable result node until
+its product status is `completed` or `failed`:
 
 ```bash
-clash tasks wait --task-id <task-id> --timeout 600 --json
+clash canvas get --project <project-id> --node <child-node-id> --json
 ```
 
 After completion, read the source Canvas and capture output node and asset IDs:
 
 ```bash
-clash canvas list --project <project-id> --canvas sequence-01 --json
-clash canvas get --project <project-id> --canvas sequence-01 --node <output-node-id> --json
+clash canvas list --project <project-id> --json
+clash canvas get --project <project-id> --node <output-node-id> --json
 ```
 
 On failure, read the structured error. Retry once only for a transient upstream

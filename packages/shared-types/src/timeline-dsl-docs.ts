@@ -16,6 +16,7 @@ type CatalogFieldDefinition = {
   authoredRequired: boolean;
   editor: { surface: string; control?: string };
   runtimeConsumers: readonly string[];
+  persistence?: "discard";
   appliesToItemTypes?: readonly string[];
   deprecated?: string;
   defaultValue?: unknown;
@@ -48,7 +49,11 @@ function samplingVerb(value: string): string {
 
 function catalogFieldRows(fields: Record<string, CatalogFieldDefinition>): string {
   return Object.entries(fields).map(([name, definition]) => {
-    const authorship = definition.authored ? "editable" : "preserve / derived";
+    const authorship = definition.persistence === "discard"
+      ? "discard / device cache"
+      : definition.authored
+        ? "editable"
+        : "preserve / derived";
     const required = `${definition.authoredRequired ? "authored" : "optional"} / ${definition.required ? "runtime" : "optional"}`;
     const defaultValue = Object.prototype.hasOwnProperty.call(definition, "defaultValue")
       ? `\`${inlineJson(definition.defaultValue)}\``
@@ -145,6 +150,15 @@ agent operations, and routing metadata. Complex UI controls and renderer behavio
 explicit adapters, with compile-time/test coverage gates against descriptor
 drift.
 
+The current release is schema version \`${TIMELINE_DSL_DEFINITION.schemaVersion}\`
+with fingerprint \`${TIMELINE_DSL_DEFINITION.contractFingerprint}\`. Version 11
+marks legacy inline waveform samples as discard-on-save device presentation;
+browsers regenerate them instead of synchronizing them. Version 10 narrowed the
+public \`timeline.render\` receipt to a strict Project Asset reference
+\`asset: { id }\`. Clients migrating from version 9 must resolve that Project Asset
+through the Asset SDK; transient delivery URLs and storage keys are not Timeline
+receipt fields.
+
 Validate without mutation through \`${TIMELINE_DSL_DEFINITION.validation.cliCommand}\`
 or \`${TIMELINE_DSL_DEFINITION.validation.mcpTool}\`. Standard JSON Schema handles
 the structural contract and portable applicability rules; generated
@@ -163,6 +177,8 @@ Use the read-proof workflow for every mutation:
 The tables below are generated from the same executable field descriptors as
 the discriminated Zod/JSON Schema. “Preserve / derived” fields are not normal
 authoring controls, but a full-state apply must round-trip them unchanged.
+“Discard / device cache” fields remain readable only for migration/runtime
+presentation and are removed by Project persistence.
 “Consumer fallback” documents the value used by editor/preview/render when an
 authored optional field is absent; parsing does not silently materialize it.
 

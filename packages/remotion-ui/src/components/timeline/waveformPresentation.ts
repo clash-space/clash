@@ -25,9 +25,10 @@ export function getWaveformBuildCacheKey(
   mediaType: string | undefined,
   source: string | undefined,
   sampleCount: number,
+  previewCacheId?: string,
 ): string | null {
   return source && (mediaType === 'audio' || mediaType === 'video')
-    ? `${mediaType}:${source}:${sampleCount}`
+    ? `${mediaType}:${previewCacheId ?? source}:${sampleCount}`
     : null;
 }
 

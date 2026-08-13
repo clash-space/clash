@@ -5345,7 +5345,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-22GF7SDG.js
+// ../../packages/shared-types/dist/chunk-F5H437YY.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -6208,10 +6208,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     entranceAnimation: authored(TimelineClipAnimationSchema, "Seek-safe visual entrance animation.", {
       required: false,
@@ -6300,10 +6301,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     audioFadeInFrames: authored(NonnegativeFrameSchema, "Canonical audio fade-in duration in frames.", {
       required: false,
@@ -6578,11 +6580,7 @@ var TimelineRenderReceiptSchema = z.object({
   renderNodeId: IdentifierSchema,
   target: TimelineRenderTargetSchema,
   status: z.enum(["pending", "completed", "failed"]),
-  asset: z.object({
-    id: IdentifierSchema,
-    signedUrl: IdentifierSchema.optional(),
-    srcR2Key: IdentifierSchema.optional()
-  }).passthrough().optional(),
+  asset: z.object({ id: IdentifierSchema }).strict().optional(),
   error: z.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z.object({
@@ -8319,7 +8317,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 9,
+  schemaVersion: 11,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,

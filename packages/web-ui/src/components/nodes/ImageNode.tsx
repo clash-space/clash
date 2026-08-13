@@ -13,7 +13,7 @@ import {
   isActiveStatus,
   type AssetStatus,
 } from "@clash/web-ui/lib/assetStatus";
-import { SignedImg } from "../SignedMedia";
+import { ProjectedImage } from "../ProjectedMedia";
 import { useAsset } from "@clash/web-ui/lib/hooks/useAsset";
 import { useProject } from "../ProjectContext";
 import {
@@ -210,7 +210,7 @@ const ImageNode = ({
           // sees a SELECT exception and writes failed). The asset row +
           // R2 blob are intact; rendering them is correct.
           <div className="relative">
-            <SignedImg
+            <ProjectedImage
               src={imageUrl}
               alt={label}
               className="block"
@@ -255,7 +255,7 @@ const ImageNode = ({
           </div>
         ) : status === "uploading" && data.previewUrl ? (
           <div className="relative" style={{ width: "100%", height: "100%" }}>
-            <SignedImg
+            <ProjectedImage
               src={data.previewUrl as string}
               alt={label}
               className="block"

@@ -62,6 +62,59 @@ describe("project host command route", () => {
     });
   });
 
+  it("materializes Asset binding authority before accepting a Timeline render", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "trusted-local-user",
+    });
+    const created = await app.request("/api/v1/projects/p1/host-command", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "create_timeline",
+        timelineId: "cut-1",
+        name: "Cut",
+        state: {
+          durationInFrames: 24,
+          tracks: [
+            {
+              id: "titles",
+              items: [
+                {
+                  id: "title-1",
+                  type: "text",
+                  from: 0,
+                  durationInFrames: 24,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    });
+    expect(created.status).toBe(200);
+    await expect(created.json()).resolves.toMatchObject({
+      timeline: { id: "cut-1" },
+    });
+
+    const requested = await app.request("/api/v1/projects/p1/host-command", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "request_timeline_render",
+        timelineId: "cut-1",
+      }),
+    });
+
+    expect(requested.status).toBe(200);
+    await expect(requested.json()).resolves.toMatchObject({
+      submitted: true,
+      timelineId: "cut-1",
+      renderNodeId: expect.any(String),
+      target: { kind: "project-assets" },
+    });
+  });
+
   it("rejects raw data and client-supplied user identity at the route schema", async () => {
     const response = await createLocalApiApp({ dataDir }).request(
       "/api/v1/projects/p1/host-command",

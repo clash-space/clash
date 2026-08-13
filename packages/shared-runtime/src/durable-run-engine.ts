@@ -213,7 +213,11 @@ const EMPTY_COUNTS: DurableRunAttemptCounts = {
 export function durableRunIdempotencyKey(
   run: Pick<DurableRunRecord, "actionRunId" | "outputSlot">,
 ): string {
-  return `${run.actionRunId}:${run.outputSlot}`;
+  // The terminal segment is URI-encoded, so the final `:` is an unambiguous tuple boundary even
+  // when either value contains a delimiter. Keeping actionRunId verbatim preserves the stable keys
+  // of already-journaled runs whose conventional output slots (`media`, `text`, ...) need no
+  // escaping, while encodeURIComponent also escapes `%` and therefore keeps the map injective.
+  return `${run.actionRunId}:${encodeURIComponent(run.outputSlot)}`;
 }
 
 export function createDurableRunRecord(input: {

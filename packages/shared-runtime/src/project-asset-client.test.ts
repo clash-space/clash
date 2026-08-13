@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   PROJECT_ASSET_READ_RECEIPT_HEADER,
   createProjectAssetHostClient,
+  resolveAssetImportFileType,
 } from "./project-asset-client.js";
 import * as projectAssetClients from "./project-asset-client.js";
 import { createProjectHostClient } from "./project-host-client.js";
@@ -19,6 +20,16 @@ const readyAsset = {
 };
 
 describe("Project Asset Host client", () => {
+  it("advertises only model formats with a byte-verifying Local probe", () => {
+    expect(resolveAssetImportFileType("horse.glb")).toEqual({
+      kind: "model",
+      contentType: "model/gltf-binary",
+    });
+    expect(() => resolveAssetImportFileType("horse.fbx")).toThrow(
+      /unsupported/i,
+    );
+  });
+
   it("shares the exact discovered Host connection used by the MCP command client", async () => {
     const requests: string[] = [];
     let connections = 0;
@@ -110,6 +121,7 @@ describe("Project Asset Host client", () => {
     const trashed = await client.trash({
       projectId: "project-a",
       assetId: "asset:one",
+      deleteOperationId: "delete:test",
       actorClientType: "mcp",
       receipt: read.receipt,
     });
@@ -140,12 +152,60 @@ describe("Project Asset Host client", () => {
         init: {
           method: "DELETE",
           headers: {
+            "content-type": "application/json",
             "x-clash-client-type": "mcp",
             "x-clash-if-match": "receipt-before-trash",
           },
+          body: JSON.stringify({ deleteOperationId: "delete:test" }),
         },
       },
     ]);
+  });
+
+  it("reuses one delete operation id when the same Host command retries an unknown result", async () => {
+    const operationIds: string[] = [];
+    const client = createProjectAssetHostClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as {
+          deleteOperationId: string;
+        };
+        operationIds.push(body.deleteOperationId);
+        if (operationIds.length === 1) throw new TypeError("connection lost");
+        return new Response(
+          JSON.stringify({
+            ...readyAsset,
+            lifecycle: {
+              state: "trashed",
+              deleteOperationId: body.deleteOperationId,
+              deletedAt: "2026-08-13T00:00:00.000Z",
+              purgeAfter: "2026-09-12T00:00:00.000Z",
+            },
+            status: "unavailable",
+          }),
+          {
+            headers: {
+              "content-type": "application/json",
+              [PROJECT_ASSET_READ_RECEIPT_HEADER]: "receipt-after-trash",
+            },
+          },
+        );
+      },
+    });
+    const command = {
+      projectId: "project-a",
+      assetId: "asset:one",
+      actorClientType: "mcp",
+      receipt: "receipt-before-trash",
+    };
+
+    await expect(client.trash(command)).rejects.toThrow("connection lost");
+    await client.trash(command);
+
+    expect(typeof operationIds[0]).toBe("string");
+    expect(operationIds[0]).not.toBe("");
+    expect(operationIds[1]).toBe(operationIds[0]);
   });
 
   it("uploads workspace bytes through the single multipart import-file route", async () => {
@@ -184,6 +244,137 @@ describe("Project Asset Host client", () => {
     expect(
       Array.from(new Uint8Array(await (file as File).arrayBuffer())),
     ).toEqual([1, 2, 3, 4]);
+  });
+
+  it("reuses one Project Asset id when the same import command retries an unknown result", async () => {
+    const importedIds: string[] = [];
+    const client = createProjectAssetHostClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (_input, init) => {
+        const form = init?.body as FormData;
+        importedIds.push(String(form.get("projectAssetId") ?? ""));
+        if (importedIds.length === 1) throw new TypeError("connection lost");
+        return new Response(JSON.stringify(readyAsset), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    const command = {
+      projectId: "project-a",
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      fileName: "frame.png",
+      contentType: "image/png",
+      kind: "image" as const,
+    };
+
+    await expect(client.importFile(command)).rejects.toThrow("connection lost");
+    await client.importFile(command);
+
+    expect(importedIds[0]).not.toBe("");
+    expect(importedIds[1]).toBe(importedIds[0]);
+  });
+
+  it("replays the first Project import snapshot when its command object is mutated after an unknown result", async () => {
+    const requests: Array<{
+      fileName: string;
+      kind: string;
+      bytes: number[];
+    }> = [];
+    const client = createProjectAssetHostClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (_input, init) => {
+        const form = init?.body as FormData;
+        const file = form.get("file") as File;
+        requests.push({
+          fileName: file.name,
+          kind: String(form.get("kind")),
+          bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
+        });
+        if (requests.length === 1) throw new TypeError("connection lost");
+        return new Response(JSON.stringify(readyAsset), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    const command: Parameters<typeof client.importFile>[0] = {
+      projectId: "project-a",
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      fileName: "frame.png",
+      contentType: "image/png",
+      kind: "image",
+    };
+
+    await expect(client.importFile(command)).rejects.toThrow("connection lost");
+    command.bytes.fill(9);
+    command.fileName = "changed.mp4";
+    command.contentType = "video/mp4";
+    command.kind = "video";
+    await client.importFile(command);
+
+    expect(requests).toEqual([
+      { fileName: "frame.png", kind: "image", bytes: [1, 2, 3, 4] },
+      { fileName: "frame.png", kind: "image", bytes: [1, 2, 3, 4] },
+    ]);
+  });
+
+  it("does not deduplicate separate Project import commands just because their bytes match", async () => {
+    const importedIds: string[] = [];
+    const client = createProjectAssetHostClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (_input, init) => {
+        importedIds.push(
+          String((init?.body as FormData).get("projectAssetId") ?? ""),
+        );
+        return new Response(JSON.stringify(readyAsset), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    const file = {
+      projectId: "project-a",
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      fileName: "frame.png",
+      contentType: "image/png",
+      kind: "image" as const,
+    };
+
+    await client.importFile({ ...file });
+    await client.importFile({ ...file });
+
+    expect(importedIds[0]).not.toBe("");
+    expect(importedIds[1]).not.toBe(importedIds[0]);
+  });
+
+  it("preserves an explicitly assigned Project Asset import id", async () => {
+    let importedId: FormDataEntryValue | null = null;
+    const client = createProjectAssetHostClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (_input, init) => {
+        importedId = (init?.body as FormData).get("projectAssetId");
+        return new Response(JSON.stringify(readyAsset), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+
+    await client.importFile({
+      projectId: "project-a",
+      projectAssetId: "asset:caller-command",
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      fileName: "frame.png",
+      contentType: "image/png",
+      kind: "image",
+    });
+
+    expect(importedId).toBe("asset:caller-command");
   });
 
   it("admits one Global Asset through the discovered Project Host", async () => {
@@ -266,6 +457,78 @@ describe("Project Asset Host client", () => {
     ]);
   });
 
+  it("uses the personal Global Host client for trash and observed-operation restore", async () => {
+    const active = {
+      ...readyAsset,
+      id: "global:one",
+      lifecycle: { state: "active" as const },
+    };
+    const trashed = {
+      ...active,
+      lifecycle: {
+        state: "trashed" as const,
+        deleteOperationId: "delete:one",
+        deletedAt: "2026-08-13T00:00:00.000Z",
+        purgeAfter: "2026-08-20T00:00:00.000Z",
+      },
+      status: "unavailable" as const,
+      url: undefined,
+    };
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const createGlobalClient = (projectAssetClients as Record<string, unknown>)
+      .createPersonalGlobalAssetHostClient as (
+      options: Record<string, unknown>,
+    ) => {
+      trash(input: {
+        globalAssetId: string;
+        deleteOperationId: string;
+      }): Promise<typeof trashed>;
+      restore(input: {
+        globalAssetId: string;
+        deleteOperationId: string;
+      }): Promise<typeof active>;
+    };
+    const client = createGlobalClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ url: String(input), init });
+        return Response.json(init?.method === "DELETE" ? trashed : active);
+      },
+    });
+
+    await expect(
+      client.trash({
+        globalAssetId: "global:one",
+        deleteOperationId: "delete:one",
+      }),
+    ).resolves.toEqual(trashed);
+    await expect(
+      client.restore({
+        globalAssetId: "global:one",
+        deleteOperationId: "delete:one",
+      }),
+    ).resolves.toEqual(active);
+    expect(
+      requests.map(({ url, init }) => ({
+        url,
+        method: init?.method,
+        body: init?.body,
+      })),
+    ).toEqual([
+      {
+        url: "http://127.0.0.1:8789/api/v1/libraries/personal/assets/global%3Aone",
+        method: "DELETE",
+        body: JSON.stringify({ deleteOperationId: "delete:one" }),
+      },
+      {
+        url: "http://127.0.0.1:8789/api/v1/libraries/personal/assets/global%3Aone/restore",
+        method: "POST",
+        body: JSON.stringify({ deleteOperationId: "delete:one" }),
+      },
+    ]);
+  });
+
   it("uses one personal Global Asset client for import and Project publication", async () => {
     const globalAsset = {
       ...readyAsset,
@@ -339,6 +602,145 @@ describe("Project Asset Host client", () => {
     expect(requests[1]?.init?.body).toBe(
       JSON.stringify({ projectId: "project-a", projectAssetId: "asset:one" }),
     );
+  });
+
+  it("reuses one Global Asset id when the same import command retries an unknown result", async () => {
+    const globalAsset = {
+      ...readyAsset,
+      id: "global:one",
+      url: "http://127.0.0.1:8789/api/v1/libraries/personal/assets/global%3Aone/media",
+    };
+    const importedIds: string[] = [];
+    const createGlobalClient = (projectAssetClients as Record<string, unknown>)
+      .createPersonalGlobalAssetHostClient as (
+      options: Record<string, unknown>,
+    ) => {
+      importFile(input: {
+        bytes: Uint8Array;
+        fileName: string;
+        contentType: string;
+        kind: "image";
+      }): Promise<typeof globalAsset>;
+    };
+    const client = createGlobalClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        importedIds.push(
+          String((init?.body as FormData).get("globalAssetId") ?? ""),
+        );
+        if (importedIds.length === 1) throw new TypeError("connection lost");
+        return new Response(JSON.stringify(globalAsset), { status: 201 });
+      },
+    });
+    const command = {
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      fileName: "frame.png",
+      contentType: "image/png",
+      kind: "image" as const,
+    };
+
+    await expect(client.importFile(command)).rejects.toThrow("connection lost");
+    await client.importFile(command);
+
+    expect(importedIds[0]).not.toBe("");
+    expect(importedIds[1]).toBe(importedIds[0]);
+  });
+
+  it("replays the first Global import snapshot when its command object is mutated after an unknown result", async () => {
+    const globalAsset = {
+      ...readyAsset,
+      id: "global:one",
+      url: "http://127.0.0.1:8789/api/v1/libraries/personal/assets/global%3Aone/media",
+    };
+    const requests: Array<{
+      fileName: string;
+      kind: string;
+      bytes: number[];
+    }> = [];
+    const createGlobalClient = (projectAssetClients as Record<string, unknown>)
+      .createPersonalGlobalAssetHostClient as (
+      options: Record<string, unknown>,
+    ) => {
+      importFile(input: {
+        bytes: Uint8Array;
+        fileName: string;
+        contentType: string;
+        kind: "image" | "video";
+      }): Promise<typeof globalAsset>;
+    };
+    const client = createGlobalClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const form = init?.body as FormData;
+        const file = form.get("file") as File;
+        requests.push({
+          fileName: file.name,
+          kind: String(form.get("kind")),
+          bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
+        });
+        if (requests.length === 1) throw new TypeError("connection lost");
+        return new Response(JSON.stringify(globalAsset), { status: 201 });
+      },
+    });
+    const command = {
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      fileName: "frame.png",
+      contentType: "image/png",
+      kind: "image" as "image" | "video",
+    };
+
+    await expect(client.importFile(command)).rejects.toThrow("connection lost");
+    command.bytes.fill(9);
+    command.fileName = "changed.mp4";
+    command.contentType = "video/mp4";
+    command.kind = "video";
+    await client.importFile(command);
+
+    expect(requests).toEqual([
+      { fileName: "frame.png", kind: "image", bytes: [1, 2, 3, 4] },
+      { fileName: "frame.png", kind: "image", bytes: [1, 2, 3, 4] },
+    ]);
+  });
+
+  it("preserves an explicitly assigned Global Asset import id", async () => {
+    const globalAsset = {
+      ...readyAsset,
+      id: "global:one",
+      url: "http://127.0.0.1:8789/api/v1/libraries/personal/assets/global%3Aone/media",
+    };
+    let importedId: FormDataEntryValue | null = null;
+    const createGlobalClient = (projectAssetClients as Record<string, unknown>)
+      .createPersonalGlobalAssetHostClient as (
+      options: Record<string, unknown>,
+    ) => {
+      importFile(input: {
+        globalAssetId: string;
+        bytes: Uint8Array;
+        fileName: string;
+        contentType: string;
+        kind: "image";
+      }): Promise<typeof globalAsset>;
+    };
+    const client = createGlobalClient({
+      endpoint: "http://127.0.0.1:8789",
+      env: {},
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        importedId = (init?.body as FormData).get("globalAssetId");
+        return new Response(JSON.stringify(globalAsset), { status: 201 });
+      },
+    });
+
+    await client.importFile({
+      globalAssetId: "global:caller-command",
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      fileName: "frame.png",
+      contentType: "image/png",
+      kind: "image",
+    });
+
+    expect(importedId).toBe("global:caller-command");
   });
 
   it("lists and reads references, then restores through the same Project scope", async () => {

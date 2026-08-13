@@ -56,10 +56,8 @@ import {
 } from "./ui/context-menu";
 import { Tab, TabList, TabProvider } from "./ui/tabs";
 import { AssetThumbnail } from "../features/assets/AssetThumbnail";
-import {
-  projectAssetDisplayName,
-  projectAssetThumbnailSource,
-} from "../features/assets/projectAssetPresentation";
+import { projectAssetDisplayName } from "../features/assets/projectAssetPresentation";
+import { projectAssetPlaybackUrl } from "../features/assets/media-url";
 import { CanvasIcon } from "./ProjectSurfaceIcon";
 
 export type ProjectWorkspaceSurface =
@@ -311,7 +309,8 @@ function textAssetTabId(nodeId: string): string {
 function selectedTabId(surface: ProjectWorkspaceSurface): string {
   if (surface.kind === "canvas") return canvasTabId(surface.canvasId);
   if (surface.kind === "timeline") return timelineTabId(surface.timelineId);
-  if (surface.kind === "director-stage") return directorStageTabId(surface.stageId);
+  if (surface.kind === "director-stage")
+    return directorStageTabId(surface.stageId);
   if (surface.kind === "text-asset") return textAssetTabId(surface.nodeId);
   return assetTabId(surface.assetId);
 }
@@ -402,13 +401,7 @@ export default function ProjectWorkspaceNavigator({
           kind: "asset" as const,
           id: asset.id,
           label,
-          searchText: [
-            label,
-            path,
-            asset.id,
-            asset.kind,
-            "asset assets media",
-          ]
+          searchText: [label, path, asset.id, asset.kind, "asset assets media"]
             .filter((value): value is string => typeof value === "string")
             .join(" "),
         };
@@ -425,7 +418,14 @@ export default function ProjectWorkspaceNavigator({
     return results.filter((result) =>
       result.searchText.toLocaleLowerCase().includes(normalizedQuery),
     );
-  }, [activeAssets, canvases, directorStages, searchQuery, textAssets, timelines]);
+  }, [
+    activeAssets,
+    canvases,
+    directorStages,
+    searchQuery,
+    textAssets,
+    timelines,
+  ]);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
@@ -637,19 +637,21 @@ export default function ProjectWorkspaceNavigator({
                     <SidebarItemContextMenu
                       key={canvas.id}
                       label={canvas.name}
-                      onAnnotate={onAnnotate
-                        ? () =>
-                            onAnnotate({
-                              surface: "canvas",
-                              surfaceId: canvas.id,
-                              surfaceLabel: canvas.name,
-                              objectId: canvas.id,
-                              objectType: "canvas",
-                              objectLabel: canvas.name,
-                              objectPath: `canvases/${canvas.id}`,
-                              capabilities: ["read", "modify"],
-                            })
-                        : undefined}
+                      onAnnotate={
+                        onAnnotate
+                          ? () =>
+                              onAnnotate({
+                                surface: "canvas",
+                                surfaceId: canvas.id,
+                                surfaceLabel: canvas.name,
+                                objectId: canvas.id,
+                                objectType: "canvas",
+                                objectLabel: canvas.name,
+                                objectPath: `canvases/${canvas.id}`,
+                                capabilities: ["read", "modify"],
+                              })
+                          : undefined
+                      }
                       actions={[
                         {
                           key: "rename",
@@ -665,46 +667,47 @@ export default function ProjectWorkspaceNavigator({
                         },
                       ]}
                     >
-                    <div
-                      className="group/menu-item relative min-w-0"
-                    >
-                      {collapsed ? (
-                        <Tooltip label={canvas.name}>{tab}</Tooltip>
-                      ) : (
-                        tab
-                      )}
-                      {!collapsed ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <IconButton
-                              label={`Canvas actions for ${canvas.name}`}
-                              icon={
-                                <DotsThree className="h-4 w-4" weight="bold" />
-                              }
-                              size="sm"
-                              shape="rounded"
-                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
-                            />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            side="right"
-                            align="start"
-                            className="min-w-36 rounded-md p-1"
-                          >
-                            <DropdownMenuItem
-                              onSelect={() => onRenameCanvas(canvas)}
+                      <div className="group/menu-item relative min-w-0">
+                        {collapsed ? (
+                          <Tooltip label={canvas.name}>{tab}</Tooltip>
+                        ) : (
+                          tab
+                        )}
+                        {!collapsed ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <IconButton
+                                label={`Canvas actions for ${canvas.name}`}
+                                icon={
+                                  <DotsThree
+                                    className="h-4 w-4"
+                                    weight="bold"
+                                  />
+                                }
+                                size="sm"
+                                shape="rounded"
+                                className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                              />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              side="right"
+                              align="start"
+                              className="min-w-36 rounded-md p-1"
                             >
-                              Rename
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onSelect={() => onDeleteCanvas(canvas)}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : null}
-                    </div>
+                              <DropdownMenuItem
+                                onSelect={() => onRenameCanvas(canvas)}
+                              >
+                                Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => onDeleteCanvas(canvas)}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
+                      </div>
                     </SidebarItemContextMenu>
                   );
                 })}
@@ -746,19 +749,21 @@ export default function ProjectWorkspaceNavigator({
                     <SidebarItemContextMenu
                       key={timeline.id}
                       label={timeline.name}
-                      onAnnotate={onAnnotate
-                        ? () =>
-                            onAnnotate({
-                              surface: "timeline",
-                              surfaceId: timeline.id,
-                              surfaceLabel: timeline.name,
-                              objectId: timeline.id,
-                              objectType: "timeline",
-                              objectLabel: timeline.name,
-                              objectPath: `timelines/${timeline.id}`,
-                              capabilities: ["read", "modify"],
-                            })
-                        : undefined}
+                      onAnnotate={
+                        onAnnotate
+                          ? () =>
+                              onAnnotate({
+                                surface: "timeline",
+                                surfaceId: timeline.id,
+                                surfaceLabel: timeline.name,
+                                objectId: timeline.id,
+                                objectType: "timeline",
+                                objectLabel: timeline.name,
+                                objectPath: `timelines/${timeline.id}`,
+                                capabilities: ["read", "modify"],
+                              })
+                          : undefined
+                      }
                       actions={[
                         {
                           key: "attach",
@@ -766,59 +771,62 @@ export default function ProjectWorkspaceNavigator({
                           onSelect: () => onAttachTimeline(timeline),
                         },
                         ...(onDeleteTimeline
-                          ? [{
-                              key: "delete",
-                              label: "Delete",
-                              danger: true,
-                              icon: <Trash className="h-4 w-4 shrink-0" />,
-                              onSelect: () => onDeleteTimeline(timeline),
-                            }]
+                          ? [
+                              {
+                                key: "delete",
+                                label: "Delete",
+                                danger: true,
+                                icon: <Trash className="h-4 w-4 shrink-0" />,
+                                onSelect: () => onDeleteTimeline(timeline),
+                              },
+                            ]
                           : []),
                       ]}
                     >
-                    <div
-                      className="group/menu-item relative min-w-0"
-                    >
-                      {collapsed ? (
-                        <Tooltip label={timeline.name}>{tab}</Tooltip>
-                      ) : (
-                        tab
-                      )}
-                      {!collapsed ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <IconButton
-                              label={`Timeline actions for ${timeline.name}`}
-                              icon={
-                                <DotsThree className="h-4 w-4" weight="bold" />
-                              }
-                              size="sm"
-                              shape="rounded"
-                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
-                            />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            side="right"
-                            align="start"
-                            className="min-w-44 rounded-md p-1"
-                          >
-                            <DropdownMenuItem
-                              onSelect={() => onAttachTimeline(timeline)}
+                      <div className="group/menu-item relative min-w-0">
+                        {collapsed ? (
+                          <Tooltip label={timeline.name}>{tab}</Tooltip>
+                        ) : (
+                          tab
+                        )}
+                        {!collapsed ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <IconButton
+                                label={`Timeline actions for ${timeline.name}`}
+                                icon={
+                                  <DotsThree
+                                    className="h-4 w-4"
+                                    weight="bold"
+                                  />
+                                }
+                                size="sm"
+                                shape="rounded"
+                                className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                              />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              side="right"
+                              align="start"
+                              className="min-w-44 rounded-md p-1"
                             >
-                              Move to current Canvas
-                            </DropdownMenuItem>
-                            {onDeleteTimeline ? (
                               <DropdownMenuItem
-                                className="text-red-600 focus:text-red-700"
-                                onSelect={() => onDeleteTimeline(timeline)}
+                                onSelect={() => onAttachTimeline(timeline)}
                               >
-                                Delete
+                                Move to current Canvas
                               </DropdownMenuItem>
-                            ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : null}
-                    </div>
+                              {onDeleteTimeline ? (
+                                <DropdownMenuItem
+                                  className="text-red-600 focus:text-red-700"
+                                  onSelect={() => onDeleteTimeline(timeline)}
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              ) : null}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
+                      </div>
                     </SidebarItemContextMenu>
                   );
                 })}
@@ -829,7 +837,9 @@ export default function ProjectWorkspaceNavigator({
                 label="Director Stages"
                 open={openFolders["director-stages"]}
                 collapsed={collapsed}
-                addLabel={onCreateDirectorStage ? "New Director Stage" : undefined}
+                addLabel={
+                  onCreateDirectorStage ? "New Director Stage" : undefined
+                }
                 onToggle={() => toggleFolder("director-stages")}
                 onAdd={onCreateDirectorStage}
               >
@@ -860,50 +870,69 @@ export default function ProjectWorkspaceNavigator({
                     <SidebarItemContextMenu
                       key={stage.id}
                       label={stage.name}
-                      onAnnotate={onAnnotate
-                        ? () =>
-                            onAnnotate({
-                              surface: "director-stage",
-                              surfaceId: stage.id,
-                              surfaceLabel: stage.name,
-                              objectId: stage.id,
-                              objectType: "director-stage",
-                              objectLabel: stage.name,
-                              objectPath: `director-stages/${stage.id}`,
-                              capabilities: ["read", "modify"],
-                            })
-                        : undefined}
-                      actions={onAttachDirectorStage
-                        ? [{
-                            key: "attach",
-                            label: "Move to current Canvas",
-                            onSelect: () => onAttachDirectorStage(stage),
-                          }]
-                        : []}
+                      onAnnotate={
+                        onAnnotate
+                          ? () =>
+                              onAnnotate({
+                                surface: "director-stage",
+                                surfaceId: stage.id,
+                                surfaceLabel: stage.name,
+                                objectId: stage.id,
+                                objectType: "director-stage",
+                                objectLabel: stage.name,
+                                objectPath: `director-stages/${stage.id}`,
+                                capabilities: ["read", "modify"],
+                              })
+                          : undefined
+                      }
+                      actions={
+                        onAttachDirectorStage
+                          ? [
+                              {
+                                key: "attach",
+                                label: "Move to current Canvas",
+                                onSelect: () => onAttachDirectorStage(stage),
+                              },
+                            ]
+                          : []
+                      }
                     >
-                    <div
-                      className="group/menu-item relative min-w-0"
-                    >
-                      {collapsed ? <Tooltip label={stage.name}>{tab}</Tooltip> : tab}
-                      {!collapsed && onAttachDirectorStage ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <IconButton
-                              label={`Director Stage actions for ${stage.name}`}
-                              icon={<DotsThree className="h-4 w-4" weight="bold" />}
-                              size="sm"
-                              shape="rounded"
-                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
-                            />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent side="right" align="start" className="min-w-44 rounded-md p-1">
-                            <DropdownMenuItem onSelect={() => onAttachDirectorStage(stage)}>
-                              Move to current Canvas
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : null}
-                    </div>
+                      <div className="group/menu-item relative min-w-0">
+                        {collapsed ? (
+                          <Tooltip label={stage.name}>{tab}</Tooltip>
+                        ) : (
+                          tab
+                        )}
+                        {!collapsed && onAttachDirectorStage ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <IconButton
+                                label={`Director Stage actions for ${stage.name}`}
+                                icon={
+                                  <DotsThree
+                                    className="h-4 w-4"
+                                    weight="bold"
+                                  />
+                                }
+                                size="sm"
+                                shape="rounded"
+                                className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                              />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              side="right"
+                              align="start"
+                              className="min-w-44 rounded-md p-1"
+                            >
+                              <DropdownMenuItem
+                                onSelect={() => onAttachDirectorStage(stage)}
+                              >
+                                Move to current Canvas
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
+                      </div>
                     </SidebarItemContextMenu>
                   );
                 })}
@@ -980,21 +1009,25 @@ export default function ProjectWorkspaceNavigator({
                         <SidebarItemContextMenu
                           key={`text-${asset.id}`}
                           label={asset.label}
-                          onAnnotate={onAnnotate
-                            ? () =>
-                                onAnnotate({
-                                  surface: "canvas",
-                                  surfaceId: asset.canvasId,
-                                  surfaceLabel:
-                                    canvases.find((canvas) => canvas.id === asset.canvasId)?.name ??
-                                    asset.canvasId,
-                                  objectId: asset.id,
-                                  objectType: "canvas-text",
-                                  objectLabel: asset.label,
-                                  objectPath: `canvases/${asset.canvasId}/nodes/${asset.id}`,
-                                  capabilities: ["read", "modify"],
-                                })
-                            : undefined}
+                          onAnnotate={
+                            onAnnotate
+                              ? () =>
+                                  onAnnotate({
+                                    surface: "canvas",
+                                    surfaceId: asset.canvasId,
+                                    surfaceLabel:
+                                      canvases.find(
+                                        (canvas) =>
+                                          canvas.id === asset.canvasId,
+                                      )?.name ?? asset.canvasId,
+                                    objectId: asset.id,
+                                    objectType: "canvas-text",
+                                    objectLabel: asset.label,
+                                    objectPath: `canvases/${asset.canvasId}/nodes/${asset.id}`,
+                                    capabilities: ["read", "modify"],
+                                  })
+                              : undefined
+                          }
                           actions={[]}
                         >
                           <li
@@ -1028,7 +1061,9 @@ export default function ProjectWorkspaceNavigator({
                         >
                           <AssetThumbnail
                             kind={asset.kind}
-                            src={projectAssetThumbnailSource(asset)}
+                            src={projectAssetPlaybackUrl(asset) ?? ""}
+                            thumbnailSrc={asset.thumbnailUrl}
+                            status={asset.status}
                             label={label}
                             active={active}
                           />
@@ -1042,12 +1077,7 @@ export default function ProjectWorkspaceNavigator({
                         </Tab>
                       );
                       const assetRowId = asset.id;
-                      const canAddToLibrary = Boolean(
-                        onAddAssetToLibrary &&
-                          !globalAssets.some(
-                            (globalAsset) => globalAsset.id === asset.id,
-                          ),
-                      );
+                      const canAddToLibrary = Boolean(onAddAssetToLibrary);
                       const actions: SidebarContextAction[] = [];
                       if (canAddToLibrary && onAddAssetToLibrary) {
                         actions.push({
@@ -1074,77 +1104,82 @@ export default function ProjectWorkspaceNavigator({
                         <SidebarItemContextMenu
                           key={asset.id}
                           label={label}
-                          onAnnotate={onAnnotate
-                            ? () =>
-                                onAnnotate({
-                                  surface: "asset",
-                                  surfaceId: asset.id,
-                                  surfaceLabel: label,
-                                  objectId: assetRowId,
-                                  objectType: `asset-${asset.kind}`,
-                                  objectLabel: label,
-                                  objectPath: `assets/${assetRowId}`,
-                                  capabilities: ["read", "modify"],
-                                  ...(asset.kind === "image" ||
-                                  asset.kind === "video"
-                                    ? { previewAssetId: assetRowId }
-                                    : {}),
-                                })
-                            : undefined}
+                          onAnnotate={
+                            onAnnotate
+                              ? () =>
+                                  onAnnotate({
+                                    surface: "asset",
+                                    surfaceId: asset.id,
+                                    surfaceLabel: label,
+                                    objectId: assetRowId,
+                                    objectType: `asset-${asset.kind}`,
+                                    objectLabel: label,
+                                    objectPath: `assets/${assetRowId}`,
+                                    capabilities: ["read", "modify"],
+                                    ...(asset.kind === "image" ||
+                                    asset.kind === "video"
+                                      ? { previewAssetId: assetRowId }
+                                      : {}),
+                                  })
+                              : undefined
+                          }
                           actions={actions}
                         >
-                        <li
-                          data-agent-annotation-object-id={assetRowId}
-                          className="group/menu-item relative min-w-0"
-                        >
-                          {collapsed ? (
-                            <Tooltip label={label}>{tab}</Tooltip>
-                          ) : (
-                            tab
-                          )}
-                          {!collapsed &&
-                          (canAddToLibrary || onTrashAsset) ? (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <IconButton
-                                  label={`More options for ${label}`}
-                                  icon={
-                                    <DotsThree
-                                      className="h-4 w-4"
-                                      weight="bold"
-                                    />
-                                  }
-                                  size="sm"
-                                  shape="rounded"
-                                  className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
-                                />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent
-                                side="right"
-                                align="start"
-                                className="min-w-48 rounded-xl p-1"
-                              >
-                                {canAddToLibrary && onAddAssetToLibrary ? (
-                                  <DropdownMenuItem
-                                    onSelect={() => onAddAssetToLibrary(asset.id)}
-                                  >
-                                    <Images className="h-4 w-4 text-stone-500" />
-                                    Add to Global Assets
-                                  </DropdownMenuItem>
-                                ) : null}
-                                {onTrashAsset ? (
-                                  <DropdownMenuItem
-                                    onSelect={() => void onTrashAsset(asset.id)}
-                                    className="text-red-600 data-[highlighted]:text-red-700 dark:text-red-400"
-                                  >
-                                    <Trash className="h-4 w-4" />
-                                    Move to Trash
-                                  </DropdownMenuItem>
-                                ) : null}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          ) : null}
-                        </li>
+                          <li
+                            data-agent-annotation-object-id={assetRowId}
+                            className="group/menu-item relative min-w-0"
+                          >
+                            {collapsed ? (
+                              <Tooltip label={label}>{tab}</Tooltip>
+                            ) : (
+                              tab
+                            )}
+                            {!collapsed && (canAddToLibrary || onTrashAsset) ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <IconButton
+                                    label={`More options for ${label}`}
+                                    icon={
+                                      <DotsThree
+                                        className="h-4 w-4"
+                                        weight="bold"
+                                      />
+                                    }
+                                    size="sm"
+                                    shape="rounded"
+                                    className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                                  />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  side="right"
+                                  align="start"
+                                  className="min-w-48 rounded-xl p-1"
+                                >
+                                  {canAddToLibrary && onAddAssetToLibrary ? (
+                                    <DropdownMenuItem
+                                      onSelect={() =>
+                                        onAddAssetToLibrary(asset.id)
+                                      }
+                                    >
+                                      <Images className="h-4 w-4 text-stone-500" />
+                                      Add to Global Assets
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {onTrashAsset ? (
+                                    <DropdownMenuItem
+                                      onSelect={() =>
+                                        void onTrashAsset(asset.id)
+                                      }
+                                      className="text-red-600 data-[highlighted]:text-red-700 dark:text-red-400"
+                                    >
+                                      <Trash className="h-4 w-4" />
+                                      Move to Trash
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : null}
+                          </li>
                         </SidebarItemContextMenu>
                       );
                     })}
@@ -1174,7 +1209,13 @@ export default function ProjectWorkspaceNavigator({
                                 <ArrowCounterClockwise className="h-3.5 w-3.5 text-content-muted" />
                               }
                             >
-                              <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>
+                              <span
+                                className={
+                                  collapsed
+                                    ? "sr-only"
+                                    : "min-w-0 flex-1 truncate"
+                                }
+                              >
                                 {label}
                               </span>
                             </Button>
@@ -1205,49 +1246,43 @@ export default function ProjectWorkspaceNavigator({
         description="Choose reusable media to add to this project."
         size="lg"
       >
-        {globalAssets.filter(
-          (asset) =>
-            !assets.some((projectAsset) => projectAsset.id === asset.id),
-        ).length > 0 ? (
+        {globalAssets.length > 0 ? (
           <ul
             aria-label="Available global assets"
             className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3"
           >
-            {globalAssets
-              .filter(
-                (asset) =>
-                  !assets.some((projectAsset) => projectAsset.id === asset.id),
-              )
-              .map((asset) => {
-                const { label } = assetNavigationLabel(asset);
-                return (
-                  <li key={asset.id}>
-                    <button
-                      type="button"
-                      aria-label={`Add ${label}`}
-                      onClick={() => {
-                        void Promise.resolve(
-                          onAddGlobalAsset?.(asset.id),
-                        ).then(() => setLibraryPickerOpen(false));
-                      }}
-                      className="group w-full rounded-xl border border-warm-border bg-warm-page/50 p-2 text-left transition-colors hover:border-brand/30 hover:bg-brand/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
-                    >
-                      <span className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-warm-muted">
-                        <AssetThumbnail
-                          kind={asset.kind}
-                          src={projectAssetThumbnailSource(asset)}
-                          label={label}
-                          variant="card"
-                          decorative
-                        />
-                      </span>
-                      <span className="mt-2 block truncate text-sm font-semibold text-content-primary">
-                        {label}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+            {globalAssets.map((asset) => {
+              const { label } = assetNavigationLabel(asset);
+              return (
+                <li key={asset.id}>
+                  <button
+                    type="button"
+                    aria-label={`Add ${label}`}
+                    onClick={() => {
+                      void Promise.resolve(onAddGlobalAsset?.(asset.id)).then(
+                        () => setLibraryPickerOpen(false),
+                      );
+                    }}
+                    className="group w-full rounded-xl border border-warm-border bg-warm-page/50 p-2 text-left transition-colors hover:border-brand/30 hover:bg-brand/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+                  >
+                    <span className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-warm-muted">
+                      <AssetThumbnail
+                        kind={asset.kind}
+                        src={projectAssetPlaybackUrl(asset) ?? ""}
+                        thumbnailSrc={asset.thumbnailUrl}
+                        status={asset.status}
+                        label={label}
+                        variant="card"
+                        decorative
+                      />
+                    </span>
+                    <span className="mt-2 block truncate text-sm font-semibold text-content-primary">
+                      {label}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <div className="mt-5 border-y border-dashed border-warm-border py-12 text-center">

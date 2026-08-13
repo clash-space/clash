@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import {
   CustomActionDefinitionSchema,
   MODEL_CARDS,
@@ -41,6 +47,20 @@ const projectContextMock = vi.hoisted(() => ({
   enabledModelCatalog: null as ModelCatalogEntry[] | null,
 }));
 
+const refPickerAssetMock = vi.hoisted(() => ({
+  asset: undefined as
+    | {
+        id: string;
+        kind: "video";
+        status: "ready";
+        url: string;
+        thumbnailUrl?: string;
+        metadata: Record<string, never>;
+        lifecycle: { state: "active" };
+      }
+    | undefined,
+}));
+
 vi.mock("@xyflow/react", () => ({
   Handle: ({ type, position, ...props }: any) => (
     <div data-testid={`handle-${type}-${position}`} {...props} />
@@ -72,7 +92,9 @@ vi.mock("framer-motion", () => ({
   },
   motion: {
     div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
-    button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
+    button: ({ children, ...props }: any) => (
+      <button {...props}>{children}</button>
+    ),
   },
 }));
 
@@ -82,8 +104,13 @@ vi.mock("../ProjectContext", async () => {
     useProject: () => ({
       projectId: "project-1",
       modelCatalogReady: true,
-      enabledModelCatalog: projectContextMock.enabledModelCatalog
-        ?? MODEL_CARDS.map((model) => ({ model, tier: "available", selectedRoute: {} })),
+      enabledModelCatalog:
+        projectContextMock.enabledModelCatalog ??
+        MODEL_CARDS.map((model) => ({
+          model,
+          tier: "available",
+          selectedRoute: {},
+        })),
     }),
   };
 });
@@ -101,19 +128,20 @@ vi.mock("../ConfirmDialog", () => ({
 }));
 
 vi.mock("../MilkdownEditor", () => ({
-  default: ({ content }: { content?: string }) => <div data-testid="editor">{content}</div>,
+  default: ({ content }: { content?: string }) => (
+    <div data-testid="editor">{content}</div>
+  ),
 }));
 
-vi.mock("../SignedMedia", () => ({
-  SignedImg: ({ alt }: { alt?: string }) => <img alt={alt ?? ""} />,
+vi.mock("../ProjectedMedia", () => ({
+  ProjectedImage: ({ src, alt }: { src?: string; alt?: string }) => (
+    <img src={src} alt={alt ?? ""} />
+  ),
 }));
 
 vi.mock("@clash/web-ui/lib/hooks/useAsset", () => ({
   getAsset: vi.fn(),
-}));
-
-vi.mock("@clash/web-ui/lib/hooks/useSignedUrl", () => ({
-  getSignedUrl: vi.fn(),
+  useAsset: () => refPickerAssetMock.asset,
 }));
 
 vi.mock("@clash/web-ui/hooks/useRuntimes", () => ({
@@ -203,6 +231,7 @@ describe("ActionBadge canvas subscriptions", () => {
     }));
     layoutMock.addNodeWithLayout.mockReset();
     projectContextMock.enabledModelCatalog = null;
+    refPickerAssetMock.asset = undefined;
   });
 
   it("disables a parameter only when every configured provider excludes it", () => {
@@ -244,38 +273,45 @@ describe("ActionBadge canvas subscriptions", () => {
       tier: "available",
       routes,
       selectedRoute: routes[0] ?? null,
-      candidateProviders: routes.flatMap((route) => route.providerId ? [route.providerId] : []),
+      candidateProviders: routes.flatMap((route) =>
+        route.providerId ? [route.providerId] : [],
+      ),
       unavailableParameterIds,
       missingCredentials: [],
       missingOAuth: [],
     });
-    const renderEditor = () => render(
-      <CanvasTransientUiProvider>
-        <PromptActionNode
-          {...baseNodeProps}
-          id="seed-audio-action"
-          type="action-badge"
-          data={{
-            actionType: "audio-gen",
-            content: "A calm narrator",
-            label: "Generate audio",
-            modelId: seedAudio.id,
-          }}
-        />
-      </CanvasTransientUiProvider>,
-    );
+    const renderEditor = () =>
+      render(
+        <CanvasTransientUiProvider>
+          <PromptActionNode
+            {...baseNodeProps}
+            id="seed-audio-action"
+            type="action-badge"
+            data={{
+              actionType: "audio-gen",
+              content: "A calm narrator",
+              label: "Generate audio",
+              modelId: seedAudio.id,
+            }}
+          />
+        </CanvasTransientUiProvider>,
+      );
     const openParameters = () => {
       fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
       fireEvent.click(screen.getByRole("button", { name: /WAV/ }));
     };
 
-    projectContextMock.enabledModelCatalog = [catalogEntry([hiloRoute], ["voice_id"])];
+    projectContextMock.enabledModelCatalog = [
+      catalogEntry([hiloRoute], ["voice_id"]),
+    ];
     const first = renderEditor();
     openParameters();
     expect(screen.getByRole("button", { name: /Voice ID/i })).toBeDisabled();
 
     first.unmount();
-    projectContextMock.enabledModelCatalog = [catalogEntry([hiloRoute, officialRoute], [])];
+    projectContextMock.enabledModelCatalog = [
+      catalogEntry([hiloRoute, officialRoute], []),
+    ];
     renderEditor();
     openParameters();
     const voiceIdControl = screen.getByRole("button", { name: /Voice ID/i });
@@ -344,7 +380,9 @@ describe("ActionBadge canvas subscriptions", () => {
       type: "text",
       data: { label: "Chorus draft", content: "Stay until morning" },
     };
-    reactFlowMock.getNode.mockImplementation((id: string) => id === lyricsNode.id ? lyricsNode : undefined);
+    reactFlowMock.getNode.mockImplementation((id: string) =>
+      id === lyricsNode.id ? lyricsNode : undefined,
+    );
     reactFlowMock.getNodes.mockReturnValue([lyricsNode]);
 
     render(
@@ -367,8 +405,12 @@ describe("ActionBadge canvas subscriptions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
 
     const lyricsInput = screen.getByRole("textbox", { name: "Lyrics" });
-    expect((lyricsInput as HTMLTextAreaElement).value).toBe("[Verse]\nNeon rain");
-    expect(screen.queryByRole("button", { name: "Add lyrics reference" })).toBeNull();
+    expect((lyricsInput as HTMLTextAreaElement).value).toBe(
+      "[Verse]\nNeon rain",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Add lyrics reference" }),
+    ).toBeNull();
     expect(spawnAssetMock.latestInput.lyrics).toBe("[Verse]\nNeon rain");
     expect(spawnAssetMock.latestInput.refNodeIds).toEqual(["lyrics-text"]);
     expect(spawnAssetMock.latestInput.lyricsRefNodeIds).toBeUndefined();
@@ -416,23 +458,35 @@ describe("ActionBadge canvas subscriptions", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
-    expect(screen.queryByRole("combobox", { name: "FLUX 3 Video workflow" })).toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: "FLUX 3 Video workflow" }),
+    ).toBeNull();
     const strip = screen.getByTestId("frame-reference-strip");
     expect(strip.getAttribute("data-frame-layout")).toBe("scroll");
-    expect(screen.getByRole("button", { name: "Pick Start keyframe" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Pick End keyframe" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Pick Start keyframe" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Pick End keyframe" }),
+    ).toBeTruthy();
     expect(strip.textContent).toContain("Start");
     expect(strip.textContent).toContain("End");
     expect(strip.textContent).toContain("0s");
     expect(strip.textContent).toContain("5s");
     expect(screen.queryByText(/0\/10 keyframes/)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Add reference from canvas" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Add reference from canvas" }),
+    ).toBeNull();
     expect(screen.queryByTestId("keyframe-timeline-track")).toBeNull();
 
     fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
     expect(screen.getByRole("option", { name: "FLUX 3 Video" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "FLUX 3 Video (Keyframes)" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "FLUX 3 Video (Continue)" })).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "FLUX 3 Video (Keyframes)" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "FLUX 3 Video (Continue)" }),
+    ).toBeTruthy();
   });
 
   it("uses the shared frame strip for fixed start/end slots", () => {
@@ -455,7 +509,9 @@ describe("ActionBadge canvas subscriptions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
     const strip = screen.getByTestId("frame-reference-strip");
     expect(strip.getAttribute("data-frame-layout")).toBe("fixed");
-    expect(screen.getByRole("button", { name: "Pick Start frame" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Pick Start frame" }),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Pick End frame" })).toBeTruthy();
   });
 
@@ -477,11 +533,62 @@ describe("ActionBadge canvas subscriptions", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
-    expect(screen.queryByRole("combobox", { name: "FLUX 3 Video workflow" })).toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: "FLUX 3 Video workflow" }),
+    ).toBeNull();
     expect(screen.getByText("Source video")).toBeTruthy();
     expect(screen.getByText("MP4 · up to 15s · 50 MB")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Choose source video" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Add reference from canvas" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Choose source video" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Add reference from canvas" }),
+    ).toBeNull();
+  });
+
+  it("never sends a source-video playback URL through the reference-picker image decoder", () => {
+    const sourceVideo = {
+      id: "source-video",
+      type: "video",
+      data: { assetId: "source-video-asset", label: "Opening clip" },
+    };
+    reactFlowMock.getNodes.mockReturnValue([sourceVideo]);
+    refPickerAssetMock.asset = {
+      id: "source-video-asset",
+      kind: "video",
+      status: "ready",
+      url: "https://media.clash.test/source-video.mp4",
+      metadata: {},
+      lifecycle: { state: "active" },
+    };
+
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="flux-continue-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Keep the shot moving",
+            label: "Continue",
+            modelId: "flux-3-video-continue",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose source video" }));
+
+    expect(
+      document.querySelector(
+        'img[src="https://media.clash.test/source-video.mp4"]',
+      ),
+    ).toBeNull();
+    expect(
+      document.querySelector("video")?.getAttribute("src"),
+    ).toBe("https://media.clash.test/source-video.mp4");
   });
 
   it("lets Seedance continuation collect videos up to the card's declared limit", () => {
@@ -495,7 +602,9 @@ describe("ActionBadge canvas subscriptions", () => {
       source: sourceVideo.id,
       target: "seedance-extend-action",
     });
-    reactFlowMock.getNode.mockImplementation((id: string) => id === sourceVideo.id ? sourceVideo : undefined);
+    reactFlowMock.getNode.mockImplementation((id: string) =>
+      id === sourceVideo.id ? sourceVideo : undefined,
+    );
 
     render(
       <CanvasTransientUiProvider>
@@ -517,7 +626,9 @@ describe("ActionBadge canvas subscriptions", () => {
     expect(screen.getByText("Source videos")).toBeTruthy();
     expect(screen.getByText("1–3 videos · up to 15s total")).toBeTruthy();
     expect(screen.getByText("Opening clip")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add source video" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Add source video" }),
+    ).toBeTruthy();
   });
 
   it("labels and evenly times the first and last FLUX 3 keyframes", () => {
@@ -526,12 +637,16 @@ describe("ActionBadge canvas subscriptions", () => {
       type: "image",
       data: { label: `Frame ${index + 1}` },
     }));
-    reactFlowMock.nodeConnections.push(...keyframes.map((frame) => ({
-      edgeId: `${frame.id}-flux-action`,
-      source: frame.id,
-      target: "flux-action",
-    })));
-    reactFlowMock.getNode.mockImplementation((id: string) => keyframes.find((frame) => frame.id === id));
+    reactFlowMock.nodeConnections.push(
+      ...keyframes.map((frame) => ({
+        edgeId: `${frame.id}-flux-action`,
+        source: frame.id,
+        target: "flux-action",
+      })),
+    );
+    reactFlowMock.getNode.mockImplementation((id: string) =>
+      keyframes.find((frame) => frame.id === id),
+    );
 
     render(
       <CanvasTransientUiProvider>
@@ -554,16 +669,24 @@ describe("ActionBadge canvas subscriptions", () => {
     const editor = screen.getByRole("list", { name: "FLUX 3 keyframes" });
     const strip = screen.getByTestId("frame-reference-strip");
     expect(strip.getAttribute("data-frame-layout")).toBe("scroll");
-    expect(strip.className).not.toMatch(/rounded-xl|border-warm-border|bg-warm-surface|shadow-sm/);
+    expect(strip.className).not.toMatch(
+      /rounded-xl|border-warm-border|bg-warm-surface|shadow-sm/,
+    );
     expect(editor.textContent).toContain("Start");
     expect(editor.textContent).toContain("End");
     expect(editor.textContent).toContain("0s");
     expect(editor.textContent).toContain("5s");
     expect(screen.queryByText(/2\/10 keyframes/)).toBeNull();
-    expect(screen.getByRole("button", { name: "Add middle keyframe" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Add middle keyframe" }),
+    ).toBeTruthy();
     expect(screen.queryByTestId("keyframe-timeline-track")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Edit keyframe timing" }));
-    expect(screen.getByRole("dialog", { name: "Edit keyframe timing" })).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit keyframe timing" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Edit keyframe timing" }),
+    ).toBeTruthy();
     expect(screen.getByTestId("keyframe-timeline-track")).toBeTruthy();
   });
 
@@ -573,12 +696,16 @@ describe("ActionBadge canvas subscriptions", () => {
       type: "image",
       data: { label: `Timed frame ${index + 1}` },
     }));
-    reactFlowMock.nodeConnections.push(...keyframes.map((frame) => ({
-      edgeId: `${frame.id}-timed-action`,
-      source: frame.id,
-      target: "timed-action",
-    })));
-    reactFlowMock.getNode.mockImplementation((id: string) => keyframes.find((frame) => frame.id === id));
+    reactFlowMock.nodeConnections.push(
+      ...keyframes.map((frame) => ({
+        edgeId: `${frame.id}-timed-action`,
+        source: frame.id,
+        target: "timed-action",
+      })),
+    );
+    reactFlowMock.getNode.mockImplementation((id: string) =>
+      keyframes.find((frame) => frame.id === id),
+    );
 
     render(
       <CanvasTransientUiProvider>
@@ -603,9 +730,15 @@ describe("ActionBadge canvas subscriptions", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
-    fireEvent.click(screen.getByRole("button", { name: "Edit keyframe timing" }));
-    const timingDialog = screen.getByRole("dialog", { name: "Edit keyframe timing" });
-    const timeSlots = timingDialog.querySelectorAll('[data-testid="keyframe-time-slot"]');
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit keyframe timing" }),
+    );
+    const timingDialog = screen.getByRole("dialog", {
+      name: "Edit keyframe timing",
+    });
+    const timeSlots = timingDialog.querySelectorAll(
+      '[data-testid="keyframe-time-slot"]',
+    );
     expect(timeSlots).toHaveLength(3);
     for (const slot of timeSlots) {
       expect(slot.className).toContain("flex");
@@ -617,10 +750,18 @@ describe("ActionBadge canvas subscriptions", () => {
     }
     const track = screen.getByTestId("keyframe-timeline-track");
     vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
-      x: 0, y: 0, top: 0, left: 0, right: 480, bottom: 100, width: 480, height: 100,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 480,
+      bottom: 100,
+      width: 480,
+      height: 100,
       toJSON: () => ({}),
     });
-    const markerContent = screen.getAllByLabelText("Frame 2 at 2s")
+    const markerContent = screen
+      .getAllByLabelText("Frame 2 at 2s")
       .find((element) => element.closest('[role="dialog"]')) as HTMLElement;
     const marker = markerContent.parentElement as HTMLElement;
     marker.setPointerCapture = vi.fn();
@@ -632,12 +773,16 @@ describe("ActionBadge canvas subscriptions", () => {
       const dragged = reactFlowMock.setNodes.mock.calls.some(([update]) => {
         if (typeof update !== "function") return false;
         const [nextNode] = update([{ id: "timed-action", data: {} }]);
-        return nextNode?.data?.modelParams?.keyframe_frame_indices === "[0,72,120]";
+        return (
+          nextNode?.data?.modelParams?.keyframe_frame_indices === "[0,72,120]"
+        );
       });
       expect(dragged).toBe(true);
     });
 
-    const timeInput = screen.getByRole("spinbutton", { name: "Frame 2 time in seconds" }) as HTMLInputElement;
+    const timeInput = screen.getByRole("spinbutton", {
+      name: "Frame 2 time in seconds",
+    }) as HTMLInputElement;
     expect(timeInput.value).toBe("2.00");
     fireEvent.change(timeInput, { target: { value: "3" } });
     fireEvent.blur(timeInput);
@@ -646,8 +791,11 @@ describe("ActionBadge canvas subscriptions", () => {
       const persisted = reactFlowMock.setNodes.mock.calls.some(([update]) => {
         if (typeof update !== "function") return false;
         const [nextNode] = update([{ id: "timed-action", data: {} }]);
-        return nextNode?.data?.modelParams?.keyframe_frame_indices === "[0,72,120]"
-          && nextNode?.data?.modelParams?.keyframe_timing_customized === true;
+        return (
+          nextNode?.data?.modelParams?.keyframe_frame_indices ===
+            "[0,72,120]" &&
+          nextNode?.data?.modelParams?.keyframe_timing_customized === true
+        );
       });
       expect(persisted).toBe(true);
     });
@@ -659,12 +807,16 @@ describe("ActionBadge canvas subscriptions", () => {
       type: "image",
       data: { label: `Frame ${index + 1}` },
     }));
-    reactFlowMock.nodeConnections.push(...keyframes.map((frame) => ({
-      edgeId: `${frame.id}-flux-action`,
-      source: frame.id,
-      target: "flux-action",
-    })));
-    reactFlowMock.getNode.mockImplementation((id: string) => keyframes.find((frame) => frame.id === id));
+    reactFlowMock.nodeConnections.push(
+      ...keyframes.map((frame) => ({
+        edgeId: `${frame.id}-flux-action`,
+        source: frame.id,
+        target: "flux-action",
+      })),
+    );
+    reactFlowMock.getNode.mockImplementation((id: string) =>
+      keyframes.find((frame) => frame.id === id),
+    );
 
     render(
       <CanvasTransientUiProvider>
@@ -688,7 +840,9 @@ describe("ActionBadge canvas subscriptions", () => {
     expect(editor.className).toContain("min-w-max");
     const strip = screen.getByTestId("frame-reference-strip");
     const scrollViewport = screen.getByTestId("frame-reference-scroll");
-    const timingButton = screen.getByRole("button", { name: "Edit keyframe timing" });
+    const timingButton = screen.getByRole("button", {
+      name: "Edit keyframe timing",
+    });
     expect(scrollViewport.className).toContain("overflow-x-auto");
     expect(strip.className).toContain("w-[18rem]");
     expect(strip.className).toContain("max-w-[min(18rem,calc(100vw-3rem))]");
@@ -701,9 +855,13 @@ describe("ActionBadge canvas subscriptions", () => {
     expect(strip.contains(timingButton)).toBe(true);
     expect(strip.querySelectorAll(".clash-node-ref-index")).toHaveLength(0);
     expect(screen.queryByText(/10\/10 keyframes/)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Add middle keyframe" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Add middle keyframe" }),
+    ).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit keyframe timing" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit keyframe timing" }),
+    );
     const dialog = screen.getByRole("dialog", { name: "Edit keyframe timing" });
     expect(dialog.querySelectorAll(".clash-node-ref-index")).toHaveLength(0);
   });
@@ -727,7 +885,9 @@ describe("ActionBadge canvas subscriptions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
-    fireEvent.click(screen.getByRole("option", { name: "FLUX 3 Video (Continue)" }));
+    fireEvent.click(
+      screen.getByRole("option", { name: "FLUX 3 Video (Continue)" }),
+    );
 
     await waitFor(() => {
       const persisted = reactFlowMock.setNodes.mock.calls.some(([update]) => {
@@ -760,7 +920,9 @@ describe("ActionBadge canvas subscriptions", () => {
         : undefined,
     );
     reactFlowMock.getNodes.mockImplementation(() => {
-      throw new Error("ActionBadge should use getNode(id), not scan getNodes()");
+      throw new Error(
+        "ActionBadge should use getNode(id), not scan getNodes()",
+      );
     });
 
     const { getByText } = render(
@@ -794,7 +956,11 @@ describe("ActionBadge canvas subscriptions", () => {
     });
     reactFlowMock.getNode.mockImplementation((id: string) =>
       id === "audio-1"
-        ? { id: "audio-1", type: "audio", data: { assetId: "audio-asset-1", status: "completed" } }
+        ? {
+            id: "audio-1",
+            type: "audio",
+            data: { assetId: "audio-asset-1", status: "completed" },
+          }
         : undefined,
     );
 
@@ -820,13 +986,23 @@ describe("ActionBadge canvas subscriptions", () => {
     expect(modelSelect.hasAttribute("disabled")).toBe(false);
     expect(modelSelect.textContent).toContain("Seedance 2.0 (全能参考)");
     fireEvent.click(modelSelect);
-    expect(screen.getByRole("option", { name: "Seedance 2.5 (全能参考)" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Seedance 2.0 Fast (全能参考)" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Seedance 2.0 Mini (全能参考)" })).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "Seedance 2.5 (全能参考)" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "Seedance 2.0 Fast (全能参考)" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "Seedance 2.0 Mini (全能参考)" }),
+    ).toBeTruthy();
     expect(screen.getByRole("option", { name: "Kling Avatar" })).toBeTruthy();
     expect(screen.queryByRole("option", { name: "Sora 2" })).toBeNull();
-    expect(screen.queryByRole("option", { name: "Seedance 2.0 (Start/End)" })).toBeNull();
-    expect(screen.queryByRole("option", { name: "MiniMax H3 (全能参考)" })).toBeNull();
+    expect(
+      screen.queryByRole("option", { name: "Seedance 2.0 (Start/End)" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("option", { name: "MiniMax H3 (全能参考)" }),
+    ).toBeNull();
   });
 
   it("selects a form Custom Action from the Image Gen model picker", async () => {
@@ -835,13 +1011,15 @@ describe("ActionBadge canvas subscriptions", () => {
       name: "Codex ImageGen",
       outputType: "image",
       presentation: { type: "form" },
-      parameters: [{
-        id: "aspect_ratio",
-        label: "Aspect Ratio",
-        type: "select",
-        options: [{ label: "Square", value: "1:1" }],
-        defaultValue: "1:1",
-      }],
+      parameters: [
+        {
+          id: "aspect_ratio",
+          label: "Aspect Ratio",
+          type: "select",
+          options: [{ label: "Square", value: "1:1" }],
+          defaultValue: "1:1",
+        },
+      ],
     });
 
     render(
@@ -866,12 +1044,14 @@ describe("ActionBadge canvas subscriptions", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
     fireEvent.click(screen.getByRole("option", { name: "Codex ImageGen" }));
 
-    await waitFor(() => expect(spawnAssetMock.latestInput).toMatchObject({
-      actionType: "custom:codex-imagegen",
-      isCustom: true,
-      customActionParams: { aspect_ratio: "1:1" },
-      customDef: { id: "codex-imagegen" },
-    }));
+    await waitFor(() =>
+      expect(spawnAssetMock.latestInput).toMatchObject({
+        actionType: "custom:codex-imagegen",
+        isCustom: true,
+        customActionParams: { aspect_ratio: "1:1" },
+        customDef: { id: "codex-imagegen" },
+      }),
+    );
   });
 
   it("opens the aspect-ratio secondary panel directly from its toolbar chip", async () => {
@@ -899,9 +1079,11 @@ describe("ActionBadge canvas subscriptions", () => {
     expect(screen.queryByText("Choose a preset or drag the frame")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "9:16" }));
 
-    await waitFor(() => expect(spawnAssetMock.latestInput.modelParams).toMatchObject({
-      aspect_ratio: "9:16",
-    }));
+    await waitFor(() =>
+      expect(spawnAssetMock.latestInput.modelParams).toMatchObject({
+        aspect_ratio: "9:16",
+      }),
+    );
   });
 
   it("keeps exactly one action configuration panel open", () => {
@@ -931,15 +1113,25 @@ describe("ActionBadge canvas subscriptions", () => {
         />
       </CanvasTransientUiProvider>,
     );
-    const triggers = screen.getAllByRole("button", { name: "Configure action" });
+    const triggers = screen.getAllByRole("button", {
+      name: "Configure action",
+    });
 
     fireEvent.click(triggers[0]);
-    expect(document.querySelectorAll("[data-action-config-panel]")).toHaveLength(1);
-    expect(document.querySelector("[data-action-config-panel='action-1']")).not.toBeNull();
+    expect(
+      document.querySelectorAll("[data-action-config-panel]"),
+    ).toHaveLength(1);
+    expect(
+      document.querySelector("[data-action-config-panel='action-1']"),
+    ).not.toBeNull();
 
     fireEvent.click(triggers[1]);
-    expect(document.querySelectorAll("[data-action-config-panel]")).toHaveLength(1);
-    expect(document.querySelector("[data-action-config-panel='action-2']")).not.toBeNull();
+    expect(
+      document.querySelectorAll("[data-action-config-panel]"),
+    ).toHaveLength(1);
+    expect(
+      document.querySelector("[data-action-config-panel='action-2']"),
+    ).not.toBeNull();
   });
 
   it("Run creates a fresh pending output instead of adopting a downstream draft", async () => {
@@ -974,7 +1166,9 @@ describe("ActionBadge canvas subscriptions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Run action" }));
 
-    await waitFor(() => expect(spawnAssetMock.spawnPending).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(spawnAssetMock.spawnPending).toHaveBeenCalledTimes(1),
+    );
     expect(spawnAssetMock.adoptDraft).not.toHaveBeenCalled();
   });
 
@@ -984,16 +1178,20 @@ describe("ActionBadge canvas subscriptions", () => {
       source: "image-oversize",
       target: "action-1",
     });
-    reactFlowMock.getNode.mockImplementation((id: string) => id === "image-oversize" ? ({
-      id,
-      type: "image",
-      data: {
-        assetId: "asset-oversize",
-        naturalWidth: 1024,
-        naturalHeight: 1024,
-        metadata: { bytes: 31 * 1024 * 1024, contentType: "image/png" },
-      },
-    }) : undefined);
+    reactFlowMock.getNode.mockImplementation((id: string) =>
+      id === "image-oversize"
+        ? {
+            id,
+            type: "image",
+            data: {
+              assetId: "asset-oversize",
+              naturalWidth: 1024,
+              naturalHeight: 1024,
+              metadata: { bytes: 31 * 1024 * 1024, contentType: "image/png" },
+            },
+          }
+        : undefined,
+    );
 
     render(
       <CanvasTransientUiProvider>
@@ -1169,16 +1367,18 @@ describe("ActionBadge canvas subscriptions", () => {
       },
       referenceStills: [],
       shotSpec: {
-        shots: [{
-          id: shotId,
-          name: shotId === "shot-a" ? "Lead walk" : "Reverse follow",
-          cameraId: `camera-${shotId}`,
-          startTime: 0,
-          sequenceStartTime: shotId === "shot-a" ? 0 : 4,
-          durationSeconds: 4,
-          aspectRatio: "16:9" as const,
-          transition: "cut" as const,
-        }],
+        shots: [
+          {
+            id: shotId,
+            name: shotId === "shot-a" ? "Lead walk" : "Reverse follow",
+            cameraId: `camera-${shotId}`,
+            startTime: 0,
+            sequenceStartTime: shotId === "shot-a" ? 0 : 4,
+            durationSeconds: 4,
+            aspectRatio: "16:9" as const,
+            transition: "cut" as const,
+          },
+        ],
       },
     });
     const firstPacket = packet("shot-a", "director-shot-a-video");
@@ -1222,7 +1422,9 @@ describe("ActionBadge canvas subscriptions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Run action" }));
 
-    await waitFor(() => expect(spawnAssetMock.spawnPending).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(spawnAssetMock.spawnPending).toHaveBeenCalledTimes(2),
+    );
     expect(layoutMock.addNodeWithAutoLayout).toHaveBeenCalledTimes(1);
     const groupNode = layoutMock.addNodeWithAutoLayout.mock.calls[0][0];
     expect(groupNode).toMatchObject({
@@ -1234,25 +1436,31 @@ describe("ActionBadge canvas subscriptions", () => {
         selectedDirectorShotIds: ["shot-a", "shot-b"],
       },
     });
-    expect(spawnAssetMock.spawnPending).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      directorReferencePacket: firstPacket,
-      directorShotGroupId: groupNode.id,
-      groupIndex: 0,
-      labelOverride: "Lead walk",
-      parentGroupId: groupNode.id,
-      sourceDirectorStageId: "stage-1",
-      sourceDirectorStageRevisionId: "stage-revision-7",
-      sourceDirectorStageShotId: "shot-a",
-    }));
-    expect(spawnAssetMock.spawnPending).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      directorReferencePacket: secondPacket,
-      directorShotGroupId: groupNode.id,
-      groupIndex: 1,
-      labelOverride: "Reverse follow",
-      parentGroupId: groupNode.id,
-      sourceDirectorStageId: "stage-1",
-      sourceDirectorStageRevisionId: "stage-revision-7",
-      sourceDirectorStageShotId: "shot-b",
-    }));
+    expect(spawnAssetMock.spawnPending).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        directorReferencePacket: firstPacket,
+        directorShotGroupId: groupNode.id,
+        groupIndex: 0,
+        labelOverride: "Lead walk",
+        parentGroupId: groupNode.id,
+        sourceDirectorStageId: "stage-1",
+        sourceDirectorStageRevisionId: "stage-revision-7",
+        sourceDirectorStageShotId: "shot-a",
+      }),
+    );
+    expect(spawnAssetMock.spawnPending).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        directorReferencePacket: secondPacket,
+        directorShotGroupId: groupNode.id,
+        groupIndex: 1,
+        labelOverride: "Reverse follow",
+        parentGroupId: groupNode.id,
+        sourceDirectorStageId: "stage-1",
+        sourceDirectorStageRevisionId: "stage-revision-7",
+        sourceDirectorStageShotId: "shot-b",
+      }),
+    );
   });
 });

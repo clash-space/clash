@@ -69,12 +69,117 @@ describe("Personal Global Asset HTTP client", () => {
     });
   });
 
+  it("preserves the caller's Global Asset id in the multipart import", async () => {
+    const fetch = vi.fn(async () => Response.json(readyAsset, { status: 201 }));
+    const client = createPersonalGlobalAssetHttpClient({ fetch });
+    const file = new File([new Uint8Array([1, 2, 3, 4])], "frame.png", {
+      type: "image/png",
+    });
+
+    await client.importFile({
+      file,
+      kind: "image",
+      globalAssetId: "global:caller-operation",
+    });
+
+    const form = fetch.mock.calls[0]?.[1]?.body as FormData;
+    expect(form.get("globalAssetId")).toBe("global:caller-operation");
+  });
+
+  it("reuses its generated Global Asset id when the same failed import is retried", async () => {
+    const requests: FormData[] = [];
+    const fetch = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        const form = init?.body as FormData;
+        requests.push(form);
+        if (requests.length === 1) throw new TypeError("connection lost");
+        return Response.json(
+          { ...readyAsset, id: String(form.get("globalAssetId")) },
+          { status: 201 },
+        );
+      },
+    );
+    const client = createPersonalGlobalAssetHttpClient({ fetch });
+    const operation = {
+      file: new File([new Uint8Array([1, 2, 3, 4])], "frame.png", {
+        type: "image/png",
+      }),
+      kind: "image" as const,
+    };
+
+    await expect(client.importFile(operation)).rejects.toThrow(
+      "connection lost",
+    );
+    await client.importFile(operation);
+
+    const firstId = requests[0]?.get("globalAssetId");
+    const retryId = requests[1]?.get("globalAssetId");
+    expect(typeof firstId).toBe("string");
+    expect(firstId).not.toBe("");
+    expect(retryId).toBe(firstId);
+  });
+
+  it("preserves the caller's delete operation id in the trash request", async () => {
+    const requests: RequestInit[] = [];
+    const client = createPersonalGlobalAssetHttpClient({
+      fetch: async (_input, init) => {
+        requests.push(init ?? {});
+        return Response.json(readyAsset);
+      },
+    });
+
+    await client.trash({
+      globalAssetId: "global:one",
+      deleteOperationId: "delete:caller-operation",
+    });
+
+    expect(requests[0]).toMatchObject({
+      method: "DELETE",
+      body: JSON.stringify({ deleteOperationId: "delete:caller-operation" }),
+    });
+    expect(new Headers(requests[0]?.headers).get("content-type")).toBe(
+      "application/json",
+    );
+  });
+
+  it("reuses its generated delete operation id when the same failed trash is retried", async () => {
+    const requests: RequestInit[] = [];
+    const client = createPersonalGlobalAssetHttpClient({
+      fetch: async (_input, init) => {
+        requests.push(init ?? {});
+        if (requests.length === 1) throw new TypeError("connection lost");
+        return Response.json(readyAsset);
+      },
+    });
+    const operation = { globalAssetId: "global:one" };
+
+    await expect(client.trash(operation)).rejects.toThrow("connection lost");
+    await client.trash(operation);
+
+    expect(requests.map(({ body }) => body)).toEqual([
+      expect.any(String),
+      expect.any(String),
+    ]);
+    const firstPayload = JSON.parse(String(requests[0]?.body)) as {
+      deleteOperationId?: unknown;
+    };
+    const retryPayload = JSON.parse(String(requests[1]?.body)) as {
+      deleteOperationId?: unknown;
+    };
+    expect(typeof firstPayload.deleteOperationId).toBe("string");
+    expect(firstPayload.deleteOperationId).not.toBe("");
+    expect(retryPayload.deleteOperationId).toBe(firstPayload.deleteOperationId);
+  });
+
   it("owns trash and restore routes", async () => {
     const fetch = vi.fn(async () => Response.json(readyAsset));
     const client = createPersonalGlobalAssetHttpClient({ fetch });
 
     await client.trash({ globalAssetId: "global:one" });
-    await client.restore({ globalAssetId: "global:one" });
+    await client.restore({
+      globalAssetId: "global:one",
+      deleteOperationId: "delete:observed",
+    });
 
     expect(fetch.mock.calls).toEqual([
       [
@@ -83,7 +188,10 @@ describe("Personal Global Asset HTTP client", () => {
       ],
       [
         "/api/v1/libraries/personal/assets/global%3Aone/restore",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ deleteOperationId: "delete:observed" }),
+        }),
       ],
     ]);
   });

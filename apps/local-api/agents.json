@@ -1,0 +1,20 @@
+{
+  "summary": "Local Host API, Project Loro owner, Asset CAS, executable-provider bridge, and SQLite-backed Durable Run adapter.",
+  "architecture_notes": [
+    "@clash/shared-runtime owns the only Durable Run phases, retry policy, and step graph; local-api supplies SQLite journal, executor adapters, Resource staging, Project publication, and restart scheduling.",
+    "Provider plugins translate one submit or poll step. Timeline render and built-in local-acp/local-tts use targetKind=local-executor but advance through the same engine rather than synchronous execution loops.",
+    "Media execution is at-least-once. local-durable-output-staging.ts consumer-CASes one Resource receipt by projectId + actionRunId + outputSlot; Project Asset and ActionAssetBinding facts appear only in the publication checkpoint.",
+    "Timeline render freezes its Timeline Action revision and input bindings, uses outputSlot render:output, and recovers from the journal without client resubmission.",
+    "New Canvas Provider, Host-local, and custom plugin runs use a finalized-executor revision-scoped actionRunId and a separate mutable-node projection CAS fingerprint. Legacy base-key rows recover consumer outputs fail-closed and never reserve or project the current node.",
+    "Project Loro exposes only coarse status and Asset lineage. Provider tokens, attempts, deadlines, staging receipts, local paths, and raw failures remain Host-private in SQLite."
+  ],
+  "key_files": {
+    "src/local-processor.ts": "Composes the shared engine with Provider, plugin Action, and Host-local executor adapters plus Project publication.",
+    "src/durable-run-coordinator.ts": "Freezes executor input and maps one executable invocation into one shared DurableRunEngine step.",
+    "src/durable-run-journal.ts": "SQLite journal and restart/wake queries.",
+    "src/local-durable-output-staging.ts": "Stable consumer-CAS receipt for at-least-once Host-local media output.",
+    "src/local-metadata-store.ts": "SQLite metadata store, including the rebuildable typed metadata-attachment query projection; it is not Project authority.",
+    "src/sync.ts": "Project Loro owner and journal-driven wake scheduler.",
+    "src/timeline-durable-workflow.test.ts": "Timeline/local-acp/local-tts journal, restart, and output-winner integration evidence."
+  }
+}

@@ -6,6 +6,7 @@ import {
   LoroSyncClient,
   MODEL_CARDS,
   PROJECT_ASSET_RENDER_CANVAS_ID,
+  markActionAssetBindingAuthority,
   projectDirectorStageReadToken,
   projectDirectorStageRevisionId,
   projectCanvasReadToken,
@@ -624,6 +625,7 @@ test("local-api host lists trusted standalone Timeline renders without registeri
   });
   assert.equal(created.ok, true);
   if (!created.ok) return;
+  assert.equal(markActionAssetBindingAuthority(client.doc).ok, true);
 
   const completed = requestTimelineRender(client.doc, {
     timelineId: "timeline-1",

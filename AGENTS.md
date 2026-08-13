@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **TypeScript only for source and tests.** Add or modify implementation and test code as `.ts` or `.tsx`; do not introduce `.js` or `.jsx` source files. Existing executable packaging shims must be treated as legacy and should be migrated to TypeScript when touched.
 - **All `/api/v1/*` routes live in api-cf (Hono), not in Next.js.** Gateway routes `/api/v1/*` to api-cf. Never create Next.js API routes under `/api/v1/` — they will 404. Add new endpoints in `apps/api-cf/src/routes/v1/` and register them in `apps/api-cf/src/routes/v1/index.ts`. Next.js API routes (`apps/web/app/api/`) are only for paths that gateway does not intercept (e.g., `/api/better-auth/*`).
 - **A generated frame's size is `ratio + resolution`, and the two are not symmetric.** A ratio is one geometric fact with a canonical `W:H` form, so provider spellings (`landscape_16_9`, `square_hd`) belong in the adapter. A resolution is a **menu of concrete outputs** whose names are already exact — `720p` is 1280×720, `fhd` is 1920×1080, `768P` is MiniMax's own rung — so cards carry the provider's published values verbatim and **no adapter rewrites them**. Never invent a shared `0.5K/1K/2K/4K` ladder and map onto it: `720p → 1K` asserts a false equality (921600 vs 1048576 pixels) and silently reframes the user's image. A provider's own sentinel is a value, not a spelling — MiniMax means "match the reference" by `adaptive`, so the card says `adaptive`. Read [`apps/docs/guide/model-cards.md`](apps/docs/guide/model-cards.md) before touching a card's `aspect_ratio` or `resolution`.
-- **A test may not pin a value invented in the same change.** Mutation testing proves a test is wired to the code, not that its assertion is true, so an implementation and test written from one assumption confirm nothing about each other — and a test locking an unverified invention makes *fixing* the code turn the suite red. Pin only values with an external source of truth (upstream docs, a captured response, a shipped third-party implementation); otherwise assert behaviour or pass-through. Never pin counts, data copied out of the file under test, or a rule `ModelCardSchema`'s `superRefine` already enforces. Read [`apps/docs/guide/testing-rules.md`](apps/docs/guide/testing-rules.md) — it documents the ratchet, the `720p → 1K` incident, and why source-text assertions must use `source-match.ts`.
+- **A test may not pin a value invented in the same change.** Mutation testing proves a test is wired to the code, not that its assertion is true, so an implementation and test written from one assumption confirm nothing about each other — and a test locking an unverified invention makes _fixing_ the code turn the suite red. Pin only values with an external source of truth (upstream docs, a captured response, a shipped third-party implementation); otherwise assert behaviour or pass-through. Never pin counts, data copied out of the file under test, or a rule `ModelCardSchema`'s `superRefine` already enforces. Read [`apps/docs/guide/testing-rules.md`](apps/docs/guide/testing-rules.md) — it documents the ratchet, the `720p → 1K` incident, and why source-text assertions must use `source-match.ts`.
 - **Timeline/composition has three distinct frame/pixel coordinate systems** (tracks-viewport px, composition-absolute frames, Sequence-relative frames). Mixing them silently "works" for the first item (`from=0`) and fails for everything else. Before touching `buildPreview`, `updatePreviewFromDnd`, `ItemComponent`, or anything passing frame numbers into `<Sequence>`, read [`packages/remotion-ui/TIMELINE_COORDINATES.md`](packages/remotion-ui/TIMELINE_COORDINATES.md) — it lists the two historical bugs (stale `.tracks-viewport` ref, sequence-relative vs composition-absolute mismatch) with reproducers.
 
 ## Local-first Project Invariants
@@ -128,14 +128,16 @@ User/CLI → Auth Gateway (:8788)
   ├─ /sync/:projectId → ProjectRoom DO (WebSocket, Loro CRDT binary sync)
   ├─ /agents/*       → SupervisorAgent DO (AI chat WebSocket)
   ├─ /api/v1/*       → REST API (projects CRUD, authenticated)
-  ├─ /api/tasks/*    → Task submission & polling (unauthenticated)
+  ├─ /api/tasks/*    → Hosted legacy task compatibility (not an Asset contract)
   ├─ /api/generate/* → Image/video generation endpoints
-  ├─ /assets/*       → R2 asset serving (unauthenticated)
-  ├─ /upload/*       → Asset upload to R2
-  └─ /thumbnails/*   → Thumbnail generation/serving
+  └─ /assets/*       → Expiring HMAC capability delivery (internal issuers only)
 ```
 
 Auth gateway injects `x-user-id` header for downstream services. Two auth methods: **Better Auth session** (cookie-based, browser) and **API token** (`clsh_*` prefix, CLI/agents).
+Bare upload, signing, and storage-key thumbnail routes are retired. Product
+callers publish through the Asset SDK/Host authority; `/assets/*` only consumes
+an already-issued, expiring delivery capability and does not accept a raw object
+key as authorization.
 
 ### Real-time Sync (Loro CRDT)
 

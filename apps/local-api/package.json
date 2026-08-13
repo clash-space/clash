@@ -27,7 +27,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run src",
     "test:e2e": "tsx --tsconfig tsconfig.dev.json e2e/daemon-smoke.ts",
-    "test:providers": "vitest run src/google-backend.e2e.test.ts src/minimax-backend.e2e.test.ts src/hilo-backend.e2e.test.ts",
+    "test:providers": "vitest run src/google-backend.e2e.test.ts src/minimax-backend.e2e.test.ts src/hilo-backend.e2e.test.ts src/volcengine-backend.e2e.test.ts src/volcengine-provider-e2e-cases.test.ts",
     "test:providers:live": "vitest run src/real-generation-google.test.ts src/real-generation-minimax.test.ts src/real-generation-hilo.test.ts",
     "test:google-agent-platform": "tsx scripts/google-agent-platform-conformance.ts",
     "test:watch": "vitest src"
@@ -37,6 +37,8 @@
     "@agentclientprotocol/sdk": "^0.28.1",
     "@aws-sdk/client-s3": "^3.1109.0",
     "@aws-sdk/s3-request-presigner": "^3.1109.0",
+    "@ffmpeg-installer/ffmpeg": "1.1.0",
+    "@ffprobe-installer/ffprobe": "2.1.2",
     "@clash-plugin/codex-imagegen": "workspace:*",
     "@clash-plugin/fal": "workspace:*",
     "@clash-plugin/google": "workspace:*",

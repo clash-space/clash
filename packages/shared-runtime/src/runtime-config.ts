@@ -4,7 +4,7 @@ export interface RuntimeCapabilities {
   assets: {
     storage: "cloud" | "local";
     signing: "signed" | "unsigned";
-    upload: "remote" | "local";
+    upload: "local" | "disabled";
   };
   workflows: {
     runner: "cloudflare" | "local-node" | "disabled";
@@ -55,9 +55,12 @@ export const desktopChromeMetrics = {
 
 export const desktopTrafficLightPosition = {
   x: desktopChromeMetrics.trafficLightInsetX,
-  y: Math.round(
-    (desktopChromeMetrics.tabStripHeight - desktopChromeMetrics.nativeWindowButtonFrameSize) / 2,
-  ) + desktopChromeMetrics.trafficLightOpticalOffsetY,
+  y:
+    Math.round(
+      (desktopChromeMetrics.tabStripHeight -
+        desktopChromeMetrics.nativeWindowButtonFrameSize) /
+        2,
+    ) + desktopChromeMetrics.trafficLightOpticalOffsetY,
 } as const;
 
 function trimTrailingSlash(value: string): string {
@@ -82,10 +85,12 @@ function deriveWsBaseUrl(apiBaseUrl: string): string {
   return trimTrailingSlash(url.toString());
 }
 
-export function defaultRuntimeCapabilities(mode: RuntimeMode): RuntimeCapabilities {
+export function defaultRuntimeCapabilities(
+  mode: RuntimeMode,
+): RuntimeCapabilities {
   if (mode === "hosted") {
     return {
-      assets: { storage: "cloud", signing: "signed", upload: "remote" },
+      assets: { storage: "cloud", signing: "signed", upload: "disabled" },
       workflows: { runner: "cloudflare", mediaPostprocess: "cloud" },
       loro: { persistence: "remote", sync: "durable-object" },
       auth: { mode: "better-auth" },
@@ -117,7 +122,9 @@ export function resolveRuntimeConfig(
   input: RuntimeEndpointConfig = {},
 ): ResolvedRuntimeEndpointConfig {
   const mode = input.mode ?? "hosted";
-  const apiBaseUrl = input.apiBaseUrl ? trimTrailingSlash(input.apiBaseUrl) : "";
+  const apiBaseUrl = input.apiBaseUrl
+    ? trimTrailingSlash(input.apiBaseUrl)
+    : "";
   const wsBaseUrl = input.wsBaseUrl
     ? trimTrailingSlash(input.wsBaseUrl)
     : deriveWsBaseUrl(apiBaseUrl);
@@ -133,20 +140,12 @@ export function apiUrl(
   config: ResolvedRuntimeEndpointConfig | RuntimeEndpointConfig = {},
 ): string {
   if (isAbsoluteResource(path)) return path;
-  const cfg = "apiBaseUrl" in config && "wsBaseUrl" in config
-    ? (config as ResolvedRuntimeEndpointConfig)
-    : resolveRuntimeConfig(config);
+  const cfg =
+    "apiBaseUrl" in config && "wsBaseUrl" in config
+      ? (config as ResolvedRuntimeEndpointConfig)
+      : resolveRuntimeConfig(config);
   const normalizedPath = withLeadingSlash(path);
   return cfg.apiBaseUrl ? `${cfg.apiBaseUrl}${normalizedPath}` : normalizedPath;
-}
-
-export function assetFallbackUrl(
-  storageKey: string,
-  config: ResolvedRuntimeEndpointConfig | RuntimeEndpointConfig = {},
-): string {
-  if (isAbsoluteResource(storageKey)) return storageKey;
-  const key = storageKey.startsWith("/") ? storageKey.slice(1) : storageKey;
-  return apiUrl(`/assets/${key}`, config);
 }
 
 export function syncWebSocketUrl(
@@ -160,9 +159,10 @@ export function webSocketUrl(
   path: string,
   config: ResolvedRuntimeEndpointConfig | RuntimeEndpointConfig = {},
 ): string {
-  const cfg = "apiBaseUrl" in config && "wsBaseUrl" in config
-    ? (config as ResolvedRuntimeEndpointConfig)
-    : resolveRuntimeConfig(config);
+  const cfg =
+    "apiBaseUrl" in config && "wsBaseUrl" in config
+      ? (config as ResolvedRuntimeEndpointConfig)
+      : resolveRuntimeConfig(config);
   if (isAbsoluteResource(path)) return path;
   const normalizedPath = withLeadingSlash(path);
   return cfg.wsBaseUrl ? `${cfg.wsBaseUrl}${normalizedPath}` : normalizedPath;

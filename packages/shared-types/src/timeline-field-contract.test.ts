@@ -350,4 +350,16 @@ describe("Timeline field descriptor consumers", () => {
       expect(markdown).toContain(`\`${operation}\``);
     }
   });
+
+  it("keeps legacy waveform readable while declaring it disposable on Project save", () => {
+    expect(
+      TIMELINE_DSL_FIELD_CATALOG.itemTypes.video.fields.waveform.persistence,
+    ).toBe("discard");
+    expect(
+      TIMELINE_DSL_FIELD_CATALOG.itemTypes.audio.fields.waveform.persistence,
+    ).toBe("discard");
+    expect(renderTimelineDslMarkdown()).toContain(
+      "| `waveform` | optional / optional | discard / device cache |",
+    );
+  });
 });

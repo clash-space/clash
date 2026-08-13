@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { LoroDoc } from "loro-crdt";
 import { Canvas } from "./canvas-ops.js";
+import {
+  listActionAssetBindingsForOwner,
+  listActionAssetReferences,
+  markActionAssetBindingAuthority,
+  trashProjectAssetIfUnreferenced,
+} from "./action-asset-bindings.js";
+import {
+  createProjectAsset,
+  markProjectAssetAuthority,
+} from "./project-assets.js";
 import * as workspace from "./project-workspace.js";
 import * as timelineRender from "./timeline-render.js";
 
@@ -17,9 +27,27 @@ const timelineState = {
   ],
 };
 
+function authoritativeTimelineDoc(): LoroDoc {
+  const doc = new LoroDoc();
+  for (const id of ["asset-1", "asset-2"]) {
+    expect(
+      createProjectAsset(doc, {
+        id,
+        kind: "video",
+        source: { kind: "owned", resourceId: `sha256:${id}` },
+        lifecycle: { state: "active" },
+        metadata: {},
+      }),
+    ).toMatchObject({ ok: true });
+  }
+  expect(markProjectAssetAuthority(doc)).toMatchObject({ ok: true });
+  expect(markActionAssetBindingAuthority(doc)).toMatchObject({ ok: true });
+  return doc;
+}
+
 describe("Timeline render requests", () => {
   it("creates a backend-only render request for a Project-owned Timeline", () => {
-    const doc = new LoroDoc();
+    const doc = authoritativeTimelineDoc();
     (workspace as any).createProjectTimeline(doc, {
       id: "timeline-project",
       name: "Project Cut",
@@ -46,6 +74,8 @@ describe("Timeline render requests", () => {
         actorType: "user",
         actorUserId: "user-1",
         sourceTimelineId: "timeline-project",
+        sourceTimelineActionId: "timeline:timeline-project",
+        sourceTimelineActionRunId: "timeline-render:render-project-1",
         renderTarget: { kind: "project-assets" },
         timelineDsl: { durationInFrames: 60 },
       },
@@ -54,7 +84,7 @@ describe("Timeline render requests", () => {
   });
 
   it("places the pending render video on a Canvas-owned Timeline's parent Canvas", () => {
-    const doc = new LoroDoc();
+    const doc = authoritativeTimelineDoc();
     (workspace as any).createProjectCanvas(doc, { id: "shots", name: "Shots" });
     (workspace as any).createProjectTimeline(doc, {
       id: "timeline-canvas",
@@ -86,8 +116,84 @@ describe("Timeline render requests", () => {
         status: "pending",
         actorUserId: "user-1",
         sourceTimelineId: "timeline-canvas",
+        sourceTimelineActionId: "node:timeline-action",
+        sourceTimelineActionRunId: "timeline-render:render-canvas-1",
         renderTarget: { kind: "canvas", canvasId: "shots", actionNodeId: "timeline-action" },
       },
     });
+  });
+
+  it("pins Timeline inputs to the render run when the editable Timeline is rewired", () => {
+    const doc = authoritativeTimelineDoc();
+    expect(
+      (workspace as any).createProjectTimeline(doc, {
+        id: "timeline-project",
+        name: "Project Cut",
+        state: timelineState,
+      }),
+    ).toMatchObject({ ok: true });
+
+    const requested = (timelineRender as any).requestTimelineRender(doc, {
+      timelineId: "timeline-project",
+      actorUserId: "user-1",
+      generateId: () => "render-project-1",
+    });
+    expect(requested).toMatchObject({ ok: true });
+    const runOwner = {
+      kind: "run" as const,
+      actionId: "timeline:timeline-project",
+      actionRevisionId: (workspace as any).readProjectTimeline(
+        doc,
+        "timeline-project",
+      ).revisionId,
+      actionRunId: "timeline-render:render-project-1",
+    };
+    expect(listActionAssetBindingsForOwner(doc, runOwner)).toMatchObject([
+      {
+        owner: runOwner,
+        direction: "input",
+        slot: "timeline:item:clip-1",
+        projectAssetId: "asset-1",
+      },
+    ]);
+
+    expect(
+      (workspace as any).updateProjectTimelineState(doc, "timeline-project", {
+        ...timelineState,
+        tracks: [
+          {
+            id: "video-track",
+            items: [
+              {
+                id: "clip-1",
+                type: "video",
+                from: 0,
+                durationInFrames: 60,
+                assetId: "asset-2",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toMatchObject({ ok: true });
+
+    expect(listActionAssetBindingsForOwner(doc, runOwner)).toMatchObject([
+      { slot: "timeline:item:clip-1", projectAssetId: "asset-1" },
+    ]);
+    expect(
+      listActionAssetReferences(doc, "asset-1").filter(
+        (binding) => binding.direction === "input",
+      ),
+    ).toMatchObject([
+      { owner: runOwner, projectAssetId: "asset-1" },
+    ]);
+    expect(
+      trashProjectAssetIfUnreferenced(doc, {
+        id: "asset-1",
+        deleteOperationId: "delete-asset-1",
+        deletedAt: "2026-08-13T00:00:00.000Z",
+        purgeAfter: "2026-09-12T00:00:00.000Z",
+      }),
+    ).toMatchObject({ ok: false, error: { code: "ASSET_IN_USE" } });
   });
 });

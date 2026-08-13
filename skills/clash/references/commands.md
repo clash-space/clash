@@ -193,12 +193,16 @@ Attaching does not require an action file — the fill envelope is synthesized
 internally, and every attach appends to the asset's `metadataFills` provenance
 ledger.
 
-## tasks
+## execution status
 
 ```bash
-clash tasks status --task-id <id> --json
-clash tasks wait --task-id <id> --timeout 120 --json
+clash canvas execute --project <id> --node <action-badge-id> --json
+clash canvas get --project <id> --node <child-node-id> --json
 ```
+
+Use the `childNodeId` returned by `canvas execute` for observation. Raw hosted
+task polling is not a public CLI command, and Provider/storage outputs are not
+Project Asset identities.
 
 ## actions
 

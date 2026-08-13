@@ -43,6 +43,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "1.1.0",
+    "@ffprobe-installer/ffprobe": "2.1.2",
     "@remotion/renderer": "4.0.507",
     "loro-crdt": "^1.10.3",
     "yaml": "^2.6.0"

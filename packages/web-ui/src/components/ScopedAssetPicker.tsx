@@ -1,11 +1,15 @@
-import { MagnifyingGlass, UploadSimple, X } from '@phosphor-icons/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AssetSourceScope } from '@clash/shared-types';
-import { AssetThumbnail } from '../features/assets/AssetThumbnail';
-import { Dialog } from './ui/dialog';
-import type { ScopedAssetOption, ScopedAssetSection } from './scopedAssetPickerModel';
+import { MagnifyingGlass, UploadSimple, X } from "@phosphor-icons/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { AssetSourceScope } from "@clash/shared-types";
+import { AssetThumbnail } from "../features/assets/AssetThumbnail";
+import { assetAvailabilityLabel } from "../features/assets/availability";
+import { Dialog } from "./ui/dialog";
+import type {
+  ScopedAssetOption,
+  ScopedAssetSection,
+} from "./scopedAssetPickerModel";
 
-type ScopeFilter = 'all' | AssetSourceScope;
+type ScopeFilter = "all" | AssetSourceScope;
 
 export function ScopedAssetPicker({
   open,
@@ -23,37 +27,46 @@ export function ScopedAssetPicker({
   busy?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState('');
-  const [activeScope, setActiveScope] = useState<ScopeFilter>('all');
+  const [query, setQuery] = useState("");
+  const [activeScope, setActiveScope] = useState<ScopeFilter>("all");
 
   useEffect(() => {
     if (!open) return;
-    setQuery('');
-    setActiveScope('all');
+    setQuery("");
+    setActiveScope("all");
   }, [open]);
 
-  const externalSection = sections.find((section) => section.scope === 'external');
+  const externalSection = sections.find(
+    (section) => section.scope === "external",
+  );
   const assets = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
-    const seen = new Set<string>();
     return sections.flatMap((section) => {
-      if (activeScope !== 'all' && activeScope !== section.scope) return [];
+      if (activeScope !== "all" && activeScope !== section.scope) return [];
       return section.assets.flatMap((asset) => {
-        if (seen.has(asset.assetId)) return [];
-        seen.add(asset.assetId);
         if (
-          normalizedQuery
-          && !`${asset.name} ${asset.type} ${section.label}`.toLocaleLowerCase().includes(normalizedQuery)
-        ) return [];
+          normalizedQuery &&
+          !`${asset.name} ${asset.type} ${section.label}`
+            .toLocaleLowerCase()
+            .includes(normalizedQuery)
+        )
+          return [];
         return [{ asset, scopeLabel: section.label }];
       });
     });
   }, [activeScope, query, sections]);
   const showUpload = Boolean(
-    externalSection?.allowLocalUpload
-    && (activeScope === 'all' || activeScope === 'external')
-    && (!query || 'upload from mac local file'.includes(query.trim().toLocaleLowerCase())),
+    externalSection?.allowLocalUpload &&
+    (activeScope === "all" || activeScope === "external") &&
+    (!query ||
+      "upload from mac local file".includes(query.trim().toLocaleLowerCase())),
   );
+  const selectableCount = assets.filter(
+    ({ asset }) => !asset.disabledReason,
+  ).length;
+  const notReadyCount = assets.filter(
+    ({ asset }) => asset.status !== "ready",
+  ).length;
 
   return (
     <Dialog
@@ -74,7 +87,7 @@ export function ScopedAssetPicker({
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
-            event.currentTarget.value = '';
+            event.currentTarget.value = "";
             if (file) void onUpload(file);
           }}
         />
@@ -86,7 +99,8 @@ export function ScopedAssetPicker({
                 Add media
               </h2>
               <p className="mt-0.5 text-sm text-content-secondary">
-                Choose once. Clash extends the reference chain for this workspace.
+                Choose once. Clash extends the reference chain for this
+                workspace.
               </p>
             </div>
             <button
@@ -126,8 +140,11 @@ export function ScopedAssetPicker({
             className="mt-4 flex gap-2 overflow-x-auto border-b border-warm-border pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             {[
-              { scope: 'all' as const, label: 'All' },
-              ...sections.map((section) => ({ scope: section.scope, label: section.label })),
+              { scope: "all" as const, label: "All" },
+              ...sections.map((section) => ({
+                scope: section.scope,
+                label: section.label,
+              })),
             ].map((item) => {
               const selected = activeScope === item.scope;
               return (
@@ -139,8 +156,8 @@ export function ScopedAssetPicker({
                   onClick={() => setActiveScope(item.scope)}
                   className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-[background-color,color,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 active:scale-[0.97] ${
                     selected
-                      ? 'bg-brand text-brand-foreground shadow-sm'
-                      : 'bg-warm-muted text-content-secondary hover:bg-warm-hover hover:text-content-primary'
+                      ? "bg-brand text-brand-foreground shadow-sm"
+                      : "bg-warm-muted text-content-secondary hover:bg-warm-hover hover:text-content-primary"
                   }`}
                 >
                   {item.label}
@@ -158,14 +175,17 @@ export function ScopedAssetPicker({
                   key={`${asset.source.kind}:${asset.sourceNodeId ?? asset.assetId}`}
                   type="button"
                   aria-label={`Add ${asset.name}`}
-                  disabled={busy}
+                  disabled={busy || Boolean(asset.disabledReason)}
                   onClick={() => void onSelect(asset)}
-                  className="group min-w-0 text-center focus-visible:outline-none disabled:cursor-wait disabled:opacity-55"
+                  title={asset.disabledReason}
+                  className="group min-w-0 text-center focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   <span className="relative flex aspect-square items-center justify-center overflow-hidden rounded-[22px] bg-warm-muted ring-1 ring-warm-border transition-[transform,box-shadow] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:ring-brand/35 group-hover:shadow-md group-active:translate-y-0 group-active:scale-[0.985] group-focus-visible:ring-2 group-focus-visible:ring-brand group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-overlay-surface motion-reduce:transform-none motion-reduce:transition-none">
                     <AssetThumbnail
                       kind={asset.type}
-                      src={asset.thumbnail || asset.src}
+                      src={asset.src}
+                      thumbnailSrc={asset.thumbnail}
+                      status={asset.status}
                       label={asset.name}
                       variant="card"
                       decorative
@@ -177,7 +197,11 @@ export function ScopedAssetPicker({
                   <span className="mt-2.5 block truncate px-1 text-sm font-semibold text-content-primary">
                     {asset.name}
                   </span>
-                  <span className="mt-0.5 block text-xs capitalize text-content-secondary">{asset.type}</span>
+                  <span className="mt-0.5 block text-xs text-content-secondary">
+                    {asset.status === "ready"
+                      ? asset.type
+                      : assetAvailabilityLabel(asset)}
+                  </span>
                 </button>
               ))}
 
@@ -192,20 +216,31 @@ export function ScopedAssetPicker({
                   <span className="flex aspect-square items-center justify-center rounded-[22px] border border-dashed border-warm-border bg-warm-surface text-content-secondary transition-[transform,border-color,background-color,color] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:border-brand/60 group-hover:bg-brand-light/35 group-hover:text-brand group-active:translate-y-0 group-active:scale-[0.985] group-focus-visible:ring-2 group-focus-visible:ring-brand group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-overlay-surface motion-reduce:transform-none motion-reduce:transition-none">
                     <UploadSimple className="h-8 w-8" weight="regular" />
                   </span>
-                  <span className="mt-2.5 block text-sm font-semibold text-content-primary">Upload from Mac</span>
-                  <span className="mt-0.5 block text-xs text-content-secondary">Local file</span>
+                  <span className="mt-2.5 block text-sm font-semibold text-content-primary">
+                    Upload from Mac
+                  </span>
+                  <span className="mt-0.5 block text-xs text-content-secondary">
+                    Local file
+                  </span>
                 </button>
               ) : null}
             </div>
           ) : (
             <div className="flex h-full min-h-52 items-center justify-center text-center">
               <div>
-                <MagnifyingGlass className="mx-auto h-8 w-8 text-content-disabled" weight="regular" />
+                <MagnifyingGlass
+                  className="mx-auto h-8 w-8 text-content-disabled"
+                  weight="regular"
+                />
                 <p className="mt-3 text-sm font-semibold text-content-primary">
-                  {query ? 'No media matches this search' : 'Everything here is already connected'}
+                  {query
+                    ? "No media matches this search"
+                    : "Everything here is already connected"}
                 </p>
                 <p className="mt-1 text-sm text-content-secondary">
-                  {query ? 'Try another name or scope.' : 'Choose another scope or upload a new file.'}
+                  {query
+                    ? "Try another name or scope."
+                    : "Choose another scope or upload a new file."}
                 </p>
               </div>
             </div>
@@ -213,7 +248,10 @@ export function ScopedAssetPicker({
         </div>
 
         <footer className="flex h-11 shrink-0 items-center justify-between border-t border-overlay-border bg-warm-muted px-6 text-xs text-content-secondary sm:px-8">
-          <span>{assets.length} available</span>
+          <span>
+            {selectableCount} selectable
+            {notReadyCount > 0 ? ` · ${notReadyCount} not ready` : ""}
+          </span>
           <span>Esc to close</span>
         </footer>
       </div>

@@ -26,6 +26,7 @@ import {
   ContextMenuTrigger,
 } from "../ui/context-menu";
 import { ProjectSurfaceIcon } from "../ProjectSurfaceIcon";
+import { VideoPoster } from "../../features/assets/VideoPoster";
 
 const SURFACE_LABELS = {
   canvas: "Canvas",
@@ -139,9 +140,10 @@ function AnnotationAssetThumbnail({
   const asset = useAsset(target.projectId, target.previewAssetId);
   const isVideo =
     target.objectType.includes("video") || asset?.kind === "video";
-  const mediaUrl = isVideo
-    ? (asset?.thumbnailUrl ?? asset?.url)
-    : asset?.url;
+  const mediaUrl = isVideo ? asset?.thumbnailUrl : asset?.url;
+  const hasVideoPreview = Boolean(
+    asset?.thumbnailUrl || (asset?.status === "ready" && asset.url),
+  );
   const sizeClass =
     size === "lg"
       ? "h-auto max-h-36 w-auto max-w-full rounded-md"
@@ -150,18 +152,25 @@ function AnnotationAssetThumbnail({
         : "h-5 w-5 rounded";
 
   if (size === "lg") {
+    if (isVideo) {
+      if (!asset || !hasVideoPreview) return null;
+      return (
+        <span
+          data-testid="annotation-asset-preview"
+          className={`${sizeClass} relative inline-flex overflow-hidden bg-warm-muted`}
+        >
+          <VideoPoster
+            thumbnailSrc={asset.thumbnailUrl}
+            videoSrc={asset.url}
+            status={asset.status}
+            alt={target.objectLabel}
+            className={`${sizeClass} bg-warm-muted object-contain`}
+          />
+        </span>
+      );
+    }
     if (!mediaUrl) return null;
-    return isVideo && asset?.url && !asset?.thumbnailUrl ? (
-      <video
-        data-testid="annotation-asset-preview"
-        src={`${mediaUrl}#t=0.1`}
-        className={`${sizeClass} bg-warm-muted object-contain`}
-        preload="metadata"
-        muted
-        playsInline
-        aria-label={target.objectLabel}
-      />
-    ) : (
+    return (
       /* eslint-disable-next-line @next/next/no-img-element */
       <img
         data-testid="annotation-asset-preview"
@@ -174,21 +183,20 @@ function AnnotationAssetThumbnail({
 
   // No resolved media yet (still signing, or nothing renderable): show
   // nothing rather than an empty gray tile.
-  if (!mediaUrl) return null;
+  if (isVideo ? !hasVideoPreview : !mediaUrl) return null;
 
   return (
     <span
       data-testid="annotation-asset-thumbnail"
       className={`${sizeClass} shrink-0 overflow-hidden bg-warm-muted ring-1 ring-warm-border flex items-center justify-center`}
     >
-      {isVideo && asset?.url && !asset?.thumbnailUrl ? (
-        <video
-          src={`${mediaUrl}#t=0.1`}
+      {isVideo && asset ? (
+        <VideoPoster
+          thumbnailSrc={asset.thumbnailUrl}
+          videoSrc={asset.url}
+          status={asset.status}
+          alt={target.objectLabel}
           className="h-full w-full object-cover"
-          preload="metadata"
-          muted
-          playsInline
-          aria-label={target.objectLabel}
         />
       ) : (
         /* eslint-disable-next-line @next/next/no-img-element */

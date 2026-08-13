@@ -24,6 +24,8 @@ import { ExecutablePluginBindingSchema } from "./executable-plugin.js";
 import { DirectorReferencePacketSchema } from "./director-reference.js";
 import {
   ensureProjectCanvas,
+  freezeProjectTimelineRunAssetInputs,
+  projectTimelineRenderActionRunId,
   readProjectTimeline,
 } from "./project-workspace.js";
 import {
@@ -1271,12 +1273,28 @@ export class Canvas {
       };
     }
 
+    const actionRunId = projectTimelineRenderActionRunId(renderNodeId);
+    const frozenPreflight = freezeProjectTimelineRunAssetInputs(
+      this.doc.fork(),
+      timeline,
+      actionRunId,
+    );
+    if (!frozenPreflight.ok) {
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: frozenPreflight.error,
+      };
+    }
+
     const data: Record<string, unknown> = {
       label: "Rendered Video",
       status: TaskStatus.Pending,
       timelineDsl: { ...timelineDsl, durationInFrames: renderDurationInFrames },
       ...(timelineId ? { sourceTimelineId: timelineId } : {}),
+      sourceTimelineActionId: frozenPreflight.owner.actionId,
       sourceTimelineRevisionId: timeline.revisionId,
+      sourceTimelineActionRunId: actionRunId,
       pendingTask: null,
       naturalWidth,
       naturalHeight,
@@ -1290,6 +1308,16 @@ export class Canvas {
       parentId: node.parent_id,
       sourceNodeId: editorNodeId,
     });
+    const frozen = freezeProjectTimelineRunAssetInputs(
+      this.doc,
+      timeline,
+      actionRunId,
+    );
+    if (!frozen.ok) {
+      throw new Error(
+        `Timeline ${timeline.id} input freeze changed after preflight: ${frozen.error}`,
+      );
+    }
 
     return { renderNodeId, position: linked.position, error: null };
   }

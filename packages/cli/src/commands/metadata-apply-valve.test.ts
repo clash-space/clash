@@ -17,10 +17,18 @@ import {
 async function workspace() {
   const cwd = await mkdtemp(join(tmpdir(), "clash-apply-valve-"));
   const assetsPath = join(cwd, "assets", "manifest.json");
+  await mkdir(join(cwd, ".clash"), { recursive: true });
+  await writeFile(
+    join(cwd, ".clash", "project.toml"),
+    'schema_version = 1\nproject_id = "project-apply-valve"\n',
+    "utf8",
+  );
   await mkdir(join(cwd, "assets"), { recursive: true });
   await writeFile(
     assetsPath,
-    JSON.stringify({ assets: [{ id: "asset-talk", type: "video", metadata: {} }] }),
+    JSON.stringify({
+      assets: [{ id: "asset-talk", type: "video", metadata: {} }],
+    }),
     "utf8",
   );
   return { cwd, assetsPath };
@@ -29,7 +37,11 @@ async function workspace() {
 function descriptionAction() {
   return {
     actionId: "action-describe",
-    targetAssetId: "asset-talk",
+    target: {
+      kind: "project-asset",
+      projectId: "project-apply-valve",
+      assetId: "asset-talk",
+    },
     metadataKind: "media.description",
     producer: "clash.local.aigc",
     metadata: {
@@ -48,7 +60,11 @@ test("applies a declared kind from an action file through the generic valve", as
   await mkdir(join(cwd, "actions"), { recursive: true });
   await writeFile(actionPath, JSON.stringify(descriptionAction()), "utf8");
 
-  const result = await applyProductionMetadataAction({ cwd, actionPath, assetsPath });
+  const result = await applyProductionMetadataAction({
+    cwd,
+    actionPath,
+    assetsPath,
+  });
 
   assert.equal(result.metadataKind, "media.description");
   const manifest = JSON.parse(await readFile(assetsPath, "utf8"));
@@ -66,7 +82,11 @@ test("refuses a retired workflow kind exactly like any undeclared kind", async (
     actionPath,
     JSON.stringify({
       actionId: "action-beat",
-      targetAssetId: "asset-talk",
+      target: {
+        kind: "project-asset",
+        projectId: "project-apply-valve",
+        assetId: "asset-talk",
+      },
       metadataKind: "audio.beat-analysis",
       producer: "qa",
       metadata: { kind: "audio.beat-analysis", bpm: 120 },
@@ -108,7 +128,11 @@ test("CAS-edits a declared kind's projection and refuses the stale second apply"
 
   const projected = JSON.parse(await readFile(attached.metadataPath, "utf8"));
   projected.text = "A host waves, then points at the chart.";
-  await writeFile(attached.metadataPath, JSON.stringify(projected, null, 2), "utf8");
+  await writeFile(
+    attached.metadataPath,
+    JSON.stringify(projected, null, 2),
+    "utf8",
+  );
 
   const applied = await applyProductionMetadataProjection({
     cwd,

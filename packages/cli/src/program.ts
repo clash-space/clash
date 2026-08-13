@@ -14,7 +14,6 @@ import { pluginCommand } from "./commands/plugin";
 import { projectionCommand } from "./commands/projection";
 import { initCommand, projectsCommand } from "./commands/projects";
 import { registerProviderCommands } from "./commands/providers";
-import { tasksCommand } from "./commands/tasks";
 import { textCommand } from "./commands/text";
 import { timelineCommand } from "./commands/timeline";
 import { installCliTrace } from "./lib/cli-trace";
@@ -51,9 +50,7 @@ export type CliProgramOptions = {
  * ensure a local-api host exists. Commands, help, profiles and failure
  * behavior stay here so the two launch paths cannot drift.
  */
-export function createCliProgram(
-  options: CliProgramOptions = {},
-): Command {
+export function createCliProgram(options: CliProgramOptions = {}): Command {
   const program = new Command()
     .name("clash")
     .description(DESCRIPTION)
@@ -74,7 +71,6 @@ export function createCliProgram(
   program.addCommand(projectsCommand);
   program.addCommand(canvasCommand);
   program.addCommand(canvasesCommand);
-  program.addCommand(tasksCommand);
   program.addCommand(pluginCommand);
   program.addCommand(modelsCommand);
   program.addCommand(hostCommand);

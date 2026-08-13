@@ -1,8 +1,28 @@
 # Project, Canvas, Timeline, Action, and Asset Model
 
-Status: Accepted
+Status: Historical reference; superseded as an implementation contract
 
-Last updated: 2026-07-15
+Last updated: 2026-08-13
+
+This document records an earlier ownership proposal and must not be used as the
+current Asset or execution authority. The canonical contracts are:
+
+- [`apps/docs/guide/asset-system.md`](../apps/docs/guide/asset-system.md) for
+  `Resource`, `ProjectAssetEntry`, `ActionAssetBinding`, `ResolvedAsset`,
+  deletion, and Local/Cloud replication boundaries; and
+- [`apps/docs/guide/durable-run-protocol.md`](../apps/docs/guide/durable-run-protocol.md)
+  for Provider steps, owner-private journals, output staging/publication, and
+  the design-only Cloud Workflow adapter.
+
+In particular, the `AssetRevision` and standalone synchronized `ActionRun`
+language below is not the current Local storage model. Immutable bytes are
+Resources, Project media identity is `ProjectAssetEntry`, and durable Local run
+state lives in SQLite while Canvas outcome plus `ActionAssetBinding` lineage is
+the public projection. A future Project `ActionRun` may use only the five
+coarse states defined by the Durable Run Protocol. Storage keys and URLs are
+Host projections, never Asset identity. Plugin Asset delivery remains the
+single permanently named `v0` contract; this historical document does not
+authorize a `v1` alias or `url + reach` path.
 
 ## Purpose
 

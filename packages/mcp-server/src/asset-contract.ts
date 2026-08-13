@@ -12,6 +12,8 @@ export const ASSET_MCP_TOOL_NAMES = [
   "clash_assets_global_list",
   "clash_assets_global_get",
   "clash_assets_global_import_file",
+  "clash_assets_global_trash",
+  "clash_assets_global_restore",
 ] as const;
 
 export type AssetMcpToolName = (typeof ASSET_MCP_TOOL_NAMES)[number];

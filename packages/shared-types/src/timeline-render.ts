@@ -1,6 +1,8 @@
 import type { LoroDoc } from "loro-crdt";
 import { Canvas } from "./canvas-ops.js";
 import {
+  freezeProjectTimelineRunAssetInputs,
+  projectTimelineRenderActionRunId,
   readProjectTimeline,
   resolveTimelineRenderTarget,
   type TimelineRenderTarget,
@@ -111,6 +113,15 @@ export function requestTimelineRender(
   if (nodes.get(renderNodeId) !== undefined) {
     return { ok: false, error: `Node ${renderNodeId} already exists` };
   }
+  const actionRunId = projectTimelineRenderActionRunId(renderNodeId);
+  const frozenPreflight = freezeProjectTimelineRunAssetInputs(
+    doc.fork(),
+    timeline,
+    actionRunId,
+  );
+  if (!frozenPreflight.ok) {
+    return { ok: false, error: frozenPreflight.error };
+  }
   const naturalWidth = typeof timelineDsl.compositionWidth === "number" && timelineDsl.compositionWidth > 0
     ? timelineDsl.compositionWidth
     : 1920;
@@ -126,7 +137,9 @@ export function requestTimelineRender(
       status: "pending",
       timelineDsl,
       sourceTimelineId: timeline.id,
+      sourceTimelineActionId: frozenPreflight.owner.actionId,
       sourceTimelineRevisionId: timeline.revisionId,
+      sourceTimelineActionRunId: actionRunId,
       pendingTask: null,
       naturalWidth,
       naturalHeight,
@@ -137,6 +150,16 @@ export function requestTimelineRender(
       renderTarget: target,
     },
   });
+  const frozen = freezeProjectTimelineRunAssetInputs(
+    doc,
+    timeline,
+    actionRunId,
+  );
+  if (!frozen.ok) {
+    throw new Error(
+      `Timeline ${timeline.id} input freeze changed after preflight: ${frozen.error}`,
+    );
+  }
   return {
     ok: true,
     renderNodeId,

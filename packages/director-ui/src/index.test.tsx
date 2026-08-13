@@ -7,6 +7,7 @@ import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { describe, expect, it } from "vitest";
 import type { DirectorStageState } from "@clash/shared-types";
 import * as directorUI from "./index";
+import * as directorViewport from "./DirectorViewport";
 import {
   DIRECTOR_MANNEQUIN_POSE_PRESETS,
   DIRECTOR_RENDERER_OPTIONS,
@@ -53,6 +54,26 @@ const storyAnimation = {
     durationSeconds: 4,
   }],
 } as any;
+
+it("resolves custom model bytes only from the current Host projection", () => {
+  const resolveProjection = (directorViewport as any)
+    .resolveDirectorModelProjectionUrl;
+  expect(resolveProjection).toBeTypeOf("function");
+
+  const authorizedProjection =
+    "http://127.0.0.1:4319/api/v1/projects/project-1/assets/asset-model/content?capability=read";
+  expect(
+    resolveProjection("asset-model", {
+      "asset-model": authorizedProjection,
+    }),
+  ).toBe(authorizedProjection);
+  expect(resolveProjection("asset-model", {})).toBeUndefined();
+  expect(resolveProjection("builtin:quaternius:casual-hoodie", {})).toBe(
+    (directorUI as any).DIRECTOR_BUILTIN_MODEL_ASSET_URLS[
+      "builtin:quaternius:casual-hoodie"
+    ],
+  );
+});
 
 function loadAnnyRig(bodyType = "neutral", sanitizeRuntimeNames = false): Group {
   const assetUrl = new URL(`../assets/anny-mpfb2/${bodyType}.glb`, import.meta.url);
@@ -2059,7 +2080,6 @@ Frame Time: 0.0333333
     expect(source).toContain("cameraPose");
     expect(source).toContain("DirectorRenderPalette");
     expect(source).toContain("resolveDirectorRenderPalette");
-    expect(source).toContain("assetUrls?.[object.model.assetId]");
     expect(source).toContain("DirectorMotionPaths");
     expect(source).toContain("selectedCameraId");
     expect(source).toContain("directorCameraFocusPoint(camera, objects)");

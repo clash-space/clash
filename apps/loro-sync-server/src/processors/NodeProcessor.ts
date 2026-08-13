@@ -8,19 +8,12 @@
  * 4. TaskPolling will poll DB and update Loro Doc when complete
  */
 
-import { LoroDoc } from 'loro-crdt';
-import type { Env } from '../types';
-import { updateNodeData } from '../sync/NodeUpdater';
-import { MODEL_CARDS } from '@clash/shared-types';
+import { LoroDoc } from "loro-crdt";
+import type { Env } from "../types";
+import { updateNodeData } from "../sync/NodeUpdater";
+import type { AssetStatusType } from "@clash/shared-types";
 
-const defaultImageModel = MODEL_CARDS.find((card) => card.kind === 'image')?.id ?? 'nano-banana-2';
-const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id ?? 'sora-2-image-to-video';
-const defaultAudioModel = MODEL_CARDS.find((card) => card.kind === 'audio')?.id ?? 'gemini-3.1-flash-tts';
-
-const getModelCard = (modelId?: string) => MODEL_CARDS.find((card) => card.id === modelId);
-
-type AssetStatus = 'uploading' | 'generating' | 'completed' | 'fin' | 'failed';
-type NodeType = 'image' | 'video' | 'audio' | 'video_render';
+type NodeType = "image" | "video" | "audio" | "video_render";
 
 /**
  * CRITICAL FIX: Removed in-memory processingNodes Set
@@ -48,14 +41,15 @@ type NodeType = 'image' | 'video' | 'audio' | 'video_render';
  */
 function resolveTimelineDslReferences(
   timelineDsl: Record<string, any>,
-  nodesMap: Map<string, any>
+  nodesMap: Map<string, any>,
 ): Record<string, any> {
   // Build a src -> node lookup for matching by src (for items without assetId)
   const srcToNode = new Map<string, any>();
   for (const [nodeId, nodeData] of nodesMap.entries()) {
     const data = nodeData?.data || nodeData;
     // Handle Loro proxy objects
-    const src = typeof data?.toJSON === 'function' ? data.toJSON()?.src : data?.src;
+    const src =
+      typeof data?.toJSON === "function" ? data.toJSON()?.src : data?.src;
     if (src) {
       srcToNode.set(src, { nodeId, ...nodeData });
     }
@@ -99,10 +93,10 @@ function resolveTimelineDslReferences(
         let assetData: Record<string, any> = {};
         const rawData = assetNode.data || assetNode;
 
-        if (typeof rawData?.toJSON === 'function') {
+        if (typeof rawData?.toJSON === "function") {
           assetData = rawData.toJSON();
         } else if (rawData) {
-          assetData = typeof rawData === 'object' ? { ...rawData } : {};
+          assetData = typeof rawData === "object" ? { ...rawData } : {};
         }
 
         // Get type from node or data
@@ -115,18 +109,22 @@ function resolveTimelineDslReferences(
         // Fallback: parse aspectRatio string (e.g., "16:9") if no natural dimensions
         if ((!naturalWidth || !naturalHeight) && assetData.aspectRatio) {
           const ar = assetData.aspectRatio;
-          if (typeof ar === 'string' && ar.includes(':')) {
-            const [w, h] = ar.split(':').map(Number);
+          if (typeof ar === "string" && ar.includes(":")) {
+            const [w, h] = ar.split(":").map(Number);
             if (w && h) {
               // Use 1920 as base width (matches frontend logic)
               naturalWidth = 1920;
-              naturalHeight = Math.round(1920 * h / w);
+              naturalHeight = Math.round((1920 * h) / w);
             }
           }
         }
 
-        const matchMethod = item.assetId ? `assetId=${item.assetId.slice(0, 8)}` : `src-match`;
-        console.log(`[NodeProcessor] Resolved ${matchMethod} -> type=${assetType}, src=${assetData.src?.slice(0, 30) || 'none'}, dim=${naturalWidth}x${naturalHeight}`);
+        const matchMethod = item.assetId
+          ? `assetId=${item.assetId.slice(0, 8)}`
+          : `src-match`;
+        console.log(
+          `[NodeProcessor] Resolved ${matchMethod} -> type=${assetType}, src=${assetData.src?.slice(0, 30) || "none"}, dim=${naturalWidth}x${naturalHeight}`,
+        );
 
         return {
           ...item,
@@ -137,7 +135,9 @@ function resolveTimelineDslReferences(
           ...(assetData.aspectRatio && { aspectRatio: assetData.aspectRatio }),
         };
       } else {
-        console.warn(`[NodeProcessor] No asset found for item id=${item.id}, src=${item.src?.slice(0, 50) || 'none'}`);
+        console.warn(
+          `[NodeProcessor] No asset found for item id=${item.id}, src=${item.src?.slice(0, 50) || "none"}`,
+        );
       }
 
       return item;
@@ -157,128 +157,95 @@ export async function processPendingNodes(
   env: Env,
   projectId: string,
   broadcast: (data: Uint8Array) => void,
-  triggerPolling: () => Promise<void>
+  triggerPolling: () => Promise<void>,
 ): Promise<void> {
   try {
-    const nodesMap = doc.getMap('nodes');
+    const nodesMap = doc.getMap("nodes");
     let submitted = false;
 
     for (const [nodeId, nodeData] of nodesMap.entries()) {
       const raw = nodeData as any;
-      const data = typeof raw?.toJSON === 'function' ? raw.toJSON() : raw as Record<string, any>;
+      const data =
+        typeof raw?.toJSON === "function"
+          ? raw.toJSON()
+          : (raw as Record<string, any>);
       const nodeType = data?.type as NodeType;
       const innerData = data?.data || {};
 
-      if (!['image', 'video', 'audio', 'video_render'].includes(nodeType)) continue;
+      if (!["image", "video", "audio", "video_render"].includes(nodeType))
+        continue;
 
-      const status = innerData.status as AssetStatus;
+      const status = innerData.status as AssetStatusType;
       const src = innerData.src;
       const description = innerData.description;
       const pendingTask = innerData.pendingTask;
 
       // Skip if already has a pending task
-      if (pendingTask || innerData.taskState === 'submitted' || innerData.taskState === 'completed') continue;
+      if (
+        pendingTask ||
+        innerData.taskState === "submitted" ||
+        innerData.taskState === "completed"
+      )
+        continue;
 
       const hasTimelineDsl = innerData.timelineDsl != null;
-      const shouldRenderVideo = nodeType === 'video_render' || (nodeType === 'video' && hasTimelineDsl);
+      const shouldRenderVideo =
+        nodeType === "video_render" || (nodeType === "video" && hasTimelineDsl);
 
       // Video render is handled client-side via Remotion — skip
       if (shouldRenderVideo) continue;
 
-      // Case 1: pending + no src → submit generation task
-      if (status === 'pending' && !src) {
-        // Set status=generating + taskState=submitted IMMEDIATELY (optimistic lock)
-        updateNodeData(doc, nodeId, { status: 'generating', taskState: 'submitted' }, broadcast);
-        console.log(`[NodeProcessor] 🔒 Set status=generating for node ${nodeId.slice(0, 8)}`);
+      // Legacy generation submission was removed with this sync-only package's
+      // Cloud execution authority. The authoritative Host owns pending work.
 
-        // Original AIGC generation logic
-        console.log(`[NodeProcessor] 🚀 Submitting ${nodeType}_gen for ${nodeId.slice(0, 8)}`);
-
-        const taskType = nodeType === 'image' ? 'image_gen' : nodeType === 'video' ? 'video_gen' : 'audio_gen';
-        const selectedModelId = (innerData.modelId || innerData.model) ??
-          (nodeType === 'video' ? defaultVideoModel : nodeType === 'audio' ? defaultAudioModel : defaultImageModel);
-        const modelParams = (innerData.modelParams || {}) as Record<string, any>;
-        const referenceImages: string[] = Array.isArray(innerData.referenceImageUrls) ? innerData.referenceImageUrls : [];
-        const modelCard = getModelCard(selectedModelId);
-        const referenceMode = modelCard?.input.referenceMode || 'single';
-
-        if (nodeType === 'video' && modelCard?.input.referenceImage === 'required') {
-          const requiredCount = referenceMode === 'start_end' ? 2 : 1;
-          if (referenceImages.length < requiredCount) {
-            const msg = referenceMode === 'start_end'
-              ? 'Two reference images (start/end) required for selected model'
-              : 'Reference image required for selected model';
-            updateNodeData(doc, nodeId, { status: 'failed', error: msg }, broadcast);
-            continue;
-          }
-        }
-
-        const params: Record<string, any> = {
-          prompt: innerData.prompt || innerData.label || '',
-          model: selectedModelId,
-          model_params: modelParams,
-          reference_images: referenceImages,
-          reference_mode: referenceMode,
-        };
-
-        // Extract aspect ratio from modelParams or node data (fallback to 16:9)
-        const aspectRatio = modelParams.aspect_ratio || innerData.aspectRatio || '16:9';
-
-        if (nodeType === 'video') {
-          if (referenceImages[0]) {
-            params.image_r2_key = referenceImages[0];
-          }
-          const duration = modelParams.duration ?? innerData.duration ?? 5;
-          params.duration = duration;
-          params.aspect_ratio = aspectRatio;
-          if (modelParams.negative_prompt) params.negative_prompt = modelParams.negative_prompt;
-          if (modelParams.cfg_scale) params.cfg_scale = modelParams.cfg_scale;
-          if (modelParams.resolution) params.resolution = modelParams.resolution;
-          if (referenceMode === 'start_end' && referenceImages[1]) {
-            params.tail_image_url = referenceImages[1];
-          }
-        } else if (nodeType === 'audio') {
-          // Audio/TTS generation - no reference images or aspect ratio needed
-          // Text comes from prompt field
-        } else {
-          // Image generation
-          params.aspect_ratio = aspectRatio;
-        }
-
-        const result = await submitTask(env, taskType, projectId, nodeId, params);
-
-        if (result.task_id) {
-          console.log(`[NodeProcessor] ✅ Task submitted successfully: ${result.task_id} for node ${nodeId.slice(0, 8)}`);
-          updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
-          submitted = true;
-        } else {
-          console.error(`[NodeProcessor] ❌ Task submission failed for node ${nodeId.slice(0, 8)}: ${result.error}`);
-          // Reset taskState so it can be retried
-          updateNodeData(doc, nodeId, { taskState: 'pending', status: 'failed', error: result.error || 'Task submission failed' }, broadcast);
-        }
-      }
-
-      // Case 2: completed + has src + no description -> submit description task
+      // completed + has src + no description -> submit description task
       // Skip audio nodes - they don't need descriptions
-      if (status === 'completed' && src && !description && nodeType !== 'audio' && !pendingTask && innerData.taskState !== 'submitted') {
-        updateNodeData(doc, nodeId, { taskState: 'submitted' }, broadcast);
-        console.log(`[NodeProcessor] 🔒 Set taskState=submitted for description: ${nodeId.slice(0, 8)}`);
+      if (
+        status === "completed" &&
+        src &&
+        !description &&
+        nodeType !== "audio" &&
+        !pendingTask &&
+        innerData.taskState !== "submitted"
+      ) {
+        updateNodeData(doc, nodeId, { taskState: "submitted" }, broadcast);
+        console.log(
+          `[NodeProcessor] 🔒 Set taskState=submitted for description: ${nodeId.slice(0, 8)}`,
+        );
 
-        console.log(`[NodeProcessor] 📝 Submitting description for ${nodeId.slice(0, 8)}`);
+        console.log(
+          `[NodeProcessor] 📝 Submitting description for ${nodeId.slice(0, 8)}`,
+        );
 
-        const taskType = nodeType === 'image' ? 'image_desc' : 'video_desc';
+        const taskType = nodeType === "image" ? "image_desc" : "video_desc";
         const params = {
           r2_key: src,
-          mime_type: nodeType === 'image' ? 'image/png' : 'video/mp4',
+          mime_type: nodeType === "image" ? "image/png" : "video/mp4",
         };
 
-        const result = await submitTask(env, taskType, projectId, nodeId, params);
+        const result = await submitTask(
+          env,
+          taskType,
+          projectId,
+          nodeId,
+          params,
+        );
 
         if (result.task_id) {
-          updateNodeData(doc, nodeId, { taskState: 'completed', pendingTask: result.task_id }, broadcast);
+          updateNodeData(
+            doc,
+            nodeId,
+            { taskState: "completed", pendingTask: result.task_id },
+            broadcast,
+          );
           submitted = true;
         } else {
-          updateNodeData(doc, nodeId, { taskState: 'pending', status: 'fin' }, broadcast);
+          updateNodeData(
+            doc,
+            nodeId,
+            { taskState: "pending", status: "fin" },
+            broadcast,
+          );
         }
       }
 
@@ -290,7 +257,7 @@ export async function processPendingNodes(
       await triggerPolling();
     }
   } catch (error) {
-    console.error('[NodeProcessor] ❌ Error:', error);
+    console.error("[NodeProcessor] ❌ Error:", error);
   }
 }
 
@@ -302,7 +269,7 @@ async function submitTask(
   taskType: string,
   projectId: string,
   nodeId: string,
-  params: Record<string, any>
+  params: Record<string, any>,
 ): Promise<{ task_id?: string; error?: string }> {
   try {
     const payload = JSON.stringify({
@@ -313,12 +280,14 @@ async function submitTask(
     });
 
     const opts: RequestInit = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: payload,
     };
 
-    console.log(`[NodeProcessor] 📤 Submitting task: type=${taskType}, project=${projectId}, node=${nodeId.slice(0, 8)}`);
+    console.log(
+      `[NodeProcessor] 📤 Submitting task: type=${taskType}, project=${projectId}, node=${nodeId.slice(0, 8)}`,
+    );
 
     const response = env.API_CF
       ? await env.API_CF.fetch("https://api-cf/api/tasks/submit", opts)
@@ -326,11 +295,13 @@ async function submitTask(
 
     if (!response.ok) {
       const text = await response.text();
-      console.error(`[NodeProcessor] ❌ HTTP ${response.status} error submitting task: ${text}`);
+      console.error(
+        `[NodeProcessor] ❌ HTTP ${response.status} error submitting task: ${text}`,
+      );
       return { error: `HTTP ${response.status}: ${text}` };
     }
 
-    const result = await response.json() as { task_id?: string };
+    const result = (await response.json()) as { task_id?: string };
     return { task_id: result.task_id };
   } catch (e) {
     console.error(`[NodeProcessor] ❌ Exception during task submission:`, e);

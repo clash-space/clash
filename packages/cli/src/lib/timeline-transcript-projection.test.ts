@@ -287,8 +287,14 @@ test("reconstructs the Agent transcript table from persisted Text lineage after 
 test("prefers the asset's media.transcript over editor caches and text lineage", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-timeline-media-transcript-"));
   const dataDir = await mkdtemp(join(tmpdir(), "clash-timeline-media-transcript-data-"));
+  await mkdir(join(cwd, ".clash"), { recursive: true });
   await mkdir(join(cwd, "assets"), { recursive: true });
   await mkdir(join(cwd, "timelines"), { recursive: true });
+  await writeFile(
+    join(cwd, ".clash", "project.toml"),
+    'schema_version = 1\nproject_id = "project-timeline-transcript"\n',
+    "utf8",
+  );
   const assetsPath = join(cwd, "assets", "manifest.json");
   await writeFile(
     assetsPath,

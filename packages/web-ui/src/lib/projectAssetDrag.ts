@@ -1,24 +1,6 @@
 import type { ResolvedAsset } from "@clash/shared-types";
-import { projectAssetPlaybackUrl } from "../features/assets/media-url";
 
 export const PROJECT_ASSET_DRAG_MIME = "application/x-clash-project-asset";
-
-function dragAssetSource(asset: ResolvedAsset): string {
-  return projectAssetPlaybackUrl(asset) ?? "";
-}
-
-function remotionAssetPayload(asset: ResolvedAsset) {
-  return {
-    id: asset.id,
-    projectAssetId: asset.id,
-    sourceNodeId: asset.id,
-    name:
-      asset.name?.trim() ||
-      `${asset.kind.charAt(0).toUpperCase()}${asset.kind.slice(1)}`,
-    src: dragAssetSource(asset),
-    type: asset.kind,
-  };
-}
 
 export function writeProjectAssetDrag(
   dataTransfer: DataTransfer,
@@ -29,25 +11,13 @@ export function writeProjectAssetDrag(
     PROJECT_ASSET_DRAG_MIME,
     JSON.stringify({ assetId: asset.id }),
   );
-
-  // These fields are the existing Remotion editor drag contract.
-  dataTransfer.setData("text/plain", asset.id);
-  dataTransfer.setData("assetId", asset.id);
-  dataTransfer.setData("asset", JSON.stringify(remotionAssetPayload(asset)));
 }
 
 export function hasProjectAssetDragData(dataTransfer: DataTransfer): boolean {
   const types = Array.from(dataTransfer.types, (type) =>
     type.toLocaleLowerCase(),
   );
-  if (types.includes(PROJECT_ASSET_DRAG_MIME) || types.includes("assetid"))
-    return true;
-
-  // Keep the native text fallback for older cross-surface asset drags, but
-  // never let another Clash drag contract masquerade as a Project Asset.
-  if (types.some((type) => type.startsWith("application/x-clash-")))
-    return false;
-  return types.includes("text/plain");
+  return types.includes(PROJECT_ASSET_DRAG_MIME);
 }
 
 export function readProjectAssetDrag(
@@ -71,7 +41,5 @@ export function readProjectAssetDragId(
       return undefined;
     }
   }
-  assetId ||= dataTransfer.getData("assetId");
-  assetId ||= dataTransfer.getData("text/plain");
   return assetId || undefined;
 }

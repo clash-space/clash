@@ -10,12 +10,13 @@ import { describe, it, expect } from "vitest";
 import { chatWithSupervisor as sendSupervisorChat } from "./e2e-chat";
 
 const API_URL = process.env.API_CF_URL ?? "http://localhost:8787";
-const PROJECT_ID = process.env.E2E_PROJECT_ID ?? "857d7caa-9fb9-4442-80fa-67bc709a0288";
+const PROJECT_ID =
+  process.env.E2E_PROJECT_ID ?? "857d7caa-9fb9-4442-80fa-67bc709a0288";
 const THREAD_ID = `e2e-test-${Date.now()}`;
 
 async function isServerRunning(): Promise<boolean> {
   try {
-    await fetch(`${API_URL}/assets/sign?key=test`, { signal: AbortSignal.timeout(2000) });
+    await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(2000) });
     return true;
   } catch {
     return false;
@@ -26,7 +27,10 @@ async function isServerRunning(): Promise<boolean> {
  * Send a chat message to SupervisorAgent using the cf_agent protocol.
  * Returns the collected assistant response text.
  */
-async function chatWithSupervisor(userMessage: string, timeoutMs = 60_000): Promise<string> {
+async function chatWithSupervisor(
+  userMessage: string,
+  timeoutMs = 60_000,
+): Promise<string> {
   console.log("[E2E] Connecting to supervisor at", API_URL);
   const result = await sendSupervisorChat({
     apiUrl: API_URL,
@@ -35,7 +39,11 @@ async function chatWithSupervisor(userMessage: string, timeoutMs = 60_000): Prom
     threadId: THREAD_ID,
     timeoutMs,
   });
-  console.log("[E2E] Response complete, collected:", result.text.length, "chars");
+  console.log(
+    "[E2E] Response complete, collected:",
+    result.text.length,
+    "chars",
+  );
   return result.text;
 }
 
@@ -47,10 +55,12 @@ describe("Supervisor E2E - read_canvas_node multimodal", () => {
       return;
     }
 
-    console.log("[E2E] Asking supervisor to read and describe an image node...");
+    console.log(
+      "[E2E] Asking supervisor to read and describe an image node...",
+    );
 
     const response = await chatWithSupervisor(
-      "List the canvas nodes, find an image node, then use read_canvas_node to read it. Describe what you see in the image - be specific about the visual content."
+      "List the canvas nodes, find an image node, then use read_canvas_node to read it. Describe what you see in the image - be specific about the visual content.",
     );
 
     console.log("\n[E2E] === Supervisor Response ===");

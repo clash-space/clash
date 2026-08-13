@@ -115,15 +115,36 @@ Use the Action SDK's typed executor shape:
 
 - read account state from `context.store`;
 - resolve Clash references with `context.reference`;
-- call the vendor with the runtime's normal HTTP library;
+- on `submit`, make at most one upstream submission;
+- on `poll`, make at most one status request for the supplied opaque
+  `pollState`;
 - return typed text/media or stream large bytes through `context.upload`;
-- keep `pollState` credential-free and serializable.
+- keep `pollState` credential-free and serializable; and
+- return only `completed`, `accepted`, or `failed`. Every failure must carry a
+  canonical `code`, `retryable`, and `requestState`.
+
+The plugin must not loop, sleep, retry, select another account, persist task
+state, or publish a Project Asset. The Host owns those policies and invokes the
+executor again when a retry or poll is due. Read
+[Waiting for a Provider](/plugins/waiting) for the complete status/error table
+and [Durable Run Protocol](/guide/durable-run-protocol) for Host checkpoints,
+deadlines, recovery, and the design-only Cloud adapter.
+
+Media declarations are assertions, not authority. Bytes returned through the
+upload broker must actually decode as the declared Asset kind and media type.
+After the completed result is checkpointed, the Host stages the immutable
+Resource and runs its versioned byte probe before Project publication. A
+temporary probe failure retries finalization from staged bytes without invoking
+the Provider again; malformed media eventually fails the run and cannot create
+a Project Asset or output binding.
 
 ### 6. Test and activate
 
 Add deterministic contract cases for request/response projection. Then run a
 real backend case for every exposed family, record redacted traffic at the
-plugin process boundary, and commit the offline replay as a regression grader.
+plugin process boundary, and commit the offline replay as a regression test
+fixture. Traffic capture belongs to test instrumentation around the plugin
+process; it must not add recording branches to Provider business code.
 
 ```sh
 clash plugin validate ~/plugins/acme-media

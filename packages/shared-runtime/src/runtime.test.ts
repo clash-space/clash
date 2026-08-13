@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   apiUrl,
-  assetFallbackUrl,
   defaultRuntimeCapabilities,
   resolveRuntimeConfig,
   syncWebSocketUrl,
@@ -14,39 +13,45 @@ describe("runtime endpoint helpers", () => {
 
     expect(apiUrl("/api/v1/projects", cfg)).toBe("/api/v1/projects");
     expect(apiUrl("api/v1/projects", cfg)).toBe("/api/v1/projects");
-    expect(assetFallbackUrl("uploads/a.png", cfg)).toBe("/assets/uploads/a.png");
   });
 
   it("joins configured local API origins without duplicating slashes", () => {
     const cfg = resolveRuntimeConfig({ apiBaseUrl: "http://127.0.0.1:49152/" });
 
-    expect(apiUrl("/api/v1/projects", cfg)).toBe("http://127.0.0.1:49152/api/v1/projects");
-    expect(apiUrl("/assets/sign?key=uploads%2Fa.png", cfg)).toBe(
-      "http://127.0.0.1:49152/assets/sign?key=uploads%2Fa.png",
+    expect(apiUrl("/api/v1/projects", cfg)).toBe(
+      "http://127.0.0.1:49152/api/v1/projects",
+    );
+    expect(apiUrl("/api/v1/projects/p1/assets", cfg)).toBe(
+      "http://127.0.0.1:49152/api/v1/projects/p1/assets",
     );
   });
 
   it("passes already absolute URLs through unchanged", () => {
     const cfg = resolveRuntimeConfig({ apiBaseUrl: "http://127.0.0.1:49152" });
 
-    expect(apiUrl("https://cdn.example.test/a.png", cfg)).toBe("https://cdn.example.test/a.png");
-    expect(assetFallbackUrl("data:image/png;base64,abc", cfg)).toBe("data:image/png;base64,abc");
+    expect(apiUrl("https://cdn.example.test/a.png", cfg)).toBe(
+      "https://cdn.example.test/a.png",
+    );
   });
 
   it("derives WebSocket origins from HTTP API origins unless explicitly overridden", () => {
-    const derived = resolveRuntimeConfig({ apiBaseUrl: "https://clash.example.test" });
+    const derived = resolveRuntimeConfig({
+      apiBaseUrl: "https://clash.example.test",
+    });
     const explicit = resolveRuntimeConfig({
       apiBaseUrl: "http://127.0.0.1:49152",
       wsBaseUrl: "ws://127.0.0.1:49153",
     });
 
-    expect(syncWebSocketUrl("project-1", derived)).toBe("wss://clash.example.test/sync/project-1");
+    expect(syncWebSocketUrl("project-1", derived)).toBe(
+      "wss://clash.example.test/sync/project-1",
+    );
     expect(syncWebSocketUrl("project/with slash", explicit)).toBe(
       "ws://127.0.0.1:49153/sync/project%2Fwith%20slash",
     );
-    expect(webSocketUrl("/api/v1/local-sessions/session-1/_stream", explicit)).toBe(
-      "ws://127.0.0.1:49153/api/v1/local-sessions/session-1/_stream",
-    );
+    expect(
+      webSocketUrl("/api/v1/local-sessions/session-1/_stream", explicit),
+    ).toBe("ws://127.0.0.1:49153/api/v1/local-sessions/session-1/_stream");
   });
 
   it("defaults to hosted cloud capabilities", () => {
@@ -55,6 +60,7 @@ describe("runtime endpoint helpers", () => {
     expect(cfg.mode).toBe("hosted");
     expect(cfg.capabilities).toEqual(defaultRuntimeCapabilities("hosted"));
     expect(cfg.capabilities.assets.storage).toBe("cloud");
+    expect(cfg.capabilities.assets.upload).toBe("disabled");
     expect(cfg.capabilities.workflows.runner).toBe("cloudflare");
     expect(cfg.capabilities.loro.persistence).toBe("remote");
   });

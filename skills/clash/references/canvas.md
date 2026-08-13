@@ -22,11 +22,13 @@ Every node from `clash canvas list/get --json`:
 ## Node Types
 
 ### text
+
 Content node. Use for scripts, descriptions, prompts, style guides.
 
 Key fields: `data.label`, `data.content`
 
 ### group
+
 Container. Nodes inside a group share context for generation.
 
 Key fields: `data.label`
@@ -34,16 +36,19 @@ Key fields: `data.label`
 Children reference the group via `parent_id`.
 
 ### image_gen / video_gen
+
 Generation trigger. When added or executed, the platform generates media.
 
 Key fields: `data.actionType`, `data.modelId`, `data.prompt`, `data.modelParams`
 
 ### image / video
+
 Asset node. Created automatically when generation completes.
 
 Key fields: `data.status` (`"pending"` → `"completed"` / `"failed"`), `data.src`, `data.prompt`, `data.modelId`
 
 ### action-badge
+
 Internal ReactFlow type for generation nodes. You'll see this in `canvas list` output — it's the same as `image_gen`/`video_gen` but rendered differently in the UI.
 
 ## Generation Pipeline
@@ -74,9 +79,11 @@ The generation system reads text nodes in the same group as context. Always add 
 ## Structuring a Project
 
 ### Simple (flat)
+
 Text + generation nodes at top level. Quick for single-shot generation.
 
 ### Grouped (recommended)
+
 ```
 Scene 1 (group)
 ├── Text: "Script: Dawn breaks over the city..."
@@ -89,14 +96,17 @@ Scene 2 (group)
 ```
 
 ### Multi-scene storyboard
+
 Create one group per scene. Each group contains text nodes for script/style and generation nodes for visuals. This maps naturally to a video timeline.
 
-## Task Polling
+## Execution observation
 
-After triggering generation, the asset node starts as `"status": "pending"`. Poll until done:
+`canvas execute --json` returns `childNodeId`. The child starts with
+`"status": "pending"`; observe that Project node until it completes or fails:
 
 ```bash
-clash tasks wait --task-id <id> --timeout 120 --json
+clash canvas get --project <id> --node <child-node-id> --json
 ```
 
-Image generation: ~10-30s. Video generation: ~60-120s.
+On completion, read the node's stable Asset identity. Never treat a Provider
+task token or hosted storage result as the media identity.

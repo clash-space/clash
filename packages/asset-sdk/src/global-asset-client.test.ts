@@ -54,10 +54,17 @@ function fixture() {
       stored.set(key, entry);
       return entry;
     }),
-    restore: vi.fn(async (libraryId, id) => {
-      const key = `${libraryId}:${id}`;
+    restore: vi.fn(async (libraryId, input) => {
+      const key = `${libraryId}:${input.id}`;
+      const current = stored.get(key)!;
+      if (
+        current.lifecycle.state !== "trashed" ||
+        current.lifecycle.deleteOperationId !== input.deleteOperationId
+      ) {
+        throw new Error("stale restore");
+      }
       const entry = {
-        ...stored.get(key)!,
+        ...current,
         lifecycle: { state: "active" as const },
       };
       stored.set(key, entry);
@@ -99,6 +106,21 @@ function fixture() {
 }
 
 describe("Global Asset client", () => {
+  it("rejects legacy waveform samples at the Global publication boundary", async () => {
+    const value = fixture();
+
+    await expect(
+      value.client.create({
+        libraryId: "library-1",
+        entry: {
+          ...globalEntry(),
+          metadata: { ...globalEntry().metadata, waveform: [0.1, 0.4, 0.2] },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_GLOBAL_ASSET" });
+    expect(value.authority.create).not.toHaveBeenCalled();
+  });
+
   it("scopes authority rows by library and exposes only the unified ResolvedAsset view", async () => {
     const value = fixture();
     await value.client.create({
@@ -178,6 +200,7 @@ describe("Global Asset client", () => {
     await value.client.restore({
       libraryId: "library-1",
       globalAssetId: "global-1",
+      deleteOperationId: "delete-1",
     });
     await expect(
       value.client.read({

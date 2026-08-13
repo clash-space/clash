@@ -171,6 +171,7 @@ import {
   importProjectAssetFile as importProjectAssetBytes,
   listPersonalGlobalAssets,
   publishProjectAssetToPersonalLibrary,
+  watchAssetProjection,
   restoreProjectAsset as restoreProjectAssetThroughHost,
   trashProjectAsset as trashProjectAssetThroughHost,
   useAsset,
@@ -252,16 +253,20 @@ import { EditableProjectAssetSurface } from "../features/assets/AssetWorkspace";
 import { AssetThumbnail } from "../features/assets/AssetThumbnail";
 import {
   canvasNodeAssetDisplayName,
+  mergeResolvedAssetProjection,
   projectAssetDisplayName,
-  projectAssetThumbnailSource,
   resolveCanvasNodeProjectAsset,
 } from "../features/assets/projectAssetPresentation";
+import {
+  assetThumbnailImageUrl,
+  projectAssetPlaybackUrl,
+} from "../features/assets/media-url";
 import { readAssetRelationGraph } from "../features/assets/relations";
 import { selectTimelineMediaInputs } from "./timelineMediaInputs";
 import { ScopedAssetPicker } from "./ScopedAssetPicker";
 import {
   buildScopedAssetSections,
-  buildScopedTimelineAssetInput,
+  commitScopedTimelineAssetInsertion,
   safeScopedAssetName,
   type ScopedAssetOption,
 } from "./scopedAssetPickerModel";
@@ -307,18 +312,6 @@ function isProjectAssetRenderNode(value: unknown): boolean {
     typeof renderTarget === "object" &&
     (renderTarget as { kind?: unknown }).kind === "project-assets",
   );
-}
-
-function mergeResolvedAsset(
-  asset: ResolvedAsset,
-  fallback?: ResolvedAsset,
-): ResolvedAsset {
-  return {
-    ...fallback,
-    ...asset,
-    metadata: { ...fallback?.metadata, ...asset.metadata },
-    name: asset.name ?? fallback?.name,
-  };
 }
 
 async function normalizeDirectorPanorama(
@@ -576,8 +569,11 @@ function CanvasFolderEntryVisual({
   const asset = useAsset(projectId, assetId);
   const resolvedAsset = asset ?? entry.asset;
   const previewSource = resolvedAsset
-    ? projectAssetThumbnailSource(resolvedAsset)
+    ? (projectAssetPlaybackUrl(resolvedAsset) ?? "")
     : "";
+  const previewThumbnail = resolvedAsset
+    ? assetThumbnailImageUrl(resolvedAsset)
+    : null;
 
   if (entry.kind === "group") {
     return (
@@ -590,12 +586,14 @@ function CanvasFolderEntryVisual({
   if (
     entry.node.type === "audio" ||
     ((entry.node.type === "image" || entry.node.type === "video") &&
-      previewSource)
+      (previewSource || previewThumbnail))
   ) {
     return (
       <AssetThumbnail
         kind={entry.node.type}
-        src={previewSource ?? ""}
+        src={previewSource}
+        thumbnailSrc={previewThumbnail}
+        status={resolvedAsset?.status}
         label={entry.label}
         variant="sidebar"
         decorative
@@ -3144,7 +3142,6 @@ export default function ProjectEditor({
         duration: projectAsset.metadata.durationMs
           ? projectAsset.metadata.durationMs / 1000
           : input.duration,
-        waveform: projectAsset.metadata.waveform ?? input.waveform,
       };
     },
     [importProjectAssetFile],
@@ -3753,33 +3750,59 @@ export default function ProjectEditor({
       }
     }
 
+    const stopWatching: Array<() => void> = [];
     for (const [assetId, fallback] of assetsToHydrate) {
       if (hydratingProjectAssetIdsRef.current.has(assetId)) continue;
       hydratingProjectAssetIdsRef.current.add(assetId);
-      void getAsset(project.id, assetId)
-        .then((asset) => {
-          if (activeProjectAssetProjectIdRef.current !== project.id) return;
-          if (
-            asset.kind !== "image" &&
-            asset.kind !== "video" &&
-            asset.kind !== "audio"
-          )
-            return;
-          const projectAsset = mergeResolvedAsset(asset, fallback);
-          setLocallyAddedProjectAssets((current) => [
-            projectAsset,
-            ...current.filter((candidate) => candidate.id !== projectAsset.id),
-          ]);
-        })
-        .catch((error) =>
-          console.warn(
-            "[Project assets] generated asset hydration failed",
-            assetId,
-            error,
-          ),
-        )
-        .finally(() => hydratingProjectAssetIdsRef.current.delete(assetId));
+      stopWatching.push(
+        watchAssetProjection({
+          projectId: project.id,
+          assetId,
+          onProjection: (asset) => {
+            if (activeProjectAssetProjectIdRef.current !== project.id) return;
+            if (
+              asset.kind !== "image" &&
+              asset.kind !== "video" &&
+              asset.kind !== "audio"
+            )
+              return;
+            const projectAsset = mergeResolvedAssetProjection(asset, fallback);
+            if (JSON.stringify(projectAsset) === JSON.stringify(fallback))
+              return;
+            setLocallyAddedProjectAssets((current) => {
+              const existing = current.find(
+                (candidate) => candidate.id === projectAsset.id,
+              );
+              return JSON.stringify(existing) === JSON.stringify(projectAsset)
+                ? current
+                : [
+                    projectAsset,
+                    ...current.filter(
+                      (candidate) => candidate.id !== projectAsset.id,
+                    ),
+                  ];
+            });
+            if (asset.status === "ready" || asset.status === "failed") {
+              hydratingProjectAssetIdsRef.current.delete(assetId);
+            }
+          },
+          onError: (error) => {
+            hydratingProjectAssetIdsRef.current.delete(assetId);
+            console.warn(
+              "[Project assets] generated asset hydration failed",
+              assetId,
+              error,
+            );
+          },
+        }),
+      );
     }
+    return () => {
+      for (const stop of stopWatching) stop();
+      for (const assetId of assetsToHydrate.keys()) {
+        hydratingProjectAssetIdsRef.current.delete(assetId);
+      }
+    };
   }, [loroSync.doc, nodes, project.id, projectAssets]);
   const selectedAsset =
     workspaceSurface.kind === "asset"
@@ -3925,76 +3948,75 @@ export default function ProjectEditor({
       try {
         const steps = planAssetScopeCascade({ source: option.source, target });
 
-        const cascade = await executeAssetScopeCascade({
-          steps,
-          initial: {
-            assetId: option.assetId,
-            sourceNodeId: option.sourceNodeId,
-          },
-          adapter: {
-            ensureProjectReference: addGlobalAssetToProject,
-            ensureCanvasPlacement: async ({ canvasId, assetId }) => {
-              const existing = assetRelationGraph.nodes.find(
-                (node) =>
-                  node.canvasId === canvasId &&
-                  node.data?.assetId === assetId &&
-                  (node.type === "image" ||
-                    node.type === "video" ||
-                    node.type === "audio"),
-              );
-              if (existing) return existing.id;
-              const nodeId = `asset-placement-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-              const canvasNodeCount = assetRelationGraph.nodes.filter(
-                (node) => node.canvasId === canvasId,
-              ).length;
-              const node = {
-                id: nodeId,
-                type: option.type,
-                position: {
-                  x: 120 + (canvasNodeCount % 5) * 36,
-                  y: 120 + (canvasNodeCount % 7) * 36,
-                },
-                data: {
-                  assetId,
-                  label: option.name,
-                  status: "completed",
-                },
-              } satisfies Pick<AppNode, "id" | "type" | "position" | "data">;
-              if (!loroSync.addNodeToCanvas(canvasId, nodeId, node)) {
-                throw new Error("Failed to add the asset to the Canvas");
-              }
-              if (canvasId === activeCanvasId) {
-                setNodes((current) =>
-                  current.some((candidate) => candidate.id === nodeId)
-                    ? current
-                    : [...current, node as AppNode],
-                );
-              }
-              return nodeId;
+        const runCascade = () =>
+          executeAssetScopeCascade({
+            steps,
+            initial: {
+              assetId: option.assetId,
+              sourceNodeId: option.sourceNodeId,
             },
-          },
-        });
+            adapter: {
+              ensureProjectReference: addGlobalAssetToProject,
+              ensureCanvasPlacement: async ({ canvasId, assetId }) => {
+                const existing = assetRelationGraph.nodes.find(
+                  (node) =>
+                    node.canvasId === canvasId &&
+                    node.data?.assetId === assetId &&
+                    (node.type === "image" ||
+                      node.type === "video" ||
+                      node.type === "audio"),
+                );
+                if (existing) return existing.id;
+                const nodeId = `asset-placement-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+                const canvasNodeCount = assetRelationGraph.nodes.filter(
+                  (node) => node.canvasId === canvasId,
+                ).length;
+                const node = {
+                  id: nodeId,
+                  type: option.type,
+                  position: {
+                    x: 120 + (canvasNodeCount % 5) * 36,
+                    y: 120 + (canvasNodeCount % 7) * 36,
+                  },
+                  data: {
+                    assetId,
+                    label: option.name,
+                    status: "completed",
+                  },
+                } satisfies Pick<
+                  AppNode,
+                  "id" | "type" | "position" | "data"
+                >;
+                if (!loroSync.addNodeToCanvas(canvasId, nodeId, node)) {
+                  throw new Error("Failed to add the asset to the Canvas");
+                }
+                if (canvasId === activeCanvasId) {
+                  setNodes((current) =>
+                    current.some((candidate) => candidate.id === nodeId)
+                      ? current
+                      : [...current, node as AppNode],
+                  );
+                }
+                return nodeId;
+              },
+            },
+          });
         if (
           target.kind === "timeline" &&
           behavior.insertIntoTimeline !== false
         ) {
-          const sourceNodeId =
-            cascade.sourceNodeId ?? `timeline-asset:${option.assetId}`;
-          const projectAssetId = cascade.assetId ?? option.assetId;
-          const authoritativeAsset = await getAsset(
-            project.id,
-            projectAssetId,
-          ).catch(() => undefined);
-          setTimelineInsertRequest({
-            timelineId: target.timelineId,
-            requestId: `${target.timelineId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-            asset: buildScopedTimelineAssetInput({
-              option,
-              sourceNodeId,
-              projectAssetId,
-              asset: authoritativeAsset,
-            }),
+          await commitScopedTimelineAssetInsertion({
+            option,
+            target,
+            runCascade,
+            resolveProjectAsset: (projectAssetId) =>
+              getAsset(project.id, projectAssetId),
+            createRequestId: () =>
+              `${target.timelineId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+            publishRequest: setTimelineInsertRequest,
           });
+        } else {
+          await runCascade();
         }
         setAssetRelationRevision((revision) => revision + 1);
         setAssetPickerTarget(null);
@@ -4008,7 +4030,6 @@ export default function ProjectEditor({
       assetRelationGraph.nodes,
       loroSync,
       project.id,
-      projectAssets,
       setNodes,
     ],
   );
@@ -4026,6 +4047,11 @@ export default function ProjectEditor({
             type: asset.kind as "image" | "video" | "audio",
             src: asset.url ?? "",
             thumbnail: asset.thumbnailUrl,
+            status: asset.status,
+            ...(asset.progress === undefined
+              ? {}
+              : { progress: asset.progress }),
+            ...(asset.error === undefined ? {} : { error: asset.error }),
             source: { kind: "project", assetId: asset.id },
           },
           assetPickerTarget,
@@ -4186,21 +4212,25 @@ export default function ProjectEditor({
     ],
   );
   const handleTimelineProjectAssetDrop = useCallback(
-    (projectAssetId: string) => {
+    async (projectAssetId: string) => {
       if (!selectedTimeline) return;
-      const asset = projectAssets.find(
-        (candidate) => candidate.id === projectAssetId,
-      );
-      if (!asset) return;
+      const asset = await getAsset(project.id, projectAssetId);
       const assetId = asset.id;
-      if (asset.kind === "model" || !asset.url) return;
-      void applyScopedAssetSelection(
+      if (asset.kind === "model") {
+        throw new Error("3D models cannot be inserted into a Timeline");
+      }
+      await applyScopedAssetSelection(
         {
           assetId,
           name: safeScopedAssetName(asset),
           type: asset.kind,
-          src: asset.url,
+          src: projectAssetPlaybackUrl(asset) ?? "",
           thumbnail: asset.thumbnailUrl,
+          status: asset.status,
+          ...(asset.progress === undefined
+            ? {}
+            : { progress: asset.progress }),
+          ...(asset.error === undefined ? {} : { error: asset.error }),
           source: { kind: "project", assetId },
         },
         {
@@ -4208,10 +4238,9 @@ export default function ProjectEditor({
           timelineId: selectedTimeline.id,
           owner: selectedTimeline.owner,
         },
-        { insertIntoTimeline: false },
       );
     },
-    [applyScopedAssetSelection, projectAssets, selectedTimeline],
+    [applyScopedAssetSelection, project.id, selectedTimeline],
   );
   const handleTimelineInsertAssetRequestHandled = useCallback(
     (requestId: string) => {
@@ -6176,6 +6205,13 @@ export default function ProjectEditor({
                                           }
                                           relationEdges={
                                             assetRelationGraph.edges
+                                          }
+                                          relationBindings={
+                                            loroSync.doc
+                                              ? listActionAssetBindings(
+                                                  loroSync.doc,
+                                                )
+                                              : []
                                           }
                                           onOpenCanvas={openAssetRelationCanvas}
                                           onOpenTimeline={

@@ -62,7 +62,7 @@ describe("agent-facing Timeline DSL schema", () => {
       .TIMELINE_DSL_DEFINITION as any;
 
     expect(definition).toBeDefined();
-    expect(definition.schemaVersion).toBe(9);
+    expect(definition.schemaVersion).toBe(11);
     expect(definition.format).toBe("clash.timeline.yaml");
     expect(definition.features.clipMask).toMatchObject({
       yamlPath: "tracks[].items[]",
@@ -429,6 +429,8 @@ describe("agent-facing Timeline DSL schema", () => {
       7: "fnv1a32:20e70cf2",
       8: "fnv1a32:bef614be",
       9: "fnv1a32:e79b87fb",
+      10: "fnv1a32:bc1b6602",
+      11: "fnv1a32:01aeda96",
     };
     expect(contractFingerprint).toBe(
       releasedContractFingerprints[definition.schemaVersion],

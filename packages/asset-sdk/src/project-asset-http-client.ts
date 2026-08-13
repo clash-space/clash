@@ -47,6 +47,7 @@ export interface ProjectAssetHttpClient {
   trash(
     input: ProjectAssetHttpScope & {
       assetId: string;
+      deleteOperationId?: string;
       actorClientType?: string;
       receipt?: string;
     },
@@ -114,10 +115,72 @@ function fileNameOf(file: Blob): string | undefined {
     : undefined;
 }
 
+type ProjectImportCommandSnapshot = {
+  projectId: string;
+  file: Blob;
+  fileName: string;
+  appendFileName: boolean;
+  kind: AssetKind;
+  projectAssetId: string;
+};
+
+function newProjectAssetId(): string {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset import ids");
+  }
+  return `asset:${cryptoObject.randomUUID()}`;
+}
+
+function snapshotProjectImport(
+  input: Parameters<ProjectAssetHttpClient["importFile"]>[0],
+): ProjectImportCommandSnapshot {
+  const projectId = required(input.projectId, "project id");
+  const file = input.file;
+  const sourceFileName = fileNameOf(file);
+  const fileName = required(input.fileName ?? sourceFileName, "file name");
+  return {
+    projectId,
+    file,
+    fileName,
+    appendFileName: input.fileName !== undefined || sourceFileName !== fileName,
+    kind: input.kind,
+    projectAssetId:
+      input.projectAssetId === undefined
+        ? newProjectAssetId()
+        : required(input.projectAssetId, "project asset id"),
+  };
+}
+
+function newDeleteOperationId(): string {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset operation ids");
+  }
+  return `delete:${cryptoObject.randomUUID()}`;
+}
+
+function stableDeleteOperationId(
+  input: object,
+  requested: string | undefined,
+  generatedIds: WeakMap<object, string>,
+): string {
+  if (requested !== undefined) {
+    return required(requested, "delete operation id");
+  }
+  const existing = generatedIds.get(input);
+  if (existing) return existing;
+  const generated = newDeleteOperationId();
+  generatedIds.set(input, generated);
+  return generated;
+}
+
 export function createProjectAssetHttpClient(
   options: ProjectAssetHttpClientOptions = {},
 ): ProjectAssetHttpClient {
   const fetch = options.fetch ?? globalThis.fetch;
+  const importCommands = new WeakMap<object, ProjectImportCommandSnapshot>();
+  const generatedDeleteOperationIds = new WeakMap<object, string>();
   const connection = async (): Promise<ProjectAssetHttpConnection> => {
     if (options.resolveConnection) return options.resolveConnection();
     return {
@@ -229,20 +292,23 @@ export function createProjectAssetHttpClient(
       };
     },
     async importFile(input) {
-      const projectAssetId = input.projectAssetId?.trim();
-      const fileName = required(
-        input.fileName ?? fileNameOf(input.file),
-        "file name",
-      );
-      const { connected, url } = await target(input.projectId, "/import-file");
-      const form = new FormData();
-      if (input.fileName === undefined && fileNameOf(input.file) === fileName) {
-        form.append("file", input.file);
-      } else {
-        form.append("file", input.file, fileName);
+      let snapshot = importCommands.get(input);
+      if (!snapshot) {
+        snapshot = snapshotProjectImport(input);
+        importCommands.set(input, snapshot);
       }
-      form.append("kind", input.kind);
-      if (projectAssetId) form.append("projectAssetId", projectAssetId);
+      const { connected, url } = await target(
+        snapshot.projectId,
+        "/import-file",
+      );
+      const form = new FormData();
+      if (!snapshot.appendFileName) {
+        form.append("file", snapshot.file);
+      } else {
+        form.append("file", snapshot.file, snapshot.fileName);
+      }
+      form.append("kind", snapshot.kind);
+      form.append("projectAssetId", snapshot.projectAssetId);
       const response = await fetch(
         url,
         requestInit({
@@ -268,6 +334,11 @@ export function createProjectAssetHttpClient(
     },
     async trash(input) {
       const assetId = required(input.assetId, "asset id");
+      const deleteOperationId = stableDeleteOperationId(
+        input,
+        input.deleteOperationId,
+        generatedDeleteOperationIds,
+      );
       const actorClientType = input.actorClientType?.trim();
       const receipt = input.receipt?.trim();
       const { connected, url } = await target(
@@ -279,11 +350,13 @@ export function createProjectAssetHttpClient(
         requestInit({
           method: "DELETE",
           headers: headers(connected, {
+            "content-type": "application/json",
             ...(actorClientType
               ? { "x-clash-client-type": actorClientType }
               : {}),
             ...(receipt ? { "x-clash-if-match": receipt } : {}),
           }),
+          body: JSON.stringify({ deleteOperationId }),
         }),
       );
       const value = ResolvedAssetSchema.parse(await responseBody(response));

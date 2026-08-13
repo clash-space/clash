@@ -3,6 +3,7 @@ import {
   type AgentAnnotationDraft,
   type ResolvedAsset,
 } from '@clash/shared-types';
+import { assetThumbnailImageUrl } from '../features/assets/media-url';
 
 export type CopilotMentionKind = 'agent' | 'node' | 'asset' | 'timeline' | 'director-stage';
 export type CopilotMentionScope =
@@ -106,7 +107,7 @@ export function buildProjectMentionSources(input: {
       description: nodeDescription(node.type || 'node', canvasName),
       canvasId,
       canvasName,
-      thumbnail: nodeAsset?.thumbnailUrl || (node.type === 'image' ? nodeAsset?.url : undefined),
+      thumbnail: nodeAsset ? assetThumbnailImageUrl(nodeAsset) ?? undefined : undefined,
     };
     if (canvasId === input.activeCanvasId) currentCanvas.push(source);
     else otherCanvases.push(source);
@@ -121,7 +122,7 @@ export function buildProjectMentionSources(input: {
       ? 'current-surface'
       : 'project-assets',
     description: `${humanizeType(asset.kind)} · Project asset`,
-    thumbnail: asset.thumbnailUrl || (asset.kind === 'image' ? asset.url : undefined),
+    thumbnail: assetThumbnailImageUrl(asset) ?? undefined,
   }));
 
   const timelines: CopilotMentionSource[] = input.timelines.map((timeline) => ({

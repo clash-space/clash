@@ -30151,7 +30151,7 @@ function N3(Z, $, J, X, V) {
   return Z.registerResource($, J, { mimeType: p, ...X }, V);
 }
 
-// ../../packages/mcp-server/dist/chunk-ZILU4H3E.js
+// ../../packages/mcp-server/dist/chunk-IC572WNK.js
 import { readFileSync } from "fs";
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/index.js
@@ -36230,7 +36230,7 @@ var z2 = /* @__PURE__ */ Object.freeze({
   ZodError: ZodError3
 });
 
-// ../../packages/shared-types/dist/chunk-4F43M35N.js
+// ../../packages/shared-types/dist/chunk-CGTXLVQX.js
 var AssetKindSchema = z2.enum(["image", "video", "audio", "model"]);
 var ResourceIdSchema = z2.string().trim().min(1);
 var ResourceSchema2 = z2.object({
@@ -36248,19 +36248,40 @@ var ProjectAssetMetadataSchema = z2.object({
   height: z2.number().int().nonnegative().optional(),
   durationMs: z2.number().int().nonnegative().optional(),
   bytes: z2.number().int().nonnegative().optional(),
+  /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
   waveform: z2.array(z2.number()).optional(),
   contentType: z2.string().trim().min(1).optional(),
   frameRate: z2.number().positive().optional(),
   videoCodec: z2.string().trim().min(1).optional(),
+  /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
+  hasAudio: z2.boolean().optional(),
   audioCodec: z2.string().trim().min(1).optional(),
   originalName: z2.string().trim().min(1).optional()
 }).strict();
+var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
 var ProjectAssetProvenanceSchema = z2.object({
   kind: z2.enum(["import", "generation", "edit", "render", "admission"]),
   actionRunId: z2.string().trim().min(1).optional(),
   model: z2.string().trim().min(1).optional(),
   prompt: z2.string().optional()
 }).strict();
+var ProjectAssetLinkedOriginSchema = z2.discriminatedUnion("scope", [
+  z2.object({
+    scope: z2.literal("global"),
+    libraryId: z2.string().trim().min(1),
+    entryId: z2.string().trim().min(1)
+  }).strict(),
+  z2.object({
+    scope: z2.literal("project"),
+    projectId: z2.string().trim().min(1),
+    entryId: z2.string().trim().min(1)
+  }).strict(),
+  z2.object({
+    scope: z2.literal("catalog"),
+    catalogId: z2.string().trim().min(1),
+    entryId: z2.string().trim().min(1)
+  }).strict()
+]);
 var ProjectAssetSourceSchema = z2.discriminatedUnion("kind", [
   z2.object({
     kind: z2.literal("owned"),
@@ -36269,10 +36290,7 @@ var ProjectAssetSourceSchema = z2.discriminatedUnion("kind", [
   z2.object({
     kind: z2.literal("linked"),
     resourceId: ResourceIdSchema,
-    origin: z2.object({
-      scope: z2.enum(["global", "catalog", "project"]),
-      entryId: z2.string().trim().min(1)
-    }).strict()
+    origin: ProjectAssetLinkedOriginSchema
   }).strict()
 ]);
 var ProjectAssetLifecycleSchema = z2.discriminatedUnion("state", [
@@ -36341,7 +36359,13 @@ var ResolvedAssetSchema = z2.object({
   provenance: ProjectAssetProvenanceSchema.optional(),
   /** Synchronized logical lifecycle; independent from current-Host byte availability. */
   lifecycle: ProjectAssetLifecycleSchema,
-  status: z2.enum(["uploading", "ready", "downloading", "unavailable", "failed"]),
+  status: z2.enum([
+    "uploading",
+    "ready",
+    "downloading",
+    "unavailable",
+    "failed"
+  ]),
   url: z2.string().url().optional(),
   thumbnailUrl: z2.string().url().optional(),
   progress: z2.number().min(0).max(1).optional(),
@@ -36352,10 +36376,12 @@ var AssetMetadataSchema = z2.object({
   height: z2.number().int().optional(),
   durationMs: z2.number().int().optional(),
   bytes: z2.number().int().optional(),
+  /** @deprecated Historical row payload; never emit from new publication. */
   waveform: z2.array(z2.number()).optional(),
   contentType: z2.string().optional(),
   frameRate: z2.number().positive().optional(),
   videoCodec: z2.string().optional(),
+  hasAudio: z2.boolean().optional(),
   audioCodec: z2.string().optional(),
   contentHash: z2.string().optional(),
   localBlobKey: z2.string().optional(),
@@ -36401,7 +36427,7 @@ var AssetRefRowSchema = z2.object({
   importedAt: z2.number()
 });
 
-// ../../packages/shared-types/dist/chunk-QTM5MBKX.js
+// ../../packages/shared-types/dist/chunk-Y7VKLK6W.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z2.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -44339,7 +44365,7 @@ var zodToJsonSchema2 = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-22GF7SDG.js
+// ../../packages/shared-types/dist/chunk-F5H437YY.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -45205,10 +45231,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z2.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z2.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     entranceAnimation: authored(TimelineClipAnimationSchema, "Seek-safe visual entrance animation.", {
       required: false,
@@ -45297,10 +45324,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z2.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z2.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     audioFadeInFrames: authored(NonnegativeFrameSchema, "Canonical audio fade-in duration in frames.", {
       required: false,
@@ -45575,11 +45603,7 @@ var TimelineRenderReceiptSchema = z2.object({
   renderNodeId: IdentifierSchema,
   target: TimelineRenderTargetSchema,
   status: z2.enum(["pending", "completed", "failed"]),
-  asset: z2.object({
-    id: IdentifierSchema,
-    signedUrl: IdentifierSchema.optional(),
-    srcR2Key: IdentifierSchema.optional()
-  }).passthrough().optional(),
+  asset: z2.object({ id: IdentifierSchema }).strict().optional(),
   error: z2.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z2.object({
@@ -47303,7 +47327,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash5 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 9,
+  schemaVersion: 11,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -47651,6 +47675,22 @@ var AgentAnnotationPromptPayloadSchema = z2.object({
   kind: z2.literal("clash-agent-annotations"),
   annotations: z2.array(AgentAnnotationDraftSchema).min(1)
 });
+var ScopedIdSchema = z2.string().trim().min(1);
+var ProjectAssetMetadataTargetSchema = z2.object({
+  kind: z2.literal("project-asset"),
+  projectId: ScopedIdSchema,
+  assetId: ScopedIdSchema
+}).strict();
+var ActionRevisionMetadataTargetSchema = z2.object({
+  kind: z2.literal("action-revision"),
+  projectId: ScopedIdSchema,
+  actionId: ScopedIdSchema,
+  actionRevisionId: ScopedIdSchema
+}).strict();
+var MetadataAttachmentTargetSchema = z2.discriminatedUnion("kind", [
+  ProjectAssetMetadataTargetSchema,
+  ActionRevisionMetadataTargetSchema
+]);
 var FrameRangeSchema = z2.object({
   startFrame: z2.number().int().min(0),
   endFrame: z2.number().int().min(0)
@@ -47706,7 +47746,13 @@ var AudioBeatMetadataSchema = z2.object({
   sections: z2.array(AudioSectionSchema).default([]),
   energyCurve: z2.array(AudioEnergyPointSchema).default([])
 });
-var AudioStemTypeSchema = z2.enum(["vocal", "instrumental", "drums", "bass", "other"]);
+var AudioStemTypeSchema = z2.enum([
+  "vocal",
+  "instrumental",
+  "drums",
+  "bass",
+  "other"
+]);
 var AudioStemAssetSchema = z2.object({
   stemAssetId: z2.string().min(1),
   stemType: AudioStemTypeSchema,
@@ -47882,17 +47928,19 @@ var TalkingHeadMetadataSchema = z2.object({
   words: z2.array(TranscriptWordSchema),
   cuts: z2.array(TextCutSchema).default([]),
   captionCues: z2.array(CaptionCueSchema).default([]),
-  disfluencies: z2.array(z2.object({
-    id: z2.string().optional(),
-    wordId: z2.string().optional(),
-    startFrame: z2.number().int().min(0).optional(),
-    endFrame: z2.number().int().min(0).optional(),
-    text: z2.string().optional(),
-    type: z2.enum(["filler", "silence", "tone-particle", "repeat"]),
-    requiresReview: z2.boolean().default(false),
-    confidence: z2.number().min(0).max(1).optional(),
-    detectionSource: z2.string().min(1).optional()
-  })).default([])
+  disfluencies: z2.array(
+    z2.object({
+      id: z2.string().optional(),
+      wordId: z2.string().optional(),
+      startFrame: z2.number().int().min(0).optional(),
+      endFrame: z2.number().int().min(0).optional(),
+      text: z2.string().optional(),
+      type: z2.enum(["filler", "silence", "tone-particle", "repeat"]),
+      requiresReview: z2.boolean().default(false),
+      confidence: z2.number().min(0).max(1).optional(),
+      detectionSource: z2.string().min(1).optional()
+    })
+  ).default([])
 });
 var RightsMetadataSchema = z2.object({
   license: z2.string().min(1),
@@ -47992,26 +48040,32 @@ var CharacterReferenceViewSchema = z2.object({
 });
 var ImageStoryboardMetadataSchema = z2.object({
   kind: z2.literal("image.storyboard-consistency"),
-  characters: z2.array(z2.object({
-    id: z2.string().min(1),
-    name: z2.string().min(1),
-    referenceAssetIds: z2.array(z2.string()).min(1),
-    requiredViews: z2.array(CharacterReferenceViewKindSchema).default([]),
-    referenceViews: z2.array(CharacterReferenceViewSchema).default([])
-  })).default([]),
-  scenes: z2.array(z2.object({
-    id: z2.string().min(1),
-    referenceAssetIds: z2.array(z2.string()).default([]),
-    prompt: z2.string().min(1)
-  })).default([]),
-  panels: z2.array(z2.object({
-    id: z2.string().min(1),
-    sceneId: z2.string().min(1),
-    characterIds: z2.array(z2.string()).default([]),
-    assetId: z2.string().min(1),
-    path: z2.string().min(1).optional(),
-    consistencyScore: z2.number().min(0).max(1).optional()
-  })).default([])
+  characters: z2.array(
+    z2.object({
+      id: z2.string().min(1),
+      name: z2.string().min(1),
+      referenceAssetIds: z2.array(z2.string()).min(1),
+      requiredViews: z2.array(CharacterReferenceViewKindSchema).default([]),
+      referenceViews: z2.array(CharacterReferenceViewSchema).default([])
+    })
+  ).default([]),
+  scenes: z2.array(
+    z2.object({
+      id: z2.string().min(1),
+      referenceAssetIds: z2.array(z2.string()).default([]),
+      prompt: z2.string().min(1)
+    })
+  ).default([]),
+  panels: z2.array(
+    z2.object({
+      id: z2.string().min(1),
+      sceneId: z2.string().min(1),
+      characterIds: z2.array(z2.string()).default([]),
+      assetId: z2.string().min(1),
+      path: z2.string().min(1).optional(),
+      consistencyScore: z2.number().min(0).max(1).optional()
+    })
+  ).default([])
 });
 var SemanticReferenceRoleKindSchema = z2.enum([
   "identity-front",
@@ -48117,7 +48171,11 @@ var AnalysisBackendBenchmarkMetadataSchema = z2.object({
   blockedReasons: z2.array(z2.string().min(1)).default([]),
   decisionLog: z2.array(z2.string().min(1)).default([])
 });
-var ImageEmbeddingDistanceMetricSchema = z2.enum(["cosine", "dot", "euclidean"]);
+var ImageEmbeddingDistanceMetricSchema = z2.enum([
+  "cosine",
+  "dot",
+  "euclidean"
+]);
 var ImageEmbeddingBaselineForSchema = z2.enum([
   "identity",
   "product",
@@ -48147,7 +48205,10 @@ var ImageEmbeddingStoreMetadataSchema = z2.object({
   items: z2.array(ImageEmbeddingStoreItemSchema).min(1),
   copyOnWriteRequired: z2.boolean()
 });
-var ImageComfyuiApiFormatSchema = z2.enum(["comfyui-api-json", "comfyui-ui-json"]);
+var ImageComfyuiApiFormatSchema = z2.enum([
+  "comfyui-api-json",
+  "comfyui-ui-json"
+]);
 var ImageComfyuiModelTypeSchema = z2.enum([
   "checkpoint",
   "vae",
@@ -48192,8 +48253,16 @@ var ImageComfyuiInputSlotSchema = z2.object({
   assetId: z2.string().min(1).optional(),
   path: z2.string().min(1).optional()
 });
-var ImageComfyuiOutputStatusSchema = z2.enum(["planned", "materialized"]);
-var ImageComfyuiOutputMediaTypeSchema = z2.enum(["image", "image-sequence", "mask", "metadata"]);
+var ImageComfyuiOutputStatusSchema = z2.enum([
+  "planned",
+  "materialized"
+]);
+var ImageComfyuiOutputMediaTypeSchema = z2.enum([
+  "image",
+  "image-sequence",
+  "mask",
+  "metadata"
+]);
 var ImageComfyuiOutputSchema = z2.object({
   outputAssetId: z2.string().min(1),
   nodeId: z2.string().min(1),
@@ -48377,8 +48446,17 @@ var AdVisualQaMetadataSchema = z2.object({
   visualQa: AdDeliveryVisualQaReportSchema,
   decisionLog: z2.array(z2.string().min(1)).default([])
 });
-var ContentCredentialModeSchema = z2.enum(["unsigned-manifest", "signed-c2pa", "external"]);
-var ContentCredentialSignatureStatusSchema = z2.enum(["unsigned", "signed", "external", "failed"]);
+var ContentCredentialModeSchema = z2.enum([
+  "unsigned-manifest",
+  "signed-c2pa",
+  "external"
+]);
+var ContentCredentialSignatureStatusSchema = z2.enum([
+  "unsigned",
+  "signed",
+  "external",
+  "failed"
+]);
 var ContentCredentialIngredientRelationshipSchema = z2.enum([
   "source",
   "reference",
@@ -48451,12 +48529,12 @@ var ProductionMetadataSchema = ProductionMetadataBaseSchema.superRefine((metadat
 });
 var AssetMetadataFillActionSchema = z2.object({
   actionId: z2.string().min(1),
-  targetAssetId: z2.string().min(1),
+  target: MetadataAttachmentTargetSchema,
   metadataKind: z2.string().min(1),
   metadata: ProductionMetadataSchema,
   producer: z2.string().min(1),
   createdAt: z2.string().optional()
-});
+}).strict();
 var SourceHashSchema = z2.string().regex(/^sha256:[a-f0-9]{64}$/);
 var TimelineTranscriptSourceSchema = z2.object({
   assetId: z2.string().min(1),
@@ -49215,6 +49293,24 @@ var ProjectContextSchema = z2.object({
     type: z2.string().nullish()
   }))
 });
+var LegacyLinkedProjectAssetSourceSchema = z2.object({
+  kind: z2.literal("linked"),
+  resourceId: z2.string().trim().min(1),
+  origin: z2.discriminatedUnion("scope", [
+    z2.object({
+      scope: z2.literal("global"),
+      entryId: z2.string().trim().min(1)
+    }).strict(),
+    z2.object({
+      scope: z2.literal("project"),
+      entryId: z2.string().trim().min(1)
+    }).strict(),
+    z2.object({
+      scope: z2.literal("catalog"),
+      entryId: z2.string().trim().min(1)
+    }).strict()
+  ])
+}).strict();
 var DirectorStageVector3Schema = z2.tuple([
   z2.number().finite(),
   z2.number().finite(),
@@ -50211,7 +50307,10 @@ function registerAssetMetadataKind(declaration) {
     return result.success ? [] : result.error.issues;
   };
   const complainsAbout = (issues, field32) => issues.some((issue7) => issue7.path.length === 1 && issue7.path[0] === field32);
-  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+  if (complainsAbout(
+    issuesFor({ schemaVersion: 1, kind: declaration.kind }),
+    "kind"
+  )) {
     throw new Error(
       `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
     );
@@ -50224,13 +50323,13 @@ function registerAssetMetadataKind(declaration) {
   declaredKinds.set(declaration.kind, declaration);
 }
 var FillActionEnvelopeSchema = z2.object({
-  actionId: z2.string().min(1),
-  targetAssetId: z2.string().min(1),
-  metadataKind: z2.string().min(1),
-  metadata: z2.object({ kind: z2.string().min(1) }).passthrough(),
-  producer: z2.string().min(1),
+  actionId: z2.string().trim().min(1),
+  target: MetadataAttachmentTargetSchema,
+  metadataKind: z2.string().trim().min(1),
+  metadata: z2.object({ kind: z2.string().trim().min(1) }).passthrough(),
+  producer: z2.string().trim().min(1),
   createdAt: z2.string().optional()
-});
+}).strict();
 registerAssetMetadataKind({
   kind: "media.transcript",
   schema: MediaTranscriptMetadataSchema
@@ -50243,6 +50342,15 @@ registerAssetMetadataKind({
   kind: "media.render-lineage",
   schema: MediaRenderLineageMetadataSchema
 });
+var CopilotProjectAssetReferenceSchema = z2.object({
+  projectAssetId: z2.string().trim().min(1),
+  kind: AssetKindSchema,
+  label: z2.string().trim().min(1)
+}).strict();
+var CopilotProjectAssetSubmissionSchema = z2.object({
+  actionId: z2.string().trim().min(1),
+  assets: CopilotProjectAssetReferenceSchema.array().min(1)
+}).strict();
 var CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
   Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
     category,
@@ -50411,8 +50519,49 @@ function projectAssetsUrl(endpoint, projectId) {
 function fileNameOf(file5) {
   return "name" in file5 && typeof file5.name === "string" ? file5.name : void 0;
 }
+function newProjectAssetId() {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset import ids");
+  }
+  return `asset:${cryptoObject.randomUUID()}`;
+}
+function snapshotProjectImport(input) {
+  const projectId = required2(input.projectId, "project id");
+  const file5 = input.file;
+  const sourceFileName = fileNameOf(file5);
+  const fileName = required2(input.fileName ?? sourceFileName, "file name");
+  return {
+    projectId,
+    file: file5,
+    fileName,
+    appendFileName: input.fileName !== void 0 || sourceFileName !== fileName,
+    kind: input.kind,
+    projectAssetId: input.projectAssetId === void 0 ? newProjectAssetId() : required2(input.projectAssetId, "project asset id")
+  };
+}
+function newDeleteOperationId() {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset operation ids");
+  }
+  return `delete:${cryptoObject.randomUUID()}`;
+}
+function stableDeleteOperationId(input, requested, generatedIds) {
+  if (requested !== void 0) {
+    return required2(requested, "delete operation id");
+  }
+  const existing = generatedIds.get(input);
+  if (existing)
+    return existing;
+  const generated = newDeleteOperationId();
+  generatedIds.set(input, generated);
+  return generated;
+}
 function createProjectAssetHttpClient(options = {}) {
   const fetch2 = options.fetch ?? globalThis.fetch;
+  const importCommands = /* @__PURE__ */ new WeakMap();
+  const generatedDeleteOperationIds = /* @__PURE__ */ new WeakMap();
   const connection = async () => {
     if (options.resolveConnection)
       return options.resolveConnection();
@@ -50489,18 +50638,20 @@ function createProjectAssetHttpClient(options = {}) {
       };
     },
     async importFile(input) {
-      const projectAssetId = input.projectAssetId?.trim();
-      const fileName = required2(input.fileName ?? fileNameOf(input.file), "file name");
-      const { connected, url: url5 } = await target(input.projectId, "/import-file");
-      const form = new FormData();
-      if (input.fileName === void 0 && fileNameOf(input.file) === fileName) {
-        form.append("file", input.file);
-      } else {
-        form.append("file", input.file, fileName);
+      let snapshot = importCommands.get(input);
+      if (!snapshot) {
+        snapshot = snapshotProjectImport(input);
+        importCommands.set(input, snapshot);
       }
-      form.append("kind", input.kind);
-      if (projectAssetId)
-        form.append("projectAssetId", projectAssetId);
+      const { connected, url: url5 } = await target(snapshot.projectId, "/import-file");
+      const form = new FormData();
+      if (!snapshot.appendFileName) {
+        form.append("file", snapshot.file);
+      } else {
+        form.append("file", snapshot.file, snapshot.fileName);
+      }
+      form.append("kind", snapshot.kind);
+      form.append("projectAssetId", snapshot.projectAssetId);
       const response = await fetch2(url5, requestInit({
         method: "POST",
         headers: headers(connected),
@@ -50520,15 +50671,18 @@ function createProjectAssetHttpClient(options = {}) {
     },
     async trash(input) {
       const assetId = required2(input.assetId, "asset id");
+      const deleteOperationId = stableDeleteOperationId(input, input.deleteOperationId, generatedDeleteOperationIds);
       const actorClientType4 = input.actorClientType?.trim();
       const receipt = input.receipt?.trim();
       const { connected, url: url5 } = await target(input.projectId, `/${encodeURIComponent(assetId)}`);
       const response = await fetch2(url5, requestInit({
         method: "DELETE",
         headers: headers(connected, {
+          "content-type": "application/json",
           ...actorClientType4 ? { "x-clash-client-type": actorClientType4 } : {},
           ...receipt ? { "x-clash-if-match": receipt } : {}
-        })
+        }),
+        body: JSON.stringify({ deleteOperationId })
       }));
       const value = ResolvedAssetSchema.parse(await responseBody(response));
       return { value, receipt: receiptFrom(response) };
@@ -50582,8 +50736,27 @@ function libraryAssetsUrl(endpoint) {
 function fileNameOf2(file5) {
   return "name" in file5 && typeof file5.name === "string" ? file5.name : void 0;
 }
+function newOperationId(prefix) {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset operation ids");
+  }
+  return `${prefix}:${cryptoObject.randomUUID()}`;
+}
+function stableOperationId(input, requested, generatedIds, prefix, label) {
+  if (requested !== void 0)
+    return required3(requested, label);
+  const existing = generatedIds.get(input);
+  if (existing)
+    return existing;
+  const generated = newOperationId(prefix);
+  generatedIds.set(input, generated);
+  return generated;
+}
 function createPersonalGlobalAssetHttpClient(options = {}) {
   const fetch2 = options.fetch ?? globalThis.fetch;
+  const generatedImportIds = /* @__PURE__ */ new WeakMap();
+  const generatedTrashIds = /* @__PURE__ */ new WeakMap();
   const connection = async () => {
     if (options.resolveConnection)
       return options.resolveConnection();
@@ -50628,6 +50801,7 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
       return resolvedAsset(await fetch2(url5, requestInit({ method: "GET", headers: headers(connected) })));
     },
     async importFile(input) {
+      const globalAssetId = stableOperationId(input, input.globalAssetId, generatedImportIds, "global", "global asset id");
       const fileName = required3(input.fileName ?? fileNameOf2(input.file), "file name");
       const { connected, url: url5 } = await target("/import-file");
       const form = new FormData();
@@ -50637,6 +50811,7 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
         form.append("file", input.file, fileName);
       }
       form.append("kind", input.kind);
+      form.append("globalAssetId", globalAssetId);
       return resolvedAsset(await fetch2(url5, requestInit({
         method: "POST",
         headers: headers(connected),
@@ -50657,13 +50832,27 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
     },
     async trash(input) {
       const globalAssetId = required3(input.globalAssetId, "global asset id");
+      const deleteOperationId = stableOperationId(input, input.deleteOperationId, generatedTrashIds, "delete", "delete operation id");
       const { connected, url: url5 } = await target(`/${encodeURIComponent(globalAssetId)}`);
-      return resolvedAsset(await fetch2(url5, requestInit({ method: "DELETE", headers: headers(connected) })));
+      return resolvedAsset(await fetch2(url5, requestInit({
+        method: "DELETE",
+        headers: headers(connected, {
+          "content-type": "application/json"
+        }),
+        body: JSON.stringify({ deleteOperationId })
+      })));
     },
     async restore(input) {
       const globalAssetId = required3(input.globalAssetId, "global asset id");
+      const deleteOperationId = required3(input.deleteOperationId, "delete operation id");
       const { connected, url: url5 } = await target(`/${encodeURIComponent(globalAssetId)}/restore`);
-      return resolvedAsset(await fetch2(url5, requestInit({ method: "POST", headers: headers(connected) })));
+      return resolvedAsset(await fetch2(url5, requestInit({
+        method: "POST",
+        headers: headers(connected, {
+          "content-type": "application/json"
+        }),
+        body: JSON.stringify({ deleteOperationId })
+      })));
     }
   };
 }
@@ -50869,11 +51058,7 @@ var ASSET_IMPORT_FILE_TYPES = {
   ".flac": { kind: "audio", contentType: "audio/flac" },
   ".ogg": { kind: "audio", contentType: "audio/ogg" },
   ".glb": { kind: "model", contentType: "model/gltf-binary" },
-  ".gltf": { kind: "model", contentType: "model/gltf+json" },
-  ".fbx": { kind: "model", contentType: "application/octet-stream" },
-  ".bvh": { kind: "model", contentType: "application/octet-stream" },
-  ".obj": { kind: "model", contentType: "text/plain" },
-  ".usdz": { kind: "model", contentType: "model/vnd.usdz+zip" }
+  ".gltf": { kind: "model", contentType: "model/gltf+json" }
 };
 function resolveAssetImportFileType(filePath, requestedKind) {
   const fileName = filePath.replace(/^.*[/\\]/u, "");
@@ -50890,6 +51075,23 @@ function resolveAssetImportFileType(filePath, requestedKind) {
     throw new Error(`Asset kind ${requestedKind} does not match the selected ${inferred.kind} file`);
   }
   return { ...inferred, ...requestedKind ? { kind: requestedKind } : {} };
+}
+function stableImportId(command4, requested, ids, prefix) {
+  const existing = ids.get(command4);
+  if (existing)
+    return existing;
+  const normalized = requested?.trim();
+  if (requested !== void 0 && !normalized) {
+    throw new Error(`${prefix} asset id is required`);
+  }
+  const runtimeCrypto = globalThis.crypto;
+  const randomUUID4 = runtimeCrypto?.randomUUID;
+  if (!normalized && typeof randomUUID4 !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset import ids");
+  }
+  const id4 = normalized ?? `${prefix}:${runtimeCrypto.randomUUID()}`;
+  ids.set(command4, id4);
+  return id4;
 }
 function createAssetHostConnectionResolver(options) {
   const env = options.env ?? process.env;
@@ -50918,6 +51120,9 @@ function createProjectAssetHostClient(options = {}) {
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body)
   });
+  const importIds = /* @__PURE__ */ new WeakMap();
+  const importCommands = /* @__PURE__ */ new WeakMap();
+  const trashCommands = /* @__PURE__ */ new WeakMap();
   const result = (resolved, value) => ({
     projectId: resolved.projectId,
     ...resolved.workspaceRoot ? { workspaceRoot: resolved.workspaceRoot } : {},
@@ -50959,14 +51164,23 @@ function createProjectAssetHostClient(options = {}) {
       };
     },
     async importFile(input) {
-      const resolved = await context(input);
-      const bytes = input.bytes.slice().buffer;
-      return result(resolved, await http.importFile({
-        projectId: resolved.projectId,
-        file: new Blob([bytes], { type: input.contentType }),
-        fileName: input.fileName,
-        kind: input.kind
-      }));
+      let snapshot = importCommands.get(input);
+      if (!snapshot) {
+        const resolved = await context(input);
+        const bytes = input.bytes.slice().buffer;
+        snapshot = {
+          resolved,
+          command: {
+            projectId: resolved.projectId,
+            file: new Blob([bytes], { type: input.contentType }),
+            fileName: input.fileName,
+            kind: input.kind,
+            projectAssetId: stableImportId(input, input.projectAssetId, importIds, "asset")
+          }
+        };
+        importCommands.set(input, snapshot);
+      }
+      return result(snapshot.resolved, await http.importFile(snapshot.command));
     },
     async admit(input) {
       const resolved = await context(input);
@@ -50977,12 +51191,18 @@ function createProjectAssetHostClient(options = {}) {
     },
     async trash(input) {
       const resolved = await context(input);
-      const observed4 = await http.trash({
-        projectId: resolved.projectId,
-        assetId: input.assetId,
-        actorClientType: input.actorClientType,
-        receipt: input.receipt
-      });
+      let command4 = trashCommands.get(input);
+      if (!command4) {
+        command4 = {
+          projectId: resolved.projectId,
+          assetId: input.assetId,
+          ...input.deleteOperationId !== void 0 ? { deleteOperationId: input.deleteOperationId } : {},
+          ...input.actorClientType ? { actorClientType: input.actorClientType } : {},
+          ...input.receipt ? { receipt: input.receipt } : {}
+        };
+        trashCommands.set(input, command4);
+      }
+      const observed4 = await http.trash(command4);
       return {
         ...result(resolved, observed4.value),
         receipt: observed4.receipt
@@ -51010,18 +51230,28 @@ function createPersonalGlobalAssetHostClient(options = {}) {
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body)
   });
+  const importIds = /* @__PURE__ */ new WeakMap();
+  const importCommands = /* @__PURE__ */ new WeakMap();
   return {
     list: () => http.list(),
     get: (input) => http.get(input),
     async importFile(input) {
-      const bytes = input.bytes.slice().buffer;
-      return http.importFile({
-        file: new Blob([bytes], { type: input.contentType }),
-        fileName: input.fileName,
-        kind: input.kind
-      });
+      let command4 = importCommands.get(input);
+      if (!command4) {
+        const bytes = input.bytes.slice().buffer;
+        command4 = {
+          file: new Blob([bytes], { type: input.contentType }),
+          fileName: input.fileName,
+          kind: input.kind,
+          globalAssetId: stableImportId(input, input.globalAssetId, importIds, "global")
+        };
+        importCommands.set(input, command4);
+      }
+      return http.importFile(command4);
     },
-    publish: (input) => http.publish(input)
+    publish: (input) => http.publish(input),
+    trash: (input) => http.trash(input),
+    restore: (input) => http.restore(input)
   };
 }
 
@@ -51605,7 +51835,8 @@ ${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
   }
 };
 
-// ../../packages/mcp-server/dist/chunk-ZILU4H3E.js
+// ../../packages/mcp-server/dist/chunk-IC572WNK.js
+import { createHash as createHash2, randomUUID as randomUUID2 } from "crypto";
 import { readFile as readFile4, stat as stat2 } from "fs/promises";
 import { basename as basename2, resolve as resolve3 } from "path";
 var ASSET_MCP_TOOL_NAMES = [
@@ -51619,7 +51850,9 @@ var ASSET_MCP_TOOL_NAMES = [
   "clash_assets_restore",
   "clash_assets_global_list",
   "clash_assets_global_get",
-  "clash_assets_global_import_file"
+  "clash_assets_global_import_file",
+  "clash_assets_global_trash",
+  "clash_assets_global_restore"
 ];
 function requiredString(input, key) {
   const value = input[key];
@@ -51637,14 +51870,37 @@ async function readAssetImportFile(input, workspaceRoot) {
   }
   const fileType = resolveAssetImportFileType(filePath, input.kind);
   return {
+    sourcePath: filePath,
     bytes: new Uint8Array(await readFile4(filePath)),
     fileName: basename2(filePath),
     contentType: fileType.contentType,
     kind: fileType.kind
   };
 }
+function optionalImportId(input, key) {
+  const value = input[key];
+  if (value === void 0) return void 0;
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${key} must be a non-empty string when provided`);
+  }
+  return value.trim();
+}
 function createAssetProjectHostGateway(client = createProjectAssetHostClient(), globalClient = createPersonalGlobalAssetHostClient()) {
   const observations = /* @__PURE__ */ new Map();
+  const deleteOperations = /* @__PURE__ */ new Map();
+  const pendingProjectImports = /* @__PURE__ */ new Map();
+  const pendingGlobalImports = /* @__PURE__ */ new Map();
+  const pendingGlobalTrash = /* @__PURE__ */ new Map();
+  const globalRestoreObservations = /* @__PURE__ */ new Map();
+  const deleteObservationKey = (projectId, assetId, receipt) => JSON.stringify([projectId, assetId, receipt]);
+  const deleteOperationFor = (projectId, assetId, receipt) => {
+    const key = deleteObservationKey(projectId, assetId, receipt);
+    const existing = deleteOperations.get(key);
+    if (existing) return existing;
+    const operationId = `delete:sha256:${createHash2("sha256").update(key).digest("hex")}`;
+    deleteOperations.set(key, operationId);
+    return operationId;
+  };
   const scope22 = async (input) => {
     const context = await client.resolveContext({
       cwd: input.cwd,
@@ -51685,6 +51941,16 @@ function createAssetProjectHostGateway(client = createProjectAssetHostClient(), 
             assetId
           });
           observations.set(resolved.observationKey(assetId), observed4.receipt);
+          if (observed4.value.lifecycle.state === "trashed") {
+            deleteOperations.set(
+              deleteObservationKey(
+                resolved.context.projectId,
+                assetId,
+                observed4.receipt
+              ),
+              observed4.value.lifecycle.deleteOperationId
+            );
+          }
           return observed4.value;
         }
         case "clash_assets_references": {
@@ -51700,11 +51966,43 @@ function createAssetProjectHostGateway(client = createProjectAssetHostClient(), 
         case "clash_assets_import_file": {
           const resolved = await scope22(input);
           const workspaceRoot = input.cwd?.trim() || resolved.context.workspaceRoot || process.cwd();
-          const file5 = await readAssetImportFile(input, workspaceRoot);
-          return (await client.importFile({
-            ...resolved.requestScope,
-            ...file5
-          })).value;
+          const { sourcePath, ...readFile22 } = await readAssetImportFile(
+            input,
+            workspaceRoot
+          );
+          const explicitId = optionalImportId(input, "projectAssetId");
+          const pendingKey = explicitId ? JSON.stringify([
+            "project-command",
+            resolved.context.projectId,
+            explicitId
+          ]) : JSON.stringify([
+            "project",
+            resolved.context.projectId,
+            sourcePath,
+            readFile22.kind
+          ]);
+          const pending = pendingProjectImports.get(pendingKey) ?? {
+            id: explicitId ?? `asset:${randomUUID2()}`,
+            file: readFile22
+          };
+          if (!pendingProjectImports.has(pendingKey)) {
+            pendingProjectImports.set(pendingKey, pending);
+          }
+          let imported;
+          try {
+            imported = await client.importFile({
+              ...resolved.requestScope,
+              ...pending.file,
+              projectAssetId: pending.id
+            });
+          } catch (error57) {
+            if (error57 instanceof ProjectHostHttpError) {
+              pendingProjectImports.delete(pendingKey);
+            }
+            throw error57;
+          }
+          pendingProjectImports.delete(pendingKey);
+          return imported.value;
         }
         case "clash_assets_admit": {
           const resolved = await scope22(input);
@@ -51723,13 +52021,27 @@ function createAssetProjectHostGateway(client = createProjectAssetHostClient(), 
         case "clash_assets_trash": {
           const assetId = requiredString(input, "assetId");
           const guarded = await requireReceipt(input, assetId);
+          const deleteOperationId = deleteOperationFor(
+            guarded.context.projectId,
+            assetId,
+            guarded.receipt
+          );
           const observed4 = await client.trash({
             ...guarded.requestScope,
             assetId,
+            deleteOperationId,
             actorClientType: "mcp",
             receipt: guarded.receipt
           });
           observations.set(guarded.observationKey(assetId), observed4.receipt);
+          deleteOperations.set(
+            deleteObservationKey(
+              guarded.context.projectId,
+              assetId,
+              observed4.receipt
+            ),
+            deleteOperationId
+          );
           return observed4.value;
         }
         case "clash_assets_restore": {
@@ -51746,15 +52058,88 @@ function createAssetProjectHostGateway(client = createProjectAssetHostClient(), 
         }
         case "clash_assets_global_list":
           return globalClient.list();
-        case "clash_assets_global_get":
-          return globalClient.get({
-            globalAssetId: requiredString(input, "globalAssetId")
-          });
+        case "clash_assets_global_get": {
+          const globalAssetId = requiredString(input, "globalAssetId");
+          const value = await globalClient.get({ globalAssetId });
+          if (value.lifecycle.state === "trashed") {
+            globalRestoreObservations.set(
+              globalAssetId,
+              value.lifecycle.deleteOperationId
+            );
+          } else {
+            globalRestoreObservations.delete(globalAssetId);
+          }
+          return value;
+        }
         case "clash_assets_global_import_file": {
           const workspaceRoot = input.cwd?.trim() || process.cwd();
-          return globalClient.importFile(
-            await readAssetImportFile(input, workspaceRoot)
+          const { sourcePath, ...readFile22 } = await readAssetImportFile(
+            input,
+            workspaceRoot
           );
+          const explicitId = optionalImportId(input, "globalAssetId");
+          const pendingKey = explicitId ? JSON.stringify(["global-command", explicitId]) : JSON.stringify(["global", sourcePath, readFile22.kind]);
+          const pending = pendingGlobalImports.get(pendingKey) ?? {
+            id: explicitId ?? `global:${randomUUID2()}`,
+            file: readFile22
+          };
+          if (!pendingGlobalImports.has(pendingKey)) {
+            pendingGlobalImports.set(pendingKey, pending);
+          }
+          let imported;
+          try {
+            imported = await globalClient.importFile({
+              ...pending.file,
+              globalAssetId: pending.id
+            });
+          } catch (error57) {
+            if (error57 instanceof ProjectHostHttpError) {
+              pendingGlobalImports.delete(pendingKey);
+            }
+            throw error57;
+          }
+          pendingGlobalImports.delete(pendingKey);
+          return imported;
+        }
+        case "clash_assets_global_trash": {
+          const globalAssetId = requiredString(input, "globalAssetId");
+          const deleteOperationId = pendingGlobalTrash.get(globalAssetId) ?? `delete:${randomUUID2()}`;
+          pendingGlobalTrash.set(globalAssetId, deleteOperationId);
+          try {
+            const trashed = await globalClient.trash({
+              globalAssetId,
+              deleteOperationId
+            });
+            pendingGlobalTrash.delete(globalAssetId);
+            return trashed;
+          } catch (error57) {
+            if (error57 instanceof ProjectHostHttpError) {
+              pendingGlobalTrash.delete(globalAssetId);
+            }
+            throw error57;
+          }
+        }
+        case "clash_assets_global_restore": {
+          const globalAssetId = requiredString(input, "globalAssetId");
+          const deleteOperationId = globalRestoreObservations.get(globalAssetId);
+          if (!deleteOperationId) {
+            throw new Error(
+              `READ_REQUIRED: Read Global Asset ${globalAssetId} with clash_assets_global_get before restoring it.`
+            );
+          }
+          try {
+            const restored = await globalClient.restore({
+              globalAssetId,
+              deleteOperationId
+            });
+            globalRestoreObservations.delete(globalAssetId);
+            return restored;
+          } catch (error57) {
+            if (error57 instanceof ProjectHostHttpError) {
+              globalRestoreObservations.delete(globalAssetId);
+            }
+            throw error57;
+          }
         }
       }
     }
@@ -52292,7 +52677,7 @@ var assetToolDefinitions = {
     title: "Import Project Asset file",
     description: describeClashTool({
       useWhen: "a local workspace media file should become an immutable Project Asset",
-      effect: "uploads the file once through the Host's canonical multipart import-file route",
+      effect: "uploads through the Host's canonical multipart route with one stable Project Asset id across an unknown-result retry",
       returns: "the newly created Project-scoped ResolvedAsset",
       next: "use the returned Project Asset ID in Actions or read it before a lifecycle mutation"
     }),
@@ -52303,6 +52688,9 @@ var assetToolDefinitions = {
       ),
       kind: external_exports.enum(["image", "video", "audio", "model"]).optional().describe(
         "Optional media kind; when omitted it is inferred from the file extension"
+      ),
+      projectAssetId: external_exports.string().trim().min(1).optional().describe(
+        "Optional caller-owned logical command id; reuse it only when retrying the same import"
       )
     }
   },
@@ -52379,7 +52767,7 @@ var assetToolDefinitions = {
     title: "Import personal Global Asset file",
     description: describeClashTool({
       useWhen: "a local media file should become reusable outside any one Project",
-      effect: "uploads the file once through the Host's canonical personal-library multipart route",
+      effect: "uploads through the Host's canonical personal-library route with one stable Global Asset id across an unknown-result retry",
       returns: "the newly created personal Global ResolvedAsset",
       next: "admit the returned Global Asset into a Project when needed"
     }),
@@ -52388,8 +52776,32 @@ var assetToolDefinitions = {
       filePath: external_exports.string().trim().min(1).describe("Absolute path or path relative to cwd"),
       kind: external_exports.enum(["image", "video", "audio", "model"]).optional().describe(
         "Optional media kind; when omitted it is inferred from the file extension"
+      ),
+      globalAssetId: external_exports.string().trim().min(1).optional().describe(
+        "Optional caller-owned logical command id; reuse it only when retrying the same import"
       )
     }
+  },
+  clash_assets_global_trash: {
+    title: "Trash personal Global Asset",
+    description: describeClashTool({
+      useWhen: "the user authorized logical deletion of a personal Global Asset",
+      effect: "logically trashes the Global Asset with one stable operation across an unknown-result retry",
+      returns: "the trashed storage-neutral Global ResolvedAsset",
+      next: "read the Global Asset before restoring it"
+    }),
+    inputSchema: { globalAssetId: external_exports.string().trim().min(1) },
+    annotations: { destructiveHint: true }
+  },
+  clash_assets_global_restore: {
+    title: "Restore personal Global Asset",
+    description: describeClashTool({
+      useWhen: "a trashed personal Global Asset should return to active library use",
+      effect: "restores only the delete operation recorded by the most recent Global Asset read",
+      returns: "the restored storage-neutral Global ResolvedAsset",
+      next: "read it again before any later lifecycle mutation"
+    }),
+    inputSchema: { globalAssetId: external_exports.string().trim().min(1) }
   }
 };
 var toolDefinitions = {
@@ -59017,10 +59429,11 @@ var itemTypeFields2 = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived2(z3.array(FiniteNumberSchema3), "Cached normalized waveform peaks.", {
+    waveform: derived2(z3.array(FiniteNumberSchema3), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl2,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     entranceAnimation: authored2(TimelineClipAnimationSchema2, "Seek-safe visual entrance animation.", {
       required: false,
@@ -59109,10 +59522,11 @@ var itemTypeFields2 = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived2(z3.array(FiniteNumberSchema3), "Cached normalized waveform peaks.", {
+    waveform: derived2(z3.array(FiniteNumberSchema3), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl2,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     audioFadeInFrames: authored2(NonnegativeFrameSchema2, "Canonical audio fade-in duration in frames.", {
       required: false,
@@ -59387,11 +59801,7 @@ var TimelineRenderReceiptSchema2 = z3.object({
   renderNodeId: IdentifierSchema2,
   target: TimelineRenderTargetSchema2,
   status: z3.enum(["pending", "completed", "failed"]),
-  asset: z3.object({
-    id: IdentifierSchema2,
-    signedUrl: IdentifierSchema2.optional(),
-    srcR2Key: IdentifierSchema2.optional()
-  }).passthrough().optional(),
+  asset: z3.object({ id: IdentifierSchema2 }).strict().optional(),
   error: z3.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas2 = TIMELINE_DSL_ITEM_TYPES2.map((type) => z3.object({
@@ -61128,7 +61538,7 @@ function timelineDslContractFingerprint2(value) {
   return `fnv1a32:${(hash22 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition2 = {
-  schemaVersion: 9,
+  schemaVersion: 11,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG2,
@@ -109273,10 +109683,11 @@ var itemTypeFields3 = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived3(z23.array(FiniteNumberSchema4), "Cached normalized waveform peaks.", {
+    waveform: derived3(z23.array(FiniteNumberSchema4), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl3,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     entranceAnimation: authored3(TimelineClipAnimationSchema3, "Seek-safe visual entrance animation.", {
       required: false,
@@ -109365,10 +109776,11 @@ var itemTypeFields3 = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived3(z23.array(FiniteNumberSchema4), "Cached normalized waveform peaks.", {
+    waveform: derived3(z23.array(FiniteNumberSchema4), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl3,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     audioFadeInFrames: authored3(NonnegativeFrameSchema3, "Canonical audio fade-in duration in frames.", {
       required: false,
@@ -109643,11 +110055,7 @@ var TimelineRenderReceiptSchema3 = z23.object({
   renderNodeId: IdentifierSchema3,
   target: TimelineRenderTargetSchema3,
   status: z23.enum(["pending", "completed", "failed"]),
-  asset: z23.object({
-    id: IdentifierSchema3,
-    signedUrl: IdentifierSchema3.optional(),
-    srcR2Key: IdentifierSchema3.optional()
-  }).passthrough().optional(),
+  asset: z23.object({ id: IdentifierSchema3 }).strict().optional(),
   error: z23.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas3 = TIMELINE_DSL_ITEM_TYPES3.map((type) => z23.object({
@@ -111384,7 +111792,7 @@ function timelineDslContractFingerprint3(value) {
   return `fnv1a32:${(hash22 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition3 = {
-  schemaVersion: 9,
+  schemaVersion: 11,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG3,
@@ -123743,19 +124151,40 @@ var ProjectAssetMetadataSchema2 = z5.object({
   height: z5.number().int().nonnegative().optional(),
   durationMs: z5.number().int().nonnegative().optional(),
   bytes: z5.number().int().nonnegative().optional(),
+  /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
   waveform: z5.array(z5.number()).optional(),
   contentType: z5.string().trim().min(1).optional(),
   frameRate: z5.number().positive().optional(),
   videoCodec: z5.string().trim().min(1).optional(),
+  /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
+  hasAudio: z5.boolean().optional(),
   audioCodec: z5.string().trim().min(1).optional(),
   originalName: z5.string().trim().min(1).optional()
 }).strict();
+var ProjectAssetPublicationMetadataSchema2 = ProjectAssetMetadataSchema2.omit({ waveform: true });
 var ProjectAssetProvenanceSchema2 = z5.object({
   kind: z5.enum(["import", "generation", "edit", "render", "admission"]),
   actionRunId: z5.string().trim().min(1).optional(),
   model: z5.string().trim().min(1).optional(),
   prompt: z5.string().optional()
 }).strict();
+var ProjectAssetLinkedOriginSchema2 = z5.discriminatedUnion("scope", [
+  z5.object({
+    scope: z5.literal("global"),
+    libraryId: z5.string().trim().min(1),
+    entryId: z5.string().trim().min(1)
+  }).strict(),
+  z5.object({
+    scope: z5.literal("project"),
+    projectId: z5.string().trim().min(1),
+    entryId: z5.string().trim().min(1)
+  }).strict(),
+  z5.object({
+    scope: z5.literal("catalog"),
+    catalogId: z5.string().trim().min(1),
+    entryId: z5.string().trim().min(1)
+  }).strict()
+]);
 var ProjectAssetSourceSchema2 = z5.discriminatedUnion("kind", [
   z5.object({
     kind: z5.literal("owned"),
@@ -123764,10 +124193,7 @@ var ProjectAssetSourceSchema2 = z5.discriminatedUnion("kind", [
   z5.object({
     kind: z5.literal("linked"),
     resourceId: ResourceIdSchema2,
-    origin: z5.object({
-      scope: z5.enum(["global", "catalog", "project"]),
-      entryId: z5.string().trim().min(1)
-    }).strict()
+    origin: ProjectAssetLinkedOriginSchema2
   }).strict()
 ]);
 var ProjectAssetLifecycleSchema2 = z5.discriminatedUnion("state", [
@@ -123836,7 +124262,13 @@ var ResolvedAssetSchema2 = z5.object({
   provenance: ProjectAssetProvenanceSchema2.optional(),
   /** Synchronized logical lifecycle; independent from current-Host byte availability. */
   lifecycle: ProjectAssetLifecycleSchema2,
-  status: z5.enum(["uploading", "ready", "downloading", "unavailable", "failed"]),
+  status: z5.enum([
+    "uploading",
+    "ready",
+    "downloading",
+    "unavailable",
+    "failed"
+  ]),
   url: z5.string().url().optional(),
   thumbnailUrl: z5.string().url().optional(),
   progress: z5.number().min(0).max(1).optional(),
@@ -123847,10 +124279,12 @@ var AssetMetadataSchema2 = z5.object({
   height: z5.number().int().optional(),
   durationMs: z5.number().int().optional(),
   bytes: z5.number().int().optional(),
+  /** @deprecated Historical row payload; never emit from new publication. */
   waveform: z5.array(z5.number()).optional(),
   contentType: z5.string().optional(),
   frameRate: z5.number().positive().optional(),
   videoCodec: z5.string().optional(),
+  hasAudio: z5.boolean().optional(),
   audioCodec: z5.string().optional(),
   contentHash: z5.string().optional(),
   localBlobKey: z5.string().optional(),
@@ -132622,10 +133056,11 @@ var itemTypeFields4 = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived4(z5.array(FiniteNumberSchema5), "Cached normalized waveform peaks.", {
+    waveform: derived4(z5.array(FiniteNumberSchema5), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl4,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     entranceAnimation: authored4(TimelineClipAnimationSchema4, "Seek-safe visual entrance animation.", {
       required: false,
@@ -132714,10 +133149,11 @@ var itemTypeFields4 = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived4(z5.array(FiniteNumberSchema5), "Cached normalized waveform peaks.", {
+    waveform: derived4(z5.array(FiniteNumberSchema5), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl4,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     audioFadeInFrames: authored4(NonnegativeFrameSchema4, "Canonical audio fade-in duration in frames.", {
       required: false,
@@ -132992,11 +133428,7 @@ var TimelineRenderReceiptSchema4 = z5.object({
   renderNodeId: IdentifierSchema4,
   target: TimelineRenderTargetSchema4,
   status: z5.enum(["pending", "completed", "failed"]),
-  asset: z5.object({
-    id: IdentifierSchema4,
-    signedUrl: IdentifierSchema4.optional(),
-    srcR2Key: IdentifierSchema4.optional()
-  }).passthrough().optional(),
+  asset: z5.object({ id: IdentifierSchema4 }).strict().optional(),
   error: z5.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas4 = TIMELINE_DSL_ITEM_TYPES4.map((type) => z5.object({
@@ -134720,7 +135152,7 @@ function timelineDslContractFingerprint4(value) {
   return `fnv1a32:${(hash5 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition4 = {
-  schemaVersion: 9,
+  schemaVersion: 11,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG4,
@@ -135054,6 +135486,22 @@ var AgentAnnotationPromptPayloadSchema2 = z5.object({
   kind: z5.literal("clash-agent-annotations"),
   annotations: z5.array(AgentAnnotationDraftSchema2).min(1)
 });
+var ScopedIdSchema2 = z5.string().trim().min(1);
+var ProjectAssetMetadataTargetSchema2 = z5.object({
+  kind: z5.literal("project-asset"),
+  projectId: ScopedIdSchema2,
+  assetId: ScopedIdSchema2
+}).strict();
+var ActionRevisionMetadataTargetSchema2 = z5.object({
+  kind: z5.literal("action-revision"),
+  projectId: ScopedIdSchema2,
+  actionId: ScopedIdSchema2,
+  actionRevisionId: ScopedIdSchema2
+}).strict();
+var MetadataAttachmentTargetSchema2 = z5.discriminatedUnion("kind", [
+  ProjectAssetMetadataTargetSchema2,
+  ActionRevisionMetadataTargetSchema2
+]);
 var FrameRangeSchema2 = z5.object({
   startFrame: z5.number().int().min(0),
   endFrame: z5.number().int().min(0)
@@ -135109,7 +135557,13 @@ var AudioBeatMetadataSchema2 = z5.object({
   sections: z5.array(AudioSectionSchema2).default([]),
   energyCurve: z5.array(AudioEnergyPointSchema2).default([])
 });
-var AudioStemTypeSchema2 = z5.enum(["vocal", "instrumental", "drums", "bass", "other"]);
+var AudioStemTypeSchema2 = z5.enum([
+  "vocal",
+  "instrumental",
+  "drums",
+  "bass",
+  "other"
+]);
 var AudioStemAssetSchema2 = z5.object({
   stemAssetId: z5.string().min(1),
   stemType: AudioStemTypeSchema2,
@@ -135285,17 +135739,19 @@ var TalkingHeadMetadataSchema2 = z5.object({
   words: z5.array(TranscriptWordSchema2),
   cuts: z5.array(TextCutSchema2).default([]),
   captionCues: z5.array(CaptionCueSchema2).default([]),
-  disfluencies: z5.array(z5.object({
-    id: z5.string().optional(),
-    wordId: z5.string().optional(),
-    startFrame: z5.number().int().min(0).optional(),
-    endFrame: z5.number().int().min(0).optional(),
-    text: z5.string().optional(),
-    type: z5.enum(["filler", "silence", "tone-particle", "repeat"]),
-    requiresReview: z5.boolean().default(false),
-    confidence: z5.number().min(0).max(1).optional(),
-    detectionSource: z5.string().min(1).optional()
-  })).default([])
+  disfluencies: z5.array(
+    z5.object({
+      id: z5.string().optional(),
+      wordId: z5.string().optional(),
+      startFrame: z5.number().int().min(0).optional(),
+      endFrame: z5.number().int().min(0).optional(),
+      text: z5.string().optional(),
+      type: z5.enum(["filler", "silence", "tone-particle", "repeat"]),
+      requiresReview: z5.boolean().default(false),
+      confidence: z5.number().min(0).max(1).optional(),
+      detectionSource: z5.string().min(1).optional()
+    })
+  ).default([])
 });
 var RightsMetadataSchema2 = z5.object({
   license: z5.string().min(1),
@@ -135395,26 +135851,32 @@ var CharacterReferenceViewSchema2 = z5.object({
 });
 var ImageStoryboardMetadataSchema2 = z5.object({
   kind: z5.literal("image.storyboard-consistency"),
-  characters: z5.array(z5.object({
-    id: z5.string().min(1),
-    name: z5.string().min(1),
-    referenceAssetIds: z5.array(z5.string()).min(1),
-    requiredViews: z5.array(CharacterReferenceViewKindSchema2).default([]),
-    referenceViews: z5.array(CharacterReferenceViewSchema2).default([])
-  })).default([]),
-  scenes: z5.array(z5.object({
-    id: z5.string().min(1),
-    referenceAssetIds: z5.array(z5.string()).default([]),
-    prompt: z5.string().min(1)
-  })).default([]),
-  panels: z5.array(z5.object({
-    id: z5.string().min(1),
-    sceneId: z5.string().min(1),
-    characterIds: z5.array(z5.string()).default([]),
-    assetId: z5.string().min(1),
-    path: z5.string().min(1).optional(),
-    consistencyScore: z5.number().min(0).max(1).optional()
-  })).default([])
+  characters: z5.array(
+    z5.object({
+      id: z5.string().min(1),
+      name: z5.string().min(1),
+      referenceAssetIds: z5.array(z5.string()).min(1),
+      requiredViews: z5.array(CharacterReferenceViewKindSchema2).default([]),
+      referenceViews: z5.array(CharacterReferenceViewSchema2).default([])
+    })
+  ).default([]),
+  scenes: z5.array(
+    z5.object({
+      id: z5.string().min(1),
+      referenceAssetIds: z5.array(z5.string()).default([]),
+      prompt: z5.string().min(1)
+    })
+  ).default([]),
+  panels: z5.array(
+    z5.object({
+      id: z5.string().min(1),
+      sceneId: z5.string().min(1),
+      characterIds: z5.array(z5.string()).default([]),
+      assetId: z5.string().min(1),
+      path: z5.string().min(1).optional(),
+      consistencyScore: z5.number().min(0).max(1).optional()
+    })
+  ).default([])
 });
 var SemanticReferenceRoleKindSchema2 = z5.enum([
   "identity-front",
@@ -135520,7 +135982,11 @@ var AnalysisBackendBenchmarkMetadataSchema2 = z5.object({
   blockedReasons: z5.array(z5.string().min(1)).default([]),
   decisionLog: z5.array(z5.string().min(1)).default([])
 });
-var ImageEmbeddingDistanceMetricSchema2 = z5.enum(["cosine", "dot", "euclidean"]);
+var ImageEmbeddingDistanceMetricSchema2 = z5.enum([
+  "cosine",
+  "dot",
+  "euclidean"
+]);
 var ImageEmbeddingBaselineForSchema2 = z5.enum([
   "identity",
   "product",
@@ -135550,7 +136016,10 @@ var ImageEmbeddingStoreMetadataSchema2 = z5.object({
   items: z5.array(ImageEmbeddingStoreItemSchema2).min(1),
   copyOnWriteRequired: z5.boolean()
 });
-var ImageComfyuiApiFormatSchema2 = z5.enum(["comfyui-api-json", "comfyui-ui-json"]);
+var ImageComfyuiApiFormatSchema2 = z5.enum([
+  "comfyui-api-json",
+  "comfyui-ui-json"
+]);
 var ImageComfyuiModelTypeSchema2 = z5.enum([
   "checkpoint",
   "vae",
@@ -135595,8 +136064,16 @@ var ImageComfyuiInputSlotSchema2 = z5.object({
   assetId: z5.string().min(1).optional(),
   path: z5.string().min(1).optional()
 });
-var ImageComfyuiOutputStatusSchema2 = z5.enum(["planned", "materialized"]);
-var ImageComfyuiOutputMediaTypeSchema2 = z5.enum(["image", "image-sequence", "mask", "metadata"]);
+var ImageComfyuiOutputStatusSchema2 = z5.enum([
+  "planned",
+  "materialized"
+]);
+var ImageComfyuiOutputMediaTypeSchema2 = z5.enum([
+  "image",
+  "image-sequence",
+  "mask",
+  "metadata"
+]);
 var ImageComfyuiOutputSchema2 = z5.object({
   outputAssetId: z5.string().min(1),
   nodeId: z5.string().min(1),
@@ -135780,8 +136257,17 @@ var AdVisualQaMetadataSchema2 = z5.object({
   visualQa: AdDeliveryVisualQaReportSchema2,
   decisionLog: z5.array(z5.string().min(1)).default([])
 });
-var ContentCredentialModeSchema2 = z5.enum(["unsigned-manifest", "signed-c2pa", "external"]);
-var ContentCredentialSignatureStatusSchema2 = z5.enum(["unsigned", "signed", "external", "failed"]);
+var ContentCredentialModeSchema2 = z5.enum([
+  "unsigned-manifest",
+  "signed-c2pa",
+  "external"
+]);
+var ContentCredentialSignatureStatusSchema2 = z5.enum([
+  "unsigned",
+  "signed",
+  "external",
+  "failed"
+]);
 var ContentCredentialIngredientRelationshipSchema2 = z5.enum([
   "source",
   "reference",
@@ -135854,12 +136340,12 @@ var ProductionMetadataSchema2 = ProductionMetadataBaseSchema2.superRefine((metad
 });
 var AssetMetadataFillActionSchema2 = z5.object({
   actionId: z5.string().min(1),
-  targetAssetId: z5.string().min(1),
+  target: MetadataAttachmentTargetSchema2,
   metadataKind: z5.string().min(1),
   metadata: ProductionMetadataSchema2,
   producer: z5.string().min(1),
   createdAt: z5.string().optional()
-});
+}).strict();
 var SourceHashSchema2 = z5.string().regex(/^sha256:[a-f0-9]{64}$/);
 var TimelineTranscriptSourceSchema2 = z5.object({
   assetId: z5.string().min(1),
@@ -136618,6 +137104,24 @@ var ProjectContextSchema2 = z5.object({
     type: z5.string().nullish()
   }))
 });
+var LegacyLinkedProjectAssetSourceSchema2 = z5.object({
+  kind: z5.literal("linked"),
+  resourceId: z5.string().trim().min(1),
+  origin: z5.discriminatedUnion("scope", [
+    z5.object({
+      scope: z5.literal("global"),
+      entryId: z5.string().trim().min(1)
+    }).strict(),
+    z5.object({
+      scope: z5.literal("project"),
+      entryId: z5.string().trim().min(1)
+    }).strict(),
+    z5.object({
+      scope: z5.literal("catalog"),
+      entryId: z5.string().trim().min(1)
+    }).strict()
+  ])
+}).strict();
 var DirectorStageVector3Schema2 = z5.tuple([
   z5.number().finite(),
   z5.number().finite(),
@@ -138116,7 +138620,10 @@ function registerAssetMetadataKind2(declaration) {
     return result.success ? [] : result.error.issues;
   };
   const complainsAbout = (issues, field32) => issues.some((issue25) => issue25.path.length === 1 && issue25.path[0] === field32);
-  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+  if (complainsAbout(
+    issuesFor({ schemaVersion: 1, kind: declaration.kind }),
+    "kind"
+  )) {
     throw new Error(
       `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
     );
@@ -138129,13 +138636,13 @@ function registerAssetMetadataKind2(declaration) {
   declaredKinds2.set(declaration.kind, declaration);
 }
 var FillActionEnvelopeSchema2 = z5.object({
-  actionId: z5.string().min(1),
-  targetAssetId: z5.string().min(1),
-  metadataKind: z5.string().min(1),
-  metadata: z5.object({ kind: z5.string().min(1) }).passthrough(),
-  producer: z5.string().min(1),
+  actionId: z5.string().trim().min(1),
+  target: MetadataAttachmentTargetSchema2,
+  metadataKind: z5.string().trim().min(1),
+  metadata: z5.object({ kind: z5.string().trim().min(1) }).passthrough(),
+  producer: z5.string().trim().min(1),
   createdAt: z5.string().optional()
-});
+}).strict();
 registerAssetMetadataKind2({
   kind: "media.transcript",
   schema: MediaTranscriptMetadataSchema2
@@ -138148,6 +138655,15 @@ registerAssetMetadataKind2({
   kind: "media.render-lineage",
   schema: MediaRenderLineageMetadataSchema2
 });
+var CopilotProjectAssetReferenceSchema2 = z5.object({
+  projectAssetId: z5.string().trim().min(1),
+  kind: AssetKindSchema2,
+  label: z5.string().trim().min(1)
+}).strict();
+var CopilotProjectAssetSubmissionSchema2 = z5.object({
+  actionId: z5.string().trim().min(1),
+  assets: CopilotProjectAssetReferenceSchema2.array().min(1)
+}).strict();
 var CATEGORY_ALLOWED_ITEM_TYPES2 = Object.fromEntries(
   Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES4).map(([category, itemTypes]) => [
     category,
@@ -177422,19 +177938,40 @@ var ProjectAssetMetadataSchema3 = z24.object({
   height: z24.number().int().nonnegative().optional(),
   durationMs: z24.number().int().nonnegative().optional(),
   bytes: z24.number().int().nonnegative().optional(),
+  /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
   waveform: z24.array(z24.number()).optional(),
   contentType: z24.string().trim().min(1).optional(),
   frameRate: z24.number().positive().optional(),
   videoCodec: z24.string().trim().min(1).optional(),
+  /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
+  hasAudio: z24.boolean().optional(),
   audioCodec: z24.string().trim().min(1).optional(),
   originalName: z24.string().trim().min(1).optional()
 }).strict();
+var ProjectAssetPublicationMetadataSchema3 = ProjectAssetMetadataSchema3.omit({ waveform: true });
 var ProjectAssetProvenanceSchema3 = z24.object({
   kind: z24.enum(["import", "generation", "edit", "render", "admission"]),
   actionRunId: z24.string().trim().min(1).optional(),
   model: z24.string().trim().min(1).optional(),
   prompt: z24.string().optional()
 }).strict();
+var ProjectAssetLinkedOriginSchema3 = z24.discriminatedUnion("scope", [
+  z24.object({
+    scope: z24.literal("global"),
+    libraryId: z24.string().trim().min(1),
+    entryId: z24.string().trim().min(1)
+  }).strict(),
+  z24.object({
+    scope: z24.literal("project"),
+    projectId: z24.string().trim().min(1),
+    entryId: z24.string().trim().min(1)
+  }).strict(),
+  z24.object({
+    scope: z24.literal("catalog"),
+    catalogId: z24.string().trim().min(1),
+    entryId: z24.string().trim().min(1)
+  }).strict()
+]);
 var ProjectAssetSourceSchema3 = z24.discriminatedUnion("kind", [
   z24.object({
     kind: z24.literal("owned"),
@@ -177443,10 +177980,7 @@ var ProjectAssetSourceSchema3 = z24.discriminatedUnion("kind", [
   z24.object({
     kind: z24.literal("linked"),
     resourceId: ResourceIdSchema3,
-    origin: z24.object({
-      scope: z24.enum(["global", "catalog", "project"]),
-      entryId: z24.string().trim().min(1)
-    }).strict()
+    origin: ProjectAssetLinkedOriginSchema3
   }).strict()
 ]);
 var ProjectAssetLifecycleSchema3 = z24.discriminatedUnion("state", [
@@ -177515,7 +178049,13 @@ var ResolvedAssetSchema3 = z24.object({
   provenance: ProjectAssetProvenanceSchema3.optional(),
   /** Synchronized logical lifecycle; independent from current-Host byte availability. */
   lifecycle: ProjectAssetLifecycleSchema3,
-  status: z24.enum(["uploading", "ready", "downloading", "unavailable", "failed"]),
+  status: z24.enum([
+    "uploading",
+    "ready",
+    "downloading",
+    "unavailable",
+    "failed"
+  ]),
   url: z24.string().url().optional(),
   thumbnailUrl: z24.string().url().optional(),
   progress: z24.number().min(0).max(1).optional(),
@@ -177526,10 +178066,12 @@ var AssetMetadataSchema3 = z24.object({
   height: z24.number().int().optional(),
   durationMs: z24.number().int().optional(),
   bytes: z24.number().int().optional(),
+  /** @deprecated Historical row payload; never emit from new publication. */
   waveform: z24.array(z24.number()).optional(),
   contentType: z24.string().optional(),
   frameRate: z24.number().positive().optional(),
   videoCodec: z24.string().optional(),
+  hasAudio: z24.boolean().optional(),
   audioCodec: z24.string().optional(),
   contentHash: z24.string().optional(),
   localBlobKey: z24.string().optional(),
@@ -186301,10 +186843,11 @@ var itemTypeFields5 = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived5(z24.array(FiniteNumberSchema6), "Cached normalized waveform peaks.", {
+    waveform: derived5(z24.array(FiniteNumberSchema6), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl5,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     entranceAnimation: authored5(TimelineClipAnimationSchema5, "Seek-safe visual entrance animation.", {
       required: false,
@@ -186393,10 +186936,11 @@ var itemTypeFields5 = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived5(z24.array(FiniteNumberSchema6), "Cached normalized waveform peaks.", {
+    waveform: derived5(z24.array(FiniteNumberSchema6), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl5,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     audioFadeInFrames: authored5(NonnegativeFrameSchema5, "Canonical audio fade-in duration in frames.", {
       required: false,
@@ -186671,11 +187215,7 @@ var TimelineRenderReceiptSchema5 = z24.object({
   renderNodeId: IdentifierSchema5,
   target: TimelineRenderTargetSchema5,
   status: z24.enum(["pending", "completed", "failed"]),
-  asset: z24.object({
-    id: IdentifierSchema5,
-    signedUrl: IdentifierSchema5.optional(),
-    srcR2Key: IdentifierSchema5.optional()
-  }).passthrough().optional(),
+  asset: z24.object({ id: IdentifierSchema5 }).strict().optional(),
   error: z24.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas5 = TIMELINE_DSL_ITEM_TYPES5.map((type) => z24.object({
@@ -188399,7 +188939,7 @@ function timelineDslContractFingerprint5(value) {
   return `fnv1a32:${(hash22 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition5 = {
-  schemaVersion: 9,
+  schemaVersion: 11,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG5,
@@ -188733,6 +189273,22 @@ var AgentAnnotationPromptPayloadSchema3 = z24.object({
   kind: z24.literal("clash-agent-annotations"),
   annotations: z24.array(AgentAnnotationDraftSchema3).min(1)
 });
+var ScopedIdSchema3 = z24.string().trim().min(1);
+var ProjectAssetMetadataTargetSchema3 = z24.object({
+  kind: z24.literal("project-asset"),
+  projectId: ScopedIdSchema3,
+  assetId: ScopedIdSchema3
+}).strict();
+var ActionRevisionMetadataTargetSchema3 = z24.object({
+  kind: z24.literal("action-revision"),
+  projectId: ScopedIdSchema3,
+  actionId: ScopedIdSchema3,
+  actionRevisionId: ScopedIdSchema3
+}).strict();
+var MetadataAttachmentTargetSchema3 = z24.discriminatedUnion("kind", [
+  ProjectAssetMetadataTargetSchema3,
+  ActionRevisionMetadataTargetSchema3
+]);
 var FrameRangeSchema3 = z24.object({
   startFrame: z24.number().int().min(0),
   endFrame: z24.number().int().min(0)
@@ -188788,7 +189344,13 @@ var AudioBeatMetadataSchema3 = z24.object({
   sections: z24.array(AudioSectionSchema3).default([]),
   energyCurve: z24.array(AudioEnergyPointSchema3).default([])
 });
-var AudioStemTypeSchema3 = z24.enum(["vocal", "instrumental", "drums", "bass", "other"]);
+var AudioStemTypeSchema3 = z24.enum([
+  "vocal",
+  "instrumental",
+  "drums",
+  "bass",
+  "other"
+]);
 var AudioStemAssetSchema3 = z24.object({
   stemAssetId: z24.string().min(1),
   stemType: AudioStemTypeSchema3,
@@ -188964,17 +189526,19 @@ var TalkingHeadMetadataSchema3 = z24.object({
   words: z24.array(TranscriptWordSchema3),
   cuts: z24.array(TextCutSchema3).default([]),
   captionCues: z24.array(CaptionCueSchema3).default([]),
-  disfluencies: z24.array(z24.object({
-    id: z24.string().optional(),
-    wordId: z24.string().optional(),
-    startFrame: z24.number().int().min(0).optional(),
-    endFrame: z24.number().int().min(0).optional(),
-    text: z24.string().optional(),
-    type: z24.enum(["filler", "silence", "tone-particle", "repeat"]),
-    requiresReview: z24.boolean().default(false),
-    confidence: z24.number().min(0).max(1).optional(),
-    detectionSource: z24.string().min(1).optional()
-  })).default([])
+  disfluencies: z24.array(
+    z24.object({
+      id: z24.string().optional(),
+      wordId: z24.string().optional(),
+      startFrame: z24.number().int().min(0).optional(),
+      endFrame: z24.number().int().min(0).optional(),
+      text: z24.string().optional(),
+      type: z24.enum(["filler", "silence", "tone-particle", "repeat"]),
+      requiresReview: z24.boolean().default(false),
+      confidence: z24.number().min(0).max(1).optional(),
+      detectionSource: z24.string().min(1).optional()
+    })
+  ).default([])
 });
 var RightsMetadataSchema3 = z24.object({
   license: z24.string().min(1),
@@ -189074,26 +189638,32 @@ var CharacterReferenceViewSchema3 = z24.object({
 });
 var ImageStoryboardMetadataSchema3 = z24.object({
   kind: z24.literal("image.storyboard-consistency"),
-  characters: z24.array(z24.object({
-    id: z24.string().min(1),
-    name: z24.string().min(1),
-    referenceAssetIds: z24.array(z24.string()).min(1),
-    requiredViews: z24.array(CharacterReferenceViewKindSchema3).default([]),
-    referenceViews: z24.array(CharacterReferenceViewSchema3).default([])
-  })).default([]),
-  scenes: z24.array(z24.object({
-    id: z24.string().min(1),
-    referenceAssetIds: z24.array(z24.string()).default([]),
-    prompt: z24.string().min(1)
-  })).default([]),
-  panels: z24.array(z24.object({
-    id: z24.string().min(1),
-    sceneId: z24.string().min(1),
-    characterIds: z24.array(z24.string()).default([]),
-    assetId: z24.string().min(1),
-    path: z24.string().min(1).optional(),
-    consistencyScore: z24.number().min(0).max(1).optional()
-  })).default([])
+  characters: z24.array(
+    z24.object({
+      id: z24.string().min(1),
+      name: z24.string().min(1),
+      referenceAssetIds: z24.array(z24.string()).min(1),
+      requiredViews: z24.array(CharacterReferenceViewKindSchema3).default([]),
+      referenceViews: z24.array(CharacterReferenceViewSchema3).default([])
+    })
+  ).default([]),
+  scenes: z24.array(
+    z24.object({
+      id: z24.string().min(1),
+      referenceAssetIds: z24.array(z24.string()).default([]),
+      prompt: z24.string().min(1)
+    })
+  ).default([]),
+  panels: z24.array(
+    z24.object({
+      id: z24.string().min(1),
+      sceneId: z24.string().min(1),
+      characterIds: z24.array(z24.string()).default([]),
+      assetId: z24.string().min(1),
+      path: z24.string().min(1).optional(),
+      consistencyScore: z24.number().min(0).max(1).optional()
+    })
+  ).default([])
 });
 var SemanticReferenceRoleKindSchema3 = z24.enum([
   "identity-front",
@@ -189199,7 +189769,11 @@ var AnalysisBackendBenchmarkMetadataSchema3 = z24.object({
   blockedReasons: z24.array(z24.string().min(1)).default([]),
   decisionLog: z24.array(z24.string().min(1)).default([])
 });
-var ImageEmbeddingDistanceMetricSchema3 = z24.enum(["cosine", "dot", "euclidean"]);
+var ImageEmbeddingDistanceMetricSchema3 = z24.enum([
+  "cosine",
+  "dot",
+  "euclidean"
+]);
 var ImageEmbeddingBaselineForSchema3 = z24.enum([
   "identity",
   "product",
@@ -189229,7 +189803,10 @@ var ImageEmbeddingStoreMetadataSchema3 = z24.object({
   items: z24.array(ImageEmbeddingStoreItemSchema3).min(1),
   copyOnWriteRequired: z24.boolean()
 });
-var ImageComfyuiApiFormatSchema3 = z24.enum(["comfyui-api-json", "comfyui-ui-json"]);
+var ImageComfyuiApiFormatSchema3 = z24.enum([
+  "comfyui-api-json",
+  "comfyui-ui-json"
+]);
 var ImageComfyuiModelTypeSchema3 = z24.enum([
   "checkpoint",
   "vae",
@@ -189274,8 +189851,16 @@ var ImageComfyuiInputSlotSchema3 = z24.object({
   assetId: z24.string().min(1).optional(),
   path: z24.string().min(1).optional()
 });
-var ImageComfyuiOutputStatusSchema3 = z24.enum(["planned", "materialized"]);
-var ImageComfyuiOutputMediaTypeSchema3 = z24.enum(["image", "image-sequence", "mask", "metadata"]);
+var ImageComfyuiOutputStatusSchema3 = z24.enum([
+  "planned",
+  "materialized"
+]);
+var ImageComfyuiOutputMediaTypeSchema3 = z24.enum([
+  "image",
+  "image-sequence",
+  "mask",
+  "metadata"
+]);
 var ImageComfyuiOutputSchema3 = z24.object({
   outputAssetId: z24.string().min(1),
   nodeId: z24.string().min(1),
@@ -189459,8 +190044,17 @@ var AdVisualQaMetadataSchema3 = z24.object({
   visualQa: AdDeliveryVisualQaReportSchema3,
   decisionLog: z24.array(z24.string().min(1)).default([])
 });
-var ContentCredentialModeSchema3 = z24.enum(["unsigned-manifest", "signed-c2pa", "external"]);
-var ContentCredentialSignatureStatusSchema3 = z24.enum(["unsigned", "signed", "external", "failed"]);
+var ContentCredentialModeSchema3 = z24.enum([
+  "unsigned-manifest",
+  "signed-c2pa",
+  "external"
+]);
+var ContentCredentialSignatureStatusSchema3 = z24.enum([
+  "unsigned",
+  "signed",
+  "external",
+  "failed"
+]);
 var ContentCredentialIngredientRelationshipSchema3 = z24.enum([
   "source",
   "reference",
@@ -189533,12 +190127,12 @@ var ProductionMetadataSchema3 = ProductionMetadataBaseSchema3.superRefine((metad
 });
 var AssetMetadataFillActionSchema3 = z24.object({
   actionId: z24.string().min(1),
-  targetAssetId: z24.string().min(1),
+  target: MetadataAttachmentTargetSchema3,
   metadataKind: z24.string().min(1),
   metadata: ProductionMetadataSchema3,
   producer: z24.string().min(1),
   createdAt: z24.string().optional()
-});
+}).strict();
 var SourceHashSchema3 = z24.string().regex(/^sha256:[a-f0-9]{64}$/);
 var TimelineTranscriptSourceSchema3 = z24.object({
   assetId: z24.string().min(1),
@@ -190297,6 +190891,24 @@ var ProjectContextSchema3 = z24.object({
     type: z24.string().nullish()
   }))
 });
+var LegacyLinkedProjectAssetSourceSchema3 = z24.object({
+  kind: z24.literal("linked"),
+  resourceId: z24.string().trim().min(1),
+  origin: z24.discriminatedUnion("scope", [
+    z24.object({
+      scope: z24.literal("global"),
+      entryId: z24.string().trim().min(1)
+    }).strict(),
+    z24.object({
+      scope: z24.literal("project"),
+      entryId: z24.string().trim().min(1)
+    }).strict(),
+    z24.object({
+      scope: z24.literal("catalog"),
+      entryId: z24.string().trim().min(1)
+    }).strict()
+  ])
+}).strict();
 var DirectorStageVector3Schema3 = z24.tuple([
   z24.number().finite(),
   z24.number().finite(),
@@ -191296,7 +191908,10 @@ function registerAssetMetadataKind3(declaration) {
     return result.success ? [] : result.error.issues;
   };
   const complainsAbout = (issues, field32) => issues.some((issue32) => issue32.path.length === 1 && issue32.path[0] === field32);
-  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+  if (complainsAbout(
+    issuesFor({ schemaVersion: 1, kind: declaration.kind }),
+    "kind"
+  )) {
     throw new Error(
       `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
     );
@@ -191309,13 +191924,13 @@ function registerAssetMetadataKind3(declaration) {
   declaredKinds3.set(declaration.kind, declaration);
 }
 var FillActionEnvelopeSchema3 = z24.object({
-  actionId: z24.string().min(1),
-  targetAssetId: z24.string().min(1),
-  metadataKind: z24.string().min(1),
-  metadata: z24.object({ kind: z24.string().min(1) }).passthrough(),
-  producer: z24.string().min(1),
+  actionId: z24.string().trim().min(1),
+  target: MetadataAttachmentTargetSchema3,
+  metadataKind: z24.string().trim().min(1),
+  metadata: z24.object({ kind: z24.string().trim().min(1) }).passthrough(),
+  producer: z24.string().trim().min(1),
   createdAt: z24.string().optional()
-});
+}).strict();
 registerAssetMetadataKind3({
   kind: "media.transcript",
   schema: MediaTranscriptMetadataSchema3
@@ -191328,6 +191943,15 @@ registerAssetMetadataKind3({
   kind: "media.render-lineage",
   schema: MediaRenderLineageMetadataSchema3
 });
+var CopilotProjectAssetReferenceSchema3 = z24.object({
+  projectAssetId: z24.string().trim().min(1),
+  kind: AssetKindSchema3,
+  label: z24.string().trim().min(1)
+}).strict();
+var CopilotProjectAssetSubmissionSchema3 = z24.object({
+  actionId: z24.string().trim().min(1),
+  assets: CopilotProjectAssetReferenceSchema3.array().min(1)
+}).strict();
 var CATEGORY_ALLOWED_ITEM_TYPES3 = Object.fromEntries(
   Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES5).map(([category, itemTypes]) => [
     category,
@@ -191982,7 +192606,7 @@ import { basename as basename4, dirname as dirname9, join as join10, resolve as 
 
 // ../../packages/shared-runtime/dist/local-daemon.js
 import { spawn } from "child_process";
-import { randomUUID as randomUUID2 } from "crypto";
+import { randomUUID as randomUUID3 } from "crypto";
 import { mkdir as mkdir5, open, readFile as readFile5, rm } from "fs/promises";
 import { join as join8 } from "path";
 var DAEMON_SUPPORTED_NODE_RANGE = ">=24.18.0 <25";
@@ -192097,7 +192721,7 @@ async function inspectLocalDaemon(options) {
 async function acquireStartupLock(options) {
   await mkdir5(options.runDir, { recursive: true });
   const lockPath = join8(options.runDir, "daemon-start.lock");
-  const token = randomUUID2();
+  const token = randomUUID3();
   const deadline = Date.now() + options.lockTimeoutMs;
   while (Date.now() < deadline) {
     try {

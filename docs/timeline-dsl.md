@@ -9,6 +9,15 @@ agent operations, and routing metadata. Complex UI controls and renderer behavio
 explicit adapters, with compile-time/test coverage gates against descriptor
 drift.
 
+The current release is schema version `11`
+with fingerprint `fnv1a32:01aeda96`. Version 11
+marks legacy inline waveform samples as discard-on-save device presentation;
+browsers regenerate them instead of synchronizing them. Version 10 narrowed the
+public `timeline.render` receipt to a strict Project Asset reference
+`asset: { id }`. Clients migrating from version 9 must resolve that Project Asset
+through the Asset SDK; transient delivery URLs and storage keys are not Timeline
+receipt fields.
+
 Validate without mutation through `clash timeline validate --file <path> --json`
 or `clash_timeline_validate`. Standard JSON Schema handles
 the structural contract and portable applicability rules; generated
@@ -27,6 +36,8 @@ Use the read-proof workflow for every mutation:
 The tables below are generated from the same executable field descriptors as
 the discriminated Zod/JSON Schema. “Preserve / derived” fields are not normal
 authoring controls, but a full-state apply must round-trip them unchanged.
+“Discard / device cache” fields remain readable only for migration/runtime
+presentation and are removed by Project persistence.
 “Consumer fallback” documents the value used by editor/preview/render when an
 authored optional field is absent; parsing does not silently materialize it.
 
@@ -104,7 +115,7 @@ authored optional field is absent; parsing does not silently materialize it.
 | `sourceStartInFrames` | optional / optional | editable | `0` | timeline | all declared owners | preview, render, transcript | Frames skipped from the beginning of source media. |
 | `audioGainDb` | optional / optional | editable | `0` | properties-panel | all declared owners | preview, render, audio-mix | Canonical clip audio gain in decibels. |
 | `volume` | optional / optional | editable | — | none | all declared owners | preview, render, migration | Legacy linear audio gain alias. Deprecated: Use audioGainDb for new writes. |
-| `waveform` | optional / optional | preserve / derived | — | none | all declared owners | editor | Cached normalized waveform peaks. |
+| `waveform` | optional / optional | discard / device cache | — | none | all declared owners | editor | Legacy inline waveform peaks; browsers regenerate this disposable presentation cache. |
 | `entranceAnimation` | optional / optional | editable | — | properties-panel | all declared owners | preview, render | Seek-safe visual entrance animation. |
 | `exitAnimation` | optional / optional | editable | — | properties-panel | all declared owners | preview, render | Seek-safe visual exit animation. |
 | `videoFadeIn` | optional / optional | editable | `0` | none | all declared owners | preview, render | Video fade-in duration in frames. |
@@ -125,7 +136,7 @@ authored optional field is absent; parsing does not silently materialize it.
 | `audioGainDb` | optional / optional | editable | `0` | properties-panel | all declared owners | preview, render, audio-mix | Canonical clip audio gain in decibels. |
 | `audioDucking` | optional / optional | editable | — | properties-panel | all declared owners | preview, render, audio-mix | Automatic music ducking amount and ramps. |
 | `volume` | optional / optional | editable | — | none | all declared owners | preview, render, migration | Legacy linear audio gain alias. Deprecated: Use audioGainDb for new writes. |
-| `waveform` | optional / optional | preserve / derived | — | none | all declared owners | editor | Cached normalized waveform peaks. |
+| `waveform` | optional / optional | discard / device cache | — | none | all declared owners | editor | Legacy inline waveform peaks; browsers regenerate this disposable presentation cache. |
 | `audioFadeInFrames` | optional / optional | editable | `0` | properties-panel | all declared owners | preview, render, audio-mix | Canonical audio fade-in duration in frames. |
 | `audioFadeOutFrames` | optional / optional | editable | `0` | properties-panel | all declared owners | preview, render, audio-mix | Canonical audio fade-out duration in frames. |
 | `audioFadeIn` | optional / optional | editable | — | none | all declared owners | preview, render, migration | Legacy audio fade-in alias in frames. Deprecated: Use audioFadeInFrames for new writes. |

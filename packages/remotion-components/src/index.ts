@@ -1,4 +1,5 @@
-export { VideoComposition } from './VideoComposition';
+export { VideoComposition } from "./VideoComposition";
+export { resolveProjectedMediaUrl } from "./projected-media-url";
 export {
   InlineRemotionSourceError,
   RemotionSourceComposition,
@@ -6,7 +7,7 @@ export {
   type InlineRemotionComponent,
   type InlineRemotionComponentProps,
   type RemotionSourceCompositionProps,
-} from './inline-remotion-source';
+} from "./inline-remotion-source";
 export {
   TIMELINE_RENDER_DEFAULT_COVERAGE,
   TIMELINE_RENDER_FIELD_CONSUMERS,
@@ -15,6 +16,6 @@ export {
   TIMELINE_TRANSITION_RENDER_ITEM_TYPES,
   isTimelineTransitionRenderItem,
   type TimelineTransitionRenderItem,
-} from './timeline-render-field-consumers';
-export { EffectSdkDemo } from './effect-demo/EffectSdkDemo';
-export { TimelineLibraryDemo } from './library-demo/TimelineLibraryDemo';
+} from "./timeline-render-field-consumers";
+export { EffectSdkDemo } from "./effect-demo/EffectSdkDemo";
+export { TimelineLibraryDemo } from "./library-demo/TimelineLibraryDemo";

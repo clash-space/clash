@@ -16,13 +16,20 @@ export interface PersonalGlobalAssetHttpClient {
     file: Blob;
     fileName?: string;
     kind: AssetKind;
+    globalAssetId?: string;
   }): Promise<ResolvedAsset>;
   publish(input: {
     projectId: string;
     projectAssetId: string;
   }): Promise<ResolvedAsset>;
-  trash(input: { globalAssetId: string }): Promise<ResolvedAsset>;
-  restore(input: { globalAssetId: string }): Promise<ResolvedAsset>;
+  trash(input: {
+    globalAssetId: string;
+    deleteOperationId?: string;
+  }): Promise<ResolvedAsset>;
+  restore(input: {
+    globalAssetId: string;
+    deleteOperationId: string;
+  }): Promise<ResolvedAsset>;
 }
 
 export type PersonalGlobalAssetHttpClientOptions =
@@ -72,10 +79,35 @@ function fileNameOf(file: Blob): string | undefined {
     : undefined;
 }
 
+function newOperationId(prefix: string): string {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset operation ids");
+  }
+  return `${prefix}:${cryptoObject.randomUUID()}`;
+}
+
+function stableOperationId(
+  input: object,
+  requested: string | undefined,
+  generatedIds: WeakMap<object, string>,
+  prefix: string,
+  label: string,
+): string {
+  if (requested !== undefined) return required(requested, label);
+  const existing = generatedIds.get(input);
+  if (existing) return existing;
+  const generated = newOperationId(prefix);
+  generatedIds.set(input, generated);
+  return generated;
+}
+
 export function createPersonalGlobalAssetHttpClient(
   options: PersonalGlobalAssetHttpClientOptions = {},
 ): PersonalGlobalAssetHttpClient {
   const fetch = options.fetch ?? globalThis.fetch;
+  const generatedImportIds = new WeakMap<object, string>();
+  const generatedTrashIds = new WeakMap<object, string>();
   const connection = async (): Promise<ProjectAssetHttpConnection> => {
     if (options.resolveConnection) return options.resolveConnection();
     return {
@@ -139,6 +171,13 @@ export function createPersonalGlobalAssetHttpClient(
       );
     },
     async importFile(input) {
+      const globalAssetId = stableOperationId(
+        input,
+        input.globalAssetId,
+        generatedImportIds,
+        "global",
+        "global asset id",
+      );
       const fileName = required(
         input.fileName ?? fileNameOf(input.file),
         "file name",
@@ -151,6 +190,7 @@ export function createPersonalGlobalAssetHttpClient(
         form.append("file", input.file, fileName);
       }
       form.append("kind", input.kind);
+      form.append("globalAssetId", globalAssetId);
       return resolvedAsset(
         await fetch(
           url,
@@ -181,25 +221,48 @@ export function createPersonalGlobalAssetHttpClient(
     },
     async trash(input) {
       const globalAssetId = required(input.globalAssetId, "global asset id");
+      const deleteOperationId = stableOperationId(
+        input,
+        input.deleteOperationId,
+        generatedTrashIds,
+        "delete",
+        "delete operation id",
+      );
       const { connected, url } = await target(
         `/${encodeURIComponent(globalAssetId)}`,
       );
       return resolvedAsset(
         await fetch(
           url,
-          requestInit({ method: "DELETE", headers: headers(connected) }),
+          requestInit({
+            method: "DELETE",
+            headers: headers(connected, {
+              "content-type": "application/json",
+            }),
+            body: JSON.stringify({ deleteOperationId }),
+          }),
         ),
       );
     },
     async restore(input) {
       const globalAssetId = required(input.globalAssetId, "global asset id");
+      const deleteOperationId = required(
+        input.deleteOperationId,
+        "delete operation id",
+      );
       const { connected, url } = await target(
         `/${encodeURIComponent(globalAssetId)}/restore`,
       );
       return resolvedAsset(
         await fetch(
           url,
-          requestInit({ method: "POST", headers: headers(connected) }),
+          requestInit({
+            method: "POST",
+            headers: headers(connected, {
+              "content-type": "application/json",
+            }),
+            body: JSON.stringify({ deleteOperationId }),
+          }),
         ),
       );
     },

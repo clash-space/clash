@@ -29,7 +29,6 @@ embedded copies of its runtime.
 | `projects` | Manage projects                                                                                                    |
 | `canvas`   | Canvas node operations through the discovered local-api host                                                       |
 | `canvases` | Manage Canvases inside a Project                                                                                   |
-| `tasks`    | Generation task management                                                                                         |
 | `plugin`   | Local executable plugins: `create`, `checkout`, `validate`, `activate`, `install`, `list`, `uninstall`, `rollback` |
 | `models`   | Model catalog, provider routing, local audio models                                                                |
 | `host`     | Host discovery plus machine control surfaces such as public Asset storage                                          |
@@ -41,6 +40,11 @@ embedded copies of its runtime.
 | `director` | Director Stage scenes                                                                                              |
 | `doctor`   | Local health checks                                                                                                |
 | `auth`     | Optional cloud sync (OAuth 2.0 + PKCE)                                                                             |
+
+Raw hosted task polling is intentionally not a CLI surface. `canvas execute`
+returns the pending child node identity; observe that node with `canvas get`
+until its product status is `completed` or `failed`, then resolve its
+Project Asset through `assets get` when media readback is needed.
 
 ## The plugin loop
 
@@ -88,13 +92,15 @@ clash assets restore --asset <project-asset-id>
 clash assets global list
 clash assets global get --asset <global-asset-id>
 clash assets global import --file <path>
+clash assets global delete --asset <global-asset-id> --yes
+clash assets global restore --asset <global-asset-id>
 ```
 
 Admission and publication create an identity in the destination scope; they do
 not reuse a Global Asset ID as a Project Asset ID or vice versa. The stdio MCP
-peer exposes the same Global list/read/import, admit, and publish operations.
-Terminal purge is not exposed by the Local HTTP/SDK surface yet and therefore
-has no CLI or MCP command.
+peer exposes the same Global list/read/import/trash/restore, admit, and publish
+operations. Terminal purge is not exposed by the Local HTTP/SDK surface yet and
+therefore has no CLI or MCP command.
 
 The CLI is the intended future component manager for daemon and Desktop
 lifecycle. Today, npm and Desktop share compatible-host discovery, the startup

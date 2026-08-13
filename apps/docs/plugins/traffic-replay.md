@@ -62,10 +62,21 @@ music, reference inputs, and queued resume paths where the catalog exposes
 them. A successful HTTP response is not enough; grade the completed backend
 result.
 
-The current repo-owned live recordings cover Google, MiniMax, and the Hilo Hub
-peer. The first-party fal executor has contract and durable-backend coverage,
-but no checked-in real-upstream traffic fixture yet; it is therefore not
-live-verified by this suite.
+The repo-owned replay matrix is evidence-specific; a cassette proves only the
+requests it actually contains:
+
+| Provider                | Checked-in upstream evidence                                                          | Explicit boundary                                                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google                  | Text, image, TTS, ASR, Veo, and the separate Gemini Omni interaction                  | The matching backend suites grade the final Project result.                                                                                                 |
+| MiniMax                 | M3, TTS, Music, H3 base/start-end, and H3 mixed image/audio references                | Mixed-reference order is asserted from the recorded request.                                                                                                |
+| Hilo Hub peer           | H3 and Seedance image+MP3 reference runs                                              | This proves the installed peer path, not a first-party vendor account.                                                                                      |
+| Volcengine ModelArk     | Three successful Seedance 2.0 runs: text, image+audio reference, and first/last frame | The same cassette's fourth 2.0 data-URL video submission was rejected upstream and is retained only as failure evidence; it does not prove video extension. |
+| Volcengine public-video | One successful Seedance 2.5 edit using a TOS-published reference URL                  | This separate cassette is the only checked-in 2.5 success evidence.                                                                                         |
+| Volcengine Seed Audio   | Three successful text-only requests                                                   | Their prompts differ, but all three recorded request bodies omit `references`; they do not prove image/audio reference inputs.                              |
+
+The first-party fal and Pika executors have contract and durable-backend
+coverage, but no checked-in credentialed paid-upstream cassette. They are not
+live-verified by this replay matrix.
 
 ### Third-party provider plugins
 
@@ -105,8 +116,9 @@ env -u GOOGLE_API_KEY -u GEMINI_API_KEY -u CLASH_MINIMAX_API_KEY \
 The matching opt-in live recorder entry point is
 `pnpm --filter @clash/local-api test:providers:live` with
 `CLASH_PROVIDER_E2E=live` and the config file above. These maintained commands
-cover Google, MiniMax, and Hilo. Volcengine has its own provider workstream and
-is deliberately not hidden inside either command.
+cover Google, MiniMax, Hilo, and every checked-in Volcengine cassette. The
+Volcengine live recorder remains opt-in: run
+`src/real-generation-volcengine.test.ts` with a fresh private output path.
 
 Replay blocks real egress from the instrumented plugin process. Requests
 match by method, normalized URL, and normalized body, and matching fixtures are

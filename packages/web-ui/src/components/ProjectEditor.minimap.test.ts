@@ -259,10 +259,6 @@ describe("ProjectEditor canvas minimap", () => {
       "mechanism missing",
     ).toBe(true);
     expect(
-      sourceContains(source, "projectAssetThumbnailSource(resolvedAsset)"),
-      "mechanism missing",
-    ).toBe(true);
-    expect(
       sourceContains(source, "entry.node.data?.previewUrl"),
       "must not reappear",
     ).toBe(false);

@@ -1,4 +1,12 @@
-# Agent-First Local v1 CLI CAS Audit
+# Historical: Agent-First Local v1 CLI CAS Audit
+
+> **Status:** Point-in-time audit, superseded as a command or coverage
+> inventory. The generic implicit-observation and no-force findings remain
+> architectural context, but Asset commands, metadata paths, and test coverage
+> below reflect the date shown. Use live `clash --help`, the
+> [Asset system](../apps/docs/guide/asset-system.md), and the
+> [Durable Run protocol](../apps/docs/guide/durable-run-protocol.md) for current
+> contracts. Cloud Asset storage and Cloud execution remain design-only.
 
 Last updated: 2026-07-10
 

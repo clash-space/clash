@@ -1,6 +1,6 @@
 # Local Loro Host Architecture
 
-Last updated: 2026-06-20
+Last updated: 2026-08-13
 
 ## Purpose
 
@@ -15,6 +15,15 @@ Local Host is the only local persistent Loro replica for a project.
 Desktop UI, CLI, and local ACP agents are actors in v0, not direct Loro peers.
 Cloud ProjectRoom remains a cloud persistent replica and admission point.
 ```
+
+Status boundary: this document defines the replica and admission topology. For
+media identity, replication order, deletion, and multi-device availability,
+[`apps/docs/guide/asset-system.md`](../apps/docs/guide/asset-system.md) is the
+canonical contract. For Provider execution ownership and recovery,
+[`apps/docs/guide/durable-run-protocol.md`](../apps/docs/guide/durable-run-protocol.md)
+is canonical. The Cloud Asset and Durable Run adapters described by those
+documents are target design only; the current delivery implements their Local
+ports and preserves the existing hosted `ProjectRoom` infrastructure.
 
 v1 follow-up docs:
 
@@ -38,7 +47,7 @@ and agent-editable projection roots are defined in
 `Loro peer`
 
 : A running entity that owns a `LoroDoc` and exchanges Loro updates.
-  Loro peer ids are operation-source ids. They are not product identities.
+Loro peer ids are operation-source ids. They are not product identities.
 
 `Persistent replica`
 
@@ -47,31 +56,31 @@ and agent-editable projection roots are defined in
 `Local Host`
 
 : The single local process that owns the persistent replica for a project.
-  The process name is `clashd`. Desktop embeds the same host shape; headless
-  operation is still `clashd`, not a separate legacy daemon model.
+The process name is `clashd`. Desktop embeds the same host shape; headless
+operation is still `clashd`, not a separate legacy daemon model.
 
 `Actor`
 
 : A product identity that performs work: Desktop user, CLI, Codex agent,
-  Claude agent, cloud agent, etc. Actors are not the same as Loro peer ids.
+Claude agent, cloud agent, etc. Actors are not the same as Loro peer ids.
 
 `Mutation envelope`
 
 : Durable attribution around a canvas mutation:
-  actor id, session id, command type, update hash, before/after version,
-  timestamp, and optional tool/task ids.
+actor id, session id, command type, update hash, before/after version,
+timestamp, and optional tool/task ids.
 
 ## Planes
 
 Clash should keep these concerns separate.
 
-| Plane | Owns | Persistence |
-| --- | --- | --- |
-| Control Plane | identity, membership, auth, billing, quotas, cloud room admission | Cloud DB / local auth state |
-| Runtime Plane | ACP sessions, agent runs, leases, tool logs, transcripts, cancel/error state | Local DB / cloud DB as policy allows |
-| Data Plane | canvas nodes, edges, stable layout, asset refs, task projection | Loro snapshot + update log |
-| Presence Plane | cursor, selection, online actors, current tool/action | Ephemeral sideband |
-| Audit Plane | actor/session to mutation/update mapping | Append-only local/cloud log |
+| Plane          | Owns                                                                                       | Persistence                          |
+| -------------- | ------------------------------------------------------------------------------------------ | ------------------------------------ |
+| Control Plane  | identity, membership, auth, billing, quotas, cloud room admission                          | Cloud DB / local auth state          |
+| Runtime Plane  | ACP sessions, agent runs, leases, tool logs, transcripts, cancel/error state               | Local DB / cloud DB as policy allows |
+| Data Plane     | canvas nodes, edges, stable layout, ProjectAsset entries, Action bindings, task projection | Loro snapshot + update log           |
+| Presence Plane | cursor, selection, online actors, current tool/action                                      | Ephemeral sideband                   |
+| Audit Plane    | actor/session to mutation/update mapping                                                   | Append-only local/cloud log          |
 
 ## Data Ownership
 
@@ -298,25 +307,48 @@ If marker and `CLASH_PROJECT_ID` conflict, fail unless `--project` is explicit.
 
 ## Team Asset Replication (target contract)
 
-An Asset carries one stable, storage-neutral resource identifier. Local files,
-cloud objects, and their URLs are projections of that identifier, not alternate
-asset identities. The Host storage boundary supplies `read`, `write`, and
-`project`; GUI, CLI, MCP, and plugins share the same readonly Asset contract and
+> Design only: team upload, Registry claims/readiness, verified multi-device
+> download, and physical OSS reclamation are not implemented by the current
+> Local delivery.
+
+An Asset carries one stable, storage-neutral `resourceId`. Local files, cloud
+objects, and their URLs are Host projections of that identifier, not alternate
+Asset identities. `ProjectAssetEntry` is Project membership;
+`ActionAssetBinding` is the authoritative media-use reference. GUI, CLI, MCP,
+renderers, and plugins consume the same read-only `ResolvedAsset` contract and
 must not inspect storage keys.
 
-When a device creates an asset in a shared Project, it writes an immutable local
-resource first. A background replicator uploads and verifies the blob in team
-object storage before admitting the Asset reference to shared Project state.
-Peers may apply the Loro update immediately: each peer enqueues an asynchronous
-download, verifies the resource, atomically installs it in its local store, and
-then emits a new local projection. Project sync never waits for media transfer,
-and media bytes never travel through Loro.
+For a **local-origin** Asset, the creating Host verifies and installs immutable
+bytes in Local CAS first, then commits the ProjectAsset and optional Action
+binding to its local Loro replica. That metadata may replicate through
+`ProjectRoom` immediately, before OSS upload finishes. Peers show the shared
+structure with an uploading/unavailable projection and enqueue a download only
+after the Resource Registry reports the `resourceId` ready. The creator's
+Resource replicator uploads silently, verifies digest and size, and records the
+replaceable OSS binding in the Registry; it does not add an OSS key or URL to
+Loro and does not require a second Project mutation.
 
-Upload/download progress, retry state, local cache presence, loopback URLs, and
-signed cloud URLs remain per-device state. A peer that has not downloaded a
-resource reports a downloading or unavailable projection without changing the
-shared Asset identity. Local copies are disposable caches; cloud retention is
-governed by shared Asset references.
+For a future **Cloud/Web-origin** Action output, OSS is the only durable byte
+store. The Cloud owner may synchronize the ActionRun/placeholder structure
+early, but it writes and verifies an idempotent staging object before publishing
+the output ProjectAsset and Action binding through `ProjectRoom`. Registry
+reconciliation derives the Project claim from that admitted Project state. A
+crash before publication leaves only TTL-bound staging; a crash after
+publication is repaired by claim reconciliation while the staging lease
+protects the bytes.
+
+Every receiving Host downloads asynchronously, verifies the Resource, and
+atomically installs it in Local CAS before reporting `ready`. Upload/download
+progress, retry state, local availability, loopback URLs, signed cloud URLs,
+and object keys remain per-device or Registry state. Project sync never waits
+for media transfer, and media bytes never travel through Loro.
+
+Logical Asset deletion is a Loro `active -> trashed` transition and remains
+undoable/restorable during the recovery window without an OSS operation.
+Terminal purge later releases the Project claim; physical deletion is an
+asynchronous Registry consequence allowed only after a current zero-claim
+check. Failure may retain extra bytes but cannot change synchronized Project
+state or resurrect a purged Asset.
 
 ## Existing Code To Reuse
 
@@ -346,6 +378,6 @@ packages/loro-runtime/
 Cloud and local should be adapters over the same core:
 
 ```text
-Cloud adapter: Durable Object + D1/R2 + Better Auth
-Local adapter: Node ws + filesystem + local user/scoped token
+Future Cloud adapter: Workflow/ProjectRoom + hosted DB/OSS + hosted auth
+Current Local adapter: Node ws + filesystem + local user/scoped token
 ```

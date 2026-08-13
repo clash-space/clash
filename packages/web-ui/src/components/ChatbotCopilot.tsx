@@ -52,6 +52,7 @@ import { applyAgentAttribution, parseAgentCanvasPatch } from '@clash/web-ui/lib/
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
+import { assetThumbnailImageUrl } from '../features/assets/media-url';
 import { useIsBelowLg } from '@clash/web-ui/lib/hooks/useMediaQuery';
 import { useAgentCopilot, type CustomEvent } from '@clash/web-ui/hooks/useAgentCopilot';
 import { getRuntimeConfig, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
@@ -1707,9 +1708,7 @@ function ChatbotCopilot({
                 if (!assetId) continue;
                 try {
                     const asset = await getAsset(projectId, assetId);
-                    const previewUrl = n.type === 'video'
-                        ? (asset.thumbnailUrl ?? asset.url)
-                        : asset.url;
+                    const previewUrl = assetThumbnailImageUrl(asset);
                     if (previewUrl) next.set(n.id, previewUrl);
                 } catch {
                     // asset not yet available; skip

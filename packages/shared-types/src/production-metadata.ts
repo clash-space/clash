@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  MetadataAttachmentTargetSchema,
+  type MetadataAttachmentTarget,
+} from "./metadata-attachments.js";
+
 const FrameRangeSchema = z.object({
   startFrame: z.number().int().min(0),
   endFrame: z.number().int().min(0),
@@ -28,20 +33,22 @@ export const AudioSectionSchema = z.object({
   startFrame: z.number().int().min(0),
   endFrame: z.number().int().min(0),
   label: z.string().min(1),
-  semanticLabel: z.enum([
-    "intro",
-    "verse",
-    "pre-chorus",
-    "chorus",
-    "bridge",
-    "drop",
-    "buildup",
-    "breakdown",
-    "outro",
-    "instrumental",
-    "detected-beats",
-    "unknown",
-  ]).optional(),
+  semanticLabel: z
+    .enum([
+      "intro",
+      "verse",
+      "pre-chorus",
+      "chorus",
+      "bridge",
+      "drop",
+      "buildup",
+      "breakdown",
+      "outro",
+      "instrumental",
+      "detected-beats",
+      "unknown",
+    ])
+    .optional(),
   semanticConfidence: z.number().min(0).max(1).optional(),
   reviewRequired: z.boolean().optional(),
   semanticSource: z.string().min(1).optional(),
@@ -60,7 +67,13 @@ export const AudioBeatMetadataSchema = z.object({
   energyCurve: z.array(AudioEnergyPointSchema).default([]),
 });
 
-export const AudioStemTypeSchema = z.enum(["vocal", "instrumental", "drums", "bass", "other"]);
+export const AudioStemTypeSchema = z.enum([
+  "vocal",
+  "instrumental",
+  "drums",
+  "bass",
+  "other",
+]);
 
 export const AudioStemAssetSchema = z.object({
   stemAssetId: z.string().min(1),
@@ -85,30 +98,34 @@ export const AudioStemSeparationMetadataSchema = z.object({
   decisionLog: z.array(z.string().min(1)).default([]),
 });
 
-export const LyricsAlignmentUnitSchema = z.object({
-  lineId: z.string().min(1),
-  wordId: z.string().min(1).optional(),
-  text: z.string().min(1),
-  startMs: z.number().min(0),
-  endMs: z.number().min(0),
-  startFrame: z.number().int().min(0).optional(),
-  endFrame: z.number().int().min(0).optional(),
-  confidence: z.number().min(0).max(1),
-  source: z.string().min(1),
-}).refine((unit) => unit.endMs > unit.startMs, {
-  message: "lyrics alignment unit endMs must be greater than startMs",
-  path: ["endMs"],
-});
+export const LyricsAlignmentUnitSchema = z
+  .object({
+    lineId: z.string().min(1),
+    wordId: z.string().min(1).optional(),
+    text: z.string().min(1),
+    startMs: z.number().min(0),
+    endMs: z.number().min(0),
+    startFrame: z.number().int().min(0).optional(),
+    endFrame: z.number().int().min(0).optional(),
+    confidence: z.number().min(0).max(1),
+    source: z.string().min(1),
+  })
+  .refine((unit) => unit.endMs > unit.startMs, {
+    message: "lyrics alignment unit endMs must be greater than startMs",
+    path: ["endMs"],
+  });
 
-export const LyricsUnmatchedRangeSchema = z.object({
-  startMs: z.number().min(0),
-  endMs: z.number().min(0),
-  text: z.string().optional(),
-  reason: z.string().optional(),
-}).refine((range) => range.endMs > range.startMs, {
-  message: "lyrics unmatched range endMs must be greater than startMs",
-  path: ["endMs"],
-});
+export const LyricsUnmatchedRangeSchema = z
+  .object({
+    startMs: z.number().min(0),
+    endMs: z.number().min(0),
+    text: z.string().optional(),
+    reason: z.string().optional(),
+  })
+  .refine((range) => range.endMs > range.startMs, {
+    message: "lyrics unmatched range endMs must be greater than startMs",
+    path: ["endMs"],
+  });
 
 export const LyricsAlignmentMetadataSchema = z.object({
   kind: z.literal("audio.lyrics-alignment"),
@@ -119,84 +136,90 @@ export const LyricsAlignmentMetadataSchema = z.object({
   unmatchedRanges: z.array(LyricsUnmatchedRangeSchema).default([]),
 });
 
-export const AsrTimedWordSchema = z.object({
-  id: z.string().min(1),
-  text: z.string().min(1),
-  startMs: z.number().int().min(0),
-  endMs: z.number().int().min(0),
-  confidence: z.number().min(0).max(1).optional(),
-  speakerId: z.string().min(1).optional(),
-}).refine((word) => word.endMs > word.startMs, {
-  message: "ASR word endMs must be greater than startMs",
-  path: ["endMs"],
-});
-
-export const AsrTimedSegmentSchema = z.object({
-  id: z.string().min(1),
-  text: z.string().min(1),
-  startMs: z.number().int().min(0),
-  endMs: z.number().int().min(0),
-  wordIds: z.array(z.string().min(1)),
-  speakerId: z.string().min(1).optional(),
-}).refine((segment) => segment.endMs > segment.startMs, {
-  message: "ASR segment endMs must be greater than startMs",
-  path: ["endMs"],
-});
-
-export const AsrTimedTranscriptSchema = z.object({
-  schemaVersion: z.literal(1),
-  kind: z.literal("clash.asr.timed-transcript"),
-  timebase: z.literal("milliseconds"),
-  alignment: z.literal("word"),
-  text: z.string().min(1),
-  backendId: z.string().min(1),
-  modelId: z.string().min(1),
-  language: z.string().min(1).optional(),
-  durationMs: z.number().int().min(0),
-  words: z.array(AsrTimedWordSchema).min(1),
-  segments: z.array(AsrTimedSegmentSchema),
-}).superRefine((transcript, context) => {
-  const wordIds = new Set<string>();
-  let previousStartMs = -1;
-  let maxEndMs = 0;
-  transcript.words.forEach((word, index) => {
-    if (wordIds.has(word.id)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `duplicate ASR word id: ${word.id}`,
-        path: ["words", index, "id"],
-      });
-    }
-    wordIds.add(word.id);
-    if (word.startMs < previousStartMs) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "ASR words must be ordered by startMs",
-        path: ["words", index, "startMs"],
-      });
-    }
-    previousStartMs = word.startMs;
-    maxEndMs = Math.max(maxEndMs, word.endMs);
+export const AsrTimedWordSchema = z
+  .object({
+    id: z.string().min(1),
+    text: z.string().min(1),
+    startMs: z.number().int().min(0),
+    endMs: z.number().int().min(0),
+    confidence: z.number().min(0).max(1).optional(),
+    speakerId: z.string().min(1).optional(),
+  })
+  .refine((word) => word.endMs > word.startMs, {
+    message: "ASR word endMs must be greater than startMs",
+    path: ["endMs"],
   });
-  if (transcript.durationMs < maxEndMs) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "ASR durationMs must cover every word",
-      path: ["durationMs"],
-    });
-  }
-  transcript.segments.forEach((segment, segmentIndex) => {
-    segment.wordIds.forEach((wordId, wordIndex) => {
-      if (!wordIds.has(wordId)) {
+
+export const AsrTimedSegmentSchema = z
+  .object({
+    id: z.string().min(1),
+    text: z.string().min(1),
+    startMs: z.number().int().min(0),
+    endMs: z.number().int().min(0),
+    wordIds: z.array(z.string().min(1)),
+    speakerId: z.string().min(1).optional(),
+  })
+  .refine((segment) => segment.endMs > segment.startMs, {
+    message: "ASR segment endMs must be greater than startMs",
+    path: ["endMs"],
+  });
+
+export const AsrTimedTranscriptSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: z.literal("clash.asr.timed-transcript"),
+    timebase: z.literal("milliseconds"),
+    alignment: z.literal("word"),
+    text: z.string().min(1),
+    backendId: z.string().min(1),
+    modelId: z.string().min(1),
+    language: z.string().min(1).optional(),
+    durationMs: z.number().int().min(0),
+    words: z.array(AsrTimedWordSchema).min(1),
+    segments: z.array(AsrTimedSegmentSchema),
+  })
+  .superRefine((transcript, context) => {
+    const wordIds = new Set<string>();
+    let previousStartMs = -1;
+    let maxEndMs = 0;
+    transcript.words.forEach((word, index) => {
+      if (wordIds.has(word.id)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `ASR segment references unknown word id: ${wordId}`,
-          path: ["segments", segmentIndex, "wordIds", wordIndex],
+          message: `duplicate ASR word id: ${word.id}`,
+          path: ["words", index, "id"],
         });
       }
+      wordIds.add(word.id);
+      if (word.startMs < previousStartMs) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "ASR words must be ordered by startMs",
+          path: ["words", index, "startMs"],
+        });
+      }
+      previousStartMs = word.startMs;
+      maxEndMs = Math.max(maxEndMs, word.endMs);
+    });
+    if (transcript.durationMs < maxEndMs) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "ASR durationMs must cover every word",
+        path: ["durationMs"],
+      });
+    }
+    transcript.segments.forEach((segment, segmentIndex) => {
+      segment.wordIds.forEach((wordId, wordIndex) => {
+        if (!wordIds.has(wordId)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `ASR segment references unknown word id: ${wordId}`,
+            path: ["segments", segmentIndex, "wordIds", wordIndex],
+          });
+        }
+      });
     });
   });
-});
 
 export const TranscriptWordSchema = z.object({
   id: z.string().min(1),
@@ -249,17 +272,21 @@ export const TalkingHeadMetadataSchema = z.object({
   words: z.array(TranscriptWordSchema),
   cuts: z.array(TextCutSchema).default([]),
   captionCues: z.array(CaptionCueSchema).default([]),
-  disfluencies: z.array(z.object({
-    id: z.string().optional(),
-    wordId: z.string().optional(),
-    startFrame: z.number().int().min(0).optional(),
-    endFrame: z.number().int().min(0).optional(),
-    text: z.string().optional(),
-    type: z.enum(["filler", "silence", "tone-particle", "repeat"]),
-    requiresReview: z.boolean().default(false),
-    confidence: z.number().min(0).max(1).optional(),
-    detectionSource: z.string().min(1).optional(),
-  })).default([]),
+  disfluencies: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        wordId: z.string().optional(),
+        startFrame: z.number().int().min(0).optional(),
+        endFrame: z.number().int().min(0).optional(),
+        text: z.string().optional(),
+        type: z.enum(["filler", "silence", "tone-particle", "repeat"]),
+        requiresReview: z.boolean().default(false),
+        confidence: z.number().min(0).max(1).optional(),
+        detectionSource: z.string().min(1).optional(),
+      }),
+    )
+    .default([]),
 });
 
 export const RightsMetadataSchema = z.object({
@@ -280,10 +307,12 @@ export const ReferenceVideoMetadataSchema = z.object({
   sourceUrl: z.string().min(1),
   rights: RightsMetadataSchema,
   shots: z.array(ReferenceShotSchema).default([]),
-  nonCopyingQa: z.object({
-    status: z.enum(["passed", "requires-review", "failed"]),
-    similarityScore: z.number().min(0).max(1).optional(),
-  }).optional(),
+  nonCopyingQa: z
+    .object({
+      status: z.enum(["passed", "requires-review", "failed"]),
+      similarityScore: z.number().min(0).max(1).optional(),
+    })
+    .optional(),
 });
 
 export const ReferenceDownloadSourceLedgerSchema = z.object({
@@ -318,37 +347,41 @@ function hasReferenceDownloadFinalExportRights(
 ): boolean {
   return (
     !metadata.finalExportAllowed ||
-    (metadata.sourceLedger.redistributionAllowed && metadata.sourceLedger.derivativeAllowed)
+    (metadata.sourceLedger.redistributionAllowed &&
+      metadata.sourceLedger.derivativeAllowed)
   );
 }
 
-export const ReferenceDownloadMetadataSchema = ReferenceDownloadMetadataBaseSchema.refine(
-  hasReferenceDownloadFinalExportRights,
-  {
-    message: "final export requires derivative and redistribution rights",
-    path: ["finalExportAllowed"],
-  },
-);
+export const ReferenceDownloadMetadataSchema =
+  ReferenceDownloadMetadataBaseSchema.refine(
+    hasReferenceDownloadFinalExportRights,
+    {
+      message: "final export requires derivative and redistribution rights",
+      path: ["finalExportAllowed"],
+    },
+  );
 
-export const VisualMomentCandidateSchema = z.object({
-  id: z.string().min(1),
-  startMs: z.number().min(0),
-  endMs: z.number().min(0),
-  peakMs: z.number().min(0),
-  startFrame: z.number().int().min(0).optional(),
-  endFrame: z.number().int().min(0).optional(),
-  peakFrame: z.number().int().min(0).optional(),
-  sceneIndex: z.number().int().min(0),
-  motion: z.number().min(0).max(1),
-  quality: z.number().min(0).max(1),
-  action: z.number().min(0).max(1).optional(),
-  emotion: z.number().min(0).max(1).optional(),
-  semantic: z.string().min(1).optional(),
-  tags: z.array(z.string()).default([]),
-}).refine((candidate) => candidate.endMs > candidate.startMs, {
-  message: "visual moment endMs must be greater than startMs",
-  path: ["endMs"],
-});
+export const VisualMomentCandidateSchema = z
+  .object({
+    id: z.string().min(1),
+    startMs: z.number().min(0),
+    endMs: z.number().min(0),
+    peakMs: z.number().min(0),
+    startFrame: z.number().int().min(0).optional(),
+    endFrame: z.number().int().min(0).optional(),
+    peakFrame: z.number().int().min(0).optional(),
+    sceneIndex: z.number().int().min(0),
+    motion: z.number().min(0).max(1),
+    quality: z.number().min(0).max(1),
+    action: z.number().min(0).max(1).optional(),
+    emotion: z.number().min(0).max(1).optional(),
+    semantic: z.string().min(1).optional(),
+    tags: z.array(z.string()).default([]),
+  })
+  .refine((candidate) => candidate.endMs > candidate.startMs, {
+    message: "visual moment endMs must be greater than startMs",
+    path: ["endMs"],
+  });
 
 export const VideoVisualMomentMetadataSchema = z.object({
   kind: z.literal("video.visual-moments"),
@@ -377,26 +410,38 @@ export const CharacterReferenceViewSchema = z.object({
 
 export const ImageStoryboardMetadataSchema = z.object({
   kind: z.literal("image.storyboard-consistency"),
-  characters: z.array(z.object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    referenceAssetIds: z.array(z.string()).min(1),
-    requiredViews: z.array(CharacterReferenceViewKindSchema).default([]),
-    referenceViews: z.array(CharacterReferenceViewSchema).default([]),
-  })).default([]),
-  scenes: z.array(z.object({
-    id: z.string().min(1),
-    referenceAssetIds: z.array(z.string()).default([]),
-    prompt: z.string().min(1),
-  })).default([]),
-  panels: z.array(z.object({
-    id: z.string().min(1),
-    sceneId: z.string().min(1),
-    characterIds: z.array(z.string()).default([]),
-    assetId: z.string().min(1),
-    path: z.string().min(1).optional(),
-    consistencyScore: z.number().min(0).max(1).optional(),
-  })).default([]),
+  characters: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        referenceAssetIds: z.array(z.string()).min(1),
+        requiredViews: z.array(CharacterReferenceViewKindSchema).default([]),
+        referenceViews: z.array(CharacterReferenceViewSchema).default([]),
+      }),
+    )
+    .default([]),
+  scenes: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        referenceAssetIds: z.array(z.string()).default([]),
+        prompt: z.string().min(1),
+      }),
+    )
+    .default([]),
+  panels: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        sceneId: z.string().min(1),
+        characterIds: z.array(z.string()).default([]),
+        assetId: z.string().min(1),
+        path: z.string().min(1).optional(),
+        consistencyScore: z.number().min(0).max(1).optional(),
+      }),
+    )
+    .default([]),
 });
 
 export const SemanticReferenceRoleKindSchema = z.enum([
@@ -514,7 +559,11 @@ export const AnalysisBackendBenchmarkMetadataSchema = z.object({
   decisionLog: z.array(z.string().min(1)).default([]),
 });
 
-export const ImageEmbeddingDistanceMetricSchema = z.enum(["cosine", "dot", "euclidean"]);
+export const ImageEmbeddingDistanceMetricSchema = z.enum([
+  "cosine",
+  "dot",
+  "euclidean",
+]);
 
 export const ImageEmbeddingBaselineForSchema = z.enum([
   "identity",
@@ -548,7 +597,10 @@ export const ImageEmbeddingStoreMetadataSchema = z.object({
   copyOnWriteRequired: z.boolean(),
 });
 
-export const ImageComfyuiApiFormatSchema = z.enum(["comfyui-api-json", "comfyui-ui-json"]);
+export const ImageComfyuiApiFormatSchema = z.enum([
+  "comfyui-api-json",
+  "comfyui-ui-json",
+]);
 
 export const ImageComfyuiModelTypeSchema = z.enum([
   "checkpoint",
@@ -564,7 +616,10 @@ export const ImageComfyuiModelReferenceSchema = z.object({
   name: z.string().min(1),
   type: ImageComfyuiModelTypeSchema,
   path: z.string().min(1).optional(),
-  hash: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  hash: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
   license: z.string().min(1).optional(),
 });
 
@@ -573,7 +628,10 @@ export const ImageComfyuiCustomNodeSchema = z.object({
   source: z.string().min(1).optional(),
   version: z.string().min(1).optional(),
   commit: z.string().min(1).optional(),
-  hash: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  hash: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
 });
 
 export const ImageComfyuiInputKindSchema = z.enum([
@@ -599,9 +657,17 @@ export const ImageComfyuiInputSlotSchema = z.object({
   path: z.string().min(1).optional(),
 });
 
-export const ImageComfyuiOutputStatusSchema = z.enum(["planned", "materialized"]);
+export const ImageComfyuiOutputStatusSchema = z.enum([
+  "planned",
+  "materialized",
+]);
 
-export const ImageComfyuiOutputMediaTypeSchema = z.enum(["image", "image-sequence", "mask", "metadata"]);
+export const ImageComfyuiOutputMediaTypeSchema = z.enum([
+  "image",
+  "image-sequence",
+  "mask",
+  "metadata",
+]);
 
 export const ImageComfyuiOutputSchema = z.object({
   outputAssetId: z.string().min(1),
@@ -609,7 +675,10 @@ export const ImageComfyuiOutputSchema = z.object({
   outputName: z.string().min(1).optional(),
   mediaType: ImageComfyuiOutputMediaTypeSchema,
   path: z.string().min(1),
-  fileHash: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  fileHash: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
   status: ImageComfyuiOutputStatusSchema,
 });
 
@@ -806,9 +875,18 @@ export const AdVisualQaMetadataSchema = z.object({
   decisionLog: z.array(z.string().min(1)).default([]),
 });
 
-export const ContentCredentialModeSchema = z.enum(["unsigned-manifest", "signed-c2pa", "external"]);
+export const ContentCredentialModeSchema = z.enum([
+  "unsigned-manifest",
+  "signed-c2pa",
+  "external",
+]);
 
-export const ContentCredentialSignatureStatusSchema = z.enum(["unsigned", "signed", "external", "failed"]);
+export const ContentCredentialSignatureStatusSchema = z.enum([
+  "unsigned",
+  "signed",
+  "external",
+  "failed",
+]);
 
 export const ContentCredentialIngredientRelationshipSchema = z.enum([
   "source",
@@ -822,7 +900,10 @@ export const ContentCredentialIngredientSchema = z.object({
   assetId: z.string().min(1).optional(),
   path: z.string().min(1),
   relationship: ContentCredentialIngredientRelationshipSchema,
-  hash: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  hash: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
   title: z.string().min(1).optional(),
   rights: z.string().min(1).optional(),
 });
@@ -838,7 +919,10 @@ export const ContentCredentialAssertionSchema = z.object({
   label: z.string().min(1),
   value: z.string().min(1),
   path: z.string().min(1).optional(),
-  hash: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  hash: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
 });
 
 export const ContentCredentialsMetadataSchema = z.object({
@@ -846,11 +930,17 @@ export const ContentCredentialsMetadataSchema = z.object({
   credentialId: z.string().min(1),
   targetAssetId: z.string().min(1),
   targetPath: z.string().min(1).optional(),
-  targetHash: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  targetHash: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
   mode: ContentCredentialModeSchema,
   signatureStatus: ContentCredentialSignatureStatusSchema,
   c2paManifestPath: z.string().min(1).optional(),
-  c2paManifestHash: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  c2paManifestHash: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
   issuer: z.string().min(1).optional(),
   ingredients: z.array(ContentCredentialIngredientSchema).default([]),
   actions: z.array(ContentCredentialActionSchema).default([]),
@@ -877,30 +967,40 @@ const ProductionMetadataBaseSchema = z.discriminatedUnion("kind", [
   ContentCredentialsMetadataSchema,
 ]);
 
-export const ProductionMetadataSchema = ProductionMetadataBaseSchema.superRefine((metadata, context) => {
-  if (metadata.kind === "reference.download" && !hasReferenceDownloadFinalExportRights(metadata)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "final export requires derivative and redistribution rights",
-      path: ["finalExportAllowed"],
-    });
-  }
-});
+export const ProductionMetadataSchema =
+  ProductionMetadataBaseSchema.superRefine((metadata, context) => {
+    if (
+      metadata.kind === "reference.download" &&
+      !hasReferenceDownloadFinalExportRights(metadata)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "final export requires derivative and redistribution rights",
+        path: ["finalExportAllowed"],
+      });
+    }
+  });
 
-export const AssetMetadataFillActionSchema = z.object({
-  actionId: z.string().min(1),
-  targetAssetId: z.string().min(1),
-  metadataKind: z.string().min(1),
-  metadata: ProductionMetadataSchema,
-  producer: z.string().min(1),
-  createdAt: z.string().optional(),
-});
+export const AssetMetadataFillActionSchema = z
+  .object({
+    actionId: z.string().min(1),
+    target: MetadataAttachmentTargetSchema,
+    metadataKind: z.string().min(1),
+    metadata: ProductionMetadataSchema,
+    producer: z.string().min(1),
+    createdAt: z.string().optional(),
+  })
+  .strict();
 
 export type AudioBeatMetadata = z.infer<typeof AudioBeatMetadataSchema>;
 export type AudioStemType = z.infer<typeof AudioStemTypeSchema>;
 export type AudioStemAsset = z.infer<typeof AudioStemAssetSchema>;
-export type AudioStemSeparationMetadata = z.infer<typeof AudioStemSeparationMetadataSchema>;
-export type LyricsAlignmentMetadata = z.infer<typeof LyricsAlignmentMetadataSchema>;
+export type AudioStemSeparationMetadata = z.infer<
+  typeof AudioStemSeparationMetadataSchema
+>;
+export type LyricsAlignmentMetadata = z.infer<
+  typeof LyricsAlignmentMetadataSchema
+>;
 export type AsrTimedWord = z.infer<typeof AsrTimedWordSchema>;
 export type AsrTimedSegment = z.infer<typeof AsrTimedSegmentSchema>;
 export type AsrTimedTranscript = z.infer<typeof AsrTimedTranscriptSchema>;
@@ -915,64 +1015,124 @@ export function projectAsrTimedTranscriptWords(
     throw new Error("fps must be a positive number");
   }
   const transcript = AsrTimedTranscriptSchema.parse(input);
-  return transcript.words.map((word) => TranscriptWordSchema.parse({
-    id: word.id,
-    text: word.text,
-    startFrame: Math.floor((word.startMs / 1000) * fps),
-    endFrame: Math.max(
-      Math.floor((word.startMs / 1000) * fps) + 1,
-      Math.ceil((word.endMs / 1000) * fps),
-    ),
-    ...(word.confidence === undefined ? {} : { confidence: word.confidence }),
-    ...(word.speakerId === undefined ? {} : { speakerId: word.speakerId }),
-  }));
+  return transcript.words.map((word) =>
+    TranscriptWordSchema.parse({
+      id: word.id,
+      text: word.text,
+      startFrame: Math.floor((word.startMs / 1000) * fps),
+      endFrame: Math.max(
+        Math.floor((word.startMs / 1000) * fps) + 1,
+        Math.ceil((word.endMs / 1000) * fps),
+      ),
+      ...(word.confidence === undefined ? {} : { confidence: word.confidence }),
+      ...(word.speakerId === undefined ? {} : { speakerId: word.speakerId }),
+    }),
+  );
 }
-export type ReferenceVideoMetadata = z.infer<typeof ReferenceVideoMetadataSchema>;
-export type ReferenceDownloadSourceLedger = z.infer<typeof ReferenceDownloadSourceLedgerSchema>;
+export type ReferenceVideoMetadata = z.infer<
+  typeof ReferenceVideoMetadataSchema
+>;
+export type ReferenceDownloadSourceLedger = z.infer<
+  typeof ReferenceDownloadSourceLedgerSchema
+>;
 export type ReferenceDownloadFile = z.infer<typeof ReferenceDownloadFileSchema>;
-export type ReferenceDownloadMetadata = z.infer<typeof ReferenceDownloadMetadataSchema>;
-export type VideoVisualMomentMetadata = z.infer<typeof VideoVisualMomentMetadataSchema>;
-export type CharacterReferenceViewKind = z.infer<typeof CharacterReferenceViewKindSchema>;
-export type CharacterReferenceView = z.infer<typeof CharacterReferenceViewSchema>;
-export type ImageStoryboardMetadata = z.infer<typeof ImageStoryboardMetadataSchema>;
+export type ReferenceDownloadMetadata = z.infer<
+  typeof ReferenceDownloadMetadataSchema
+>;
+export type VideoVisualMomentMetadata = z.infer<
+  typeof VideoVisualMomentMetadataSchema
+>;
+export type CharacterReferenceViewKind = z.infer<
+  typeof CharacterReferenceViewKindSchema
+>;
+export type CharacterReferenceView = z.infer<
+  typeof CharacterReferenceViewSchema
+>;
+export type ImageStoryboardMetadata = z.infer<
+  typeof ImageStoryboardMetadataSchema
+>;
 export type SemanticReferenceRole = z.infer<typeof SemanticReferenceRoleSchema>;
-export type SemanticReferenceRolesMetadata = z.infer<typeof SemanticReferenceRolesMetadataSchema>;
-export type ProductLogoQaReference = z.infer<typeof ProductLogoQaReferenceSchema>;
+export type SemanticReferenceRolesMetadata = z.infer<
+  typeof SemanticReferenceRolesMetadataSchema
+>;
+export type ProductLogoQaReference = z.infer<
+  typeof ProductLogoQaReferenceSchema
+>;
 export type ProductLogoQaCheck = z.infer<typeof ProductLogoQaCheckSchema>;
 export type ProductLogoQaMetadata = z.infer<typeof ProductLogoQaMetadataSchema>;
-export type AnalysisBackendBenchmarkMetric = z.infer<typeof AnalysisBackendBenchmarkMetricSchema>;
-export type AnalysisBackendBenchmarkCandidate = z.infer<typeof AnalysisBackendBenchmarkCandidateSchema>;
-export type AnalysisBackendBenchmarkMetadata = z.infer<typeof AnalysisBackendBenchmarkMetadataSchema>;
-export type ImageEmbeddingDistanceMetric = z.infer<typeof ImageEmbeddingDistanceMetricSchema>;
-export type ImageEmbeddingBaselineFor = z.infer<typeof ImageEmbeddingBaselineForSchema>;
-export type ImageEmbeddingStoreItem = z.infer<typeof ImageEmbeddingStoreItemSchema>;
-export type ImageEmbeddingStoreMetadata = z.infer<typeof ImageEmbeddingStoreMetadataSchema>;
+export type AnalysisBackendBenchmarkMetric = z.infer<
+  typeof AnalysisBackendBenchmarkMetricSchema
+>;
+export type AnalysisBackendBenchmarkCandidate = z.infer<
+  typeof AnalysisBackendBenchmarkCandidateSchema
+>;
+export type AnalysisBackendBenchmarkMetadata = z.infer<
+  typeof AnalysisBackendBenchmarkMetadataSchema
+>;
+export type ImageEmbeddingDistanceMetric = z.infer<
+  typeof ImageEmbeddingDistanceMetricSchema
+>;
+export type ImageEmbeddingBaselineFor = z.infer<
+  typeof ImageEmbeddingBaselineForSchema
+>;
+export type ImageEmbeddingStoreItem = z.infer<
+  typeof ImageEmbeddingStoreItemSchema
+>;
+export type ImageEmbeddingStoreMetadata = z.infer<
+  typeof ImageEmbeddingStoreMetadataSchema
+>;
 export type ImageComfyuiApiFormat = z.infer<typeof ImageComfyuiApiFormatSchema>;
 export type ImageComfyuiModelType = z.infer<typeof ImageComfyuiModelTypeSchema>;
-export type ImageComfyuiModelReference = z.infer<typeof ImageComfyuiModelReferenceSchema>;
-export type ImageComfyuiCustomNode = z.infer<typeof ImageComfyuiCustomNodeSchema>;
+export type ImageComfyuiModelReference = z.infer<
+  typeof ImageComfyuiModelReferenceSchema
+>;
+export type ImageComfyuiCustomNode = z.infer<
+  typeof ImageComfyuiCustomNodeSchema
+>;
 export type ImageComfyuiInputKind = z.infer<typeof ImageComfyuiInputKindSchema>;
 export type ImageComfyuiInputSlot = z.infer<typeof ImageComfyuiInputSlotSchema>;
 export type ImageComfyuiOutput = z.infer<typeof ImageComfyuiOutputSchema>;
-export type ImageComfyuiRunnerMetadata = z.infer<typeof ImageComfyuiRunnerMetadataSchema>;
+export type ImageComfyuiRunnerMetadata = z.infer<
+  typeof ImageComfyuiRunnerMetadataSchema
+>;
 export type StoryboardPromptPack = z.infer<typeof StoryboardPromptPackSchema>;
 export type AdDeliveryMetadata = z.infer<typeof AdDeliveryMetadataSchema>;
-export type AdDeliverySpecProjection = z.infer<typeof AdDeliverySpecProjectionSchema>;
+export type AdDeliverySpecProjection = z.infer<
+  typeof AdDeliverySpecProjectionSchema
+>;
 export type AdDeliveryExportProbe = z.infer<typeof AdDeliveryExportProbeSchema>;
-export type AdDeliveryVisualQaReport = z.infer<typeof AdDeliveryVisualQaReportSchema>;
-export type AdDeliveryExportValidationReceipt = z.infer<typeof AdDeliveryExportValidationReceiptSchema>;
+export type AdDeliveryVisualQaReport = z.infer<
+  typeof AdDeliveryVisualQaReportSchema
+>;
+export type AdDeliveryExportValidationReceipt = z.infer<
+  typeof AdDeliveryExportValidationReceiptSchema
+>;
 export type AdVisualQaCheckKind = z.infer<typeof AdVisualQaCheckKindSchema>;
 export type AdVisualQaCheck = z.infer<typeof AdVisualQaCheckSchema>;
 export type AdVisualQaMetadata = z.infer<typeof AdVisualQaMetadataSchema>;
 export type ContentCredentialMode = z.infer<typeof ContentCredentialModeSchema>;
-export type ContentCredentialSignatureStatus = z.infer<typeof ContentCredentialSignatureStatusSchema>;
-export type ContentCredentialIngredientRelationship = z.infer<typeof ContentCredentialIngredientRelationshipSchema>;
-export type ContentCredentialIngredient = z.infer<typeof ContentCredentialIngredientSchema>;
-export type ContentCredentialAction = z.infer<typeof ContentCredentialActionSchema>;
-export type ContentCredentialAssertion = z.infer<typeof ContentCredentialAssertionSchema>;
-export type ContentCredentialsMetadata = z.infer<typeof ContentCredentialsMetadataSchema>;
+export type ContentCredentialSignatureStatus = z.infer<
+  typeof ContentCredentialSignatureStatusSchema
+>;
+export type ContentCredentialIngredientRelationship = z.infer<
+  typeof ContentCredentialIngredientRelationshipSchema
+>;
+export type ContentCredentialIngredient = z.infer<
+  typeof ContentCredentialIngredientSchema
+>;
+export type ContentCredentialAction = z.infer<
+  typeof ContentCredentialActionSchema
+>;
+export type ContentCredentialAssertion = z.infer<
+  typeof ContentCredentialAssertionSchema
+>;
+export type ContentCredentialsMetadata = z.infer<
+  typeof ContentCredentialsMetadataSchema
+>;
 export type ProductionMetadata = z.infer<typeof ProductionMetadataSchema>;
-export type AssetMetadataFillAction = z.infer<typeof AssetMetadataFillActionSchema>;
+export type AssetMetadataFillAction = z.infer<
+  typeof AssetMetadataFillActionSchema
+>;
 
 export type ProductionAsset = {
   id: string;
@@ -983,7 +1143,7 @@ export type ProductionAsset = {
 /** The generic fill trunk only needs the envelope, never a specific kind's shape. */
 export type AssetMetadataFillEnvelope = {
   actionId: string;
-  targetAssetId: string;
+  target: MetadataAttachmentTarget;
   metadataKind: string;
   metadata: { kind: string };
   producer: string;
@@ -994,13 +1154,24 @@ export function applyAssetMetadataFill<TAsset extends ProductionAsset>(
   asset: TAsset,
   action: AssetMetadataFillEnvelope,
 ): TAsset & { metadata: Record<string, unknown> } {
-  if (asset.id !== action.targetAssetId) {
-    throw new Error(`metadata fill target mismatch: ${action.targetAssetId} does not match ${asset.id}`);
+  if (action.target.kind !== "project-asset") {
+    throw new Error(
+      `metadata fill target ${action.target.kind} cannot be applied to a Project Asset manifest`,
+    );
+  }
+  if (asset.id !== action.target.assetId) {
+    throw new Error(
+      `metadata fill target mismatch: ${action.target.assetId} does not match ${asset.id}`,
+    );
   }
   if (action.metadata.kind !== action.metadataKind) {
-    throw new Error(`metadata kind mismatch: ${action.metadataKind} does not match ${action.metadata.kind}`);
+    throw new Error(
+      `metadata kind mismatch: ${action.metadataKind} does not match ${action.metadata.kind}`,
+    );
   }
-  const fills = Array.isArray(asset.metadata?.metadataFills) ? asset.metadata.metadataFills : [];
+  const fills = Array.isArray(asset.metadata?.metadataFills)
+    ? asset.metadata.metadataFills
+    : [];
   return {
     ...asset,
     metadata: {
@@ -1043,7 +1214,19 @@ export function buildBeatSectionCutPlan(metadata: AudioBeatMetadata): Array<{
   energy?: number;
   novelty?: number;
   impact?: number;
-  semanticLabel?: "intro" | "verse" | "pre-chorus" | "chorus" | "bridge" | "drop" | "buildup" | "breakdown" | "outro" | "instrumental" | "detected-beats" | "unknown";
+  semanticLabel?:
+    | "intro"
+    | "verse"
+    | "pre-chorus"
+    | "chorus"
+    | "bridge"
+    | "drop"
+    | "buildup"
+    | "breakdown"
+    | "outro"
+    | "instrumental"
+    | "detected-beats"
+    | "unknown";
   semanticConfidence?: number;
   reviewRequired?: boolean;
   semanticSource?: string;
@@ -1062,23 +1245,38 @@ export function buildBeatSectionCutPlan(metadata: AudioBeatMetadata): Array<{
       outputStartFrame: outputCursor,
       outputEndFrame: outputCursor + duration,
       anchorFrames: metadata.beats
-        .filter((beat) =>
-          beat.downbeat === true &&
-          beat.frame >= section.startFrame &&
-          beat.frame < section.endFrame
+        .filter(
+          (beat) =>
+            beat.downbeat === true &&
+            beat.frame >= section.startFrame &&
+            beat.frame < section.endFrame,
         )
         .map((beat) => beat.frame),
       ...(section.energy === undefined ? {} : { energy: section.energy }),
       ...(section.novelty === undefined ? {} : { novelty: section.novelty }),
       ...(section.impact === undefined ? {} : { impact: section.impact }),
-      ...(section.semanticLabel === undefined ? {} : { semanticLabel: section.semanticLabel }),
-      ...(section.semanticConfidence === undefined ? {} : { semanticConfidence: section.semanticConfidence }),
-      ...(section.reviewRequired === undefined ? {} : { reviewRequired: section.reviewRequired }),
-      ...(section.semanticSource === undefined ? {} : { semanticSource: section.semanticSource }),
-      ...(section.cutDensity === undefined ? {} : {
-        cutDensity: section.cutDensity,
-        recommendedCutEveryFrames: recommendedCutEveryFrames(section.cutDensity, metadata.fps, duration),
-      }),
+      ...(section.semanticLabel === undefined
+        ? {}
+        : { semanticLabel: section.semanticLabel }),
+      ...(section.semanticConfidence === undefined
+        ? {}
+        : { semanticConfidence: section.semanticConfidence }),
+      ...(section.reviewRequired === undefined
+        ? {}
+        : { reviewRequired: section.reviewRequired }),
+      ...(section.semanticSource === undefined
+        ? {}
+        : { semanticSource: section.semanticSource }),
+      ...(section.cutDensity === undefined
+        ? {}
+        : {
+            cutDensity: section.cutDensity,
+            recommendedCutEveryFrames: recommendedCutEveryFrames(
+              section.cutDensity,
+              metadata.fps,
+              duration,
+            ),
+          }),
     };
     outputCursor += duration;
     return cut;
@@ -1094,14 +1292,20 @@ export function buildProductLogoQaVerdict(checks: ProductLogoQaCheck[]): {
   if (failed.length > 0) {
     return {
       verdict: "fail",
-      blockedReasons: failed.map((check) => `${check.check} failed for role ${check.roleId}`),
+      blockedReasons: failed.map(
+        (check) => `${check.check} failed for role ${check.roleId}`,
+      ),
     };
   }
-  const review = requiredChecks.filter((check) => check.status === "requires-review");
+  const review = requiredChecks.filter(
+    (check) => check.status === "requires-review",
+  );
   if (review.length > 0) {
     return {
       verdict: "requires-review",
-      blockedReasons: review.map((check) => `${check.check} requires review for role ${check.roleId}`),
+      blockedReasons: review.map(
+        (check) => `${check.check} requires review for role ${check.roleId}`,
+      ),
     };
   }
   return { verdict: "pass", blockedReasons: [] };
@@ -1116,7 +1320,11 @@ export function buildAnalysisBackendBenchmarkVerdict(
 } {
   const passing = candidates
     .filter((candidate) => candidate.status === "pass")
-    .sort((a, b) => b.weightedScore - a.weightedScore || a.backendId.localeCompare(b.backendId));
+    .sort(
+      (a, b) =>
+        b.weightedScore - a.weightedScore ||
+        a.backendId.localeCompare(b.backendId),
+    );
   if (passing.length > 0) {
     return {
       verdict: "pass",
@@ -1126,7 +1334,10 @@ export function buildAnalysisBackendBenchmarkVerdict(
   }
   return {
     verdict: "fail",
-    blockedReasons: candidates.map((candidate) => `${candidate.backendId} failed ${candidate.capability} benchmark`),
+    blockedReasons: candidates.map(
+      (candidate) =>
+        `${candidate.backendId} failed ${candidate.capability} benchmark`,
+    ),
   };
 }
 
@@ -1150,12 +1361,16 @@ export function buildCaptionItemFromTalkingHeadMetadata(
     const cueWords = (cue.wordIds ?? [])
       .map((wordId) => wordById.get(wordId))
       .filter((word): word is NonNullable<typeof word> => Boolean(word));
-    const sourceStartFrame = cue.sourceStartFrame ?? (
-      cueWords.length > 0 ? Math.min(...cueWords.map((word) => word.startFrame)) : undefined
-    );
-    const sourceEndFrame = cue.sourceEndFrame ?? (
-      cueWords.length > 0 ? Math.max(...cueWords.map((word) => word.endFrame)) : undefined
-    );
+    const sourceStartFrame =
+      cue.sourceStartFrame ??
+      (cueWords.length > 0
+        ? Math.min(...cueWords.map((word) => word.startFrame))
+        : undefined);
+    const sourceEndFrame =
+      cue.sourceEndFrame ??
+      (cueWords.length > 0
+        ? Math.max(...cueWords.map((word) => word.endFrame))
+        : undefined);
     return {
       ...cue,
       ...(sourceStartFrame === undefined ? {} : { sourceStartFrame }),
@@ -1251,7 +1466,9 @@ export function buildStoryboardPromptPackFromMetadata(
   },
 ): StoryboardPromptPack {
   const sceneById = new Map(metadata.scenes.map((scene) => [scene.id, scene]));
-  const characterNameById = new Map(metadata.characters.map((character) => [character.id, character.name]));
+  const characterNameById = new Map(
+    metadata.characters.map((character) => [character.id, character.name]),
+  );
   const promptPack = {
     schemaVersion: 1 as const,
     kind: "clash.storyboard.prompt-pack" as const,
@@ -1263,7 +1480,9 @@ export function buildStoryboardPromptPackFromMetadata(
         .filter(Boolean);
       const promptParts = [
         scene?.prompt ?? `storyboard panel ${panel.id}`,
-        ...(characterNames.length > 0 ? [`characters: ${characterNames.join(", ")}`] : []),
+        ...(characterNames.length > 0
+          ? [`characters: ${characterNames.join(", ")}`]
+          : []),
         ...(options?.stylePrompt ? [`style: ${options.stylePrompt}`] : []),
       ];
       return {
@@ -1272,9 +1491,13 @@ export function buildStoryboardPromptPackFromMetadata(
         sceneId: panel.sceneId,
         characterIds: panel.characterIds,
         prompt: promptParts.join("; "),
-        ...(options?.negativePrompt ? { negativePrompt: options.negativePrompt } : {}),
+        ...(options?.negativePrompt
+          ? { negativePrompt: options.negativePrompt }
+          : {}),
         outputAssetId: panel.assetId,
-        outputPath: panel.path ?? `assets/generated/storyboards/${safeSlug(panel.id)}.png`,
+        outputPath:
+          panel.path ??
+          `assets/generated/storyboards/${safeSlug(panel.id)}.png`,
         ...(options?.modelHint ? { modelHint: options.modelHint } : {}),
       };
     }),
@@ -1282,7 +1505,9 @@ export function buildStoryboardPromptPackFromMetadata(
   return StoryboardPromptPackSchema.parse(promptPack);
 }
 
-export function buildVisualMomentClipLibrary(metadata: VideoVisualMomentMetadata): Array<{
+export function buildVisualMomentClipLibrary(
+  metadata: VideoVisualMomentMetadata,
+): Array<{
   id: string;
   assetId: string;
   type: "video";
@@ -1297,11 +1522,18 @@ export function buildVisualMomentClipLibrary(metadata: VideoVisualMomentMetadata
 }> {
   return metadata.candidates
     .map((candidate) => {
-      const startFrame = candidate.startFrame ?? msToFrame(candidate.startMs, metadata.fps);
-      const endFrame = Math.max(startFrame + 1, candidate.endFrame ?? msToFrame(candidate.endMs, metadata.fps));
+      const startFrame =
+        candidate.startFrame ?? msToFrame(candidate.startMs, metadata.fps);
+      const endFrame = Math.max(
+        startFrame + 1,
+        candidate.endFrame ?? msToFrame(candidate.endMs, metadata.fps),
+      );
       const peakFrame = Math.min(
         endFrame,
-        Math.max(startFrame, candidate.peakFrame ?? msToFrame(candidate.peakMs, metadata.fps)),
+        Math.max(
+          startFrame,
+          candidate.peakFrame ?? msToFrame(candidate.peakMs, metadata.fps),
+        ),
       );
       return {
         id: candidate.id,
@@ -1317,15 +1549,26 @@ export function buildVisualMomentClipLibrary(metadata: VideoVisualMomentMetadata
         tags: candidate.tags,
       };
     })
-    .sort((a, b) => b.score - a.score || a.sourceStartFrame - b.sourceStartFrame || a.id.localeCompare(b.id));
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.sourceStartFrame - b.sourceStartFrame ||
+        a.id.localeCompare(b.id),
+    );
 }
 
-export function assertReferenceCanBeRemixed(metadata: ReferenceVideoMetadata): void {
+export function assertReferenceCanBeRemixed(
+  metadata: ReferenceVideoMetadata,
+): void {
   if (!metadata.rights.derivativeAllowed) {
-    throw new Error(`reference ${metadata.sourceUrl} derivative use is not allowed`);
+    throw new Error(
+      `reference ${metadata.sourceUrl} derivative use is not allowed`,
+    );
   }
   if (!metadata.rights.redistributionAllowed) {
-    throw new Error(`reference ${metadata.sourceUrl} redistribution is not allowed`);
+    throw new Error(
+      `reference ${metadata.sourceUrl} redistribution is not allowed`,
+    );
   }
 }
 
@@ -1344,8 +1587,12 @@ export function buildReferenceRightsLedger(
   nonCopyingQa: ReferenceVideoMetadata["nonCopyingQa"];
 } {
   const blockedReasons = [
-    ...(metadata.rights.derivativeAllowed ? [] : ["derivative use is not allowed"]),
-    ...(metadata.rights.redistributionAllowed ? [] : ["redistribution is not allowed"]),
+    ...(metadata.rights.derivativeAllowed
+      ? []
+      : ["derivative use is not allowed"]),
+    ...(metadata.rights.redistributionAllowed
+      ? []
+      : ["redistribution is not allowed"]),
   ];
   const remixAllowed = blockedReasons.length === 0;
   return {
@@ -1355,9 +1602,16 @@ export function buildReferenceRightsLedger(
     remixAllowed,
     blockedReasons,
     allowedUses: remixAllowed
-      ? ["metadata-analysis", "shot-analysis", "non-copying-reference", "transformative-remix"]
+      ? [
+          "metadata-analysis",
+          "shot-analysis",
+          "non-copying-reference",
+          "transformative-remix",
+        ]
       : ["metadata-analysis", "shot-analysis", "non-copying-reference"],
-    prohibitedUses: remixAllowed ? [] : ["download-source", "copy-frames", "export-derivative"],
+    prohibitedUses: remixAllowed
+      ? []
+      : ["download-source", "copy-frames", "export-derivative"],
     shots: metadata.shots,
     nonCopyingQa: metadata.nonCopyingQa,
   };
@@ -1404,15 +1658,19 @@ export function buildAdDeliveryChecklist(metadata: AdDeliveryMetadata): Array<{
     },
     {
       id: "disclaimer",
-      label: metadata.endCard.disclaimer ? "disclaimer text present" : "disclaimer text missing",
+      label: metadata.endCard.disclaimer
+        ? "disclaimer text present"
+        : "disclaimer text missing",
       required: Boolean(metadata.endCard.disclaimer),
     },
     ...(metadata.rightsLedgerAssetId
-      ? [{
-          id: "rights-ledger",
-          label: `rights ledger linked to ${metadata.rightsLedgerAssetId}`,
-          required: true,
-        }]
+      ? [
+          {
+            id: "rights-ledger",
+            label: `rights ledger linked to ${metadata.rightsLedgerAssetId}`,
+            required: true,
+          },
+        ]
       : []),
   ];
 }
@@ -1426,20 +1684,36 @@ export function buildAdDeliveryExportValidationReceipt(options: {
   durationToleranceSeconds?: number;
   fpsTolerance?: number;
 }): AdDeliveryExportValidationReceipt {
-  const deliverySpec = AdDeliverySpecProjectionSchema.parse(options.deliverySpec);
+  const deliverySpec = AdDeliverySpecProjectionSchema.parse(
+    options.deliverySpec,
+  );
   const probe = AdDeliveryExportProbeSchema.parse(options.probe);
-  const visualQa = options.visualQa ? AdDeliveryVisualQaReportSchema.parse(options.visualQa) : undefined;
+  const visualQa = options.visualQa
+    ? AdDeliveryVisualQaReportSchema.parse(options.visualQa)
+    : undefined;
   const durationToleranceSeconds = options.durationToleranceSeconds ?? 0.25;
   const fpsTolerance = options.fpsTolerance ?? 0.01;
-  const variant = deliverySpec.variants.find((candidate) => candidate.id === options.variantId);
+  const variant = deliverySpec.variants.find(
+    (candidate) => candidate.id === options.variantId,
+  );
   if (!variant) {
     throw new Error(`delivery variant ${options.variantId} not found`);
   }
 
   const checks = [
     passCheck("variant", `variant ${options.variantId}`, variant.id),
-    booleanCheck("video-track", probe.hasVideo, "video track present", probe.hasVideo ? "present" : "missing"),
-    booleanCheck("audio-track", probe.hasAudio, "audio track present", probe.hasAudio ? "present" : "missing"),
+    booleanCheck(
+      "video-track",
+      probe.hasVideo,
+      "video track present",
+      probe.hasVideo ? "present" : "missing",
+    ),
+    booleanCheck(
+      "audio-track",
+      probe.hasAudio,
+      "audio track present",
+      probe.hasAudio ? "present" : "missing",
+    ),
     booleanCheck(
       "resolution",
       probe.width === variant.width && probe.height === variant.height,
@@ -1460,7 +1734,8 @@ export function buildAdDeliveryExportValidationReceipt(options: {
     ),
     booleanCheck(
       "duration",
-      Math.abs(probe.durationSeconds - variant.durationSeconds) <= durationToleranceSeconds,
+      Math.abs(probe.durationSeconds - variant.durationSeconds) <=
+        durationToleranceSeconds,
       `${formatSeconds(variant.durationSeconds)}s +/- ${durationToleranceSeconds}s`,
       `${formatSeconds(probe.durationSeconds)}s`,
     ),
@@ -1468,35 +1743,57 @@ export function buildAdDeliveryExportValidationReceipt(options: {
       "safe-zone",
       visualQa?.safeZoneViolations.length === 0,
       "no safe-zone violations",
-      visualQa ? `${visualQa.safeZoneViolations.length} violation(s)` : "missing visual QA report",
+      visualQa
+        ? `${visualQa.safeZoneViolations.length} violation(s)`
+        : "missing visual QA report",
     ),
     booleanCheck(
       "subtitles",
       !variant.subtitlesRequired || visualQa?.captionsPresent === true,
       variant.subtitlesRequired ? "captions present" : "captions optional",
-      visualQa ? (visualQa.captionsPresent ? "present" : "missing") : "missing visual QA report",
+      visualQa
+        ? visualQa.captionsPresent
+          ? "present"
+          : "missing"
+        : "missing visual QA report",
       variant.subtitlesRequired,
     ),
     booleanCheck(
       "packshot",
       !deliverySpec.packshot.required || visualQa?.packshotVisible === true,
-      deliverySpec.packshot.required ? `packshot ${deliverySpec.packshot.assetId} visible` : "packshot optional",
-      visualQa ? (visualQa.packshotVisible ? "visible" : "missing") : "missing visual QA report",
+      deliverySpec.packshot.required
+        ? `packshot ${deliverySpec.packshot.assetId} visible`
+        : "packshot optional",
+      visualQa
+        ? visualQa.packshotVisible
+          ? "visible"
+          : "missing"
+        : "missing visual QA report",
       deliverySpec.packshot.required,
     ),
     booleanCheck(
       "end-card",
       !deliverySpec.endCard.required || visualQa?.endCardVisible === true,
-      deliverySpec.endCard.required ? `end card with CTA ${deliverySpec.endCard.cta}` : "end card optional",
-      visualQa ? (visualQa.endCardVisible ? "visible" : "missing") : "missing visual QA report",
+      deliverySpec.endCard.required
+        ? `end card with CTA ${deliverySpec.endCard.cta}`
+        : "end card optional",
+      visualQa
+        ? visualQa.endCardVisible
+          ? "visible"
+          : "missing"
+        : "missing visual QA report",
       deliverySpec.endCard.required,
     ),
     booleanCheck(
       "disclaimer",
       !deliverySpec.endCard.disclaimer || visualQa?.disclaimerVisible === true,
-      deliverySpec.endCard.disclaimer ? `disclaimer ${deliverySpec.endCard.disclaimer}` : "disclaimer optional",
+      deliverySpec.endCard.disclaimer
+        ? `disclaimer ${deliverySpec.endCard.disclaimer}`
+        : "disclaimer optional",
       visualQa
-        ? (visualQa.disclaimerVisible ? "visible" : "missing")
+        ? visualQa.disclaimerVisible
+          ? "visible"
+          : "missing"
         : "missing visual QA report",
       Boolean(deliverySpec.endCard.disclaimer),
     ),
@@ -1521,16 +1818,24 @@ export function buildAdDeliveryExportValidationReceipt(options: {
     probe,
     ...(visualQa ? { visualQa } : {}),
     checks,
-    verdict: checks.some((check) => check.required && check.status === "fail") ? "fail" as const : "pass" as const,
+    verdict: checks.some((check) => check.required && check.status === "fail")
+      ? ("fail" as const)
+      : ("pass" as const),
   };
   return AdDeliveryExportValidationReceiptSchema.parse(receipt);
 }
 
 function formatSeconds(value: number): string {
-  return Number.isInteger(value) ? String(value) : String(value).replace(/0+$/, "").replace(/\.$/, "");
+  return Number.isInteger(value)
+    ? String(value)
+    : String(value).replace(/0+$/, "").replace(/\.$/, "");
 }
 
-function passCheck(id: string, expected: string, actual: string): z.infer<typeof AdDeliveryExportValidationCheckSchema> {
+function passCheck(
+  id: string,
+  expected: string,
+  actual: string,
+): z.infer<typeof AdDeliveryExportValidationCheckSchema> {
   return {
     id,
     status: "pass",
@@ -1586,7 +1891,9 @@ function safeSlug(value: string): string {
   return slug || "item";
 }
 
-function visualMomentScore(candidate: z.infer<typeof VisualMomentCandidateSchema>): number {
+function visualMomentScore(
+  candidate: z.infer<typeof VisualMomentCandidateSchema>,
+): number {
   const score =
     candidate.quality * 0.45 +
     candidate.motion * 0.25 +

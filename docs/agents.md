@@ -1,4 +1,13 @@
-# Task System and Agent Architecture Documentation
+# Historical: Task System and Agent Architecture
+
+> **Status:** Superseded implementation snapshot. This document describes the
+> retired Python task stack, node-owned storage fields, and older frontend sync
+> topology; its paths, schemas, status names, and execution flow are not a
+> current contract. Use the
+> [Asset system](../apps/docs/guide/asset-system.md) for media identity and the
+> [Durable Run protocol](../apps/docs/guide/durable-run-protocol.md) for
+> Provider/Host execution. Cloud Asset storage and Cloud execution in those
+> guides remain design-only.
 
 ## Overview
 

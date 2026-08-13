@@ -20,7 +20,6 @@ type ProjectAssetPreview = {
   assetId: string;
   url: string;
   type: "image" | "video";
-  storageKey: string;
   createdAt: Date | null;
 };
 
@@ -30,7 +29,6 @@ type ProjectWithAssets = ProjectRow & {
     assetId: string;
     url: string;
     type: "image" | "video";
-    storageKey: string;
     createdAt: Date | null;
   }>;
   assetCount: number;
@@ -72,7 +70,9 @@ async function fetchNodes(env: Env, projectId: string): Promise<unknown[]> {
     try {
       const res = await fetch(`${env.API_CF_URL}${path}`);
       if (res.ok) return (await res.json()) as unknown[];
-      console.warn(`[projects-d1] API_CF_URL /nodes ${projectId} -> ${res.status}`);
+      console.warn(
+        `[projects-d1] API_CF_URL /nodes ${projectId} -> ${res.status}`,
+      );
     } catch (err) {
       console.warn(`[projects-d1] API_CF_URL /nodes ${projectId} threw`, err);
     }
@@ -119,7 +119,6 @@ async function resolveProjectAssets(
         assetId,
         url: await signAssetPath(env as AppEnv, r2Key),
         type: node.type as "image" | "video",
-        storageKey: row.srcR2Key,
         createdAt: (() => {
           if (node.data?.createdAt) return new Date(node.data.createdAt);
           if (node.createdAt) return new Date(node.createdAt);
@@ -139,7 +138,9 @@ async function resolveProjectAssets(
   const seenAssetIds = new Set(
     mediaNodes
       .map((node: any) => node.data?.assetId)
-      .filter((assetId: unknown): assetId is string => typeof assetId === "string"),
+      .filter(
+        (assetId: unknown): assetId is string => typeof assetId === "string",
+      ),
   );
   const seenPreviewKeys = new Set(
     mediaNodes
@@ -151,39 +152,42 @@ async function resolveProjectAssets(
       .filter((r2Key: unknown): r2Key is string => typeof r2Key === "string"),
   );
   const fallbackRows = await db
-      .select({
-        id: assets.id,
-        srcR2Key: assets.srcR2Key,
-        coverR2Key: assets.coverR2Key,
-        kind: assets.kind,
-        createdAt: assets.createdAt,
-        importedAt: assetRefs.importedAt,
-      })
-      .from(assets)
-      .innerJoin(assetRefs, eq(assetRefs.assetId, assets.id))
-      .where(and(eq(assetRefs.projectId, project.id), eq(assets.userId, userId)))
-      .orderBy(desc(assetRefs.importedAt), desc(assets.createdAt))
-      .limit(1000);
+    .select({
+      id: assets.id,
+      srcR2Key: assets.srcR2Key,
+      coverR2Key: assets.coverR2Key,
+      kind: assets.kind,
+      createdAt: assets.createdAt,
+      importedAt: assetRefs.importedAt,
+    })
+    .from(assets)
+    .innerJoin(assetRefs, eq(assetRefs.assetId, assets.id))
+    .where(and(eq(assetRefs.projectId, project.id), eq(assets.userId, userId)))
+    .orderBy(desc(assetRefs.importedAt), desc(assets.createdAt))
+    .limit(1000);
 
   const fallbackAssets = await Promise.all(
-      fallbackRows.map(async (row) => {
-        if (seenAssetIds.has(row.id)) return null;
-        if (row.kind !== "image" && row.kind !== "video") return null;
-        if (row.kind === "video" && !row.coverR2Key) return null;
-        const r2Key = row.kind === "video" ? row.coverR2Key! : row.srcR2Key;
-        if (seenPreviewKeys.has(r2Key)) return null;
-        seenAssetIds.add(row.id);
-        seenPreviewKeys.add(r2Key);
-        return {
-          id: row.id,
-          assetId: row.id,
-          url: await signAssetPath(env as AppEnv, r2Key),
-          type: row.kind as "image" | "video",
-          storageKey: row.srcR2Key,
-          createdAt: row.createdAt || row.importedAt || project.updatedAt || project.createdAt,
-        };
-      }),
-    ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
+    fallbackRows.map(async (row) => {
+      if (seenAssetIds.has(row.id)) return null;
+      if (row.kind !== "image" && row.kind !== "video") return null;
+      if (row.kind === "video" && !row.coverR2Key) return null;
+      const r2Key = row.kind === "video" ? row.coverR2Key! : row.srcR2Key;
+      if (seenPreviewKeys.has(r2Key)) return null;
+      seenAssetIds.add(row.id);
+      seenPreviewKeys.add(r2Key);
+      return {
+        id: row.id,
+        assetId: row.id,
+        url: await signAssetPath(env as AppEnv, r2Key),
+        type: row.kind as "image" | "video",
+        createdAt:
+          row.createdAt ||
+          row.importedAt ||
+          project.updatedAt ||
+          project.createdAt,
+      };
+    }),
+  ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
 
   return [...projectAssets, ...fallbackAssets];
 }
@@ -204,7 +208,12 @@ export async function listProjectsWithAssets(
 
   return Promise.all(
     projectsData.map(async (project) => {
-      const resolvedAssets = await resolveProjectAssets(env, db, userId, project);
+      const resolvedAssets = await resolveProjectAssets(
+        env,
+        db,
+        userId,
+        project,
+      );
       return {
         ...project,
         assets: resolvedAssets.slice(0, 4),
@@ -214,11 +223,7 @@ export async function listProjectsWithAssets(
   );
 }
 
-export async function getProjectById(
-  env: Env,
-  userId: string,
-  id: string,
-) {
+export async function getProjectById(env: Env, userId: string, id: string) {
   const db = getDb(env.DB);
   if (userId === DEV_USER_ID) await ensureDevUser(db, env);
   const project = await db.query.projects.findFirst({
@@ -226,7 +231,11 @@ export async function getProjectById(
   });
   if (!project) return project;
   const resolvedAssets = await resolveProjectAssets(env, db, userId, project);
-  return { ...project, assets: resolvedAssets, assetCount: resolvedAssets.length };
+  return {
+    ...project,
+    assets: resolvedAssets,
+    assetCount: resolvedAssets.length,
+  };
 }
 
 export async function createNewProject(
@@ -261,11 +270,7 @@ export async function renameProject(
     .where(and(eq(projects.id, id), eq(projects.ownerId, userId)));
 }
 
-export async function removeProject(
-  env: Env,
-  userId: string,
-  id: string,
-) {
+export async function removeProject(env: Env, userId: string, id: string) {
   const db = getDb(env.DB);
   if (userId === DEV_USER_ID) await ensureDevUser(db, env);
   await db

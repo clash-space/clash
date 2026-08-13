@@ -9,7 +9,6 @@ import {
 } from "node:fs/promises";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { Hono, type Context } from "hono";
@@ -32,6 +31,13 @@ import {
   LocalGlobalAssetError,
 } from "./local-global-assets.js";
 import {
+  createLocalFfprobeAssetInspector,
+  createLocalAssetInspectionService,
+  type LocalAssetInspector,
+  type LocalAssetInspectionService,
+} from "./local-asset-inspections.js";
+import { localFfmpegPath, localFfprobePath } from "./local-media-binaries.js";
+import {
   importLocalProviderToken,
   type LocalTokenImportAuth,
 } from "./local-token-import.js";
@@ -41,6 +47,7 @@ import {
   buildProjectStatus,
   createBoundedRetryPolicy,
   defaultRuntimeCapabilities,
+  durableRunIdempotencyKey,
   visibleUserPromptText,
   type DurableRunRecord,
   type ProjectRecoveryPolicy,
@@ -73,6 +80,8 @@ import {
   MODEL_CARDS,
   localConfigReadToken,
   normalizeModelId,
+  MetadataAttachmentTargetSchema,
+  parseAssetMetadataFillAction,
   projectReadToken,
   providerAccountReadToken,
   providerAccountsReadToken,
@@ -96,6 +105,7 @@ import {
   validateAgentObservation,
   validateHostMutationEnvelope,
   type AgentReadReceiptProof,
+  type ActionAssetBinding,
   type AssetEditActionInvocation,
   type CanvasReadProofEdgeLike,
   type CanvasUpdateEdgeLike,
@@ -146,19 +156,6 @@ function parseAssetEditInvocation(input: {
     surface,
     mode: invocationModeForSurface(surface),
   });
-}
-
-function localFfmpegPath(): string | null {
-  return (
-    [
-      process.env.FFMPEG_PATH,
-      "/opt/homebrew/bin/ffmpeg",
-      "/usr/local/bin/ffmpeg",
-      "/usr/bin/ffmpeg",
-    ]
-      .filter((candidate): candidate is string => !!candidate)
-      .find((candidate) => existsSync(candidate)) ?? null
-  );
 }
 
 import {
@@ -218,7 +215,6 @@ import {
   type LocalDurableRunCoordinator,
 } from "./durable-run-coordinator.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
-import { assetPathForRead, assetPathForWrite } from "./local-asset-paths.js";
 import { createLocalProviderStore } from "./local-provider-store.js";
 import {
   createLocalMetadataStore,
@@ -268,6 +264,10 @@ export interface LocalApiOptions {
   projectAssetProjectionOrigin?: string | (() => string);
   /** Host-owned live Project replica used by Project Asset routes. */
   projectAssetReplica?: LocalProjectAssetReplica;
+  /** Injectable Resource probe used once per immutable Resource. */
+  inspectAssetResource?: LocalAssetInspector;
+  /** Process-owned registry shared by HTTP, workflow staging, and recovery. */
+  assetInspection?: LocalAssetInspectionService;
   /**
    * Receive bytes for an upload slot the broker handed out.
    *
@@ -662,6 +662,24 @@ const PROJECT_PURGE_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 const ASSET_PURGE_DELAY_MS = PROJECT_PURGE_DELAY_MS;
 const PERSONAL_GLOBAL_ASSET_LIBRARY_ID = "personal";
 
+/**
+ * Stable Host relation identity for a membership copied across Asset scopes.
+ * The target keeps its own namespace; the hash contains only source entry
+ * identities and never the underlying Resource identity.
+ */
+function scopedAssetRelationId(
+  targetNamespace: "asset:global" | "global:project",
+  sourceIdentity: readonly string[],
+): string {
+  const digest = createHash("sha256")
+    .update("clash.asset-scope-relation.v1\0")
+    .update(targetNamespace)
+    .update("\0")
+    .update(JSON.stringify(sourceIdentity))
+    .digest("hex");
+  return `${targetNamespace}:${digest}`;
+}
+
 function localApiProjectAssetReadReceipt(readToken: string): string {
   return createHmac("sha256", LOCAL_API_READ_RECEIPT_SECRET)
     .update(`project-asset:${readToken}`)
@@ -856,10 +874,6 @@ async function finalizeRuntimeSessionId(
   });
 }
 
-function sanitizeFileName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
-
 function contentTypeForPath(path: string): string {
   const ext = extname(path).toLowerCase();
   if (ext === ".png") return "image/png";
@@ -977,24 +991,6 @@ async function serveImmutableFileProjection(options: {
       "cache-control": "public, max-age=31536000, immutable",
       "x-content-type-options": "nosniff",
     },
-  });
-}
-
-async function serveLocalAssetFile(options: {
-  dataDir: string;
-  clashRoot: string;
-  storageKey: string;
-  rangeHeader?: string;
-}): Promise<Response> {
-  const path = await assetPathForRead(
-    options.dataDir,
-    options.storageKey,
-    options.clashRoot,
-  );
-  return serveImmutableFileProjection({
-    path,
-    contentType: contentTypeForPath(options.storageKey),
-    ...(options.rangeHeader ? { rangeHeader: options.rangeHeader } : {}),
   });
 }
 
@@ -1119,12 +1115,12 @@ function createDb(dataDir: string) {
     return metadataStore.getTextRevision(projectId, revisionId);
   }
 
-  async function upsertAssetMetadataIndex(
-    record: Parameters<typeof metadataStore.upsertAssetMetadataIndex>[0],
+  async function upsertMetadataAttachmentIndex(
+    record: Parameters<typeof metadataStore.upsertMetadataAttachmentIndex>[0],
   ): Promise<void> {
     const task = writeQueue
       .catch(() => undefined)
-      .then(() => metadataStore.upsertAssetMetadataIndex(record));
+      .then(() => metadataStore.upsertMetadataAttachmentIndex(record));
     writeQueue = task.then(
       () => undefined,
       () => undefined,
@@ -1132,11 +1128,11 @@ function createDb(dataDir: string) {
     return task;
   }
 
-  async function listAssetMetadataIndex(
-    filter: Parameters<typeof metadataStore.listAssetMetadataIndex>[0],
+  async function listMetadataAttachmentIndex(
+    filter: Parameters<typeof metadataStore.listMetadataAttachmentIndex>[0],
   ) {
     await writeQueue.catch(() => undefined);
-    return metadataStore.listAssetMetadataIndex(filter);
+    return metadataStore.listMetadataAttachmentIndex(filter);
   }
 
   async function listProviderUsageEvents(userId: string, limit?: number) {
@@ -1152,8 +1148,8 @@ function createDb(dataDir: string) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
-    upsertAssetMetadataIndex,
-    listAssetMetadataIndex,
+    upsertMetadataAttachmentIndex,
+    listMetadataAttachmentIndex,
     listProviderUsageEvents,
   };
 }
@@ -1574,7 +1570,7 @@ function inferProjectAssetFileKind(file: File): AssetKind | undefined {
   if ([".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"].includes(extension)) {
     return "audio";
   }
-  if ([".glb", ".gltf", ".fbx", ".bvh", ".obj", ".usdz"].includes(extension)) {
+  if ([".glb", ".gltf"].includes(extension)) {
     return "model";
   }
   return undefined;
@@ -1616,17 +1612,6 @@ function isAllowedLocalBrowserOrigin(origin: string): boolean {
   } catch {
     return false;
   }
-}
-
-function localAssetUrl(
-  c: { req: { url: string } },
-  storageKey: string,
-): string {
-  return `${requestOrigin(c)}/assets/${storageKey}`;
-}
-
-function signedUrlExp(): number {
-  return Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
 }
 
 function isDeletedProject(project: LocalProject): boolean {
@@ -3237,7 +3222,9 @@ async function waitForDurableProviderTest(input: {
     if (result.kind === "waiting") {
       const delayMs = Math.max(0, result.wakeAt - Date.now());
       if (delayMs > 0) {
-        await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, delayMs));
+        await new Promise<void>((resolveDelay) =>
+          setTimeout(resolveDelay, delayMs),
+        );
       }
       continue;
     }
@@ -3485,8 +3472,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
   let importedPluginStore:
-    | Promise<Awaited<ReturnType<typeof openPluginStore>>>
-    | undefined;
+    Promise<Awaited<ReturnType<typeof openPluginStore>>> | undefined;
   const pluginStoreForImport = () =>
     (importedPluginStore ??= openPluginStore({ dataDir: options.dataDir }));
   const localApiDataDir = resolve(options.dataDir);
@@ -3530,15 +3516,15 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         ? { replica: options.projectAssetReplica }
         : {}),
       readReceiptVerifier: verifyLocalApiProjectAssetReadReceipt,
+      assetInspection,
     });
     return projectAssetService;
   };
-  const bindEditActionAssets = async (input: {
-    service: ReturnType<typeof createLocalProjectAssetService>;
+  const editActionAssetBindings = (input: {
     invocation: AssetEditActionInvocation;
     actionRunId: string;
     outputAssetId: string;
-  }): Promise<void> => {
+  }): ActionAssetBinding[] => {
     const revisionDigest = createHash("sha256")
       .update(JSON.stringify(input.invocation))
       .digest("hex");
@@ -3548,23 +3534,30 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       actionRevisionId: `sha256:${revisionDigest}`,
       actionRunId: input.actionRunId,
     };
-    await input.service.bind(input.invocation.projectId, {
-      id: `action-asset:${input.actionRunId}:source:input`,
-      owner,
-      direction: "input",
-      slot: "source",
-      projectAssetId: input.invocation.source.assetId,
-      role: "source",
-    });
-    await input.service.bind(input.invocation.projectId, {
-      id: `action-asset:${input.actionRunId}:output`,
-      owner,
-      direction: "output",
-      slot: "output",
-      projectAssetId: input.outputAssetId,
-      role: "primary",
-    });
+    return [
+      {
+        id: `action-asset:${input.actionRunId}:source:input`,
+        owner,
+        direction: "input",
+        slot: "source",
+        projectAssetId: input.invocation.source.assetId,
+        role: "source",
+      },
+      {
+        id: `action-asset:${input.actionRunId}:output`,
+        owner,
+        direction: "output",
+        slot: "output",
+        projectAssetId: input.outputAssetId,
+        role: "primary",
+      },
+    ];
   };
+  const editOutputAssetId = (actionRunId: string): string =>
+    `asset:edit:${createHash("sha256")
+      .update("clash.asset-edit-output.v1\0")
+      .update(durableRunIdempotencyKey({ actionRunId, outputSlot: "output" }))
+      .digest("hex")}`;
   let globalAssetService:
     ReturnType<typeof createLocalGlobalAssetService> | undefined;
   const globalAssetServiceAt = (requestProjectionOrigin: string) => {
@@ -3577,9 +3570,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       clashRoot,
       projectionOrigin:
         configuredProjectionOrigin?.trim() || requestProjectionOrigin,
+      assetInspection,
     });
     return globalAssetService;
   };
+  const ffprobePath = localFfprobePath();
+  const inspectAssetResource: LocalAssetInspector =
+    options.inspectAssetResource ??
+    (ffprobePath
+      ? createLocalFfprobeAssetInspector({ ffprobePath })
+      : async () => {
+          throw new Error(
+            "ffprobe is required to verify media before Asset publication",
+          );
+        });
+  const assetInspection =
+    options.assetInspection ??
+    createLocalAssetInspectionService({
+      dataDir: options.dataDir,
+      clashRoot,
+      inspectResource: inspectAssetResource,
+    });
   const sessionMessageStore = createLocalSessionMessageStore(db);
   options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
   const falMock = options.falMock ?? createMockFalQueueService();
@@ -3710,7 +3721,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       250,
       Math.min(5_000, (run.nextAttemptAt ?? now + 1_000) - now),
     );
-    c.header("retry-after", String(Math.max(1, Math.ceil(retryAfterMs / 1_000))));
+    c.header(
+      "retry-after",
+      String(Math.max(1, Math.ceil(retryAfterMs / 1_000))),
+    );
     return c.json(
       {
         status: run.phase === "queued" ? "queued" : "running",
@@ -3917,13 +3931,30 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.delete(
     "/api/v1/projects/:projectId/assets/:projectAssetId",
     async (c) => {
+      const body = (await c.req.json().catch(() => null)) as unknown;
+      const deleteOperationIdValue = isRecord(body)
+        ? body.deleteOperationId
+        : undefined;
+      if (
+        typeof deleteOperationIdValue !== "string" ||
+        !deleteOperationIdValue.trim() ||
+        deleteOperationIdValue.length > 512
+      ) {
+        return c.json(
+          {
+            error: "deleteOperationId is required",
+            code: "INVALID_PROJECT_ASSET_TRASH",
+          },
+          400,
+        );
+      }
       try {
         const now = Date.now();
         const preconditions = requestProjectWritePreconditions(c);
         const observed = await projectAssetServiceAt(requestOrigin(c)).trash({
           projectId: c.req.param("projectId"),
           projectAssetId: c.req.param("projectAssetId"),
-          deleteOperationId: crypto.randomUUID(),
+          deleteOperationId: deleteOperationIdValue.trim(),
           deletedAt: new Date(now).toISOString(),
           purgeAfter: new Date(now + ASSET_PURGE_DELAY_MS).toISOString(),
           observation: {
@@ -4051,10 +4082,25 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     const file = form.get("file");
     const kind = AssetKindSchema.safeParse(form.get("kind"));
+    const globalAssetIdValue = form.get("globalAssetId");
     if (!file || typeof file === "string" || !kind.success) {
       return c.json(
         {
           error: "Global Asset import requires file and kind",
+          code: "INVALID_GLOBAL_ASSET_IMPORT",
+        },
+        400,
+      );
+    }
+    if (
+      globalAssetIdValue !== null &&
+      (typeof globalAssetIdValue !== "string" ||
+        !globalAssetIdValue.trim() ||
+        globalAssetIdValue.length > 512)
+    ) {
+      return c.json(
+        {
+          error: "Invalid Global Asset id",
           code: "INVALID_GLOBAL_ASSET_IMPORT",
         },
         400,
@@ -4077,6 +4123,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           : declaredContentType;
       const asset = await globalAssetServiceAt(requestOrigin(c)).importBytes({
         libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        ...(typeof globalAssetIdValue === "string"
+          ? { globalAssetId: globalAssetIdValue.trim() }
+          : {}),
         kind: kind.data,
         bytes: new Uint8Array(await file.arrayBuffer()),
         contentType,
@@ -4134,6 +4183,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         requestOrigin(c),
       ).publishResource({
         libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        globalAssetId: scopedAssetRelationId("global:project", [
+          PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+          projectId,
+          projectAssetId,
+        ]),
         resourceId: source.source.resourceId,
         kind: source.kind,
         ...(source.name ? { name: source.name } : {}),
@@ -4189,8 +4243,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }
       const asset = await projectAssetServiceAt(requestOrigin(c)).admitLinked({
         projectId: c.req.param("projectId"),
+        projectAssetId: scopedAssetRelationId("asset:global", [
+          c.req.param("projectId"),
+          PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+          source.id,
+        ]),
         kind: source.kind,
         resourceId: source.resourceId,
+        originLibraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
         originEntryId: source.id,
         ...(source.name ? { name: source.name } : {}),
         metadata: source.metadata,
@@ -4252,12 +4312,29 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   });
 
   app.delete("/api/v1/libraries/personal/assets/:globalAssetId", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as unknown;
+    const deleteOperationIdValue = isRecord(body)
+      ? body.deleteOperationId
+      : undefined;
+    if (
+      typeof deleteOperationIdValue !== "string" ||
+      !deleteOperationIdValue.trim() ||
+      deleteOperationIdValue.length > 512
+    ) {
+      return c.json(
+        {
+          error: "deleteOperationId is required",
+          code: "INVALID_GLOBAL_ASSET_TRASH",
+        },
+        400,
+      );
+    }
     try {
       const now = Date.now();
       const asset = await globalAssetServiceAt(requestOrigin(c)).trash({
         libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
         globalAssetId: c.req.param("globalAssetId"),
-        deleteOperationId: randomUUID(),
+        deleteOperationId: deleteOperationIdValue.trim(),
         deletedAt: new Date(now).toISOString(),
         purgeAfter: new Date(now + ASSET_PURGE_DELAY_MS).toISOString(),
       });
@@ -4270,11 +4347,29 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.post(
     "/api/v1/libraries/personal/assets/:globalAssetId/restore",
     async (c) => {
-      try {
-        const asset = await globalAssetServiceAt(requestOrigin(c)).restore(
-          PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
-          c.req.param("globalAssetId"),
+      const body = (await c.req.json().catch(() => null)) as unknown;
+      const deleteOperationIdValue = isRecord(body)
+        ? body.deleteOperationId
+        : undefined;
+      if (
+        typeof deleteOperationIdValue !== "string" ||
+        !deleteOperationIdValue.trim() ||
+        deleteOperationIdValue.length > 512
+      ) {
+        return c.json(
+          {
+            error: "deleteOperationId is required",
+            code: "INVALID_GLOBAL_ASSET_RESTORE",
+          },
+          400,
         );
+      }
+      try {
+        const asset = await globalAssetServiceAt(requestOrigin(c)).restore({
+          libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+          globalAssetId: c.req.param("globalAssetId"),
+          deleteOperationId: deleteOperationIdValue.trim(),
+        });
         return c.json(asset);
       } catch (error) {
         return localGlobalAssetErrorResponse(error);
@@ -4879,18 +4974,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           : {};
       try {
         if (account.providerId !== "mock") {
-          if (
-            !options.providerPluginExecutor ||
-            !testAigc.planProviderPlugin
-          ) {
+          if (!options.providerPluginExecutor || !testAigc.planProviderPlugin) {
             throw new Error(
               "The local durable Provider runtime is unavailable.",
             );
           }
           const requestedActionRunId =
-            typeof body.actionRunId === "string"
-              ? body.actionRunId.trim()
-              : "";
+            typeof body.actionRunId === "string" ? body.actionRunId.trim() : "";
           if (requestedActionRunId.length > 256) {
             return c.json(
               { error: "actionRunId must be at most 256 characters" },
@@ -5112,8 +5202,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         account.providerId === providerId,
     );
     if (!selectedAccount) {
-      const message =
-        `Host-selected provider account ${accountId} is not available for ${providerId}.`;
+      const message = `Host-selected provider account ${accountId} is not available for ${providerId}.`;
       return c.json(
         {
           error: message,
@@ -5634,10 +5723,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         502,
       );
     }
-    if (
-      effectiveBrowserAuth?.pluginStore &&
-      !completed.availabilityError
-    ) {
+    if (effectiveBrowserAuth?.pluginStore && !completed.availabilityError) {
       const pluginStore = await pluginStoreForImport();
       await pluginStore.put({
         pluginId: effectiveBrowserAuth.pluginStore.pluginId,
@@ -6209,10 +6295,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return c.json(await publicAssetStorage.updateFromRequest(body));
     } catch (error) {
       if (error instanceof PublicAssetStorageConfigError) {
-        return c.json(
-          { error: error.message },
-          error.status as 400 | 409,
-        );
+        return c.json({ error: error.message }, error.status as 400 | 409);
       }
       throw error;
     }
@@ -6234,49 +6317,25 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     c.json(publicLocalAudioConfig(await localAudioReadState(audioConfig))),
   );
 
-  // The queryable index over attached asset metadata identities. Rows mirror
-  // what workspace manifests already carry; bodies stay in the blob store.
+  // Rebuildable query projection over typed metadata attachments. The owning
+  // ProjectAsset or ActionRevision remains authoritative; this route neither
+  // creates a second authority nor accepts storage topology as target identity.
   app.put("/api/v1/local/asset-metadata", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as {
-      assetId?: unknown;
-      metadataKind?: unknown;
-      projectId?: unknown;
-      producer?: unknown;
-      identity?: unknown;
-    } | null;
-    if (
-      !body ||
-      typeof body.assetId !== "string" ||
-      !body.assetId.trim() ||
-      typeof body.metadataKind !== "string" ||
-      !body.metadataKind.trim() ||
-      typeof body.producer !== "string" ||
-      !body.producer.trim() ||
-      !body.identity ||
-      typeof body.identity !== "object" ||
-      Array.isArray(body.identity)
-    ) {
+    let attachment: ReturnType<typeof parseAssetMetadataFillAction>;
+    try {
+      attachment = parseAssetMetadataFillAction(
+        await c.req.json().catch(() => null),
+      );
+    } catch (error) {
       return c.json(
-        {
-          error:
-            "assetId, metadataKind, producer, and an identity object are required",
-        },
+        { error: error instanceof Error ? error.message : String(error) },
         400,
       );
     }
-    const identity = body.identity as Record<string, unknown>;
-    if (identity.kind !== body.metadataKind) {
-      return c.json(
-        { error: `identity.kind must equal metadataKind ${body.metadataKind}` },
-        400,
-      );
-    }
-    await db.upsertAssetMetadataIndex({
-      assetId: body.assetId,
-      metadataKind: body.metadataKind,
-      ...(typeof body.projectId === "string" && body.projectId.trim()
-        ? { projectId: body.projectId }
-        : {}),
+    const identity = attachment.metadata;
+    await db.upsertMetadataAttachmentIndex({
+      target: attachment.target,
+      metadataKind: attachment.metadataKind,
       ...(typeof identity.schemaVersion === "number"
         ? { schemaVersion: identity.schemaVersion }
         : {}),
@@ -6286,24 +6345,49 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ...(typeof identity.bodyHash === "string"
         ? { bodyHash: identity.bodyHash }
         : {}),
-      producer: body.producer,
+      producer: attachment.producer,
       ...(identity.summary === undefined ? {} : { summary: identity.summary }),
       identity,
     });
     return c.json({
       recorded: true,
-      assetId: body.assetId,
-      metadataKind: body.metadataKind,
+      authority: "projection-index" as const,
+      target: attachment.target,
+      metadataKind: attachment.metadataKind,
     });
   });
 
   app.get("/api/v1/local/asset-metadata", async (c) => {
-    const rows = await db.listAssetMetadataIndex({
-      ...(c.req.query("assetId") ? { assetId: c.req.query("assetId") } : {}),
-      ...(c.req.query("kind") ? { metadataKind: c.req.query("kind") } : {}),
-      ...(c.req.query("projectId")
-        ? { projectId: c.req.query("projectId") }
+    const targetKind = c.req.query("targetKind");
+    const projectId = c.req.query("projectId");
+    const assetId = c.req.query("assetId");
+    const actionId = c.req.query("actionId");
+    const actionRevisionId = c.req.query("actionRevisionId");
+    let target:
+      ReturnType<typeof MetadataAttachmentTargetSchema.parse> | undefined;
+    if (targetKind || assetId || actionId || actionRevisionId) {
+      try {
+        target = MetadataAttachmentTargetSchema.parse(
+          targetKind === "project-asset"
+            ? { kind: targetKind, projectId, assetId }
+            : targetKind === "action-revision"
+              ? { kind: targetKind, projectId, actionId, actionRevisionId }
+              : null,
+        );
+      } catch (error) {
+        return c.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          400,
+        );
+      }
+    }
+    const rows = await db.listMetadataAttachmentIndex({
+      ...(target ? { target } : {}),
+      ...(targetKind === "project-asset" || targetKind === "action-revision"
+        ? { targetKind }
         : {}),
+      ...(c.req.query("kind") ? { metadataKind: c.req.query("kind") } : {}),
+      ...(projectId ? { projectId } : {}),
     });
     return c.json({ metadata: rows });
   });
@@ -8629,10 +8713,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     let result: object;
     try {
-      result = await replicaStore.updateSnapshotAtomic(projectId, (doc) => ({
-        value: handleProjectCommand(projectId, doc, body, hostContext),
-        save: projectCommandMutates(action),
-      }));
+      const mutatesProject = projectCommandMutates(action);
+      result = await replicaStore.updateSnapshotAtomic(
+        projectId,
+        async (doc) => {
+          if (mutatesProject) {
+            await projectAssetServiceAt(requestOrigin(c)).materializeDoc(
+              projectId,
+              doc,
+            );
+          }
+          return {
+            value: handleProjectCommand(projectId, doc, body, hostContext),
+            save: mutatesProject,
+          };
+        },
+      );
     } catch (error) {
       if (handoffNodeId) {
         await providerExecutionHandoffs.remove(projectId, handoffNodeId);
@@ -9997,28 +10093,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json(result.body, result.status);
   });
 
-  app.get("/assets/sign", (c) => {
-    const key = c.req.query("key");
-    if (!key) return c.json({ error: "Missing key" }, 400);
-    return c.json({
-      url: localAssetUrl(c, key),
-      exp: signedUrlExp(),
-    });
-  });
-
-  app.post("/assets/sign-batch", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { keys?: unknown };
-    const keys = Array.isArray(body.keys)
-      ? body.keys.filter(
-          (key): key is string => typeof key === "string" && key.length > 0,
-        )
-      : [];
-    const exp = signedUrlExp();
-    return c.json({
-      urls: keys.map((key) => ({ key, url: localAssetUrl(c, key), exp })),
-    });
-  });
-
   app.all("/api/custom-action/upload", (c) =>
     c.json(
       {
@@ -10029,80 +10103,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       410,
     ),
   );
-
-  app.post("/upload", async (c) => {
-    const form = await c.req.formData();
-    const file = form.get("file");
-    if (!file || typeof file === "string") {
-      const envelope = localMutationEnvelope(
-        "asset_blob_upload",
-        "asset-blob",
-        "",
-      );
-      return c.json(
-        {
-          error: "Missing file",
-          mutation: hostMutationRejected(envelope, "Missing file"),
-        },
-        400,
-      );
-    }
-
-    const storageKey = `uploads/${crypto.randomUUID().slice(0, 8)}-${sanitizeFileName(file.name)}`;
-    const envelope = localMutationEnvelope(
-      "asset_blob_upload",
-      "asset-blob",
-      storageKey,
-    );
-    let path: string;
-    try {
-      path = await assetPathForWrite(options.dataDir, storageKey);
-    } catch (error) {
-      const message = errorMessage(error);
-      return c.json(
-        {
-          error: message,
-          mutation: hostMutationRejected(envelope, message),
-        },
-        400,
-      );
-    }
-    await writeFile(path, new Uint8Array(await file.arrayBuffer()));
-    const preconditions = requestProjectWritePreconditions(c);
-    const mutation = hostMutationSucceeded(envelope, {
-      resultEntityId: storageKey,
-    });
-    await db.appendMutationAudit(
-      mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "asset blob upload",
-      }),
-    );
-    return c.json({
-      storageKey,
-      mutation,
-    });
-  });
-
-  app.get("/assets/*", async (c) => {
-    const storageKey = c.req.path.slice("/assets/".length);
-    if (!storageKey || storageKey === "sign" || storageKey === "sign-batch") {
-      return c.text("Not found", 404);
-    }
-    try {
-      return await serveLocalAssetFile({
-        dataDir: options.dataDir,
-        clashRoot,
-        storageKey,
-        ...(c.req.header("range")
-          ? { rangeHeader: c.req.header("range") }
-          : {}),
-      });
-    } catch {
-      return c.text("Asset not found", 404);
-    }
-  });
 
   /**
    * Where a plugin streams bytes it was given a slot for.
@@ -10151,15 +10151,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       userId,
       state.providerOAuth,
     ).find(
-      (account) =>
-        account.providerId === "fal" &&
-        account.enabled !== false,
+      (account) => account.providerId === "fal" && account.enabled !== false,
     );
     if (!falAccount?.id) {
       return c.json(
         {
-          error:
-            "3D generation requires an enabled fal.ai provider account",
+          error: "3D generation requires an enabled fal.ai provider account",
         },
         503,
       );
@@ -10173,7 +10170,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const clientActionRunId =
       typeof body.actionRunId === "string" ? body.actionRunId.trim() : "";
     if (clientActionRunId.length > 256) {
-      return c.json({ error: "actionRunId must be at most 256 characters" }, 400);
+      return c.json(
+        { error: "actionRunId must be at most 256 characters" },
+        400,
+      );
     }
     const actionRunId = clientActionRunId || `director:${randomUUID()}`;
     const identity = { actionRunId, outputSlot: "media" };
@@ -10310,8 +10310,15 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const originRaw = String(form.get("origin") ?? "canvas-node").trim();
     const origin: "canvas-node" | "asset-preview" =
       originRaw === "asset-preview" ? "asset-preview" : "canvas-node";
+    const actionRunId = String(form.get("actionRunId") ?? "").trim();
     if (!projectId || !sourceAssetId) {
       return c.json({ error: "Missing projectId or sourceAssetId" }, 400);
+    }
+    if (!actionRunId || actionRunId.length > 256) {
+      return c.json(
+        { error: "actionRunId is required and must be at most 256 characters" },
+        400,
+      );
     }
     if (editKind !== "image-editor" && editKind !== "video-clipper") {
       return c.json({ error: `Invalid editKind: ${editKind}` }, 400);
@@ -10382,13 +10389,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         : outputKind === "video"
           ? "video/mp4"
           : "audio/mpeg");
-    const actionRunId = `edit:${randomUUID()}`;
+    const outputAssetId = editOutputAssetId(actionRunId);
     try {
-      const asset = await assetService.installOwned({
-        projectId,
+      const staged = await assetService.stageOwned({
         kind: outputKind,
         bytes,
         contentType,
+        name: file.name || `edit-${actionRunId}`,
+      });
+      const asset = await assetService.publishStagedOwnedWithBindings({
+        projectId,
+        projectAssetId: outputAssetId,
+        kind: outputKind,
+        resourceId: staged.resource.id,
         name: file.name || `edit-${actionRunId}`,
         metadata: { bytes: bytes.byteLength, contentType },
         provenance: {
@@ -10396,12 +10409,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           actionRunId,
           model: actionSourceModel(invocation),
         },
-      });
-      await bindEditActionAssets({
-        service: assetService,
-        invocation,
-        actionRunId,
-        outputAssetId: asset.id,
+        bindings: editActionAssetBindings({
+          invocation,
+          actionRunId,
+          outputAssetId,
+        }),
       });
       return c.json(asset);
     } catch (error) {
@@ -10411,6 +10423,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.post("/api/v1/edits/video-crop", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
+      actionRunId?: string;
       projectId?: string;
       sourceAssetId?: string;
       params?: { mode?: string; startSec?: number; endSec?: number };
@@ -10418,7 +10431,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       invocation?: unknown;
     };
     const { projectId, sourceAssetId, params } = body;
+    const actionRunId = body.actionRunId?.trim() ?? "";
     if (
+      !actionRunId ||
+      actionRunId.length > 256 ||
       !projectId ||
       !sourceAssetId ||
       params?.mode !== "crop" ||
@@ -10506,32 +10522,34 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     const bytes = new Uint8Array(await readFile(outputPath));
     await rm(tempDir, { recursive: true, force: true });
-    const actionRunId = `edit:${randomUUID()}`;
+    const outputAssetId = editOutputAssetId(actionRunId);
     try {
-      const asset = await assetService.installOwned({
-        projectId,
+      const staged = await assetService.stageOwned({
         kind: "video",
         bytes,
         contentType: "video/mp4",
         name: `trimmed-${source.name ?? source.id}.mp4`,
+      });
+      const asset = await assetService.publishStagedOwnedWithBindings({
+        projectId,
+        projectAssetId: outputAssetId,
+        kind: "video",
+        resourceId: staged.resource.id,
+        name: `trimmed-${source.name ?? source.id}.mp4`,
         metadata: {
           bytes: bytes.byteLength,
           contentType: "video/mp4",
-          durationMs: Math.round(
-            (invocation.params.endSec - invocation.params.startSec) * 1000,
-          ),
         },
         provenance: {
           kind: "edit",
           actionRunId,
           model: actionSourceModel(invocation),
         },
-      });
-      await bindEditActionAssets({
-        service: assetService,
-        invocation,
-        actionRunId,
-        outputAssetId: asset.id,
+        bindings: editActionAssetBindings({
+          invocation,
+          actionRunId,
+          outputAssetId,
+        }),
       });
       return c.json(asset);
     } catch (error) {

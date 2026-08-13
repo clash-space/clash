@@ -3,7 +3,10 @@ import { chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   GlobalAssetEntrySchema,
+  MetadataAttachmentTargetSchema,
+  metadataAttachmentTargetKey,
   type GlobalAssetEntry,
+  type MetadataAttachmentTarget,
   type TextAppliedRevision,
 } from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
@@ -252,6 +255,24 @@ function applySchema(db: SqliteDatabase): void {
       recorded_at INTEGER NOT NULL,
       PRIMARY KEY (asset_id, metadata_kind)
     );
+
+    CREATE TABLE IF NOT EXISTS metadata_attachment_index (
+      target_key TEXT NOT NULL,
+      target_kind TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      target_json TEXT NOT NULL,
+      metadata_kind TEXT NOT NULL,
+      schema_version INTEGER,
+      content_hash TEXT,
+      body_hash TEXT,
+      producer TEXT NOT NULL,
+      summary_json TEXT,
+      identity_json TEXT NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      PRIMARY KEY (target_key, metadata_kind)
+    );
+    CREATE INDEX IF NOT EXISTS metadata_attachment_project_kind_idx
+      ON metadata_attachment_index (project_id, target_kind, metadata_kind);
 
     CREATE TABLE IF NOT EXISTS local_config (
       key TEXT PRIMARY KEY NOT NULL,
@@ -1413,10 +1434,14 @@ export function createLocalMetadataStore(dataDir: string) {
 
   async function restoreGlobalAsset(
     libraryIdInput: string,
-    idInput: string,
+    input: { id: string; deleteOperationId: string },
   ): Promise<GlobalAssetEntry> {
     const libraryId = normalizedGlobalIdentity(libraryIdInput, "libraryId");
-    const id = normalizedGlobalIdentity(idInput, "globalAssetId");
+    const id = normalizedGlobalIdentity(input.id, "globalAssetId");
+    const deleteOperationId = normalizedGlobalIdentity(
+      input.deleteOperationId,
+      "deleteOperationId",
+    );
     return withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
@@ -1430,18 +1455,31 @@ export function createLocalMetadataStore(dataDir: string) {
           throw new Error(`Global Asset ${id} has already been purged.`);
         }
         if (current.lifecycle.state === "active") {
-          db.exec("COMMIT");
-          return current;
+          if (
+            rowOptionalString(row, "delete_operation_id") === deleteOperationId
+          ) {
+            db.exec("COMMIT");
+            return current;
+          }
+          throw new Error(
+            `Global Asset ${id} was not restored from ${deleteOperationId}.`,
+          );
+        }
+        if (current.lifecycle.deleteOperationId !== deleteOperationId) {
+          throw new Error(
+            `Global Asset ${id} is trashed by another operation.`,
+          );
         }
         db.prepare(
           `
           UPDATE global_asset_entry
-             SET lifecycle_state = 'active', delete_operation_id = NULL,
+             SET lifecycle_state = 'active',
                  deleted_at = NULL, purge_after = NULL, purged_at = NULL,
                  updated_at = ?
            WHERE library_id = ? AND id = ?
+             AND lifecycle_state = 'trashed' AND delete_operation_id = ?
         `,
-        ).run(Date.now(), libraryId, id);
+        ).run(Date.now(), libraryId, id, deleteOperationId);
         markMigration(db, dataDir, "");
         db.exec("COMMIT");
         return { ...current, lifecycle: { state: "active" } };
@@ -1767,14 +1805,13 @@ export function createLocalMetadataStore(dataDir: string) {
   }
 
   /**
-   * The queryable half of "manifest carries identities, blobs carry bodies":
-   * one row per attached kind, so "which assets have a transcript" is a WHERE
-   * clause instead of a walk over every workspace manifest.
+   * Query projection only. The attached metadata remains authoritative in the
+   * owning Project Asset or Action revision; this index adds no write/CAS
+   * authority and can be rebuilt from those owners.
    */
-  async function upsertAssetMetadataIndex(record: {
-    assetId: string;
+  async function upsertMetadataAttachmentIndex(record: {
+    target: MetadataAttachmentTarget;
     metadataKind: string;
-    projectId?: string;
     schemaVersion?: number;
     contentHash?: string;
     bodyHash?: string;
@@ -1782,15 +1819,20 @@ export function createLocalMetadataStore(dataDir: string) {
     summary?: unknown;
     identity: unknown;
   }): Promise<void> {
+    const target = MetadataAttachmentTargetSchema.parse(record.target);
+    const targetKey = metadataAttachmentTargetKey(target);
     await withDb((db) => {
       db.prepare(
         `
-      INSERT INTO asset_metadata_index (
-        asset_id, metadata_kind, project_id, schema_version, content_hash,
-        body_hash, producer, summary_json, identity_json, recorded_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(asset_id, metadata_kind) DO UPDATE SET
+      INSERT INTO metadata_attachment_index (
+        target_key, target_kind, project_id, target_json, metadata_kind,
+        schema_version, content_hash, body_hash, producer, summary_json,
+        identity_json, recorded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(target_key, metadata_kind) DO UPDATE SET
+        target_kind = excluded.target_kind,
         project_id = excluded.project_id,
+        target_json = excluded.target_json,
         schema_version = excluded.schema_version,
         content_hash = excluded.content_hash,
         body_hash = excluded.body_hash,
@@ -1800,9 +1842,11 @@ export function createLocalMetadataStore(dataDir: string) {
         recorded_at = excluded.recorded_at
     `,
       ).run(
-        record.assetId,
+        targetKey,
+        target.kind,
+        target.projectId,
+        JSON.stringify(target),
         record.metadataKind,
-        record.projectId ?? null,
         record.schemaVersion ?? null,
         record.contentHash ?? null,
         record.bodyHash ?? null,
@@ -1814,9 +1858,10 @@ export function createLocalMetadataStore(dataDir: string) {
     });
   }
 
-  async function listAssetMetadataIndex(
+  async function listMetadataAttachmentIndex(
     filter: {
-      assetId?: string;
+      target?: MetadataAttachmentTarget;
+      targetKind?: MetadataAttachmentTarget["kind"];
       metadataKind?: string;
       projectId?: string;
     } = {},
@@ -1824,9 +1869,13 @@ export function createLocalMetadataStore(dataDir: string) {
     return withDb((db) => {
       const conditions: string[] = [];
       const params: SqlitePrimitive[] = [];
-      if (filter.assetId) {
-        conditions.push("asset_id = ?");
-        params.push(filter.assetId);
+      if (filter.target) {
+        conditions.push("target_key = ?");
+        params.push(metadataAttachmentTargetKey(filter.target));
+      }
+      if (filter.targetKind) {
+        conditions.push("target_kind = ?");
+        params.push(filter.targetKind);
       }
       if (filter.metadataKind) {
         conditions.push("metadata_kind = ?");
@@ -1839,18 +1888,20 @@ export function createLocalMetadataStore(dataDir: string) {
       const rows = db
         .prepare(
           `
-      SELECT asset_id, metadata_kind, project_id, schema_version, content_hash,
+      SELECT target_json, metadata_kind, schema_version, content_hash,
              body_hash, producer, summary_json, identity_json, recorded_at
-        FROM asset_metadata_index
+        FROM metadata_attachment_index
         ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
-       ORDER BY asset_id, metadata_kind
+       ORDER BY target_key, metadata_kind
     `,
         )
         .all(...params);
       return rows.map((row) => ({
-        assetId: row.asset_id,
+        authority: "projection-index",
+        target: MetadataAttachmentTargetSchema.parse(
+          JSON.parse(String(row.target_json)),
+        ),
         metadataKind: row.metadata_kind,
-        ...(row.project_id === null ? {} : { projectId: row.project_id }),
         ...(row.schema_version === null
           ? {}
           : { schemaVersion: row.schema_version }),
@@ -1860,6 +1911,40 @@ export function createLocalMetadataStore(dataDir: string) {
         ...(typeof row.summary_json === "string"
           ? { summary: JSON.parse(row.summary_json) as unknown }
           : {}),
+        identity: JSON.parse(String(row.identity_json)) as unknown,
+        recordedAt: row.recorded_at,
+      }));
+    });
+  }
+
+  /** Private read boundary for pre-typed rows. Never use this to accept a write. */
+  async function listLegacyAssetMetadataIndex(
+    filter: { assetId?: string } = {},
+  ): Promise<Array<Record<string, unknown>>> {
+    return withDb((db) => {
+      const rows = filter.assetId
+        ? db
+            .prepare(
+              `SELECT asset_id, metadata_kind, project_id, producer,
+                      identity_json, recorded_at
+                 FROM asset_metadata_index
+                WHERE asset_id = ?
+                ORDER BY asset_id, metadata_kind`,
+            )
+            .all(filter.assetId)
+        : db
+            .prepare(
+              `SELECT asset_id, metadata_kind, project_id, producer,
+                      identity_json, recorded_at
+                 FROM asset_metadata_index
+                ORDER BY asset_id, metadata_kind`,
+            )
+            .all();
+      return rows.map((row) => ({
+        assetId: row.asset_id,
+        metadataKind: row.metadata_kind,
+        ...(row.project_id === null ? {} : { projectId: row.project_id }),
+        producer: row.producer,
         identity: JSON.parse(String(row.identity_json)) as unknown,
         recordedAt: row.recorded_at,
       }));
@@ -1883,7 +1968,8 @@ export function createLocalMetadataStore(dataDir: string) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
-    upsertAssetMetadataIndex,
-    listAssetMetadataIndex,
+    upsertMetadataAttachmentIndex,
+    listMetadataAttachmentIndex,
+    listLegacyAssetMetadataIndex,
   };
 }

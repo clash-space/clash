@@ -9,6 +9,8 @@ import {
   listActionAssetReferences,
 } from "@clash/shared-types";
 
+import { createLocalDurableRun } from "./durable-run-coordinator.js";
+import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import { createLocalWorkflowProcessor } from "./local-processor.js";
 
 const temporaryDirectories: string[] = [];
@@ -79,6 +81,103 @@ function customActionDoc(input: {
 }
 
 describe("durable executable custom Action", () => {
+  it("does not let a legacy generating run reserve the node from its current revision", async () => {
+    const dataDir = await temporaryDataDir();
+    const doc = customActionDoc({
+      prompt: "Current prompt",
+      tone: "playful",
+      referenceAssetId: "asset-replacement",
+    });
+    const nodes = doc.getMap("nodes");
+    const pending = nodes.get("action-node") as Record<string, any>;
+    nodes.set("action-node", {
+      ...pending,
+      data: { ...pending.data, status: "generating" },
+    });
+    await createLocalDurableRun({
+      ownerId: "local-api",
+      journal: createSqliteDurableRunJournal(dataDir),
+      clock: { now: () => 100 },
+      command: {
+        type: "create",
+        actionRunId: "local-custom-action-node",
+        outputSlot: "text",
+        deadlineAt: 10_000,
+        executor: {
+          targetKind: "action",
+          binding,
+          actionId: "caption",
+          actor: { kind: "agent", id: "agent-1" },
+          kind: "text",
+          projectId: "project-1",
+          nodeId: "action-node",
+          provider: "plugin:test.custom-action",
+          modelEndpoint: "caption",
+          input: {
+            values: { prompt: "Legacy prompt", tone: "precise" },
+            references: [
+              {
+                slot: "image",
+                index: 0,
+                asset: {
+                  assetId: "asset-original",
+                  uri: "clash-asset://asset-original",
+                  kind: "image",
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+    const requests: Array<{ taskId: string; input: { values: unknown } }> = [];
+    const invoke = vi.fn(async (request: (typeof requests)[number]) => {
+      requests.push(structuredClone(request));
+      const values = request.input.values as Record<string, unknown>;
+      return {
+        protocol: "clash.plugin.result/v1" as const,
+        invocationId: `result-${String(values.tone)}`,
+        status: "completed" as const,
+        outputs: [
+          {
+            slot: "result",
+            kind: "value" as const,
+            value:
+              values.tone === "playful" ? "Current result" : "Legacy result",
+          },
+        ],
+      };
+    });
+
+    await createLocalWorkflowProcessor({
+      dataDir,
+      executablePluginAction: invoke,
+      durableProviderRuns: {
+        ownerId: "local-api",
+        now: () => 100,
+        providerPluginExecutor: async () => {
+          throw new Error("Provider path must not be used for a custom Action");
+        },
+      },
+    }).process({ doc, projectId: "project-1" });
+
+    expect(requests).toHaveLength(2);
+    expect(requests.map((request) => request.taskId)).toEqual([
+      "local-custom-action-node",
+      expect.stringMatching(
+        /^project:project-1:node:action-node:revision:[a-f0-9]{64}$/,
+      ),
+    ]);
+    expect(nodes.get("action-node")).toMatchObject({
+      data: {
+        status: "completed",
+        prompt: "Current prompt",
+        customActionParams: { tone: "playful" },
+        content: "Current result",
+      },
+    });
+  });
+
   it("does not invoke after the claimed attempt budget has expired", async () => {
     const dataDir = await temporaryDataDir();
     const doc = customActionDoc({
@@ -91,9 +190,7 @@ describe("durable executable custom Action", () => {
       protocol: "clash.plugin.result/v1" as const,
       invocationId: "late-custom-result",
       status: "completed" as const,
-      outputs: [
-        { slot: "result", kind: "value" as const, value: "Too late" },
-      ],
+      outputs: [{ slot: "result", kind: "value" as const, value: "Too late" }],
     }));
 
     await createLocalWorkflowProcessor({
@@ -171,7 +268,7 @@ describe("durable executable custom Action", () => {
     expect(taskIds[1]).not.toBe(taskIds[0]);
   });
 
-  it("invokes from the frozen journal input after a checkpoint crash and node edits", async () => {
+  it("recovers a stale frozen revision without projecting it and immediately submits the current revision", async () => {
     const dataDir = await temporaryDataDir();
     const originalDoc = customActionDoc({
       prompt: "Original prompt",
@@ -179,23 +276,27 @@ describe("durable executable custom Action", () => {
       referenceAssetId: "asset-original",
     });
     let invocationDoc: LoroDoc | undefined;
-    const invoke = vi.fn(async () => {
+    const invocations: Array<{
+      taskId: string;
+      input: {
+        values: Record<string, unknown>;
+        references: Array<Record<string, unknown>>;
+      };
+    }> = [];
+    const invoke = vi.fn(async (request: (typeof invocations)[number]) => {
+      invocations.push(structuredClone(request));
       expect(invocationDoc).toBeDefined();
-      expect(
-        listActionAssetReferences(invocationDoc!, "asset-original"),
-      ).toEqual([
-        expect.objectContaining({
-          direction: "input",
-          slot: "image:0",
-          projectAssetId: "asset-original",
-        }),
-      ]);
+      const tone = request.input.values.tone;
       return {
         protocol: "clash.plugin.result/v1" as const,
-        invocationId: "custom-result",
+        invocationId: `custom-result-${String(tone)}`,
         status: "completed" as const,
         outputs: [
-          { slot: "result", kind: "value" as const, value: "Frozen result" },
+          {
+            slot: "result",
+            kind: "value" as const,
+            value: tone === "precise" ? "Stale result" : "Replacement result",
+          },
         ],
       };
     });
@@ -233,43 +334,77 @@ describe("durable executable custom Action", () => {
       checkpoint: async () => undefined,
     });
 
-    expect(invoke).toHaveBeenCalledTimes(1);
-    expect(invoke).toHaveBeenCalledWith(
-      expect.objectContaining({
-        binding,
-        taskId: "local-custom-action-node",
-        projectId: "project-1",
-        nodeId: "action-node",
-        input: {
-          values: { prompt: "Original prompt", tone: "precise" },
-          references: [
-            {
-              slot: "image",
-              index: 0,
-              asset: {
-                assetId: "asset-original",
-                uri: "clash-asset://asset-original",
-                kind: "image",
-              },
-            },
-          ],
-        },
-        actor: { kind: "agent", id: "agent-1" },
-        timeoutMs: expect.any(Number),
-      }),
+    expect(invoke).toHaveBeenCalledTimes(2);
+    const staleInvocation = invocations.find(
+      (request) => request.input.values.tone === "precise",
     );
+    const currentInvocation = invocations.find(
+      (request) => request.input.values.tone === "playful",
+    );
+    expect(staleInvocation).toMatchObject({
+      taskId: expect.stringMatching(
+        /^project:project-1:node:action-node:revision:[a-f0-9]{64}$/,
+      ),
+      input: {
+        values: { prompt: "Original prompt", tone: "precise" },
+        references: [
+          {
+            slot: "image",
+            index: 0,
+            asset: {
+              assetId: "asset-original",
+              uri: "clash-asset://asset-original",
+              kind: "image",
+            },
+          },
+        ],
+      },
+    });
+    expect(currentInvocation).toMatchObject({
+      taskId: expect.stringMatching(
+        /^project:project-1:node:action-node:revision:[a-f0-9]{64}$/,
+      ),
+      input: {
+        values: { prompt: "Replacement prompt", tone: "playful" },
+        references: [
+          expect.objectContaining({
+            asset: expect.objectContaining({
+              assetId: "asset-replacement",
+            }),
+          }),
+        ],
+      },
+    });
+    expect(currentInvocation?.taskId).not.toBe(staleInvocation?.taskId);
     expect(listActionAssetReferences(recoveredDoc, "asset-original")).toEqual([
       expect.objectContaining({
         direction: "input",
         slot: "image:0",
         projectAssetId: "asset-original",
         owner: expect.objectContaining({
-          actionRunId: "local-custom-action-node",
+          actionRunId: staleInvocation?.taskId,
+        }),
+      }),
+    ]);
+    expect(
+      listActionAssetReferences(recoveredDoc, "asset-replacement"),
+    ).toEqual([
+      expect.objectContaining({
+        direction: "input",
+        slot: "image:0",
+        projectAssetId: "asset-replacement",
+        owner: expect.objectContaining({
+          actionRunId: currentInvocation?.taskId,
         }),
       }),
     ]);
     expect(recoveredDoc.getMap("nodes").get("action-node")).toMatchObject({
-      data: { status: "completed", content: "Frozen result" },
+      data: {
+        status: "completed",
+        prompt: "Replacement prompt",
+        customActionParams: { tone: "playful" },
+        content: "Replacement result",
+      },
     });
   });
 });

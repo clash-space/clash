@@ -10,8 +10,8 @@
  * Transformations is video/image only), so render-server is also the prod
  * Container path. Callers must have `RENDER_SERVER_URL` configured.
  *
- * Consumers (POST /api/v1/assets probe, agents/generation.ts audio pipeline)
- * should persist `durationMs` + `waveform` on the D1 assets row in one trip.
+ * Internal hosted-generation consumers persist `durationMs` + `waveform` on
+ * the legacy D1 assets row in one trip. There is no public raw-key probe route.
  */
 import type { Env } from "../config";
 import { signAssetPath } from "./asset-signing";
@@ -43,11 +43,14 @@ export async function extractAudioMetadata(
   const signedPath = await signAssetPath(env, audioR2Key);
   const sourceUrl = `${mediaBase.replace(/\/$/, "")}${signedPath}`;
 
-  const resp = await fetch(`${env.RENDER_SERVER_URL.replace(/\/$/, "")}/probe-audio`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sourceUrl }),
-  });
+  const resp = await fetch(
+    `${env.RENDER_SERVER_URL.replace(/\/$/, "")}/probe-audio`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceUrl }),
+    },
+  );
   if (!resp.ok) {
     const preview = await resp
       .text()
@@ -66,7 +69,9 @@ export async function extractAudioMetadata(
     !Array.isArray(waveform) ||
     waveform.length === 0
   ) {
-    throw new Error(`render-server returned incomplete audio metadata for ${audioR2Key}`);
+    throw new Error(
+      `render-server returned incomplete audio metadata for ${audioR2Key}`,
+    );
   }
   return { durationMs, waveform };
 }

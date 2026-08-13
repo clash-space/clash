@@ -22,7 +22,15 @@ from clash_sdk import serve
 async def submit(invocation, context):
     token = await context.store.get("accessToken")
     if not token:
-        raise RuntimeError("This account has no accessToken stored.")
+        return {
+            "status": "failed",
+            "error": {
+                "code": "authentication_failed",
+                "message": "This account has no accessToken stored.",
+                "retryable": False,
+                "requestState": "rejected",
+            },
+        }
 
     response = httpx.post(
         "https://api.acme.example/generate",
@@ -46,6 +54,35 @@ externally for deterministic traffic recording and replay.
 Credentials come from `context.store`, not invocation values or process
 environment variables. The Host owns account selection, retry policy, poll
 cadence, total run lifetime, restart recovery, and Project publication.
+
+### Failed Provider steps
+
+A handler may return `status: "failed"` with the same canonical error contract
+used by the TypeScript SDK:
+
+```python
+return {
+    "status": "failed",
+    "error": {
+        "code": "rate_limited",
+        "message": "The Provider asked this account to slow down.",
+        "retryable": True,
+        "requestState": "rejected",  # polls always use "accepted"
+        "providerCode": "HTTP_429",  # optional Provider spelling
+        "details": {"retryAfterMs": 5_000},  # optional JSON diagnostics
+    },
+}
+```
+
+`code` must be one of the shared failure codes documented in
+[Waiting for a Provider](/plugins/waiting#saying-what-the-provider-said). `requestState` records whether
+the Provider rejected the submit, may already have accepted it, or failed work
+that was already accepted; it is not a retry instruction. A malformed failure
+is returned as non-retryable `contract_violation` instead of crossing the Host
+boundary. An uncategorized Python exception becomes non-retryable
+`execution_failed`, with `requestState: "unknown"` for submit and `"accepted"`
+for poll. Return an explicit failed result whenever the Provider response gives
+more precise facts.
 
 ## References and outputs: Asset delivery v0
 

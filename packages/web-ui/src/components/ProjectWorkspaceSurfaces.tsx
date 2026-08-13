@@ -17,6 +17,7 @@ import {
   MagnifyingGlassPlus,
   PencilSimple,
   SpeakerHigh,
+  Cube,
 } from "@phosphor-icons/react";
 import {
   buildNleHandoff,
@@ -40,6 +41,7 @@ import {
 } from "@clash/shared-types";
 import { stripSrcFromTracks } from "@clash/web-ui/lib/timelineDsl";
 import { resolveAssetMediaUrl } from "../features/assets/media-url";
+import { assetAvailabilityLabel } from "../features/assets/availability";
 import { getAsset } from "@clash/web-ui/lib/hooks/useAsset";
 import { CanvasIcon } from "./ProjectSurfaceIcon";
 import {
@@ -355,7 +357,9 @@ export function ProjectAssetSurface({
   const [editing, setEditing] = useState(false);
   const label =
     asset.name?.trim() || asset.metadata.originalName?.trim() || asset.id;
-  const previewUrl = resolveAssetMediaUrl(asset.url) ?? "";
+  const ready = asset.status === "ready";
+  const previewUrl = ready ? (resolveAssetMediaUrl(asset.url) ?? "") : "";
+  const availabilityLabel = assetAvailabilityLabel(asset);
 
   useEffect(() => {
     setFailed(false);
@@ -369,10 +373,18 @@ export function ProjectAssetSurface({
         <FilmSlate className="h-7 w-7" weight="regular" aria-hidden="true" />
       ) : asset.kind === "audio" ? (
         <SpeakerHigh className="h-7 w-7" weight="regular" aria-hidden="true" />
+      ) : asset.kind === "model" ? (
+        <Cube className="h-7 w-7" weight="regular" aria-hidden="true" />
       ) : (
         <ImageIcon className="h-7 w-7" weight="regular" aria-hidden="true" />
       )}
-      <span className="text-xs">Preview unavailable</span>
+      <span className="text-xs">
+        {asset.kind === "model"
+          ? "3D preview unavailable"
+          : ready
+            ? "Preview unavailable"
+            : availabilityLabel}
+      </span>
     </div>
   );
 
@@ -408,7 +420,7 @@ export function ProjectAssetSurface({
           {label}
         </span>
         {headerAction}
-        {renderEditor &&
+        {ready && renderEditor &&
         !editing &&
         (asset.kind === "image" || asset.kind === "video") ? (
           <Button
@@ -428,7 +440,7 @@ export function ProjectAssetSurface({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col items-stretch justify-stretch overflow-hidden">
           {editing && mediaMetadata && renderEditor ? (
             renderEditor(mediaMetadata, () => setEditing(false))
-          ) : failed || !previewUrl ? (
+          ) : failed || !previewUrl || asset.kind === "model" ? (
             <div className="flex h-full items-center justify-center">
               {fallback}
             </div>
@@ -517,7 +529,7 @@ export function ProjectTimelineEditorSurface({
   onAdmitTimelineLibraryMedia?: (
     input: EditorAssetInput & { catalogId: string },
   ) => Promise<EditorAssetInput>;
-  onProjectAssetDrop?: (assetId: string) => void;
+  onProjectAssetDrop?: (assetId: string) => void | Promise<void>;
   onAnnotationTargetContextMenu?: (target: AgentAnnotationObjectRef) => void;
   rightInset?: number;
   headerEndInset?: number;
@@ -882,23 +894,42 @@ export function ProjectTimelineEditorSurface({
   ) : undefined;
   const handleProjectAssetDragOver = useCallback(
     (event: DragEvent<HTMLElement>) => {
-      if (!onProjectAssetDrop || !hasProjectAssetDragData(event.dataTransfer))
-        return;
+      if (!hasProjectAssetDragData(event.dataTransfer)) return;
       event.preventDefault();
+      event.stopPropagation();
       event.dataTransfer.dropEffect = "copy";
       setIsProjectAssetDropActive(true);
     },
-    [onProjectAssetDrop],
+    [],
   );
   const handleProjectAssetDrop = useCallback(
     (event: DragEvent<HTMLElement>) => {
-      if (!onProjectAssetDrop || !hasProjectAssetDragData(event.dataTransfer))
-        return;
+      if (!hasProjectAssetDragData(event.dataTransfer)) return;
+      event.preventDefault();
+      event.stopPropagation();
       const assetId = readProjectAssetDragId(event.dataTransfer);
       setIsProjectAssetDropActive(false);
-      if (!assetId) return;
-      event.preventDefault();
-      onProjectAssetDrop(assetId);
+      const reportFailure = (cause: unknown) => {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        window.dispatchEvent(
+          new CustomEvent<string>("clash:timeline-notice", {
+            detail: message,
+          }),
+        );
+      };
+      if (!assetId) {
+        reportFailure(new Error("Invalid Project Asset drop"));
+        return;
+      }
+      if (!onProjectAssetDrop) {
+        reportFailure(new Error("Project Asset insertion is unavailable"));
+        return;
+      }
+      try {
+        void Promise.resolve(onProjectAssetDrop(assetId)).catch(reportFailure);
+      } catch (cause) {
+        reportFailure(cause);
+      }
     },
     [onProjectAssetDrop],
   );
@@ -962,6 +993,7 @@ export function ProjectTimelineEditorSurface({
               projectAssetDropActive={isProjectAssetDropActive}
               onAnnotationTargetContextMenu={onAnnotationTargetContextMenu}
               editorKey={`${timeline.id}:${editorRevisionKey}`}
+              previewCacheScope={projectId}
             />
           </Suspense>
         ) : (

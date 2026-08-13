@@ -7,8 +7,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { useState } from "react";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedAsset } from "@clash/shared-types";
+import { PROJECT_ASSET_DRAG_MIME } from "../lib/projectAssetDrag";
 import ProjectWorkspaceNavigator from "./ProjectWorkspaceNavigator";
 
 afterEach(cleanup);
@@ -288,7 +290,7 @@ describe("ProjectWorkspaceNavigator", () => {
     expect(screen.queryByText("local-gen-abcd1234.png")).toBeNull();
   });
 
-  it("shows small media thumbnails for image and video assets while audio keeps its icon", () => {
+  it("shows Host-projected thumbnails without decoding video playback bytes", () => {
     render(
       <ProjectWorkspaceNavigator
         canvases={[{ id: "main", name: "Main", position: 0 }]}
@@ -303,6 +305,7 @@ describe("ProjectWorkspaceNavigator", () => {
           resolvedAsset({
             id: "video-1",
             url: "/video.mp4",
+            thumbnailUrl: "/video-poster.jpg",
             kind: "video",
             metadata: { originalName: "video.mp4" },
           }),
@@ -331,9 +334,12 @@ describe("ProjectWorkspaceNavigator", () => {
         .getByRole("img", { name: "image.png thumbnail" })
         .getAttribute("src"),
     ).toBe("/image.png");
-    const video = screen.getByLabelText("video.mp4 thumbnail");
-    expect(video.tagName).toBe("VIDEO");
-    expect(video.getAttribute("src")).toBe("/video.mp4");
+    expect(
+      screen
+        .getByRole("img", { name: "video.mp4 thumbnail" })
+        .getAttribute("src"),
+    ).toBe("/video-poster.jpg");
+    expect(document.querySelector("video")).toBeNull();
     expect(
       screen.queryByRole("img", { name: "audio.wav thumbnail" }),
     ).toBeNull();
@@ -418,6 +424,70 @@ describe("ProjectWorkspaceNavigator", () => {
       screen.getByRole("menuitem", { name: "Add to Global Assets" }),
     );
     expect(onAddAssetToLibrary).toHaveBeenCalledWith("project-asset");
+  });
+
+  it("does not conflate equal Project and Global ids in add actions", async () => {
+    const onAddAssetToLibrary = vi.fn();
+    const onAddGlobalAsset = vi.fn();
+    render(
+      <MemoryRouter>
+        <ProjectWorkspaceNavigator
+          canvases={[{ id: "main", name: "Main", position: 0 }]}
+          timelines={[]}
+          assets={[
+            resolvedAsset({
+              id: "same-id",
+              name: "Project still",
+              url: "/project-still.png",
+              kind: "image",
+            }),
+          ]}
+          globalAssets={[
+            resolvedAsset({
+              id: "same-id",
+              name: "Global still",
+              url: "/global-still.png",
+              kind: "image",
+            }),
+          ]}
+          surface={{ kind: "canvas", canvasId: "main" }}
+          onSelectCanvas={vi.fn()}
+          onSelectTimeline={vi.fn()}
+          onSelectAsset={vi.fn()}
+          onCreateCanvas={vi.fn()}
+          onRenameCanvas={vi.fn()}
+          onDeleteCanvas={vi.fn()}
+          onCreateTimeline={vi.fn()}
+          onAttachTimeline={vi.fn()}
+          onAddAsset={vi.fn()}
+          onAddGlobalAsset={onAddGlobalAsset}
+          onAddAssetToLibrary={onAddAssetToLibrary}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Add Asset" }), {
+      button: 0,
+    });
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Add from Global Assets" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add Global still" }));
+    expect(onAddGlobalAsset).toHaveBeenCalledWith("same-id");
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Add from Global Assets" }),
+      ).toBeNull();
+    });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More options for Project still" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Add to Global Assets" }),
+    );
+    expect(onAddAssetToLibrary).toHaveBeenCalledWith("same-id");
   });
 
   it("collapses completely and lets the workspace own the expand control", () => {
@@ -720,14 +790,12 @@ describe("ProjectWorkspaceNavigator", () => {
     };
     fireEvent.dragStart(teaser, { dataTransfer });
     expect(dataTransfer.effectAllowed).toBe("copy");
-    expect(dragData.get("assetId")).toBe("asset-video");
-    expect(dragData.get("text/plain")).toBe("asset-video");
-    expect(JSON.parse(dragData.get("asset") ?? "{}")).toMatchObject({
-      id: "asset-video",
-      projectAssetId: "asset-video",
-      src: "/teaser.mp4",
-      type: "video",
+    expect(JSON.parse(dragData.get(PROJECT_ASSET_DRAG_MIME) ?? "{}")).toEqual({
+      assetId: "asset-video",
     });
+    expect(dragData.has("assetId")).toBe(false);
+    expect(dragData.has("text/plain")).toBe(false);
+    expect(dragData.has("asset")).toBe(false);
 
     rerender(<ProjectWorkspaceNavigator {...props} collapsed />);
     expect(screen.queryByRole("list", { name: "Project assets" })).toBeNull();

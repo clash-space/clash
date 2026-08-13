@@ -15,5 +15,5 @@
     "ARCHITECTURE.md": "Specific architectural details for the sync service.",
     "LORO_SCHEMA.md": "Documentation of the CRDT data structures."
   },
-  "architecture_notes": "Uses Cloudflare Durable Objects to maintain state per-room/project. Implements the Loro Server Protocol."
+  "architecture_notes": "Legacy sync-only worker. Uses Cloudflare Durable Objects to maintain state per room/project and implements the Loro Server Protocol. It has no R2 binding and must not expose /upload or /assets/*; Asset import, authority, and delivery belong to the canonical Host/Asset SDK boundary."
 }

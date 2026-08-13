@@ -7,7 +7,11 @@ import ImageNode from "./ImageNode";
 import VideoNode from "./VideoNode";
 
 const openAssetPreview = vi.fn();
-const assetProjection = vi.hoisted(() => ({ enabled: true }));
+const assetProjection = vi.hoisted(() => ({
+  enabled: true,
+  status: "ready" as
+    "uploading" | "ready" | "downloading" | "unavailable" | "failed",
+}));
 
 vi.mock("@xyflow/react", () => ({
   Handle: () => null,
@@ -44,15 +48,12 @@ vi.mock("@clash/web-ui/lib/hooks/useAsset", () => ({
             : assetId.includes("video")
               ? "video"
               : "image",
-          status: "ready",
+          status: assetProjection.status,
           metadata: {},
           url: `https://media.clash.test/${assetId}`,
         }
       : undefined,
   invalidateAsset: vi.fn(),
-}));
-vi.mock("@clash/web-ui/lib/hooks/useSignedUrl", () => ({
-  useSignedUrl: (url?: string) => url,
 }));
 vi.mock("@clash/web-ui/lib/runtimeConfig", () => ({
   runtimeApiUrl: (path: string) => path,
@@ -78,6 +79,7 @@ afterEach(() => {
   cleanup();
   openAssetPreview.mockClear();
   assetProjection.enabled = true;
+  assetProjection.status = "ready";
 });
 
 describe("asset node preview navigation", () => {
@@ -161,4 +163,54 @@ describe("asset node preview navigation", () => {
       expect(mediaSources).not.toContain(stalePreviewUrl);
     },
   );
+
+  it("does not decode or seek video bytes while their Host projection is downloading", () => {
+    assetProjection.status = "downloading";
+    const { container } = render(
+      <VideoNode
+        {...baseNodeProps}
+        id="video-downloading-node"
+        type="video"
+        width={320}
+        height={180}
+        data={{
+          assetId: "video-downloading-asset",
+          label: "Downloading video",
+          status: "completed",
+        }}
+      />,
+    );
+
+    expect(container.querySelector("video")).toBeNull();
+  });
+
+  it("keeps the ephemeral local upload preview without extracting or seeking a poster", () => {
+    assetProjection.enabled = false;
+    const { container } = render(
+      <VideoNode
+        {...baseNodeProps}
+        id="video-uploading-node"
+        type="video"
+        width={320}
+        height={180}
+        data={{
+          assetId: "video-uploading-asset",
+          label: "Uploading video",
+          status: "uploading",
+          previewUrl: "blob:https://clash.test/upload-preview",
+        }}
+      />,
+    );
+
+    const video = container.querySelector("video");
+    expect(video?.getAttribute("src")).toBe(
+      "blob:https://clash.test/upload-preview",
+    );
+    Object.defineProperty(video!, "duration", {
+      configurable: true,
+      value: 12,
+    });
+    fireEvent.loadedMetadata(video!);
+    expect(video!.currentTime).toBe(0);
+  });
 });

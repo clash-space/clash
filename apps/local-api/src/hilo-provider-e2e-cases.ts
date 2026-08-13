@@ -101,9 +101,14 @@ function pngChunk(type: string, data: Uint8Array): Buffer {
 }
 
 /** A deterministic real PNG accepted by both H3 and Seedance reference upload paths. */
-function solidPng(red: number, green: number, blue: number): Uint8Array {
-  const width = 256;
-  const height = 256;
+function solidPng(
+  red: number,
+  green: number,
+  blue: number,
+  size = 256,
+): Uint8Array {
+  const width = size;
+  const height = size;
   const scanlines = Buffer.alloc(height * (1 + width * 4));
   for (let y = 0; y < height; y += 1) {
     const row = y * (1 + width * 4);
@@ -137,7 +142,9 @@ export async function createHiloProviderCases(): Promise<ProviderReplayTestCase[
     new URL("./fixtures/minimax-h3-reference.mp3", import.meta.url),
   );
   const h3Image = solidPng(194, 40, 53);
-  const seedanceImage = solidPng(38, 86, 190);
+  // Seedance validates the decoded reference dimensions before Provider submit.
+  // Keep this synthetic replay input above the model card's documented 300px minimum.
+  const seedanceImage = solidPng(38, 86, 190, 512);
 
   return [
     {

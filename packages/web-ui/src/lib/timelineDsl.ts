@@ -37,10 +37,12 @@ export function stripSrcFromTracks(tracks: Track[]): Track[] {
       const {
         src: _src,
         justInserted: _justInserted,
+        waveform: _waveform,
         ...rest
       } = item as Item & {
         src?: string;
         justInserted?: boolean;
+        waveform?: number[];
       };
       return {
         ...rest,

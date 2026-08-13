@@ -1,12 +1,12 @@
 /**
- * Assets D1 service — single write path for all asset creation paths
- * (upload, generation workflow, future cross-project import).
+ * Legacy hosted Assets D1 service used by generation and Loro compatibility.
  *
  * Schema lives in apps/web/lib/db/app.schema.ts (assets + asset_refs tables).
  * Types live in @clash/shared-types/assets.ts.
  *
- * Permission model: this module is internal. User-facing API never writes here
- * directly — only routes that establish user identity may call createAsset.
+ * Permission model: this module is internal. The retired public
+ * /api/v1/assets raw-key CRUD/probe API must not call it; only trusted hosted
+ * generation or compatibility code with an established actor may create rows.
  */
 
 import type { AssetKind, AssetSource } from "@clash/shared-types/assets";
@@ -45,7 +45,7 @@ export interface CreateAssetParams {
   userId: string;
   kind: AssetKind;
   srcR2Key: string;
-  projectId?: string;            // creates the initial asset_refs row when project-scoped
+  projectId?: string; // creates the initial asset_refs row when project-scoped
   coverR2Key?: string;
   metadata?: AssetMetadata;
   sourceModel?: string;
@@ -75,8 +75,7 @@ export interface AssetRecord {
   updatedAt: number;
 }
 
-const SELECT_COLS =
-  `id, user_id as userId, kind, src_r2_key as srcR2Key, cover_r2_key as coverR2Key,
+const SELECT_COLS = `id, user_id as userId, kind, src_r2_key as srcR2Key, cover_r2_key as coverR2Key,
    metadata,
    source_model as sourceModel, source_prompt as sourcePrompt, source_task_id as sourceTaskId,
    sources,
@@ -94,7 +93,10 @@ function hydrate(row: AssetRow | null | undefined): AssetRecord | null {
     try {
       metadata = JSON.parse(row.metadata) as AssetMetadata;
     } catch (e) {
-      log.warn("asset.metadata JSON parse failed", { id: row.id, error: String(e) });
+      log.warn("asset.metadata JSON parse failed", {
+        id: row.id,
+        error: String(e),
+      });
     }
   }
   let sources: AssetSource[] | null = null;
@@ -102,7 +104,10 @@ function hydrate(row: AssetRow | null | undefined): AssetRecord | null {
     try {
       sources = JSON.parse(row.sources) as AssetSource[];
     } catch (e) {
-      log.warn("asset.sources JSON parse failed", { id: row.id, error: String(e) });
+      log.warn("asset.sources JSON parse failed", {
+        id: row.id,
+        error: String(e),
+      });
     }
   }
   return { ...row, metadata, sources };
@@ -114,7 +119,7 @@ function hydrate(row: AssetRow | null | undefined): AssetRecord | null {
  */
 export async function createAsset(
   db: D1Database,
-  params: CreateAssetParams
+  params: CreateAssetParams,
 ): Promise<{ id: string }> {
   const id = params.id ?? crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
@@ -137,7 +142,7 @@ export async function createAsset(
          source_model, source_prompt, source_task_id,
          sources,
          created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -260,7 +265,9 @@ export async function getAssetsByIds(
 
   const placeholders = uniqueIds.map(() => "?").join(", ");
   const { results } = await db
-    .prepare(`SELECT ${SELECT_COLS} FROM assets WHERE user_id = ? AND id IN (${placeholders})`)
+    .prepare(
+      `SELECT ${SELECT_COLS} FROM assets WHERE user_id = ? AND id IN (${placeholders})`,
+    )
     .bind(userId, ...uniqueIds)
     .all<AssetRow>();
 

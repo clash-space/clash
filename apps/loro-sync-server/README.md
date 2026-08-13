@@ -1,5 +1,9 @@
 # Loro Sync Server
 
+> **Legacy sync-only package.** Current hosted collaboration lives in api-cf's
+> `ProjectRoom`; this package is retained for migration evidence. It has no
+> Asset upload, raw-key delivery, Resource authority, or R2 binding.
+
 Cloudflare Worker + Durable Objects implementation for real-time Loro CRDT synchronization and AIGC task management.
 
 📐 **[详细架构文档 →](./ARCHITECTURE.md)**
@@ -35,6 +39,7 @@ The system uses dependency inversion to abstract AIGC service integration:
 ```
 
 **Benefits**:
+
 - **Single Responsibility**: Each executor handles one service
 - **Extensibility**: Add new AIGC services without modifying core logic
 - **Testability**: Mock executors for testing
@@ -46,6 +51,7 @@ The system uses dependency inversion to abstract AIGC service integration:
 ## Features
 
 ### Real-time Collaboration
+
 - Real-time WebSocket synchronization via Loro CRDT
 - Automatic conflict resolution
 - Better Auth session authentication (cookie-based)
@@ -53,6 +59,7 @@ The system uses dependency inversion to abstract AIGC service integration:
 - Auto-scaling per project
 
 ### AIGC Task Management
+
 - Unified task queue for video/image generation
 - Support for multiple AIGC services (Kling, Gemini, etc.)
 - Three completion mechanisms:
@@ -85,6 +92,7 @@ wrangler d1 migrations apply clash-d1           # For production
 ```
 
 Migrations include:
+
 - `0001_create_loro_snapshots.sql` - Loro document snapshots
 - `0002_create_aigc_tasks.sql` - AIGC task queue
 
@@ -109,6 +117,7 @@ BETTER_AUTH_BASE_PATH = "/api/better-auth"
 ```
 
 **Adding secrets via CLI**:
+
 ```bash
 # For production
 wrangler secret put KLING_ACCESS_KEY
@@ -122,6 +131,7 @@ echo "GEMINI_API_KEY=your-api-key" >> .dev.vars
 ```
 
 If your Better Auth endpoint is on a different origin (local dev), set:
+
 ```toml
 [vars]
 BETTER_AUTH_ORIGIN = "http://localhost:3000"
@@ -161,6 +171,7 @@ wss://your-domain.example/sync/{projectId}
 **Authentication**: Better Auth session cookie (same-domain).
 
 **Protocol**:
+
 1. Client connects with valid Better Auth session (cookie)
 2. Server sends initial document snapshot
 3. Client sends binary updates (Loro format)
@@ -185,6 +196,7 @@ Content-Type: application/json
 ```
 
 **Response**:
+
 ```json
 {
   "task_id": "task_1234567890_abc-123",
@@ -194,6 +206,7 @@ Content-Type: application/json
 ```
 
 **Supported Task Types**:
+
 - `kling_video` - Kling AI video generation
 - `nano_banana` - Gemini 2.5 Flash image generation
 - `nano_banana_pro` - Gemini 3 Pro image generation
@@ -205,6 +218,7 @@ GET /tasks/{taskId}
 ```
 
 **Response**:
+
 ```json
 {
   "task_id": "task_1234567890_abc-123",
@@ -330,7 +344,6 @@ apps/loro-sync-server/
 │   ├── LoroRoom.ts           # Durable Object (orchestrator)
 │   ├── TaskDO.ts             # Task Durable Object
 │   ├── types.ts              # TypeScript types
-│   ├── utils.ts              # Utility functions
 │   ├── generators/           # AIGC generation modules
 │   │   ├── DescriptionGenerator.ts
 │   │   ├── ImageGeneration.ts
@@ -342,7 +355,6 @@ apps/loro-sync-server/
 │   ├── sync/                 # Loro sync utilities
 │   │   └── NodeUpdater.ts
 │   ├── routes/               # API routes
-│   │   ├── assets.ts
 │   │   ├── generate.ts
 │   │   ├── tasks.ts
 │   │   └── webhooks.ts
@@ -359,11 +371,13 @@ apps/loro-sync-server/
 ## Environment Variables
 
 ### Required
+
 - `BETTER_AUTH_BASE_PATH`: Better Auth base path (default `/api/better-auth`)
 - `BETTER_AUTH_ORIGIN`: Better Auth origin override (optional, for local dev)
 - `ENVIRONMENT`: `development` or `production` (string)
 
 ### Optional (AIGC Services)
+
 - `KLING_ACCESS_KEY`: Kling AI access key (string)
 - `KLING_SECRET_KEY`: Kling AI secret key (string)
 - `GEMINI_API_KEY`: Google Gemini API key (string)
@@ -416,18 +430,18 @@ export class MyNewServiceExecutor implements TaskExecutor {
   private apiKey: string;
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || '';
+    this.apiKey = apiKey || "";
   }
 
   getServiceName(): ExternalService {
-    return 'my_service';
+    return "my_service";
   }
 
   async submit(params: Record<string, any>): Promise<ExecutionResult> {
     // Call external service API
-    const response = await fetch('https://api.myservice.com/generate', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${this.apiKey}` },
+    const response = await fetch("https://api.myservice.com/generate", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify(params),
     });
 
@@ -438,23 +452,25 @@ export class MyNewServiceExecutor implements TaskExecutor {
       return {
         completed: true,
         result_url: result.url,
-        external_service: 'my_service',
+        external_service: "my_service",
       };
     } else {
       return {
         completed: false,
         external_task_id: result.task_id,
-        external_service: 'my_service',
+        external_service: "my_service",
       };
     }
   }
 
   async poll(externalTaskId: string): Promise<ExecutionResult> {
     // Poll task status from external service
-    const response = await fetch(`https://api.myservice.com/tasks/${externalTaskId}`);
+    const response = await fetch(
+      `https://api.myservice.com/tasks/${externalTaskId}`,
+    );
     const result = await response.json();
 
-    if (result.status === 'completed') {
+    if (result.status === "completed") {
       return { completed: true, result_url: result.url };
     }
     return { completed: false };
@@ -463,7 +479,7 @@ export class MyNewServiceExecutor implements TaskExecutor {
   async processWebhook(payload: any): Promise<ExecutionResult> {
     // Process webhook callback
     return {
-      completed: payload.status === 'completed',
+      completed: payload.status === "completed",
       result_url: payload.result_url,
       error: payload.error,
     };
@@ -496,8 +512,9 @@ export function createExecutorFactory(env?: Env): ExecutorFactory {
 ```typescript
 // src/types.ts
 
-export type TaskType = 'kling_video' | 'nano_banana' | 'nano_banana_pro' | 'my_new_task_type';
-export type ExternalService = 'kling' | 'gemini' | 'my_service';
+export type TaskType =
+  "kling_video" | "nano_banana" | "nano_banana_pro" | "my_new_task_type";
+export type ExternalService = "kling" | "gemini" | "my_service";
 
 export interface Env {
   // ...existing
@@ -508,6 +525,7 @@ export interface Env {
 ### Step 4: Done!
 
 The new service now supports all three completion mechanisms automatically:
+
 - ✅ Synchronous execution (if `submit()` returns `completed: true`)
 - ✅ Webhook callbacks (via `POST /webhooks/my_service`)
 - ✅ Cron polling (via `scheduled()` handler)

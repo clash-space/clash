@@ -6,6 +6,8 @@ import {
 } from "@clash/asset-sdk";
 import {
   GlobalAssetEntrySchema,
+  ProjectAssetMetadataSchema,
+  ResolvedAssetSchema,
   type AssetKind,
   type GlobalAssetEntry,
   type ProjectAssetMetadata,
@@ -18,6 +20,7 @@ import {
   createLocalResourceStore,
   type LocalResourceProjection,
 } from "./local-resource-store.js";
+import type { LocalAssetInspectionService } from "./local-asset-inspections.js";
 
 export type LocalGlobalAssetErrorCode =
   | "GLOBAL_ASSET_NOT_FOUND"
@@ -73,7 +76,11 @@ export interface LocalGlobalAssetService {
     deletedAt: string;
     purgeAfter: string;
   }): Promise<ResolvedAsset>;
-  restore(libraryId: string, globalAssetId: string): Promise<ResolvedAsset>;
+  restore(input: {
+    libraryId: string;
+    globalAssetId: string;
+    deleteOperationId: string;
+  }): Promise<ResolvedAsset>;
   purge(input: {
     libraryId: string;
     globalAssetId: string;
@@ -136,6 +143,7 @@ export function createLocalGlobalAssetService(options: {
   dataDir: string;
   clashRoot?: string;
   projectionOrigin: string | (() => string);
+  assetInspection?: LocalAssetInspectionService;
 }): LocalGlobalAssetService {
   const metadata = createLocalMetadataStore(options.dataDir);
   const resources = createLocalResourceStore({
@@ -180,23 +188,100 @@ export function createLocalGlobalAssetService(options: {
             ? options.projectionOrigin()
             : options.projectionOrigin;
         const url = mediaUrl(origin, libraryId, entry.id);
-        return { status: "ready" as const, url, thumbnailUrl: url };
+        return {
+          status: "ready" as const,
+          url,
+          ...(entry.kind === "image" ? { thumbnailUrl: url } : {}),
+        };
       },
     },
   });
+
+  async function enrichResolved(
+    entry: GlobalAssetEntry,
+    resolved: ResolvedAsset,
+  ): Promise<ResolvedAsset> {
+    if (!options.assetInspection || resolved.status !== "ready") {
+      return resolved;
+    }
+    const source = await resources.resolve(entry.resourceId);
+    if (!source) return resolved;
+    try {
+      const inspection = await options.assetInspection.inspect({
+        source,
+        knownFacts: entry.metadata,
+      });
+      return ResolvedAssetSchema.parse({
+        ...resolved,
+        metadata: { ...resolved.metadata, ...inspection.facts },
+      });
+    } catch {
+      // Inspection is enrichment, not Asset availability. A failed probe writes no
+      // inspection row, so a later read can retry without hiding immutable media.
+      return resolved;
+    }
+  }
+
+  async function resolveEntry(
+    libraryId: string,
+    entry: GlobalAssetEntry,
+  ): Promise<ResolvedAsset> {
+    const resolved = await client.read({
+      libraryId,
+      globalAssetId: entry.id,
+    });
+    if (!resolved) {
+      throw new LocalGlobalAssetError(
+        "GLOBAL_ASSET_NOT_FOUND",
+        `Global Asset ${entry.id} was not found in library ${libraryId}.`,
+      );
+    }
+    return enrichResolved(entry, resolved);
+  }
 
   async function requireResolved(
     libraryId: string,
     globalAssetId: string,
   ): Promise<ResolvedAsset> {
-    const resolved = await client.read({ libraryId, globalAssetId });
-    if (!resolved) {
+    const entry = await authority.read(libraryId, globalAssetId);
+    if (!entry) {
       throw new LocalGlobalAssetError(
         "GLOBAL_ASSET_NOT_FOUND",
         `Global Asset ${globalAssetId} was not found in library ${libraryId}.`,
       );
     }
-    return resolved;
+    return resolveEntry(libraryId, entry);
+  }
+
+  async function metadataForPublication(input: {
+    source: LocalResourceProjection;
+    metadata?: ProjectAssetMetadata;
+    originalName?: string;
+  }): Promise<ProjectAssetMetadata> {
+    const { waveform: _legacyWaveform, ...metadata } = input.metadata ?? {};
+    const base = metadataForResource({
+      metadata,
+      byteLength: input.source.resource.byteLength,
+      ...(input.source.resource.contentType
+        ? { contentType: input.source.resource.contentType }
+        : {}),
+      ...(input.originalName ? { originalName: input.originalName } : {}),
+    });
+    if (!options.assetInspection) return base;
+
+    const inspection = await options.assetInspection.inspect({
+      source: input.source,
+      knownFacts: base,
+    });
+    return ProjectAssetMetadataSchema.parse({
+      ...base,
+      ...inspection.facts,
+      // Resource facts, not caller or probe claims, own these immutable fields.
+      bytes: input.source.resource.byteLength,
+      ...(input.source.resource.contentType
+        ? { contentType: input.source.resource.contentType }
+        : {}),
+    });
   }
 
   async function publish(input: {
@@ -235,17 +320,37 @@ export function createLocalGlobalAssetService(options: {
       resourceId: projection.resource.id,
       lifecycle: { state: "active" },
       ...(input.name ? { name: input.name } : {}),
-      metadata: metadataForResource({
+      metadata: await metadataForPublication({
+        source: projection,
         metadata: input.metadata,
-        byteLength: projection.resource.byteLength,
-        ...(projection.resource.contentType
-          ? { contentType: projection.resource.contentType }
-          : {}),
         ...(input.originalName ? { originalName: input.originalName } : {}),
       }),
       ...(input.provenance ? { provenance: input.provenance } : {}),
     } satisfies GlobalAssetEntry);
-    await client.create({ libraryId, entry });
+    const existing = await authority.read(libraryId, globalAssetId);
+    if (existing) {
+      if (JSON.stringify(existing) !== JSON.stringify(entry)) {
+        throw new LocalGlobalAssetError(
+          "GLOBAL_ASSET_FACT_MISMATCH",
+          `Global Asset ${globalAssetId} already exists with different facts in library ${libraryId}.`,
+        );
+      }
+      return resolveEntry(libraryId, existing);
+    }
+    try {
+      await client.create({ libraryId, entry });
+    } catch (error) {
+      const raced = await authority.read(libraryId, globalAssetId);
+      if (!raced) throw error;
+      if (JSON.stringify(raced) !== JSON.stringify(entry)) {
+        throw new LocalGlobalAssetError(
+          "GLOBAL_ASSET_FACT_MISMATCH",
+          `Global Asset ${globalAssetId} already exists with different facts in library ${libraryId}.`,
+          { cause: error },
+        );
+      }
+      return resolveEntry(libraryId, raced);
+    }
     return requireResolved(libraryId, globalAssetId);
   }
 
@@ -280,21 +385,84 @@ export function createLocalGlobalAssetService(options: {
       return entry ? GlobalAssetEntrySchema.parse(entry) : null;
     },
 
-    read(libraryId, globalAssetId) {
-      return client.read({ libraryId, globalAssetId });
+    async read(libraryId, globalAssetId) {
+      const entry = await authority.read(libraryId, globalAssetId);
+      return entry ? resolveEntry(libraryId, entry) : null;
     },
 
-    list(libraryId) {
-      return client.list({ libraryId });
+    async list(libraryId) {
+      return Promise.all(
+        (await authority.list(libraryId)).map((entry) =>
+          resolveEntry(libraryId, entry),
+        ),
+      );
     },
 
     async trash(input) {
-      await client.trash(input);
-      return requireResolved(input.libraryId, input.globalAssetId);
+      const libraryId = nonEmpty(input.libraryId, "libraryId");
+      const globalAssetId = nonEmpty(input.globalAssetId, "globalAssetId");
+      const deleteOperationId = nonEmpty(
+        input.deleteOperationId,
+        "deleteOperationId",
+      );
+      if (!(await authority.read(libraryId, globalAssetId))) {
+        throw new LocalGlobalAssetError(
+          "GLOBAL_ASSET_NOT_FOUND",
+          `Global Asset ${globalAssetId} was not found in library ${libraryId}.`,
+        );
+      }
+      const reconcileRetry = async (): Promise<ResolvedAsset | null> => {
+        const current = await authority.read(libraryId, globalAssetId);
+        if (current?.lifecycle.state !== "trashed") return null;
+        if (current.lifecycle.deleteOperationId !== deleteOperationId) {
+          throw new LocalGlobalAssetError(
+            "GLOBAL_ASSET_FACT_MISMATCH",
+            `Global Asset ${globalAssetId} is already trashed by another operation.`,
+          );
+        }
+        return resolveEntry(libraryId, current);
+      };
+      const retried = await reconcileRetry();
+      if (retried) return retried;
+      try {
+        await client.trash({
+          ...input,
+          libraryId,
+          globalAssetId,
+          deleteOperationId,
+        });
+      } catch (error) {
+        const raced = await reconcileRetry();
+        if (raced) return raced;
+        throw error;
+      }
+      return requireResolved(libraryId, globalAssetId);
     },
 
-    async restore(libraryId, globalAssetId) {
-      await client.restore({ libraryId, globalAssetId });
+    async restore(input) {
+      const libraryId = nonEmpty(input.libraryId, "libraryId");
+      const globalAssetId = nonEmpty(input.globalAssetId, "globalAssetId");
+      const deleteOperationId = nonEmpty(
+        input.deleteOperationId,
+        "deleteOperationId",
+      );
+      if (!(await authority.read(libraryId, globalAssetId))) {
+        throw new LocalGlobalAssetError(
+          "GLOBAL_ASSET_NOT_FOUND",
+          `Global Asset ${globalAssetId} was not found in library ${libraryId}.`,
+        );
+      }
+      try {
+        await client.restore({ libraryId, globalAssetId, deleteOperationId });
+      } catch (error) {
+        const current = await authority.read(libraryId, globalAssetId);
+        if (current?.lifecycle.state === "purged") throw error;
+        throw new LocalGlobalAssetError(
+          "GLOBAL_ASSET_FACT_MISMATCH",
+          `Global Asset ${globalAssetId} is not trashed by ${deleteOperationId}.`,
+          { cause: error },
+        );
+      }
       return requireResolved(libraryId, globalAssetId);
     },
 

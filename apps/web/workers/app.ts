@@ -7,8 +7,7 @@
  *   /api/better-auth/*          → handled in-worker via better-auth handler
  *   /api/v1/*                   → api-cf (auth-gated, x-user-id injected)
  *   /sync/*, /agents/*          → api-cf (WebSocket, Durable Objects)
- *   /assets/*, /thumbnails/*    → api-cf (signed R2 serving)
- *   /upload, /upload/*          → api-cf
+ *   /assets/*                   → api-cf (signed capability delivery only)
  *   /api/*                      → api-cf (projects, settings, marketplace,
  *                                  tasks, describe, generate, internal)
  *   /*                          → ASSETS binding (SPA shell + static files)
@@ -31,7 +30,6 @@ export interface Env {
   KV?: KVNamespace;
   API_CF?: CloudflareFetcher;
   API_CF_URL?: string;
-  R2_BUCKET?: R2Bucket;
   BETTER_AUTH_BASE_PATH?: string;
   BETTER_AUTH_ORIGIN?: string;
   BETTER_AUTH_SECRET?: string;
@@ -40,7 +38,6 @@ export interface Env {
   AUTH_GOOGLE_SECRET?: string;
   ACTION_SECRET_KEY?: string;
   JWT_SECRET?: string;
-  R2_BUCKET_NAME?: string;
   NODE_ENV?: string;
   SKIP_LOGIN?: string;
 }
@@ -159,15 +156,12 @@ export default {
       return proxyToApiCf(proxied, env);
     }
 
-    // Everything else under /api/* + /sync/* + /agents/* + asset paths
+    // Everything else under /api/* + /sync/* + /agents/* + delivery paths
     // proxies straight to api-cf (projects, settings, marketplace, internal,
-    // tasks, describe, generate, assets, thumbnails, upload).
+    // tasks, describe, generate, signed capability delivery).
     if (
       path.startsWith("/api/") ||
-      path === "/upload" ||
-      path.startsWith("/upload/") ||
       path.startsWith("/assets/") ||
-      path.startsWith("/thumbnails/") ||
       path.startsWith("/sync/") ||
       path.startsWith("/agents/")
     ) {

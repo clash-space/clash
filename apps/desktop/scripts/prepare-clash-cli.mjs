@@ -1,5 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { access, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  cp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { constants } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -45,6 +54,39 @@ export function resolveNpmInvocation({
     };
   }
   return { command: "npm", argsPrefix: [] };
+}
+
+export async function ensurePackagedMediaBinariesExecutable(
+  runtimeDir,
+  { platform = process.platform, arch = process.arch } = {},
+) {
+  const target = `${platform}-${arch}`;
+  const suffix = platform === "win32" ? ".exe" : "";
+  const binaries = {
+    ffmpeg: path.join(
+      runtimeDir,
+      "node_modules",
+      "@ffmpeg-installer",
+      target,
+      `ffmpeg${suffix}`,
+    ),
+    ffprobe: path.join(
+      runtimeDir,
+      "node_modules",
+      "@ffprobe-installer",
+      target,
+      `ffprobe${suffix}`,
+    ),
+  };
+  for (const binary of Object.values(binaries)) {
+    await access(binary);
+    if (platform !== "win32") await chmod(binary, 0o755);
+    await access(
+      binary,
+      platform === "win32" ? constants.F_OK : constants.X_OK,
+    );
+  }
+  return binaries;
 }
 
 function runNpm(args, { cwd, ...options }) {
@@ -152,6 +194,10 @@ export async function prepareClashCli({
         force: true,
       },
     );
+    await ensurePackagedMediaBinariesExecutable(outputDir, {
+      platform,
+      arch: env.npm_config_arch ?? process.arch,
+    });
   } finally {
     await rm(dependencyDir, { recursive: true, force: true });
   }

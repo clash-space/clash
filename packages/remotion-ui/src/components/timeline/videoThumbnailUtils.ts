@@ -213,13 +213,21 @@ export function yieldToMainThread(timeout = 80): Promise<void> {
   });
 }
 
-export function getPersistentVideoCacheId(
+/**
+ * Shared identity for disposable Timeline poster, filmstrip, and waveform
+ * caches. Project Asset ids are authority-local, so a Host Project scope is
+ * part of the identity whenever it is available.
+ */
+export function getPersistentMediaCacheId(
   projectAssetId?: string,
   sourceNodeId?: string,
-  videoSrc?: string
+  videoSrc?: string,
+  previewCacheScope?: string,
 ): string | null {
   if (projectAssetId) {
-    return projectAssetId;
+    return previewCacheScope
+      ? JSON.stringify([previewCacheScope, projectAssetId])
+      : projectAssetId;
   }
 
   if (videoSrc) {

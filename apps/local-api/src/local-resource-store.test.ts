@@ -131,6 +131,38 @@ describe("local Resource CAS", () => {
     );
   });
 
+  it("repairs an indexed CAS file when the same verified bytes are installed again", async () => {
+    const { store } = await fixture();
+    const bytes = new TextEncoder().encode("recoverable immutable bytes");
+    const installed = await store.install({
+      kind: "video",
+      bytes,
+      contentType: "video/mp4",
+      originalName: "source.mp4",
+    });
+    await chmod(installed.path, 0o644);
+    await writeFile(
+      installed.path,
+      new TextEncoder().encode("corrupted immutable bytes"),
+    );
+
+    await expect(store.resolve(installed.resource.id)).rejects.toThrow(
+      /digest|byte length|corrupt/i,
+    );
+
+    const repaired = await store.install({
+      kind: "video",
+      bytes,
+      contentType: "video/mp4",
+      originalName: "renamed.mp4",
+    });
+
+    expect(repaired).toEqual(installed);
+    expect(new Uint8Array(await readFile(repaired.path))).toEqual(bytes);
+    expect((await stat(repaired.path)).mode & 0o777).toBe(0o444);
+    await expect(store.resolve(repaired.resource.id)).resolves.toEqual(repaired);
+  });
+
   it("does not reinterpret one digest as a different media kind", async () => {
     const { store } = await fixture();
     const bytes = new TextEncoder().encode("same bytes");
@@ -150,4 +182,5 @@ describe("local Resource CAS", () => {
       }),
     ).rejects.toThrow(/different immutable facts/i);
   });
+
 });

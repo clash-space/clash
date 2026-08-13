@@ -221,12 +221,14 @@ export const Timeline: React.FC<{
   onAdmitLibraryMedia?: (
     input: TimelineLibraryMediaAdmissionInput,
   ) => Promise<import("@clash/remotion-core").EditorAssetInput>;
+  previewCacheScope?: string;
 }> = ({
   insertAssetRequest,
   onInsertAssetRequestHandled,
   onAnnotationTargetContextMenu,
   showTranscriptTimeline = false,
   onAdmitLibraryMedia,
+  previewCacheScope,
 }) => {
   const dispatch = useEditorDispatch();
   const { canUndo, canRedo, undo, redo, beginHistoryGroup, endHistoryGroup } =
@@ -1825,6 +1827,7 @@ export const Timeline: React.FC<{
               externalInsertPosition={insertPosition}
               onAnnotationTargetContextMenu={onAnnotationTargetContextMenu}
               showTranscriptTimeline={showTranscriptTimeline}
+              previewCacheScope={previewCacheScope}
             />
 
             <DragOverlay dropAnimation={null}>
@@ -1843,6 +1846,7 @@ export const Timeline: React.FC<{
                   onDelete={() => {}}
                   onUpdate={() => {}}
                   isDragOverlay={true}
+                  previewCacheScope={previewCacheScope}
                   style={{
                     cursor: dragPreview?.invalidTarget
                       ? "not-allowed"

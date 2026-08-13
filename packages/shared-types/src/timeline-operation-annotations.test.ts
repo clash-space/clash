@@ -110,6 +110,40 @@ describe("Timeline operation annotations", () => {
     }
   });
 
+  it("keeps Timeline render receipts storage-free", () => {
+    const output = registry.agent["timeline.render"].outputSchema;
+    const base = {
+      submitted: true,
+      completed: true,
+      timelineId: "timeline-1",
+      sourceTimelineRevisionId: "revision-1",
+      renderNodeId: "render-1",
+      target: { kind: "project-assets" },
+      status: "completed",
+      asset: { id: "project-asset-1" },
+    };
+
+    expect(output.safeParse(base).success).toBe(true);
+    expect(
+      output.safeParse({
+        ...base,
+        asset: {
+          id: "project-asset-1",
+          srcR2Key: "projects/project-1/assets/render.mp4",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      output.safeParse({
+        ...base,
+        asset: {
+          id: "project-asset-1",
+          signedUrl: "https://media.example/render.mp4?signature=secret",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("binds every public agent operation to its real CLI or MCP surface", () => {
     for (const operation of Object.values(registry.agent)) {
       expect(operation.surfaceBindings).toEqual(expect.any(Array));

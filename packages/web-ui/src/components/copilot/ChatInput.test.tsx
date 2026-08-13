@@ -139,7 +139,7 @@ describe("ChatInput", () => {
     expect(form.get("projectAssetId")).toBe(assetId);
   });
 
-  it("takes Project Asset identity from the explicit marker, never the media URL", async () => {
+  it("submits imported media as a typed Project Asset reference without its Host URL", async () => {
     const onSubmit = vi.fn();
     const markedAssetId = "asset/stable";
     const input = [
@@ -161,14 +161,64 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByTestId("milkdown-submit"));
 
     expect(onSubmit).toHaveBeenCalledWith(
+      [
+        `@[marked](project-asset:${encodeURIComponent(markedAssetId)})`,
+        "![unmarked](https://media.clash.test/api/v1/projects/project-1/assets/inferred-id/media)",
+      ].join(" "),
+      [
+        {
+          projectAssetId: markedAssetId,
+          kind: "image",
+          label: "marked",
+        },
+      ],
+      [],
+    );
+    expect(JSON.stringify(onSubmit.mock.calls[0])).not.toContain("url-id/media");
+  });
+
+  it("types a Project Asset mention separately from a real Canvas node mention", async () => {
+    const onSubmit = vi.fn();
+    const input =
+      "Use @[Logo](project-asset:asset-logo) with @[Render](node:action-1)";
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input={input}
+          projectId="project-1"
+          onInputChange={() => undefined}
+          onSubmit={onSubmit}
+          mentionableNodes={[
+            {
+              id: "asset-logo",
+              type: "image",
+              label: "Logo",
+              kind: "asset",
+              scope: "project-assets",
+            },
+            {
+              id: "action-1",
+              type: "action",
+              label: "Render",
+              kind: "node",
+              scope: "current-canvas",
+            },
+          ]}
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    fireEvent.click(screen.getByTestId("milkdown-submit"));
+
+    expect(onSubmit).toHaveBeenCalledWith(
       input,
       [
-        expect.objectContaining({
-          id: markedAssetId,
-          assetId: markedAssetId,
-          fileName: "marked",
-          type: "image",
-        }),
+        {
+          projectAssetId: "asset-logo",
+          kind: "image",
+          label: "Logo",
+        },
       ],
       [],
     );

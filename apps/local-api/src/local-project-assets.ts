@@ -27,11 +27,13 @@ import {
   planLegacyActionAssetBindingMaterialization,
   projectAssetAuthorityVersion,
   projectAssetMutationReadTokenFromDoc,
+  ProjectAssetMetadataSchema,
   purgeProjectAsset,
   readActionAssetBinding,
   readProjectCoverAssetId,
   readProjectAsset,
   reconcileProjectCoverBindings,
+  ResolvedAssetSchema,
   restoreProjectAsset,
   setProjectCoverAsset,
   trashProjectAssetIfUnreferenced,
@@ -42,6 +44,7 @@ import {
   type Asset,
   type AssetKind,
   type ProjectAssetEntry,
+  ProjectAssetEntrySchema,
   type ProjectAssetMetadata,
   type ProjectAssetProvenance,
   type ResolvedAsset,
@@ -53,6 +56,7 @@ import {
   createLocalResourceStore,
   type LocalResourceProjection,
 } from "./local-resource-store.js";
+import type { LocalAssetInspectionService } from "./local-asset-inspections.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 
 export type LocalProjectAssetMigrationErrorCode =
@@ -94,6 +98,32 @@ export interface LocalProjectAssetService {
   }): Promise<LocalResourceProjection>;
   /** Host-private lookup for a durable staging receipt; never grants Project membership. */
   resolveStagedOwned(resourceId: string): Promise<LocalResourceProjection>;
+  /**
+   * Verifies staged bytes and builds the canonical Project fact without mutating Loro.
+   * Durable staging uses this before its separately idempotent publication step.
+   */
+  prepareStagedOwnedEntry(input: {
+    projectAssetId: string;
+    kind: AssetKind;
+    resourceId: string;
+    name?: string;
+    metadata: ProjectAssetMetadata;
+    provenance?: ProjectAssetProvenance;
+  }): Promise<ProjectAssetEntry>;
+  /**
+   * Publishes already-staged immutable bytes and every Action fact in one Project mutation.
+   * A failed publication may leave the Resource staged, but cannot leave partial Project facts.
+   */
+  publishStagedOwnedWithBindings(input: {
+    projectId: string;
+    projectAssetId: string;
+    kind: AssetKind;
+    resourceId: string;
+    name?: string;
+    metadata: ProjectAssetMetadata;
+    provenance?: ProjectAssetProvenance;
+    bindings: readonly ActionAssetBinding[];
+  }): Promise<ResolvedAsset>;
   installOwned(input: {
     projectId: string;
     projectAssetId?: string;
@@ -115,6 +145,7 @@ export interface LocalProjectAssetService {
     projectAssetId?: string;
     kind: AssetKind;
     resourceId: string;
+    originLibraryId: string;
     originEntryId: string;
     name?: string;
     metadata: ProjectAssetMetadata;
@@ -408,6 +439,7 @@ export function createLocalProjectAssetService(options: {
   dataDir: string;
   clashRoot?: string;
   projectionOrigin: string | (() => string);
+  assetInspection?: LocalAssetInspectionService;
   replica?: LocalProjectAssetReplica;
   readReceiptVerifier?: AgentReadReceiptVerifier;
 }): LocalProjectAssetService {
@@ -479,14 +511,28 @@ export function createLocalProjectAssetService(options: {
 
   const authority: ProjectAssetAuthorityPort = {
     async read(projectId, id) {
-      return replica.inspect(projectId, (doc) => readProjectAsset(doc, id));
+      return replica.inspect(projectId, (doc) =>
+        readProjectAsset(doc, id, { projectId }),
+      );
     },
     async list(projectId) {
-      return replica.inspect(projectId, (doc) => listProjectAssets(doc));
+      return replica.inspect(projectId, (doc) =>
+        listProjectAssets(doc, { projectId }),
+      );
     },
     create: createEntry,
     async trashIfUnreferenced(projectId, input, observation) {
       return replica.mutate(projectId, (doc) => {
+        const current = readProjectAsset(doc, input.id, { projectId });
+        if (
+          current?.lifecycle.state === "trashed" &&
+          current.lifecycle.deleteOperationId === input.deleteOperationId
+        ) {
+          return {
+            value: { ok: true as const, entry: current },
+            save: false,
+          };
+        }
         assertMutationObservation(
           doc,
           projectId,
@@ -494,6 +540,13 @@ export function createLocalProjectAssetService(options: {
           "Project Asset deletion",
           observation,
         );
+        if (current?.lifecycle.state === "trashed") {
+          throw new AssetSdkContractError(
+            "STALE_READ",
+            `Project Asset ${input.id} was already deleted by another operation. Read it again before choosing the next action.`,
+            { projectAssetId: input.id },
+          );
+        }
         const result = trashProjectAssetIfUnreferenced(doc, input);
         return { value: result, save: result.ok };
       });
@@ -569,11 +622,121 @@ export function createLocalProjectAssetService(options: {
             ? options.projectionOrigin()
             : options.projectionOrigin;
         const url = mediaUrl(origin, projectId, entry.id);
-        return { status: "ready" as const, url, thumbnailUrl: url };
+        return {
+          status: "ready" as const,
+          url,
+          ...(entry.kind === "image" ? { thumbnailUrl: url } : {}),
+        };
       },
     },
   };
   const client = createAssetClient({ authority, ...resolverPorts });
+
+  async function enrichResolved(
+    entry: ProjectAssetEntry,
+    resolved: ResolvedAsset,
+  ): Promise<ResolvedAsset> {
+    if (!options.assetInspection || resolved.status !== "ready") {
+      return resolved;
+    }
+    const source = await resources.resolve(entry.source.resourceId);
+    if (!source) return resolved;
+    try {
+      const inspection = await options.assetInspection.inspect({
+        source,
+        knownFacts: entry.metadata,
+      });
+      return ResolvedAssetSchema.parse({
+        ...resolved,
+        metadata: { ...resolved.metadata, ...inspection.facts },
+      });
+    } catch {
+      // Inspection is enrichment, not Asset availability. A failed probe writes no
+      // inspection row, so a later read can retry without hiding immutable media.
+      return resolved;
+    }
+  }
+
+  async function resolveEntry(
+    projectId: string,
+    entry: ProjectAssetEntry,
+  ): Promise<ResolvedAsset> {
+    return enrichResolved(
+      entry,
+      await resolveProjectAsset(resolverPorts, { projectId, entry }),
+    );
+  }
+
+  async function metadataForPublication(input: {
+    source: LocalResourceProjection;
+    metadata: ProjectAssetMetadata;
+    name?: string;
+  }): Promise<ProjectAssetMetadata> {
+    const { waveform: _legacyWaveform, ...metadata } = input.metadata;
+    const base = ProjectAssetMetadataSchema.parse({
+      ...metadata,
+      bytes: input.source.resource.byteLength,
+      ...(input.source.resource.contentType
+        ? { contentType: input.source.resource.contentType }
+        : {}),
+      ...(input.name && !input.metadata.originalName
+        ? { originalName: input.name }
+        : {}),
+    });
+    if (!options.assetInspection) return base;
+
+    const inspection = await options.assetInspection.inspect({
+      source: input.source,
+      knownFacts: base,
+    });
+    return ProjectAssetMetadataSchema.parse({
+      ...base,
+      ...inspection.facts,
+      // Resource facts, not caller or probe claims, own these immutable fields.
+      bytes: input.source.resource.byteLength,
+      ...(input.source.resource.contentType
+        ? { contentType: input.source.resource.contentType }
+        : {}),
+    });
+  }
+
+  async function prepareStagedOwnedEntry(input: {
+    projectAssetId: string;
+    kind: AssetKind;
+    resourceId: string;
+    name?: string;
+    metadata: ProjectAssetMetadata;
+    provenance?: ProjectAssetProvenance;
+  }): Promise<ProjectAssetEntry> {
+    const projectAssetId = nonEmpty(input.projectAssetId, "projectAssetId");
+    const resourceId = nonEmpty(input.resourceId, "resourceId");
+    const projection = await resources.resolve(resourceId);
+    if (!projection) {
+      throw new LocalProjectAssetMigrationError(
+        "RESOURCE_DIGEST_UNAVAILABLE",
+        `Staged Resource ${resourceId} is not installed on this Host.`,
+      );
+    }
+    if (projection.resource.kind !== input.kind) {
+      throw new LocalProjectAssetMigrationError(
+        "RESOURCE_KIND_CONFLICT",
+        `Staged Resource ${resourceId} is ${projection.resource.kind}, not ${input.kind}.`,
+      );
+    }
+    return ProjectAssetEntrySchema.parse({
+      id: projectAssetId,
+      kind: input.kind,
+      source: { kind: "owned", resourceId },
+      lifecycle: { state: "active" },
+      ...(input.name ? { name: input.name } : {}),
+      metadata: await metadataForPublication({
+        source: projection,
+        metadata: input.metadata,
+        ...(input.name ? { name: input.name } : {}),
+      }),
+      ...(input.provenance ? { provenance: input.provenance } : {}),
+    });
+  }
 
   async function publishInstalled(input: {
     projectId: string;
@@ -584,13 +747,30 @@ export function createLocalProjectAssetService(options: {
     metadata: ProjectAssetMetadata;
     provenance?: ProjectAssetProvenance;
   }): Promise<ResolvedAsset> {
+    const source = await resources.resolve(input.resourceId);
+    if (!source) {
+      throw new LocalProjectAssetMigrationError(
+        "RESOURCE_DIGEST_UNAVAILABLE",
+        `Resource ${input.resourceId} is not installed on this Host.`,
+      );
+    }
+    if (source.resource.kind !== input.kind) {
+      throw new LocalProjectAssetMigrationError(
+        "RESOURCE_KIND_CONFLICT",
+        `Resource ${input.resourceId} is ${source.resource.kind}, not ${input.kind}.`,
+      );
+    }
     const entry: ProjectAssetEntry = {
       id: nonEmpty(input.projectAssetId, "projectAssetId"),
       kind: input.kind,
       source: { kind: "owned", resourceId: input.resourceId },
       lifecycle: { state: "active" },
       ...(input.name ? { name: input.name } : {}),
-      metadata: input.metadata,
+      metadata: await metadataForPublication({
+        source,
+        metadata: input.metadata,
+        ...(input.name ? { name: input.name } : {}),
+      }),
       ...(input.provenance ? { provenance: input.provenance } : {}),
     };
     await client.createOwned({ projectId: input.projectId, entry });
@@ -604,7 +784,7 @@ export function createLocalProjectAssetService(options: {
         `Project Asset ${entry.id} disappeared after publication.`,
       );
     }
-    return resolved;
+    return enrichResolved(entry, resolved);
   }
 
   async function publishLinked(input: {
@@ -612,11 +792,25 @@ export function createLocalProjectAssetService(options: {
     projectAssetId: string;
     kind: AssetKind;
     resourceId: string;
+    originLibraryId: string;
     originEntryId: string;
     name?: string;
     metadata: ProjectAssetMetadata;
     provenance?: ProjectAssetProvenance;
   }): Promise<ResolvedAsset> {
+    const source = await resources.resolve(input.resourceId);
+    if (!source) {
+      throw new LocalProjectAssetMigrationError(
+        "RESOURCE_DIGEST_UNAVAILABLE",
+        `Resource ${input.resourceId} is not installed on this Host.`,
+      );
+    }
+    if (source.resource.kind !== input.kind) {
+      throw new LocalProjectAssetMigrationError(
+        "RESOURCE_KIND_CONFLICT",
+        `Resource ${input.resourceId} is ${source.resource.kind}, not ${input.kind}.`,
+      );
+    }
     const entry: ProjectAssetEntry = {
       id: nonEmpty(input.projectAssetId, "projectAssetId"),
       kind: input.kind,
@@ -625,12 +819,17 @@ export function createLocalProjectAssetService(options: {
         resourceId: nonEmpty(input.resourceId, "resourceId"),
         origin: {
           scope: "global",
+          libraryId: nonEmpty(input.originLibraryId, "originLibraryId"),
           entryId: nonEmpty(input.originEntryId, "originEntryId"),
         },
       },
       lifecycle: { state: "active" },
       ...(input.name ? { name: input.name } : {}),
-      metadata: input.metadata,
+      metadata: await metadataForPublication({
+        source,
+        metadata: input.metadata,
+        ...(input.name ? { name: input.name } : {}),
+      }),
       ...(input.provenance ? { provenance: input.provenance } : {}),
     };
     await materialize(input.projectId);
@@ -751,7 +950,7 @@ export function createLocalProjectAssetService(options: {
     if (projectAssetAuthorityVersion(doc) === 1) {
       const plan = actionAssetBindingPlanForDoc(
         doc,
-        listProjectAssets(doc)
+        listProjectAssets(doc, { projectId })
           .filter((entry) => entry.lifecycle.state === "active")
           .map((entry) => entry.id),
       );
@@ -760,7 +959,7 @@ export function createLocalProjectAssetService(options: {
     }
 
     const existing = new Map(
-      listProjectAssets(doc).map((entry) => [entry.id, entry]),
+      listProjectAssets(doc, { projectId }).map((entry) => [entry.id, entry]),
     );
     const candidateIds = [
       ...[...existing.values()]
@@ -780,6 +979,7 @@ export function createLocalProjectAssetService(options: {
   }
 
   function applyMaterialization(
+    projectId: string,
     doc: import("loro-crdt").LoroDoc,
     entries: ProjectAssetEntry[],
   ): boolean {
@@ -810,7 +1010,7 @@ export function createLocalProjectAssetService(options: {
     // Preflight every identity before mutating the live room. A failed cutover must not leave an
     // in-memory replica with only half of the Project Asset and binding authority facts applied.
     for (const entry of entries) {
-      const existing = readProjectAsset(doc, entry.id);
+      const existing = readProjectAsset(doc, entry.id, { projectId });
       if (existing && !sameEntry(existing, entry)) {
         throw new LocalProjectAssetMigrationError(
           "PROJECT_ASSET_ID_COLLISION",
@@ -820,7 +1020,7 @@ export function createLocalProjectAssetService(options: {
     }
 
     const candidateAssetIds = new Set(
-      listProjectAssets(doc)
+      listProjectAssets(doc, { projectId })
         .filter((entry) => entry.lifecycle.state === "active")
         .map((entry) => entry.id),
     );
@@ -857,7 +1057,7 @@ export function createLocalProjectAssetService(options: {
     let changed = false;
     if (assetAuthority !== 1) {
       for (const entry of entries) {
-        if (readProjectAsset(doc, entry.id)) continue;
+        if (readProjectAsset(doc, entry.id, { projectId })) continue;
         const created = createProjectAsset(doc, entry);
         if (!created.ok) mutationFailure(created);
         changed = true;
@@ -904,7 +1104,7 @@ export function createLocalProjectAssetService(options: {
       prepareLegacyEntries(projectId, doc, legacy),
     );
     await replica.mutate(projectId, (doc) => {
-      const changed = applyMaterialization(doc, entries);
+      const changed = applyMaterialization(projectId, doc, entries);
       return { value: undefined, save: changed };
     });
   }
@@ -934,6 +1134,7 @@ export function createLocalProjectAssetService(options: {
     projectId: string,
     projectAssetId: string,
   ): Promise<ResolvedAsset> {
+    const entry = await authority.read(projectId, projectAssetId);
     const resolved = await client.read({ projectId, projectAssetId });
     if (!resolved) {
       throw new LocalProjectAssetMigrationError(
@@ -941,7 +1142,7 @@ export function createLocalProjectAssetService(options: {
         `Project Asset ${projectAssetId} is not available in Project ${projectId}.`,
       );
     }
-    return resolved;
+    return entry ? enrichResolved(entry, resolved) : resolved;
   }
 
   async function observationSnapshot(
@@ -957,7 +1158,7 @@ export function createLocalProjectAssetService(options: {
     const projectAssetId = nonEmpty(projectAssetIdInput, "projectAssetId");
     await materialize(projectId);
     return replica.inspect(projectId, (doc) => {
-      const entry = readProjectAsset(doc, projectAssetId);
+      const entry = readProjectAsset(doc, projectAssetId, { projectId });
       if (!entry) return null;
       const references = listActionAssetReferences(doc, projectAssetId);
       const readToken = projectAssetMutationReadTokenFromDoc(
@@ -977,10 +1178,7 @@ export function createLocalProjectAssetService(options: {
     const observed = await observationSnapshot(projectId, projectAssetId);
     if (!observed) return null;
     return {
-      value: await resolveProjectAsset(resolverPorts, {
-        projectId: observed.projectId,
-        entry: observed.entry,
-      }),
+      value: await resolveEntry(observed.projectId, observed.entry),
       readToken: observed.readToken,
     };
   }
@@ -1000,6 +1198,7 @@ export function createLocalProjectAssetService(options: {
       }
       const legacy = await metadata.load();
       return applyMaterialization(
+        projectId,
         doc,
         await prepareLegacyEntries(projectId, doc, legacy),
       );
@@ -1024,6 +1223,23 @@ export function createLocalProjectAssetService(options: {
         );
       }
       return projection;
+    },
+
+    prepareStagedOwnedEntry,
+
+    async publishStagedOwnedWithBindings(input) {
+      const projectId = nonEmpty(input.projectId, "projectId");
+      const entry = await prepareStagedOwnedEntry(input);
+      await materialize(projectId);
+      const published = await replica.mutate(projectId, (doc) => {
+        const result = publishLocalProjectAssetWithBindings(
+          doc,
+          entry,
+          input.bindings,
+        );
+        return { value: result.entry, save: result.changed };
+      });
+      return resolveEntry(projectId, published);
     },
 
     async installOwned(input) {
@@ -1059,12 +1275,13 @@ export function createLocalProjectAssetService(options: {
       return authority.read(projectId, projectAssetId);
     },
 
-    admitLinked(input) {
+    async admitLinked(input) {
       return publishLinked({
         projectId: nonEmpty(input.projectId, "projectId"),
         projectAssetId: input.projectAssetId?.trim() || `asset:${randomUUID()}`,
         kind: input.kind,
         resourceId: input.resourceId,
+        originLibraryId: input.originLibraryId,
         originEntryId: input.originEntryId,
         ...(input.name ? { name: input.name } : {}),
         metadata: input.metadata,
@@ -1092,10 +1309,8 @@ export function createLocalProjectAssetService(options: {
       const projectId = nonEmpty(projectIdInput, "projectId");
       const projectAssetId = nonEmpty(projectAssetIdInput, "projectAssetId");
       await this.materializeDoc(projectId, doc);
-      const entry = readProjectAsset(doc, projectAssetId);
-      return entry
-        ? resolveProjectAsset(resolverPorts, { projectId, entry })
-        : null;
+      const entry = readProjectAsset(doc, projectAssetId, { projectId });
+      return entry ? resolveEntry(projectId, entry) : null;
     },
 
     readObserved(projectId, projectAssetId) {
@@ -1104,7 +1319,11 @@ export function createLocalProjectAssetService(options: {
 
     async list(projectId) {
       await materialize(projectId);
-      return client.list({ projectId });
+      return Promise.all(
+        (await authority.list(projectId)).map((entry) =>
+          resolveEntry(projectId, entry),
+        ),
+      );
     },
 
     async readProjectCover(projectIdInput) {
@@ -1150,20 +1369,25 @@ export function createLocalProjectAssetService(options: {
 
     async trash(input) {
       const projectId = nonEmpty(input.projectId, "projectId");
+      const projectAssetId = nonEmpty(input.projectAssetId, "projectAssetId");
+      const deleteOperationId = nonEmpty(
+        input.deleteOperationId,
+        "deleteOperationId",
+      );
       await materialize(projectId);
       await client.trash({
         projectId,
-        projectAssetId: input.projectAssetId,
-        deleteOperationId: input.deleteOperationId,
+        projectAssetId,
+        deleteOperationId,
         deletedAt: input.deletedAt,
         purgeAfter: input.purgeAfter,
         ...(input.observation ? { observation: input.observation } : {}),
       });
-      const observed = await resolveObserved(projectId, input.projectAssetId);
+      const observed = await resolveObserved(projectId, projectAssetId);
       if (!observed) {
         throw new LocalProjectAssetMigrationError(
           "PROJECT_ASSET_NOT_FOUND",
-          `Project Asset ${input.projectAssetId} disappeared after deletion.`,
+          `Project Asset ${projectAssetId} disappeared after deletion.`,
         );
       }
       return observed;
@@ -1198,7 +1422,7 @@ export function createLocalProjectAssetService(options: {
       await this.materializeDoc(projectId, doc);
       return projectionFromEntry(
         projectId,
-        readProjectAsset(doc, projectAssetId),
+        readProjectAsset(doc, projectAssetId, { projectId }),
         projectAssetId,
       );
     },

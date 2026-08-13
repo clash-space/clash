@@ -1,5 +1,6 @@
 import {
   ActionAssetBindingSchema,
+  ProjectAssetPublicationMetadataSchema,
   ProjectAssetEntrySchema,
   ResolvedAssetSchema,
   ResourceSchema,
@@ -495,6 +496,12 @@ async function createEntry(
   sourceKind: "owned" | "linked",
 ): Promise<ProjectAssetEntry> {
   const entry = parseEntry(rawEntry, "INVALID_PROJECT_ASSET");
+  if (!ProjectAssetPublicationMetadataSchema.safeParse(entry.metadata).success) {
+    throw contractError(
+      "INVALID_PROJECT_ASSET",
+      `Project Asset ${entry.id} contains legacy derived metadata that cannot be published.`,
+    );
+  }
   if (entry.source.kind !== sourceKind || entry.lifecycle.state !== "active") {
     throw contractError(
       "INVALID_PROJECT_ASSET",
@@ -644,7 +651,9 @@ export function createAssetClient(ports: AssetClientPorts): AssetClient {
       }
       const entry = validateAuthorityEntry(result.entry, id);
       if (
-        JSON.stringify(entry.lifecycle) !== JSON.stringify(requestedLifecycle)
+        entry.lifecycle.state !== "trashed" ||
+        entry.lifecycle.deleteOperationId !==
+          requestedLifecycle.deleteOperationId
       ) {
         throw contractError(
           "AUTHORITY_CONTRACT_VIOLATION",

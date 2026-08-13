@@ -8,6 +8,7 @@
     "db:migrate:local": "wrangler d1 migrations apply clash-d1 --local",
     "dev": "wrangler dev --port 8789 --inspector-port 9231",
     "deploy": "wrangler deploy",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "tail": "wrangler tail"
   },
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",
     "typescript": "^5.7.2",
+    "vitest": "~4.1.0",
     "wrangler": "^4.55.0"
   }
 }

@@ -50,7 +50,13 @@ describe("word-aligned ASR transcript contract", () => {
       words: [
         { id: "word-000001", text: "你", startMs: 40, endMs: 180 },
         { id: "word-000002", text: "好", startMs: 180, endMs: 360 },
-        { id: "word-000003", text: "Clash", startMs: 420, endMs: 721, confidence: 0.96 },
+        {
+          id: "word-000003",
+          text: "Clash",
+          startMs: 420,
+          endMs: 721,
+          confidence: 0.96,
+        },
       ],
       segments: [
         {
@@ -66,26 +72,34 @@ describe("word-aligned ASR transcript contract", () => {
     expect(projectAsrTimedTranscriptWords(transcript, 30)).toEqual([
       { id: "word-000001", text: "你", startFrame: 1, endFrame: 6 },
       { id: "word-000002", text: "好", startFrame: 5, endFrame: 11 },
-      { id: "word-000003", text: "Clash", startFrame: 12, endFrame: 22, confidence: 0.96 },
+      {
+        id: "word-000003",
+        text: "Clash",
+        startFrame: 12,
+        endFrame: 22,
+        confidence: 0.96,
+      },
     ]);
   });
 
   it("rejects duplicate word ids and invalid word ranges", () => {
-    expect(() => AsrTimedTranscriptSchema.parse({
-      schemaVersion: 1,
-      kind: "clash.asr.timed-transcript",
-      timebase: "milliseconds",
-      alignment: "word",
-      text: "bad",
-      backendId: "fixture",
-      modelId: "fixture-model",
-      durationMs: 100,
-      words: [
-        { id: "word-1", text: "b", startMs: 0, endMs: 50 },
-        { id: "word-1", text: "a", startMs: 70, endMs: 60 },
-      ],
-      segments: [],
-    })).toThrow();
+    expect(() =>
+      AsrTimedTranscriptSchema.parse({
+        schemaVersion: 1,
+        kind: "clash.asr.timed-transcript",
+        timebase: "milliseconds",
+        alignment: "word",
+        text: "bad",
+        backendId: "fixture",
+        modelId: "fixture-model",
+        durationMs: 100,
+        words: [
+          { id: "word-1", text: "b", startMs: 0, endMs: 50 },
+          { id: "word-1", text: "a", startMs: 70, endMs: 60 },
+        ],
+        segments: [],
+      }),
+    ).toThrow();
   });
 });
 
@@ -96,9 +110,28 @@ describe("production metadata fill contract", () => {
       bpm: 128,
       fps: 30,
       beats: [
-        { frame: 0, timeSeconds: 0, confidence: 0.99, bar: 1, beatInBar: 1, downbeat: true },
-        { frame: 14, timeSeconds: 0.466, confidence: 0.94, bar: 1, beatInBar: 2 },
-        { frame: 28, timeSeconds: 0.933, confidence: 0.93, bar: 1, beatInBar: 3 },
+        {
+          frame: 0,
+          timeSeconds: 0,
+          confidence: 0.99,
+          bar: 1,
+          beatInBar: 1,
+          downbeat: true,
+        },
+        {
+          frame: 14,
+          timeSeconds: 0.466,
+          confidence: 0.94,
+          bar: 1,
+          beatInBar: 2,
+        },
+        {
+          frame: 28,
+          timeSeconds: 0.933,
+          confidence: 0.93,
+          bar: 1,
+          beatInBar: 3,
+        },
       ],
       sections: [
         {
@@ -113,18 +146,32 @@ describe("production metadata fill contract", () => {
         },
       ],
       energyCurve: [
-        { frame: 0, timeSeconds: 0, rms: 0.1, normalized: 0.35, novelty: 0.12, impact: 0.22 },
+        {
+          frame: 0,
+          timeSeconds: 0,
+          rms: 0.1,
+          normalized: 0.35,
+          novelty: 0.12,
+          impact: 0.22,
+        },
       ],
     });
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "action-mv-beat-fill",
-      targetAssetId: "asset-song",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-song",
+      },
       metadataKind: "audio.beat-analysis",
       metadata: beatMetadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-song", type: "audio", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-song", type: "audio", metadata: {} },
+      fill,
+    );
 
     expect(asset.metadata["audio.beat-analysis"]).toMatchObject({ bpm: 128 });
     expect(buildBeatEditHints(beatMetadata)).toEqual([
@@ -151,20 +198,59 @@ describe("production metadata fill contract", () => {
     ]);
   });
 
+  it("rejects legacy targetAssetId writes at the closed-schema compatibility surface", () => {
+    expect(() =>
+      AssetMetadataFillActionSchema.parse({
+        actionId: "legacy-write",
+        targetAssetId: "asset-song",
+        metadataKind: "audio.beat-analysis",
+        metadata: {
+          kind: "audio.beat-analysis",
+          bpm: 128,
+          fps: 30,
+          beats: [],
+          sections: [],
+          energyCurve: [],
+        },
+        producer: "fixture",
+      }),
+    ).toThrow();
+  });
+
   it("derives rhythm-aware cut-density hints for high-impact MV sections", () => {
     const beatMetadata = AudioBeatMetadataSchema.parse({
       kind: "audio.beat-analysis",
       bpm: 120,
       fps: 30,
       beats: [
-        { frame: 0, timeSeconds: 0, confidence: 0.4, bar: 1, beatInBar: 1, downbeat: true },
+        {
+          frame: 0,
+          timeSeconds: 0,
+          confidence: 0.4,
+          bar: 1,
+          beatInBar: 1,
+          downbeat: true,
+        },
         { frame: 15, timeSeconds: 0.5, confidence: 0.42, bar: 1, beatInBar: 2 },
         { frame: 30, timeSeconds: 1, confidence: 0.43, bar: 1, beatInBar: 3 },
         { frame: 45, timeSeconds: 1.5, confidence: 0.44, bar: 1, beatInBar: 4 },
-        { frame: 60, timeSeconds: 2, confidence: 0.95, bar: 2, beatInBar: 1, downbeat: true },
+        {
+          frame: 60,
+          timeSeconds: 2,
+          confidence: 0.95,
+          bar: 2,
+          beatInBar: 1,
+          downbeat: true,
+        },
         { frame: 75, timeSeconds: 2.5, confidence: 0.96, bar: 2, beatInBar: 2 },
         { frame: 90, timeSeconds: 3, confidence: 0.96, bar: 2, beatInBar: 3 },
-        { frame: 105, timeSeconds: 3.5, confidence: 0.97, bar: 2, beatInBar: 4 },
+        {
+          frame: 105,
+          timeSeconds: 3.5,
+          confidence: 0.97,
+          bar: 2,
+          beatInBar: 4,
+        },
       ],
       sections: [
         {
@@ -193,23 +279,48 @@ describe("production metadata fill contract", () => {
         },
       ],
       energyCurve: [
-        { frame: 0, timeSeconds: 0, rms: 0.1, normalized: 0.4, novelty: 0.4, impact: 0.4 },
-        { frame: 60, timeSeconds: 2, rms: 0.24, normalized: 0.96, novelty: 0.52, impact: 0.96 },
+        {
+          frame: 0,
+          timeSeconds: 0,
+          rms: 0.1,
+          normalized: 0.4,
+          novelty: 0.4,
+          impact: 0.4,
+        },
+        {
+          frame: 60,
+          timeSeconds: 2,
+          rms: 0.24,
+          normalized: 0.96,
+          novelty: 0.52,
+          impact: 0.96,
+        },
       ],
     });
 
-    expect(buildBeatSectionCutPlan(beatMetadata).map((cut: any) => [
-      cut.sectionId,
-      cut.semanticLabel,
-      cut.semanticConfidence,
-      cut.reviewRequired,
-      cut.semanticSource,
-      cut.cutDensity,
-      cut.recommendedCutEveryFrames,
-      cut.impact,
-    ])).toEqual([
+    expect(
+      buildBeatSectionCutPlan(beatMetadata).map((cut: any) => [
+        cut.sectionId,
+        cut.semanticLabel,
+        cut.semanticConfidence,
+        cut.reviewRequired,
+        cut.semanticSource,
+        cut.cutDensity,
+        cut.recommendedCutEveryFrames,
+        cut.impact,
+      ]),
+    ).toEqual([
       ["bar-1", undefined, undefined, undefined, undefined, "medium", 60, 0.42],
-      ["bar-2", "drop", 0.87, false, "local-rms-phrase-heuristic", "fast", 30, 0.96],
+      [
+        "bar-2",
+        "drop",
+        0.87,
+        false,
+        "local-rms-phrase-heuristic",
+        "fast",
+        30,
+        0.96,
+      ],
     ]);
   });
 
@@ -268,13 +379,20 @@ describe("production metadata fill contract", () => {
     const verdict = buildProductLogoQaVerdict(metadata.checks);
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "action-product-logo-qa",
-      targetAssetId: "asset-ad-frame",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-ad-frame",
+      },
       metadataKind: "image.product-logo-qa",
       metadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-ad-frame", type: "image", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-ad-frame", type: "image", metadata: {} },
+      fill,
+    );
 
     expect(verdict).toEqual({
       verdict: "fail",
@@ -300,8 +418,20 @@ describe("production metadata fill contract", () => {
           weightedScore: 0.973,
           status: "pass",
           metrics: [
-            { id: "bpm-accuracy", score: 0.99, threshold: 0.95, weight: 2, status: "pass" },
-            { id: "downbeat-f1", score: 0.94, threshold: 0.9, weight: 1, status: "pass" },
+            {
+              id: "bpm-accuracy",
+              score: 0.99,
+              threshold: 0.95,
+              weight: 2,
+              status: "pass",
+            },
+            {
+              id: "downbeat-f1",
+              score: 0.94,
+              threshold: 0.9,
+              weight: 1,
+              status: "pass",
+            },
           ],
         },
         {
@@ -311,8 +441,20 @@ describe("production metadata fill contract", () => {
           weightedScore: 0.75,
           status: "fail",
           metrics: [
-            { id: "bpm-accuracy", score: 0.82, threshold: 0.95, weight: 2, status: "fail" },
-            { id: "downbeat-f1", score: 0.61, threshold: 0.9, weight: 1, status: "fail" },
+            {
+              id: "bpm-accuracy",
+              score: 0.82,
+              threshold: 0.95,
+              weight: 2,
+              status: "fail",
+            },
+            {
+              id: "downbeat-f1",
+              score: 0.61,
+              threshold: 0.9,
+              weight: 1,
+              status: "fail",
+            },
           ],
         },
       ],
@@ -328,13 +470,20 @@ describe("production metadata fill contract", () => {
     const verdict = buildAnalysisBackendBenchmarkVerdict(metadata.candidates);
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "analysis-benchmark-mv-beat-grid-v1",
-      targetAssetId: "asset-song",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-song",
+      },
       metadataKind: "analysis.backend-benchmark",
       metadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-song", type: "audio", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-song", type: "audio", metadata: {} },
+      fill,
+    );
 
     expect(verdict).toEqual({
       verdict: "pass",
@@ -361,7 +510,8 @@ describe("production metadata fill contract", () => {
           subjectId: "hero",
           path: "assets/reference-sheets/hero-front.png",
           vectorPath: "embeddings/vectors/hero-front.json",
-          vectorHash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          vectorHash:
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
           dimension: 4,
           baselineFor: ["identity"],
           locked: true,
@@ -373,13 +523,20 @@ describe("production metadata fill contract", () => {
     });
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "image-embedding-store-reference-baselines-v1",
-      targetAssetId: "asset-reference-pack",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-reference-pack",
+      },
       metadataKind: "image.embedding-store",
       metadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-reference-pack", type: "reference-pack", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-reference-pack", type: "reference-pack", metadata: {} },
+      fill,
+    );
 
     expect(asset.metadata["image.embedding-store"]).toMatchObject({
       embeddingSetId: "reference-baselines-v1",
@@ -387,7 +544,9 @@ describe("production metadata fill contract", () => {
       dimension: 4,
       copyOnWriteRequired: true,
     });
-    expect(JSON.stringify(asset.metadata["image.embedding-store"])).not.toContain("[0.1");
+    expect(
+      JSON.stringify(asset.metadata["image.embedding-store"]),
+    ).not.toContain("[0.1");
   });
 
   it("fills audio stem separation metadata with stem asset lineage", () => {
@@ -403,7 +562,8 @@ describe("production metadata fill contract", () => {
           stemAssetId: "asset-song-vocals",
           stemType: "vocal",
           filePath: "assets/audio/stems/vocals.wav",
-          fileHash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          fileHash:
+            "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
           codec: "pcm_s16le",
           durationSeconds: 15,
           sampleRate: 44100,
@@ -413,7 +573,8 @@ describe("production metadata fill contract", () => {
           stemAssetId: "asset-song-instrumental",
           stemType: "instrumental",
           filePath: "assets/audio/stems/instrumental.wav",
-          fileHash: "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+          fileHash:
+            "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
           codec: "pcm_s16le",
           durationSeconds: 15,
           sampleRate: 44100,
@@ -428,13 +589,20 @@ describe("production metadata fill contract", () => {
     });
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "audio-stem-separation-mv-song-stems-v1",
-      targetAssetId: "asset-song",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-song",
+      },
       metadataKind: "audio.stem-separation",
       metadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-song", type: "audio", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-song", type: "audio", metadata: {} },
+      fill,
+    );
 
     expect(asset.metadata["audio.stem-separation"]).toMatchObject({
       vocalStemAssetId: "asset-song-vocals",
@@ -455,7 +623,8 @@ describe("production metadata fill contract", () => {
       kind: "image.comfyui-runner",
       workflowId: "hero-reference-gen-v1",
       workflowPath: "workflows/hero-reference.api.json",
-      workflowHash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      workflowHash:
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       apiFormat: "comfyui-api-json",
       backendId: "local-comfyui",
       models: [
@@ -490,7 +659,8 @@ describe("production metadata fill contract", () => {
           outputName: "IMAGE",
           mediaType: "image",
           path: "assets/generated/hero-front.png",
-          fileHash: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          fileHash:
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
           status: "materialized",
         },
       ],
@@ -506,13 +676,20 @@ describe("production metadata fill contract", () => {
     });
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "comfyui-runner-hero-reference-gen-v1",
-      targetAssetId: "asset-image-job",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-image-job",
+      },
       metadataKind: "image.comfyui-runner",
       metadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-image-job", type: "image-generation-job", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-image-job", type: "image-generation-job", metadata: {} },
+      fill,
+    );
 
     expect(asset.metadata["image.comfyui-runner"]).toMatchObject({
       workflowId: "hero-reference-gen-v1",
@@ -521,7 +698,8 @@ describe("production metadata fill contract", () => {
         expect.objectContaining({
           outputAssetId: "asset-hero-front",
           status: "materialized",
-          fileHash: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          fileHash:
+            "sha256:1111111111111111111111111111111111111111111111111111111111111111",
         }),
       ],
     });
@@ -533,7 +711,8 @@ describe("production metadata fill contract", () => {
       credentialId: "episode-001-export-provenance",
       targetAssetId: "asset-export",
       targetPath: "exports/episode-001.mp4",
-      targetHash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      targetHash:
+        "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       mode: "unsigned-manifest",
       signatureStatus: "unsigned",
       ingredients: [
@@ -554,7 +733,8 @@ describe("production metadata fill contract", () => {
       assertions: [
         {
           label: "ai.generated",
-          value: "Generated with local image backend; unsigned local manifest only.",
+          value:
+            "Generated with local image backend; unsigned local manifest only.",
         },
       ],
       decisionLog: [
@@ -564,13 +744,20 @@ describe("production metadata fill contract", () => {
     });
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "content-credentials-episode-001-export-provenance",
-      targetAssetId: "asset-export",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-export",
+      },
       metadataKind: "provenance.content-credentials",
       metadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-export", type: "video", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-export", type: "video", metadata: {} },
+      fill,
+    );
 
     expect(asset.metadata["provenance.content-credentials"]).toMatchObject({
       credentialId: "episode-001-export-provenance",
@@ -616,15 +803,26 @@ describe("production metadata fill contract", () => {
 
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "action-lyrics-fill",
-      targetAssetId: "asset-song",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-song",
+      },
       metadataKind: "audio.lyrics-alignment",
       metadata,
       producer: "fixture",
     });
-    const asset = applyAssetMetadataFill({ id: "asset-song", type: "audio", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-song", type: "audio", metadata: {} },
+      fill,
+    );
 
-    expect(asset.metadata["audio.lyrics-alignment"]).toMatchObject({ lyricsSource: "lyrics.txt" });
-    expect(buildCaptionItemFromLyricsAlignmentMetadata("lyrics-main", metadata, 0)).toEqual({
+    expect(asset.metadata["audio.lyrics-alignment"]).toMatchObject({
+      lyricsSource: "lyrics.txt",
+    });
+    expect(
+      buildCaptionItemFromLyricsAlignmentMetadata("lyrics-main", metadata, 0),
+    ).toEqual({
       id: "lyrics-main",
       type: "text",
       text: "tonight we rise\ninto the light",
@@ -652,12 +850,32 @@ describe("production metadata fill contract", () => {
         },
       ],
       wordRefs: [
-        { id: "line-1", text: "tonight we rise", sourceStartFrame: 0, sourceEndFrame: 30 },
-        { id: "line-2", text: "into the light", sourceStartFrame: 30, sourceEndFrame: 75 },
+        {
+          id: "line-1",
+          text: "tonight we rise",
+          sourceStartFrame: 0,
+          sourceEndFrame: 30,
+        },
+        {
+          id: "line-2",
+          text: "into the light",
+          sourceStartFrame: 30,
+          sourceEndFrame: 75,
+        },
       ],
       sourceToOutputMap: [
-        { sourceStartFrame: 0, sourceEndFrame: 30, outputStartFrame: 0, outputEndFrame: 30 },
-        { sourceStartFrame: 30, sourceEndFrame: 75, outputStartFrame: 30, outputEndFrame: 75 },
+        {
+          sourceStartFrame: 0,
+          sourceEndFrame: 30,
+          outputStartFrame: 0,
+          outputEndFrame: 30,
+        },
+        {
+          sourceStartFrame: 30,
+          sourceEndFrame: 75,
+          outputStartFrame: 30,
+          outputEndFrame: 75,
+        },
       ],
     });
   });
@@ -702,26 +920,53 @@ describe("production metadata fill contract", () => {
     });
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "action-visual-moments",
-      targetAssetId: "asset-source-video",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-source-video",
+      },
       metadataKind: "video.visual-moments",
       metadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-source-video", type: "video", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-source-video", type: "video", metadata: {} },
+      fill,
+    );
 
-    expect(asset.metadata["video.visual-moments"]).toMatchObject({ sourceVideoAssetId: "asset-source-video" });
-    expect(buildVisualMomentClipLibrary(metadata).map((clip) => [
-      clip.id,
-      clip.assetId,
-      clip.path,
-      clip.sourceStartFrame,
-      clip.sourceEndFrame,
-      clip.score,
-      clip.tags,
-    ])).toEqual([
-      ["moment-hook", "asset-source-video", "assets/video/source.mp4", 0, 45, 0.822, ["drop", "product"]],
-      ["moment-soft", "asset-source-video", "assets/video/source.mp4", 45, 90, 0.495, ["hold"]],
+    expect(asset.metadata["video.visual-moments"]).toMatchObject({
+      sourceVideoAssetId: "asset-source-video",
+    });
+    expect(
+      buildVisualMomentClipLibrary(metadata).map((clip) => [
+        clip.id,
+        clip.assetId,
+        clip.path,
+        clip.sourceStartFrame,
+        clip.sourceEndFrame,
+        clip.score,
+        clip.tags,
+      ]),
+    ).toEqual([
+      [
+        "moment-hook",
+        "asset-source-video",
+        "assets/video/source.mp4",
+        0,
+        45,
+        0.822,
+        ["drop", "product"],
+      ],
+      [
+        "moment-soft",
+        "asset-source-video",
+        "assets/video/source.mp4",
+        45,
+        90,
+        0.495,
+        ["hold"],
+      ],
     ]);
   });
 
@@ -732,7 +977,8 @@ describe("production metadata fill contract", () => {
       asr: {
         kind: "asr-transcript",
         sourcePath: "analysis/transcripts/talking-head.json",
-        sourceHash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        sourceHash:
+          "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         backendId: "local-sensevoice",
         modelId: "iic/SenseVoiceSmall",
         language: "zh-CN",
@@ -744,10 +990,23 @@ describe("production metadata fill contract", () => {
         { id: "w2", text: "好", startFrame: 12, endFrame: 18 },
       ],
       cuts: [
-        { id: "keep-1", sourceStartFrame: 0, sourceEndFrame: 60, outputStartFrame: 0, outputEndFrame: 60, action: "keep" },
+        {
+          id: "keep-1",
+          sourceStartFrame: 0,
+          sourceEndFrame: 60,
+          outputStartFrame: 0,
+          outputEndFrame: 60,
+          action: "keep",
+        },
       ],
       captionCues: [
-        { id: "cue-1", startFrame: 0, durationInFrames: 45, text: "大家好", wordIds: ["w1", "w2"] },
+        {
+          id: "cue-1",
+          startFrame: 0,
+          durationInFrames: 45,
+          text: "大家好",
+          wordIds: ["w1", "w2"],
+        },
       ],
     });
 
@@ -759,28 +1018,37 @@ describe("production metadata fill contract", () => {
       wordCount: 2,
       averageConfidence: 0.94,
     });
-    expect(buildCaptionItemFromTalkingHeadMetadata("captions-main", metadata, 0)).toEqual({
+    expect(
+      buildCaptionItemFromTalkingHeadMetadata("captions-main", metadata, 0),
+    ).toEqual({
       id: "captions-main",
       type: "text",
       text: "大家好",
       color: "#ffffff",
       from: 0,
       durationInFrames: 45,
-      cues: [{
-        id: "cue-1",
-        startFrame: 0,
-        durationInFrames: 45,
-        text: "大家好",
-        wordIds: ["w1", "w2"],
-        sourceStartFrame: 0,
-        sourceEndFrame: 18,
-      }],
+      cues: [
+        {
+          id: "cue-1",
+          startFrame: 0,
+          durationInFrames: 45,
+          text: "大家好",
+          wordIds: ["w1", "w2"],
+          sourceStartFrame: 0,
+          sourceEndFrame: 18,
+        },
+      ],
       wordRefs: [
         { id: "w1", text: "大家", sourceStartFrame: 0, sourceEndFrame: 12 },
         { id: "w2", text: "好", sourceStartFrame: 12, sourceEndFrame: 18 },
       ],
       sourceToOutputMap: [
-        { sourceStartFrame: 0, sourceEndFrame: 60, outputStartFrame: 0, outputEndFrame: 60 },
+        {
+          sourceStartFrame: 0,
+          sourceEndFrame: 60,
+          outputStartFrame: 0,
+          outputEndFrame: 60,
+        },
       ],
     });
   });
@@ -796,12 +1064,19 @@ describe("production metadata fill contract", () => {
         derivativeAllowed: false,
       },
       shots: [
-        { id: "shot-1", startFrame: 0, endFrame: 60, description: "fast product push-in" },
+        {
+          id: "shot-1",
+          startFrame: 0,
+          endFrame: 60,
+          description: "fast product push-in",
+        },
       ],
       nonCopyingQa: { status: "requires-review", similarityScore: 0.71 },
     });
 
-    expect(() => assertReferenceCanBeRemixed(metadata)).toThrow(/derivative use is not allowed/);
+    expect(() => assertReferenceCanBeRemixed(metadata)).toThrow(
+      /derivative use is not allowed/,
+    );
     expect(buildReferenceRightsLedger("asset-reference", metadata)).toEqual({
       assetId: "asset-reference",
       sourceUrl: "https://example.invalid/watch/123",
@@ -811,7 +1086,11 @@ describe("production metadata fill contract", () => {
         "derivative use is not allowed",
         "redistribution is not allowed",
       ],
-      allowedUses: ["metadata-analysis", "shot-analysis", "non-copying-reference"],
+      allowedUses: [
+        "metadata-analysis",
+        "shot-analysis",
+        "non-copying-reference",
+      ],
       prohibitedUses: ["download-source", "copy-frames", "export-derivative"],
       shots: metadata.shots,
       nonCopyingQa: metadata.nonCopyingQa,
@@ -848,12 +1127,19 @@ describe("production metadata fill contract", () => {
     });
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "reference-download-asset-reference",
-      targetAssetId: "asset-reference",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-reference",
+      },
       metadataKind: "reference.download",
       producer: "clash-production-execute-reference-download",
       metadata,
     });
-    const asset = applyAssetMetadataFill({ id: "asset-reference", type: "reference", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-reference", type: "reference", metadata: {} },
+      fill,
+    );
 
     expect(asset.metadata["reference.download"]).toMatchObject({
       outputDir: "references/raw/asset-reference",
@@ -863,30 +1149,32 @@ describe("production metadata fill contract", () => {
   });
 
   it("rejects reference download metadata that grants final export without derivative rights", () => {
-    expect(() => ReferenceDownloadMetadataSchema.parse({
-      kind: "reference.download",
-      sourceUrl: "https://example.invalid/watch/tvc",
-      tool: "yt-dlp",
-      outputDir: "references/raw/asset-reference",
-      downloadedFiles: [
-        {
-          path: "references/raw/asset-reference/reference-001.mp4",
-          mediaType: "video",
-          sizeBytes: 1024,
-        },
-      ],
-      rawReferenceQuarantine: true,
-      finalExportAllowed: true,
-      sourceLedger: {
+    expect(() =>
+      ReferenceDownloadMetadataSchema.parse({
+        kind: "reference.download",
         sourceUrl: "https://example.invalid/watch/tvc",
-        license: "raw-reference-redistribution-only",
-        attribution: "Example Brand",
-        allowedUses: ["analysis-only", "shot-breakdown", "final-export"],
-        redistributionAllowed: true,
-        derivativeAllowed: false,
-      },
-      decisionLog: [],
-    })).toThrow(/final export requires derivative and redistribution rights/);
+        tool: "yt-dlp",
+        outputDir: "references/raw/asset-reference",
+        downloadedFiles: [
+          {
+            path: "references/raw/asset-reference/reference-001.mp4",
+            mediaType: "video",
+            sizeBytes: 1024,
+          },
+        ],
+        rawReferenceQuarantine: true,
+        finalExportAllowed: true,
+        sourceLedger: {
+          sourceUrl: "https://example.invalid/watch/tvc",
+          license: "raw-reference-redistribution-only",
+          attribution: "Example Brand",
+          allowedUses: ["analysis-only", "shot-breakdown", "final-export"],
+          redistributionAllowed: true,
+          derivativeAllowed: false,
+        },
+        decisionLog: [],
+      }),
+    ).toThrow(/final export requires derivative and redistribution rights/);
   });
 
   it("validates short-drama/image storyboard metadata with reference assets", () => {
@@ -896,7 +1184,11 @@ describe("production metadata fill contract", () => {
         {
           id: "hero",
           name: "便利店店员",
-          referenceAssetIds: ["asset-hero-front", "asset-hero-side", "asset-hero-back"],
+          referenceAssetIds: [
+            "asset-hero-front",
+            "asset-hero-side",
+            "asset-hero-back",
+          ],
           requiredViews: ["front", "side", "back"],
           referenceViews: [
             {
@@ -924,7 +1216,11 @@ describe("production metadata fill contract", () => {
         },
       ],
       scenes: [
-        { id: "store-night", referenceAssetIds: ["asset-store"], prompt: "night convenience store aisle" },
+        {
+          id: "store-night",
+          referenceAssetIds: ["asset-store"],
+          prompt: "night convenience store aisle",
+        },
       ],
       panels: [
         {
@@ -938,7 +1234,11 @@ describe("production metadata fill contract", () => {
       ],
     });
 
-    expect(metadata.characters[0].requiredViews).toEqual(["front", "side", "back"]);
+    expect(metadata.characters[0].requiredViews).toEqual([
+      "front",
+      "side",
+      "back",
+    ]);
     expect(metadata.characters[0].referenceViews).toEqual([
       {
         view: "front",
@@ -976,12 +1276,20 @@ describe("production metadata fill contract", () => {
         {
           id: "hero",
           name: "便利店店员",
-          referenceAssetIds: ["asset-hero-front", "asset-hero-side", "asset-hero-back"],
+          referenceAssetIds: [
+            "asset-hero-front",
+            "asset-hero-side",
+            "asset-hero-back",
+          ],
           requiredViews: ["front", "side", "back"],
         },
       ],
       scenes: [
-        { id: "store-night", referenceAssetIds: ["asset-store"], prompt: "night convenience store aisle" },
+        {
+          id: "store-night",
+          referenceAssetIds: ["asset-store"],
+          prompt: "night convenience store aisle",
+        },
       ],
       panels: [
         {
@@ -993,10 +1301,14 @@ describe("production metadata fill contract", () => {
       ],
     });
 
-    const promptPack = buildStoryboardPromptPackFromMetadata("asset-storyboard", metadata, {
-      stylePrompt: "vertical short drama, cinematic light",
-      negativePrompt: "logo drift, extra fingers",
-    });
+    const promptPack = buildStoryboardPromptPackFromMetadata(
+      "asset-storyboard",
+      metadata,
+      {
+        stylePrompt: "vertical short drama, cinematic light",
+        negativePrompt: "logo drift, extra fingers",
+      },
+    );
 
     expect(StoryboardPromptPackSchema.parse(promptPack)).toEqual(promptPack);
     expect(promptPack).toEqual({
@@ -1009,7 +1321,8 @@ describe("production metadata fill contract", () => {
           panelId: "panel-1",
           sceneId: "store-night",
           characterIds: ["hero"],
-          prompt: "night convenience store aisle; characters: 便利店店员; style: vertical short drama, cinematic light",
+          prompt:
+            "night convenience store aisle; characters: 便利店店员; style: vertical short drama, cinematic light",
           negativePrompt: "logo drift, extra fingers",
           outputAssetId: "asset-panel-1",
           outputPath: "assets/generated/storyboards/panel-1.png",
@@ -1054,26 +1367,57 @@ describe("production metadata fill contract", () => {
     });
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "action-ad-delivery",
-      targetAssetId: "asset-tvc",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-tvc",
+      },
       metadataKind: "ad.delivery-spec",
       metadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-tvc", type: "video", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-tvc", type: "video", metadata: {} },
+      fill,
+    );
 
     expect(asset.metadata["ad.delivery-spec"]).toMatchObject({
       brand: "Clash Skin",
       rightsLedgerAssetId: "asset-reference",
     });
     expect(buildAdDeliveryChecklist(metadata)).toEqual([
-      { id: "duration:tiktok-9x16-15s", label: "tiktok duration 15s", required: true },
-      { id: "safe-zone:tiktok-9x16-15s", label: "tiktok safe zones top/right/bottom/left 120/48/220/48", required: true },
-      { id: "subtitles:tiktok-9x16-15s", label: "tiktok subtitles required", required: true },
-      { id: "packshot", label: "packshot asset asset-packshot frames 360-420", required: true },
-      { id: "end-card", label: "end card 90 frames with CTA Shop now", required: true },
+      {
+        id: "duration:tiktok-9x16-15s",
+        label: "tiktok duration 15s",
+        required: true,
+      },
+      {
+        id: "safe-zone:tiktok-9x16-15s",
+        label: "tiktok safe zones top/right/bottom/left 120/48/220/48",
+        required: true,
+      },
+      {
+        id: "subtitles:tiktok-9x16-15s",
+        label: "tiktok subtitles required",
+        required: true,
+      },
+      {
+        id: "packshot",
+        label: "packshot asset asset-packshot frames 360-420",
+        required: true,
+      },
+      {
+        id: "end-card",
+        label: "end card 90 frames with CTA Shop now",
+        required: true,
+      },
       { id: "disclaimer", label: "disclaimer text present", required: true },
-      { id: "rights-ledger", label: "rights ledger linked to asset-reference", required: true },
+      {
+        id: "rights-ledger",
+        label: "rights ledger linked to asset-reference",
+        required: true,
+      },
     ]);
   });
 
@@ -1099,8 +1443,19 @@ describe("production metadata fill contract", () => {
             loudnessTarget: "platform-default",
           },
         ],
-        packshot: { required: true, assetId: "asset-packshot", startFrame: 360, endFrame: 420 },
-        endCard: { required: true, durationFrames: 90, cta: "Shop now", disclaimer: "Results vary.", qrRequired: false },
+        packshot: {
+          required: true,
+          assetId: "asset-packshot",
+          startFrame: 360,
+          endFrame: 420,
+        },
+        endCard: {
+          required: true,
+          durationFrames: 90,
+          cta: "Shop now",
+          disclaimer: "Results vary.",
+          qrRequired: false,
+        },
         rightsLedgerAssetId: "asset-reference",
         checklist: [],
       },
@@ -1125,7 +1480,9 @@ describe("production metadata fill contract", () => {
       },
     });
 
-    expect(AdDeliveryExportValidationReceiptSchema.parse(receipt)).toEqual(receipt);
+    expect(AdDeliveryExportValidationReceiptSchema.parse(receipt)).toEqual(
+      receipt,
+    );
     expect(receipt.verdict).toBe("pass");
     expect(receipt.checks.map((check) => [check.id, check.status])).toEqual([
       ["variant", "pass"],
@@ -1213,13 +1570,20 @@ describe("production metadata fill contract", () => {
     });
     const fill = AssetMetadataFillActionSchema.parse({
       actionId: "ad-visual-qa-tiktok-9x16-15s",
-      targetAssetId: "asset-tvc",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-tvc",
+      },
       metadataKind: "ad.visual-qa",
       metadata,
       producer: "fixture",
     });
 
-    const asset = applyAssetMetadataFill({ id: "asset-tvc", type: "video", metadata: {} }, fill);
+    const asset = applyAssetMetadataFill(
+      { id: "asset-tvc", type: "video", metadata: {} },
+      fill,
+    );
 
     expect(asset.metadata["ad.visual-qa"]).toMatchObject({
       variantId: "tiktok-9x16-15s",
@@ -1254,8 +1618,19 @@ describe("production metadata fill contract", () => {
             loudnessTarget: "platform-default",
           },
         ],
-        packshot: { required: true, assetId: "asset-packshot", startFrame: 360, endFrame: 420 },
-        endCard: { required: true, durationFrames: 90, cta: "Shop now", disclaimer: "Results vary.", qrRequired: false },
+        packshot: {
+          required: true,
+          assetId: "asset-packshot",
+          startFrame: 360,
+          endFrame: 420,
+        },
+        endCard: {
+          required: true,
+          durationFrames: 90,
+          cta: "Shop now",
+          disclaimer: "Results vary.",
+          qrRequired: false,
+        },
         checklist: [],
       },
       variantId: "tiktok-9x16-15s",
@@ -1270,7 +1645,13 @@ describe("production metadata fill contract", () => {
       },
       visualQa: {
         captionsPresent: false,
-        safeZoneViolations: [{ frame: 42, description: "CTA overlaps bottom UI safe zone", severity: "error" }],
+        safeZoneViolations: [
+          {
+            frame: 42,
+            description: "CTA overlaps bottom UI safe zone",
+            severity: "error",
+          },
+        ],
         packshotVisible: false,
         endCardVisible: true,
         disclaimerVisible: false,
@@ -1278,12 +1659,10 @@ describe("production metadata fill contract", () => {
     });
 
     expect(receipt.verdict).toBe("fail");
-    expect(receipt.checks.filter((check) => check.status === "fail").map((check) => check.id)).toEqual([
-      "duration",
-      "safe-zone",
-      "subtitles",
-      "packshot",
-      "disclaimer",
-    ]);
+    expect(
+      receipt.checks
+        .filter((check) => check.status === "fail")
+        .map((check) => check.id),
+    ).toEqual(["duration", "safe-zone", "subtitles", "packshot", "disclaimer"]);
   });
 });

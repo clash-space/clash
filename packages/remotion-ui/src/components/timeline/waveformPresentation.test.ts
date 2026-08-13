@@ -28,4 +28,21 @@ describe('timeline waveform presentation', () => {
       .toBe('audio:/voice.wav:1024');
     expect(getWaveformBuildCacheKey('image', '/still.png', 1024)).toBeNull();
   });
+
+  it('does not share decoded peaks between equal entry ids in different Projects', () => {
+    const projectA = getWaveformBuildCacheKey(
+      'audio',
+      'https://media.example.test/shared.wav',
+      1024,
+      'project-a:shared-entry-id',
+    );
+    const projectB = getWaveformBuildCacheKey(
+      'audio',
+      'https://media.example.test/shared.wav',
+      1024,
+      'project-b:shared-entry-id',
+    );
+
+    expect(projectA).not.toBe(projectB);
+  });
 });

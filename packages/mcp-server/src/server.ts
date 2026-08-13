@@ -126,7 +126,7 @@ const assetToolDefinitions: Record<
       useWhen:
         "a local workspace media file should become an immutable Project Asset",
       effect:
-        "uploads the file once through the Host's canonical multipart import-file route",
+        "uploads through the Host's canonical multipart route with one stable Project Asset id across an unknown-result retry",
       returns: "the newly created Project-scoped ResolvedAsset",
       next: "use the returned Project Asset ID in Actions or read it before a lifecycle mutation",
     }),
@@ -144,6 +144,14 @@ const assetToolDefinitions: Record<
         .optional()
         .describe(
           "Optional media kind; when omitted it is inferred from the file extension",
+        ),
+      projectAssetId: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe(
+          "Optional caller-owned logical command id; reuse it only when retrying the same import",
         ),
     },
   },
@@ -233,7 +241,7 @@ const assetToolDefinitions: Record<
       useWhen:
         "a local media file should become reusable outside any one Project",
       effect:
-        "uploads the file once through the Host's canonical personal-library multipart route",
+        "uploads through the Host's canonical personal-library route with one stable Global Asset id across an unknown-result retry",
       returns: "the newly created personal Global ResolvedAsset",
       next: "admit the returned Global Asset into a Project when needed",
     }),
@@ -250,7 +258,40 @@ const assetToolDefinitions: Record<
         .describe(
           "Optional media kind; when omitted it is inferred from the file extension",
         ),
+      globalAssetId: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe(
+          "Optional caller-owned logical command id; reuse it only when retrying the same import",
+        ),
     },
+  },
+  clash_assets_global_trash: {
+    title: "Trash personal Global Asset",
+    description: describeClashTool({
+      useWhen:
+        "the user authorized logical deletion of a personal Global Asset",
+      effect:
+        "logically trashes the Global Asset with one stable operation across an unknown-result retry",
+      returns: "the trashed storage-neutral Global ResolvedAsset",
+      next: "read the Global Asset before restoring it",
+    }),
+    inputSchema: { globalAssetId: z.string().trim().min(1) },
+    annotations: { destructiveHint: true },
+  },
+  clash_assets_global_restore: {
+    title: "Restore personal Global Asset",
+    description: describeClashTool({
+      useWhen:
+        "a trashed personal Global Asset should return to active library use",
+      effect:
+        "restores only the delete operation recorded by the most recent Global Asset read",
+      returns: "the restored storage-neutral Global ResolvedAsset",
+      next: "read it again before any later lifecycle mutation",
+    }),
+    inputSchema: { globalAssetId: z.string().trim().min(1) },
   },
 };
 

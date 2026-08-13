@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   AbsoluteFill,
   Sequence,
@@ -8,7 +8,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
   interpolate,
-} from 'remotion';
+} from "remotion";
 import {
   buildAudioDuckingWindows,
   computeAudioDuckingMultiplier,
@@ -24,31 +24,32 @@ import {
   type EffectInstanceRef,
   type Track,
   type Item,
-} from '@clash/remotion-core';
+} from "@clash/remotion-core";
 import {
   builtInEffectRegistry,
   computeBuiltInTransitionStyle,
   computeEffectPresentation,
   type BuiltInTransitionType,
   type EffectPresentationRole,
-} from '@clash/remotion-effects';
+} from "@clash/remotion-effects";
 import {
   TIMELINE_MASK_FEATHER_BLUR_DIVISOR,
   TIMELINE_MASK_SHAPE_ANNOTATIONS,
   type TimelineMaskRenderPrimitive,
-} from '@clash/shared-types';
-import { computeItemEffectStyle } from './item-effects';
+} from "@clash/shared-types";
+import { computeItemEffectStyle } from "./item-effects";
 import {
   mergeContiguousMediaItems,
   type ResolvedTimelineItem,
-} from './timeline-media-merge';
-import { isTimelineTransitionRenderItem } from './timeline-render-field-consumers';
-import { RemotionSourceComposition } from './inline-remotion-source';
+} from "./timeline-media-merge";
+import { isTimelineTransitionRenderItem } from "./timeline-render-field-consumers";
+import { RemotionSourceComposition } from "./inline-remotion-source";
+import { resolveProjectedMediaUrl } from "./projected-media-url";
 
 export {
   mergeContiguousMediaItems,
   TIMELINE_MEDIA_MERGE_FIELD_POLICY,
-} from './timeline-media-merge';
+} from "./timeline-media-merge";
 
 // Debug logging disabled for performance
 
@@ -72,8 +73,8 @@ export const computeFadeMultiplier = (
     m = Math.min(
       m,
       interpolate(frame, [visibleFrom, visibleFrom + fadeInFrames], [0, 1], {
-        extrapolateLeft: 'clamp',
-        extrapolateRight: 'clamp',
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
       }),
     );
   }
@@ -81,8 +82,8 @@ export const computeFadeMultiplier = (
     m = Math.min(
       m,
       interpolate(frame, [endFrame - fadeOutFrames, endFrame], [1, 0], {
-        extrapolateLeft: 'clamp',
-        extrapolateRight: 'clamp',
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
       }),
     );
   }
@@ -101,11 +102,11 @@ export type ClipAnimationStyle = {
   transform?: string;
 };
 
-const clampAnimationProgress = (value: number): number => Math.min(1, Math.max(0, value));
-const easeOutCubic = (value: number): number => 1 - ((1 - value) ** 3);
-const compactMotionNumber = (value: number): string => (
-  Number(value.toFixed(4)).toString()
-);
+const clampAnimationProgress = (value: number): number =>
+  Math.min(1, Math.max(0, value));
+const easeOutCubic = (value: number): number => 1 - (1 - value) ** 3;
+const compactMotionNumber = (value: number): string =>
+  Number(value.toFixed(4)).toString();
 
 /**
  * Computes a clip's deterministic, seek-safe entrance/exit presentation.
@@ -125,39 +126,48 @@ export const computeClipAnimationStyle = ({
   const applyAnimation = (
     animation: ClipAnimation,
     progress: number,
-    phase: 'entrance' | 'exit',
+    phase: "entrance" | "exit",
   ) => {
     active = true;
     const easedProgress = easeOutCubic(clampAnimationProgress(progress));
-    const visibility = phase === 'entrance' ? easedProgress : 1 - easedProgress;
+    const visibility = phase === "entrance" ? easedProgress : 1 - easedProgress;
     opacity *= visibility;
 
-    if (animation.type === 'fade') return;
-    if (animation.type === 'zoom-in') {
-      const scale = phase === 'entrance'
-        ? 0.84 + (0.16 * easedProgress)
-        : 1 + (0.16 * easedProgress);
+    if (animation.type === "fade") return;
+    if (animation.type === "zoom-in") {
+      const scale =
+        phase === "entrance"
+          ? 0.84 + 0.16 * easedProgress
+          : 1 + 0.16 * easedProgress;
       transforms.push(`scale(${compactMotionNumber(scale)})`);
       return;
     }
-    if (animation.type === 'zoom-out') {
-      const scale = phase === 'entrance'
-        ? 1.16 - (0.16 * easedProgress)
-        : 1 - (0.16 * easedProgress);
+    if (animation.type === "zoom-out") {
+      const scale =
+        phase === "entrance"
+          ? 1.16 - 0.16 * easedProgress
+          : 1 - 0.16 * easedProgress;
       transforms.push(`scale(${compactMotionNumber(scale)})`);
       return;
     }
 
-    const distance = 8 * (phase === 'entrance' ? 1 - easedProgress : easedProgress);
-    const signedDistance = (
-      animation.type === 'slide-left' || animation.type === 'slide-up'
-    )
-      ? (phase === 'entrance' ? distance : -distance)
-      : (phase === 'entrance' ? -distance : distance);
-    const axis = animation.type === 'slide-left' || animation.type === 'slide-right'
-      ? 'X'
-      : 'Y';
-    transforms.push(`translate${axis}(${compactMotionNumber(signedDistance)}%)`);
+    const distance =
+      8 * (phase === "entrance" ? 1 - easedProgress : easedProgress);
+    const signedDistance =
+      animation.type === "slide-left" || animation.type === "slide-up"
+        ? phase === "entrance"
+          ? distance
+          : -distance
+        : phase === "entrance"
+          ? -distance
+          : distance;
+    const axis =
+      animation.type === "slide-left" || animation.type === "slide-right"
+        ? "X"
+        : "Y";
+    transforms.push(
+      `translate${axis}(${compactMotionNumber(signedDistance)}%)`,
+    );
   };
 
   const entranceDuration = Math.min(
@@ -168,7 +178,7 @@ export const computeClipAnimationStyle = ({
     applyAnimation(
       entranceAnimation,
       entranceDuration === 1 ? 1 : frame / (entranceDuration - 1),
-      'entrance',
+      "entrance",
     );
   }
 
@@ -181,14 +191,14 @@ export const computeClipAnimationStyle = ({
     applyAnimation(
       exitAnimation,
       exitDuration === 1 ? 1 : (frame - exitStartFrame) / (exitDuration - 1),
-      'exit',
+      "exit",
     );
   }
 
   if (!active) return {};
   return {
     opacity,
-    transform: transforms.length > 0 ? transforms.join(' ') : undefined,
+    transform: transforms.length > 0 ? transforms.join(" ") : undefined,
   };
 };
 
@@ -209,8 +219,8 @@ export const computeColorOverlayOpacity = (
     m = Math.max(
       m,
       interpolate(frame, [visibleFrom, visibleFrom + fadeInFrames], [1, 0], {
-        extrapolateLeft: 'clamp',
-        extrapolateRight: 'clamp',
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
       }),
     );
   }
@@ -218,8 +228,8 @@ export const computeColorOverlayOpacity = (
     m = Math.max(
       m,
       interpolate(frame, [endFrame - fadeOutFrames, endFrame], [0, 1], {
-        extrapolateLeft: 'clamp',
-        extrapolateRight: 'clamp',
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
       }),
     );
   }
@@ -239,7 +249,11 @@ export const computeTransitionStyle = (
   progress: number,
   role: TransitionRole,
 ): React.CSSProperties => {
-  return computeBuiltInTransitionStyle(type, progress, role) as React.CSSProperties;
+  return computeBuiltInTransitionStyle(
+    type,
+    progress,
+    role,
+  ) as React.CSSProperties;
 };
 
 export const computeTransitionEffectStyle = (options: {
@@ -252,16 +266,20 @@ export const computeTransitionEffectStyle = (options: {
   height: number;
 }): React.CSSProperties => {
   if (!options.effect) {
-    return computeTransitionStyle(options.legacyType, options.progress, options.role);
+    return computeTransitionStyle(
+      options.legacyType,
+      options.progress,
+      options.role,
+    );
   }
   const { definition, fallbackFrom } = builtInEffectRegistry.resolveForRenderer(
     options.effect.effectId,
     options.effect.effectVersion,
-    'remotion',
+    "remotion",
   );
   return computeEffectPresentation({
     definition,
-    params: fallbackFrom ? {} : options.effect.params ?? {},
+    params: fallbackFrom ? {} : (options.effect.params ?? {}),
     progress: options.progress,
     role: options.role,
     frame: options.frame,
@@ -307,7 +325,9 @@ export type ObscuredWindow = { from: number; end: number };
  * Pure function — no DOM, no React. Exported for tests and for any future
  * tool that wants to know "what's visible at frame X" without rendering.
  */
-export function buildObscuredWindowsByItemId(tracks: Track[]): Map<string, ObscuredWindow[]> {
+export function buildObscuredWindowsByItemId(
+  tracks: Track[],
+): Map<string, ObscuredWindow[]> {
   const windows = new Map<string, ObscuredWindow[]>();
   const addWin = (id: string, w: ObscuredWindow) => {
     const list = windows.get(id) ?? [];
@@ -316,7 +336,7 @@ export function buildObscuredWindowsByItemId(tracks: Track[]): Map<string, Obscu
   };
   for (const track of tracks) {
     for (const item of track.items) {
-      if (item.type !== 'transition') continue;
+      if (item.type !== "transition") continue;
       const t = item as Item & { fromItemId: string; toItemId: string };
       const win: ObscuredWindow = {
         from: t.from,
@@ -395,16 +415,17 @@ const resolveTimelineItem = (
   }
 
   // 2. If not found by references, try to find by src
-  if (!asset && 'src' in item) {
+  if (!asset && "src" in item) {
     const itemSrc = (item as any).src;
     asset = srcNodeMap.get(itemSrc) ?? null;
   }
 
   if (asset) {
     const assetData = asset.data || {};
-    const isLiveRemotionComponent = item.type === 'composition'
-      && item.runtime === 'remotion'
-      && asset.type === 'remotion-component';
+    const isLiveRemotionComponent =
+      item.type === "composition" &&
+      item.runtime === "remotion" &&
+      asset.type === "remotion-component";
 
     // Get natural dimensions from asset node
     let naturalWidth = assetData.naturalWidth;
@@ -413,71 +434,46 @@ const resolveTimelineItem = (
     // Fallback: parse aspectRatio string (e.g., "16:9") if no natural dimensions
     if ((!naturalWidth || !naturalHeight) && assetData.aspectRatio) {
       const ar = assetData.aspectRatio;
-      if (typeof ar === 'string' && ar.includes(':')) {
-        const [w, h] = ar.split(':').map(Number);
+      if (typeof ar === "string" && ar.includes(":")) {
+        const [w, h] = ar.split(":").map(Number);
         if (w && h) {
           // Use 1920 as base width to calculate virtual dimensions
           naturalWidth = 1920;
-          naturalHeight = Math.round(1920 * h / w);
+          naturalHeight = Math.round((1920 * h) / w);
         }
       }
     }
 
     return {
       ...item,
-      src: assetData.src || ('src' in item ? item.src : undefined),
+      src: assetData.src || ("src" in item ? item.src : undefined),
       type: item.type,
       naturalWidth,
       naturalHeight,
-      componentSource: isLiveRemotionComponent && typeof assetData.content === 'string'
-        ? assetData.content
-        : undefined,
-      compositionId: isLiveRemotionComponent && typeof assetData.componentId === 'string'
-        ? assetData.componentId
-        : item.type === 'composition' ? item.compositionId : undefined,
-      resolvedSrcUrl: resolveAssetUrl(assetData.src || ('src' in item ? item.src : undefined)),
+      componentSource:
+        isLiveRemotionComponent && typeof assetData.content === "string"
+          ? assetData.content
+          : undefined,
+      compositionId:
+        isLiveRemotionComponent && typeof assetData.componentId === "string"
+          ? assetData.componentId
+          : item.type === "composition"
+            ? item.compositionId
+            : undefined,
+      resolvedSrcUrl: resolveAssetUrl(
+        assetData.src || ("src" in item ? item.src : undefined),
+      ),
     } as ResolvedTimelineItem;
   }
 
   // Return as-is for non-asset items (solid, text) or if asset not found
   return {
     ...item,
-    resolvedSrcUrl: resolveAssetUrl('src' in item ? item.src : undefined),
+    resolvedSrcUrl: resolveAssetUrl("src" in item ? item.src : undefined),
   };
 };
 
-// Helper to ensure src is a proper URL
-const resolveAssetUrl = (src: string | undefined): string => {
-  if (!src) return '';
-
-  // Already a full URL
-  if (src.startsWith('http://') || src.startsWith('https://')) {
-    return src;
-  }
-
-  // Already a view URL
-  if (src.startsWith('/api/assets/view/')) {
-    return src;
-  }
-
-  // Data URL
-  if (src.startsWith('data:')) {
-    return src;
-  }
-
-  // R2 key format (projects/...) - convert to view URL
-  if (src.startsWith('projects/')) {
-    return `/api/assets/view/${src}`;
-  }
-
-  // Other paths starting with /
-  if (src.startsWith('/')) {
-    return src;
-  }
-
-  // Default: treat as R2 key
-  return `/api/assets/view/${src}`;
-};
+const resolveAssetUrl = resolveProjectedMediaUrl;
 
 export function computeTimelineItemLocalFrame(input: {
   sequenceFrame: number;
@@ -493,7 +489,8 @@ function computeTimelineItemRenderedSize(input: {
   compositionHeight: number;
 }): { width: number; height: number } {
   const { item, compositionWidth, compositionHeight } = input;
-  const properties = item.properties ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties;
+  const properties =
+    item.properties ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties;
   const naturalWidth = item.naturalWidth || compositionWidth;
   const naturalHeight = item.naturalHeight || compositionHeight;
   if (properties.width === 1 && properties.height === 1) {
@@ -526,7 +523,8 @@ export function computeTimelineItemTransformStyle(input: {
     compositionHeight,
     trackZIndex,
   } = input;
-  const properties = item.properties ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties;
+  const properties =
+    item.properties ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties;
   const sampled = sampleTimelineKeyframes(item.keyframes, itemLocalFrame, {
     position: [properties.x, properties.y],
     scale: [1, 1],
@@ -540,7 +538,7 @@ export function computeTimelineItemTransformStyle(input: {
   });
 
   return {
-    position: 'absolute',
+    position: "absolute",
     left: `calc(50% + ${compactMotionNumber(sampled.position[0])}px)`,
     top: `calc(50% + ${compactMotionNumber(sampled.position[1])}px)`,
     width: `${compactMotionNumber((renderedSize.width / compositionWidth) * 100)}%`,
@@ -560,7 +558,11 @@ export function computeTimelineItemMaskStyle(input: {
   const { item, itemLocalFrame } = input;
   if (!item.mask) return {};
 
-  const sampled = sampleTimelineMaskKeyframes(item.keyframes, itemLocalFrame, item.mask);
+  const sampled = sampleTimelineMaskKeyframes(
+    item.keyframes,
+    itemLocalFrame,
+    item.mask,
+  );
   const centerX = compactMotionNumber(sampled.position[0]);
   const centerY = compactMotionNumber(sampled.position[1]);
   const width = Math.max(0, sampled.size[0]);
@@ -568,7 +570,10 @@ export function computeTimelineItemMaskStyle(input: {
   const widthText = compactMotionNumber(width);
   const heightText = compactMotionNumber(height);
   const renderedWidth = Math.max(Number.EPSILON, Math.abs(input.renderedWidth));
-  const renderedHeight = Math.max(Number.EPSILON, Math.abs(input.renderedHeight));
+  const renderedHeight = Math.max(
+    Number.EPSILON,
+    Math.abs(input.renderedHeight),
+  );
   const radians = sampled.rotation * (Math.PI / 180);
   const cosine = Math.cos(radians);
   const sine = Math.sin(radians);
@@ -577,42 +582,40 @@ export function computeTimelineItemMaskStyle(input: {
   const matrixB = widthToHeight * sine;
   const matrixC = -(sine / widthToHeight);
   const matrixD = cosine;
-  const matrixE = sampled.position[0]
-    - (matrixA * sampled.position[0])
-    - (matrixC * sampled.position[1]);
-  const matrixF = sampled.position[1]
-    - (matrixB * sampled.position[0])
-    - (matrixD * sampled.position[1]);
-  const rotationMatrix = [
-    matrixA,
-    matrixB,
-    matrixC,
-    matrixD,
-    matrixE,
-    matrixF,
-  ].map(compactMotionNumber).join(' ');
-  const featherPixels = Math.min(
-    (width / 100) * renderedWidth,
-    (height / 100) * renderedHeight,
-  ) * Math.max(0, sampled.feather) / TIMELINE_MASK_FEATHER_BLUR_DIVISOR;
+  const matrixE =
+    sampled.position[0] -
+    matrixA * sampled.position[0] -
+    matrixC * sampled.position[1];
+  const matrixF =
+    sampled.position[1] -
+    matrixB * sampled.position[0] -
+    matrixD * sampled.position[1];
+  const rotationMatrix = [matrixA, matrixB, matrixC, matrixD, matrixE, matrixF]
+    .map(compactMotionNumber)
+    .join(" ");
+  const featherPixels =
+    (Math.min((width / 100) * renderedWidth, (height / 100) * renderedHeight) *
+      Math.max(0, sampled.feather)) /
+    TIMELINE_MASK_FEATHER_BLUR_DIVISOR;
   const featherDeviationX = (featherPixels / renderedWidth) * 100;
   const featherDeviationY = (featherPixels / renderedHeight) * 100;
-  const filter = featherPixels > 0
-    ? `<filter id="feather" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="${compactMotionNumber(featherDeviationX)} ${compactMotionNumber(featherDeviationY)}"/></filter>`
-    : '';
-  const filterAttribute = featherPixels > 0 ? ' filter="url(#feather)"' : '';
-  const renderShape = (
-    primitive: TimelineMaskRenderPrimitive,
-  ): string => {
-    const fill = item.mask!.inverted ? 'black' : 'white';
+  const filter =
+    featherPixels > 0
+      ? `<filter id="feather" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="${compactMotionNumber(featherDeviationX)} ${compactMotionNumber(featherDeviationY)}"/></filter>`
+      : "";
+  const filterAttribute = featherPixels > 0 ? ' filter="url(#feather)"' : "";
+  const renderShape = (primitive: TimelineMaskRenderPrimitive): string => {
+    const fill = item.mask!.inverted ? "black" : "white";
     switch (primitive) {
-      case 'ellipse':
+      case "ellipse":
         return `<ellipse cx="${centerX}" cy="${centerY}" rx="${compactMotionNumber(width / 2)}" ry="${compactMotionNumber(height / 2)}" fill="${fill}"${filterAttribute}/>`;
-      case 'rectangle':
+      case "rectangle":
         return `<rect x="${compactMotionNumber(sampled.position[0] - width / 2)}" y="${compactMotionNumber(sampled.position[1] - height / 2)}" width="${widthText}" height="${heightText}" fill="${fill}"${filterAttribute}/>`;
       default: {
         const unsupported: never = primitive;
-        throw new Error(`Unsupported Timeline mask render primitive: ${String(unsupported)}`);
+        throw new Error(
+          `Unsupported Timeline mask render primitive: ${String(unsupported)}`,
+        );
       }
     }
   };
@@ -620,27 +623,27 @@ export function computeTimelineItemMaskStyle(input: {
   const shape = renderShape(shapeAnnotation.renderPrimitive);
   const svg = [
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">',
-    '<defs>',
+    "<defs>",
     filter,
     '<mask id="clip-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="100" height="100" style="mask-type:luminance">',
-    `<rect x="0" y="0" width="100" height="100" fill="${item.mask.inverted ? 'white' : 'black'}"/>`,
+    `<rect x="0" y="0" width="100" height="100" fill="${item.mask.inverted ? "white" : "black"}"/>`,
     `<g transform="matrix(${rotationMatrix})">${shape}</g>`,
-    '</mask>',
-    '</defs>',
+    "</mask>",
+    "</defs>",
     '<rect x="0" y="0" width="100" height="100" fill="white" mask="url(#clip-mask)"/>',
-    '</svg>',
-  ].join('');
+    "</svg>",
+  ].join("");
   const maskImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 
   return {
     maskImage,
-    maskPosition: 'center',
-    maskRepeat: 'no-repeat',
-    maskSize: '100% 100%',
+    maskPosition: "center",
+    maskRepeat: "no-repeat",
+    maskSize: "100% 100%",
     WebkitMaskImage: maskImage,
-    WebkitMaskPosition: 'center',
-    WebkitMaskRepeat: 'no-repeat',
-    WebkitMaskSize: '100% 100%',
+    WebkitMaskPosition: "center",
+    WebkitMaskRepeat: "no-repeat",
+    WebkitMaskSize: "100% 100%",
   };
 }
 
@@ -670,7 +673,20 @@ const ItemComponent: React.FC<{
   transitionTo?: ResolvedTimelineItem;
   /** Composition-absolute ranges containing known spoken media. */
   duckingWindows?: ReturnType<typeof buildAudioDuckingWindows>;
-}> = ({ item, durationInFrames: _durationInFrames, visibleFrom, endFrame, isGlobalEndItem, trackZIndex, itemsDomMapRef, seqFrom = 0, obscuredWindows, transitionFrom, transitionTo, duckingWindows = [] }) => {
+}> = ({
+  item,
+  durationInFrames: _durationInFrames,
+  visibleFrom,
+  endFrame,
+  isGlobalEndItem,
+  trackZIndex,
+  itemsDomMapRef,
+  seqFrom = 0,
+  obscuredWindows,
+  transitionFrom,
+  transitionTo,
+  duckingWindows = [],
+}) => {
   const frame = useCurrentFrame();
   const { width: compWidth, height: compHeight } = useVideoConfig();
   const resolvedItem = item;
@@ -694,48 +710,49 @@ const ItemComponent: React.FC<{
   });
 
   const transformStyle = React.useMemo(
-    () => computeTimelineItemTransformStyle({
-      item: resolvedItem,
-      itemLocalFrame,
-      compositionWidth: compWidth,
-      compositionHeight: compHeight,
-      trackZIndex,
-    }),
-    [compHeight, compWidth, itemLocalFrame, resolvedItem, trackZIndex],
-  );
-  const maskStyle = React.useMemo(
-    () => {
-      const renderedSize = computeTimelineItemRenderedSize({
-        item: resolvedItem,
-        compositionWidth: compWidth,
-        compositionHeight: compHeight,
-      });
-      return computeTimelineItemMaskStyle({
+    () =>
+      computeTimelineItemTransformStyle({
         item: resolvedItem,
         itemLocalFrame,
-        renderedWidth: renderedSize.width,
-        renderedHeight: renderedSize.height,
-      });
-    },
-    [compHeight, compWidth, itemLocalFrame, resolvedItem],
+        compositionWidth: compWidth,
+        compositionHeight: compHeight,
+        trackZIndex,
+      }),
+    [compHeight, compWidth, itemLocalFrame, resolvedItem, trackZIndex],
   );
+  const maskStyle = React.useMemo(() => {
+    const renderedSize = computeTimelineItemRenderedSize({
+      item: resolvedItem,
+      compositionWidth: compWidth,
+      compositionHeight: compHeight,
+    });
+    return computeTimelineItemMaskStyle({
+      item: resolvedItem,
+      itemLocalFrame,
+      renderedWidth: renderedSize.width,
+      renderedHeight: renderedSize.height,
+    });
+  }, [compHeight, compWidth, itemLocalFrame, resolvedItem]);
 
   const applyTransform = React.useCallback(
     (baseStyle: React.CSSProperties = {}): React.CSSProperties => {
-      const transform = [
-        transformStyle.transform,
-        itemEffectStyle.transform,
-        baseStyle.transform,
-      ].filter(Boolean).join(' ') || undefined;
-      const filter = [itemEffectStyle.filter, baseStyle.filter]
-        .filter(Boolean)
-        .join(' ') || undefined;
+      const transform =
+        [
+          transformStyle.transform,
+          itemEffectStyle.transform,
+          baseStyle.transform,
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined;
+      const filter =
+        [itemEffectStyle.filter, baseStyle.filter].filter(Boolean).join(" ") ||
+        undefined;
       const opacity = [
         transformStyle.opacity,
         itemEffectStyle.opacity,
         baseStyle.opacity,
       ].reduce<number>(
-        (product, value) => product * (typeof value === 'number' ? value : 1),
+        (product, value) => product * (typeof value === "number" ? value : 1),
         1,
       );
       return {
@@ -751,21 +768,24 @@ const ItemComponent: React.FC<{
     [itemEffectStyle, maskStyle, transformStyle],
   );
 
-  if (resolvedItem.type === 'solid') {
+  if (resolvedItem.type === "solid") {
     return (
       <AbsoluteFill
         ref={(el) => {
           if (!itemsDomMapRef?.current || !el) return;
           itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
         }}
-        style={applyTransform({ backgroundColor: resolvedItem.color, opacity: isObscured ? 0 : 1 })}
+        style={applyTransform({
+          backgroundColor: resolvedItem.color,
+          opacity: isObscured ? 0 : 1,
+        })}
       />
     );
   }
 
-  if (resolvedItem.type === 'text' && !Array.isArray(resolvedItem.cues)) {
+  if (resolvedItem.type === "text" && !Array.isArray(resolvedItem.cues)) {
     const fadeOpacity = interpolate(frame, [0, 10], [0, 1], {
-      extrapolateRight: 'clamp',
+      extrapolateRight: "clamp",
     });
 
     return (
@@ -775,21 +795,29 @@ const ItemComponent: React.FC<{
           itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
         }}
         style={applyTransform({
-          justifyContent: 'center',
-          alignItems: 'center',
+          justifyContent: "center",
+          alignItems: "center",
           opacity: isObscured ? 0 : fadeOpacity,
         })}
       >
         <h1
           style={{
             color: resolvedItem.color,
-            fontSize: resolvedItem.fontSize || TIMELINE_SHARED_DEFAULTS.text.fontSize,
-            fontFamily: resolvedItem.fontFamily || TIMELINE_SHARED_DEFAULTS.text.fontFamily,
-            fontWeight: resolvedItem.fontWeight || TIMELINE_SHARED_DEFAULTS.text.fontWeight,
-            textAlign: resolvedItem.textAlign ?? TIMELINE_SHARED_DEFAULTS.text.textAlign,
+            fontSize:
+              resolvedItem.fontSize || TIMELINE_SHARED_DEFAULTS.text.fontSize,
+            fontFamily:
+              resolvedItem.fontFamily ||
+              TIMELINE_SHARED_DEFAULTS.text.fontFamily,
+            fontWeight:
+              resolvedItem.fontWeight ||
+              TIMELINE_SHARED_DEFAULTS.text.fontWeight,
+            textAlign:
+              resolvedItem.textAlign ?? TIMELINE_SHARED_DEFAULTS.text.textAlign,
             letterSpacing: `${resolvedItem.letterSpacingPx ?? TIMELINE_SHARED_DEFAULTS.text.letterSpacingPx}px`,
-            lineHeight: resolvedItem.lineHeight ?? TIMELINE_SHARED_DEFAULTS.text.lineHeight,
-            padding: '0 40px',
+            lineHeight:
+              resolvedItem.lineHeight ??
+              TIMELINE_SHARED_DEFAULTS.text.lineHeight,
+            padding: "0 40px",
           }}
         >
           {resolvedItem.text}
@@ -798,7 +826,7 @@ const ItemComponent: React.FC<{
     );
   }
 
-  if (resolvedItem.type === 'text' && Array.isArray(resolvedItem.cues)) {
+  if (resolvedItem.type === "text" && Array.isArray(resolvedItem.cues)) {
     const captionItem = resolvedItem as ResolvedTimelineItem & {
       cues?: RuntimeCaptionCue[];
       style?: {
@@ -807,14 +835,19 @@ const ItemComponent: React.FC<{
         fontWeight?: string | number;
         color?: string;
         backgroundColor?: string;
-        position?: 'bottom' | 'top' | 'center';
+        position?: "bottom" | "top" | "center";
       };
     };
     const cue = selectCaptionCueAtFrame(captionItem.cues, frame);
     if (!cue) return null;
-    const position = captionItem.style?.position ?? TIMELINE_CAPTION_STYLE_DEFAULTS.position;
+    const position =
+      captionItem.style?.position ?? TIMELINE_CAPTION_STYLE_DEFAULTS.position;
     const justifyContent =
-      position === 'top' ? 'flex-start' : position === 'center' ? 'center' : 'flex-end';
+      position === "top"
+        ? "flex-start"
+        : position === "center"
+          ? "center"
+          : "flex-end";
 
     return (
       <AbsoluteFill
@@ -825,27 +858,41 @@ const ItemComponent: React.FC<{
         data-caption-item-id={resolvedItem.id}
         style={applyTransform({
           justifyContent,
-          alignItems: 'center',
-          padding: position === 'bottom' ? '0 72px 96px' : position === 'top' ? '96px 72px 0' : '0 72px',
-          pointerEvents: 'none',
+          alignItems: "center",
+          padding:
+            position === "bottom"
+              ? "0 72px 96px"
+              : position === "top"
+                ? "96px 72px 0"
+                : "0 72px",
+          pointerEvents: "none",
           opacity: isObscured ? 0 : 1,
         })}
       >
         <div
           data-caption-cue-id={cue.id}
           style={{
-            maxWidth: '92%',
-            color: captionItem.style?.color ?? TIMELINE_CAPTION_STYLE_DEFAULTS.color,
-            backgroundColor: captionItem.style?.backgroundColor ?? TIMELINE_CAPTION_STYLE_DEFAULTS.backgroundColor,
-            fontFamily: captionItem.style?.fontFamily ?? TIMELINE_CAPTION_STYLE_DEFAULTS.fontFamily,
-            fontSize: captionItem.style?.fontSize ?? TIMELINE_CAPTION_STYLE_DEFAULTS.fontSize,
-            fontWeight: captionItem.style?.fontWeight ?? TIMELINE_CAPTION_STYLE_DEFAULTS.fontWeight,
+            maxWidth: "92%",
+            color:
+              captionItem.style?.color ?? TIMELINE_CAPTION_STYLE_DEFAULTS.color,
+            backgroundColor:
+              captionItem.style?.backgroundColor ??
+              TIMELINE_CAPTION_STYLE_DEFAULTS.backgroundColor,
+            fontFamily:
+              captionItem.style?.fontFamily ??
+              TIMELINE_CAPTION_STYLE_DEFAULTS.fontFamily,
+            fontSize:
+              captionItem.style?.fontSize ??
+              TIMELINE_CAPTION_STYLE_DEFAULTS.fontSize,
+            fontWeight:
+              captionItem.style?.fontWeight ??
+              TIMELINE_CAPTION_STYLE_DEFAULTS.fontWeight,
             lineHeight: TIMELINE_CAPTION_STYLE_DEFAULTS.lineHeight,
-            textAlign: 'center',
+            textAlign: "center",
             borderRadius: 16,
-            padding: '14px 22px',
-            textWrap: 'balance',
-            whiteSpace: 'pre-wrap',
+            padding: "14px 22px",
+            textWrap: "balance",
+            whiteSpace: "pre-wrap",
           }}
         >
           {cue.text}
@@ -854,7 +901,7 @@ const ItemComponent: React.FC<{
     );
   }
 
-  if (resolvedItem.type === 'composition') {
+  if (resolvedItem.type === "composition") {
     const compositionItem = resolvedItem as ResolvedTimelineItem & {
       runtime?: string;
       compositionKind?: string;
@@ -864,7 +911,7 @@ const ItemComponent: React.FC<{
       renderedAssetPath?: string;
     };
 
-    if (compositionItem.runtime === 'remotion') {
+    if (compositionItem.runtime === "remotion") {
       return (
         <AbsoluteFill
           ref={(el) => {
@@ -876,7 +923,10 @@ const ItemComponent: React.FC<{
           data-composition-kind={compositionItem.compositionKind}
           data-composition-runtime={compositionItem.runtime}
           data-remotion-source-node-id={compositionItem.sourceNodeId}
-          style={applyTransform({ overflow: 'hidden', opacity: isObscured ? 0 : 1 })}
+          style={applyTransform({
+            overflow: "hidden",
+            opacity: isObscured ? 0 : 1,
+          })}
         >
           {compositionItem.componentSource ? (
             <RemotionSourceComposition
@@ -888,19 +938,20 @@ const ItemComponent: React.FC<{
               role="alert"
               data-inline-remotion-error="missing-source"
               style={{
-                boxSizing: 'border-box',
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                boxSizing: "border-box",
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 padding: 24,
-                color: '#fecaca',
-                background: '#450a0a',
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                color: "#fecaca",
+                background: "#450a0a",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
               }}
             >
-              Missing Remotion component source for Canvas node {compositionItem.sourceNodeId ?? '(unset)'}.
+              Missing Remotion component source for Canvas node{" "}
+              {compositionItem.sourceNodeId ?? "(unset)"}.
             </div>
           )}
         </AbsoluteFill>
@@ -908,6 +959,10 @@ const ItemComponent: React.FC<{
     }
 
     if (compositionItem.renderedAssetPath) {
+      const renderedAssetUrl = resolveAssetUrl(
+        compositionItem.renderedAssetPath,
+      );
+      if (!renderedAssetUrl) return null;
       return (
         <AbsoluteFill
           ref={(el) => {
@@ -921,8 +976,8 @@ const ItemComponent: React.FC<{
           style={applyTransform({ opacity: isObscured ? 0 : 1 })}
         >
           <OffthreadVideo
-            src={resolveAssetUrl(compositionItem.renderedAssetPath)}
-            style={{ width: '100%', height: '100%', objectFit: 'fill' }}
+            src={renderedAssetUrl}
+            style={{ width: "100%", height: "100%", objectFit: "fill" }}
             pauseWhenBuffering
             acceptableTimeShiftInSeconds={0.25}
             muted
@@ -933,17 +988,18 @@ const ItemComponent: React.FC<{
     }
   }
 
-  if (resolvedItem.type === 'derived-overlay') {
+  if (resolvedItem.type === "derived-overlay") {
     const overlayItem = resolvedItem as ResolvedTimelineItem & {
-      mediaType?: 'image' | 'video';
+      mediaType?: "image" | "video";
       src?: string;
       sourceAssetId?: string;
       derivedAssetId?: string;
       derivation?: { kind?: string };
-      mediaFit?: 'fill' | 'cover' | 'contain';
+      mediaFit?: "fill" | "cover" | "contain";
     };
     const src = resolveAssetUrl(overlayItem.src);
-    if (overlayItem.mediaType === 'image') {
+    if (!src) return null;
+    if (overlayItem.mediaType === "image") {
       return (
         <AbsoluteFill
           ref={(el) => {
@@ -956,11 +1012,20 @@ const ItemComponent: React.FC<{
           data-derived-kind={overlayItem.derivation?.kind}
           style={applyTransform({ opacity: isObscured ? 0 : 1 })}
         >
-          <Img src={src} style={{ width: '100%', height: '100%', objectFit: overlayItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS['derived-overlay'].mediaFit }} />
+          <Img
+            src={src}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit:
+                overlayItem.mediaFit ??
+                TIMELINE_SHARED_DEFAULTS["derived-overlay"].mediaFit,
+            }}
+          />
         </AbsoluteFill>
       );
     }
-    if (overlayItem.mediaType === 'video') {
+    if (overlayItem.mediaType === "video") {
       return (
         <AbsoluteFill
           ref={(el) => {
@@ -975,7 +1040,13 @@ const ItemComponent: React.FC<{
         >
           <OffthreadVideo
             src={src}
-            style={{ width: '100%', height: '100%', objectFit: overlayItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS['derived-overlay'].mediaFit }}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit:
+                overlayItem.mediaFit ??
+                TIMELINE_SHARED_DEFAULTS["derived-overlay"].mediaFit,
+            }}
             pauseWhenBuffering
             acceptableTimeShiftInSeconds={0.25}
             muted
@@ -986,28 +1057,43 @@ const ItemComponent: React.FC<{
     }
   }
 
-  if (resolvedItem.type === 'video') {
-    const sourceStart = resolvedItem.sourceStartInFrames
-      ?? TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames;
-    const isBeforeVisible = typeof visibleFrom === 'number' ? frame < visibleFrom : false;
-    const isLastFrameOfItem = typeof endFrame === 'number' ? frame === endFrame : false;
+  if (resolvedItem.type === "video") {
+    const sourceStart =
+      resolvedItem.sourceStartInFrames ??
+      TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames;
+    const isBeforeVisible =
+      typeof visibleFrom === "number" ? frame < visibleFrom : false;
+    const isLastFrameOfItem =
+      typeof endFrame === "number" ? frame === endFrame : false;
     // Skip the global-end item's last frame guard — that item is supposed to
     // still be visible at the composition's final frame.
     const shouldHideLastFrame = !isGlobalEndItem && isLastFrameOfItem;
     const hidden = isBeforeVisible || shouldHideLastFrame;
-    const resolvedSrc = resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src);
+    const resolvedSrc =
+      resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src);
+    if (!resolvedSrc) return null;
 
-    const fadeInFrames = resolvedItem.videoFadeIn ?? TIMELINE_SHARED_DEFAULTS.video.videoFadeIn;
-    const fadeOutFrames = resolvedItem.videoFadeOut ?? TIMELINE_SHARED_DEFAULTS.video.videoFadeOut;
-    const fadeInColor = (resolvedItem as { videoFadeInColor?: string }).videoFadeInColor;
-    const fadeOutColor = (resolvedItem as { videoFadeOutColor?: string }).videoFadeOutColor;
+    const fadeInFrames =
+      resolvedItem.videoFadeIn ?? TIMELINE_SHARED_DEFAULTS.video.videoFadeIn;
+    const fadeOutFrames =
+      resolvedItem.videoFadeOut ?? TIMELINE_SHARED_DEFAULTS.video.videoFadeOut;
+    const fadeInColor = (resolvedItem as { videoFadeInColor?: string })
+      .videoFadeInColor;
+    const fadeOutColor = (resolvedItem as { videoFadeOutColor?: string })
+      .videoFadeOutColor;
     const vf = visibleFrom ?? 0;
     const ef = endFrame ?? Number.MAX_SAFE_INTEGER;
     // Color set on a side disables opacity fade for that side; an overlay
     // ramps in/out instead. Lets users do white-flash / fade-to-black cleanly.
     const opacityFadeIn = fadeInColor ? 0 : fadeInFrames;
     const opacityFadeOut = fadeOutColor ? 0 : fadeOutFrames;
-    const fadeOpacity = computeFadeMultiplier(frame, vf, ef, opacityFadeIn, opacityFadeOut);
+    const fadeOpacity = computeFadeMultiplier(
+      frame,
+      vf,
+      ef,
+      opacityFadeIn,
+      opacityFadeOut,
+    );
     const overlayOpacity = computeColorOverlayOpacity(
       frame,
       vf,
@@ -1044,33 +1130,52 @@ const ItemComponent: React.FC<{
         }}
         style={applyTransform({
           ...clipAnimationStyle,
-          backgroundColor: 'black',
+          backgroundColor: "black",
           opacity: isObscured ? 0 : clipAnimationOpacity,
         })}
       >
-        <AbsoluteFill style={{ opacity: hidden || isObscured ? 0 : fadeOpacity, width: '100%', height: '100%' }}>
+        <AbsoluteFill
+          style={{
+            opacity: hidden || isObscured ? 0 : fadeOpacity,
+            width: "100%",
+            height: "100%",
+          }}
+        >
           <OffthreadVideo
             src={resolvedSrc}
-            style={{ width: '100%', height: '100%', objectFit: resolvedItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS.video.mediaFit }}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit:
+                resolvedItem.mediaFit ??
+                TIMELINE_SHARED_DEFAULTS.video.mediaFit,
+            }}
             startFrom={sourceStart}
             pauseWhenBuffering
             acceptableTimeShiftInSeconds={0.25}
             muted={hidden}
             volume={(f: number) =>
-              audioVolumeBase * computeFadeMultiplier(f, vf, ef, audioFadeIn, audioFadeOut)
+              audioVolumeBase *
+              computeFadeMultiplier(f, vf, ef, audioFadeIn, audioFadeOut)
             }
           />
         </AbsoluteFill>
         {!isObscured && overlayColor && overlayOpacity > 0 && (
-          <AbsoluteFill style={{ backgroundColor: overlayColor, opacity: overlayOpacity }} />
+          <AbsoluteFill
+            style={{ backgroundColor: overlayColor, opacity: overlayOpacity }}
+          />
         )}
       </AbsoluteFill>
     );
   }
 
-  if (resolvedItem.type === 'audio') {
-    const sourceStart = resolvedItem.sourceStartInFrames
-      ?? TIMELINE_SHARED_DEFAULTS.audio.sourceStartInFrames;
+  if (resolvedItem.type === "audio") {
+    const resolvedSrc =
+      resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src);
+    if (!resolvedSrc) return null;
+    const sourceStart =
+      resolvedItem.sourceStartInFrames ??
+      TIMELINE_SHARED_DEFAULTS.audio.sourceStartInFrames;
     const baseVolume = resolveLinearAudioGain(resolvedItem);
     const audioFadeIn = resolveAudioFadeInFrames(resolvedItem);
     const audioFadeOut = resolveAudioFadeOutFrames(resolvedItem);
@@ -1082,33 +1187,48 @@ const ItemComponent: React.FC<{
       <Audio
         crossOrigin="anonymous"
         data-timeline-audio=""
-        src={resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src)}
+        src={resolvedSrc}
         startFrom={sourceStart}
         volume={(f: number) =>
-          baseVolume
-          * computeFadeMultiplier(f, 0, ef, audioFadeIn, audioFadeOut)
-          * computeAudioDuckingMultiplier(resolvedItem.audioDucking, f + seqFrom, duckingWindows)
+          baseVolume *
+          computeFadeMultiplier(f, 0, ef, audioFadeIn, audioFadeOut) *
+          computeAudioDuckingMultiplier(
+            resolvedItem.audioDucking,
+            f + seqFrom,
+            duckingWindows,
+          )
         }
       />
     );
   }
 
-  if (resolvedItem.type === 'image') {
+  if (resolvedItem.type === "image") {
+    const resolvedSrc =
+      resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src);
+    if (!resolvedSrc) return null;
     const imageItem = resolvedItem as typeof resolvedItem & {
       imageFadeIn?: number;
       imageFadeOut?: number;
       imageFadeInColor?: string;
       imageFadeOutColor?: string;
     };
-    const fadeInFrames = imageItem.imageFadeIn ?? TIMELINE_SHARED_DEFAULTS.image.imageFadeIn;
-    const fadeOutFrames = imageItem.imageFadeOut ?? TIMELINE_SHARED_DEFAULTS.image.imageFadeOut;
+    const fadeInFrames =
+      imageItem.imageFadeIn ?? TIMELINE_SHARED_DEFAULTS.image.imageFadeIn;
+    const fadeOutFrames =
+      imageItem.imageFadeOut ?? TIMELINE_SHARED_DEFAULTS.image.imageFadeOut;
     const fadeInColor = imageItem.imageFadeInColor;
     const fadeOutColor = imageItem.imageFadeOutColor;
     const vf = visibleFrom ?? 0;
     const ef = endFrame ?? (resolvedItem.durationInFrames ?? 0) - 1;
     const opacityFadeIn = fadeInColor ? 0 : fadeInFrames;
     const opacityFadeOut = fadeOutColor ? 0 : fadeOutFrames;
-    const fadeOpacity = computeFadeMultiplier(frame, vf, ef, opacityFadeIn, opacityFadeOut);
+    const fadeOpacity = computeFadeMultiplier(
+      frame,
+      vf,
+      ef,
+      opacityFadeIn,
+      opacityFadeOut,
+    );
     const overlayOpacity = computeColorOverlayOpacity(
       frame,
       vf,
@@ -1128,27 +1248,37 @@ const ItemComponent: React.FC<{
     return (
       <AbsoluteFill
         style={applyTransform({
-          justifyContent: 'center',
-          alignItems: 'center',
+          justifyContent: "center",
+          alignItems: "center",
           opacity: isObscured ? 0 : fadeOpacity,
         })}
       >
         <Img
-          src={resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src)}
+          src={resolvedSrc}
           ref={(el) => {
             if (!itemsDomMapRef?.current || !el) return;
             itemsDomMapRef.current.set(resolvedItem.id, el as HTMLElement);
           }}
-          style={{ width: '100%', height: '100%', objectFit: imageItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS.image.mediaFit }}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit:
+              imageItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS.image.mediaFit,
+          }}
         />
         {!isObscured && overlayColor && overlayOpacity > 0 && (
-          <AbsoluteFill style={{ backgroundColor: overlayColor, opacity: overlayOpacity }} />
+          <AbsoluteFill
+            style={{ backgroundColor: overlayColor, opacity: overlayOpacity }}
+          />
         )}
       </AbsoluteFill>
     );
   }
 
-  if (resolvedItem.type === 'sticker') {
+  if (resolvedItem.type === "sticker") {
+    const resolvedSrc =
+      resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src);
+    if (!resolvedSrc) return null;
     return (
       <AbsoluteFill
         ref={(el) => {
@@ -1157,20 +1287,26 @@ const ItemComponent: React.FC<{
         }}
         data-sticker-item-id={resolvedItem.id}
         style={applyTransform({
-          justifyContent: 'center',
-          alignItems: 'center',
+          justifyContent: "center",
+          alignItems: "center",
           opacity: isObscured ? 0 : 1,
         })}
       >
         <Img
-          src={resolvedItem.resolvedSrcUrl || resolveAssetUrl(resolvedItem.src)}
-          style={{ width: '100%', height: '100%', objectFit: resolvedItem.mediaFit ?? TIMELINE_SHARED_DEFAULTS.sticker.mediaFit }}
+          src={resolvedSrc}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit:
+              resolvedItem.mediaFit ??
+              TIMELINE_SHARED_DEFAULTS.sticker.mediaFit,
+          }}
         />
       </AbsoluteFill>
     );
   }
 
-  if (resolvedItem.type === 'transition') {
+  if (resolvedItem.type === "transition") {
     const t = resolvedItem as ResolvedTimelineItem & {
       transitionType: TransitionTypeName;
       effect?: EffectInstanceRef;
@@ -1178,17 +1314,18 @@ const ItemComponent: React.FC<{
     const dur = Math.max(1, resolvedItem.durationInFrames);
     // Sequence-relative: useCurrentFrame() goes 0..dur-1 inside this Sequence.
     const progress = Math.min(1, Math.max(0, frame / Math.max(1, dur - 1)));
-    const transitionStyle = (role: TransitionRole) => computeTransitionEffectStyle({
-      legacyType: t.transitionType,
-      effect: t.effect,
-      progress,
-      role,
-      frame,
-      width: compWidth,
-      height: compHeight,
-    });
-    const fromStyle = transitionStyle('from');
-    const toStyle = transitionStyle('to');
+    const transitionStyle = (role: TransitionRole) =>
+      computeTransitionEffectStyle({
+        legacyType: t.transitionType,
+        effect: t.effect,
+        progress,
+        role,
+        frame,
+        width: compWidth,
+        height: compHeight,
+      });
+    const fromStyle = transitionStyle("from");
+    const toStyle = transitionStyle("to");
     const fromMaskStyle = transitionFrom
       ? computeTimelineItemMaskStyle({
           item: transitionFrom,
@@ -1210,13 +1347,27 @@ const ItemComponent: React.FC<{
       <AbsoluteFill style={{ zIndex: trackZIndex }}>
         {/* Source is the bed; target paints above it so reveal masks stay visible. */}
         {transitionFrom && (
-          <AbsoluteFill data-transition-role="from" style={{ ...fromStyle, ...fromMaskStyle }}>
-            <TransitionContent item={transitionFrom} compWidth={compWidth} compHeight={compHeight} />
+          <AbsoluteFill
+            data-transition-role="from"
+            style={{ ...fromStyle, ...fromMaskStyle }}
+          >
+            <TransitionContent
+              item={transitionFrom}
+              compWidth={compWidth}
+              compHeight={compHeight}
+            />
           </AbsoluteFill>
         )}
         {transitionTo && (
-          <AbsoluteFill data-transition-role="to" style={{ ...toStyle, ...toMaskStyle }}>
-            <TransitionContent item={transitionTo} compWidth={compWidth} compHeight={compHeight} />
+          <AbsoluteFill
+            data-transition-role="to"
+            style={{ ...toStyle, ...toMaskStyle }}
+          >
+            <TransitionContent
+              item={transitionTo}
+              compWidth={compWidth}
+              compHeight={compHeight}
+            />
           </AbsoluteFill>
         )}
       </AbsoluteFill>
@@ -1237,14 +1388,17 @@ const TransitionContent: React.FC<{
   compHeight: number;
 }> = ({ item }) => {
   if (!isTimelineTransitionRenderItem(item)) return null;
-  if (item.type === 'video') {
-    const sourceStart = item.sourceStartInFrames
-      ?? TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames;
-    const src = item.resolvedSrcUrl || resolveAssetUrl((item as { src?: string }).src);
+  if (item.type === "video") {
+    const sourceStart =
+      item.sourceStartInFrames ??
+      TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames;
+    const src =
+      item.resolvedSrcUrl || resolveAssetUrl((item as { src?: string }).src);
+    if (!src) return null;
     return (
       <OffthreadVideo
         src={src}
-        style={{ width: '100%', height: '100%', objectFit: 'fill' }}
+        style={{ width: "100%", height: "100%", objectFit: "fill" }}
         startFrom={sourceStart}
         pauseWhenBuffering
         acceptableTimeShiftInSeconds={0.25}
@@ -1253,14 +1407,21 @@ const TransitionContent: React.FC<{
       />
     );
   }
-  if (item.type === 'image') {
-    const src = item.resolvedSrcUrl || resolveAssetUrl((item as { src?: string }).src);
-    return <Img src={src} style={{ width: '100%', height: '100%', objectFit: 'fill' }} />;
+  if (item.type === "image") {
+    const src =
+      item.resolvedSrcUrl || resolveAssetUrl((item as { src?: string }).src);
+    if (!src) return null;
+    return (
+      <Img
+        src={src}
+        style={{ width: "100%", height: "100%", objectFit: "fill" }}
+      />
+    );
   }
-  if (item.type === 'solid') {
+  if (item.type === "solid") {
     return <AbsoluteFill style={{ backgroundColor: item.color }} />;
   }
-  if (item.type === 'text') {
+  if (item.type === "text") {
     const textItem = item as {
       text: string;
       color?: string;
@@ -1269,15 +1430,18 @@ const TransitionContent: React.FC<{
       fontWeight?: string | number;
     };
     return (
-      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+      <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
         <h1
           style={{
             color: textItem.color,
-            fontSize: textItem.fontSize || TIMELINE_SHARED_DEFAULTS.text.fontSize,
-            fontFamily: textItem.fontFamily || TIMELINE_SHARED_DEFAULTS.text.fontFamily,
-            fontWeight: textItem.fontWeight || TIMELINE_SHARED_DEFAULTS.text.fontWeight,
-            textAlign: 'center',
-            padding: '0 40px',
+            fontSize:
+              textItem.fontSize || TIMELINE_SHARED_DEFAULTS.text.fontSize,
+            fontFamily:
+              textItem.fontFamily || TIMELINE_SHARED_DEFAULTS.text.fontFamily,
+            fontWeight:
+              textItem.fontWeight || TIMELINE_SHARED_DEFAULTS.text.fontWeight,
+            textAlign: "center",
+            padding: "0 40px",
           }}
         >
           {textItem.text}
@@ -1305,9 +1469,23 @@ const TrackComponent: React.FC<{
   return (
     <AbsoluteFill>
       {track.playbackItems.map((p) => {
-        const { item, seqFrom, visibleFromRel, endFrameRel, isGlobalEndItem, obscuredWindows, transitionFrom, transitionTo } = p;
+        const {
+          item,
+          seqFrom,
+          visibleFromRel,
+          endFrameRel,
+          isGlobalEndItem,
+          obscuredWindows,
+          transitionFrom,
+          transitionTo,
+        } = p;
         return (
-          <Sequence key={item.id} from={seqFrom} durationInFrames={item.durationInFrames} premountFor={PREMOUNT_FRAMES}>
+          <Sequence
+            key={item.id}
+            from={seqFrom}
+            durationInFrames={item.durationInFrames}
+            premountFor={PREMOUNT_FRAMES}
+          >
             <ItemComponent
               item={item}
               durationInFrames={item.durationInFrames}
@@ -1336,7 +1514,13 @@ export const VideoComposition: React.FC<{
   selectedItemId?: string | null;
   selectionBoxRef?: React.RefObject<HTMLDivElement | null>;
   itemsDomMapRef?: React.RefObject<Map<string, HTMLElement>>;
-}> = ({ tracks, allNodes, selectedItemId, selectionBoxRef, itemsDomMapRef }) => {
+}> = ({
+  tracks,
+  allNodes,
+  selectedItemId,
+  selectionBoxRef,
+  itemsDomMapRef,
+}) => {
   const { width: compWidth, height: compHeight } = useVideoConfig();
   const compositionFrame = useCurrentFrame();
 
@@ -1394,8 +1578,12 @@ export const VideoComposition: React.FC<{
     const protectedItemIds = new Set(obscuredWindowsByItemId.keys());
     if (selectedItemId) protectedItemIds.add(selectedItemId);
     return tracks.map((track) => {
-      const resolvedItems = track.items.map((item) => resolveTimelineItem(item, nodesMap, srcNodeMap));
-      const mergedItems = mergeContiguousMediaItems(resolvedItems, { protectedItemIds });
+      const resolvedItems = track.items.map((item) =>
+        resolveTimelineItem(item, nodesMap, srcNodeMap),
+      );
+      const mergedItems = mergeContiguousMediaItems(resolvedItems, {
+        protectedItemIds,
+      });
       const playbackItems = mergedItems.map((item, idx) => {
         const prev = idx > 0 ? mergedItems[idx - 1] : undefined;
         const isPrevContiguous =
@@ -1405,22 +1593,25 @@ export const VideoComposition: React.FC<{
           !!item.resolvedSrcUrl &&
           prev.resolvedSrcUrl === item.resolvedSrcUrl &&
           prev.from + prev.durationInFrames === item.from &&
-          (((prev as any).sourceStartInFrames
-            ?? TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames)
-            + prev.durationInFrames
-            === ((item as any).sourceStartInFrames
-              ?? TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames));
+          ((prev as any).sourceStartInFrames ??
+            TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames) +
+            prev.durationInFrames ===
+            ((item as any).sourceStartInFrames ??
+              TIMELINE_SHARED_DEFAULTS.video.sourceStartInFrames);
 
-        const seqFrom = isPrevContiguous ? Math.max(0, item.from - 1) : item.from;
+        const seqFrom = isPrevContiguous
+          ? Math.max(0, item.from - 1)
+          : item.from;
         const visibleFromRel = item.from - seqFrom;
-        const endFrameRel = (item.from + item.durationInFrames - 1) - seqFrom;
-        const isGlobalEndItem = item.from + item.durationInFrames - 1 === globalEndFrame;
+        const endFrameRel = item.from + item.durationInFrames - 1 - seqFrom;
+        const isGlobalEndItem =
+          item.from + item.durationInFrames - 1 === globalEndFrame;
 
         const obscuredWindows = obscuredWindowsByItemId.get(item.id) ?? [];
 
         let transitionFrom: ResolvedTimelineItem | undefined;
         let transitionTo: ResolvedTimelineItem | undefined;
-        if (item.type === 'transition') {
+        if (item.type === "transition") {
           const t = item as ResolvedTimelineItem & {
             fromItemId: string;
             toItemId: string;
@@ -1447,13 +1638,23 @@ export const VideoComposition: React.FC<{
         playbackItems,
       };
     });
-  }, [tracks, nodesMap, srcNodeMap, globalEndFrame, obscuredWindowsByItemId, globalResolvedItems, selectedItemId]);
+  }, [
+    tracks,
+    nodesMap,
+    srcNodeMap,
+    globalEndFrame,
+    obscuredWindowsByItemId,
+    globalResolvedItems,
+    selectedItemId,
+  ]);
 
   // 找到选中的 item 和它的 properties，同时解析 natural dimensions
   const selectedItemResolved = React.useMemo(() => {
     if (!selectedItemId) return null;
     for (const track of preparedTracks) {
-      const matched = track.playbackItems.find(({ item }) => item.id === selectedItemId);
+      const matched = track.playbackItems.find(
+        ({ item }) => item.id === selectedItemId,
+      );
       if (matched) {
         return matched.item;
       }
@@ -1475,12 +1676,14 @@ export const VideoComposition: React.FC<{
       ...transformStyle,
       opacity: 1,
       zIndex: undefined,
-      boxSizing: 'border-box' as const,
+      boxSizing: "border-box" as const,
     };
   }, [selectedItemResolved, compositionFrame, compWidth, compHeight]);
 
   return (
-    <AbsoluteFill style={{ backgroundColor: 'black', top: 0, left: 0, right: 0, bottom: 0 }}>
+    <AbsoluteFill
+      style={{ backgroundColor: "black", top: 0, left: 0, right: 0, bottom: 0 }}
+    >
       {preparedTracks.map((track, trackIndex) => {
         // Track 0 (first/top) should have highest z-index
         // Higher index = lower in timeline = lower z-index
@@ -1498,11 +1701,8 @@ export const VideoComposition: React.FC<{
 
       {/* 选择框 - 透明的，只用于提供 ref（不包含旋转） */}
       {selectedItemResolved && selectionBoxStyle && (
-        <AbsoluteFill style={{ pointerEvents: 'none', zIndex: 9999 }}>
-          <div
-            ref={selectionBoxRef}
-            style={selectionBoxStyle}
-          />
+        <AbsoluteFill style={{ pointerEvents: "none", zIndex: 9999 }}>
+          <div ref={selectionBoxRef} style={selectionBoxStyle} />
         </AbsoluteFill>
       )}
     </AbsoluteFill>

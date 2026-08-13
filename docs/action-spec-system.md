@@ -2,9 +2,36 @@
 
 ## Status
 
-This document is the canonical contract for user-triggered actions that consume
-workspace state and produce immutable results. It applies to Canvas, Asset
-Preview, Timeline, agents, local execution, and cloud execution.
+This is a historical ActionSpec/UI-intent design, not the current execution or
+Asset persistence contract. Its discovery, typed-invocation, and copy-on-write
+product ideas may still describe implemented edit surfaces, but its
+`AssetResult`, storage-key, Local/Cloud adapter, and `/api/v1/edits` statements
+below must not be used as architecture authority.
+
+Current authority is:
+
+- [`apps/docs/guide/asset-system.md`](../apps/docs/guide/asset-system.md) for
+  immutable `Resource`, `ProjectAssetEntry`, `ActionAssetBinding`, resolution,
+  and deletion; and
+- [`apps/docs/guide/durable-run-protocol.md`](../apps/docs/guide/durable-run-protocol.md)
+  for ActionRun execution, Provider steps, Local journal recovery, and the
+  design-only Cloud Workflow/OSS adapter.
+
+Current Local execution does not materialize a standalone synchronized
+`ActionRun`; it persists the private durable journal in SQLite and publishes
+Canvas outcome plus binding lineage. Cloud execution is not implemented. A
+successful media edit publishes a verified Resource as a ProjectAsset and
+Action output binding rather than exposing an immutable storage key. Plugin
+Asset delivery is always the single `v0` handle/resolve contract, with no `v1`
+alias or retired `url + reach` compatibility path.
+
+Current synchronous Local edits also require one stable `actionRunId` per
+logical Apply and use the single output slot `output`. Browser rendering or
+ffmpeg crop computation may repeat after an unknown result; the Host atomically
+publishes the Project Asset and input/output bindings under consumer CAS.
+Identical replay returns the winner, while changed bytes or invocation facts
+return structured HTTP `409`. See the authority documents above for the exact
+contract.
 
 The first implemented action family is asset editing. Image and video editing
 are not special UI-only pipelines: they are `family: "edit"` Action Specs.
@@ -63,9 +90,9 @@ An invocation is the durable, validated description of a single action:
 
 Surface semantics are fixed:
 
-| Surface | Mode | Visible graph representation |
-| --- | --- | --- |
-| Canvas | `explicit` | Create or use a visible action/edit node and connect the new result node. |
+| Surface       | Mode       | Visible graph representation                                                            |
+| ------------- | ---------- | --------------------------------------------------------------------------------------- |
+| Canvas        | `explicit` | Create or use a visible action/edit node and connect the new result node.               |
 | Asset Preview | `implicit` | Run the same spec without adding a canvas node; switch Preview to the new result asset. |
 
 `surface` describes where the intent originated. `mode` describes how that
@@ -114,11 +141,11 @@ record, while Loro remains the source of truth for where that asset is used.
 
 ## Built-in asset actions
 
-| Action | Input | Operation | Executor | Output |
-| --- | --- | --- | --- | --- |
-| `image-editor` | image | `transform` | `client-render` | image |
-| `video-clipper` | video | `screenshot` | `client-render` | image |
-| `video-clipper` | video | `crop` | `server-transform` | video |
+| Action          | Input | Operation    | Executor           | Output |
+| --------------- | ----- | ------------ | ------------------ | ------ |
+| `image-editor`  | image | `transform`  | `client-render`    | image  |
+| `video-clipper` | video | `screenshot` | `client-render`    | image  |
+| `video-clipper` | video | `crop`       | `server-transform` | video  |
 
 Adding a new editing tool means extending an Action Spec and typed invocation,
 then registering an executor adapter. It does not mean adding another bespoke

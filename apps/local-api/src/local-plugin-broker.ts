@@ -37,6 +37,17 @@ export interface LocalPluginBrokerResolvedAsset {
   providerUrl?: { providerUrl: string; expiresAt: string };
 }
 
+export class LocalPluginBrokerAuthorizationError extends Error {
+  readonly code = "PLUGIN_REFERENCE_NOT_AUTHORIZED" as const;
+
+  constructor(slot: string, index: number) {
+    super(
+      `Asset reference ${slot}:${index} is not authorized for the active invocation.`,
+    );
+    this.name = "LocalPluginBrokerAuthorizationError";
+  }
+}
+
 export interface LocalExecutablePluginBrokerOptions {
   loadProviderAccounts: () => Promise<RuntimeProviderAccountAvailability[]>;
   readAsset?: (input: {
@@ -175,8 +186,8 @@ export function createLocalExecutablePluginBroker(
         projectId: context.invocation.projectId,
         invocationId: request.invocationId,
         requestId: request.requestId,
-        operation:
-          request.operation.kind as LocalPluginBrokerAuditRecord["operation"],
+        operation: request.operation
+          .kind as LocalPluginBrokerAuditRecord["operation"],
         target,
         status,
         ...(error ? { error } : {}),
@@ -205,6 +216,19 @@ export function createLocalExecutablePluginBroker(
         if (!options.readAsset)
           throw new Error("Local asset broker is unavailable.");
         const reference = operation.reference;
+        const authorized = context.invocation.input.references.some(
+          (candidate) =>
+            "asset" in candidate &&
+            candidate.slot === reference.slot &&
+            candidate.asset.assetId === reference.asset.assetId &&
+            candidate.asset.kind === reference.asset.kind,
+        );
+        if (!authorized) {
+          throw new LocalPluginBrokerAuthorizationError(
+            reference.slot,
+            reference.index,
+          );
+        }
         const asset = await options.readAsset({
           assetId: reference.asset.assetId,
           projectId: context.invocation.projectId,
@@ -214,15 +238,18 @@ export function createLocalExecutablePluginBroker(
             `Asset ${reference.asset.assetId} kind ${asset.kind} does not match ${reference.asset.kind}.`,
           );
         }
-        const delivery = context.invocation.assetInputs.find(
-          (entry) => {
-            const kindMatches = !entry.match.kinds?.length || entry.match.kinds.includes(asset.kind);
-            const slotMatches = !entry.match.slots?.length || entry.match.slots.includes(reference.slot);
-            const mediaTypeMatches = !entry.mediaTypes?.length ||
-              (!!asset.mediaType && entry.mediaTypes.includes(asset.mediaType));
-            return kindMatches && slotMatches && mediaTypeMatches;
-          },
-        );
+        const delivery = context.invocation.assetInputs.find((entry) => {
+          const kindMatches =
+            !entry.match.kinds?.length ||
+            entry.match.kinds.includes(asset.kind);
+          const slotMatches =
+            !entry.match.slots?.length ||
+            entry.match.slots.includes(reference.slot);
+          const mediaTypeMatches =
+            !entry.mediaTypes?.length ||
+            (!!asset.mediaType && entry.mediaTypes.includes(asset.mediaType));
+          return kindMatches && slotMatches && mediaTypeMatches;
+        });
         if (!delivery) {
           throw new Error(
             `Provider binding declares no delivery for ${reference.slot} ${asset.kind}` +
@@ -245,16 +272,17 @@ export function createLocalExecutablePluginBroker(
                   invocationId: context.invocation.invocationId,
                   assetId: reference.asset.assetId,
                   kind: asset.kind,
-                  ...(asset.mediaType
-                    ? { mediaType: asset.mediaType }
-                    : {}),
+                  ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
                   bytes: asset.bytes,
                 })
               : undefined);
           if (published) {
             result = ExecutablePluginBrokerResolvedReferenceSchema.parse({
               form: "provider-url",
-              providerUrl: "providerUrl" in published ? published.providerUrl : published.url,
+              providerUrl:
+                "providerUrl" in published
+                  ? published.providerUrl
+                  : published.url,
               expiresAt: published.expiresAt,
               kind: asset.kind,
               ...(asset.mediaType ? { mediaType: asset.mediaType } : {}),
@@ -288,12 +316,13 @@ export function createLocalExecutablePluginBroker(
           accountId: context.accountId,
           key: operation.key,
         });
-        const account = stored === undefined
-          ? (await options.loadProviderAccounts()).find(
-              (candidate) =>
-                candidate.enabled && candidate.id === context.accountId,
-            )
-          : undefined;
+        const account =
+          stored === undefined
+            ? (await options.loadProviderAccounts()).find(
+                (candidate) =>
+                  candidate.enabled && candidate.id === context.accountId,
+              )
+            : undefined;
         if (stored === undefined && !account) {
           throw new Error(
             `Host-selected provider account ${context.accountId} is unavailable.`,
@@ -415,6 +444,20 @@ export function createLocalExecutablePluginBroker(
           throw new Error(
             "Codex ImageGen requires local asset read and write brokers.",
           );
+        }
+        for (const [index, reference] of operation.references.entries()) {
+          const authorized = context.invocation.input.references.some(
+            (candidate) =>
+              "asset" in candidate &&
+              candidate.asset.assetId === reference.assetId &&
+              candidate.asset.kind === reference.kind,
+          );
+          if (!authorized) {
+            throw new LocalPluginBrokerAuthorizationError(
+              "codex.imagegen",
+              index,
+            );
+          }
         }
         const references = await Promise.all(
           operation.references.map(async (asset) => {

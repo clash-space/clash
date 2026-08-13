@@ -276,6 +276,8 @@ type EditorProps = {
   onAnnotationTargetContextMenu?: (target: AgentAnnotationObjectRef) => void;
   /** Embedded keeps editing tools left and restores Inspector on the right. */
   layout?: "standalone" | "embedded";
+  /** Opaque Host authority scope for disposable poster, filmstrip, and waveform caches. */
+  previewCacheScope?: string;
 };
 
 export const Editor: React.FC<EditorProps> = ({
@@ -305,6 +307,7 @@ export const Editor: React.FC<EditorProps> = ({
   projectAssetDropActive = false,
   onAnnotationTargetContextMenu,
   layout = "standalone",
+  previewCacheScope,
 }) => {
   const [embeddedPanel, setEmbeddedPanel] =
     React.useState<EmbeddedPanel>("media");
@@ -878,6 +881,7 @@ export const Editor: React.FC<EditorProps> = ({
                   onAnnotationTargetContextMenu={onAnnotationTargetContextMenu}
                   showTranscriptTimeline={transcriptWorkspaceActive}
                   onAdmitLibraryMedia={onAdmitTimelineLibraryMedia}
+                  previewCacheScope={previewCacheScope}
                 />
               </div>
               {audioMeterOpen ? (
@@ -969,6 +973,7 @@ export const Editor: React.FC<EditorProps> = ({
                       onAnnotationTargetContextMenu
                     }
                     onAdmitLibraryMedia={onAdmitTimelineLibraryMedia}
+                    previewCacheScope={previewCacheScope}
                   />
                 </div>
                 {audioMeterOpen ? (

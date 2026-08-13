@@ -39,4 +39,23 @@ describe('stripSrcFromTracks', () => {
             assetId: 'asset-photo',
         });
     });
+
+    it('strips disposable waveform samples from newly persisted Project media', () => {
+        const tracks: Track[] = [{
+            id: 'audio',
+            name: 'Audio',
+            items: [{
+                id: 'voice',
+                type: 'audio',
+                assetId: 'asset-voice',
+                sourceNodeId: 'canvas-voice',
+                from: 0,
+                durationInFrames: 980,
+                src: 'https://signed.example.test/voice.wav?token=stale',
+                waveform: [0.1, 0.8, 0.3],
+            }],
+        }];
+
+        expect(stripSrcFromTracks(tracks)[0]!.items[0]).not.toHaveProperty('waveform');
+    });
 });

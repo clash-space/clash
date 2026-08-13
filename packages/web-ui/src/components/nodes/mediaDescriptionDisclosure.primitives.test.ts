@@ -45,16 +45,6 @@ describe("media node description disclosure primitives", () => {
         expect(source).toContain("group-data-[state=open]/description:");
     });
 
-    it("VideoNode uses the shared tooltip primitive for thumbnail refresh", () => {
-        const source = readNodeSource("VideoNode.tsx");
-
-        expect(source).toContain("<Tooltip label=\"Refresh thumbnail\">");
-        expect(source).toContain("ArrowClockwise");
-        expect(source).toContain('label="Refresh thumbnail"');
-        expect(source).not.toContain("<svg xmlns=\"http://www.w3.org/2000/svg\"");
-        expect(source).not.toContain('title="Refresh Thumbnail"');
-    });
-
     it.each(["ImageNode.tsx", "VideoNode.tsx"])("%s lets ReactFlow own media control event boundaries", (file) => {
         const source = readNodeSource(file);
 

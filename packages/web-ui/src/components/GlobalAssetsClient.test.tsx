@@ -100,9 +100,7 @@ describe("GlobalAssetsClient", () => {
         }),
       );
 
-    render(
-      <GlobalAssetsClient initialAssets={[unavailableActive, active]} />,
-    );
+    render(<GlobalAssetsClient initialAssets={[unavailableActive, active]} />);
 
     expect(screen.getByText("Unavailable on this device")).toBeTruthy();
     expect(
@@ -131,6 +129,9 @@ describe("GlobalAssetsClient", () => {
     expect(String(fetchSpy.mock.calls[1]?.[0])).toContain(
       "/api/v1/libraries/personal/assets/global%3Ahero/restore",
     );
-    expect(fetchSpy.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(fetchSpy.mock.calls[1]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ deleteOperationId: "delete-1" }),
+    });
   });
 });

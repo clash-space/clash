@@ -1,6 +1,6 @@
 /**
  * Shared fetch-with-retry helper for resource-resolution hooks
- * (`useAsset`, `useSignedUrl`, ...).
+ * (for example `useAsset`).
  *
  * Why this exists: the asset pipeline has a lot of pinch points (gateway
  * restart, workerd cold start, local D1 slow under concurrency) where one
@@ -39,7 +39,7 @@ export class FetchRetryError extends Error {
     public readonly lastStatus?: number,
   ) {
     super(message);
-    this.name = 'FetchRetryError';
+    this.name = "FetchRetryError";
   }
 }
 
@@ -54,15 +54,15 @@ function computeDelay(attempt: number, baseMs: number, capMs: number): number {
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new DOMException('aborted', 'AbortError'));
+      reject(new DOMException("aborted", "AbortError"));
       return;
     }
     const t = setTimeout(resolve, ms);
     signal?.addEventListener(
-      'abort',
+      "abort",
       () => {
         clearTimeout(t);
-        reject(new DOMException('aborted', 'AbortError'));
+        reject(new DOMException("aborted", "AbortError"));
       },
       { once: true },
     );
@@ -86,10 +86,13 @@ export async function fetchWithRetry(
   let lastStatus: number | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
 
     try {
-      const res = await fetch(runtimeApiUrl(url), { ...init, signal: init.signal ?? signal });
+      const res = await fetch(runtimeApiUrl(url), {
+        ...init,
+        signal: init.signal ?? signal,
+      });
       if (res.ok) return res;
       lastStatus = res.status;
       // Non-retriable 4xx: hand the response to the caller so it can branch on status.
@@ -97,7 +100,7 @@ export async function fetchWithRetry(
       lastErr = new Error(`HTTP ${res.status}`);
     } catch (err) {
       // AbortError: caller cancelled, bubble up.
-      if ((err as { name?: string })?.name === 'AbortError') throw err;
+      if ((err as { name?: string })?.name === "AbortError") throw err;
       lastErr = err;
     }
 

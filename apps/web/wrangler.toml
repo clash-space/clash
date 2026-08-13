@@ -30,9 +30,6 @@ run_worker_first = [
   "/sync/*",
   "/agents/*",
   "/assets/*",
-  "/thumbnails/*",
-  "/upload",
-  "/upload/*",
   "/health",
 ]
 
@@ -48,11 +45,6 @@ migrations_dir = "drizzle"
 [[services]]
 binding = "API_CF"
 service = "clash-api"
-
-# R2 bucket (used by /api/upload/asset + /api/assets/view/*)
-[[r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "clash-r2"
 
 [vars]
 BETTER_AUTH_BASE_PATH = "/api/better-auth"
@@ -87,9 +79,6 @@ run_worker_first = [
   "/sync/*",
   "/agents/*",
   "/assets/*",
-  "/thumbnails/*",
-  "/upload",
-  "/upload/*",
   "/health",
 ]
 
@@ -102,10 +91,6 @@ migrations_dir = "drizzle"
 [[env.staging.services]]
 binding = "API_CF"
 service = "clash-api-staging"
-
-[[env.staging.r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "clash-r2"
 
 [env.staging.vars]
 BETTER_AUTH_BASE_PATH = "/api/better-auth"

@@ -8,6 +8,7 @@ import type {
   ProjectAssetHostObservation,
   ProjectAssetHostResult,
 } from "@clash/shared-runtime/project-asset-client";
+import { ProjectHostHttpError } from "@clash/shared-runtime/project-host-client";
 import type { ActionAssetBinding, ResolvedAsset } from "@clash/shared-types";
 
 const asset: ResolvedAsset = {
@@ -112,18 +113,20 @@ test("MCP Project Asset mutations consume an internal Host receipt and never exp
     }),
     trashedAsset,
   );
-  assert.deepEqual(calls, [
-    { method: "get", input: { projectId: "project-a", assetId: "asset:one" } },
-    {
-      method: "trash",
-      input: {
-        projectId: "project-a",
-        assetId: "asset:one",
-        actorClientType: "mcp",
-        receipt: "receipt-read",
-      },
-    },
-  ]);
+  assert.deepEqual(calls[0], {
+    method: "get",
+    input: { projectId: "project-a", assetId: "asset:one" },
+  });
+  assert.equal(calls[1]?.method, "trash");
+  assert.equal(typeof calls[1]?.input.deleteOperationId, "string");
+  assert.ok(calls[1]?.input.deleteOperationId.length > 0);
+  const { deleteOperationId: _operationId, ...trashInput } = calls[1]!.input;
+  assert.deepEqual(trashInput, {
+    projectId: "project-a",
+    assetId: "asset:one",
+    actorClientType: "mcp",
+    receipt: "receipt-read",
+  });
   assert.doesNotMatch(
     JSON.stringify(
       await gateway.invoke("clash_assets_get", {
@@ -133,6 +136,54 @@ test("MCP Project Asset mutations consume an internal Host receipt and never exp
     ),
     /receipt|readToken|ifMatch/i,
   );
+});
+
+test("MCP retries an unknown Project Asset trash result with one stable operation id", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const calls: Array<{ method: string; input: any }> = [];
+  const client = fakeClient(calls);
+  let attempts = 0;
+  client.trash = async (input) => {
+    calls.push({ method: "trash", input });
+    attempts += 1;
+    if (attempts === 1) throw new Error("connection closed after commit");
+    return {
+      projectId: "project-a",
+      value: {
+        ...trashedAsset,
+        lifecycle: {
+          ...trashedAsset.lifecycle,
+          deleteOperationId: input.deleteOperationId!,
+        },
+      },
+      receipt: "receipt-trashed",
+    };
+  };
+  const gateway = createAssetProjectHostGateway(client);
+
+  await gateway.invoke("clash_assets_get", {
+    projectId: "project-a",
+    assetId: "asset:one",
+  });
+  await assert.rejects(
+    gateway.invoke("clash_assets_trash", {
+      projectId: "project-a",
+      assetId: "asset:one",
+    }),
+    /connection closed after commit/,
+  );
+  await gateway.invoke("clash_assets_trash", {
+    projectId: "project-a",
+    assetId: "asset:one",
+  });
+
+  const operationIds = calls
+    .filter(({ method }) => method === "trash")
+    .map(({ input }) => input.deleteOperationId);
+  assert.equal(operationIds.length, 2);
+  assert.equal(typeof operationIds[0], "string");
+  assert.ok(operationIds[0].length > 0);
+  assert.equal(operationIds[1], operationIds[0]);
 });
 
 test("MCP Project Asset mutation fails locally until get or references observed that Asset", async () => {
@@ -198,6 +249,7 @@ test("MCP imports a local workspace file through Host import-file without CLI ex
     await gateway.invoke("clash_assets_import_file", {
       cwd: workspace,
       filePath: "voice.mp3",
+      projectAssetId: "asset:mcp-command",
     }),
     asset,
   );
@@ -209,6 +261,7 @@ test("MCP imports a local workspace file through Host import-file without CLI ex
       kind: calls[0]?.input.kind,
       fileName: calls[0]?.input.fileName,
       contentType: calls[0]?.input.contentType,
+      projectAssetId: calls[0]?.input.projectAssetId,
       bytes: Array.from(calls[0]?.input.bytes ?? []),
     },
     {
@@ -216,9 +269,113 @@ test("MCP imports a local workspace file through Host import-file without CLI ex
       kind: "audio",
       fileName: "voice.mp3",
       contentType: "audio/mpeg",
+      projectAssetId: "asset:mcp-command",
       bytes: [4, 5, 6],
     },
   );
+});
+
+test("MCP Project import keeps one pending Asset id until the Host confirms success", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const workspace = await mkdtemp(join(tmpdir(), "clash-mcp-import-retry-"));
+  await writeFile(join(workspace, "voice.mp3"), new Uint8Array([4, 5, 6]));
+  const importedIds: string[] = [];
+  const client = fakeClient([]);
+  client.importFile = async (input) => {
+    importedIds.push(input.projectAssetId ?? "");
+    if (importedIds.length === 1) throw new TypeError("connection lost");
+    return { projectId: "project-a", value: asset };
+  };
+  const gateway = createAssetProjectHostGateway(client);
+
+  await assert.rejects(
+    gateway.invoke("clash_assets_import_file", {
+      cwd: workspace,
+      filePath: "voice.mp3",
+    }),
+    /connection lost/,
+  );
+  await gateway.invoke("clash_assets_import_file", {
+    cwd: workspace,
+    filePath: "voice.mp3",
+  });
+  await gateway.invoke("clash_assets_import_file", {
+    cwd: workspace,
+    filePath: "voice.mp3",
+  });
+
+  assert.notEqual(importedIds[0], "");
+  assert.equal(importedIds[1], importedIds[0]);
+  assert.notEqual(importedIds[2], importedIds[1]);
+});
+
+test("MCP Project import releases its pending id after a known Host rejection", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const workspace = await mkdtemp(join(tmpdir(), "clash-mcp-import-reject-"));
+  await writeFile(join(workspace, "voice.mp3"), new Uint8Array([4, 5, 6]));
+  const importedIds: string[] = [];
+  const client = fakeClient([]);
+  client.importFile = async (input) => {
+    importedIds.push(input.projectAssetId ?? "");
+    if (importedIds.length === 1) {
+      throw new ProjectHostHttpError(409, { code: "ID_CONFLICT" });
+    }
+    return { projectId: "project-a", value: asset };
+  };
+  const gateway = createAssetProjectHostGateway(client);
+
+  await assert.rejects(
+    gateway.invoke("clash_assets_import_file", {
+      cwd: workspace,
+      filePath: "voice.mp3",
+    }),
+    /409/,
+  );
+  await gateway.invoke("clash_assets_import_file", {
+    cwd: workspace,
+    filePath: "voice.mp3",
+  });
+
+  assert.notEqual(importedIds[0], "");
+  assert.notEqual(importedIds[1], importedIds[0]);
+});
+
+test("MCP Project import snapshots a caller-assigned command across an unknown result", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const workspace = await mkdtemp(join(tmpdir(), "clash-mcp-explicit-retry-"));
+  const filePath = join(workspace, "voice.mp3");
+  await writeFile(filePath, new Uint8Array([4, 5, 6]));
+  const requests: Array<{ id: string; bytes: number[] }> = [];
+  const client = fakeClient([]);
+  client.importFile = async (input) => {
+    requests.push({
+      id: input.projectAssetId ?? "",
+      bytes: Array.from(input.bytes),
+    });
+    if (requests.length === 1) throw new TypeError("connection lost");
+    return { projectId: "project-a", value: asset };
+  };
+  const gateway = createAssetProjectHostGateway(client);
+
+  await assert.rejects(
+    gateway.invoke("clash_assets_import_file", {
+      cwd: workspace,
+      filePath: "voice.mp3",
+      projectAssetId: "asset:caller-command",
+    }),
+    /connection lost/,
+  );
+  await writeFile(filePath, new Uint8Array([9, 9, 9]));
+  await gateway.invoke("clash_assets_import_file", {
+    cwd: workspace,
+    filePath: "voice.mp3",
+    projectAssetId: "asset:caller-command",
+  });
+
+  assert.deepEqual(requests, [
+    { id: "asset:caller-command", bytes: [4, 5, 6] },
+    { id: "asset:caller-command", bytes: [4, 5, 6] },
+  ]);
 });
 
 test("MCP lists and reads the personal Global library without requiring Project context", async () => {
@@ -258,6 +415,96 @@ test("MCP lists and reads the personal Global library without requiring Project 
   ]);
 });
 
+test("MCP restores a Global Asset only from the delete operation observed by Global get", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const globalTrashed: ResolvedAsset = {
+    ...globalAsset,
+    lifecycle: {
+      state: "trashed",
+      deleteOperationId: "delete:global:one",
+      deletedAt: "2026-08-13T00:00:00.000Z",
+      purgeAfter: "2026-08-20T00:00:00.000Z",
+    },
+    status: "unavailable",
+  };
+  const globalCalls: Array<{ method: string; input?: unknown }> = [];
+  const gateway = createAssetProjectHostGateway(fakeClient([]), {
+    async get(input: { globalAssetId: string }) {
+      globalCalls.push({ method: "get", input });
+      return globalTrashed;
+    },
+    async restore(input: { globalAssetId: string; deleteOperationId: string }) {
+      globalCalls.push({ method: "restore", input });
+      return globalAsset;
+    },
+  } as never);
+
+  await gateway.invoke("clash_assets_global_get", {
+    globalAssetId: "global:one",
+  });
+  assert.deepEqual(
+    await gateway.invoke("clash_assets_global_restore", {
+      globalAssetId: "global:one",
+    }),
+    globalAsset,
+  );
+  assert.deepEqual(globalCalls, [
+    {
+      method: "get",
+      input: { globalAssetId: "global:one" },
+    },
+    {
+      method: "restore",
+      input: {
+        globalAssetId: "global:one",
+        deleteOperationId: "delete:global:one",
+      },
+    },
+  ]);
+  await assert.rejects(
+    gateway.invoke("clash_assets_global_restore", {
+      globalAssetId: "global:one",
+    }),
+    /READ_REQUIRED/,
+  );
+});
+
+test("MCP retries an unknown Global Asset trash result with one stable operation id", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const operationIds: string[] = [];
+  const gateway = createAssetProjectHostGateway(fakeClient([]), {
+    async trash(input: { globalAssetId: string; deleteOperationId?: string }) {
+      operationIds.push(input.deleteOperationId ?? "");
+      if (operationIds.length === 1) {
+        throw new TypeError("connection lost after commit");
+      }
+      return {
+        ...globalAsset,
+        lifecycle: {
+          state: "trashed" as const,
+          deleteOperationId: input.deleteOperationId!,
+          deletedAt: "2026-08-13T00:00:00.000Z",
+          purgeAfter: "2026-08-20T00:00:00.000Z",
+        },
+        status: "unavailable" as const,
+      };
+    },
+  } as never);
+
+  await assert.rejects(
+    gateway.invoke("clash_assets_global_trash", {
+      globalAssetId: "global:one",
+    }),
+    /connection lost after commit/,
+  );
+  await gateway.invoke("clash_assets_global_trash", {
+    globalAssetId: "global:one",
+  });
+
+  assert.notEqual(operationIds[0], "");
+  assert.equal(operationIds[1], operationIds[0]);
+});
+
 test("MCP imports a local file directly into the personal Global library", async () => {
   const { createAssetProjectHostGateway } = await import("./asset-gateway");
   const workspace = await mkdtemp(join(tmpdir(), "clash-mcp-global-assets-"));
@@ -277,6 +524,7 @@ test("MCP imports a local file directly into the personal Global library", async
     await gateway.invoke("clash_assets_global_import_file", {
       cwd: workspace,
       filePath: "voice.mp3",
+      globalAssetId: "global:mcp-command",
     }),
     globalAsset,
   );
@@ -287,6 +535,7 @@ test("MCP imports a local file directly into the personal Global library", async
       kind: globalCalls[0]?.input.kind,
       fileName: globalCalls[0]?.input.fileName,
       contentType: globalCalls[0]?.input.contentType,
+      globalAssetId: globalCalls[0]?.input.globalAssetId,
       bytes: Array.from(globalCalls[0]?.input.bytes ?? []),
     },
     {
@@ -294,9 +543,113 @@ test("MCP imports a local file directly into the personal Global library", async
       kind: "audio",
       fileName: "voice.mp3",
       contentType: "audio/mpeg",
+      globalAssetId: "global:mcp-command",
       bytes: [7, 8, 9],
     },
   );
+});
+
+test("MCP Global import keeps one pending Asset id until the Host confirms success", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const workspace = await mkdtemp(join(tmpdir(), "clash-mcp-global-retry-"));
+  await writeFile(join(workspace, "voice.mp3"), new Uint8Array([7, 8, 9]));
+  const importedIds: string[] = [];
+  const gateway = createAssetProjectHostGateway(fakeClient([]), {
+    async importFile(input: any) {
+      importedIds.push(input.globalAssetId ?? "");
+      if (importedIds.length === 1) throw new TypeError("connection lost");
+      return globalAsset;
+    },
+  } as never);
+
+  await assert.rejects(
+    gateway.invoke("clash_assets_global_import_file", {
+      cwd: workspace,
+      filePath: "voice.mp3",
+    }),
+    /connection lost/,
+  );
+  await gateway.invoke("clash_assets_global_import_file", {
+    cwd: workspace,
+    filePath: "voice.mp3",
+  });
+  await gateway.invoke("clash_assets_global_import_file", {
+    cwd: workspace,
+    filePath: "voice.mp3",
+  });
+
+  assert.notEqual(importedIds[0], "");
+  assert.equal(importedIds[1], importedIds[0]);
+  assert.notEqual(importedIds[2], importedIds[1]);
+});
+
+test("MCP Global import releases its pending id after a known Host rejection", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const workspace = await mkdtemp(join(tmpdir(), "clash-mcp-global-reject-"));
+  await writeFile(join(workspace, "voice.mp3"), new Uint8Array([7, 8, 9]));
+  const importedIds: string[] = [];
+  const gateway = createAssetProjectHostGateway(fakeClient([]), {
+    async importFile(input: any) {
+      importedIds.push(input.globalAssetId ?? "");
+      if (importedIds.length === 1) {
+        throw new ProjectHostHttpError(422, { code: "INVALID_ASSET" });
+      }
+      return globalAsset;
+    },
+  } as never);
+
+  await assert.rejects(
+    gateway.invoke("clash_assets_global_import_file", {
+      cwd: workspace,
+      filePath: "voice.mp3",
+    }),
+    /422/,
+  );
+  await gateway.invoke("clash_assets_global_import_file", {
+    cwd: workspace,
+    filePath: "voice.mp3",
+  });
+
+  assert.notEqual(importedIds[0], "");
+  assert.notEqual(importedIds[1], importedIds[0]);
+});
+
+test("MCP Global import snapshots a caller-assigned command across an unknown result", async () => {
+  const { createAssetProjectHostGateway } = await import("./asset-gateway");
+  const workspace = await mkdtemp(join(tmpdir(), "clash-mcp-global-explicit-"));
+  const filePath = join(workspace, "voice.mp3");
+  await writeFile(filePath, new Uint8Array([7, 8, 9]));
+  const requests: Array<{ id: string; bytes: number[] }> = [];
+  const gateway = createAssetProjectHostGateway(fakeClient([]), {
+    async importFile(input: any) {
+      requests.push({
+        id: input.globalAssetId ?? "",
+        bytes: Array.from(input.bytes),
+      });
+      if (requests.length === 1) throw new TypeError("connection lost");
+      return globalAsset;
+    },
+  } as never);
+
+  await assert.rejects(
+    gateway.invoke("clash_assets_global_import_file", {
+      cwd: workspace,
+      filePath: "voice.mp3",
+      globalAssetId: "global:caller-command",
+    }),
+    /connection lost/,
+  );
+  await writeFile(filePath, new Uint8Array([9, 9, 9]));
+  await gateway.invoke("clash_assets_global_import_file", {
+    cwd: workspace,
+    filePath: "voice.mp3",
+    globalAssetId: "global:caller-command",
+  });
+
+  assert.deepEqual(requests, [
+    { id: "global:caller-command", bytes: [7, 8, 9] },
+    { id: "global:caller-command", bytes: [7, 8, 9] },
+  ]);
 });
 
 test("MCP admits Global Assets and publishes Project Assets through the shared Host clients", async () => {

@@ -17,8 +17,7 @@ import { cors } from "hono/cors";
 import type { Env } from "./config";
 import { api } from "./routes/index";
 import { v1Routes } from "./routes/v1/index";
-import { assetRoutes } from "./routes/assets";
-import { thumbnailRoutes } from "./routes/thumbnails";
+import { assetDeliveryRoutes } from "./routes/assets";
 import { betterAuthRoutes } from "./routes/better-auth";
 import { projectsD1Routes } from "./routes/projects-d1";
 import { internalProjectsContextRoutes } from "./routes/internal-projects-context";
@@ -27,7 +26,10 @@ import { marketplaceRoutes } from "./routes/marketplace";
 import { authenticateRuntimeToken } from "./routes/v1/runtimes";
 import { setPlugins, getPlugins } from "./plugins/registry";
 import type { Plugin } from "./plugins/types";
-import { getUserIdFromApiToken, getUserIdFromRequest } from "./services/session";
+import {
+  getUserIdFromApiToken,
+  getUserIdFromRequest,
+} from "./services/session";
 import { authenticateRequest } from "./loro/auth";
 
 export interface CreateAppOptions {
@@ -92,7 +94,9 @@ async function applyValidatedPublicIdentity(
   return userId;
 }
 
-export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> {
+export function createApp(
+  opts: CreateAppOptions = {},
+): Hono<{ Bindings: Env }> {
   setPlugins(opts.plugins ?? []);
 
   const app = new Hono<{ Bindings: Env }>();
@@ -102,7 +106,10 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
   // Public API identity is always derived here. An x-user-id supplied by a
   // browser, CLI, reverse proxy, or service binding is untrusted input.
   app.use("/api/*", async (c, next) => {
-    if (c.req.path === "/api/better-auth" || c.req.path.startsWith("/api/better-auth/")) {
+    if (
+      c.req.path === "/api/better-auth" ||
+      c.req.path.startsWith("/api/better-auth/")
+    ) {
       const request = new Request(c.req.raw);
       request.headers.delete("x-user-id");
       c.req.raw = request;
@@ -173,7 +180,8 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
     if (c.req.header("Upgrade") !== "websocket") {
       return c.text("WebSocket only", 400);
     }
-    const auth = c.req.header("Authorization") ?? c.req.header("authorization") ?? "";
+    const auth =
+      c.req.header("Authorization") ?? c.req.header("authorization") ?? "";
     if (!auth) return c.text("missing Authorization", 401);
     const ident = await authenticateRuntimeToken(c.env, auth);
     if (!ident) return c.text("invalid token", 401);
@@ -186,10 +194,8 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
     return c.env.RUNTIME_ROOM.get(id).fetch(fwd);
   });
 
-  // ─── Asset routes (ported from loro-sync-server) ────────────
-  app.route("/assets", assetRoutes);
-  app.route("/upload", assetRoutes);
-  app.route("/thumbnails", thumbnailRoutes);
+  // Signed capability delivery is a transport adapter, not Asset authority.
+  app.route("/assets", assetDeliveryRoutes);
 
   // ─── Better Auth — runs server-side so frontends just proxy ──
   app.route("/api/better-auth", betterAuthRoutes);

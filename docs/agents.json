@@ -7,16 +7,25 @@
   "subdirectories": {},
   "key_files": {
     "AGENTS_JSON_SPEC.md": "Specification for this documentation system (agents.json and file headers).",
-    "agents.md": "Documentation on the Agent/Model configuration and shared patterns.",
+    "agents.md": "Historical Python task/agent architecture snapshot; current Asset and execution authority lives in the two guide documents.",
+    "agent-first-local-v1-api-surface-inventory.md": "Historical Local v1 CLI/API snapshot; use live CLI help and the current Asset and Durable Run guides.",
+    "agent-first-local-v1-remote-compatibility-boundary.md": "Historical analysis of surfaces preserved during Local v1 convergence; not proof of current Cloud delivery.",
+    "agent-file-projection-cas-spec.md": "Current agent working-tree, implicit observation, and COW contract; defers Asset identity and execution semantics to the authoritative guides.",
+    "agent-first-local-v1-cli-cas-audit.md": "Historical point-in-time CLI CAS audit; command and coverage inventories are not current acceptance evidence.",
+    "agent-first-local-v1-code-audit.md": "Historical Local v1 code audit; not current Asset or Durable Run completion evidence.",
+    "agent-first-local-v1-blackbox-e2e-spec.md": "Historical Local v1 release-gate snapshot; current acceptance follows the Asset and Durable Run guides.",
+    "video-thumbnail-implementation.md": "Historical Python/Loro thumbnail pipeline superseded by device-local frontend poster, waveform, and filmstrip caches.",
+    "video-optimization.md": "Historical video-preview experiments; Current Local derives disposable previews from an entry-authorized original-media projection.",
     "loro-crdt-explained.md": "Deep dive into the Loro CRDT implementation for real-time sync.",
     "local-loro-host-architecture.md": "Local-first Loro architecture: Local Host, actors, persistent replicas, cloud alignment, and presence boundaries.",
     "local-host-cli-implementation-plan.md": "Implementation plan for project context, Local Host persistence, CLI commands, actor presence, and cloud code reuse.",
-    "official-custom-views-action-runtime-plan.md": "Implementation plan for Official Views, Custom HTML Views, Media Pool and Bins, and extracting one headless Action planner/executor shared by Canvas and every View.",
-    "action-spec-system.md": "Canonical ActionSpec, ActionInvocation, executor adapter, immutable result, and explicit-vs-implicit representation contract.",
-    "asset-workspace-spec.md": "Product contract for project/global assets, thumbnails, Preview/Edit, Canvas persistence, minimap, and group-backed Canvas folders.",
-    "project-canvas-timeline-asset-model.md": "Accepted ownership and execution model for Projects, Canvases, Timeline Actions, standalone Timelines, ActionRuns, and immutable AssetRevisions.",
+    "official-custom-views-action-runtime-plan.md": "Superseded proposal for Official/Custom Views; its AssetRevision and ActionRun model is historical, not an implementation contract.",
+    "action-spec-system.md": "Historical ActionSpec/UI-intent design; current execution and Asset persistence authority is durable-run-protocol.md plus asset-system.md.",
+    "asset-workspace-spec.md": "Historical Preview/Edit product proposal; current Project/Global Asset identity and lifecycle authority is apps/docs/guide/asset-system.md.",
+    "project-canvas-timeline-asset-model.md": "Historical ownership proposal superseded for Asset identity and execution by asset-system.md and durable-run-protocol.md.",
+    "model-provider-architecture.md": "Current model-card/provider composition and Host-owned account-routing contract; runtime semantics defer to durable-run-protocol.md.",
     "group-logic-7ef9.md": "Explanation of the complex grouping logic for canvas nodes.",
     "loro-sync-python-improvements.md": "Notes on Python integration with Loro Sync."
   },
-  "architecture_notes": "These documents serve as the 'Long-term Memory' for the project's technical decisions."
+  "architecture_notes": "Current Asset and execution authority lives in apps/docs/guide/asset-system.md and apps/docs/guide/durable-run-protocol.md. Files explicitly marked historical or superseded are context only, not implementation contracts."
 }

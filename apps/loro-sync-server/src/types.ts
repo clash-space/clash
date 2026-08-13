@@ -8,17 +8,6 @@ export interface Env {
   // D1 Database binding
   DB: D1Database;
 
-  // R2 bucket for generated assets
-  ASSETS: R2Bucket;
-
-  // R2 public URL prefix (e.g., 'https://pub-xxx.r2.dev')
-  // DEPRECATED: Use WORKER_PUBLIC_URL instead for better performance
-  R2_PUBLIC_URL?: string;
-  
-  // Worker's own public URL (e.g., 'https://loro-sync.your-domain.workers.dev')
-  // Used for /assets/* endpoint to serve R2 files without rate limiting
-  WORKER_PUBLIC_URL?: string;
-
   // Environment variables
   ENVIRONMENT?: string;
   JWT_SECRET?: string;
@@ -31,7 +20,7 @@ export interface Env {
   // Fallback URL for local dev when Service Binding is unavailable
   BACKEND_API_URL?: string;
 
-  // Loro Sync Server's own public URL for callbacks
+  // Legacy sync callbacks may still identify this worker's public origin.
   LORO_SYNC_URL?: string;
 }
 
@@ -46,10 +35,10 @@ export interface HonoVariables {
  * JWT Payload for authentication
  */
 export interface JWTPayload {
-  sub: string;        // User ID
-  projectId: string;  // Project ID
-  iat?: number;       // Issued at
-  exp?: number;       // Expiration
+  sub: string; // User ID
+  projectId: string; // Project ID
+  iat?: number; // Issued at
+  exp?: number; // Expiration
 }
 
 /**
@@ -69,4 +58,3 @@ export interface SnapshotData {
   version: number;
   updated_at: number;
 }
-

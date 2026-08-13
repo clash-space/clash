@@ -17,6 +17,7 @@
     "src/credential-sources.ts": "Method-aware projection of Provider auth declarations into field, browser-action, and Host-action credential sources.",
     "src/agent-annotation.ts": "Transient structured annotation blocks that address editable Canvas, Timeline, and Director Stage objects, including exact text-quote selections and viewport highlight hints.",
     "src/project-assets.ts": "Project Loro authority for Project Asset membership and logical lifecycle.",
+    "src/metadata-attachments.ts": "Storage-free discriminated targets for typed metadata attachments on Project Assets and immutable Action revisions.",
     "src/action-asset-bindings.ts": "Project Loro authority for semantic Action media bindings, direct draft-input replacement, reverse reference checks, explicit unbind, and atomic trash-if-unreferenced.",
     "src/canvas-action-asset-inputs.ts": "Single compiler from editable Canvas node, prompt, and edge projections to semantic draft Action Asset input slots; shared by live writes and one-way legacy materialization.",
     "src/timeline-persistence.ts": "Storage-free Project Timeline write boundary: strips Host projections when Project Asset identity exists and rejects URL/path-only media.",

@@ -52,6 +52,7 @@ function storageFreeMediaRecord(
     localPath: _localPath,
     storageKey: _storageKey,
     srcR2Key: _srcR2Key,
+    waveform: _legacyWaveform,
     ...persisted
   } = input;
   return { ok: true, value: { ...persisted, assetId: projectAssetId } };

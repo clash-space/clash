@@ -1,11 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { LoroDoc } from "loro-crdt";
-import { createBoundedRetryPolicy } from "@clash/shared-runtime";
+import {
+  createBoundedRetryPolicy,
+  durableRunIdempotencyKey,
+} from "@clash/shared-runtime";
 import {
   extractPromptText,
+  ActionBindingOwnerSchema,
   ensureActionAssetBinding,
   ExecutablePluginBindingSchema,
+  ExecutablePluginJsonValueSchema,
   hostMutationSucceeded,
+  listActionAssetBindingsForOwner,
   listProjectAssets,
   MODEL_CARDS,
   normalizeModelId,
@@ -18,6 +24,8 @@ import {
 import type {
   ExecutablePluginJsonValue,
   ExecutablePluginReference,
+  ExecutablePluginResult,
+  ActionBindingOwner,
   ActionAssetBinding,
   ModelCard,
   ProjectAssetEntry,
@@ -27,6 +35,7 @@ import type {
 import type { AssetKind } from "@clash/shared-types/assets";
 import {
   createMockExternalAigcService,
+  ProviderPluginHostUnavailableError,
   type ExternalAigcService,
   type ProviderPluginExecutor,
 } from "./local-aigc.js";
@@ -41,12 +50,16 @@ import { createLocalMetadataStore } from "./local-metadata-store.js";
 import {
   createLocalProjectAssetService,
   publishLocalProjectAssetWithBindings,
-  type LocalProjectAssetService,
 } from "./local-project-assets.js";
 import type { LocalResourceProjection } from "./local-resource-store.js";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
+import { createLocalDurableOutputStagingStore } from "./local-durable-output-staging.js";
+import type { LocalAssetInspectionService } from "./local-asset-inspections.js";
 import { storeTextRevisionContentBlob } from "./text-revision-content.js";
-import type { ExecutablePluginActionInvoker } from "./plugin-action-runtime.js";
+import type {
+  ExecutablePluginActionInvoker,
+  ExecutablePluginActionRequest,
+} from "./plugin-action-runtime.js";
 
 export interface LocalWorkflowProcessorInput {
   doc: LoroDoc;
@@ -66,6 +79,8 @@ export interface LocalWorkflowProcessor {
 
 export interface LocalWorkflowProcessorOptions {
   dataDir: string;
+  /** Process-owned Resource inspection registry shared with Asset HTTP reads. */
+  assetInspection?: LocalAssetInspectionService;
   userId?: string;
   mediaBaseUrl?: string | (() => string);
   timelineRenderer?: LocalTimelineRenderer;
@@ -104,6 +119,39 @@ export interface LocalTimelineRenderer {
     height?: number;
     durationMs?: number;
   }>;
+}
+
+const LOCAL_EXECUTOR_BINDING = ExecutablePluginBindingSchema.parse({
+  pluginId: "clash.local-executor",
+  version: "1.0.0",
+  exportId: "execute",
+  schemaHash: `sha256:${createHash("sha256")
+    .update("clash.local-executor/v1")
+    .digest("hex")}`,
+});
+
+function jsonSnapshot(value: unknown): ExecutablePluginJsonValue {
+  return ExecutablePluginJsonValueSchema.parse(
+    JSON.parse(JSON.stringify(value)) as unknown,
+  );
+}
+
+function canonicalJson(value: unknown): string {
+  const serialized = JSON.stringify(value, (_key, entry: unknown) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      return entry;
+    }
+    const record = entry as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, record[key]]),
+    );
+  });
+  if (serialized === undefined) {
+    throw new TypeError("Action revision input must be JSON-serializable.");
+  }
+  return serialized;
 }
 
 type ProcessableKind = Extract<AssetKind, "image" | "video" | "audio">;
@@ -248,14 +296,147 @@ function durableProviderNodeData(
   return next;
 }
 
-function durableProviderIdentity(
-  projectId: string,
-  nodeId: string,
-  kind: ProcessableNodeKind,
-): { actionRunId: string; outputSlot: string } {
+function canvasNodeProjectionRevisionId(input: {
+  projectId: string;
+  nodeId: string;
+  kind: ProcessableNodeKind;
+  nodeData: Record<string, unknown>;
+  targetKind?: "generation" | "action";
+  executionPrompt?: string;
+  resolveMention: (
+    nodeId: string,
+  ) => { assetId: string; kind: ProcessableKind } | undefined;
+}): string {
+  const prompt =
+    input.executionPrompt ??
+    authoredPromptFromData(input.nodeData, `Mock ${input.kind}`);
+  const mentions: Array<
+    | {
+        index: number;
+        nodeId: string;
+        assetId: string;
+        kind: ProcessableKind;
+      }
+    | { index: number; nodeId: string; missing: true }
+  > = [];
+  for (const [index, part] of parsePromptParts(prompt).entries()) {
+    if (part.type !== "asset_ref" || !part.nodeId) continue;
+    const resolved = input.resolveMention(part.nodeId);
+    mentions.push(
+      resolved
+        ? { index, nodeId: part.nodeId, ...resolved }
+        : { index, nodeId: part.nodeId, missing: true },
+    );
+  }
+  const parsedBinding = ExecutablePluginBindingSchema.safeParse(
+    input.nodeData.pluginBinding,
+  );
+  const commonProjection = {
+    schemaVersion: 1,
+    projectId: input.projectId,
+    nodeId: input.nodeId,
+    kind: input.kind,
+    actionType: input.nodeData.actionType,
+    prompt,
+    referenceImageAssetIds: stringList(input.nodeData.referenceImageAssetIds),
+    referenceVideoAssetIds: stringList(input.nodeData.referenceVideoAssetIds),
+    referenceAudioAssetIds: stringList(input.nodeData.referenceAudioAssetIds),
+    mentions,
+    ...(parsedBinding.success ? { pluginBinding: parsedBinding.data } : {}),
+  };
+  const semanticProjection =
+    input.targetKind === "action"
+      ? {
+          ...commonProjection,
+          customActionId: input.nodeData.customActionId,
+          customActionParams: input.nodeData.customActionParams,
+          outputType: input.nodeData.outputType,
+        }
+      : {
+          ...commonProjection,
+          model: modelFromData(input.nodeData, `mock-${input.kind}`),
+          modelParams: modelParams(input.nodeData),
+          aspectRatio: aspectRatioFromData(input.nodeData),
+          duration:
+            input.nodeData.duration ?? modelParams(input.nodeData).duration,
+          referenceMode: input.nodeData.referenceMode,
+        };
+  const digest = createHash("sha256")
+    .update(canonicalJson(semanticProjection))
+    .digest("hex");
+  return `sha256:${digest}`;
+}
+
+function canvasExecutorActionRevisionId(
+  executor: Omit<FrozenLocalProviderExecutorInput, "schemaVersion">,
+): string {
+  let semanticInput = executor.input;
+  if (
+    executor.targetKind === "local-executor" &&
+    executor.input.values.localExecutor === "generation"
+  ) {
+    const generationInput = executor.input.values.generationInput;
+    if (
+      generationInput &&
+      typeof generationInput === "object" &&
+      !Array.isArray(generationInput)
+    ) {
+      const {
+        taskId: _taskId,
+        projectId: _projectId,
+        nodeId: _nodeId,
+        actorType: _actorType,
+        actorUserId: _actorUserId,
+        actorAgentId: _actorAgentId,
+        providerAccountId: _providerAccountId,
+        ...semanticGenerationInput
+      } = generationInput;
+      semanticInput = {
+        ...executor.input,
+        values: {
+          ...executor.input.values,
+          generationInput: semanticGenerationInput,
+        },
+      };
+    }
+  }
+  const digest = createHash("sha256")
+    .update(
+      canonicalJson({
+        schemaVersion: 1,
+        targetKind: executor.targetKind ?? "provider-executor",
+        binding: executor.binding,
+        ...(executor.actionId ? { actionId: executor.actionId } : {}),
+        kind: executor.kind,
+        projectId: executor.projectId,
+        ...(executor.nodeId ? { nodeId: executor.nodeId } : {}),
+        assetInputs: executor.assetInputs ?? [],
+        ...(executor.delivery ? { delivery: executor.delivery } : {}),
+        ...(executor.provider ? { provider: executor.provider } : {}),
+        ...(executor.modelEndpoint
+          ? { modelEndpoint: executor.modelEndpoint }
+          : {}),
+        ...(executor.nodeProjectionRevisionId
+          ? { nodeProjectionRevisionId: executor.nodeProjectionRevisionId }
+          : {}),
+        input: semanticInput,
+      }),
+    )
+    .digest("hex");
+  return `sha256:${digest}`;
+}
+
+function durableProviderIdentity(input: {
+  projectId: string;
+  nodeId: string;
+  kind: ProcessableNodeKind;
+  actionRevisionId: string;
+}): { actionRunId: string; outputSlot: string } {
   return {
-    actionRunId: `project:${projectId}:node:${nodeId}`,
-    outputSlot: kind === "text" ? "text" : "media",
+    actionRunId:
+      `project:${input.projectId}:node:${input.nodeId}:revision:` +
+      input.actionRevisionId.slice("sha256:".length),
+    outputSlot: input.kind === "text" ? "text" : "media",
   };
 }
 
@@ -268,6 +449,13 @@ function durableActionOwner(
   actionRevisionId: string;
   actionRunId: string;
 } {
+  if (frozen.publicOwner) {
+    return {
+      kind: "run",
+      ...frozen.publicOwner,
+      actionRunId,
+    };
+  }
   const actionId =
     frozen.delivery?.actionId ?? `node:${frozen.nodeId ?? "project"}`;
   const publicRevision = {
@@ -293,31 +481,35 @@ function durableActionOwner(
   };
 }
 
-function nodeActionOwner(input: {
-  projectId: string;
-  nodeId: string;
+function isCurrentProviderNodeRevision(input: {
+  frozen: FrozenLocalProviderExecutorInput;
   actionRunId: string;
-  kind: ProcessableKind;
   nodeData: Record<string, unknown>;
-}): ActionAssetBinding["owner"] {
-  const digest = createHash("sha256")
-    .update(
-      JSON.stringify({
-        projectId: input.projectId,
-        nodeId: input.nodeId,
-        kind: input.kind,
-        model: modelFromData(input.nodeData, `mock-${input.kind}`),
-        prompt: providerPromptFromData(input.nodeData, `Mock ${input.kind}`),
-        modelParams: modelParams(input.nodeData),
-      }),
-    )
-    .digest("hex");
-  return {
-    kind: "run",
-    actionId: `node:${input.nodeId}`,
-    actionRevisionId: `sha256:${digest}`,
-    actionRunId: input.actionRunId,
-  };
+  currentProjectionRevisionId: string;
+}): boolean {
+  const { frozen } = input;
+  if (!frozen.nodeId) return true;
+  if (frozen.kind === "model") return false;
+  if (
+    frozen.targetKind === "local-executor" &&
+    frozen.input.values.localExecutor === "timeline-render"
+  ) {
+    const owner = timelineRenderInputOwner(input.nodeData);
+    return (
+      !!owner &&
+      !!frozen.publicOwner &&
+      owner.actionId === frozen.publicOwner.actionId &&
+      owner.actionRevisionId === frozen.publicOwner.actionRevisionId
+    );
+  }
+  if (frozen.nodeProjectionRevisionId) {
+    return (
+      frozen.nodeProjectionRevisionId === input.currentProjectionRevisionId
+    );
+  }
+  // Pre-guard legacy records may still finish consumer-CAS publication, but they cannot prove
+  // authority to project an outcome onto the current mutable Canvas node.
+  return false;
 }
 
 function frozenExecutorInput(run: {
@@ -594,7 +786,7 @@ function pendingCustomNode(node: Record<string, any>): {
     !data.actionType.startsWith("custom:")
   )
     return null;
-  if (data.status !== "pending") return null;
+  if (data.status !== "pending" && data.status !== "generating") return null;
   if (data.pendingTask) return null;
   const actionId =
     typeof data.customActionId === "string" && data.customActionId
@@ -607,6 +799,18 @@ function pendingCustomNode(node: Record<string, any>): {
       ? data.outputType
       : "image";
   return { actionId, outputType };
+}
+
+function customActionPromptFromData(data: Record<string, unknown>): string {
+  return extractPromptText(
+    parsePromptParts(
+      typeof data.prompt === "string"
+        ? data.prompt
+        : typeof data.content === "string"
+          ? data.content
+          : "",
+    ),
+  );
 }
 
 function pendingKindForNode(
@@ -628,6 +832,18 @@ function pendingKindForNode(
   const expectedActionType = `${kind}-gen`;
   if (data.actionType && data.actionType !== expectedActionType) return null;
   return kind;
+}
+
+function timelineRenderInputOwner(
+  data: Record<string, unknown>,
+): Extract<ActionBindingOwner, { kind: "run" }> | null {
+  const parsed = ActionBindingOwnerSchema.safeParse({
+    kind: "run",
+    actionId: data.sourceTimelineActionId,
+    actionRevisionId: data.sourceTimelineRevisionId,
+    actionRunId: data.sourceTimelineActionRunId,
+  });
+  return parsed.success && parsed.data.kind === "run" ? parsed.data : null;
 }
 
 function extensionForContentType(contentType: string): string {
@@ -660,7 +876,6 @@ function ownedProjectAssetEntry(options: {
   width?: number;
   height?: number;
   durationMs?: number;
-  waveform?: number[];
   transcript?: string;
   requestId?: string;
   provider?: string;
@@ -693,7 +908,6 @@ function ownedProjectAssetEntry(options: {
       ...(options.durationMs === undefined
         ? {}
         : { durationMs: options.durationMs }),
-      ...(options.waveform ? { waveform: options.waveform } : {}),
       bytes: options.projection.resource.byteLength,
       ...(options.projection.resource.contentType
         ? { contentType: options.projection.resource.contentType }
@@ -711,57 +925,13 @@ function ownedProjectAssetEntry(options: {
   });
 }
 
-async function saveAsset(options: {
-  doc: LoroDoc;
-  projectAssets: LocalProjectAssetService;
-  projectId: string;
-  nodeId: string;
-  taskId: string;
-  kind: ProcessableKind;
-  nodeData: Record<string, unknown>;
-  bytes: Uint8Array;
-  contentType: string;
-  width?: number;
-  height?: number;
-  durationMs?: number;
-  waveform?: number[];
-  transcript?: string;
-  requestId?: string;
-  provider?: string;
-  modelEndpoint?: string;
-  remoteUrl?: string;
-}): Promise<ProjectAssetEntry> {
-  const assetId = `local-asset-${sanitizeStorageSegment(options.taskId)}`;
-  const projection = await options.projectAssets.stageOwned({
-    kind: options.kind,
-    bytes: options.bytes,
-    contentType: options.contentType,
-    name: `${assetId}${extensionForContentType(options.contentType)}`,
-  });
-  const entry = ownedProjectAssetEntry({ ...options, projection });
-  return publishLocalProjectAssetWithBindings(options.doc, entry, [
-    {
-      id: `action-asset:${options.taskId}:output`,
-      owner: nodeActionOwner({
-        projectId: options.projectId,
-        nodeId: options.nodeId,
-        actionRunId: options.taskId,
-        kind: options.kind,
-        nodeData: options.nodeData,
-      }),
-      direction: "output",
-      slot: options.provider === "local-render" ? "render:output" : "media",
-      projectAssetId: entry.id,
-    },
-  ]).entry;
-}
-
 export async function resolveLocalTimelineDslReferences(options: {
   dataDir: string;
   doc: LoroDoc;
   projectId: string;
   mediaBaseUrl?: string | (() => string);
   timelineDsl: Record<string, any>;
+  inputOwner: Extract<ActionBindingOwner, { kind: "run" }>;
 }): Promise<Record<string, any>> {
   const resolved = structuredClone(options.timelineDsl);
   const projectAssets = createLocalProjectAssetService({
@@ -775,6 +945,19 @@ export async function resolveLocalTimelineDslReferences(options: {
   });
   await projectAssets.materializeDoc(options.projectId, options.doc);
   const nodes = options.doc.getMap("nodes");
+  const frozenInputs = listActionAssetBindingsForOwner(
+    options.doc,
+    options.inputOwner,
+  ).filter((binding) => binding.direction === "input");
+  const frozenBySlot = new Map<string, ActionAssetBinding>();
+  for (const binding of frozenInputs) {
+    if (frozenBySlot.has(binding.slot)) {
+      throw new Error(
+        `Timeline render run ${options.inputOwner.actionRunId} has duplicate input slot ${binding.slot}`,
+      );
+    }
+    frozenBySlot.set(binding.slot, binding);
+  }
 
   for (const track of resolved.tracks ?? []) {
     for (const item of track.items ?? []) {
@@ -823,40 +1006,21 @@ export async function resolveLocalTimelineDslReferences(options: {
         item.type !== "audio"
       )
         continue;
-      const lookupIds = [item.assetId, item.sourceNodeId].filter(
-        (value): value is string =>
-          typeof value === "string" && value.length > 0,
-      );
-      if (
-        typeof item.sourceNodeId === "string" &&
-        item.sourceNodeId.startsWith("timeline-asset:")
-      ) {
-        lookupIds.push(item.sourceNodeId.slice("timeline-asset:".length));
+      const itemId = typeof item.id === "string" ? item.id.trim() : "";
+      if (!itemId) {
+        throw new Error("Timeline render media items require a stable item id");
       }
-      let asset = lookupIds
-        .map((id) => readProjectAsset(options.doc, id))
-        .find((candidate) => candidate?.lifecycle.state === "active");
-      if (!asset) {
-        for (const id of lookupIds) {
-          const node = nodes.get(id) as Record<string, any> | undefined;
-          const nodeProjectAssetId =
-            typeof node?.data?.assetId === "string"
-              ? node.data.assetId
-              : undefined;
-          const backing = nodeProjectAssetId
-            ? readProjectAsset(options.doc, nodeProjectAssetId)
-            : null;
-          if (backing?.lifecycle.state === "active") {
-            asset = backing;
-            break;
-          }
-        }
-      }
+      const slot = `timeline:item:${itemId}`;
+      const binding = frozenBySlot.get(slot);
+      const asset = binding
+        ? readProjectAsset(options.doc, binding.projectAssetId)
+        : null;
       if (!asset) {
         throw new Error(
-          `Timeline render cannot resolve media item ${String(item.id ?? "unknown")}`,
+          `Timeline render run ${options.inputOwner.actionRunId} has no readable frozen input for ${slot}`,
         );
       }
+      item.assetId = asset.id;
       const resolvedAsset = await projectAssets.readFromDoc(
         options.doc,
         options.projectId,
@@ -891,12 +1055,8 @@ export function createLocalWorkflowProcessor(
   // Provider executors and custom executable Actions share one owner-private journal and graph.
   // Production supplies the explicit Provider owner; an isolated Action host keeps the same local
   // semantics without needing to invent a dummy Provider adapter.
-  const durableOwnerId =
-    options.durableProviderRuns?.ownerId ??
-    (options.executablePluginAction ? "local-api" : undefined);
-  const durableJournal = durableOwnerId
-    ? createSqliteDurableRunJournal(options.dataDir)
-    : undefined;
+  const durableOwnerId = options.durableProviderRuns?.ownerId ?? "local-api";
+  const durableJournal = createSqliteDurableRunJournal(options.dataDir);
   const providerExecutionHandoffs = createProviderExecutionHandoffStore(
     options.dataDir,
   );
@@ -908,8 +1068,14 @@ export function createLocalWorkflowProcessor(
         ? options.mediaBaseUrl()
         : options.mediaBaseUrl;
     },
+    ...(options.assetInspection
+      ? { assetInspection: options.assetInspection }
+      : {}),
   });
   const pluginAssetStaging = createLocalPluginAssetStagingStore({
+    dataDir: options.dataDir,
+  });
+  const localOutputStaging = createLocalDurableOutputStagingStore({
     dataDir: options.dataDir,
   });
 
@@ -918,7 +1084,6 @@ export function createLocalWorkflowProcessor(
       ? {}
       : { minimumPollDelayMs: options.providerPollDelayCapMs }),
     async nextWakeAt(projectId) {
-      if (!durableJournal || !durableOwnerId) return undefined;
       return durableJournal.nextWakeAt(durableOwnerId, projectId);
     },
 
@@ -929,303 +1094,668 @@ export function createLocalWorkflowProcessor(
         ? await options.modelCards()
         : MODEL_CARDS;
       let changed = await projectAssets.materializeDoc(projectId, doc);
+      const nodeProjectionRevisionId = (
+        nodeId: string,
+        kind: ProcessableNodeKind,
+        nodeData: Record<string, unknown>,
+        executionPrompt?: string,
+        targetKind?: "generation" | "action",
+      ) =>
+        canvasNodeProjectionRevisionId({
+          projectId,
+          nodeId,
+          kind,
+          nodeData,
+          ...(targetKind === undefined ? {} : { targetKind }),
+          ...(executionPrompt === undefined ? {} : { executionPrompt }),
+          resolveMention(mentionedNodeId) {
+            const referencedNode = nodes.get(mentionedNodeId) as
+              Record<string, any> | undefined;
+            const assetId =
+              typeof referencedNode?.data?.assetId === "string"
+                ? referencedNode.data.assetId
+                : undefined;
+            const modality = referencedNode?.type;
+            return assetId &&
+              (modality === "image" ||
+                modality === "video" ||
+                modality === "audio")
+              ? { assetId, kind: modality }
+              : undefined;
+          },
+        });
       const durable = options.durableProviderRuns;
-      const coordinator =
-        durableOwnerId && durableJournal
-          ? createLocalDurableRunCoordinator({
-              ownerId: durableOwnerId,
-              journal: durableJournal,
-              providerPluginExecutor: async (request) => {
-                if (!durable) {
-                  throw new Error(
-                    "Durable Provider runtime is unavailable in this Action-only Host.",
-                  );
-                }
-                const response = await durable.providerPluginExecutor(request);
-                if (
-                  response.status !== "accepted" ||
-                  options.providerPollDelayCapMs === undefined
-                ) {
-                  return response;
-                }
-                return {
-                  ...response,
-                  retryAfterMs: Math.min(
-                    response.retryAfterMs ?? 5_000,
-                    Math.max(0, options.providerPollDelayCapMs),
-                  ),
-                };
-              },
-              ...(options.executablePluginAction
-                ? { executablePluginAction: options.executablePluginAction }
-                : {}),
-              outputStore: {
-                async stage({ run, idempotencyKey, outputs }) {
-                  const frozen = frozenExecutorInput(run);
-                  if (!frozen.nodeId && !frozen.delivery) {
-                    throw new Error(
-                      "A durable Provider output requires a Canvas node or Project Asset delivery.",
-                    );
-                  }
-                  const rawTarget = frozen.nodeId
-                    ? (nodes.get(frozen.nodeId) as
-                        Record<string, any> | undefined)
-                    : undefined;
-                  if (
-                    frozen.nodeId &&
-                    (!rawTarget?.data || typeof rawTarget.data !== "object")
-                  ) {
-                    throw new Error(
-                      `Durable Provider target node ${frozen.nodeId} is missing.`,
-                    );
-                  }
-                  const output = outputs.find(
-                    (candidate) => candidate.slot === run.outputSlot,
-                  );
-                  if (!output) {
-                    throw new Error(
-                      `Durable Provider output slot ${run.outputSlot} is missing.`,
-                    );
-                  }
-                  if (frozen.kind === "text") {
-                    if (output.kind !== "value") {
-                      throw new Error(
-                        `Durable Provider text output slot ${run.outputSlot} is not a value.`,
-                      );
-                    }
-                    if (!frozen.nodeId || !rawTarget?.data) {
-                      throw new Error(
-                        "A durable Provider text output requires a target node.",
-                      );
-                    }
-                    if (
-                      typeof output.value !== "string" ||
-                      !output.value.trim()
-                    ) {
-                      throw new Error(
-                        "Durable Provider text output must be a non-empty string.",
-                      );
-                    }
-                    const revision = await recordGeneratedTextRevision({
-                      dataDir: options.dataDir,
-                      userId,
-                      projectId: frozen.projectId,
-                      nodeId: frozen.nodeId,
-                      nodeData:
-                        frozen.targetKind === "action"
-                          ? {
-                              actorType: frozen.actor?.kind,
-                              ...(frozen.actor?.kind === "agent" &&
-                              frozen.actor.id
-                                ? { actorAgentId: frozen.actor.id }
-                                : {}),
-                            }
-                          : (rawTarget.data as Record<string, unknown>),
-                      content: output.value,
-                      createdAt: new Date(run.createdAt).toISOString(),
-                      auditId: `durable:${idempotencyKey}:text`,
-                    });
-                    return {
-                      kind: "text",
-                      content: output.value,
-                      revisionId: revision.revisionId,
-                    } as ExecutablePluginJsonValue;
-                  }
-                  if (output.kind !== "asset") {
-                    throw new Error(
-                      "Durable Provider media output must be a canonical Asset handle.",
-                    );
-                  }
-                  const media = output.asset;
-                  const staged = await pluginAssetStaging.resolve({
-                    projectId: frozen.projectId,
-                    projectAssetId: media.assetId,
-                  });
-                  if (staged && staged.kind !== frozen.kind) {
-                    throw new Error(
-                      `Durable Provider staged ${staged.kind} output for a ${frozen.kind} run.`,
-                    );
-                  }
-                  if (!staged) {
-                    throw new Error(
-                      "Durable Provider media output requires a Host staging receipt.",
-                    );
-                  }
-                  const assetId = staged.projectAssetId;
-                  const projection = await projectAssets.resolveStagedOwned(
-                    staged.resourceId,
-                  );
-                  const projectAsset = ownedProjectAssetEntry({
-                    projectAssetId: assetId,
-                    projectId: frozen.projectId,
-                    taskId: idempotencyKey,
-                    actionRunId: run.actionRunId,
-                    kind: frozen.kind,
-                    ...(rawTarget?.data && frozen.targetKind !== "action"
-                      ? {
-                          nodeData: rawTarget.data as Record<string, unknown>,
-                        }
-                      : {}),
-                    ...(frozen.targetKind === "action" &&
-                    typeof frozen.input.values.prompt === "string"
-                      ? { prompt: frozen.input.values.prompt }
-                      : {}),
-                    ...(frozen.delivery?.name
-                      ? { name: frozen.delivery.name }
-                      : {}),
-                    ...(frozen.delivery?.prompt
-                      ? { prompt: frozen.delivery.prompt }
-                      : {}),
-                    projection,
-                    ...(frozen.provider ? { provider: frozen.provider } : {}),
-                    ...(frozen.modelEndpoint
-                      ? { modelEndpoint: frozen.modelEndpoint }
-                      : {}),
-                  });
-                  return {
-                    kind: "asset",
-                    projectAsset,
-                  } as ExecutablePluginJsonValue;
+      const localExecutor: ExecutablePluginActionInvoker = async (request) => {
+        const attemptBudgetMs = request.timeoutMs ?? generationDeadlineMs;
+        const attemptDeadlineAt = Date.now() + attemptBudgetMs;
+        const beforeAttemptDeadline = <T>(operation: Promise<T>) =>
+          beforeProviderGenerationDeadline(
+            operation,
+            attemptDeadlineAt,
+            attemptBudgetMs,
+          );
+        const mode = request.input.values.localExecutor;
+        const outputSlot = request.input.values.outputSlot;
+        if (typeof mode !== "string" || typeof outputSlot !== "string") {
+          throw new Error("Frozen Host-local executor input is invalid.");
+        }
+        const invocationId = `${request.taskId}:${outputSlot}`;
+        if (mode === "timeline-render") {
+          if (!options.timelineRenderer) {
+            throw new Error("Timeline rendering backend is unavailable");
+          }
+          const timelineDsl = request.input.values.timelineDsl;
+          const inputOwnerValue = request.input.values.inputOwner;
+          if (
+            !timelineDsl ||
+            typeof timelineDsl !== "object" ||
+            Array.isArray(timelineDsl) ||
+            !inputOwnerValue ||
+            typeof inputOwnerValue !== "object" ||
+            Array.isArray(inputOwnerValue)
+          ) {
+            throw new Error("Frozen Timeline render input is invalid.");
+          }
+          const inputOwner = ActionBindingOwnerSchema.parse(inputOwnerValue);
+          if (inputOwner.kind !== "run") {
+            throw new Error("Frozen Timeline render owner is not a run.");
+          }
+          const resolvedDsl = await resolveLocalTimelineDslReferences({
+            dataDir: options.dataDir,
+            doc,
+            projectId: request.projectId,
+            mediaBaseUrl: options.mediaBaseUrl,
+            timelineDsl: timelineDsl as Record<string, any>,
+            inputOwner,
+          });
+          const rendered = await beforeAttemptDeadline(
+            options.timelineRenderer.render({
+              projectId: request.projectId,
+              taskId: request.taskId,
+              timelineDsl: resolvedDsl,
+            }),
+          );
+          const staged = await localOutputStaging.stage({
+            projectId: request.projectId,
+            actionRunId: request.taskId,
+            outputSlot,
+            kind: "video",
+            bytes: rendered.bytes,
+            contentType: rendered.contentType ?? "video/mp4",
+            metadata: {
+              ...(rendered.width === undefined
+                ? {}
+                : { width: rendered.width }),
+              ...(rendered.height === undefined
+                ? {}
+                : { height: rendered.height }),
+              ...(rendered.durationMs === undefined
+                ? {}
+                : { durationMs: rendered.durationMs }),
+            },
+            result: {
+              provider: "local-render",
+              modelEndpoint: "remotion-render",
+            },
+          });
+          return {
+            protocol: "clash.plugin.result/v1",
+            invocationId,
+            status: "completed",
+            outputs: [
+              {
+                slot: outputSlot,
+                kind: "asset",
+                asset: {
+                  assetId: staged.projectAssetId,
+                  uri: `clash-asset://${staged.projectAssetId}`,
+                  kind: "video",
+                  mediaType: staged.projection.resource.contentType,
                 },
               },
-              publisher: {
-                async publish({ run, stagedOutput }) {
-                  const frozen = frozenExecutorInput(run);
-                  if (!frozen.nodeId && !frozen.delivery) {
-                    throw new Error(
-                      "A durable Provider publication requires a Canvas node or Project Asset delivery.",
-                    );
-                  }
-                  const target = frozen.nodeId
-                    ? (nodes.get(frozen.nodeId) as
-                        Record<string, any> | undefined)
-                    : undefined;
-                  if (
-                    frozen.nodeId &&
-                    (!target?.data || typeof target.data !== "object")
-                  ) {
-                    throw new Error(
-                      `Durable Provider target node ${frozen.nodeId} is missing.`,
-                    );
-                  }
-                  if (
-                    !stagedOutput ||
-                    typeof stagedOutput !== "object" ||
-                    Array.isArray(stagedOutput)
-                  ) {
-                    throw new Error(
-                      "Durable Provider staged output is invalid.",
-                    );
-                  }
-                  const staged = stagedOutput as Record<string, unknown>;
-                  let publishedAsset: ProjectAssetEntry | undefined;
-                  if (staged.kind === "asset") {
-                    const parsed = ProjectAssetEntrySchema.safeParse(
-                      staged.projectAsset,
-                    );
-                    if (!parsed.success) {
-                      throw new Error(
-                        `Durable Provider staged Project Asset is invalid: ${parsed.error.issues[0]?.message ?? "invalid entry"}`,
-                      );
-                    }
-                    const publication = publishLocalProjectAssetWithBindings(
-                      doc,
-                      parsed.data,
-                      [
-                        {
-                          id: `action-asset:${run.actionRunId}:${run.outputSlot}:output`,
-                          owner: durableActionOwner(frozen, run.actionRunId),
-                          direction: "output",
-                          slot: run.outputSlot,
-                          projectAssetId: parsed.data.id,
-                        },
-                      ],
-                    );
-                    publishedAsset = publication.entry;
-                    changed = publication.changed || changed;
-                  }
-                  if (frozen.delivery) {
-                    if (!publishedAsset) {
-                      throw new Error(
-                        "Direct Project Asset delivery requires a staged Asset output.",
-                      );
-                    }
-                    // Project Asset + Action binding are the complete public projection for a
-                    // node-less run. Checkpoint them before the journal records publication so a
-                    // crash can replay this idempotent pair without regenerating the model.
-                    await input.checkpoint?.();
-                    return;
-                  }
-                  const updates = publishedAsset
-                    ? { status: "completed", assetId: publishedAsset.id }
-                    : staged.kind === "text" &&
-                        typeof staged.content === "string"
-                      ? { status: "completed", content: staged.content }
-                      : undefined;
-                  if (!updates)
-                    throw new Error(
-                      "Durable Provider staged output is incomplete.",
-                    );
-                  if (!frozen.nodeId || !target?.data) {
-                    throw new Error(
-                      "A Canvas Provider publication requires a target node.",
-                    );
-                  }
-                  const current = target.data as Record<string, unknown>;
-                  if (
-                    current.status === updates.status &&
-                    ("assetId" in updates
-                      ? current.assetId === updates.assetId
-                      : current.content === updates.content)
-                  ) {
-                    // A previous publication may have mutated the in-memory Loro doc and then lost
-                    // its persistence acknowledgement. Re-checkpoint before the journal records
-                    // success; equality alone is not evidence that the snapshot survived.
-                    await input.checkpoint?.();
-                    return;
-                  }
-                  nodes.set(frozen.nodeId, {
-                    ...target,
-                    data: durableProviderNodeData(current, updates),
-                  });
-                  changed = true;
-                  await input.checkpoint?.();
-                },
-                async publishFailure({ run, failure }) {
-                  const frozen = frozenExecutorInput(run);
-                  if (!frozen.nodeId) return;
-                  const target = nodes.get(frozen.nodeId) as
-                    Record<string, any> | undefined;
-                  if (!target?.data || typeof target.data !== "object") return;
-                  const current = target.data as Record<string, unknown>;
-                  if (
-                    current.status === "failed" &&
-                    current.failureCode === failure.code &&
-                    current.error === failure.message
-                  ) {
-                    await input.checkpoint?.();
-                    return;
-                  }
-                  nodes.set(frozen.nodeId, {
-                    ...target,
-                    data: durableProviderNodeData(current, {
-                      status: "failed",
-                      failureCode: failure.code,
-                      error: failure.message,
-                    }),
-                  });
-                  changed = true;
-                  await input.checkpoint?.();
-                },
-              },
-              retryPolicy: createBoundedRetryPolicy({
-                maxFailures: { submit: 3, poll: 3, stage: 3, publish: 3 },
-                baseDelayMs: 1_000,
-                maxDelayMs: 60_000,
+            ],
+          } satisfies ExecutablePluginResult;
+        }
+
+        if (mode !== "generation") {
+          throw new Error(`Host-local executor ${mode} is not recognized.`);
+        }
+        const generationKind = request.input.values.generationKind;
+        const snapshot = request.input.values.generationInput;
+        if (
+          (generationKind !== "image" &&
+            generationKind !== "video" &&
+            generationKind !== "audio" &&
+            generationKind !== "text") ||
+          !snapshot ||
+          typeof snapshot !== "object" ||
+          Array.isArray(snapshot)
+        ) {
+          throw new Error("Frozen Host-local generation input is invalid.");
+        }
+        const generationInput = {
+          ...(snapshot as Record<string, unknown>),
+          taskId: request.taskId,
+          projectId: request.projectId,
+          ...(request.nodeId ? { nodeId: request.nodeId } : {}),
+          references: request.input.references,
+        } as Parameters<ExternalAigcService["generateText"]>[0];
+        if (generationKind === "text") {
+          let generated;
+          if (request.input.values.useLocalTextAgent === true) {
+            if (!options.textAgent) {
+              throw new ProviderPluginHostUnavailableError(
+                "The frozen local text executor is unavailable.",
+              );
+            }
+            generated = await beforeAttemptDeadline(
+              options.textAgent.generate({
+                projectId: request.projectId,
+                prompt: generationInput.prompt,
+                modelId: generationInput.model,
+                modelParams: generationInput.modelParams,
+                actorAgentId: generationInput.actorAgentId,
               }),
-              ...(durable?.now ? { clock: { now: durable.now } } : {}),
-            })
-          : undefined;
+            );
+          } else {
+            generated = await beforeAttemptDeadline(
+              aigc.generateText(generationInput),
+            );
+          }
+          return {
+            protocol: "clash.plugin.result/v1",
+            invocationId,
+            status: "completed",
+            outputs: [
+              {
+                slot: outputSlot,
+                kind: "value",
+                value: {
+                  text: generated.text,
+                  ...(generated.provider
+                    ? { provider: generated.provider }
+                    : {}),
+                  ...(generated.modelEndpoint
+                    ? { modelEndpoint: generated.modelEndpoint }
+                    : {}),
+                },
+              },
+            ],
+          } satisfies ExecutablePluginResult;
+        }
+        const generated = await beforeAttemptDeadline(
+          generationKind === "image"
+            ? aigc.generateImage(generationInput)
+            : generationKind === "video"
+              ? aigc.generateVideo(generationInput)
+              : aigc.generateAudio(generationInput),
+        );
+        if (generated.status === "accepted") {
+          throw new Error(
+            "An accepted Provider result requires the durable executable Provider path.",
+          );
+        }
+        if (generated.status === "failed") {
+          return {
+            protocol: "clash.plugin.result/v1",
+            invocationId,
+            status: "failed",
+            error: generated.error,
+          } satisfies ExecutablePluginResult;
+        }
+        const staged = await localOutputStaging.stage({
+          projectId: request.projectId,
+          actionRunId: request.taskId,
+          outputSlot,
+          kind: generationKind,
+          bytes: generated.bytes,
+          contentType: generated.contentType,
+          metadata: {
+            ...(generated.width === undefined
+              ? {}
+              : { width: generated.width }),
+            ...(generated.height === undefined
+              ? {}
+              : { height: generated.height }),
+            ...(generated.durationMs === undefined
+              ? {}
+              : { durationMs: generated.durationMs }),
+          },
+          result: {
+            ...(generated.provider ? { provider: generated.provider } : {}),
+            ...(generated.modelEndpoint
+              ? { modelEndpoint: generated.modelEndpoint }
+              : {}),
+            ...(generated.requestId ? { requestId: generated.requestId } : {}),
+          },
+        });
+        return {
+          protocol: "clash.plugin.result/v1",
+          invocationId,
+          status: "completed",
+          outputs: [
+            {
+              slot: outputSlot,
+              kind: "asset",
+              asset: {
+                assetId: staged.projectAssetId,
+                uri: `clash-asset://${staged.projectAssetId}`,
+                kind: generationKind,
+                mediaType: staged.projection.resource.contentType,
+              },
+            },
+          ],
+        } satisfies ExecutablePluginResult;
+      };
+      const coordinator = createLocalDurableRunCoordinator({
+        ownerId: durableOwnerId,
+        journal: durableJournal,
+        providerPluginExecutor: async (request) => {
+          if (!durable) {
+            throw new Error(
+              "Durable Provider runtime is unavailable in this Action-only Host.",
+            );
+          }
+          const response = await durable.providerPluginExecutor(request);
+          if (
+            response.status !== "accepted" ||
+            options.providerPollDelayCapMs === undefined
+          ) {
+            return response;
+          }
+          return {
+            ...response,
+            retryAfterMs: Math.min(
+              response.retryAfterMs ?? 5_000,
+              Math.max(0, options.providerPollDelayCapMs),
+            ),
+          };
+        },
+        ...(options.executablePluginAction
+          ? { executablePluginAction: options.executablePluginAction }
+          : {}),
+        localExecutor,
+        outputStore: {
+          async stage({ run, idempotencyKey, outputs }) {
+            const frozen = frozenExecutorInput(run);
+            if (!frozen.nodeId && !frozen.delivery) {
+              throw new Error(
+                "A durable Provider output requires a Canvas node or Project Asset delivery.",
+              );
+            }
+            const rawTarget = frozen.nodeId
+              ? (nodes.get(frozen.nodeId) as Record<string, any> | undefined)
+              : undefined;
+            if (
+              frozen.nodeId &&
+              (!rawTarget?.data || typeof rawTarget.data !== "object")
+            ) {
+              throw new Error(
+                `Durable Provider target node ${frozen.nodeId} is missing.`,
+              );
+            }
+            const output = outputs.find(
+              (candidate) => candidate.slot === run.outputSlot,
+            );
+            if (!output) {
+              throw new Error(
+                `Durable Provider output slot ${run.outputSlot} is missing.`,
+              );
+            }
+            if (frozen.kind === "text") {
+              if (output.kind !== "value") {
+                throw new Error(
+                  `Durable Provider text output slot ${run.outputSlot} is not a value.`,
+                );
+              }
+              if (!frozen.nodeId || !rawTarget?.data) {
+                throw new Error(
+                  "A durable Provider text output requires a target node.",
+                );
+              }
+              const localValue =
+                frozen.targetKind === "local-executor" &&
+                output.value &&
+                typeof output.value === "object" &&
+                !Array.isArray(output.value)
+                  ? (output.value as Record<string, unknown>)
+                  : undefined;
+              const content = localValue?.text ?? output.value;
+              if (typeof content !== "string" || !content.trim()) {
+                throw new Error(
+                  "Durable Provider text output must be a non-empty string.",
+                );
+              }
+              const revision = await recordGeneratedTextRevision({
+                dataDir: options.dataDir,
+                userId,
+                projectId: frozen.projectId,
+                nodeId: frozen.nodeId,
+                nodeData:
+                  frozen.targetKind === "action" ||
+                  frozen.targetKind === "local-executor"
+                    ? {
+                        actorType: frozen.actor?.kind,
+                        ...(frozen.actor?.kind === "agent" && frozen.actor.id
+                          ? { actorAgentId: frozen.actor.id }
+                          : {}),
+                      }
+                    : (rawTarget.data as Record<string, unknown>),
+                content,
+                createdAt: new Date(run.createdAt).toISOString(),
+                auditId: `durable:${idempotencyKey}:text`,
+              });
+              return {
+                kind: "text",
+                content,
+                revisionId: revision.revisionId,
+                ...(typeof localValue?.provider === "string"
+                  ? { provider: localValue.provider }
+                  : {}),
+                ...(typeof localValue?.modelEndpoint === "string"
+                  ? { modelEndpoint: localValue.modelEndpoint }
+                  : {}),
+              } as ExecutablePluginJsonValue;
+            }
+            if (output.kind !== "asset") {
+              throw new Error(
+                "Durable Provider media output must be a canonical Asset handle.",
+              );
+            }
+            const media = output.asset;
+            if (frozen.targetKind === "local-executor") {
+              const staged = await localOutputStaging.resolve({
+                projectId: frozen.projectId,
+                actionRunId: run.actionRunId,
+                outputSlot: run.outputSlot,
+              });
+              if (!staged || staged.projectAssetId !== media.assetId) {
+                throw new Error(
+                  "Host-local durable media output requires its stable staging receipt.",
+                );
+              }
+              if (staged.kind !== frozen.kind) {
+                throw new Error(
+                  `Host-local durable output is ${staged.kind}, not ${frozen.kind}.`,
+                );
+              }
+              const prompt =
+                typeof frozen.input.values.prompt === "string"
+                  ? frozen.input.values.prompt
+                  : `Generate ${frozen.kind}`;
+              const candidate = ownedProjectAssetEntry({
+                projectAssetId: staged.projectAssetId,
+                projectId: frozen.projectId,
+                taskId: idempotencyKey,
+                actionRunId: run.actionRunId,
+                kind: staged.kind,
+                prompt,
+                projection: staged.projection,
+                width: staged.metadata.width,
+                height: staged.metadata.height,
+                durationMs: staged.metadata.durationMs,
+                provider: staged.result?.provider ?? frozen.provider,
+                modelEndpoint:
+                  staged.result?.modelEndpoint ?? frozen.modelEndpoint,
+              });
+              const projectAsset = await projectAssets.prepareStagedOwnedEntry({
+                projectAssetId: candidate.id,
+                kind: candidate.kind,
+                resourceId: staged.projection.resource.id,
+                ...(candidate.name ? { name: candidate.name } : {}),
+                metadata: {
+                  ...candidate.metadata,
+                  ...staged.metadata,
+                },
+                ...(candidate.provenance
+                  ? { provenance: candidate.provenance }
+                  : {}),
+              });
+              return {
+                kind: "asset",
+                projectAsset,
+              } as ExecutablePluginJsonValue;
+            }
+            const staged = await pluginAssetStaging.resolve({
+              projectId: frozen.projectId,
+              projectAssetId: media.assetId,
+            });
+            if (staged && staged.kind !== frozen.kind) {
+              throw new Error(
+                `Durable Provider staged ${staged.kind} output for a ${frozen.kind} run.`,
+              );
+            }
+            if (!staged) {
+              throw new Error(
+                "Durable Provider media output requires a Host staging receipt.",
+              );
+            }
+            const assetId = staged.projectAssetId;
+            const projection = await projectAssets.resolveStagedOwned(
+              staged.resourceId,
+            );
+            const candidate = ownedProjectAssetEntry({
+              projectAssetId: assetId,
+              projectId: frozen.projectId,
+              taskId: idempotencyKey,
+              actionRunId: run.actionRunId,
+              kind: frozen.kind,
+              ...(typeof frozen.input.values.prompt === "string"
+                ? { prompt: frozen.input.values.prompt }
+                : {}),
+              ...(frozen.delivery?.name ? { name: frozen.delivery.name } : {}),
+              ...(frozen.delivery?.prompt
+                ? { prompt: frozen.delivery.prompt }
+                : {}),
+              projection,
+              ...(frozen.provider ? { provider: frozen.provider } : {}),
+              ...(frozen.modelEndpoint
+                ? { modelEndpoint: frozen.modelEndpoint }
+                : {}),
+            });
+            const projectAsset = await projectAssets.prepareStagedOwnedEntry({
+              projectAssetId: candidate.id,
+              kind: candidate.kind,
+              resourceId: projection.resource.id,
+              ...(candidate.name ? { name: candidate.name } : {}),
+              metadata: candidate.metadata,
+              ...(candidate.provenance
+                ? { provenance: candidate.provenance }
+                : {}),
+            });
+            return {
+              kind: "asset",
+              projectAsset,
+            } as ExecutablePluginJsonValue;
+          },
+        },
+        publisher: {
+          async publish({ run, stagedOutput }) {
+            const frozen = frozenExecutorInput(run);
+            if (!frozen.nodeId && !frozen.delivery) {
+              throw new Error(
+                "A durable Provider publication requires a Canvas node or Project Asset delivery.",
+              );
+            }
+            const target = frozen.nodeId
+              ? (nodes.get(frozen.nodeId) as Record<string, any> | undefined)
+              : undefined;
+            if (
+              frozen.nodeId &&
+              (!target?.data || typeof target.data !== "object")
+            ) {
+              throw new Error(
+                `Durable Provider target node ${frozen.nodeId} is missing.`,
+              );
+            }
+            if (
+              !stagedOutput ||
+              typeof stagedOutput !== "object" ||
+              Array.isArray(stagedOutput)
+            ) {
+              throw new Error("Durable Provider staged output is invalid.");
+            }
+            const staged = stagedOutput as Record<string, unknown>;
+            let publishedAsset: ProjectAssetEntry | undefined;
+            if (staged.kind === "asset") {
+              const parsed = ProjectAssetEntrySchema.safeParse(
+                staged.projectAsset,
+              );
+              if (!parsed.success) {
+                throw new Error(
+                  `Durable Provider staged Project Asset is invalid: ${parsed.error.issues[0]?.message ?? "invalid entry"}`,
+                );
+              }
+              const publication = publishLocalProjectAssetWithBindings(
+                doc,
+                parsed.data,
+                [
+                  {
+                    id: `action-asset:${durableRunIdempotencyKey(run)}:output`,
+                    owner: durableActionOwner(frozen, run.actionRunId),
+                    direction: "output",
+                    slot: run.outputSlot,
+                    projectAssetId: parsed.data.id,
+                  },
+                ],
+              );
+              publishedAsset = publication.entry;
+              changed = publication.changed || changed;
+            }
+            if (frozen.delivery) {
+              if (!publishedAsset) {
+                throw new Error(
+                  "Direct Project Asset delivery requires a staged Asset output.",
+                );
+              }
+              // Project Asset + Action binding are the complete public projection for a
+              // node-less run. Checkpoint them before the journal records publication so a
+              // crash can replay this idempotent pair without regenerating the model.
+              await input.checkpoint?.();
+              return;
+            }
+            const updates = publishedAsset
+              ? { status: "completed", assetId: publishedAsset.id }
+              : staged.kind === "text" && typeof staged.content === "string"
+                ? {
+                    status: "completed",
+                    content: staged.content,
+                    ...(typeof staged.provider === "string"
+                      ? { provider: staged.provider }
+                      : {}),
+                    ...(typeof staged.modelEndpoint === "string"
+                      ? { modelEndpoint: staged.modelEndpoint }
+                      : {}),
+                  }
+                : undefined;
+            if (!updates)
+              throw new Error("Durable Provider staged output is incomplete.");
+            if (!frozen.nodeId || !target?.data) {
+              throw new Error(
+                "A Canvas Provider publication requires a target node.",
+              );
+            }
+            const current = target.data as Record<string, unknown>;
+            if (
+              !isCurrentProviderNodeRevision({
+                frozen,
+                actionRunId: run.actionRunId,
+                nodeData: current,
+                currentProjectionRevisionId:
+                  frozen.kind === "model"
+                    ? ""
+                    : nodeProjectionRevisionId(
+                        frozen.nodeId,
+                        frozen.kind,
+                        current,
+                        frozen.targetKind === "action"
+                          ? customActionPromptFromData(current)
+                          : undefined,
+                        frozen.targetKind === "action" ? "action" : undefined,
+                      ),
+              })
+            ) {
+              // Asset + binding publication is the durable consumer-CAS boundary. A stale
+              // run still owns that immutable result, but it cannot replace the coarse
+              // outcome of a Canvas node that now represents another Action revision.
+              await input.checkpoint?.();
+              return;
+            }
+            if (
+              current.status === updates.status &&
+              ("assetId" in updates
+                ? current.assetId === updates.assetId
+                : current.content === updates.content)
+            ) {
+              // A previous publication may have mutated the in-memory Loro doc and then lost
+              // its persistence acknowledgement. Re-checkpoint before the journal records
+              // success; equality alone is not evidence that the snapshot survived.
+              await input.checkpoint?.();
+              return;
+            }
+            nodes.set(frozen.nodeId, {
+              ...target,
+              data: durableProviderNodeData(current, updates),
+            });
+            changed = true;
+            await input.checkpoint?.();
+          },
+          async publishFailure({ run, failure }) {
+            const frozen = frozenExecutorInput(run);
+            if (!frozen.nodeId) return;
+            const target = nodes.get(frozen.nodeId) as
+              Record<string, any> | undefined;
+            if (!target?.data || typeof target.data !== "object") return;
+            const current = target.data as Record<string, unknown>;
+            if (
+              !isCurrentProviderNodeRevision({
+                frozen,
+                actionRunId: run.actionRunId,
+                nodeData: current,
+                currentProjectionRevisionId:
+                  frozen.kind === "model"
+                    ? ""
+                    : nodeProjectionRevisionId(
+                        frozen.nodeId,
+                        frozen.kind,
+                        current,
+                        frozen.targetKind === "action"
+                          ? customActionPromptFromData(current)
+                          : undefined,
+                        frozen.targetKind === "action" ? "action" : undefined,
+                      ),
+              })
+            ) {
+              await input.checkpoint?.();
+              return;
+            }
+            if (
+              current.status === "failed" &&
+              current.failureCode === failure.code &&
+              current.error === failure.message
+            ) {
+              await input.checkpoint?.();
+              return;
+            }
+            nodes.set(frozen.nodeId, {
+              ...target,
+              data: durableProviderNodeData(current, {
+                status: "failed",
+                failureCode: failure.code,
+                error: failure.message,
+              }),
+            });
+            changed = true;
+            await input.checkpoint?.();
+          },
+        },
+        retryPolicy: createBoundedRetryPolicy({
+          maxFailures: { submit: 3, poll: 3, stage: 3, publish: 3 },
+          baseDelayMs: 1_000,
+          maxDelayMs: 60_000,
+        }),
+        ...(durable?.now ? { clock: { now: durable.now } } : {}),
+      });
 
       const driveDurableRun = async (identity: {
         actionRunId: string;
@@ -1284,6 +1814,39 @@ export function createLocalWorkflowProcessor(
           await input.checkpoint?.();
         }
         return run;
+      };
+
+      const resumeCanvasDurableRun = async (options: {
+        identity: { actionRunId: string; outputSlot: string };
+        node: Record<string, any>;
+        nodeId: string;
+        kind: ProcessableNodeKind;
+        nodeData: Record<string, unknown>;
+        projectionRevisionId: string;
+      }): Promise<boolean> => {
+        if (!durableJournal) return false;
+        const existing = await durableJournal.load(options.identity);
+        if (!existing) return false;
+        await ensureDurableInputBindings(options.identity);
+        await providerExecutionHandoffs.remove(projectId, options.nodeId);
+        const ownsCurrentRevision = isCurrentProviderNodeRevision({
+          frozen: frozenExecutorInput(existing),
+          actionRunId: options.identity.actionRunId,
+          nodeData: options.nodeData,
+          currentProjectionRevisionId: options.projectionRevisionId,
+        });
+        if (ownsCurrentRevision && options.nodeData.status !== "generating") {
+          nodes.set(options.nodeId, {
+            ...options.node,
+            data: durableProviderNodeData(options.nodeData, {
+              status: "generating",
+            }),
+          });
+          changed = true;
+          await input.checkpoint?.();
+        }
+        await driveDurableRun(options.identity);
+        return true;
       };
 
       if (coordinator && durableJournal) {
@@ -1349,38 +1912,15 @@ export function createLocalWorkflowProcessor(
                   }),
                 ),
               ];
-              const prompt = extractPromptText(
-                parsePromptParts(
-                  typeof data.prompt === "string"
-                    ? data.prompt
-                    : typeof data.content === "string"
-                      ? data.content
-                      : "",
-                ),
-              );
+              const prompt = customActionPromptFromData(data);
               const params =
                 data.customActionParams &&
                 typeof data.customActionParams === "object" &&
                 !Array.isArray(data.customActionParams)
                   ? (data.customActionParams as Record<string, any>)
                   : {};
-              const taskIdPrefix = `local-custom-${sanitizeStorageSegment(nodeId)}`;
               const outputSlot =
                 custom.outputType === "text" ? "text" : "media";
-              let runNumber = 1;
-              let taskId = taskIdPrefix;
-              let identity = { actionRunId: taskId, outputSlot };
-              let existingRun = await durableJournal.load(identity);
-              while (
-                existingRun?.phase === "succeeded" ||
-                (existingRun?.phase === "failed" &&
-                  existingRun.projectedAt !== undefined)
-              ) {
-                runNumber += 1;
-                taskId = `${taskIdPrefix}:${runNumber}`;
-                identity = { actionRunId: taskId, outputSlot };
-                existingRun = await durableJournal.load(identity);
-              }
               const actor =
                 data.actorType === "agent"
                   ? {
@@ -1395,29 +1935,65 @@ export function createLocalWorkflowProcessor(
                         ? { id: data.actorUserId }
                         : {}),
                     };
-              if (!existingRun) {
-                const createdAt = durable?.now?.() ?? Date.now();
-                await coordinator.coordinate({
-                  type: "create",
-                  ...identity,
-                  deadlineAt: createdAt + generationDeadlineMs,
-                  executor: {
-                    targetKind: "action",
-                    binding: parsedBinding.data,
-                    actionId: custom.actionId,
-                    actor,
-                    kind: custom.outputType,
-                    projectId,
-                    nodeId,
-                    provider: `plugin:${parsedBinding.data.pluginId}`,
-                    modelEndpoint: custom.actionId,
-                    input: {
-                      values: { prompt, ...params },
-                      references,
-                    },
-                  },
-                });
+              const projectionRevisionId = nodeProjectionRevisionId(
+                nodeId,
+                custom.outputType,
+                data,
+                prompt,
+                "action",
+              );
+              const executorCandidate = {
+                targetKind: "action" as const,
+                binding: parsedBinding.data,
+                actionId: custom.actionId,
+                actor,
+                kind: custom.outputType,
+                projectId,
+                nodeId,
+                provider: `plugin:${parsedBinding.data.pluginId}`,
+                modelEndpoint: custom.actionId,
+                nodeProjectionRevisionId: projectionRevisionId,
+                input: {
+                  values: { prompt, ...params },
+                  references,
+                },
+              } satisfies Omit<
+                FrozenLocalProviderExecutorInput,
+                "schemaVersion"
+              >;
+              const actionRevisionId =
+                canvasExecutorActionRevisionId(executorCandidate);
+              const identity = durableProviderIdentity({
+                projectId,
+                nodeId,
+                kind: custom.outputType,
+                actionRevisionId,
+              });
+              if (
+                await resumeCanvasDurableRun({
+                  identity,
+                  node,
+                  nodeId,
+                  kind: custom.outputType,
+                  nodeData: data,
+                  projectionRevisionId,
+                })
+              ) {
+                continue;
               }
+              const createdAt = durable?.now?.() ?? Date.now();
+              await coordinator.coordinate({
+                type: "create",
+                ...identity,
+                deadlineAt: createdAt + generationDeadlineMs,
+                executor: {
+                  ...executorCandidate,
+                  publicOwner: {
+                    actionId: custom.actionId,
+                    actionRevisionId,
+                  },
+                },
+              });
               await ensureDurableInputBindings(identity);
               nodes.set(nodeId, {
                 ...node,
@@ -1472,51 +2048,68 @@ export function createLocalWorkflowProcessor(
           renderData.timelineDsl &&
           typeof renderData.timelineDsl === "object";
         if (isTimelineRender) {
-          const taskId = `local-render-${sanitizeStorageSegment(nodeId)}`;
           try {
             if (!options.timelineRenderer) {
               throw new Error("Timeline rendering backend is unavailable");
             }
-            const timelineDsl = await resolveLocalTimelineDslReferences({
-              dataDir: options.dataDir,
-              doc,
-              projectId,
-              mediaBaseUrl: options.mediaBaseUrl,
-              timelineDsl: renderData.timelineDsl,
-            });
-            const rendered = await options.timelineRenderer.render({
-              projectId,
-              taskId,
-              timelineDsl,
-            });
-            const asset = await saveAsset({
-              doc,
-              projectAssets,
-              projectId,
-              nodeId,
-              taskId,
-              kind: "video",
-              nodeData: {
-                ...renderData,
-                modelId: "remotion-render",
-                prompt: `Render Timeline ${String(renderData.sourceTimelineId ?? nodeId)}`,
-              },
-              bytes: rendered.bytes,
-              contentType: rendered.contentType ?? "video/mp4",
-              width: rendered.width,
-              height: rendered.height,
-              durationMs: rendered.durationMs,
-              provider: "local-render",
-            });
-            const nextData: Record<string, any> = {
-              ...renderData,
-              status: "completed",
-              assetId: asset.id,
+            const inputOwner = timelineRenderInputOwner(renderData);
+            if (!inputOwner) {
+              throw new Error(
+                "Timeline render is missing its frozen Action input owner",
+              );
+            }
+            const identity = {
+              actionRunId: inputOwner.actionRunId,
+              outputSlot: "render:output",
             };
-            delete nextData.pendingTask;
-            delete nextData.pendingTaskAt;
-            delete nextData.error;
-            nodes.set(nodeId, { ...node, data: nextData });
+            const createdAt = durable?.now?.() ?? Date.now();
+            await coordinator.coordinate({
+              type: "create",
+              ...identity,
+              deadlineAt: createdAt + generationDeadlineMs,
+              executor: {
+                targetKind: "local-executor",
+                binding: LOCAL_EXECUTOR_BINDING,
+                actionId: inputOwner.actionId,
+                actor: {
+                  kind: renderData.actorType === "agent" ? "agent" : "user",
+                  ...(renderData.actorType === "agent" &&
+                  typeof renderData.actorAgentId === "string"
+                    ? { id: renderData.actorAgentId }
+                    : typeof renderData.actorUserId === "string"
+                      ? { id: renderData.actorUserId }
+                      : {}),
+                },
+                publicOwner: {
+                  actionId: inputOwner.actionId,
+                  actionRevisionId: inputOwner.actionRevisionId,
+                },
+                kind: "video",
+                projectId,
+                nodeId,
+                provider: "local-render",
+                modelEndpoint: "remotion-render",
+                input: {
+                  values: {
+                    localExecutor: "timeline-render",
+                    outputSlot: identity.outputSlot,
+                    timelineDsl: jsonSnapshot(renderData.timelineDsl),
+                    inputOwner: jsonSnapshot(inputOwner),
+                    prompt: `Render Timeline ${String(renderData.sourceTimelineId ?? nodeId)}`,
+                  },
+                  references: [],
+                },
+              },
+            });
+            nodes.set(nodeId, {
+              ...node,
+              data: durableProviderNodeData(renderData, {
+                status: "generating",
+              }),
+            });
+            changed = true;
+            await input.checkpoint?.();
+            await driveDurableRun(identity);
           } catch (error) {
             const nextData: Record<string, any> = {
               ...renderData,
@@ -1534,31 +2127,15 @@ export function createLocalWorkflowProcessor(
         const kind = pendingKindForNode(node);
         if (!kind) continue;
 
-        const durableIdentity = durableProviderIdentity(
-          projectId,
+        const currentNodeData = node.data as Record<string, unknown>;
+        const currentNodeProjectionRevisionId = nodeProjectionRevisionId(
           nodeId,
           kind,
+          currentNodeData,
         );
-        if (durableJournal) {
-          const existingDurableRun = await durableJournal.load(durableIdentity);
-          if (existingDurableRun) {
-            await ensureDurableInputBindings(durableIdentity);
-            await providerExecutionHandoffs.remove(projectId, nodeId);
-            const existingData = node.data as Record<string, unknown>;
-            if (existingData.status !== "generating") {
-              nodes.set(nodeId, {
-                ...node,
-                data: durableProviderNodeData(existingData, {
-                  status: "generating",
-                }),
-              });
-              changed = true;
-              await input.checkpoint?.();
-            }
-            await driveDurableRun(durableIdentity);
-            continue;
-          }
-        }
+        // Base-key runs from the pre-ActionRevision journal are advanced only by the recovery
+        // scan above. They have no complete projection guard and therefore never reserve or
+        // project onto this mutable node; the current revision receives its own scoped run below.
 
         const taskId = `local-gen-${sanitizeStorageSegment(nodeId)}`;
         let data = node.data as Record<string, unknown>;
@@ -1793,12 +2370,12 @@ export function createLocalWorkflowProcessor(
                   "Provider-backed generation requires the Host durable run coordinator before submit.",
                 );
               }
-              const createdAt = durable?.now?.() ?? Date.now();
               const executor: Omit<
                 FrozenLocalProviderExecutorInput,
                 "schemaVersion"
               > = {
                 binding: plan.binding,
+                nodeProjectionRevisionId: currentNodeProjectionRevisionId,
                 ...(plan.accountId ? { accountId: plan.accountId } : {}),
                 kind: plan.kind,
                 projectId: plan.projectId,
@@ -1808,6 +2385,30 @@ export function createLocalWorkflowProcessor(
                 assetInputs: plan.assetInputs,
                 input: plan.input as FrozenLocalProviderExecutorInput["input"],
               };
+              const actionRevisionId = canvasExecutorActionRevisionId(executor);
+              executor.publicOwner = {
+                actionId: `node:${nodeId}`,
+                actionRevisionId,
+              };
+              const durableIdentity = durableProviderIdentity({
+                projectId,
+                nodeId,
+                kind,
+                actionRevisionId,
+              });
+              if (
+                await resumeCanvasDurableRun({
+                  identity: durableIdentity,
+                  node,
+                  nodeId,
+                  kind,
+                  nodeData: data,
+                  projectionRevisionId: currentNodeProjectionRevisionId,
+                })
+              ) {
+                continue;
+              }
+              const createdAt = durable?.now?.() ?? Date.now();
               await coordinator.coordinate({
                 type: "create",
                 ...durableIdentity,
@@ -1825,126 +2426,83 @@ export function createLocalWorkflowProcessor(
               continue;
             }
           }
-          const invocationStartedAt = Date.now();
-          const providerDeadlineAt = invocationStartedAt + generationDeadlineMs;
-          if (kind === "text") {
-            let generated;
-            if (options.textAgent && model === "local-acp") {
-              try {
-                generated = await beforeProviderGenerationDeadline(
-                  options.textAgent.generate({
-                    projectId,
-                    prompt,
-                    modelId: model,
-                    modelParams: effectiveModelParams,
-                    actorAgentId:
-                      typeof data.actorAgentId === "string"
-                        ? data.actorAgentId
-                        : undefined,
-                  }),
-                  providerDeadlineAt,
-                  generationDeadlineMs,
-                );
-              } catch {
-                generated = await beforeProviderGenerationDeadline(
-                  aigc.generateText(commonInput),
-                  providerDeadlineAt,
-                  generationDeadlineMs,
-                );
-              }
-            } else {
-              generated = await beforeProviderGenerationDeadline(
-                aigc.generateText(commonInput),
-                providerDeadlineAt,
-                generationDeadlineMs,
-              );
-            }
-            await recordGeneratedTextRevision({
-              dataDir: options.dataDir,
-              userId,
-              projectId,
-              nodeId,
-              nodeData: data,
-              content: generated.text,
-            });
-            const nextData = durableProviderNodeData(data, {
-              status: "completed",
-              content: generated.text,
-              ...(generated.provider ? { provider: generated.provider } : {}),
-              ...(generated.modelEndpoint
-                ? { modelEndpoint: generated.modelEndpoint }
-                : {}),
-            });
-            nodes.set(nodeId, { ...node, data: nextData });
-            changed = true;
-            if (selectedProviderAccountId) {
-              await providerExecutionHandoffs.remove(projectId, nodeId);
-            }
-            continue;
-          }
-          const generation =
-            kind === "image"
-              ? aigc.generateImage(commonInput)
-              : kind === "video"
-                ? aigc.generateVideo(commonInput)
-                : aigc.generateAudio(commonInput);
-          const generated = await beforeProviderGenerationDeadline(
-            generation,
-            providerDeadlineAt,
-            generationDeadlineMs,
-          );
-          if (generated.status === "accepted") {
-            throw new Error(
-              "An accepted Provider result requires the durable executable Provider path.",
-            );
-          }
-          if (generated.status === "failed") {
-            nodes.set(nodeId, {
-              ...node,
-              data: durableProviderNodeData(data, {
-                status: "failed",
-                error: generated.error.message,
-                failureCode: generated.error.code,
-              }),
-            });
-            changed = true;
-            if (selectedProviderAccountId) {
-              await providerExecutionHandoffs.remove(projectId, nodeId);
-            }
-            continue;
-          }
-          const asset = await saveAsset({
-            doc,
-            projectAssets,
+          const outputSlot = kind === "text" ? "text" : "media";
+          const localExecutorCandidate: Omit<
+            FrozenLocalProviderExecutorInput,
+            "schemaVersion"
+          > = {
+            targetKind: "local-executor",
+            binding: LOCAL_EXECUTOR_BINDING,
+            actionId: `node:${nodeId}`,
+            nodeProjectionRevisionId: currentNodeProjectionRevisionId,
+            actor: {
+              kind: data.actorType === "agent" ? "agent" : "user",
+              ...(data.actorType === "agent" &&
+              typeof data.actorAgentId === "string"
+                ? { id: data.actorAgentId }
+                : typeof data.actorUserId === "string"
+                  ? { id: data.actorUserId }
+                  : {}),
+            },
+            kind,
             projectId,
             nodeId,
-            taskId,
+            provider: "local-executor",
+            modelEndpoint: model,
+            input: {
+              values: {
+                localExecutor: "generation",
+                outputSlot,
+                generationKind: kind,
+                generationInput: jsonSnapshot(commonInput),
+                useLocalTextAgent: usesLocalTextAgent,
+                prompt,
+              },
+              references,
+            },
+          };
+          const actionRevisionId = canvasExecutorActionRevisionId(
+            localExecutorCandidate,
+          );
+          localExecutorCandidate.publicOwner = {
+            actionId: `node:${nodeId}`,
+            actionRevisionId,
+          };
+          const durableIdentity = durableProviderIdentity({
+            projectId,
+            nodeId,
             kind,
-            nodeData: data,
-            bytes: generated.bytes,
-            contentType: generated.contentType,
-            width: generated.width,
-            height: generated.height,
-            durationMs: generated.durationMs,
-            waveform: generated.waveform,
-            transcript: generated.transcript,
-            requestId: generated.requestId,
-            provider: generated.provider,
-            modelEndpoint: generated.modelEndpoint,
-            remoteUrl: generated.remoteUrl,
+            actionRevisionId,
           });
-          const nextData = durableProviderNodeData(data, {
-            status: "completed",
-            assetId: asset.id,
-            ...(generated.pluginBinding
-              ? { pluginBinding: generated.pluginBinding }
-              : {}),
+          if (
+            await resumeCanvasDurableRun({
+              identity: durableIdentity,
+              node,
+              nodeId,
+              kind,
+              nodeData: data,
+              projectionRevisionId: currentNodeProjectionRevisionId,
+            })
+          ) {
+            continue;
+          }
+          const createdAt = durable?.now?.() ?? Date.now();
+          await coordinator.coordinate({
+            type: "create",
+            ...durableIdentity,
+            deadlineAt: createdAt + generationDeadlineMs,
+            executor: localExecutorCandidate,
           });
-          nodes.set(nodeId, { ...node, data: nextData });
+          await ensureDurableInputBindings(durableIdentity);
+          data = durableProviderNodeData(data, { status: "generating" });
+          nodes.set(nodeId, { ...node, data });
           changed = true;
           if (selectedProviderAccountId) {
             await providerExecutionHandoffs.remove(projectId, nodeId);
           }
+          await input.checkpoint?.();
+          await driveDurableRun(durableIdentity);
+          continue;
         } catch (error) {
           if (selectedProviderAccountId) {
             await providerExecutionHandoffs.remove(projectId, nodeId);

@@ -1,8 +1,18 @@
 # Official and Custom Views with a Shared Action Runtime
 
-Status: Proposed implementation plan
+Status: Superseded proposal; do not implement as the current runtime contract
 
-Last updated: 2026-07-10
+Last updated: 2026-08-13
+
+This proposal predates the current Asset and Durable Run contracts. Its
+`AssetRevision`, synchronized standalone `ActionRun`, and execution-host
+language below is historical. Use
+[`apps/docs/guide/asset-system.md`](../apps/docs/guide/asset-system.md) for
+media identity/bindings and
+[`apps/docs/guide/durable-run-protocol.md`](../apps/docs/guide/durable-run-protocol.md)
+for the current Local journal plus design-only Cloud adapter. Any future Views
+work must adapt to those contracts rather than reviving this proposal's data
+model.
 
 ## Goal
 

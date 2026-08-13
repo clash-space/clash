@@ -64,6 +64,11 @@ storage path. It returns one of the forms the Host can supply:
 - `provider-url` with a Provider-fetchable URL and expiry;
 - text.
 
+Pass a frozen reference from `invocation.input.references`. The Host authorizes
+its invocation-scoped identity (slot, Asset id, and kind) before reading
+Project bytes. Knowing an Asset id from the same Project does not authorize a
+plugin to resolve it under another slot or kind.
+
 The plugin chooses the vendor-specific adaptation: inline the bytes, forward a
 `providerUrl`, or upload bytes to the vendor first. The Host returns
 `form: "provider-url"` only after it has produced an address the selected
@@ -120,6 +125,11 @@ Named Host functionality is declared under `contributes.hostTools`. For
 example, `codex.imagegen` is available only to a plugin that explicitly
 contributes it. Host tools are product integrations, not general I/O
 declarations.
+
+Declaring `codex.imagegen` authorizes the tool, not arbitrary Project reads.
+Every image handle in its `references` array must match the Asset id and kind
+of a frozen `invocation.input.references` entry. The tool's `slot` names its
+output and is not an input-reference authorization field.
 
 ## Security model
 

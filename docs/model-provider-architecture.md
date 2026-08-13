@@ -1,12 +1,21 @@
 # Model Provider Architecture
 
-Last updated: 2026-07-01
+Last updated: 2026-08-13
 
 This document defines Clash's model/provider contract. The design is inspired
 by OpenRouter's mental model: users choose a model, and the system resolves a
 provider that can run it. Internally, model cards declare concrete provider
 implementations; provider pages and model routing controls are reverse indexes
 over those declarations plus the user's configured provider accounts.
+
+Delivery boundary: model-card composition, Host-owned account selection, and
+the shared Provider executor contract are implemented for the Local Host. The
+Cloud Durable Run/Workflow adapter is design-only. This document defines model
+and route composition; the canonical step states, error codes, retry boundary,
+deadlines, journal checkpoints, and Local/Cloud ownership contract live in
+[`apps/docs/guide/durable-run-protocol.md`](../apps/docs/guide/durable-run-protocol.md).
+The Provider author-facing explanation and complete error table live in
+[`apps/docs/plugins/waiting.md`](../apps/docs/plugins/waiting.md).
 
 ## Goals
 
@@ -163,6 +172,31 @@ This matters for UI naming:
   `openai-images` shapes.
 - Better: `Add custom provider` with a `Shape` selector containing
   `OpenAI-compatible` and `Anthropic-compatible`.
+
+## Runtime and ownership boundary
+
+A Provider contribution declares a vendor route and executor export. It never
+selects an installed account, owns a task loop, or publishes Project state.
+The Local Host currently supplies the Durable Run adapter; a future Cloud owner
+must reuse the same engine with Workflow journal, OSS staging, and a hosted
+Project publisher rather than adding a second Provider ABI.
+
+| Concern  | Provider plugin                                                         | Host/Durable Run owner                                               |
+| -------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Account  | Reads the already selected invocation-scoped store                      | Resolves eligible accounts, applies routing, freezes private scope   |
+| Submit   | Performs at most one upstream submission                                | Claims/checkpoints the attempt and decides bounded retry             |
+| Poll     | Performs at most one status request and translates the result           | Persists opaque poll state and schedules the next invocation         |
+| Result   | Returns typed text/media or uses the injected upload capability         | Verifies/stages immutable output and publishes idempotently          |
+| Failure  | Returns `failed` with canonical `code`, `retryable`, and `requestState` | Validates/classifies Host failures and applies retry/deadline policy |
+| Recovery | None between invocations                                                | Resumes from the owner-private journal after restart/replay          |
+
+The only Provider step results are `completed`, `accepted`, and `failed`.
+`accepted` must include durable, credential-free opaque poll state. A failure's
+`requestState` distinguishes a definite rejection, an ambiguous submit, and a
+failure after acceptance; `retryable` is only input to Host policy. Unknown
+upstream task states are `invalid_response`, not indefinite waiting. Callback
+fields are reserved for a future Host adapter, but the current product requires
+every asynchronous Provider to remain pollable.
 
 ## Hosting Contract
 
@@ -326,6 +360,10 @@ type ResolvedProviderRoute = {
 };
 ```
 
+`accountId` above is owner-private resolved routing state. It is valid only
+inside the Host after account selection; it is not allowed in a model card,
+Provider document, model binding, plugin invocation, or SDK store request.
+
 The generation registry should switch on `providerId` or the resolved adapter,
 not on model ids alone.
 
@@ -399,6 +437,19 @@ and execution identity; model cards describe which providers can execute the
 model.
 
 ## Migration Plan
+
+This list describes the architecture migration direction, not Cloud delivery.
+Current Local delivery already composes model-card implementation rows, routes
+through Host-selected account scopes, and invokes first-party executors through
+the shared one-submit/one-poll contract. Google, MiniMax, fal, Pika, and
+Volcengine have deterministic contract coverage; the installed Hilo peer uses
+the same boundary. Credentialed replay is deliberately reported per cassette
+in
+[`apps/docs/plugins/traffic-replay.md`](../apps/docs/plugins/traffic-replay.md):
+in particular Pika has no paid-upstream cassette, while Volcengine's committed
+recordings prove only their listed Seedance and text-only Seed Audio requests.
+The older hosted Pika wait loop is Cloud migration debt, not evidence of a
+Cloud Durable Run adapter.
 
 1. Introduce `ProviderShape` as its own schema.
 2. Rename API-facing `apiShape` concepts to `shape` where possible.

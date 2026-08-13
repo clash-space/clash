@@ -1,6 +1,17 @@
 import { z } from "zod";
 
 import { AsrTimedTranscriptSchema } from "./production-metadata.js";
+import {
+  MetadataAttachmentTargetSchema,
+  type MetadataAttachmentTarget,
+} from "./metadata-attachments.js";
+
+export {
+  ActionRevisionMetadataTargetSchema,
+  MetadataAttachmentTargetSchema,
+  ProjectAssetMetadataTargetSchema,
+  metadataAttachmentTargetKey,
+} from "./metadata-attachments.js";
 
 /**
  * Transcription is canonical only as the identity of one word grid: which media
@@ -35,7 +46,9 @@ export const MediaTranscriptMetadataSchema = z.object({
   }),
 });
 
-export type MediaTranscriptMetadata = z.infer<typeof MediaTranscriptMetadataSchema>;
+export type MediaTranscriptMetadata = z.infer<
+  typeof MediaTranscriptMetadataSchema
+>;
 
 /**
  * What produced a rendered frame, and from which revision of it.
@@ -62,7 +75,9 @@ export const MediaRenderLineageMetadataSchema = z.object({
   sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
 });
 
-export type MediaRenderLineageMetadata = z.infer<typeof MediaRenderLineageMetadataSchema>;
+export type MediaRenderLineageMetadata = z.infer<
+  typeof MediaRenderLineageMetadataSchema
+>;
 
 /**
  * A short producer-attributed description of what the media shows or says.
@@ -79,7 +94,9 @@ export const MediaDescriptionMetadataSchema = z.object({
   sourceHash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
 });
 
-export type MediaDescriptionMetadata = z.infer<typeof MediaDescriptionMetadataSchema>;
+export type MediaDescriptionMetadata = z.infer<
+  typeof MediaDescriptionMetadataSchema
+>;
 
 type TranscriptBody = z.infer<typeof AsrTimedTranscriptSchema>;
 
@@ -88,13 +105,17 @@ type TranscriptBody = z.infer<typeof AsrTimedTranscriptSchema>;
  * `segments[].text` are derivable restatements of the same words, so hashing
  * them would make a cosmetic reflow look like a different transcript.
  */
-export function transcriptContentHashInput(body: Pick<TranscriptBody, "words">): string {
+export function transcriptContentHashInput(
+  body: Pick<TranscriptBody, "words">,
+): string {
   return JSON.stringify(
     body.words.map((word) => [word.id, word.text, word.startMs, word.endMs]),
   );
 }
 
-export function summarizeTranscript(body: TranscriptBody): MediaTranscriptMetadata["summary"] {
+export function summarizeTranscript(
+  body: TranscriptBody,
+): MediaTranscriptMetadata["summary"] {
   const confidences = body.words.flatMap((word) =>
     typeof word.confidence === "number" ? [word.confidence] : [],
   );
@@ -105,7 +126,8 @@ export function summarizeTranscript(body: TranscriptBody): MediaTranscriptMetada
     ...(confidences.length > 0
       ? {
           averageConfidence:
-            confidences.reduce((total, value) => total + value, 0) / confidences.length,
+            confidences.reduce((total, value) => total + value, 0) /
+            confidences.length,
         }
       : {}),
   };
@@ -120,13 +142,21 @@ export type DeclaredAssetMetadataKind = {
   schema: AssetMetadataSchemaLike;
 };
 
-export type AssetMetadataSchemaIssue = { path: ReadonlyArray<PropertyKey>; message?: string };
+export type AssetMetadataSchemaIssue = {
+  path: ReadonlyArray<PropertyKey>;
+  message?: string;
+};
 
 export type AssetMetadataSchemaLike = {
   parse(value: unknown): unknown;
-  safeParse(value: unknown):
+  safeParse(
+    value: unknown,
+  ):
     | { success: true; data?: unknown }
-    | { success: false; error: { issues: ReadonlyArray<AssetMetadataSchemaIssue> } };
+    | {
+        success: false;
+        error: { issues: ReadonlyArray<AssetMetadataSchemaIssue> };
+      };
 };
 
 /**
@@ -145,8 +175,12 @@ const declaredKinds = new Map<string, DeclaredAssetMetadataKind>();
  * this rule and stay grandfathered, but an open registry only survives if
  * everything added to it can be migrated later.
  */
-export function registerAssetMetadataKind(declaration: DeclaredAssetMetadataKind): void {
-  const issuesFor = (probe: unknown): ReadonlyArray<AssetMetadataSchemaIssue> => {
+export function registerAssetMetadataKind(
+  declaration: DeclaredAssetMetadataKind,
+): void {
+  const issuesFor = (
+    probe: unknown,
+  ): ReadonlyArray<AssetMetadataSchemaIssue> => {
     const result = declaration.schema.safeParse(probe);
     return result.success ? [] : result.error.issues;
   };
@@ -156,7 +190,12 @@ export function registerAssetMetadataKind(declaration: DeclaredAssetMetadataKind
   ): boolean =>
     issues.some((issue) => issue.path.length === 1 && issue.path[0] === field);
 
-  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+  if (
+    complainsAbout(
+      issuesFor({ schemaVersion: 1, kind: declaration.kind }),
+      "kind",
+    )
+  ) {
     throw new Error(
       `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`,
     );
@@ -181,27 +220,31 @@ export function getDeclaredAssetMetadataKind(
 
 export type ParsedAssetMetadataFillAction = {
   actionId: string;
-  targetAssetId: string;
+  target: MetadataAttachmentTarget;
   metadataKind: string;
   metadata: { kind: string } & Record<string, unknown>;
   producer: string;
   createdAt?: string;
 };
 
-const FillActionEnvelopeSchema = z.object({
-  actionId: z.string().min(1),
-  targetAssetId: z.string().min(1),
-  metadataKind: z.string().min(1),
-  metadata: z.object({ kind: z.string().min(1) }).passthrough(),
-  producer: z.string().min(1),
-  createdAt: z.string().optional(),
-});
+const FillActionEnvelopeSchema = z
+  .object({
+    actionId: z.string().trim().min(1),
+    target: MetadataAttachmentTargetSchema,
+    metadataKind: z.string().trim().min(1),
+    metadata: z.object({ kind: z.string().trim().min(1) }).passthrough(),
+    producer: z.string().trim().min(1),
+    createdAt: z.string().optional(),
+  })
+  .strict();
 
 /**
  * Parse a fill action against whichever kind it declares. A kind nobody
  * declared is refused, because "open" means declarable, not unchecked.
  */
-export function parseAssetMetadataFillAction(value: unknown): ParsedAssetMetadataFillAction {
+export function parseAssetMetadataFillAction(
+  value: unknown,
+): ParsedAssetMetadataFillAction {
   const envelope = FillActionEnvelopeSchema.parse(value);
   if (envelope.metadata.kind !== envelope.metadataKind) {
     throw new Error(
@@ -217,11 +260,16 @@ export function parseAssetMetadataFillAction(value: unknown): ParsedAssetMetadat
   }
   return {
     ...envelope,
-    metadata: declared.schema.parse(envelope.metadata) as ParsedAssetMetadataFillAction["metadata"],
+    metadata: declared.schema.parse(
+      envelope.metadata,
+    ) as ParsedAssetMetadataFillAction["metadata"],
   };
 }
 
-export function parseDeclaredAssetMetadata(kind: string, value: unknown): unknown {
+export function parseDeclaredAssetMetadata(
+  kind: string,
+  value: unknown,
+): unknown {
   const declared = declaredKinds.get(kind);
   if (!declared) throw new Error(`Undeclared asset metadata kind: ${kind}`);
   return declared.schema.parse(value);

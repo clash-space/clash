@@ -1,6 +1,5 @@
 import {
   apiUrl,
-  assetFallbackUrl,
   resolveRuntimeConfig,
   webSocketUrl,
   type RuntimeCapabilities,
@@ -40,15 +39,14 @@ export function runtimeApiUrl(path: string): string {
   return apiUrl(path, getRuntimeConfig());
 }
 
-export function runtimeAssetFallbackUrl(storageKey: string): string {
-  return assetFallbackUrl(storageKey, getRuntimeConfig());
-}
-
 export function runtimeSyncWebSocketUrl(
   projectId: string,
   location: LocationLike | undefined = browserLocation(),
 ): string {
-  return runtimeWebSocketUrl(`/sync/${encodeURIComponent(projectId)}`, location);
+  return runtimeWebSocketUrl(
+    `/sync/${encodeURIComponent(projectId)}`,
+    location,
+  );
 }
 
 export function runtimeWebSocketUrl(

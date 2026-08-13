@@ -36,7 +36,7 @@ export function buildTimelineAssetInsertion({
   compositionWidth: number;
   compositionHeight: number;
 }): { asset: Asset; track: Track } {
-  const asset = normalizeEditorAsset(input);
+  const { waveform: _waveform, ...asset } = normalizeEditorAsset(input);
   const sourceNodeId = asset.sourceNodeId ?? asset.id;
   const projectAssetId = asset.projectAssetId;
   if (!projectAssetId) {
@@ -89,13 +89,11 @@ export function buildTimelineAssetInsertion({
             ...common,
             type: "video",
             sourceStartInFrames: 0,
-            waveform: asset.waveform,
           }
         : {
             ...common,
             type: "audio",
             sourceStartInFrames: 0,
-            waveform: asset.waveform,
           };
 
   return {

@@ -3,7 +3,8 @@
   "context_hints": [
     "ProjectEditor.tsx composes the workspace shell; feature business logic belongs under src/features",
     "Contains all Global State Providers (Contexts)",
-    "Contains the 'Nodes' implementation for React Flow"
+    "Contains the 'Nodes' implementation for React Flow",
+    "GlobalAssetsClient uses the shared personal Global Asset transport; restore first reads the trashed entry and submits its deleteOperationId as the Host CAS input"
   ],
   "subdirectories": {
     "nodes": "Custom React Flow node components (e.g., VideoNode, TextNode). The visual representation of data.",
@@ -16,7 +17,8 @@
     "copilot/AgentAnnotationContextMenu.tsx": "Shared context-menu action that sends an addressable workspace object into the composer.",
     "copilot/AgentSelectionAnnotationOverlay.tsx": "Captures native text selections inside creative surfaces, renders numbered anchored highlights, and queues an optional comment through the shared agent annotation contract.",
     "LoroSyncContext.tsx": "React Context provider for the Loro CRDT sync engine.",
-    "VideoEditorContext.tsx": "State management for the video editing timeline."
+    "VideoEditorContext.tsx": "State management for the video editing timeline.",
+    "GlobalAssetsClient.tsx": "Personal Global library UI over the shared import, trash, and observed-operation restore lifecycle."
   },
   "architecture_notes": "Keep ProjectEditor focused on workspace composition. Asset Preview/Edit, thumbnails, media resolution, and action clients belong in src/features/assets; shared action semantics belong in @clash/shared-types/actions."
 }

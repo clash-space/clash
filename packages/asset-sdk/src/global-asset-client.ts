@@ -1,5 +1,6 @@
 import {
   GlobalAssetEntrySchema,
+  ProjectAssetPublicationMetadataSchema,
   ResolvedAssetSchema,
   ResourceSchema,
   type GlobalAssetEntry,
@@ -26,6 +27,11 @@ export interface GlobalAssetPurgeInput {
   purgedAt: string;
 }
 
+export interface GlobalAssetRestoreInput {
+  id: string;
+  deleteOperationId: string;
+}
+
 export interface GlobalAssetAuthorityPort {
   read(libraryId: string, id: string): Promise<GlobalAssetEntry | null>;
   list(libraryId: string): Promise<GlobalAssetEntry[]>;
@@ -34,7 +40,10 @@ export interface GlobalAssetAuthorityPort {
     libraryId: string,
     input: GlobalAssetTrashInput,
   ): Promise<GlobalAssetEntry>;
-  restore(libraryId: string, id: string): Promise<GlobalAssetEntry>;
+  restore(
+    libraryId: string,
+    input: GlobalAssetRestoreInput,
+  ): Promise<GlobalAssetEntry>;
   purge(
     libraryId: string,
     input: GlobalAssetPurgeInput,
@@ -85,6 +94,7 @@ export interface GlobalAssetClient {
   restore(input: {
     libraryId: string;
     globalAssetId: string;
+    deleteOperationId: string;
   }): Promise<GlobalAssetEntry>;
   purge(input: {
     libraryId: string;
@@ -309,6 +319,15 @@ export function createGlobalAssetClient(
     async create(input) {
       const libraryId = nonEmpty(input.libraryId, "libraryId");
       const requested = parseEntry(input.entry, "INVALID_GLOBAL_ASSET");
+      if (
+        !ProjectAssetPublicationMetadataSchema.safeParse(requested.metadata)
+          .success
+      ) {
+        throw new AssetSdkContractError(
+          "INVALID_GLOBAL_ASSET",
+          `Global Asset ${requested.id} contains legacy derived metadata that cannot be published.`,
+        );
+      }
       if (requested.lifecycle.state !== "active") {
         throw new AssetSdkContractError(
           "INVALID_GLOBAL_ASSET",
@@ -376,8 +395,12 @@ export function createGlobalAssetClient(
     async restore(input) {
       const libraryId = nonEmpty(input.libraryId, "libraryId");
       const id = nonEmpty(input.globalAssetId, "globalAssetId");
+      const deleteOperationId = nonEmpty(
+        input.deleteOperationId,
+        "deleteOperationId",
+      );
       const entry = validateResult(
-        await ports.authority.restore(libraryId, id),
+        await ports.authority.restore(libraryId, { id, deleteOperationId }),
         id,
       );
       if (entry.lifecycle.state !== "active")

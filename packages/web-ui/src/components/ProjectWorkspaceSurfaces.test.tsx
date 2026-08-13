@@ -24,6 +24,8 @@ const assetApi = vi.hoisted(() => ({
 const timelineEditorApi = vi.hoisted(() => ({
   onTranscribeAsset: undefined as undefined | ((asset: any) => Promise<any>),
   onExport: undefined as undefined | (() => Promise<void>),
+  previewCacheScope: undefined as string | undefined,
+  innerProjectAssetDrop: vi.fn(),
 }));
 
 vi.mock("@clash/web-ui/lib/hooks/useAsset", () => ({
@@ -46,9 +48,11 @@ vi.mock("@clash/remotion-ui", () => ({
     editorKey,
     layout,
     projectAssetDropActive,
+    previewCacheScope,
   }: any) => {
     timelineEditorApi.onTranscribeAsset = onTranscribeAsset;
     timelineEditorApi.onExport = onExport;
+    timelineEditorApi.previewCacheScope = previewCacheScope;
     stateRef.current = {
       compositionWidth: 1920,
       compositionHeight: 1080,
@@ -64,6 +68,7 @@ vi.mock("@clash/remotion-ui", () => ({
     return (
       <div
         data-testid="remotion-editor"
+        onDrop={timelineEditorApi.innerProjectAssetDrop}
         data-editor-key={editorKey}
         data-duration={String(stateRef.current.durationInFrames)}
         data-layout={layout}
@@ -210,6 +215,42 @@ describe("Project workspace surfaces", () => {
     expect(screen.queryByRole("img", { name: "voice.wav" })).toBeNull();
   });
 
+  it("treats Host availability as authoritative instead of rendering a stale media URL", () => {
+    render(
+      <ProjectAssetSurface
+        asset={resolvedAsset({
+          id: "asset-downloading",
+          url: "https://stale.example/asset.png",
+          kind: "image",
+          status: "downloading",
+          progress: 0.42,
+          metadata: { originalName: "remote.png" },
+        })}
+        renderEditor={() => <div>Editor must stay closed</div>}
+      />,
+    );
+
+    expect(screen.getByText("Downloading 42%")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "remote.png" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit image" })).toBeNull();
+  });
+
+  it("renders model Assets as an explicit unsupported preview instead of an image", () => {
+    render(
+      <ProjectAssetSurface
+        asset={resolvedAsset({
+          id: "asset-model",
+          url: "https://media.clash.test/character.glb",
+          kind: "model",
+          metadata: { originalName: "character.glb" },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("3D preview unavailable")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "character.glb" })).toBeNull();
+  });
+
   it("provides precise zoom controls for image assets", () => {
     render(
       <ProjectAssetSurface
@@ -327,6 +368,7 @@ describe("Project workspace surfaces", () => {
     };
     const { unmount } = render(
       <ProjectTimelineEditorSurface
+        projectId="project-a"
         timeline={timeline}
         mediaInputs={[
           {
@@ -372,6 +414,7 @@ describe("Project workspace surfaces", () => {
     expect(editor.getAttribute("data-asset-name")).toBe("Opening frame");
     expect(editor.getAttribute("data-asset-source")).toBe("source-opening");
     expect(editor.getAttribute("data-has-scoped-picker")).toBe("true");
+    expect(timelineEditorApi.previewCacheScope).toBe("project-a");
     expect(screen.queryByRole("button", { name: /parent Canvas/i })).toBeNull();
     unmount();
     expect(onSave).not.toHaveBeenCalled();
@@ -893,13 +936,60 @@ describe("Project workspace surfaces", () => {
         .getAttribute("data-project-asset-drop-active"),
     ).toBe("true");
     expect(screen.queryByText("Drop to add to Drop Cut")).toBeNull();
-    fireEvent.drop(surface, { dataTransfer });
+    timelineEditorApi.innerProjectAssetDrop.mockClear();
+    fireEvent.drop(screen.getByTestId("remotion-editor"), { dataTransfer });
     expect(onProjectAssetDrop).toHaveBeenCalledWith("asset-sidebar");
+    expect(timelineEditorApi.innerProjectAssetDrop).not.toHaveBeenCalled();
     expect(
       screen
         .getByTestId("remotion-editor")
         .getAttribute("data-project-asset-drop-active"),
     ).toBe("false");
+  });
+
+  it("surfaces a Host rejection without letting the Project Asset drop reach Remotion", async () => {
+    const notices: string[] = [];
+    const handleNotice = (event: Event) => {
+      notices.push((event as CustomEvent<string>).detail);
+    };
+    window.addEventListener("clash:timeline-notice", handleNotice);
+    const onProjectAssetDrop = vi.fn(() => {
+      throw new Error("Downloading 42%");
+    });
+    render(
+      <ProjectTimelineEditorSurface
+        timeline={{
+          id: "timeline-rejected-drop",
+          name: "Rejected Drop",
+          owner: { kind: "project" },
+          revisionId: "timeline-revision-v1:test",
+          state: { tracks: [] },
+        }}
+        mediaInputs={[]}
+        canvases={[]}
+        onSave={vi.fn(() => true)}
+        onOpenCanvas={vi.fn()}
+        onProjectAssetDrop={onProjectAssetDrop}
+      />,
+    );
+
+    const dataTransfer = {
+      types: ["application/x-clash-project-asset"],
+      dropEffect: "none",
+      getData: (type: string) =>
+        type === "application/x-clash-project-asset"
+          ? JSON.stringify({ assetId: "asset-downloading" })
+          : "",
+    } as unknown as DataTransfer;
+    await screen.findByTestId("remotion-editor");
+    timelineEditorApi.innerProjectAssetDrop.mockClear();
+
+    expect(() =>
+      fireEvent.drop(screen.getByTestId("remotion-editor"), { dataTransfer }),
+    ).not.toThrow();
+    await waitFor(() => expect(notices).toEqual(["Downloading 42%"]));
+    expect(timelineEditorApi.innerProjectAssetDrop).not.toHaveBeenCalled();
+    window.removeEventListener("clash:timeline-notice", handleNotice);
   });
 
   it("ignores Timeline Library drags at the Project Asset boundary", async () => {

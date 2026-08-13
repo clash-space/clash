@@ -5,27 +5,27 @@ import React, {
   useRef,
   useState,
   useSyncExternalStore,
-} from 'react';
-import * as Ariakit from '@ariakit/react';
+} from "react";
+import * as Ariakit from "@ariakit/react";
 import {
   useEditorDispatch,
   useEditorHistory,
   useEditorPlayback,
   useEditorPlaybackRefs,
   useEditorStaticState,
-} from '@clash/remotion-core';
+} from "@clash/remotion-core";
 import {
   InteractiveCanvas,
   type CanvasViewportCommand,
-} from './InteractiveCanvasV2';
-import { TimelineIconButton, TimelineRangeInput } from './ui/controls';
-import { colors, typography } from './timeline/styles';
-import { formatTimecode } from './timeline/utils/timeFormatter';
+} from "./InteractiveCanvas";
+import { TimelineIconButton, TimelineRangeInput } from "./ui/controls";
+import { colors, typography } from "./timeline/styles";
+import { formatTimecode } from "./timeline/utils/timeFormatter";
 import {
   getPreviewAudioMeterValue,
   type PreviewAudioMeterStore,
   type StereoAudioLevels,
-} from './previewAudioMeter';
+} from "./previewAudioMeter";
 
 const PREVIEW_STYLES = `
   @container preview (max-width: 560px) {
@@ -46,17 +46,16 @@ const buttonStyle: React.CSSProperties = {
   padding: 0,
   border: 0,
   borderRadius: 7,
-  background: 'transparent',
+  background: "transparent",
   color: colors.text.secondary,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
 };
 
-const greatestCommonDivisor = (a: number, b: number): number => (
-  b === 0 ? a : greatestCommonDivisor(b, a % b)
-);
+const greatestCommonDivisor = (a: number, b: number): number =>
+  b === 0 ? a : greatestCommonDivisor(b, a % b);
 
 const METER_ICON_HEIGHT = 14;
 const SILENT_AUDIO_LEVELS: StereoAudioLevels = { left: 0, right: 0 };
@@ -64,11 +63,14 @@ const subscribeToSilence = () => () => undefined;
 const getSilentAudioLevels = () => SILENT_AUDIO_LEVELS;
 
 const getMeterFillGeometry = (amplitude: number) => {
-  const height = (getPreviewAudioMeterValue(amplitude).percentage / 100) * METER_ICON_HEIGHT;
+  const height =
+    (getPreviewAudioMeterValue(amplitude).percentage / 100) * METER_ICON_HEIGHT;
   return { y: 16 - height, height };
 };
 
-const StereoMeterIcon: React.FC<{ levels: StereoAudioLevels }> = ({ levels }) => {
+const StereoMeterIcon: React.FC<{ levels: StereoAudioLevels }> = ({
+  levels,
+}) => {
   const left = getMeterFillGeometry(levels.left);
   const right = getMeterFillGeometry(levels.right);
   return (
@@ -81,7 +83,15 @@ const StereoMeterIcon: React.FC<{ levels: StereoAudioLevels }> = ({ levels }) =>
       aria-hidden="true"
     >
       <g data-audio-meter-channel="L">
-        <rect x="3" y="2" width="4" height="14" rx="2" fill="currentColor" opacity="0.14" />
+        <rect
+          x="3"
+          y="2"
+          width="4"
+          height="14"
+          rx="2"
+          fill="currentColor"
+          opacity="0.14"
+        />
         <rect
           data-audio-meter-fill="L"
           x="3"
@@ -93,7 +103,15 @@ const StereoMeterIcon: React.FC<{ levels: StereoAudioLevels }> = ({ levels }) =>
         />
       </g>
       <g data-audio-meter-channel="R">
-        <rect x="11" y="2" width="4" height="14" rx="2" fill="currentColor" opacity="0.14" />
+        <rect
+          x="11"
+          y="2"
+          width="4"
+          height="14"
+          rx="2"
+          fill="currentColor"
+          opacity="0.14"
+        />
         <rect
           data-audio-meter-fill="R"
           x="11"
@@ -122,323 +140,385 @@ export type TimelineRuntimeNode = {
   data: Record<string, unknown>;
 };
 
-export const CanvasPreview: React.FC<CanvasPreviewProps> = React.memo(({
-  audioMeterOpen = false,
-  onToggleAudioMeter,
-  audioMeterStore,
-  runtimeNodes = [],
-}) => {
-  const dispatch = useEditorDispatch();
-  const { beginHistoryGroup, endHistoryGroup } = useEditorHistory();
-  const {
-    tracks,
-    assets,
-    selectedItemId,
-    compositionWidth,
-    compositionHeight,
-    fps,
-  } = useEditorStaticState();
-  const { currentFrame, playing } = useEditorPlayback();
-  const { currentFrameRef, playingRef } = useEditorPlaybackRefs();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [viewportCommand, setViewportCommand] = useState<CanvasViewportCommand>();
-  const [canvasZoom, setCanvasZoom] = useState(1);
-  const compactAudioLevels = useSyncExternalStore(
-    audioMeterStore?.subscribe ?? subscribeToSilence,
-    audioMeterStore?.getSnapshot ?? getSilentAudioLevels,
-    audioMeterStore?.getSnapshot ?? getSilentAudioLevels,
-  );
+export const CanvasPreview: React.FC<CanvasPreviewProps> = React.memo(
+  ({
+    audioMeterOpen = false,
+    onToggleAudioMeter,
+    audioMeterStore,
+    runtimeNodes = [],
+  }) => {
+    const dispatch = useEditorDispatch();
+    const { beginHistoryGroup, endHistoryGroup } = useEditorHistory();
+    const {
+      tracks,
+      assets,
+      selectedItemId,
+      compositionWidth,
+      compositionHeight,
+      fps,
+    } = useEditorStaticState();
+    const { currentFrame, playing } = useEditorPlayback();
+    const { currentFrameRef, playingRef } = useEditorPlaybackRefs();
+    const rootRef = useRef<HTMLDivElement>(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [viewportCommand, setViewportCommand] =
+      useState<CanvasViewportCommand>();
+    const [canvasZoom, setCanvasZoom] = useState(1);
+    const compactAudioLevels = useSyncExternalStore(
+      audioMeterStore?.subscribe ?? subscribeToSilence,
+      audioMeterStore?.getSnapshot ?? getSilentAudioLevels,
+      audioMeterStore?.getSnapshot ?? getSilentAudioLevels,
+    );
 
-  const timelineDuration = useMemo(() => {
-    let maxEnd = 0;
-    for (const track of tracks) {
-      for (const item of track.items) {
-        maxEnd = Math.max(maxEnd, item.from + item.durationInFrames);
+    const timelineDuration = useMemo(() => {
+      let maxEnd = 0;
+      for (const track of tracks) {
+        for (const item of track.items) {
+          maxEnd = Math.max(maxEnd, item.from + item.durationInFrames);
+        }
       }
-    }
-    return maxEnd > 0 ? maxEnd : 300;
-  }, [tracks]);
+      return maxEnd > 0 ? maxEnd : 300;
+    }, [tracks]);
 
-  const allNodesMap = useMemo(() => {
-    const map = new Map<string, any>();
-    for (const asset of assets) {
-      const nodeData = {
-        type: asset.type,
-        data: {
-          src: asset.src,
-          naturalWidth: asset.width,
-          naturalHeight: asset.height,
-        },
+    const allNodesMap = useMemo(() => {
+      const map = new Map<string, any>();
+      for (const asset of assets) {
+        const nodeData = {
+          type: asset.type,
+          data: {
+            src: asset.src,
+            naturalWidth: asset.width,
+            naturalHeight: asset.height,
+          },
+        };
+        map.set(asset.id, nodeData);
+        if (asset.sourceNodeId && asset.sourceNodeId !== asset.id) {
+          map.set(asset.sourceNodeId, nodeData);
+        }
+        if (asset.projectAssetId) {
+          map.set(asset.projectAssetId, nodeData);
+        }
+      }
+      for (const node of runtimeNodes) {
+        map.set(node.id, node);
+      }
+      return map;
+    }, [assets, runtimeNodes]);
+
+    const aspectRatio = useMemo(() => {
+      const divisor =
+        greatestCommonDivisor(compositionWidth, compositionHeight) || 1;
+      return `${compositionWidth / divisor}:${compositionHeight / divisor}`;
+    }, [compositionHeight, compositionWidth]);
+    const displayFrame = Math.min(
+      currentFrame,
+      Math.max(0, timelineDuration - 1),
+    );
+
+    useEffect(() => {
+      const handleFullscreenChange = () => {
+        setIsFullscreen(document.fullscreenElement === rootRef.current);
       };
-      map.set(asset.id, nodeData);
-      if (asset.sourceNodeId && asset.sourceNodeId !== asset.id) {
-        map.set(asset.sourceNodeId, nodeData);
+      document.addEventListener("fullscreenchange", handleFullscreenChange);
+      return () =>
+        document.removeEventListener(
+          "fullscreenchange",
+          handleFullscreenChange,
+        );
+    }, []);
+
+    const toggleFullscreen = useCallback(() => {
+      if (document.fullscreenElement === rootRef.current) {
+        void document.exitFullscreen?.();
+        return;
       }
-      if (asset.projectAssetId) {
-        map.set(asset.projectAssetId, nodeData);
-      }
-    }
-    for (const node of runtimeNodes) {
-      map.set(node.id, node);
-    }
-    return map;
-  }, [assets, runtimeNodes]);
+      void rootRef.current?.requestFullscreen?.();
+    }, []);
 
-  const aspectRatio = useMemo(() => {
-    const divisor = greatestCommonDivisor(compositionWidth, compositionHeight) || 1;
-    return `${compositionWidth / divisor}:${compositionHeight / divisor}`;
-  }, [compositionHeight, compositionWidth]);
-  const displayFrame = Math.min(currentFrame, Math.max(0, timelineDuration - 1));
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement === rootRef.current);
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  const toggleFullscreen = useCallback(() => {
-    if (document.fullscreenElement === rootRef.current) {
-      void document.exitFullscreen?.();
-      return;
-    }
-    void rootRef.current?.requestFullscreen?.();
-  }, []);
-
-  return (
-    <div
-      ref={rootRef}
-      data-testid="canvas-preview"
-      data-canvas-preview=""
-      data-surface="warm-panel"
-      style={styles.container}
-    >
-      <style>{PREVIEW_STYLES}</style>
-      <div data-preview-stage="" style={styles.stage}>
-        <InteractiveCanvas
-          key="interactive-canvas"
-          tracks={tracks}
-          allNodesMap={allNodesMap}
-          selectedItemId={selectedItemId}
-          currentFrame={currentFrame}
-          compositionWidth={compositionWidth}
-          compositionHeight={compositionHeight}
-          fps={fps}
-          durationInFrames={timelineDuration}
-          viewportCommand={viewportCommand}
-          onViewportZoomChange={setCanvasZoom}
-          audioMeterEnabled={audioMeterOpen || Boolean(audioMeterStore)}
-          onAudioLevelsChange={audioMeterStore?.setLevels}
-          onTransformStart={beginHistoryGroup}
-          onTransformEnd={endHistoryGroup}
-          onUpdateItem={(trackId, itemId, updates) => {
-            dispatch({ type: 'UPDATE_ITEM', payload: { trackId, itemId, updates } });
-          }}
-          onSelectItem={(itemId) => dispatch({ type: 'SELECT_ITEM', payload: itemId })}
-          playing={playing}
-          onPlayingChange={(nextPlaying) => {
-            if (playingRef.current !== nextPlaying) {
-              dispatch({ type: 'SET_PLAYING', payload: nextPlaying });
-            }
-          }}
-          onFrameUpdate={(frame) => {
-            const roundedFrame = Math.round(frame);
-            if (roundedFrame !== currentFrameRef.current) {
-              dispatch({ type: 'SET_CURRENT_FRAME', payload: roundedFrame });
-            }
-          }}
-          onSeek={(frame) => {
-            if (frame !== currentFrameRef.current) {
-              dispatch({ type: 'SET_CURRENT_FRAME', payload: frame });
-            }
-          }}
-        />
-      </div>
-
-      <div data-preview-transport="" style={styles.transport}>
-        <div style={styles.timecodeGroup}>
-          <output aria-label="Current timecode" style={styles.currentTimecode}>
-            {formatTimecode(displayFrame, fps)}
-          </output>
-          <span data-preview-duration="" style={styles.durationGroup}>
-            <span aria-hidden="true">/</span>
-            <output aria-label="Duration timecode">{formatTimecode(timelineDuration, fps)}</output>
-          </span>
-          <TimelineIconButton
-            aria-label="Audio level meter"
-            aria-pressed={audioMeterOpen}
-            title={audioMeterOpen ? 'Hide audio level meter' : 'Show audio level meter'}
-            onClick={onToggleAudioMeter}
-            style={{
-              ...styles.audioMeterButton,
-              ...(audioMeterOpen ? styles.audioMeterButtonActive : null),
+    return (
+      <div
+        ref={rootRef}
+        data-testid="canvas-preview"
+        data-canvas-preview=""
+        data-surface="warm-panel"
+        style={styles.container}
+      >
+        <style>{PREVIEW_STYLES}</style>
+        <div data-preview-stage="" style={styles.stage}>
+          <InteractiveCanvas
+            key="interactive-canvas"
+            tracks={tracks}
+            allNodesMap={allNodesMap}
+            selectedItemId={selectedItemId}
+            currentFrame={currentFrame}
+            compositionWidth={compositionWidth}
+            compositionHeight={compositionHeight}
+            fps={fps}
+            durationInFrames={timelineDuration}
+            viewportCommand={viewportCommand}
+            onViewportZoomChange={setCanvasZoom}
+            audioMeterEnabled={audioMeterOpen || Boolean(audioMeterStore)}
+            onAudioLevelsChange={audioMeterStore?.setLevels}
+            onTransformStart={beginHistoryGroup}
+            onTransformEnd={endHistoryGroup}
+            onUpdateItem={(trackId, itemId, updates) => {
+              dispatch({
+                type: "UPDATE_ITEM",
+                payload: { trackId, itemId, updates },
+              });
             }}
-          >
-            <StereoMeterIcon levels={compactAudioLevels} />
-          </TimelineIconButton>
+            onSelectItem={(itemId) =>
+              dispatch({ type: "SELECT_ITEM", payload: itemId })
+            }
+            playing={playing}
+            onPlayingChange={(nextPlaying) => {
+              if (playingRef.current !== nextPlaying) {
+                dispatch({ type: "SET_PLAYING", payload: nextPlaying });
+              }
+            }}
+            onFrameUpdate={(frame) => {
+              const roundedFrame = Math.round(frame);
+              if (roundedFrame !== currentFrameRef.current) {
+                dispatch({ type: "SET_CURRENT_FRAME", payload: roundedFrame });
+              }
+            }}
+            onSeek={(frame) => {
+              if (frame !== currentFrameRef.current) {
+                dispatch({ type: "SET_CURRENT_FRAME", payload: frame });
+              }
+            }}
+          />
         </div>
 
-        <TimelineIconButton
-          aria-label={playing ? 'Pause' : 'Play'}
-          title={playing ? 'Pause' : 'Play'}
-          onClick={() => dispatch({ type: 'SET_PLAYING', payload: !playingRef.current })}
-          style={styles.playButton}
-        >
-          {playing ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-            </svg>
-          ) : (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          )}
-        </TimelineIconButton>
+        <div data-preview-transport="" style={styles.transport}>
+          <div style={styles.timecodeGroup}>
+            <output
+              aria-label="Current timecode"
+              style={styles.currentTimecode}
+            >
+              {formatTimecode(displayFrame, fps)}
+            </output>
+            <span data-preview-duration="" style={styles.durationGroup}>
+              <span aria-hidden="true">/</span>
+              <output aria-label="Duration timecode">
+                {formatTimecode(timelineDuration, fps)}
+              </output>
+            </span>
+            <TimelineIconButton
+              aria-label="Audio level meter"
+              aria-pressed={audioMeterOpen}
+              title={
+                audioMeterOpen
+                  ? "Hide audio level meter"
+                  : "Show audio level meter"
+              }
+              onClick={onToggleAudioMeter}
+              style={{
+                ...styles.audioMeterButton,
+                ...(audioMeterOpen ? styles.audioMeterButtonActive : null),
+              }}
+            >
+              <StereoMeterIcon levels={compactAudioLevels} />
+            </TimelineIconButton>
+          </div>
 
-        <div style={styles.trailingControls}>
-          <span
-            data-preview-aspect=""
-            aria-label="Composition aspect ratio"
-            style={styles.aspectRatio}
-          >
-            {aspectRatio}
-          </span>
-          <Ariakit.PopoverProvider placement="top-end">
-            <Ariakit.PopoverDisclosure
-              render={<TimelineIconButton style={buttonStyle} />}
-              aria-label="Canvas zoom"
-              title={`Canvas zoom · ${Math.round(canvasZoom * 100)}%`}
-            >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5" />
-                <rect x="7" y="7" width="10" height="10" rx="1.5" />
-              </svg>
-            </Ariakit.PopoverDisclosure>
-            <Ariakit.Popover
-              portal
-              gutter={8}
-              role="dialog"
-              aria-label="Canvas zoom controls"
-              style={styles.zoomPopover}
-            >
-              <div style={styles.zoomPopoverHeader}>
-                <span>Canvas zoom</span>
-                <output aria-label="Canvas zoom percentage" style={styles.zoomPercentage}>
-                  {Math.round(canvasZoom * 100)}%
-                </output>
-              </div>
-              <div style={styles.zoomRegulatorRow}>
-                <TimelineRangeInput
-                  aria-label="Canvas zoom level"
-                  min={10}
-                  max={500}
-                  step={1}
-                  value={Math.round(canvasZoom * 100)}
-                  onChange={(event) => {
-                    const zoom = Number(event.currentTarget.value) / 100;
-                    setCanvasZoom(zoom);
-                    setViewportCommand((command) => ({
-                      id: (command?.id ?? 0) + 1,
-                      type: 'set-zoom',
-                      zoom,
-                    }));
-                  }}
-                  style={styles.zoomRange}
-                />
-                <TimelineIconButton
-                  aria-label="Fit canvas"
-                  title="Fit canvas"
-                  onClick={() => {
-                    setCanvasZoom(1);
-                    setViewportCommand((command) => ({
-                      id: (command?.id ?? 0) + 1,
-                      type: 'reset',
-                    }));
-                  }}
-                  style={styles.fitButton}
-                >
-                  Fit
-                </TimelineIconButton>
-              </div>
-            </Ariakit.Popover>
-          </Ariakit.PopoverProvider>
           <TimelineIconButton
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            onClick={toggleFullscreen}
-            style={buttonStyle}
+            aria-label={playing ? "Pause" : "Play"}
+            title={playing ? "Pause" : "Play"}
+            onClick={() =>
+              dispatch({ type: "SET_PLAYING", payload: !playingRef.current })
+            }
+            style={styles.playButton}
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              {isFullscreen ? (
-                <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
-              ) : (
-                <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5" />
-              )}
-            </svg>
+            {playing ? (
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+              </svg>
+            ) : (
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
           </TimelineIconButton>
+
+          <div style={styles.trailingControls}>
+            <span
+              data-preview-aspect=""
+              aria-label="Composition aspect ratio"
+              style={styles.aspectRatio}
+            >
+              {aspectRatio}
+            </span>
+            <Ariakit.PopoverProvider placement="top-end">
+              <Ariakit.PopoverDisclosure
+                render={<TimelineIconButton style={buttonStyle} />}
+                aria-label="Canvas zoom"
+                title={`Canvas zoom · ${Math.round(canvasZoom * 100)}%`}
+              >
+                <svg
+                  width="17"
+                  height="17"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5" />
+                  <rect x="7" y="7" width="10" height="10" rx="1.5" />
+                </svg>
+              </Ariakit.PopoverDisclosure>
+              <Ariakit.Popover
+                portal
+                gutter={8}
+                role="dialog"
+                aria-label="Canvas zoom controls"
+                style={styles.zoomPopover}
+              >
+                <div style={styles.zoomPopoverHeader}>
+                  <span>Canvas zoom</span>
+                  <output
+                    aria-label="Canvas zoom percentage"
+                    style={styles.zoomPercentage}
+                  >
+                    {Math.round(canvasZoom * 100)}%
+                  </output>
+                </div>
+                <div style={styles.zoomRegulatorRow}>
+                  <TimelineRangeInput
+                    aria-label="Canvas zoom level"
+                    min={10}
+                    max={500}
+                    step={1}
+                    value={Math.round(canvasZoom * 100)}
+                    onChange={(event) => {
+                      const zoom = Number(event.currentTarget.value) / 100;
+                      setCanvasZoom(zoom);
+                      setViewportCommand((command) => ({
+                        id: (command?.id ?? 0) + 1,
+                        type: "set-zoom",
+                        zoom,
+                      }));
+                    }}
+                    style={styles.zoomRange}
+                  />
+                  <TimelineIconButton
+                    aria-label="Fit canvas"
+                    title="Fit canvas"
+                    onClick={() => {
+                      setCanvasZoom(1);
+                      setViewportCommand((command) => ({
+                        id: (command?.id ?? 0) + 1,
+                        type: "reset",
+                      }));
+                    }}
+                    style={styles.fitButton}
+                  >
+                    Fit
+                  </TimelineIconButton>
+                </div>
+              </Ariakit.Popover>
+            </Ariakit.PopoverProvider>
+            <TimelineIconButton
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              onClick={toggleFullscreen}
+              style={buttonStyle}
+            >
+              <svg
+                width="17"
+                height="17"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                {isFullscreen ? (
+                  <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
+                ) : (
+                  <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5" />
+                )}
+              </svg>
+            </TimelineIconButton>
+          </div>
         </div>
       </div>
-    </div>
-  );
-});
+    );
+  },
+);
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    display: 'flex',
-    flexDirection: 'column',
-    width: '100%',
-    height: '100%',
+    display: "flex",
+    flexDirection: "column",
+    width: "100%",
+    height: "100%",
     minWidth: 0,
     minHeight: 0,
-    overflow: 'hidden',
-    container: 'preview / inline-size',
+    overflow: "hidden",
+    container: "preview / inline-size",
     backgroundColor: colors.bg.primary,
     color: colors.text.primary,
   },
   stage: {
-    position: 'relative',
+    position: "relative",
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    overflow: 'hidden',
+    overflow: "hidden",
     backgroundColor: colors.bg.primary,
   },
   transport: {
-    position: 'relative',
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
-    alignItems: 'center',
-    flex: '0 0 50px',
+    position: "relative",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+    alignItems: "center",
+    flex: "0 0 50px",
     gap: 12,
-    padding: '0 14px',
+    padding: "0 14px",
     borderTop: `1px solid ${colors.border.subtle}`,
     backgroundColor: colors.bg.primary,
   },
   timecodeGroup: {
-    display: 'flex',
+    display: "flex",
     minWidth: 0,
-    alignItems: 'center',
+    alignItems: "center",
     gap: 7,
     fontFamily: typography.fontFamily.mono,
     fontSize: typography.fontSize.sm,
-    fontVariantNumeric: 'tabular-nums',
-    whiteSpace: 'nowrap',
+    fontVariantNumeric: "tabular-nums",
+    whiteSpace: "nowrap",
   },
   currentTimecode: {
     color: colors.accent.primary,
     fontWeight: typography.fontWeight.semibold,
   },
   durationGroup: {
-    display: 'inline-flex',
-    alignItems: 'center',
+    display: "inline-flex",
+    alignItems: "center",
     gap: 7,
     color: colors.text.tertiary,
   },
   audioMeterButton: {
     ...buttonStyle,
-    flex: '0 0 auto',
+    flex: "0 0 auto",
     marginLeft: 2,
   },
   audioMeterButtonActive: {
@@ -452,17 +532,17 @@ const styles: Record<string, React.CSSProperties> = {
     border: 0,
     borderRadius: 999,
     backgroundColor: colors.accent.primary,
-    color: '#ffffff',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
+    color: "#ffffff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
   },
   trailingControls: {
-    display: 'flex',
+    display: "flex",
     minWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: 5,
   },
   aspectRatio: {
@@ -470,23 +550,23 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.text.tertiary,
     fontFamily: typography.fontFamily.mono,
     fontSize: typography.fontSize.xs,
-    fontVariantNumeric: 'tabular-nums',
+    fontVariantNumeric: "tabular-nums",
   },
   zoomPopover: {
     zIndex: 1200,
     width: 226,
-    padding: '10px 11px 11px',
+    padding: "10px 11px 11px",
     border: `1px solid ${colors.border.default}`,
     borderRadius: 9,
     backgroundColor: colors.bg.primary,
     color: colors.text.primary,
-    boxShadow: '0 12px 32px rgba(45, 38, 31, 0.14)',
-    outline: 'none',
+    boxShadow: "0 12px 32px rgba(45, 38, 31, 0.14)",
+    outline: "none",
   },
   zoomPopoverHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 9,
     color: colors.text.secondary,
     fontFamily: typography.fontFamily.sans,
@@ -496,11 +576,11 @@ const styles: Record<string, React.CSSProperties> = {
   zoomPercentage: {
     color: colors.accent.primary,
     fontFamily: typography.fontFamily.mono,
-    fontVariantNumeric: 'tabular-nums',
+    fontVariantNumeric: "tabular-nums",
   },
   zoomRegulatorRow: {
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 10,
   },
   zoomRange: {
@@ -509,17 +589,17 @@ const styles: Record<string, React.CSSProperties> = {
     height: 18,
     margin: 0,
     accentColor: colors.accent.primary,
-    cursor: 'pointer',
+    cursor: "pointer",
   },
   fitButton: {
     minWidth: 36,
     height: 26,
-    padding: '0 8px',
+    padding: "0 8px",
     border: `1px solid ${colors.border.default}`,
     borderRadius: 6,
     backgroundColor: colors.bg.secondary,
     color: colors.text.secondary,
-    cursor: 'pointer',
+    cursor: "pointer",
     fontFamily: typography.fontFamily.sans,
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.semibold,

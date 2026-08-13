@@ -2,10 +2,8 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  readdir,
   rm,
   stat,
-  symlink,
   writeFile,
 } from "node:fs/promises";
 import { createCipheriv, createHash } from "node:crypto";
@@ -1892,10 +1890,16 @@ describe("local API app", () => {
       body: JSON.stringify({ name: "Cover Project" }),
     });
     const { id: projectId } = (await created.json()) as { id: string };
+    const pngBytes = new Uint8Array(
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    );
 
     const importAsset = async (assetId: string, name: string) => {
       const form = new FormData();
-      form.set("file", new File([assetId], name, { type: "image/png" }));
+      form.set("file", new File([pngBytes], name, { type: "image/png" }));
       form.set("kind", "image");
       form.set("projectAssetId", assetId);
       return app.request(
@@ -1947,9 +1951,14 @@ describe("local API app", () => {
       coverAssetId: "asset-cover",
     });
 
+    const deleteOperationId = "delete:project-cover-test";
     const blockedDelete = await reopened.request(
       `/api/v1/projects/${projectId}/assets/asset-cover`,
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deleteOperationId }),
+      },
     );
     expect(blockedDelete.status).toBe(409);
     await expect(blockedDelete.json()).resolves.toMatchObject({
@@ -1971,9 +1980,71 @@ describe("local API app", () => {
     });
     const deleted = await reopened.request(
       `/api/v1/projects/${projectId}/assets/asset-cover`,
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deleteOperationId }),
+      },
     );
     expect(deleted.status, await deleted.clone().text()).toBe(200);
+  });
+
+  it("does not publish a Project Asset when declared image bytes cannot be decoded", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Probe Gate Project" }),
+    });
+    const { id: projectId } = (await created.json()) as { id: string };
+    const form = new FormData();
+    form.set(
+      "file",
+      new File(["not an image"], "mislabeled.png", { type: "image/png" }),
+    );
+    form.set("kind", "image");
+    form.set("projectAssetId", "asset:mislabeled");
+
+    const imported = await app.request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/assets/import-file`,
+      { method: "POST", body: form },
+    );
+    expect(imported.status).not.toBe(201);
+    const listed = await app.request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/assets`,
+    );
+    await expect(listed.json()).resolves.toEqual({ assets: [] });
+  });
+
+  it("does not publish decoded PNG bytes under a false JPEG media type", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "MIME Gate Project" }),
+    });
+    const { id: projectId } = (await created.json()) as { id: string };
+    const pngBytes = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const form = new FormData();
+    form.set(
+      "file",
+      new File([pngBytes], "false-jpeg.jpg", { type: "image/jpeg" }),
+    );
+    form.set("kind", "image");
+    form.set("projectAssetId", "asset:false-jpeg");
+
+    const imported = await app.request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/assets/import-file`,
+      { method: "POST", body: form },
+    );
+    expect(imported.status).not.toBe(201);
+    const listed = await app.request(
+      `/api/v1/projects/${encodeURIComponent(projectId)}/assets`,
+    );
+    await expect(listed.json()).resolves.toEqual({ assets: [] });
   });
 
   it("keeps all concurrent project creates instead of last-write-wins overwriting metadata", async () => {
@@ -3556,6 +3627,64 @@ describe("local API app", () => {
       code: "LEGACY_CUSTOM_ACTION_PROTOCOL_RETIRED",
     });
   });
+
+  it.each([
+    {
+      method: "POST",
+      path: "/upload",
+      bodyKind: "multipart",
+      seedRawObject: false,
+    },
+    {
+      method: "GET",
+      path: "/assets/sign?key=uploads%2Fsource.png",
+      bodyKind: undefined,
+      seedRawObject: false,
+    },
+    {
+      method: "POST",
+      path: "/assets/sign-batch",
+      bodyKind: "json",
+      seedRawObject: false,
+    },
+    {
+      method: "GET",
+      path: "/assets/uploads/source.png",
+      bodyKind: undefined,
+      seedRawObject: true,
+    },
+  ])(
+    "does not expose the legacy raw-key Asset transport at $method $path",
+    async ({ method, path, bodyKind, seedRawObject }) => {
+      if (seedRawObject) {
+        await mkdir(join(dataDir, "assets", "uploads"), { recursive: true });
+        await writeFile(
+          join(dataDir, "assets", "uploads", "source.png"),
+          "raw",
+        );
+      }
+      const app = createLocalApiApp({ dataDir, userId: "local-user" });
+      const form = new FormData();
+      form.append(
+        "file",
+        new File(["raw"], "source.png", { type: "image/png" }),
+      );
+      const init: RequestInit =
+        bodyKind === "multipart"
+          ? { method, body: form }
+          : bodyKind === "json"
+            ? {
+                method,
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ keys: ["uploads/source.png"] }),
+              }
+            : { method };
+
+      const response = await app.request(path, init);
+
+      expect(response.status).toBe(404);
+    },
+  );
 
   it("persists local provider accounts in SQLite", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
@@ -5695,13 +5824,15 @@ describe("local API app", () => {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        providers: [{
-          id: "hilo-hub-primary",
-          providerId: "hilo-hub",
-          upstreamId: "hilo-hub",
-          apiShape: "hilo-hub",
-          enabled: true,
-        }],
+        providers: [
+          {
+            id: "hilo-hub-primary",
+            providerId: "hilo-hub",
+            upstreamId: "hilo-hub",
+            apiShape: "hilo-hub",
+            enabled: true,
+          },
+        ],
       }),
     });
     expect(configured.status).toBe(200);
@@ -5810,18 +5941,20 @@ describe("local API app", () => {
               apiShape: "hilo-hub",
               executorExportId: "hilo-hub-execute",
               auth: {
-                methods: [{
-                  id: "reuse-local-login",
-                  label: "Reuse MiniMax Hub login",
-                  import: {
-                    format: "electron-store-aes-256-gcm-v2",
-                    appDataSubdirectory: "@hilo/MiniMax Hub Global",
-                    configFile: "hub-config-global.json",
-                    keyFile: ".token-key",
-                    tokenPath: ["tokens", "accessToken"],
-                    storeAs: "accessToken",
+                methods: [
+                  {
+                    id: "reuse-local-login",
+                    label: "Reuse MiniMax Hub login",
+                    import: {
+                      format: "electron-store-aes-256-gcm-v2",
+                      appDataSubdirectory: "@hilo/MiniMax Hub Global",
+                      configFile: "hub-config-global.json",
+                      keyFile: ".token-key",
+                      tokenPath: ["tokens", "accessToken"],
+                      storeAs: "accessToken",
+                    },
                   },
-                }],
+                ],
               },
             },
           },
@@ -5833,13 +5966,15 @@ describe("local API app", () => {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        providers: [{
-          id: "hilo-hub-primary",
-          providerId: "hilo-hub",
-          upstreamId: "hilo-hub",
-          apiShape: "hilo-hub",
-          enabled: true,
-        }],
+        providers: [
+          {
+            id: "hilo-hub-primary",
+            providerId: "hilo-hub",
+            upstreamId: "hilo-hub",
+            apiShape: "hilo-hub",
+            enabled: true,
+          },
+        ],
       }),
     });
     expect(configured.status).toBe(200);
@@ -11765,204 +11900,6 @@ describe("local API app", () => {
       "expectedReadToken",
     );
     expect(auditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
-  });
-
-  it("stores uploaded files locally and exposes unsigned asset URLs", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const missingForm = new FormData();
-    const missing = await app.request("/upload", {
-      method: "POST",
-      body: missingForm,
-    });
-    expect(missing.status).toBe(400);
-    expect(await missing.json()).toEqual({
-      error: "Missing file",
-      mutation: {
-        operation: "asset_blob_upload",
-        entity: { kind: "asset-blob", id: "" },
-        accepted: false,
-        error: "Missing file",
-      },
-    });
-
-    const form = new FormData();
-    form.append(
-      "file",
-      new File(["hello"], "hello world.txt", { type: "text/plain" }),
-    );
-
-    const upload = await app.request("/upload", { method: "POST", body: form });
-    expect(upload.status).toBe(200);
-    const { storageKey, mutation } = (await upload.json()) as {
-      storageKey: string;
-      mutation?: unknown;
-    };
-    expect(storageKey).toMatch(/^uploads\/.+-hello_world\.txt$/);
-    expect(mutation).toEqual({
-      operation: "asset_blob_upload",
-      entity: { kind: "asset-blob", id: storageKey },
-      accepted: true,
-      resultEntityId: storageKey,
-    });
-    await expectSingleMutationAudit(app, {
-      operation: "asset_blob_upload",
-      entityId: storageKey,
-      entityKind: "asset-blob",
-      reason: "asset blob upload",
-    });
-
-    const sign = await app.request(
-      `/assets/sign?key=${encodeURIComponent(storageKey)}`,
-    );
-    expect(await sign.json()).toMatchObject({
-      url: `http://localhost/assets/${storageKey}`,
-    });
-
-    const served = await app.request(`/assets/${storageKey}`);
-    expect(served.status).toBe(200);
-    expect(served.headers.get("content-type")).toContain("text/plain");
-    expect(await served.text()).toBe("hello");
-  });
-
-  it("serves byte ranges for media assets", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const form = new FormData();
-    form.append(
-      "file",
-      new File(["0123456789"], "sample.mp4", { type: "video/mp4" }),
-    );
-
-    const upload = await app.request("/upload", {
-      method: "POST",
-      body: form,
-    });
-    const { storageKey } = (await upload.json()) as { storageKey: string };
-    const served = await app.request(`/assets/${storageKey}`, {
-      headers: { range: "bytes=2-5" },
-    });
-
-    expect(served.status).toBe(206);
-    expect(served.headers.get("accept-ranges")).toBe("bytes");
-    expect(served.headers.get("content-range")).toBe("bytes 2-5/10");
-    expect(served.headers.get("content-length")).toBe("4");
-    expect(await served.text()).toBe("2345");
-  });
-
-  it("rejects local asset uploads when the storage parent escapes through a symlink", async () => {
-    const outsideDir = await mkdtemp(
-      join(tmpdir(), "clash-local-api-outside-assets-"),
-    );
-    try {
-      await mkdir(join(dataDir, "assets"), { recursive: true });
-      await symlink(outsideDir, join(dataDir, "assets", "uploads"));
-      const app = createLocalApiApp({ dataDir, userId: "local-user" });
-
-      const form = new FormData();
-      form.append(
-        "file",
-        new File(["escape"], "escape.txt", { type: "text/plain" }),
-      );
-      const upload = await app.request("/upload", {
-        method: "POST",
-        body: form,
-      });
-
-      expect(upload.status).toBe(400);
-      expect(await upload.json()).toMatchObject({
-        error: "Asset path escapes local asset storage",
-        mutation: {
-          operation: "asset_blob_upload",
-          entity: {
-            kind: "asset-blob",
-            id: expect.stringMatching(/^uploads\/.+-escape\.txt$/),
-          },
-          accepted: false,
-          error: "Asset path escapes local asset storage",
-        },
-      });
-      await expect(readdir(outsideDir)).resolves.toEqual([]);
-    } finally {
-      await rm(outsideDir, { recursive: true, force: true });
-    }
-  });
-
-  it("rejects local asset uploads when the storage root escapes through a symlink", async () => {
-    const outsideDir = await mkdtemp(
-      join(tmpdir(), "clash-local-api-outside-asset-root-"),
-    );
-    const assetRootPath = join(dataDir, "assets");
-    try {
-      await symlink(outsideDir, assetRootPath);
-      const app = createLocalApiApp({ dataDir, userId: "local-user" });
-
-      const form = new FormData();
-      form.append(
-        "file",
-        new File(["root-escape"], "root escape.txt", { type: "text/plain" }),
-      );
-      const upload = await app.request("/upload", {
-        method: "POST",
-        body: form,
-      });
-
-      expect(upload.status).toBe(400);
-      expect(await upload.json()).toMatchObject({
-        error: "Asset path escapes local asset storage",
-        mutation: {
-          operation: "asset_blob_upload",
-          entity: {
-            kind: "asset-blob",
-            id: expect.stringMatching(/^uploads\/.+-root_escape\.txt$/),
-          },
-          accepted: false,
-          error: "Asset path escapes local asset storage",
-        },
-      });
-      await expect(readdir(outsideDir)).resolves.toEqual([]);
-    } finally {
-      await rm(assetRootPath, { force: true });
-      await rm(outsideDir, { recursive: true, force: true });
-    }
-  });
-
-  it("does not serve local assets through a symlinked storage parent outside the asset root", async () => {
-    const outsideDir = await mkdtemp(
-      join(tmpdir(), "clash-local-api-outside-read-"),
-    );
-    try {
-      await writeFile(join(outsideDir, "outside.txt"), "outside");
-      await mkdir(join(dataDir, "assets"), { recursive: true });
-      await symlink(outsideDir, join(dataDir, "assets", "uploads"));
-      const app = createLocalApiApp({ dataDir, userId: "local-user" });
-
-      const served = await app.request("/assets/uploads/outside.txt");
-
-      expect(served.status).toBe(404);
-      expect(await served.text()).not.toBe("outside");
-    } finally {
-      await rm(outsideDir, { recursive: true, force: true });
-    }
-  });
-
-  it("does not serve local assets when the storage root escapes through a symlink", async () => {
-    const outsideDir = await mkdtemp(
-      join(tmpdir(), "clash-local-api-outside-root-read-"),
-    );
-    const assetRootPath = join(dataDir, "assets");
-    try {
-      await mkdir(join(outsideDir, "uploads"), { recursive: true });
-      await writeFile(join(outsideDir, "uploads", "outside.txt"), "outside");
-      await symlink(outsideDir, assetRootPath);
-      const app = createLocalApiApp({ dataDir, userId: "local-user" });
-
-      const served = await app.request("/assets/uploads/outside.txt");
-
-      expect(served.status).toBe(404);
-      expect(await served.text()).not.toBe("outside");
-    } finally {
-      await rm(assetRootPath, { force: true });
-      await rm(outsideDir, { recursive: true, force: true });
-    }
   });
 
   it("simulates the fal queue API and media CDN locally", async () => {

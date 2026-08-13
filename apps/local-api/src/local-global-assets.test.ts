@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   chmod,
   mkdtemp,
@@ -11,8 +12,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createLocalAssetInspectionService } from "./local-asset-inspections.js";
 import { createLocalGlobalAssetService } from "./local-global-assets.js";
-import { createLocalResourceStore } from "./local-resource-store.js";
+import {
+  createLocalResourceStore,
+  resourceIdForSha256,
+} from "./local-resource-store.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -35,6 +40,188 @@ afterEach(async () => {
 });
 
 describe("local Global Asset library", () => {
+  it("stores Host-inspected media facts in the Global authority before returning an import", async () => {
+    const { dataDir } = await fixture();
+    const bytes = new TextEncoder().encode("Host-inspected Global video");
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async ({ resource }) => ({
+        width: 1_920,
+        height: 1_080,
+        durationMs: 2_500,
+        frameRate: 24,
+        videoCodec: "h264",
+        hasAudio: true,
+        audioCodec: "aac",
+        contentType: resource.contentType,
+      }),
+    });
+    const service = createLocalGlobalAssetService({
+      dataDir,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+
+    await service.importBytes({
+      libraryId: "personal",
+      globalAssetId: "global:inspected-video",
+      kind: "video",
+      bytes,
+      contentType: "video/mp4",
+      originalName: "clip.mp4",
+      metadata: {},
+      provenance: { kind: "import" },
+    });
+
+    await expect(
+      service.readEntry("personal", "global:inspected-video"),
+    ).resolves.toMatchObject({
+      metadata: {
+        width: 1_920,
+        height: 1_080,
+        durationMs: 2_500,
+        frameRate: 24,
+        videoCodec: "h264",
+        audioCodec: "aac",
+        bytes: bytes.byteLength,
+        contentType: "video/mp4",
+        originalName: "clip.mp4",
+      },
+    });
+  });
+
+  it("does not publish caller waveform samples as canonical Global metadata", async () => {
+    const { dataDir } = await fixture();
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async ({ resource }) => ({
+        durationMs: 1_000,
+        contentType: resource.contentType,
+        hasAudio: true,
+        audioCodec: "aac",
+      }),
+    });
+    const service = createLocalGlobalAssetService({
+      dataDir,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+
+    await service.importBytes({
+      libraryId: "personal",
+      globalAssetId: "global:legacy-waveform",
+      kind: "audio",
+      bytes: new TextEncoder().encode("audio with client waveform"),
+      contentType: "audio/aac",
+      metadata: { waveform: [0.1, 0.4, 0.2] },
+    });
+
+    const entry = await service.readEntry("personal", "global:legacy-waveform");
+    expect(entry?.metadata).toMatchObject({
+      durationMs: 1_000,
+      hasAudio: true,
+      audioCodec: "aac",
+    });
+    expect(entry?.metadata).not.toHaveProperty("waveform");
+  });
+
+  it("reuses one versioned Resource inspection across idempotent Global publication retries", async () => {
+    const { dataDir } = await fixture();
+    let probes = 0;
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => {
+        probes += 1;
+        return {
+          width: 1_280,
+          height: 720,
+          durationMs: 1_500,
+          frameRate: 30,
+          videoCodec: "h264",
+          hasAudio: false,
+        };
+      },
+    });
+    const service = createLocalGlobalAssetService({
+      dataDir,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+    const resources = createLocalResourceStore({ dataDir });
+    const installed = await resources.install({
+      kind: "video",
+      bytes: new TextEncoder().encode("one reusable Global Resource"),
+      contentType: "video/mp4",
+      originalName: "reusable.mp4",
+    });
+    const publish = () =>
+      service.publishResource({
+        libraryId: "personal",
+        globalAssetId: "global:publication-retry",
+        resourceId: installed.resource.id,
+        kind: "video",
+        name: "Reusable",
+        metadata: {},
+        provenance: { kind: "admission" },
+      });
+
+    const first = await publish();
+    const retried = await publish();
+
+    expect(retried).toEqual(first);
+    expect(probes).toBe(1);
+    await expect(
+      service.readEntry("personal", "global:publication-retry"),
+    ).resolves.toMatchObject({
+      metadata: {
+        width: 1_280,
+        height: 720,
+        durationMs: 1_500,
+        frameRate: 30,
+        videoCodec: "h264",
+      },
+    });
+  });
+
+  it("keeps staged CAS bytes but creates no Global entry when Host inspection fails", async () => {
+    const { dataDir } = await fixture();
+    const bytes = new TextEncoder().encode("temporarily unprobeable video");
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: async () => {
+        throw new Error("temporary decoder failure");
+      },
+    });
+    const service = createLocalGlobalAssetService({
+      dataDir,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+
+    await expect(
+      service.importBytes({
+        libraryId: "personal",
+        globalAssetId: "global:probe-failure",
+        kind: "video",
+        bytes,
+        contentType: "video/mp4",
+      }),
+    ).rejects.toThrow("temporary decoder failure");
+    await expect(
+      service.readEntry("personal", "global:probe-failure"),
+    ).resolves.toBeNull();
+
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const resource = await createLocalResourceStore({ dataDir }).resolve(
+      resourceIdForSha256(digest),
+    );
+    expect(resource?.resource).toMatchObject({
+      kind: "video",
+      byteLength: bytes.byteLength,
+      contentType: "video/mp4",
+    });
+  });
+
   it("keeps library membership and lifecycle independent while deduplicating Resource bytes", async () => {
     const { service } = await fixture();
     const bytes = new TextEncoder().encode("same immutable image");
@@ -82,6 +269,101 @@ describe("local Global Asset library", () => {
     await expect(service.list("team")).resolves.toHaveLength(1);
   });
 
+  it("rejects a stale restore after another consumer restored and trashed a newer delete operation", async () => {
+    const { service } = await fixture();
+    const created = await service.importBytes({
+      libraryId: "personal",
+      globalAssetId: "global:restore-cas",
+      kind: "image",
+      bytes: new TextEncoder().encode("restore CAS image"),
+      contentType: "image/png",
+    });
+    await service.trash({
+      libraryId: "personal",
+      globalAssetId: created.id,
+      deleteOperationId: "delete:operation-1",
+      deletedAt: "2026-08-13T00:00:00.000Z",
+      purgeAfter: "2026-08-20T00:00:00.000Z",
+    });
+    const consumerAObservation = await service.read("personal", created.id);
+    expect(consumerAObservation?.lifecycle).toEqual({
+      state: "trashed",
+      deleteOperationId: "delete:operation-1",
+      deletedAt: "2026-08-13T00:00:00.000Z",
+      purgeAfter: "2026-08-20T00:00:00.000Z",
+    });
+
+    await service.restore({
+      libraryId: "personal",
+      globalAssetId: created.id,
+      deleteOperationId: "delete:operation-1",
+    });
+    await service.trash({
+      libraryId: "personal",
+      globalAssetId: created.id,
+      deleteOperationId: "delete:operation-2",
+      deletedAt: "2026-08-14T00:00:00.000Z",
+      purgeAfter: "2026-08-21T00:00:00.000Z",
+    });
+
+    await expect(
+      service.restore({
+        libraryId: "personal",
+        globalAssetId: created.id,
+        deleteOperationId: "delete:operation-1",
+      }),
+    ).rejects.toMatchObject({ code: "GLOBAL_ASSET_FACT_MISMATCH" });
+    await expect(service.read("personal", created.id)).resolves.toMatchObject({
+      lifecycle: {
+        state: "trashed",
+        deleteOperationId: "delete:operation-2",
+      },
+    });
+
+    await service.restore({
+      libraryId: "personal",
+      globalAssetId: created.id,
+      deleteOperationId: "delete:operation-2",
+    });
+    await expect(
+      service.restore({
+        libraryId: "personal",
+        globalAssetId: created.id,
+        deleteOperationId: "delete:operation-1",
+      }),
+    ).rejects.toMatchObject({ code: "GLOBAL_ASSET_FACT_MISMATCH" });
+  });
+
+  it("replays the same restore operation after its first result is lost", async () => {
+    const { service } = await fixture();
+    const created = await service.importBytes({
+      libraryId: "personal",
+      globalAssetId: "global:restore-retry",
+      kind: "image",
+      bytes: new TextEncoder().encode("restore retry image"),
+      contentType: "image/png",
+    });
+    await service.trash({
+      libraryId: "personal",
+      globalAssetId: created.id,
+      deleteOperationId: "delete:retry",
+      deletedAt: "2026-08-13T00:00:00.000Z",
+      purgeAfter: "2026-08-20T00:00:00.000Z",
+    });
+    const restore = () =>
+      service.restore({
+        libraryId: "personal",
+        globalAssetId: created.id,
+        deleteOperationId: "delete:retry",
+      });
+
+    await restore();
+    await expect(restore()).resolves.toMatchObject({
+      id: created.id,
+      lifecycle: { state: "active" },
+    });
+  });
+
   it("returns one storage-neutral ResolvedAsset shape and persists across Host restarts", async () => {
     const { dataDir, service } = await fixture();
     const bytes = new TextEncoder().encode("audio bytes");
@@ -113,8 +395,6 @@ describe("local Global Asset library", () => {
       lifecycle: { state: "active" },
       status: "ready",
       url: "http://127.0.0.1:49152/api/v1/libraries/library-a/assets/global%3Aaudio/media",
-      thumbnailUrl:
-        "http://127.0.0.1:49152/api/v1/libraries/library-a/assets/global%3Aaudio/media",
     });
     expect(JSON.stringify(resolved)).not.toMatch(
       /resourceId|storageKey|signedUrl|srcR2Key|path/,
@@ -156,6 +436,27 @@ describe("local Global Asset library", () => {
     expect((await service.openProjection("library-a", resolved.id)).path).toBe(
       installed.path,
     );
+  });
+
+  it("reuses original image media for thumbnails and leaves video derivation to presentation clients", async () => {
+    const { service } = await fixture();
+    const image = await service.importBytes({
+      libraryId: "library-preview",
+      globalAssetId: "global:image-preview",
+      kind: "image",
+      bytes: new TextEncoder().encode("image bytes"),
+      contentType: "image/png",
+    });
+    const video = await service.importBytes({
+      libraryId: "library-preview",
+      globalAssetId: "global:video-preview",
+      kind: "video",
+      bytes: new TextEncoder().encode("video bytes"),
+      contentType: "video/mp4",
+    });
+
+    expect(image.thumbnailUrl).toBe(image.url);
+    expect(video).not.toHaveProperty("thumbnailUrl");
   });
 
   it("fails closed when equal-length Resource bytes no longer match their CAS digest", async () => {
@@ -216,8 +517,12 @@ describe("local Global Asset library", () => {
     await expect(service.read("library-a", created.id)).resolves.toMatchObject({
       status: "unavailable",
     });
-    await expect(service.restore("library-a", created.id)).rejects.toThrow(
-      /purged/,
-    );
+    await expect(
+      service.restore({
+        libraryId: "library-a",
+        globalAssetId: created.id,
+        deleteOperationId: "delete:purge",
+      }),
+    ).rejects.toThrow(/purged/);
   });
 });

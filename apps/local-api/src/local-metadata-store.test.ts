@@ -220,9 +220,7 @@ describe("local metadata store", () => {
     await expect(store.load()).resolves.toMatchObject({
       assets: [{ id: "legacy-asset", srcR2Key: "uploads/legacy.png" }],
       assetRefs: [{ assetId: "legacy-asset", projectId: "project-1" }],
-      libraryAssetRefs: [
-        { assetId: "legacy-asset", userId: "legacy-user" },
-      ],
+      libraryAssetRefs: [{ assetId: "legacy-asset", userId: "legacy-user" }],
       assetNodeRefs: [
         {
           assetId: "legacy-asset",
@@ -448,8 +446,8 @@ describe("local metadata store", () => {
   });
 });
 
-describe("asset metadata index", () => {
-  it("upserts one row per attached kind and lists by asset, kind, and project", async () => {
+describe("typed metadata attachment projection index", () => {
+  it("keeps ProjectAsset and ActionRevision rows with the same ids independent", async () => {
     const store = createLocalMetadataStore(await tempDir());
     const identity = {
       kind: "media.transcript",
@@ -459,10 +457,13 @@ describe("asset metadata index", () => {
       bodyHash: `sha256:${"c".repeat(64)}`,
       summary: { wordCount: 17, durationMs: 4_820 },
     };
-    await store.upsertAssetMetadataIndex({
-      assetId: "asset-speech",
+    await store.upsertMetadataAttachmentIndex({
+      target: {
+        kind: "project-asset",
+        projectId: "project-1",
+        assetId: "shared-id",
+      },
       metadataKind: "media.transcript",
-      projectId: "project-1",
       schemaVersion: 1,
       contentHash: identity.contentHash,
       bodyHash: identity.bodyHash,
@@ -470,11 +471,14 @@ describe("asset metadata index", () => {
       summary: identity.summary,
       identity,
     });
-    // Re-attaching replaces the row instead of stacking a second one.
-    await store.upsertAssetMetadataIndex({
-      assetId: "asset-speech",
+    await store.upsertMetadataAttachmentIndex({
+      target: {
+        kind: "action-revision",
+        projectId: "project-1",
+        actionId: "shared-id",
+        actionRevisionId: "revision-1",
+      },
       metadataKind: "media.transcript",
-      projectId: "project-1",
       schemaVersion: 1,
       contentHash: identity.contentHash,
       bodyHash: `sha256:${"d".repeat(64)}`,
@@ -482,32 +486,104 @@ describe("asset metadata index", () => {
       summary: { wordCount: 18, durationMs: 5_000 },
       identity: { ...identity, bodyHash: `sha256:${"d".repeat(64)}` },
     });
-    await store.upsertAssetMetadataIndex({
-      assetId: "asset-other",
-      metadataKind: "team.shot-notes",
-      producer: "qa",
-      identity: { kind: "team.shot-notes", schemaVersion: 1, mood: "calm" },
+
+    const all = await store.listMetadataAttachmentIndex({
+      projectId: "project-1",
     });
-
-    const all = await store.listAssetMetadataIndex();
     expect(all).toHaveLength(2);
+    expect(all).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          authority: "projection-index",
+          target: {
+            kind: "project-asset",
+            projectId: "project-1",
+            assetId: "shared-id",
+          },
+          bodyHash: identity.bodyHash,
+        }),
+        expect.objectContaining({
+          authority: "projection-index",
+          target: {
+            kind: "action-revision",
+            projectId: "project-1",
+            actionId: "shared-id",
+            actionRevisionId: "revision-1",
+          },
+          bodyHash: `sha256:${"d".repeat(64)}`,
+        }),
+      ]),
+    );
 
-    const transcripts = await store.listAssetMetadataIndex({
+    const actionRows = await store.listMetadataAttachmentIndex({
+      target: {
+        kind: "action-revision",
+        projectId: "project-1",
+        actionId: "shared-id",
+        actionRevisionId: "revision-1",
+      },
       metadataKind: "media.transcript",
     });
-    expect(transcripts).toHaveLength(1);
-    expect(transcripts[0]).toMatchObject({
-      assetId: "asset-speech",
-      projectId: "project-1",
-      bodyHash: `sha256:${"d".repeat(64)}`,
+    expect(actionRows).toHaveLength(1);
+    expect(actionRows[0]).toMatchObject({
       summary: { wordCount: 18, durationMs: 5_000 },
     });
+  });
 
-    const byAsset = await store.listAssetMetadataIndex({
-      assetId: "asset-other",
+  it("rejects legacy assetId writes and keeps them in a private read-only migration API", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+    await store.listMetadataAttachmentIndex();
+
+    const { DatabaseSync } = require("node:sqlite") as {
+      DatabaseSync: new (path: string) => {
+        prepare(sql: string): { run(...params: unknown[]): unknown };
+        close(): void;
+      };
+    };
+    const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+    try {
+      db.prepare(
+        `INSERT INTO asset_metadata_index (
+          asset_id, metadata_kind, project_id, producer, identity_json, recorded_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(
+        "legacy-asset",
+        "media.description",
+        "project-legacy",
+        "migration",
+        JSON.stringify({
+          kind: "media.description",
+          schemaVersion: 1,
+          text: "Legacy row",
+        }),
+        1,
+      );
+    } finally {
+      db.close();
+    }
+
+    await expect(
+      (
+        store.upsertMetadataAttachmentIndex as (value: unknown) => Promise<void>
+      )({
+        assetId: "legacy-asset",
+        metadataKind: "media.description",
+        producer: "new-write",
+        identity: { kind: "media.description" },
+      }),
+    ).rejects.toThrow();
+
+    const legacy = await store.listLegacyAssetMetadataIndex({
+      assetId: "legacy-asset",
     });
-    expect(byAsset).toHaveLength(1);
-    expect(byAsset[0].identity).toMatchObject({ mood: "calm" });
-    expect(byAsset[0].projectId).toBeUndefined();
+    expect(legacy).toEqual([
+      expect.objectContaining({
+        assetId: "legacy-asset",
+        projectId: "project-legacy",
+        metadataKind: "media.description",
+      }),
+    ]);
+    expect(await store.listMetadataAttachmentIndex()).toEqual([]);
   });
 });

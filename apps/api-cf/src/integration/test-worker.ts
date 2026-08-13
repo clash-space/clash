@@ -2,8 +2,8 @@
  * Lean Worker entrypoint for integration tests.
  *
  * The full src/index.ts pulls in agents → loro-crdt → wasm, which the
- * vitest-pool-workers Vite layer can't resolve. For HTTP-route integration
- * tests we don't need any of that — just Hono + the routes that touch D1/R2.
+ * vitest-pool-workers Vite layer can't resolve. HTTP-route integration tests
+ * can mount only the boundary under exercise here without importing that tree.
  *
  * Re-exports the durable object / workflow stubs so the bindings declared in
  * wrangler.toml resolve. They're never instantiated in route tests.
@@ -13,16 +13,14 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import type { Env } from "../config";
-import { assetsRoutes } from "../routes/v1/assets";
 
-// Minimal Hono app for asset-route integration tests. Avoids importing the full
-// router tree (which transitively pulls @clash/shared-types → loro-crdt → wasm,
-// blocking pool-workers). Only the routes under exercise are mounted.
+// Minimal Hono integration harness. Avoid importing the full router tree, which
+// transitively pulls @clash/shared-types → loro-crdt → wasm and blocks
+// pool-workers. Tests may mount a narrow route above when one is needed.
 const app = new Hono<{ Bindings: Env }>();
 
 app.use("/*", cors());
 app.get("/health", (c) => c.json({ status: "ok" }));
-app.route("/api/v1/assets", assetsRoutes);
 
 export default app;
 

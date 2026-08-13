@@ -25167,7 +25167,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-4F43M35N.js
+// ../../packages/shared-types/dist/chunk-CGTXLVQX.js
 function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version2 = normalizeTokenPart(options.version ?? "v1", "version");
@@ -25221,19 +25221,40 @@ var ProjectAssetMetadataSchema = z.object({
   height: z.number().int().nonnegative().optional(),
   durationMs: z.number().int().nonnegative().optional(),
   bytes: z.number().int().nonnegative().optional(),
+  /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
   waveform: z.array(z.number()).optional(),
   contentType: z.string().trim().min(1).optional(),
   frameRate: z.number().positive().optional(),
   videoCodec: z.string().trim().min(1).optional(),
+  /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
+  hasAudio: z.boolean().optional(),
   audioCodec: z.string().trim().min(1).optional(),
   originalName: z.string().trim().min(1).optional()
 }).strict();
+var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
 var ProjectAssetProvenanceSchema = z.object({
   kind: z.enum(["import", "generation", "edit", "render", "admission"]),
   actionRunId: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1).optional(),
   prompt: z.string().optional()
 }).strict();
+var ProjectAssetLinkedOriginSchema = z.discriminatedUnion("scope", [
+  z.object({
+    scope: z.literal("global"),
+    libraryId: z.string().trim().min(1),
+    entryId: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    scope: z.literal("project"),
+    projectId: z.string().trim().min(1),
+    entryId: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    scope: z.literal("catalog"),
+    catalogId: z.string().trim().min(1),
+    entryId: z.string().trim().min(1)
+  }).strict()
+]);
 var ProjectAssetSourceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("owned"),
@@ -25242,10 +25263,7 @@ var ProjectAssetSourceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("linked"),
     resourceId: ResourceIdSchema,
-    origin: z.object({
-      scope: z.enum(["global", "catalog", "project"]),
-      entryId: z.string().trim().min(1)
-    }).strict()
+    origin: ProjectAssetLinkedOriginSchema
   }).strict()
 ]);
 var ProjectAssetLifecycleSchema = z.discriminatedUnion("state", [
@@ -25314,7 +25332,13 @@ var ResolvedAssetSchema = z.object({
   provenance: ProjectAssetProvenanceSchema.optional(),
   /** Synchronized logical lifecycle; independent from current-Host byte availability. */
   lifecycle: ProjectAssetLifecycleSchema,
-  status: z.enum(["uploading", "ready", "downloading", "unavailable", "failed"]),
+  status: z.enum([
+    "uploading",
+    "ready",
+    "downloading",
+    "unavailable",
+    "failed"
+  ]),
   url: z.string().url().optional(),
   thumbnailUrl: z.string().url().optional(),
   progress: z.number().min(0).max(1).optional(),
@@ -25325,10 +25349,12 @@ var AssetMetadataSchema = z.object({
   height: z.number().int().optional(),
   durationMs: z.number().int().optional(),
   bytes: z.number().int().optional(),
+  /** @deprecated Historical row payload; never emit from new publication. */
   waveform: z.array(z.number()).optional(),
   contentType: z.string().optional(),
   frameRate: z.number().positive().optional(),
   videoCodec: z.string().optional(),
+  hasAudio: z.boolean().optional(),
   audioCodec: z.string().optional(),
   contentHash: z.string().optional(),
   localBlobKey: z.string().optional(),
@@ -25374,7 +25400,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-QTM5MBKX.js
+// ../../packages/shared-types/dist/chunk-Y7VKLK6W.js
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var pluginIdSchema = z.string().trim().superRefine((value, ctx) => {
   const segments = value.split(".");
@@ -33490,7 +33516,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-22GF7SDG.js
+// ../../packages/shared-types/dist/chunk-F5H437YY.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -34432,10 +34458,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     entranceAnimation: authored(TimelineClipAnimationSchema, "Seek-safe visual entrance animation.", {
       required: false,
@@ -34524,10 +34551,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     audioFadeInFrames: authored(NonnegativeFrameSchema, "Canonical audio fade-in duration in frames.", {
       required: false,
@@ -34802,11 +34830,7 @@ var TimelineRenderReceiptSchema = z.object({
   renderNodeId: IdentifierSchema,
   target: TimelineRenderTargetSchema,
   status: z.enum(["pending", "completed", "failed"]),
-  asset: z.object({
-    id: IdentifierSchema,
-    signedUrl: IdentifierSchema.optional(),
-    srcR2Key: IdentifierSchema.optional()
-  }).passthrough().optional(),
+  asset: z.object({ id: IdentifierSchema }).strict().optional(),
   error: z.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z.object({
@@ -36543,7 +36567,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 9,
+  schemaVersion: 11,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -36891,6 +36915,22 @@ var AgentAnnotationPromptPayloadSchema = z.object({
   kind: z.literal("clash-agent-annotations"),
   annotations: z.array(AgentAnnotationDraftSchema).min(1)
 });
+var ScopedIdSchema = z.string().trim().min(1);
+var ProjectAssetMetadataTargetSchema = z.object({
+  kind: z.literal("project-asset"),
+  projectId: ScopedIdSchema,
+  assetId: ScopedIdSchema
+}).strict();
+var ActionRevisionMetadataTargetSchema = z.object({
+  kind: z.literal("action-revision"),
+  projectId: ScopedIdSchema,
+  actionId: ScopedIdSchema,
+  actionRevisionId: ScopedIdSchema
+}).strict();
+var MetadataAttachmentTargetSchema = z.discriminatedUnion("kind", [
+  ProjectAssetMetadataTargetSchema,
+  ActionRevisionMetadataTargetSchema
+]);
 var FrameRangeSchema = z.object({
   startFrame: z.number().int().min(0),
   endFrame: z.number().int().min(0)
@@ -36946,7 +36986,13 @@ var AudioBeatMetadataSchema = z.object({
   sections: z.array(AudioSectionSchema).default([]),
   energyCurve: z.array(AudioEnergyPointSchema).default([])
 });
-var AudioStemTypeSchema = z.enum(["vocal", "instrumental", "drums", "bass", "other"]);
+var AudioStemTypeSchema = z.enum([
+  "vocal",
+  "instrumental",
+  "drums",
+  "bass",
+  "other"
+]);
 var AudioStemAssetSchema = z.object({
   stemAssetId: z.string().min(1),
   stemType: AudioStemTypeSchema,
@@ -37122,17 +37168,19 @@ var TalkingHeadMetadataSchema = z.object({
   words: z.array(TranscriptWordSchema),
   cuts: z.array(TextCutSchema).default([]),
   captionCues: z.array(CaptionCueSchema).default([]),
-  disfluencies: z.array(z.object({
-    id: z.string().optional(),
-    wordId: z.string().optional(),
-    startFrame: z.number().int().min(0).optional(),
-    endFrame: z.number().int().min(0).optional(),
-    text: z.string().optional(),
-    type: z.enum(["filler", "silence", "tone-particle", "repeat"]),
-    requiresReview: z.boolean().default(false),
-    confidence: z.number().min(0).max(1).optional(),
-    detectionSource: z.string().min(1).optional()
-  })).default([])
+  disfluencies: z.array(
+    z.object({
+      id: z.string().optional(),
+      wordId: z.string().optional(),
+      startFrame: z.number().int().min(0).optional(),
+      endFrame: z.number().int().min(0).optional(),
+      text: z.string().optional(),
+      type: z.enum(["filler", "silence", "tone-particle", "repeat"]),
+      requiresReview: z.boolean().default(false),
+      confidence: z.number().min(0).max(1).optional(),
+      detectionSource: z.string().min(1).optional()
+    })
+  ).default([])
 });
 var RightsMetadataSchema = z.object({
   license: z.string().min(1),
@@ -37232,26 +37280,32 @@ var CharacterReferenceViewSchema = z.object({
 });
 var ImageStoryboardMetadataSchema = z.object({
   kind: z.literal("image.storyboard-consistency"),
-  characters: z.array(z.object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    referenceAssetIds: z.array(z.string()).min(1),
-    requiredViews: z.array(CharacterReferenceViewKindSchema).default([]),
-    referenceViews: z.array(CharacterReferenceViewSchema).default([])
-  })).default([]),
-  scenes: z.array(z.object({
-    id: z.string().min(1),
-    referenceAssetIds: z.array(z.string()).default([]),
-    prompt: z.string().min(1)
-  })).default([]),
-  panels: z.array(z.object({
-    id: z.string().min(1),
-    sceneId: z.string().min(1),
-    characterIds: z.array(z.string()).default([]),
-    assetId: z.string().min(1),
-    path: z.string().min(1).optional(),
-    consistencyScore: z.number().min(0).max(1).optional()
-  })).default([])
+  characters: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      referenceAssetIds: z.array(z.string()).min(1),
+      requiredViews: z.array(CharacterReferenceViewKindSchema).default([]),
+      referenceViews: z.array(CharacterReferenceViewSchema).default([])
+    })
+  ).default([]),
+  scenes: z.array(
+    z.object({
+      id: z.string().min(1),
+      referenceAssetIds: z.array(z.string()).default([]),
+      prompt: z.string().min(1)
+    })
+  ).default([]),
+  panels: z.array(
+    z.object({
+      id: z.string().min(1),
+      sceneId: z.string().min(1),
+      characterIds: z.array(z.string()).default([]),
+      assetId: z.string().min(1),
+      path: z.string().min(1).optional(),
+      consistencyScore: z.number().min(0).max(1).optional()
+    })
+  ).default([])
 });
 var SemanticReferenceRoleKindSchema = z.enum([
   "identity-front",
@@ -37357,7 +37411,11 @@ var AnalysisBackendBenchmarkMetadataSchema = z.object({
   blockedReasons: z.array(z.string().min(1)).default([]),
   decisionLog: z.array(z.string().min(1)).default([])
 });
-var ImageEmbeddingDistanceMetricSchema = z.enum(["cosine", "dot", "euclidean"]);
+var ImageEmbeddingDistanceMetricSchema = z.enum([
+  "cosine",
+  "dot",
+  "euclidean"
+]);
 var ImageEmbeddingBaselineForSchema = z.enum([
   "identity",
   "product",
@@ -37387,7 +37445,10 @@ var ImageEmbeddingStoreMetadataSchema = z.object({
   items: z.array(ImageEmbeddingStoreItemSchema).min(1),
   copyOnWriteRequired: z.boolean()
 });
-var ImageComfyuiApiFormatSchema = z.enum(["comfyui-api-json", "comfyui-ui-json"]);
+var ImageComfyuiApiFormatSchema = z.enum([
+  "comfyui-api-json",
+  "comfyui-ui-json"
+]);
 var ImageComfyuiModelTypeSchema = z.enum([
   "checkpoint",
   "vae",
@@ -37432,8 +37493,16 @@ var ImageComfyuiInputSlotSchema = z.object({
   assetId: z.string().min(1).optional(),
   path: z.string().min(1).optional()
 });
-var ImageComfyuiOutputStatusSchema = z.enum(["planned", "materialized"]);
-var ImageComfyuiOutputMediaTypeSchema = z.enum(["image", "image-sequence", "mask", "metadata"]);
+var ImageComfyuiOutputStatusSchema = z.enum([
+  "planned",
+  "materialized"
+]);
+var ImageComfyuiOutputMediaTypeSchema = z.enum([
+  "image",
+  "image-sequence",
+  "mask",
+  "metadata"
+]);
 var ImageComfyuiOutputSchema = z.object({
   outputAssetId: z.string().min(1),
   nodeId: z.string().min(1),
@@ -37617,8 +37686,17 @@ var AdVisualQaMetadataSchema = z.object({
   visualQa: AdDeliveryVisualQaReportSchema,
   decisionLog: z.array(z.string().min(1)).default([])
 });
-var ContentCredentialModeSchema = z.enum(["unsigned-manifest", "signed-c2pa", "external"]);
-var ContentCredentialSignatureStatusSchema = z.enum(["unsigned", "signed", "external", "failed"]);
+var ContentCredentialModeSchema = z.enum([
+  "unsigned-manifest",
+  "signed-c2pa",
+  "external"
+]);
+var ContentCredentialSignatureStatusSchema = z.enum([
+  "unsigned",
+  "signed",
+  "external",
+  "failed"
+]);
 var ContentCredentialIngredientRelationshipSchema = z.enum([
   "source",
   "reference",
@@ -37691,35 +37769,46 @@ var ProductionMetadataSchema = ProductionMetadataBaseSchema.superRefine((metadat
 });
 var AssetMetadataFillActionSchema = z.object({
   actionId: z.string().min(1),
-  targetAssetId: z.string().min(1),
+  target: MetadataAttachmentTargetSchema,
   metadataKind: z.string().min(1),
   metadata: ProductionMetadataSchema,
   producer: z.string().min(1),
   createdAt: z.string().optional()
-});
+}).strict();
 function projectAsrTimedTranscriptWords(input, fps) {
   if (!Number.isFinite(fps) || fps <= 0) {
     throw new Error("fps must be a positive number");
   }
   const transcript = AsrTimedTranscriptSchema.parse(input);
-  return transcript.words.map((word) => TranscriptWordSchema.parse({
-    id: word.id,
-    text: word.text,
-    startFrame: Math.floor(word.startMs / 1e3 * fps),
-    endFrame: Math.max(
-      Math.floor(word.startMs / 1e3 * fps) + 1,
-      Math.ceil(word.endMs / 1e3 * fps)
-    ),
-    ...word.confidence === void 0 ? {} : { confidence: word.confidence },
-    ...word.speakerId === void 0 ? {} : { speakerId: word.speakerId }
-  }));
+  return transcript.words.map(
+    (word) => TranscriptWordSchema.parse({
+      id: word.id,
+      text: word.text,
+      startFrame: Math.floor(word.startMs / 1e3 * fps),
+      endFrame: Math.max(
+        Math.floor(word.startMs / 1e3 * fps) + 1,
+        Math.ceil(word.endMs / 1e3 * fps)
+      ),
+      ...word.confidence === void 0 ? {} : { confidence: word.confidence },
+      ...word.speakerId === void 0 ? {} : { speakerId: word.speakerId }
+    })
+  );
 }
 function applyAssetMetadataFill(asset, action) {
-  if (asset.id !== action.targetAssetId) {
-    throw new Error(`metadata fill target mismatch: ${action.targetAssetId} does not match ${asset.id}`);
+  if (action.target.kind !== "project-asset") {
+    throw new Error(
+      `metadata fill target ${action.target.kind} cannot be applied to a Project Asset manifest`
+    );
+  }
+  if (asset.id !== action.target.assetId) {
+    throw new Error(
+      `metadata fill target mismatch: ${action.target.assetId} does not match ${asset.id}`
+    );
   }
   if (action.metadata.kind !== action.metadataKind) {
-    throw new Error(`metadata kind mismatch: ${action.metadataKind} does not match ${action.metadata.kind}`);
+    throw new Error(
+      `metadata kind mismatch: ${action.metadataKind} does not match ${action.metadata.kind}`
+    );
   }
   const fills = Array.isArray(asset.metadata?.metadataFills) ? asset.metadata.metadataFills : [];
   return {
@@ -38613,6 +38702,7 @@ function storageFreeMediaRecord(input, label) {
     localPath: _localPath,
     storageKey: _storageKey,
     srcR2Key: _srcR2Key,
+    waveform: _legacyWaveform,
     ...persisted
   } = input;
   return { ok: true, value: { ...persisted, assetId: projectAssetId } };
@@ -38657,6 +38747,24 @@ function normalizeProjectTimelinePersistenceState(input) {
   };
   return { ok: true, state: next };
 }
+var LegacyLinkedProjectAssetSourceSchema = z.object({
+  kind: z.literal("linked"),
+  resourceId: z.string().trim().min(1),
+  origin: z.discriminatedUnion("scope", [
+    z.object({
+      scope: z.literal("global"),
+      entryId: z.string().trim().min(1)
+    }).strict(),
+    z.object({
+      scope: z.literal("project"),
+      entryId: z.string().trim().min(1)
+    }).strict(),
+    z.object({
+      scope: z.literal("catalog"),
+      entryId: z.string().trim().min(1)
+    }).strict()
+  ])
+}).strict();
 var DEFAULT_CANVAS_ID = "main";
 function projectTimelineReadToken(timeline) {
   return agentReadToken({
@@ -39974,7 +40082,10 @@ function registerAssetMetadataKind(declaration) {
     return result.success ? [] : result.error.issues;
   };
   const complainsAbout = (issues, field3) => issues.some((issue3) => issue3.path.length === 1 && issue3.path[0] === field3);
-  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+  if (complainsAbout(
+    issuesFor({ schemaVersion: 1, kind: declaration.kind }),
+    "kind"
+  )) {
     throw new Error(
       `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
     );
@@ -39993,13 +40104,13 @@ function getDeclaredAssetMetadataKind(kind) {
   return declaredKinds.get(kind);
 }
 var FillActionEnvelopeSchema = z.object({
-  actionId: z.string().min(1),
-  targetAssetId: z.string().min(1),
-  metadataKind: z.string().min(1),
-  metadata: z.object({ kind: z.string().min(1) }).passthrough(),
-  producer: z.string().min(1),
+  actionId: z.string().trim().min(1),
+  target: MetadataAttachmentTargetSchema,
+  metadataKind: z.string().trim().min(1),
+  metadata: z.object({ kind: z.string().trim().min(1) }).passthrough(),
+  producer: z.string().trim().min(1),
   createdAt: z.string().optional()
-});
+}).strict();
 function parseAssetMetadataFillAction(value) {
   const envelope = FillActionEnvelopeSchema.parse(value);
   if (envelope.metadata.kind !== envelope.metadataKind) {
@@ -40015,7 +40126,9 @@ function parseAssetMetadataFillAction(value) {
   }
   return {
     ...envelope,
-    metadata: declared.schema.parse(envelope.metadata)
+    metadata: declared.schema.parse(
+      envelope.metadata
+    )
   };
 }
 function parseDeclaredAssetMetadata(kind, value) {
@@ -40099,6 +40212,15 @@ function resolveLocalSpeechModelId(entries, capability2, requested) {
   const wanted = requested.trim();
   return cards.find((card) => card.cardId === wanted)?.model ?? cards.find((card) => card.model === wanted)?.model;
 }
+var CopilotProjectAssetReferenceSchema = z.object({
+  projectAssetId: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  label: z.string().trim().min(1)
+}).strict();
+var CopilotProjectAssetSubmissionSchema = z.object({
+  actionId: z.string().trim().min(1),
+  assets: CopilotProjectAssetReferenceSchema.array().min(1)
+}).strict();
 var TRACK_CATEGORIES = TIMELINE_DSL_TRACK_CATEGORIES;
 var CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
   Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
@@ -40741,8 +40863,49 @@ function projectAssetsUrl(endpoint, projectId) {
 function fileNameOf(file2) {
   return "name" in file2 && typeof file2.name === "string" ? file2.name : void 0;
 }
+function newProjectAssetId() {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset import ids");
+  }
+  return `asset:${cryptoObject.randomUUID()}`;
+}
+function snapshotProjectImport(input) {
+  const projectId = required(input.projectId, "project id");
+  const file2 = input.file;
+  const sourceFileName = fileNameOf(file2);
+  const fileName = required(input.fileName ?? sourceFileName, "file name");
+  return {
+    projectId,
+    file: file2,
+    fileName,
+    appendFileName: input.fileName !== void 0 || sourceFileName !== fileName,
+    kind: input.kind,
+    projectAssetId: input.projectAssetId === void 0 ? newProjectAssetId() : required(input.projectAssetId, "project asset id")
+  };
+}
+function newDeleteOperationId() {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset operation ids");
+  }
+  return `delete:${cryptoObject.randomUUID()}`;
+}
+function stableDeleteOperationId(input, requested, generatedIds) {
+  if (requested !== void 0) {
+    return required(requested, "delete operation id");
+  }
+  const existing = generatedIds.get(input);
+  if (existing)
+    return existing;
+  const generated = newDeleteOperationId();
+  generatedIds.set(input, generated);
+  return generated;
+}
 function createProjectAssetHttpClient(options = {}) {
   const fetch2 = options.fetch ?? globalThis.fetch;
+  const importCommands = /* @__PURE__ */ new WeakMap();
+  const generatedDeleteOperationIds = /* @__PURE__ */ new WeakMap();
   const connection = async () => {
     if (options.resolveConnection)
       return options.resolveConnection();
@@ -40819,18 +40982,20 @@ function createProjectAssetHttpClient(options = {}) {
       };
     },
     async importFile(input) {
-      const projectAssetId = input.projectAssetId?.trim();
-      const fileName = required(input.fileName ?? fileNameOf(input.file), "file name");
-      const { connected, url: url3 } = await target(input.projectId, "/import-file");
-      const form = new FormData();
-      if (input.fileName === void 0 && fileNameOf(input.file) === fileName) {
-        form.append("file", input.file);
-      } else {
-        form.append("file", input.file, fileName);
+      let snapshot = importCommands.get(input);
+      if (!snapshot) {
+        snapshot = snapshotProjectImport(input);
+        importCommands.set(input, snapshot);
       }
-      form.append("kind", input.kind);
-      if (projectAssetId)
-        form.append("projectAssetId", projectAssetId);
+      const { connected, url: url3 } = await target(snapshot.projectId, "/import-file");
+      const form = new FormData();
+      if (!snapshot.appendFileName) {
+        form.append("file", snapshot.file);
+      } else {
+        form.append("file", snapshot.file, snapshot.fileName);
+      }
+      form.append("kind", snapshot.kind);
+      form.append("projectAssetId", snapshot.projectAssetId);
       const response = await fetch2(url3, requestInit({
         method: "POST",
         headers: headers(connected),
@@ -40850,15 +41015,18 @@ function createProjectAssetHttpClient(options = {}) {
     },
     async trash(input) {
       const assetId = required(input.assetId, "asset id");
+      const deleteOperationId = stableDeleteOperationId(input, input.deleteOperationId, generatedDeleteOperationIds);
       const actorClientType2 = input.actorClientType?.trim();
       const receipt = input.receipt?.trim();
       const { connected, url: url3 } = await target(input.projectId, `/${encodeURIComponent(assetId)}`);
       const response = await fetch2(url3, requestInit({
         method: "DELETE",
         headers: headers(connected, {
+          "content-type": "application/json",
           ...actorClientType2 ? { "x-clash-client-type": actorClientType2 } : {},
           ...receipt ? { "x-clash-if-match": receipt } : {}
-        })
+        }),
+        body: JSON.stringify({ deleteOperationId })
       }));
       const value = ResolvedAssetSchema.parse(await responseBody(response));
       return { value, receipt: receiptFrom(response) };
@@ -40912,8 +41080,27 @@ function libraryAssetsUrl(endpoint) {
 function fileNameOf2(file2) {
   return "name" in file2 && typeof file2.name === "string" ? file2.name : void 0;
 }
+function newOperationId(prefix) {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset operation ids");
+  }
+  return `${prefix}:${cryptoObject.randomUUID()}`;
+}
+function stableOperationId(input, requested, generatedIds, prefix, label) {
+  if (requested !== void 0)
+    return required2(requested, label);
+  const existing = generatedIds.get(input);
+  if (existing)
+    return existing;
+  const generated = newOperationId(prefix);
+  generatedIds.set(input, generated);
+  return generated;
+}
 function createPersonalGlobalAssetHttpClient(options = {}) {
   const fetch2 = options.fetch ?? globalThis.fetch;
+  const generatedImportIds = /* @__PURE__ */ new WeakMap();
+  const generatedTrashIds = /* @__PURE__ */ new WeakMap();
   const connection = async () => {
     if (options.resolveConnection)
       return options.resolveConnection();
@@ -40958,6 +41145,7 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
       return resolvedAsset(await fetch2(url3, requestInit({ method: "GET", headers: headers(connected) })));
     },
     async importFile(input) {
+      const globalAssetId = stableOperationId(input, input.globalAssetId, generatedImportIds, "global", "global asset id");
       const fileName = required2(input.fileName ?? fileNameOf2(input.file), "file name");
       const { connected, url: url3 } = await target("/import-file");
       const form = new FormData();
@@ -40967,6 +41155,7 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
         form.append("file", input.file, fileName);
       }
       form.append("kind", input.kind);
+      form.append("globalAssetId", globalAssetId);
       return resolvedAsset(await fetch2(url3, requestInit({
         method: "POST",
         headers: headers(connected),
@@ -40987,13 +41176,27 @@ function createPersonalGlobalAssetHttpClient(options = {}) {
     },
     async trash(input) {
       const globalAssetId = required2(input.globalAssetId, "global asset id");
+      const deleteOperationId = stableOperationId(input, input.deleteOperationId, generatedTrashIds, "delete", "delete operation id");
       const { connected, url: url3 } = await target(`/${encodeURIComponent(globalAssetId)}`);
-      return resolvedAsset(await fetch2(url3, requestInit({ method: "DELETE", headers: headers(connected) })));
+      return resolvedAsset(await fetch2(url3, requestInit({
+        method: "DELETE",
+        headers: headers(connected, {
+          "content-type": "application/json"
+        }),
+        body: JSON.stringify({ deleteOperationId })
+      })));
     },
     async restore(input) {
       const globalAssetId = required2(input.globalAssetId, "global asset id");
+      const deleteOperationId = required2(input.deleteOperationId, "delete operation id");
       const { connected, url: url3 } = await target(`/${encodeURIComponent(globalAssetId)}/restore`);
-      return resolvedAsset(await fetch2(url3, requestInit({ method: "POST", headers: headers(connected) })));
+      return resolvedAsset(await fetch2(url3, requestInit({
+        method: "POST",
+        headers: headers(connected, {
+          "content-type": "application/json"
+        }),
+        body: JSON.stringify({ deleteOperationId })
+      })));
     }
   };
 }
@@ -41162,11 +41365,7 @@ var ASSET_IMPORT_FILE_TYPES = {
   ".flac": { kind: "audio", contentType: "audio/flac" },
   ".ogg": { kind: "audio", contentType: "audio/ogg" },
   ".glb": { kind: "model", contentType: "model/gltf-binary" },
-  ".gltf": { kind: "model", contentType: "model/gltf+json" },
-  ".fbx": { kind: "model", contentType: "application/octet-stream" },
-  ".bvh": { kind: "model", contentType: "application/octet-stream" },
-  ".obj": { kind: "model", contentType: "text/plain" },
-  ".usdz": { kind: "model", contentType: "model/vnd.usdz+zip" }
+  ".gltf": { kind: "model", contentType: "model/gltf+json" }
 };
 function resolveAssetImportFileType(filePath, requestedKind) {
   const fileName = filePath.replace(/^.*[/\\]/u, "");
@@ -41183,6 +41382,23 @@ function resolveAssetImportFileType(filePath, requestedKind) {
     throw new Error(`Asset kind ${requestedKind} does not match the selected ${inferred.kind} file`);
   }
   return { ...inferred, ...requestedKind ? { kind: requestedKind } : {} };
+}
+function stableImportId(command2, requested, ids, prefix) {
+  const existing = ids.get(command2);
+  if (existing)
+    return existing;
+  const normalized = requested?.trim();
+  if (requested !== void 0 && !normalized) {
+    throw new Error(`${prefix} asset id is required`);
+  }
+  const runtimeCrypto = globalThis.crypto;
+  const randomUUID9 = runtimeCrypto?.randomUUID;
+  if (!normalized && typeof randomUUID9 !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset import ids");
+  }
+  const id2 = normalized ?? `${prefix}:${runtimeCrypto.randomUUID()}`;
+  ids.set(command2, id2);
+  return id2;
 }
 function createAssetHostConnectionResolver(options) {
   const env = options.env ?? process.env;
@@ -41211,6 +41427,9 @@ function createProjectAssetHostClient(options = {}) {
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body)
   });
+  const importIds = /* @__PURE__ */ new WeakMap();
+  const importCommands = /* @__PURE__ */ new WeakMap();
+  const trashCommands = /* @__PURE__ */ new WeakMap();
   const result = (resolved, value) => ({
     projectId: resolved.projectId,
     ...resolved.workspaceRoot ? { workspaceRoot: resolved.workspaceRoot } : {},
@@ -41252,14 +41471,23 @@ function createProjectAssetHostClient(options = {}) {
       };
     },
     async importFile(input) {
-      const resolved = await context(input);
-      const bytes = input.bytes.slice().buffer;
-      return result(resolved, await http.importFile({
-        projectId: resolved.projectId,
-        file: new Blob([bytes], { type: input.contentType }),
-        fileName: input.fileName,
-        kind: input.kind
-      }));
+      let snapshot = importCommands.get(input);
+      if (!snapshot) {
+        const resolved = await context(input);
+        const bytes = input.bytes.slice().buffer;
+        snapshot = {
+          resolved,
+          command: {
+            projectId: resolved.projectId,
+            file: new Blob([bytes], { type: input.contentType }),
+            fileName: input.fileName,
+            kind: input.kind,
+            projectAssetId: stableImportId(input, input.projectAssetId, importIds, "asset")
+          }
+        };
+        importCommands.set(input, snapshot);
+      }
+      return result(snapshot.resolved, await http.importFile(snapshot.command));
     },
     async admit(input) {
       const resolved = await context(input);
@@ -41270,12 +41498,18 @@ function createProjectAssetHostClient(options = {}) {
     },
     async trash(input) {
       const resolved = await context(input);
-      const observed2 = await http.trash({
-        projectId: resolved.projectId,
-        assetId: input.assetId,
-        actorClientType: input.actorClientType,
-        receipt: input.receipt
-      });
+      let command2 = trashCommands.get(input);
+      if (!command2) {
+        command2 = {
+          projectId: resolved.projectId,
+          assetId: input.assetId,
+          ...input.deleteOperationId !== void 0 ? { deleteOperationId: input.deleteOperationId } : {},
+          ...input.actorClientType ? { actorClientType: input.actorClientType } : {},
+          ...input.receipt ? { receipt: input.receipt } : {}
+        };
+        trashCommands.set(input, command2);
+      }
+      const observed2 = await http.trash(command2);
       return {
         ...result(resolved, observed2.value),
         receipt: observed2.receipt
@@ -41303,18 +41537,28 @@ function createPersonalGlobalAssetHostClient(options = {}) {
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body)
   });
+  const importIds = /* @__PURE__ */ new WeakMap();
+  const importCommands = /* @__PURE__ */ new WeakMap();
   return {
     list: () => http.list(),
     get: (input) => http.get(input),
     async importFile(input) {
-      const bytes = input.bytes.slice().buffer;
-      return http.importFile({
-        file: new Blob([bytes], { type: input.contentType }),
-        fileName: input.fileName,
-        kind: input.kind
-      });
+      let command2 = importCommands.get(input);
+      if (!command2) {
+        const bytes = input.bytes.slice().buffer;
+        command2 = {
+          file: new Blob([bytes], { type: input.contentType }),
+          fileName: input.fileName,
+          kind: input.kind,
+          globalAssetId: stableImportId(input, input.globalAssetId, importIds, "global")
+        };
+        importCommands.set(input, command2);
+      }
+      return http.importFile(command2);
     },
-    publish: (input) => http.publish(input)
+    publish: (input) => http.publish(input),
+    trash: (input) => http.trash(input),
+    restore: (input) => http.restore(input)
   };
 }
 
@@ -41784,6 +42028,7 @@ var {
 
 // ../../packages/cli/src/commands/assets.ts
 var import_node_fs7 = require("node:fs");
+var import_node_crypto8 = require("node:crypto");
 var import_node_path20 = require("node:path");
 
 // ../../packages/cli/src/commands/canvas.ts
@@ -57963,11 +58208,27 @@ async function applyProductionMetadataAction(options) {
     cwd,
     filePath: resolveLocalPath(cwd, options.actionPath, "action")
   });
-  const assetsPath = resolveLocalPath(cwd, options.assetsPath ?? (0, import_node_path15.join)("assets", "manifest.json"), "asset manifest");
+  const assetsPath = resolveLocalPath(
+    cwd,
+    options.assetsPath ?? (0, import_node_path15.join)("assets", "manifest.json"),
+    "asset manifest"
+  );
   const rawAction = actionPath === void 0 ? options.action : JSON.parse(await (0, import_promises9.readFile)(actionPath, "utf8"));
   const fill = parseAssetMetadataFillAction(rawAction);
-  const targetAssetFileStem = safeProjectionFileSegment(fill.targetAssetId, "targetAssetId");
-  const metadataKindFileStem = safeProjectionFileSegment(fill.metadataKind, "metadataKind");
+  if (fill.target.kind !== "project-asset") {
+    throw new Error(
+      `Metadata target ${fill.target.kind} cannot be applied to an Asset manifest`
+    );
+  }
+  const targetAssetId = fill.target.assetId;
+  const targetAssetFileStem = safeProjectionFileSegment(
+    targetAssetId,
+    "targetAssetId"
+  );
+  const metadataKindFileStem = safeProjectionFileSegment(
+    fill.metadataKind,
+    "metadataKind"
+  );
   const metadataPath = resolveProjectionFilePathInsideCwd({
     cwd,
     filePath: (0, import_node_path15.join)(
@@ -57978,19 +58239,27 @@ async function applyProductionMetadataAction(options) {
     )
   });
   const metadataManifestPath = assetMetadataManifestPath(cwd, metadataPath);
-  const manifest = parseAssetManifest(await (0, import_promises9.readFile)(assetsPath, "utf8"), assetsPath);
-  const assetIndex = manifest.assets.findIndex((asset) => asset.id === fill.targetAssetId);
+  const manifest = parseAssetManifest(
+    await (0, import_promises9.readFile)(assetsPath, "utf8"),
+    assetsPath
+  );
+  const assetIndex = manifest.assets.findIndex(
+    (asset) => asset.id === targetAssetId
+  );
   if (assetIndex < 0) {
-    throw new Error(`Asset ${fill.targetAssetId} not found in ${assetsPath}`);
+    throw new Error(`Asset ${targetAssetId} not found in ${assetsPath}`);
   }
-  const updatedAsset = applyAssetMetadataFill(manifest.assets[assetIndex], fill);
+  const updatedAsset = applyAssetMetadataFill(
+    manifest.assets[assetIndex],
+    fill
+  );
   manifest.assets[assetIndex] = updatedAsset;
   await writeJson(assetsPath, manifest);
   await writeJson(metadataPath, fill.metadata);
   const metadataManifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "clash.asset.metadata.manifest",
-    targetAssetId: fill.targetAssetId,
+    target: fill.target,
     metadataKind: fill.metadataKind,
     metadataPath: toProjectPath(cwd, metadataPath),
     baseMetadataHash: productionMetadataHash(fill.metadata),
@@ -58000,7 +58269,7 @@ async function applyProductionMetadataAction(options) {
   await writeJson(metadataManifestPath, metadataManifest);
   const result = {
     applied: true,
-    targetAssetId: fill.targetAssetId,
+    targetAssetId,
     metadataKind: fill.metadataKind,
     assetsPath,
     metadataPath,
@@ -58016,24 +58285,47 @@ async function applyProductionMetadataAction(options) {
 async function applyProductionMetadataProjection(options) {
   const cwd = options.cwd;
   await loadWorkspaceMetadataKinds(cwd);
-  const metadataPath = resolveLocalPath(cwd, options.filePath, "metadata projection");
+  const metadataPath = resolveLocalPath(
+    cwd,
+    options.filePath,
+    "metadata projection"
+  );
   const metadataManifestPath = assetMetadataManifestPath(cwd, metadataPath);
-  const assetsPath = resolveLocalPath(cwd, options.assetsPath ?? (0, import_node_path15.join)("assets", "manifest.json"), "asset manifest");
-  const metadataManifest = await readAssetMetadataManifest(metadataManifestPath);
+  const assetsPath = resolveLocalPath(
+    cwd,
+    options.assetsPath ?? (0, import_node_path15.join)("assets", "manifest.json"),
+    "asset manifest"
+  );
+  const projectId = (await resolveProjectContext({ cwd })).projectId;
+  const metadataManifest = await readAssetMetadataManifest(
+    metadataManifestPath,
+    projectId
+  );
   if (metadataManifest.metadataPath !== toProjectPath(cwd, metadataPath)) {
-    throw new Error("READ_REQUIRED: This metadata file was not projected from the current cwd path.");
+    throw new Error(
+      "READ_REQUIRED: This metadata file was not projected from the current cwd path."
+    );
   }
   const metadata = parseDeclaredAssetMetadata(
     metadataManifest.metadataKind,
     JSON.parse(await (0, import_promises9.readFile)(metadataPath, "utf8"))
   );
   if (metadata.kind !== metadataManifest.metadataKind) {
-    throw new Error(`metadata kind mismatch: ${metadata.kind} does not match manifest ${metadataManifest.metadataKind}`);
+    throw new Error(
+      `metadata kind mismatch: ${metadata.kind} does not match manifest ${metadataManifest.metadataKind}`
+    );
   }
-  const manifest = parseAssetManifest(await (0, import_promises9.readFile)(assetsPath, "utf8"), assetsPath);
-  const assetIndex = manifest.assets.findIndex((asset) => asset.id === metadataManifest.targetAssetId);
+  const manifest = parseAssetManifest(
+    await (0, import_promises9.readFile)(assetsPath, "utf8"),
+    assetsPath
+  );
+  const assetIndex = manifest.assets.findIndex(
+    (asset) => asset.id === metadataManifest.target.assetId
+  );
   if (assetIndex < 0) {
-    throw new Error(`Asset ${metadataManifest.targetAssetId} not found in ${assetsPath}`);
+    throw new Error(
+      `Asset ${metadataManifest.target.assetId} not found in ${assetsPath}`
+    );
   }
   const currentMetadata = manifest.assets[assetIndex].metadata?.[metadataManifest.metadataKind];
   const beforeMetadataHash = currentMetadata?.body === "cas-projection" && typeof currentMetadata.bodyHash === "string" ? currentMetadata.bodyHash : productionMetadataHash(currentMetadata ?? null);
@@ -58041,7 +58333,11 @@ async function applyProductionMetadataProjection(options) {
     parseAssetMetadataFillAction(
       JSON.parse(
         await (0, import_promises9.readFile)(
-          resolveLocalPath(cwd, metadataManifest.sourceActionPath, "source action"),
+          resolveLocalPath(
+            cwd,
+            metadataManifest.sourceActionPath,
+            "source action"
+          ),
           "utf8"
         )
       )
@@ -58053,7 +58349,9 @@ async function applyProductionMetadataProjection(options) {
     currentSourceActionHash
   );
   if (!options.expectedVersion) {
-    throw new Error("READ_REQUIRED: Attach or read this metadata before applying the edited projection.");
+    throw new Error(
+      "READ_REQUIRED: Attach or read this metadata before applying the edited projection."
+    );
   }
   if (options.expectedVersion !== currentVersion) {
     throw new Error(
@@ -58061,14 +58359,17 @@ async function applyProductionMetadataProjection(options) {
     );
   }
   const afterMetadataHash = productionMetadataHash(metadata);
-  manifest.assets[assetIndex] = applyAssetMetadataFill(manifest.assets[assetIndex], {
-    actionId: `metadata-projection-apply:${afterMetadataHash}`,
-    targetAssetId: metadataManifest.targetAssetId,
-    metadataKind: metadataManifest.metadataKind,
-    metadata,
-    producer: "clash assets metadata apply",
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  });
+  manifest.assets[assetIndex] = applyAssetMetadataFill(
+    manifest.assets[assetIndex],
+    {
+      actionId: `metadata-projection-apply:${afterMetadataHash}`,
+      target: metadataManifest.target,
+      metadataKind: metadataManifest.metadataKind,
+      metadata,
+      producer: "clash assets metadata apply",
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  );
   await writeJson(assetsPath, manifest);
   const nextMetadataManifest = {
     ...metadataManifest,
@@ -58078,7 +58379,7 @@ async function applyProductionMetadataProjection(options) {
   await writeJson(metadataManifestPath, nextMetadataManifest);
   return {
     applied: true,
-    targetAssetId: metadataManifest.targetAssetId,
+    targetAssetId: metadataManifest.target.assetId,
     metadataKind: metadataManifest.metadataKind,
     assetsPath,
     metadataPath,
@@ -58103,10 +58404,13 @@ function assetMetadataManifestPath(cwd, metadataPath) {
   const extension = (0, import_node_path15.extname)(metadataPath);
   return resolveProjectionFilePathInsideCwd({
     cwd,
-    filePath: (0, import_node_path15.join)((0, import_node_path15.dirname)(metadataPath), `${(0, import_node_path15.basename)(metadataPath, extension)}.manifest.json`)
+    filePath: (0, import_node_path15.join)(
+      (0, import_node_path15.dirname)(metadataPath),
+      `${(0, import_node_path15.basename)(metadataPath, extension)}.manifest.json`
+    )
   });
 }
-async function readAssetMetadataManifest(manifestPath) {
+async function readAssetMetadataManifest(manifestPath, legacyProjectId) {
   let value;
   try {
     value = JSON.parse(await (0, import_promises9.readFile)(manifestPath, "utf8"));
@@ -58119,14 +58423,30 @@ async function readAssetMetadataManifest(manifestPath) {
     throw new Error("READ_REQUIRED: Invalid asset metadata manifest");
   }
   const manifest = value;
-  if (manifest.schemaVersion !== 1 || manifest.kind !== "clash.asset.metadata.manifest" || typeof manifest.targetAssetId !== "string" || typeof manifest.metadataKind !== "string" || typeof manifest.metadataPath !== "string" || typeof manifest.baseMetadataHash !== "string" || manifest.sourceActionPath !== void 0 && typeof manifest.sourceActionPath !== "string" || typeof manifest.sourceActionHash !== "string") {
+  if (manifest.schemaVersion === 1 && manifest.kind === "clash.asset.metadata.manifest" && typeof manifest.targetAssetId === "string" && typeof manifest.metadataKind === "string" && typeof manifest.metadataPath === "string" && typeof manifest.baseMetadataHash === "string" && (manifest.sourceActionPath === void 0 || typeof manifest.sourceActionPath === "string") && typeof manifest.sourceActionHash === "string") {
+    return {
+      schemaVersion: 2,
+      kind: manifest.kind,
+      target: {
+        kind: "project-asset",
+        projectId: legacyProjectId,
+        assetId: manifest.targetAssetId
+      },
+      metadataKind: manifest.metadataKind,
+      metadataPath: manifest.metadataPath,
+      baseMetadataHash: manifest.baseMetadataHash,
+      ...manifest.sourceActionPath ? { sourceActionPath: manifest.sourceActionPath } : {},
+      sourceActionHash: manifest.sourceActionHash
+    };
+  }
+  if (manifest.schemaVersion !== 2 || manifest.kind !== "clash.asset.metadata.manifest" || !manifest.target || manifest.target.kind !== "project-asset" || typeof manifest.target.projectId !== "string" || typeof manifest.target.assetId !== "string" || typeof manifest.metadataKind !== "string" || typeof manifest.metadataPath !== "string" || typeof manifest.baseMetadataHash !== "string" || manifest.sourceActionPath !== void 0 && typeof manifest.sourceActionPath !== "string" || typeof manifest.sourceActionHash !== "string") {
     throw new Error("READ_REQUIRED: Invalid asset metadata manifest");
   }
   return manifest;
 }
 function assetMetadataObservationVersion(manifest, baseMetadataHash, currentSourceActionHash) {
   const hash2 = productionMetadataHash({
-    targetAssetId: manifest.targetAssetId,
+    target: manifest.target,
     metadataKind: manifest.metadataKind,
     metadataPath: manifest.metadataPath,
     baseMetadataHash,
@@ -58206,9 +58526,13 @@ async function reportAssetMetadataIndex(input) {
 }
 async function attachAssetMetadata(options) {
   await loadWorkspaceMetadataKinds(options.cwd);
+  const projectId = (await resolveProjectContext({ cwd: options.cwd })).projectId;
   const dataDir = options.dataDir ?? defaultLocalApiDataDir();
   const bodyHashField = options.bodyHashField ?? "bodyHash";
-  let metadata = { ...options.metadata, kind: options.metadataKind };
+  let metadata = {
+    ...options.metadata,
+    kind: options.metadataKind
+  };
   let stored;
   if (options.body !== void 0) {
     const declared = metadata[bodyHashField];
@@ -58221,12 +58545,18 @@ async function attachAssetMetadata(options) {
     });
     metadata = { ...metadata, [bodyHashField]: stored.contentHash };
   }
+  const actionId = `attach-${(0, import_node_crypto7.randomUUID)()}`;
+  const target = {
+    kind: "project-asset",
+    projectId,
+    assetId: options.assetId
+  };
   const result = await applyProductionMetadataAction({
     cwd: options.cwd,
     ...options.assetsPath ? { assetsPath: options.assetsPath } : {},
     action: {
-      actionId: `attach-${(0, import_node_crypto7.randomUUID)()}`,
-      targetAssetId: options.assetId,
+      actionId,
+      target,
       metadataKind: options.metadataKind,
       producer: options.producer,
       metadata,
@@ -58240,10 +58570,11 @@ async function attachAssetMetadata(options) {
     cwd: options.cwd
   });
   const indexed = await reportAssetMetadataIndex({
-    assetId: options.assetId,
+    actionId,
+    target,
     metadataKind: options.metadataKind,
     producer: options.producer,
-    identity: metadata
+    metadata
   });
   return {
     attached: true,
@@ -58271,19 +58602,28 @@ async function readAssetMetadataBody(options) {
 // ../../packages/cli/src/commands/asset-metadata.ts
 async function readAssetMetadataProjection(options) {
   const { manifest } = await readAssetManifest(options.cwd, options.assetsPath);
-  const asset = manifest.assets?.find((candidate) => candidate.id === options.assetId);
+  const asset = manifest.assets?.find(
+    (candidate) => candidate.id === options.assetId
+  );
   if (!asset) throw new Error(`Asset ${options.assetId} not found`);
   const attached = asset.metadata?.[options.metadataKind];
-  if (!attached) throw new Error(`Asset ${options.assetId} has no ${options.metadataKind} metadata`);
+  if (!attached)
+    throw new Error(
+      `Asset ${options.assetId} has no ${options.metadataKind} metadata`
+    );
   const bodyHash = attached.bodyHash;
   if (typeof bodyHash !== "string") {
-    throw new Error(`${options.metadataKind} on ${options.assetId} has no stored body`);
+    throw new Error(
+      `${options.metadataKind} on ${options.assetId} has no stored body`
+    );
   }
   const body = await readAssetMetadataBody({ contentHash: bodyHash });
   return { content: `${JSON.stringify(body, null, 2)}
 `, revision: bodyHash };
 }
-var assetMetadataCommand = new Command("metadata").description("Read and attach declared metadata on an asset");
+var assetMetadataCommand = new Command("metadata").description(
+  "Read and attach declared metadata on an asset"
+);
 async function readJsonArgument(value) {
   const contents = value === "-" ? (0, import_node_fs5.readFileSync)(0, "utf8") : await (0, import_promises10.readFile)(value, "utf8");
   return JSON.parse(contents);
@@ -58292,6 +58632,46 @@ async function readAssetManifest(cwd, assetsPath) {
   const path = assetsPath ?? (0, import_node_path17.join)(cwd, "assets", "manifest.json");
   const manifest = JSON.parse(await (0, import_promises10.readFile)(path, "utf8"));
   return { path, manifest };
+}
+async function recordAssetMetadataObservation(options) {
+  const context = await resolveProjectContext({ cwd: options.cwd });
+  if (!context.workspaceRoot) {
+    throw new Error(
+      "Asset metadata reads require a cwd linked through .clash/project.toml."
+    );
+  }
+  await recordWorktreeObservation({
+    workspaceRoot: context.workspaceRoot,
+    projectId: context.projectId,
+    entityKind: "asset-metadata",
+    entityId: options.entityId,
+    revision: options.revision
+  });
+}
+async function requireAssetMetadataObservation(options) {
+  let context;
+  try {
+    context = await resolveProjectContext({ cwd: options.cwd });
+  } catch (error51) {
+    throw new Error(
+      `READ_REQUIRED: Link this cwd through .clash/project.toml and read the metadata before applying. ${error51 instanceof Error ? error51.message : String(error51)}`
+    );
+  }
+  if (!context.workspaceRoot) {
+    throw new Error(
+      "READ_REQUIRED: Link this cwd through .clash/project.toml and read the metadata before applying."
+    );
+  }
+  const observation = await requireWorktreeObservation({
+    workspaceRoot: context.workspaceRoot,
+    projectId: context.projectId,
+    entityKind: "asset-metadata",
+    entityId: options.entityId
+  });
+  if (!observation.ok) {
+    throw new Error(`${observation.code}: ${observation.error}`);
+  }
+  return observation.revision;
 }
 assetMetadataCommand.command("kinds").description("List every metadata kind this build declares").option("--json", "Output as JSON").action(async (options) => {
   await loadWorkspaceMetadataKinds(process.cwd());
@@ -58304,10 +58684,19 @@ assetMetadataCommand.command("kinds").description("List every metadata kind this
 });
 assetMetadataCommand.command("list").description("List the metadata attached to one asset").requiredOption("--asset <id>", "Asset id").option("--assets <path>", "Asset manifest path").option("--json", "Output as JSON").action(async (options) => {
   try {
-    const { manifest } = await readAssetManifest(process.cwd(), options.assets);
-    const asset = manifest.assets?.find((candidate) => candidate.id === options.asset);
+    const { manifest } = await readAssetManifest(
+      process.cwd(),
+      options.assets
+    );
+    const asset = manifest.assets?.find(
+      (candidate) => candidate.id === options.asset
+    );
     if (!asset) throw new Error(`Asset ${options.asset} not found`);
-    const attached = Object.entries(asset.metadata ?? {}).filter(([key, value]) => key !== "metadataFills" && value && typeof value === "object" && !Array.isArray(value)).map(([kind, value]) => ({
+    const attached = Object.entries(
+      asset.metadata ?? {}
+    ).filter(
+      ([key, value]) => key !== "metadataFills" && value && typeof value === "object" && !Array.isArray(value)
+    ).map(([kind, value]) => ({
       ...value,
       kind
     }));
@@ -58316,7 +58705,9 @@ assetMetadataCommand.command("list").description("List the metadata attached to 
       return;
     }
     for (const entry of attached) {
-      console.log(`${entry.kind}${entry.bodyHash ? `  body ${String(entry.bodyHash).slice(0, 19)}\u2026` : ""}`);
+      console.log(
+        `${entry.kind}${entry.bodyHash ? `  body ${String(entry.bodyHash).slice(0, 19)}\u2026` : ""}`
+      );
     }
     if (attached.length === 0) console.log("No metadata attached.");
   } catch (error51) {
@@ -58326,18 +58717,28 @@ assetMetadataCommand.command("list").description("List the metadata attached to 
 });
 assetMetadataCommand.command("get").description("Read one attached metadata kind, or its stored body").requiredOption("--asset <id>", "Asset id").requiredOption("--kind <kind>", "Declared metadata kind").option("--body", "Print the stored body instead of the attached identity").option("--assets <path>", "Asset manifest path").option("--json", "Output as JSON").action(async (options) => {
   try {
-    const { manifest } = await readAssetManifest(process.cwd(), options.assets);
-    const asset = manifest.assets?.find((candidate) => candidate.id === options.asset);
+    const { manifest } = await readAssetManifest(
+      process.cwd(),
+      options.assets
+    );
+    const asset = manifest.assets?.find(
+      (candidate) => candidate.id === options.asset
+    );
     if (!asset) throw new Error(`Asset ${options.asset} not found`);
     const attached = asset.metadata?.[options.kind];
-    if (!attached) throw new Error(`Asset ${options.asset} has no ${options.kind} metadata`);
+    if (!attached)
+      throw new Error(
+        `Asset ${options.asset} has no ${options.kind} metadata`
+      );
     if (!options.body) {
       printJson(attached);
       return;
     }
     const bodyHash = attached.bodyHash;
     if (typeof bodyHash !== "string") {
-      throw new Error(`${options.kind} on ${options.asset} has no stored body`);
+      throw new Error(
+        `${options.kind} on ${options.asset} has no stored body`
+      );
     }
     printJson(await readAssetMetadataBody({ contentHash: bodyHash }));
   } catch (error51) {
@@ -58345,7 +58746,9 @@ assetMetadataCommand.command("get").description("Read one attached metadata kind
     process.exit(1);
   }
 });
-assetMetadataCommand.command("set").description("Attach declared metadata to an asset, storing any body out of line").requiredOption("--asset <id>", "Asset id").requiredOption("--kind <kind>", "Declared metadata kind").requiredOption("--metadata <path>", "Metadata JSON path, or - for stdin").option("--body <path>", "Body JSON path stored as an immutable blob").option("--producer <id>", "Who produced this metadata", "clash.cli").option("--assets <path>", "Asset manifest path").option("--json", "Output as JSON").action(async (options) => {
+assetMetadataCommand.command("set").description(
+  "Attach declared metadata to an asset, storing any body out of line"
+).requiredOption("--asset <id>", "Asset id").requiredOption("--kind <kind>", "Declared metadata kind").requiredOption("--metadata <path>", "Metadata JSON path, or - for stdin").option("--body <path>", "Body JSON path stored as an immutable blob").option("--producer <id>", "Who produced this metadata", "clash.cli").option("--assets <path>", "Asset manifest path").option("--json", "Output as JSON").action(async (options) => {
   try {
     const metadata = await readJsonArgument(options.metadata);
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
@@ -58361,60 +58764,69 @@ assetMetadataCommand.command("set").description("Attach declared metadata to an 
       ...body === void 0 ? {} : { body },
       ...options.assets ? { assetsPath: options.assets } : {}
     });
-    await recordAgentObservation({
-      entityKind: "asset-metadata",
+    await recordAssetMetadataObservation({
       entityId: (0, import_node_path17.relative)(process.cwd(), result.metadataPath).split(import_node_path17.sep).join("/"),
       revision: result.version,
       cwd: process.cwd()
     }).catch(() => void 0);
     if (isJsonMode(options)) {
-      printJson(result);
+      printJson(publicAgentCommandResult(result));
       return;
     }
     console.log(`attached ${result.metadataKind} to ${result.assetId}`);
     if (result.body) {
-      console.log(`body: ${result.body.contentHash} (${result.body.bytes} bytes${result.body.deduplicated ? ", deduplicated" : ""})`);
+      console.log(
+        `body: ${result.body.contentHash} (${result.body.bytes} bytes${result.body.deduplicated ? ", deduplicated" : ""})`
+      );
     }
   } catch (error51) {
     console.error(error51 instanceof Error ? error51.message : String(error51));
     process.exit(1);
   }
 });
-assetMetadataCommand.command("apply").description("Apply an edited metadata projection back to the asset with CAS stale-write protection").requiredOption("--file <path>", "Edited metadata projection JSON under projections/metadata/").option("--expect-version <token>", "CAS token from the attach/apply that produced this projection").option("--assets <path>", "Asset manifest path").option("--json", "Output as JSON").action(async (options) => {
+assetMetadataCommand.command("apply").description(
+  "Apply an edited metadata projection under the linked worktree's implicit CAS observation; re-read after READ_REQUIRED or STALE_READ"
+).requiredOption(
+  "--file <path>",
+  "Edited metadata projection JSON under projections/metadata/"
+).option("--assets <path>", "Asset manifest path").option("--json", "Output as JSON").action(async (options) => {
   try {
     const cwd = process.cwd();
     const entityId = (0, import_node_path17.relative)(cwd, (0, import_node_path17.resolve)(cwd, options.file)).split(import_node_path17.sep).join("/");
-    const observed2 = await requireAgentObservation({
-      entityKind: "asset-metadata",
+    const observed2 = await requireAssetMetadataObservation({
+      cwd,
       entityId
-    }).catch(() => void 0);
+    });
     const result = await applyProductionMetadataProjection({
       cwd,
       filePath: options.file,
       ...options.assets ? { assetsPath: options.assets } : {},
-      expectedVersion: observed2 ?? options.expectVersion ?? ""
+      expectedVersion: observed2
     });
-    await recordAgentObservation({
-      entityKind: "asset-metadata",
+    await recordAssetMetadataObservation({
       entityId,
       revision: result.version,
       cwd
     }).catch(() => void 0);
     if (isJsonMode(options)) {
-      printJson(result);
+      printJson(publicAgentCommandResult(result));
       return;
     }
     console.log(`applied ${result.metadataKind} to ${result.targetAssetId}`);
-    console.log(`version: ${result.version}`);
   } catch (error51) {
     console.error(error51 instanceof Error ? error51.message : String(error51));
     process.exit(1);
   }
 });
-assetMetadataCommand.command("validate").description("Check a metadata document against its declared schema without writing").requiredOption("--kind <kind>", "Declared metadata kind").requiredOption("--metadata <path>", "Metadata JSON path, or - for stdin").option("--json", "Output as JSON").action(async (options) => {
+assetMetadataCommand.command("validate").description(
+  "Check a metadata document against its declared schema without writing"
+).requiredOption("--kind <kind>", "Declared metadata kind").requiredOption("--metadata <path>", "Metadata JSON path, or - for stdin").option("--json", "Output as JSON").action(async (options) => {
   try {
     await loadWorkspaceMetadataKinds(process.cwd());
-    parseDeclaredAssetMetadata(options.kind, await readJsonArgument(options.metadata));
+    parseDeclaredAssetMetadata(
+      options.kind,
+      await readJsonArgument(options.metadata)
+    );
     if (isJsonMode(options)) {
       printJson({ valid: true, kind: options.kind });
       return;
@@ -58771,6 +59183,24 @@ projectsCommand.command("purge").description("Permanently purge a soft-deleted l
 });
 
 // ../../packages/cli/src/commands/assets.ts
+var projectImportIds = /* @__PURE__ */ new WeakMap();
+var globalImportIds = /* @__PURE__ */ new WeakMap();
+var globalTrashIds = /* @__PURE__ */ new WeakMap();
+var projectImports = /* @__PURE__ */ new WeakMap();
+var globalImports = /* @__PURE__ */ new WeakMap();
+function stableCliImportId(command2, requested, ids, prefix) {
+  const existing = ids.get(command2);
+  if (existing) return existing;
+  const normalized = requested?.trim();
+  if (requested !== void 0 && !normalized) {
+    throw new Error(
+      prefix === "delete" ? "delete operation id is required" : `${prefix} asset id is required`
+    );
+  }
+  const id2 = normalized ?? `${prefix}:${(0, import_node_crypto8.randomUUID)()}`;
+  ids.set(command2, id2);
+  return id2;
+}
 function resolveAssetLinkName(assetId, sourcePath, requestedName) {
   const raw = requestedName?.trim() || (0, import_node_path20.basename)(sourcePath) || assetId;
   if (!raw || raw === "." || raw === ".." || /[/\\]/.test(raw)) {
@@ -58838,57 +59268,72 @@ async function linkAssetIntoProject(options) {
   };
 }
 async function importAssetFile(options) {
-  const sourcePath = (0, import_node_path20.resolve)(options.filePath);
-  const info = (0, import_node_fs7.statSync)(sourcePath);
-  if (!info.isFile())
-    throw new Error(`asset import source is not a file: ${sourcePath}`);
-  const status = await resolveProjectStatus({
-    project: options.project,
-    cwd: options.cwd,
-    env: options.env,
-    homeDir: options.homeDir
-  });
-  const requestedKind = normalizeAssetKind(options.kind);
-  if (options.kind !== void 0 && !requestedKind) {
-    throw new Error(
-      "asset kind must be image, video, audio, or model to import through the Host"
+  let snapshot = projectImports.get(options);
+  if (!snapshot) {
+    const sourcePath = (0, import_node_path20.resolve)(options.filePath);
+    const info = (0, import_node_fs7.statSync)(sourcePath);
+    if (!info.isFile())
+      throw new Error(`asset import source is not a file: ${sourcePath}`);
+    const status = await resolveProjectStatus({
+      project: options.project,
+      cwd: options.cwd,
+      env: options.env,
+      homeDir: options.homeDir
+    });
+    const requestedKind = normalizeAssetKind(options.kind);
+    if (options.kind !== void 0 && !requestedKind) {
+      throw new Error(
+        "asset kind must be image, video, audio, or model to import through the Host"
+      );
+    }
+    const fileType = resolveAssetImportFileType(
+      sourcePath,
+      requestedKind ?? void 0
     );
+    snapshot = {
+      sourcePath,
+      status,
+      kind: fileType.kind,
+      request: {
+        projectId: status.projectId,
+        bytes: new Uint8Array((0, import_node_fs7.readFileSync)(sourcePath)),
+        fileName: (0, import_node_path20.basename)(sourcePath),
+        contentType: fileType.contentType,
+        kind: fileType.kind,
+        projectAssetId: stableCliImportId(
+          options,
+          options.projectAssetId,
+          projectImportIds,
+          "asset"
+        )
+      }
+    };
+    projectImports.set(options, snapshot);
   }
-  const fileType = resolveAssetImportFileType(
-    sourcePath,
-    requestedKind ?? void 0
-  );
-  const kind = fileType.kind;
-  const imported = await (options.client ?? createCliProjectAssetHostClient()).importFile({
-    projectId: status.projectId,
-    bytes: new Uint8Array((0, import_node_fs7.readFileSync)(sourcePath)),
-    fileName: (0, import_node_path20.basename)(sourcePath),
-    contentType: fileType.contentType,
-    kind
-  });
+  const imported = await (options.client ?? createCliProjectAssetHostClient()).importFile(snapshot.request);
   const assetId = imported.value.id;
   const result = {
-    projectId: status.projectId,
+    projectId: snapshot.status.projectId,
     assetId,
-    kind,
-    sourcePath,
+    kind: snapshot.kind,
+    sourcePath: snapshot.sourcePath,
     registered: true,
     registration: imported.value
   };
   if (options.link !== false) {
     const projectionPath = await (options.download ?? downloadAssetById)(
       assetId,
-      status.projectId
+      snapshot.status.projectId
     );
     if (!projectionPath) {
       throw new Error(`Unable to resolve imported Project Asset ${assetId}`);
     }
-    const extension = (0, import_node_path20.extname)(sourcePath);
+    const extension = (0, import_node_path20.extname)(snapshot.sourcePath);
     const defaultName = `${assetId}${extension}`;
     const link = createAssetLink({
       assetId,
       sourcePath: projectionPath,
-      assetLinksRoot: status.assetLinksRoot,
+      assetLinksRoot: snapshot.status.assetLinksRoot,
       name: options.name ?? defaultName,
       createSymlink: options.createSymlink
     });
@@ -58940,9 +59385,11 @@ async function fetchAssetRecord(options) {
   });
 }
 async function trashProjectAsset(options) {
+  const deleteOperationId = `delete:sha256:${(0, import_node_crypto8.createHash)("sha256").update(options.projectId).update("\0").update(options.assetId).update("\0").update(options.observedVersion ?? "").digest("hex")}`;
   const observed2 = await projectAssetClient(options).trash({
     projectId: options.projectId,
     assetId: options.assetId,
+    deleteOperationId,
     ...options.actorClientType ? { actorClientType: options.actorClientType } : {},
     ...options.observedVersion ? { receipt: options.observedVersion } : {}
   });
@@ -58963,30 +59410,51 @@ async function listPersonalGlobalAssetRecords(options = {}) {
   return (options.client ?? createCliPersonalGlobalAssetHostClient()).list();
 }
 async function fetchPersonalGlobalAssetRecord(options) {
-  return (options.client ?? createCliPersonalGlobalAssetHostClient()).get({
+  const result = await (options.client ?? createCliPersonalGlobalAssetHostClient()).get({
     globalAssetId: options.globalAssetId
   });
+  await options.onObservation?.(
+    result.lifecycle.state === "trashed" ? result.lifecycle.deleteOperationId : void 0
+  );
+  return result;
 }
 async function importPersonalGlobalAssetFile(options) {
-  const sourcePath = (0, import_node_path20.resolve)(options.filePath);
-  const info = (0, import_node_fs7.statSync)(sourcePath);
-  if (!info.isFile()) {
-    throw new Error(`Global Asset import source is not a file: ${sourcePath}`);
+  let snapshot = globalImports.get(options);
+  if (!snapshot) {
+    const sourcePath = (0, import_node_path20.resolve)(options.filePath);
+    const info = (0, import_node_fs7.statSync)(sourcePath);
+    if (!info.isFile()) {
+      throw new Error(
+        `Global Asset import source is not a file: ${sourcePath}`
+      );
+    }
+    const requestedKind = normalizeAssetKind(options.kind);
+    if (options.kind !== void 0 && !requestedKind) {
+      throw new Error(
+        "Global Asset kind must be image, video, audio, or model"
+      );
+    }
+    const fileType = resolveAssetImportFileType(
+      sourcePath,
+      requestedKind ?? void 0
+    );
+    snapshot = {
+      request: {
+        bytes: new Uint8Array((0, import_node_fs7.readFileSync)(sourcePath)),
+        fileName: (0, import_node_path20.basename)(sourcePath),
+        contentType: fileType.contentType,
+        kind: fileType.kind,
+        globalAssetId: stableCliImportId(
+          options,
+          options.globalAssetId,
+          globalImportIds,
+          "global"
+        )
+      }
+    };
+    globalImports.set(options, snapshot);
   }
-  const requestedKind = normalizeAssetKind(options.kind);
-  if (options.kind !== void 0 && !requestedKind) {
-    throw new Error("Global Asset kind must be image, video, audio, or model");
-  }
-  const fileType = resolveAssetImportFileType(
-    sourcePath,
-    requestedKind ?? void 0
-  );
-  return (options.client ?? createCliPersonalGlobalAssetHostClient()).importFile({
-    bytes: new Uint8Array((0, import_node_fs7.readFileSync)(sourcePath)),
-    fileName: (0, import_node_path20.basename)(sourcePath),
-    contentType: fileType.contentType,
-    kind: fileType.kind
-  });
+  return (options.client ?? createCliPersonalGlobalAssetHostClient()).importFile(snapshot.request);
 }
 async function admitPersonalGlobalAsset(options) {
   return (await (options.client ?? createCliProjectAssetHostClient()).admit({
@@ -58999,6 +59467,42 @@ async function publishProjectAssetToPersonalGlobal(options) {
     projectId: options.projectId,
     projectAssetId: options.projectAssetId
   });
+}
+async function trashPersonalGlobalAsset(options) {
+  const deleteOperationId = stableCliImportId(
+    options,
+    options.deleteOperationId,
+    globalTrashIds,
+    "delete"
+  );
+  const result = await (options.client ?? createCliPersonalGlobalAssetHostClient()).trash({
+    globalAssetId: options.globalAssetId,
+    deleteOperationId
+  });
+  if (result.lifecycle.state !== "trashed") {
+    throw new Error(`Host did not trash Global Asset ${options.globalAssetId}`);
+  }
+  await options.onObservation?.(result.lifecycle.deleteOperationId);
+  return result;
+}
+async function restorePersonalGlobalAsset(options) {
+  const client = options.client ?? createCliPersonalGlobalAssetHostClient();
+  let deleteOperationId = options.observedDeleteOperationId?.trim();
+  if (!deleteOperationId) {
+    const observed2 = await client.get({ globalAssetId: options.globalAssetId });
+    if (observed2.lifecycle.state !== "trashed") {
+      throw new Error(
+        `Global Asset ${options.globalAssetId} must be trashed before restore`
+      );
+    }
+    deleteOperationId = observed2.lifecycle.deleteOperationId;
+  }
+  const result = await client.restore({
+    globalAssetId: options.globalAssetId,
+    deleteOperationId
+  });
+  await options.onObservation?.(deleteOperationId);
+  return result;
 }
 async function replaceAssetFile(options) {
   const imported = await (options.importFile ?? importAssetFile)({
@@ -59043,6 +59547,22 @@ function projectAssetObservation(projectId, assetId) {
     entityId: assetId,
     project: projectId
   };
+}
+function personalGlobalAssetObservation(globalAssetId) {
+  return {
+    entityKind: "global-asset",
+    entityId: globalAssetId
+  };
+}
+async function recordPersonalGlobalAssetObservation(globalAssetId, deleteOperationId) {
+  if (deleteOperationId) {
+    await recordAgentObservation({
+      ...personalGlobalAssetObservation(globalAssetId),
+      revision: deleteOperationId
+    });
+    return;
+  }
+  await forgetAgentObservation(personalGlobalAssetObservation(globalAssetId));
 }
 async function recordProjectAssetObservation(projectId, assetId, receipt) {
   await recordAgentObservation({
@@ -59343,7 +59863,11 @@ personalGlobalAssetsCommand.command("list").description("List personal Global As
 personalGlobalAssetsCommand.command("get").description("Read one personal Global Asset resolved by the current Host").requiredOption("--asset <id>", "Global Asset ID").option("--json", "Output result as JSON").action(async (options) => {
   try {
     const result = await fetchPersonalGlobalAssetRecord({
-      globalAssetId: options.asset
+      globalAssetId: options.asset,
+      onObservation: (deleteOperationId) => recordPersonalGlobalAssetObservation(
+        options.asset,
+        deleteOperationId
+      )
     });
     if (isJsonMode(options)) {
       printJson(publicAssetResult(result));
@@ -59365,6 +59889,53 @@ personalGlobalAssetsCommand.command("import").description("Import a local file i
       printJson(publicAssetResult(result));
     } else {
       console.log(`imported Global Asset ${result.id}`);
+    }
+  } catch (error51) {
+    console.error(error51 instanceof Error ? error51.message : String(error51));
+    process.exit(1);
+  }
+});
+personalGlobalAssetsCommand.command("delete").description("Move a personal Global Asset to the recovery window").requiredOption("--asset <id>", "Global Asset ID").option("--yes", "Confirm deletion").option("--json", "Output result as JSON").action(async (options) => {
+  try {
+    const confirmation = requireDestructiveConfirmation(
+      options,
+      `personal:${options.asset}`
+    );
+    if (!confirmation.ok) throw new Error(confirmation.error);
+    const result = await trashPersonalGlobalAsset({
+      globalAssetId: options.asset,
+      onObservation: (deleteOperationId) => recordPersonalGlobalAssetObservation(
+        options.asset,
+        deleteOperationId
+      )
+    });
+    if (isJsonMode(options)) {
+      printJson(publicAssetResult(result));
+    } else {
+      console.log(`trashed Global Asset ${result.id}`);
+    }
+  } catch (error51) {
+    console.error(error51 instanceof Error ? error51.message : String(error51));
+    process.exit(1);
+  }
+});
+personalGlobalAssetsCommand.command("restore").description("Restore a trashed personal Global Asset").requiredOption("--asset <id>", "Global Asset ID").option("--json", "Output result as JSON").action(async (options) => {
+  try {
+    const observedDeleteOperationId = await requireAgentObservation(
+      personalGlobalAssetObservation(options.asset)
+    );
+    const result = await restorePersonalGlobalAsset({
+      globalAssetId: options.asset,
+      observedDeleteOperationId,
+      onObservation: (deleteOperationId) => recordPersonalGlobalAssetObservation(
+        options.asset,
+        deleteOperationId
+      )
+    });
+    if (isJsonMode(options)) {
+      printJson(publicAssetResult(result));
+    } else {
+      console.log(`restored Global Asset ${result.id}`);
     }
   } catch (error51) {
     console.error(error51 instanceof Error ? error51.message : String(error51));
@@ -59413,7 +59984,7 @@ auditCommand.command("mutations").description("List sanitized local host mutatio
 });
 
 // ../../packages/cli/src/commands/auth.ts
-var import_node_crypto8 = require("node:crypto");
+var import_node_crypto9 = require("node:crypto");
 var import_node_child_process3 = require("node:child_process");
 var import_node_http = require("node:http");
 var CLI_CLIENT_ID = "clash-cli";
@@ -59426,7 +59997,7 @@ function redactApiKeyForDisplay(apiKey) {
   return suffix ? `${prefix}...${suffix}` : `${prefix}...`;
 }
 function createPkceChallenge(verifier) {
-  return (0, import_node_crypto8.createHash)("sha256").update(verifier, "ascii").digest("base64url");
+  return (0, import_node_crypto9.createHash)("sha256").update(verifier, "ascii").digest("base64url");
 }
 function normalizeHttpOrigin(value, label) {
   const url3 = new URL(value);
@@ -59609,8 +60180,8 @@ async function runCliLogin(options = {}) {
   const readConfig = options.loadConfig ?? loadConfig;
   const writeConfig = options.saveConfig ?? saveConfig;
   const log = options.log ?? console.log;
-  const state = (0, import_node_crypto8.randomBytes)(32).toString("base64url");
-  const verifier = (0, import_node_crypto8.randomBytes)(32).toString("base64url");
+  const state = (0, import_node_crypto9.randomBytes)(32).toString("base64url");
+  const verifier = (0, import_node_crypto9.randomBytes)(32).toString("base64url");
   const challenge = createPkceChallenge(verifier);
   const callback = await startLoopbackCallback(state, timeoutMs);
   const authorizationUrl = buildAuthorizationUrl(
@@ -59823,7 +60394,7 @@ canvasesCommand.command("delete").requiredOption("--canvas <id>", "Canvas ID").o
 });
 
 // ../../packages/cli/src/commands/director.ts
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 var import_node_fs8 = require("node:fs");
 var import_node_path23 = require("node:path");
 
@@ -60034,7 +60605,7 @@ async function recoverStaleDirectorStageApply(options) {
   throw staleProjectionRecoveryError("Director Stage", recovery);
 }
 function captureSha256(value) {
-  return (0, import_node_crypto9.createHash)("sha256").update(value).digest("hex");
+  return (0, import_node_crypto10.createHash)("sha256").update(value).digest("hex");
 }
 function captureArtifactId(label) {
   const value = label.trim();
@@ -60273,7 +60844,7 @@ directorCommand.command("create").description("Create a standalone Project Direc
 directorCommand.command("attach").description("Attach a standalone Director Stage to one Canvas action node").requiredOption("--stage <id>", "Director Stage ID").requiredOption("--canvas <id>", "Owning Canvas ID").option("--node <id>", "Canvas action node ID").option("--x <number>", "Canvas X position", "0").option("--y <number>", "Canvas Y position", "0").option("--project <id>", "Project ID").option("--json", "Output result as JSON").action(async (options) => {
   const context = await resolveCanvasProjectContext(options);
   const observedVersion = await requireDirectorStageObservation(context, options.stage);
-  const actionNodeId = options.node?.trim() || `director-stage-${(0, import_node_crypto9.randomUUID)().slice(0, 8)}`;
+  const actionNodeId = options.node?.trim() || `director-stage-${(0, import_node_crypto10.randomUUID)().slice(0, 8)}`;
   const result = await sendProjectCommand(context.projectId, {
     action: "attach_director_stage",
     stageId: options.stage,
@@ -60427,7 +60998,7 @@ directorCommand.command("apply").description("Validate a Director Stage JSON pro
 });
 
 // ../../packages/cli/src/commands/doctor.ts
-var import_node_crypto10 = require("node:crypto");
+var import_node_crypto11 = require("node:crypto");
 var import_node_module3 = require("node:module");
 var import_promises12 = require("node:fs/promises");
 var import_node_path24 = require("node:path");
@@ -61155,7 +61726,7 @@ function textRevisionBlobIntegrityOptions(status) {
       return match?.[1] ?? null;
     },
     async contentHash(content) {
-      return (0, import_node_crypto10.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+      return (0, import_node_crypto11.createHash)("sha256").update(content).digest("hex").slice(0, 16);
     }
   };
 }
@@ -61729,7 +62300,7 @@ async function readFileCompareEvidence(filePath) {
       path: filePath,
       exists: true,
       size: info.size,
-      sha256: (0, import_node_crypto10.createHash)("sha256").update(bytes).digest("hex")
+      sha256: (0, import_node_crypto11.createHash)("sha256").update(bytes).digest("hex")
     };
   } catch (error51) {
     if (error51.code === "ENOENT") {
@@ -61766,7 +62337,7 @@ function secondaryCanvasRecoveryReadToken(report) {
       }
     }))
   };
-  const hash2 = (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify(payload)).digest("hex");
+  const hash2 = (0, import_node_crypto11.createHash)("sha256").update(JSON.stringify(payload)).digest("hex");
   return `secondary-canvas-recovery:${hash2}`;
 }
 async function repairSecondaryCanvasReplicas(status, cwd) {
@@ -62826,7 +63397,7 @@ storageRecoveryCommand.command("restore").description("Explicitly restore a quar
 var import_node_path26 = require("node:path");
 
 // ../../packages/remotion-effects/src/authoring.ts
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto12 = require("node:crypto");
 var import_promises13 = require("node:fs/promises");
 var import_node_path25 = require("node:path");
 async function validateEffectPackage(root) {
@@ -63200,7 +63771,7 @@ function parseBundle(value) {
   return { schemaVersion: 1, effect, files };
 }
 function sha256(content) {
-  return (0, import_node_crypto11.createHash)("sha256").update(content).digest("hex");
+  return (0, import_node_crypto12.createHash)("sha256").update(content).digest("hex");
 }
 
 // ../../packages/cli/src/commands/effects.ts
@@ -64742,20 +65313,20 @@ function normalizeItemForYaml(item, trackId, itemIndex) {
 }
 
 // ../../packages/cli/src/commands/timeline.ts
-var import_node_crypto14 = require("node:crypto");
+var import_node_crypto15 = require("node:crypto");
 var import_node_fs11 = require("node:fs");
 var import_node_path32 = require("node:path");
 
 // ../../packages/cli/src/lib/timeline-transcript-projection.ts
-var import_node_crypto13 = require("node:crypto");
+var import_node_crypto14 = require("node:crypto");
 var import_node_fs10 = require("node:fs");
 var import_promises17 = require("node:fs/promises");
 var import_node_path31 = require("node:path");
 
 // ../../packages/cli/src/lib/attach-transcript.ts
-var import_node_crypto12 = require("node:crypto");
+var import_node_crypto13 = require("node:crypto");
 function transcriptGridHash(transcript) {
-  return `sha256:${(0, import_node_crypto12.createHash)("sha256").update(transcriptContentHashInput(transcript), "utf8").digest("hex")}`;
+  return `sha256:${(0, import_node_crypto13.createHash)("sha256").update(transcriptContentHashInput(transcript), "utf8").digest("hex")}`;
 }
 
 // ../../packages/cli/src/lib/timeline-transcript-projection.ts
@@ -64919,7 +65490,7 @@ async function writeTimelineTranscriptProjection(input) {
           words: transcript.words,
           segments: []
         });
-        const assetHash = (0, import_node_crypto13.createHash)("sha256").update(item.assetId).digest("hex").slice(0, 8);
+        const assetHash = (0, import_node_crypto14.createHash)("sha256").update(item.assetId).digest("hex").slice(0, 8);
         const sourceFilePath = (0, import_node_path31.join)(
           sourceDirectory,
           `${fileSlug(item.assetId)}-${assetHash}.json`
@@ -64930,7 +65501,7 @@ async function writeTimelineTranscriptProjection(input) {
         (0, import_node_fs10.writeFileSync)(sourceFilePath, sourceContents, "utf8");
         source = {
           sourcePath: projectRelativePath(input.cwd, sourceFilePath),
-          sourceHash: `sha256:${(0, import_node_crypto13.createHash)("sha256").update(sourceContents).digest("hex")}`,
+          sourceHash: `sha256:${(0, import_node_crypto14.createHash)("sha256").update(sourceContents).digest("hex")}`,
           words: projectAsrTimedTranscriptWords(timedTranscript, fps)
         };
         transcriptFiles.set(item.assetId, source);
@@ -65165,7 +65736,7 @@ timelineCommand.command("attach").description(TIMELINE_OPERATION_CATALOG.agent["
   const context = await resolveCanvasProjectContext(options);
   const timelineId = String(options.timeline);
   const observedVersion = await requireTimelineObservation(context, timelineId);
-  const actionNodeId = options.node?.trim() || (0, import_node_crypto14.randomUUID)().slice(0, 8);
+  const actionNodeId = options.node?.trim() || (0, import_node_crypto15.randomUUID)().slice(0, 8);
   const result = await sendProjectCommand(context.projectId, {
     action: "attach_timeline",
     timelineId,
@@ -65212,8 +65783,8 @@ timelineCommand.command("copy").description(TIMELINE_OPERATION_CATALOG.agent["ti
   const context = await resolveCanvasProjectContext(options);
   const timelineId = String(options.timeline);
   const observedVersion = await requireTimelineObservation(context, timelineId);
-  const newTimelineId = options.newTimeline?.trim() || (0, import_node_crypto14.randomUUID)().slice(0, 8);
-  const newActionNodeId = options.newNode?.trim() || (0, import_node_crypto14.randomUUID)().slice(0, 8);
+  const newTimelineId = options.newTimeline?.trim() || (0, import_node_crypto15.randomUUID)().slice(0, 8);
+  const newActionNodeId = options.newNode?.trim() || (0, import_node_crypto15.randomUUID)().slice(0, 8);
   const result = await sendProjectCommand(context.projectId, {
     action: "copy_timeline_action",
     sourceTimelineId: timelineId,
@@ -65468,7 +66039,7 @@ var import_node_fs12 = require("node:fs");
 var import_node_path34 = require("node:path");
 
 // ../../packages/cli/src/lib/text-projection.ts
-var import_node_crypto15 = require("node:crypto");
+var import_node_crypto16 = require("node:crypto");
 var import_node_path33 = require("node:path");
 function resolveTextFilePath(options) {
   const filePath = options.file ? options.file : (0, import_node_path33.join)(options.cwd, "projections", "text", `${textFileSlug(options.nodeId)}.md`);
@@ -65511,7 +66082,7 @@ function createTextAppliedRevision(options) {
     createdAt,
     actor: options.actor ?? null
   };
-  const revisionSuffix = (0, import_node_crypto15.createHash)("sha256").update(stableJsonForHash(revisionSeed)).digest("hex").slice(0, 12);
+  const revisionSuffix = (0, import_node_crypto16.createHash)("sha256").update(stableJsonForHash(revisionSeed)).digest("hex").slice(0, 12);
   return {
     schemaVersion: 1,
     kind: "clash.text.revision",
@@ -66654,43 +67225,6 @@ function registerProviderCommands(program2) {
   });
 }
 
-// ../../packages/cli/src/commands/tasks.ts
-var tasksCommand = new Command("tasks").description("Generation task management");
-tasksCommand.command("status").description("Check task status").requiredOption("--task-id <id>", "Task ID").option("--json", "Output as JSON").action(async (options) => {
-  const data = await apiJson(`/api/tasks/${options.taskId}`);
-  if (isJsonMode(options)) {
-    printJson(data);
-  } else {
-    console.log(`Task:   ${data.task_id}`);
-    console.log(`Status: ${data.status}`);
-    if (data.result_url) console.log(`Result: ${data.result_url}`);
-    if (data.error) console.log(`Error:  ${data.error}`);
-  }
-});
-tasksCommand.command("wait").description("Wait for a task to complete").requiredOption("--task-id <id>", "Task ID").option("--timeout <seconds>", "Max wait time", "120").option("--json", "Output as JSON").action(async (options) => {
-  const deadline = Date.now() + parseInt(options.timeout, 10) * 1e3;
-  const POLL_MS = 3e3;
-  while (Date.now() < deadline) {
-    const data = await apiJson(`/api/tasks/${options.taskId}`);
-    if (data.status === "completed" || data.status === "failed") {
-      if (isJsonMode(options)) {
-        printJson(data);
-      } else {
-        console.log(`Task ${data.task_id}: ${data.status}`);
-        if (data.result_url) console.log(`Result: ${data.result_url}`);
-        if (data.error) console.log(`Error:  ${data.error}`);
-      }
-      process.exit(data.status === "failed" ? 1 : 0);
-    }
-    if (!isJsonMode(options)) {
-      process.stdout.write(".");
-    }
-    await new Promise((r) => setTimeout(r, POLL_MS));
-  }
-  console.error("\nTimeout: task did not complete in time.");
-  process.exit(1);
-});
-
 // ../../packages/cli/src/lib/cli-trace.ts
 var import_node_fs15 = require("node:fs");
 var import_node_path37 = require("node:path");
@@ -66781,7 +67315,6 @@ function createCliProgram(options = {}) {
   program2.addCommand(projectsCommand);
   program2.addCommand(canvasCommand);
   program2.addCommand(canvasesCommand);
-  program2.addCommand(tasksCommand);
   program2.addCommand(pluginCommand);
   program2.addCommand(modelsCommand);
   program2.addCommand(hostCommand);

@@ -26,21 +26,65 @@ import { Input } from "../ui/input";
 import { Slider, SliderRange, SliderThumb, SliderTrack } from "../ui/slider";
 import { Tooltip } from "../ui/tooltip";
 
-const MEDIA_NODE_CONTROL_CLASS = "nodrag nopan bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 focus-visible:ring-white/80 focus-visible:ring-offset-black/20";
+const MEDIA_NODE_CONTROL_CLASS =
+  "nodrag nopan bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 focus-visible:ring-white/80 focus-visible:ring-offset-black/20";
 
 const WAVEFORM_BARS = 128;
 const SKIP_SECONDS = 10;
+const WAVEFORM_CACHE_MAX_ENTRIES = 48;
+const WAVEFORM_CACHE_TTL_MS = 30 * 60 * 1_000;
 
-// In-memory cache so the same audio doesn't re-decode on each modal open.
-// Keyed by signed URL's path (the R2 key) — the signature changes but the
-// underlying bytes don't.
-const waveformCache = new Map<string, { peaks: number[]; duration: number }>();
-function cacheKey(url: string): string {
-  try {
-    return new URL(url).pathname;
-  } catch {
-    return url;
+// Disposable browser cache for one immutable Project Asset. A projected media
+// URL is only a locator: it can rotate, and the same URL path is not an
+// authority boundary between Projects.
+type WaveformCacheEntry = {
+  peaks: number[];
+  duration: number;
+  expiresAt: number;
+};
+
+const waveformCache = new Map<string, WaveformCacheEntry>();
+
+function readWaveformCache(key: string): WaveformCacheEntry | undefined {
+  const cached = waveformCache.get(key);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    waveformCache.delete(key);
+    return undefined;
   }
+  waveformCache.delete(key);
+  waveformCache.set(key, cached);
+  return cached;
+}
+
+function writeWaveformCache(
+  key: string,
+  value: Pick<WaveformCacheEntry, "peaks" | "duration">,
+): void {
+  const now = Date.now();
+  for (const [candidate, cached] of waveformCache) {
+    if (cached.expiresAt <= now) waveformCache.delete(candidate);
+  }
+  waveformCache.delete(key);
+  waveformCache.set(key, {
+    peaks: [...value.peaks],
+    duration: value.duration,
+    expiresAt: now + WAVEFORM_CACHE_TTL_MS,
+  });
+  while (waveformCache.size > WAVEFORM_CACHE_MAX_ENTRIES) {
+    const oldest = waveformCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    waveformCache.delete(oldest);
+  }
+}
+
+function scopedWaveformCacheKey(
+  projectId: string | undefined,
+  projectAssetId: string | undefined,
+): string | undefined {
+  return projectId && projectAssetId
+    ? JSON.stringify([projectId, projectAssetId])
+    : undefined;
 }
 
 function formatTime(seconds: number): string {
@@ -88,17 +132,24 @@ const AudioNode = ({
   const [label, setLabel] = useState(data.label || "Audio Node");
   const { projectId } = useProject();
   const { openAssetPreview } = useMediaViewer();
-  const asset = useAsset(projectId, data.assetId);
+  const projectAssetId =
+    typeof data.assetId === "string" && data.assetId.length > 0
+      ? data.assetId
+      : undefined;
+  const asset = useAsset(projectId, projectAssetId);
   const projectedAudioUrl = asset?.url;
+  const waveformCacheKey = scopedWaveformCacheKey(projectId, projectAssetId);
   const [status, setStatus] = useState<AssetStatus>(
     normalizeStatus(data.status) || (data.assetId ? "completed" : "generating"),
   );
-  const [audioUrl, setAudioUrl] = useState<string | undefined>(projectedAudioUrl);
+  const [audioUrl, setAudioUrl] = useState<string | undefined>(
+    projectedAudioUrl,
+  );
 
-  // Prefer server-probed metadata when present; client-side decode is only
-  // the fallback when render-server couldn't produce duration / waveform.
+  // Duration may come from byte inspection. Inline waveform is migration-only;
+  // new Assets derive peaks in the browser and keep them in the bounded cache.
   const metaDurationMs = asset?.metadata?.durationMs;
-  const metaWaveform = asset?.metadata?.waveform;
+  const legacyWaveform = asset?.metadata?.waveform;
 
   const [showModal, setShowModal] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -109,8 +160,8 @@ const AudioNode = ({
       : 0,
   );
   const [peaks, setPeaks] = useState<number[] | undefined>(() =>
-    Array.isArray(metaWaveform) && metaWaveform.length > 0
-      ? metaWaveform
+    Array.isArray(legacyWaveform) && legacyWaveform.length > 0
+      ? legacyWaveform
       : undefined,
   );
   const [decoding, setDecoding] = useState(false);
@@ -123,7 +174,9 @@ const AudioNode = ({
       const next = normalizeStatus(data.status);
       return next !== prev ? next : prev;
     });
-    setAudioUrl((prev) => (projectedAudioUrl !== prev ? projectedAudioUrl : prev));
+    setAudioUrl((prev) =>
+      projectedAudioUrl !== prev ? projectedAudioUrl : prev,
+    );
   }, [data.status, projectedAudioUrl]);
 
   // Reset / re-seed state when the source or its server-side metadata changes.
@@ -136,21 +189,22 @@ const AudioNode = ({
         : 0,
     );
     setPeaks(
-      Array.isArray(metaWaveform) && metaWaveform.length > 0
-        ? metaWaveform
+      Array.isArray(legacyWaveform) && legacyWaveform.length > 0
+        ? legacyWaveform
         : undefined,
     );
-  }, [projectedAudioUrl, metaDurationMs, metaWaveform]);
+  }, [projectedAudioUrl, metaDurationMs, legacyWaveform]);
 
-  // Client-side decode fallback: only runs when the server didn't produce
-  // both duration and waveform. Cached across opens (same session) via
-  // `waveformCache`.
+  // New waveform presentation is always decoded client-side and cached only
+  // for this page/device. Legacy inline peaks remain a read-only shortcut.
   useEffect(() => {
     if (!showModal || !audioUrl) return;
     const hasDuration = duration > 0;
     const hasPeaks = !!peaks && peaks.length > 0;
     if (hasDuration && hasPeaks) return;
-    const cached = waveformCache.get(cacheKey(audioUrl));
+    const cached = waveformCacheKey
+      ? readWaveformCache(waveformCacheKey)
+      : undefined;
     if (cached) {
       if (!hasPeaks) setPeaks(cached.peaks);
       if (!hasDuration) setDuration(cached.duration);
@@ -171,10 +225,12 @@ const AudioNode = ({
           const decoded = await ctx.decodeAudioData(buf.slice(0));
           if (aborted) return;
           const computed = computePeaks(decoded, WAVEFORM_BARS);
-          waveformCache.set(cacheKey(audioUrl), {
-            peaks: computed,
-            duration: decoded.duration,
-          });
+          if (waveformCacheKey) {
+            writeWaveformCache(waveformCacheKey, {
+              peaks: computed,
+              duration: decoded.duration,
+            });
+          }
           setPeaks((prev) => (prev && prev.length > 0 ? prev : computed));
           setDuration((prev) => (prev > 0 ? prev : decoded.duration));
         } finally {
@@ -190,7 +246,7 @@ const AudioNode = ({
       aborted = true;
       controller.abort();
     };
-  }, [showModal, audioUrl]);
+  }, [showModal, audioUrl, waveformCacheKey]);
 
   // Bind <audio> element events — drives currentTime + provides a duration
   // fallback in case decode hasn't finished yet.
@@ -309,7 +365,9 @@ const AudioNode = ({
           </div>
           <Slider
             aria-label="Audio seek"
-            value={[duration > 0 ? Math.max(0, Math.min(currentTime, duration)) : 0]}
+            value={[
+              duration > 0 ? Math.max(0, Math.min(currentTime, duration)) : 0,
+            ]}
             min={0}
             max={Math.max(0.001, duration)}
             step={0.01}
@@ -359,11 +417,13 @@ const AudioNode = ({
             onClick={togglePlay}
             disabled={!audioUrl}
             label={isPlaying ? "Pause" : "Play"}
-            icon={isPlaying ? (
-              <Pause size={28} weight="fill" />
-            ) : (
-              <Play size={28} weight="fill" className="ml-1" />
-            )}
+            icon={
+              isPlaying ? (
+                <Pause size={28} weight="fill" />
+              ) : (
+                <Play size={28} weight="fill" className="ml-1" />
+              )
+            }
             size="lg"
             shape="circle"
             className="h-16 min-h-16 w-16 min-w-16 bg-brand text-brand-foreground shadow-lg transition-transform hover:scale-105 hover:bg-brand/90 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
@@ -405,7 +465,9 @@ const AudioNode = ({
             audioUrl && status === "completed" && setShowModal(true)
           }
         >
-          {typeof data.assetId === "string" && data.assetId && openAssetPreview ? (
+          {typeof data.assetId === "string" &&
+          data.assetId &&
+          openAssetPreview ? (
             <div className="absolute right-2 top-2 z-10">
               <Tooltip label="Preview asset">
                 <IconButton
@@ -423,9 +485,16 @@ const AudioNode = ({
               </Tooltip>
             </div>
           ) : null}
-          <div className={`flex h-16 items-center justify-center ${status === "draft" ? "" : "px-4"}`}>
+          <div
+            className={`flex h-16 items-center justify-center ${status === "draft" ? "" : "px-4"}`}
+          >
             {status === "draft" ? (
-              <DraftPlaceholder nodeId={id} modality="audio" height={64} compact />
+              <DraftPlaceholder
+                nodeId={id}
+                modality="audio"
+                height={64}
+                compact
+              />
             ) : isActiveStatus(status) && !audioUrl ? (
               <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                 <Spinner size={24} className="animate-spin" />

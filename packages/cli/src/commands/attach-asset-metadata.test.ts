@@ -12,16 +12,29 @@ async function workspace() {
   const cwd = await mkdtemp(join(tmpdir(), "clash-attach-metadata-"));
   const dataDir = await mkdtemp(join(tmpdir(), "clash-attach-data-"));
   const assetsPath = join(cwd, "assets", "manifest.json");
+  await mkdir(join(cwd, ".clash"), { recursive: true });
+  await writeFile(
+    join(cwd, ".clash", "project.toml"),
+    'schema_version = 1\nproject_id = "project-metadata-test"\n',
+    "utf8",
+  );
   await mkdir(join(cwd, "assets"), { recursive: true });
   await writeFile(
     assetsPath,
-    JSON.stringify({ assets: [{ id: "asset-talk", type: "video", metadata: {} }] }, null, 2),
+    JSON.stringify(
+      { assets: [{ id: "asset-talk", type: "video", metadata: {} }] },
+      null,
+      2,
+    ),
     "utf8",
   );
   return { cwd, dataDir, assetsPath };
 }
 
-function transcriptBody(wordCount: number, overrides: Record<string, unknown> = {}) {
+function transcriptBody(
+  wordCount: number,
+  overrides: Record<string, unknown> = {},
+) {
   const words = Array.from({ length: wordCount }, (_, index) => ({
     id: `w${index}`,
     text: `word${index}`,
@@ -79,7 +92,10 @@ test("attaches transcript identity to an asset while the body goes to the blob s
   assert.equal(attached.modelId, "mlx-community/whisper-small-mlx");
 
   assert.deepEqual(
-    await readAssetMetadataBody({ dataDir, contentHash: result.body!.contentHash }),
+    await readAssetMetadataBody({
+      dataDir,
+      contentHash: result.body!.contentHash,
+    }),
     JSON.parse(JSON.stringify(body)),
   );
 });
@@ -128,7 +144,11 @@ test("never writes an action file the agent would have to shepherd", async () =>
   });
 
   const entries = await readdir(cwd);
-  assert.equal(entries.includes("actions"), false, "no actions/ directory was created");
+  assert.equal(
+    entries.includes("actions"),
+    false,
+    "no actions/ directory was created",
+  );
 
   // Provenance survives anyway: the ledger records the synthesized action.
   const manifest = JSON.parse(await readFile(assetsPath, "utf8"));
@@ -185,7 +205,12 @@ test("lets an agent CAS-edit a registry kind's projection like any other metadat
   });
 
   // Agent edits the projected identity file, then applies it back with CAS.
-  const projectionPath = join(cwd, "projections", "metadata", "asset-talk.media.transcript.json");
+  const projectionPath = join(
+    cwd,
+    "projections",
+    "metadata",
+    "asset-talk.media.transcript.json",
+  );
   const projected = JSON.parse(await readFile(projectionPath, "utf8"));
   projected.language = "en";
   await writeFile(projectionPath, JSON.stringify(projected, null, 2), "utf8");

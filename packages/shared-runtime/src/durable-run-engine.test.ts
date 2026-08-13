@@ -4,6 +4,7 @@ import {
   DurableRunEngine,
   createBoundedRetryPolicy,
   createDurableRunRecord,
+  durableRunIdempotencyKey,
   type DurableProviderStep,
   type DurableRunIdentity,
   type DurableRunJournal,
@@ -166,6 +167,19 @@ function harness(input: {
 
 describe("DurableRunEngine", () => {
   const identity = { actionRunId: "run-1", outputSlot: "video" } as const;
+
+  it("keeps delimiter-bearing run and output-slot tuples distinct", () => {
+    const left = durableRunIdempotencyKey({
+      actionRunId: "a:b",
+      outputSlot: "c",
+    });
+    const right = durableRunIdempotencyKey({
+      actionRunId: "a",
+      outputSlot: "b:c",
+    });
+
+    expect(left).not.toBe(right);
+  });
 
   it("checkpoints an accepted token and only polls after restart", async () => {
     const firstHost = harness({});

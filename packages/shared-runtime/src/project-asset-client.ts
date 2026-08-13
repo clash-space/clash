@@ -46,10 +46,6 @@ const ASSET_IMPORT_FILE_TYPES: Record<string, AssetImportFileType> = {
   ".ogg": { kind: "audio", contentType: "audio/ogg" },
   ".glb": { kind: "model", contentType: "model/gltf-binary" },
   ".gltf": { kind: "model", contentType: "model/gltf+json" },
-  ".fbx": { kind: "model", contentType: "application/octet-stream" },
-  ".bvh": { kind: "model", contentType: "application/octet-stream" },
-  ".obj": { kind: "model", contentType: "text/plain" },
-  ".usdz": { kind: "model", contentType: "model/vnd.usdz+zip" },
 };
 
 export function resolveAssetImportFileType(
@@ -89,6 +85,32 @@ export type ProjectAssetHostObservation<T> = ProjectAssetHostResult<T> & {
   receipt: string;
 };
 
+function stableImportId(
+  command: object,
+  requested: string | undefined,
+  ids: WeakMap<object, string>,
+  prefix: "asset" | "global",
+): string {
+  const existing = ids.get(command);
+  if (existing) return existing;
+  const normalized = requested?.trim();
+  if (requested !== undefined && !normalized) {
+    throw new Error(`${prefix} asset id is required`);
+  }
+  const runtimeCrypto = (
+    globalThis as {
+      crypto?: { randomUUID?: () => string };
+    }
+  ).crypto;
+  const randomUUID = runtimeCrypto?.randomUUID;
+  if (!normalized && typeof randomUUID !== "function") {
+    throw new Error("crypto.randomUUID is required for Asset import ids");
+  }
+  const id = normalized ?? `${prefix}:${runtimeCrypto!.randomUUID!()}`;
+  ids.set(command, id);
+  return id;
+}
+
 export type ProjectAssetHostClient = {
   resolveContext(
     input?: ProjectAssetHostScope,
@@ -115,6 +137,7 @@ export type ProjectAssetHostClient = {
       fileName: string;
       contentType: string;
       kind: AssetKind;
+      projectAssetId?: string;
     },
   ): Promise<ProjectAssetHostResult<ResolvedAsset>>;
   admit(
@@ -125,6 +148,7 @@ export type ProjectAssetHostClient = {
   trash(
     input: ProjectAssetHostScope & {
       assetId: string;
+      deleteOperationId?: string;
       actorClientType?: string;
       receipt?: string;
     },
@@ -146,10 +170,19 @@ export type PersonalGlobalAssetHostClient = {
     fileName: string;
     contentType: string;
     kind: AssetKind;
+    globalAssetId?: string;
   }): Promise<ResolvedAsset>;
   publish(input: {
     projectId: string;
     projectAssetId: string;
+  }): Promise<ResolvedAsset>;
+  trash(input: {
+    globalAssetId: string;
+    deleteOperationId?: string;
+  }): Promise<ResolvedAsset>;
+  restore(input: {
+    globalAssetId: string;
+    deleteOperationId: string;
   }): Promise<ResolvedAsset>;
 };
 
@@ -201,6 +234,19 @@ export function createProjectAssetHostClient(
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body),
   });
+  const importIds = new WeakMap<object, string>();
+  type ProjectImportSnapshot = {
+    resolved: ResolvedProjectHostContext;
+    command: Parameters<typeof http.importFile>[0];
+  };
+  // Object identity is the in-process logical command boundary. Equal bytes in
+  // a different object are a new import; retrying this object replays its first
+  // immutable multipart snapshot.
+  const importCommands = new WeakMap<object, ProjectImportSnapshot>();
+  type HttpTrashCommand = Parameters<typeof http.trash>[0] & {
+    deleteOperationId?: string;
+  };
+  const trashCommands = new WeakMap<object, HttpTrashCommand>();
   const result = <T>(
     resolved: ResolvedProjectHostContext,
     value: T,
@@ -254,17 +300,28 @@ export function createProjectAssetHostClient(
       };
     },
     async importFile(input) {
-      const resolved = await context(input);
-      const bytes = input.bytes.slice().buffer as ArrayBuffer;
-      return result(
-        resolved,
-        await http.importFile({
-          projectId: resolved.projectId,
-          file: new Blob([bytes], { type: input.contentType }),
-          fileName: input.fileName,
-          kind: input.kind,
-        }),
-      );
+      let snapshot = importCommands.get(input);
+      if (!snapshot) {
+        const resolved = await context(input);
+        const bytes = input.bytes.slice().buffer as ArrayBuffer;
+        snapshot = {
+          resolved,
+          command: {
+            projectId: resolved.projectId,
+            file: new Blob([bytes], { type: input.contentType }),
+            fileName: input.fileName,
+            kind: input.kind,
+            projectAssetId: stableImportId(
+              input,
+              input.projectAssetId,
+              importIds,
+              "asset",
+            ),
+          },
+        };
+        importCommands.set(input, snapshot);
+      }
+      return result(snapshot.resolved, await http.importFile(snapshot.command));
     },
     async admit(input) {
       const resolved = await context(input);
@@ -278,12 +335,22 @@ export function createProjectAssetHostClient(
     },
     async trash(input) {
       const resolved = await context(input);
-      const observed = await http.trash({
-        projectId: resolved.projectId,
-        assetId: input.assetId,
-        actorClientType: input.actorClientType,
-        receipt: input.receipt,
-      });
+      let command = trashCommands.get(input);
+      if (!command) {
+        command = {
+          projectId: resolved.projectId,
+          assetId: input.assetId,
+          ...(input.deleteOperationId !== undefined
+            ? { deleteOperationId: input.deleteOperationId }
+            : {}),
+          ...(input.actorClientType
+            ? { actorClientType: input.actorClientType }
+            : {}),
+          ...(input.receipt ? { receipt: input.receipt } : {}),
+        };
+        trashCommands.set(input, command);
+      }
+      const observed = await http.trash(command);
       return {
         ...result(resolved, observed.value),
         receipt: observed.receipt,
@@ -314,18 +381,38 @@ export function createPersonalGlobalAssetHostClient(
     resolveConnection: connection,
     createHttpError: (status, body) => new ProjectHostHttpError(status, body),
   });
+  const importIds = new WeakMap<object, string>();
+  // Keep the same narrow command boundary as Project imports; this is not
+  // content-addressed library deduplication.
+  const importCommands = new WeakMap<
+    object,
+    Parameters<typeof http.importFile>[0]
+  >();
 
   return {
     list: () => http.list(),
     get: (input) => http.get(input),
     async importFile(input) {
-      const bytes = input.bytes.slice().buffer as ArrayBuffer;
-      return http.importFile({
-        file: new Blob([bytes], { type: input.contentType }),
-        fileName: input.fileName,
-        kind: input.kind,
-      });
+      let command = importCommands.get(input);
+      if (!command) {
+        const bytes = input.bytes.slice().buffer as ArrayBuffer;
+        command = {
+          file: new Blob([bytes], { type: input.contentType }),
+          fileName: input.fileName,
+          kind: input.kind,
+          globalAssetId: stableImportId(
+            input,
+            input.globalAssetId,
+            importIds,
+            "global",
+          ),
+        };
+        importCommands.set(input, command);
+      }
+      return http.importFile(command);
     },
     publish: (input) => http.publish(input),
+    trash: (input) => http.trash(input),
+    restore: (input) => http.restore(input),
   };
 }

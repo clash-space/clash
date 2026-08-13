@@ -18,11 +18,6 @@ binding = "DB"
 database_name = "clash-d1"
 database_id = "00000000-0000-0000-0000-000000000000"  # Replace with your D1 id (`wrangler d1 create clash-d1` prints it)
 
-# R2 bucket for generated assets
-[[r2_buckets]]
-binding = "ASSETS"
-bucket_name = "clash-r2"
-
 # Environment variables
 [vars]
 BETTER_AUTH_BASE_PATH = "/api/better-auth"

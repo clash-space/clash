@@ -50,6 +50,8 @@ export type TimelineDslFieldAnnotation = {
     control?: string;
   };
   runtimeConsumers: readonly TimelineDslRuntimeConsumer[];
+  /** Project persistence handling for legacy/runtime-only presentation fields. */
+  persistence?: "discard";
   appliesToItemTypes?: readonly TimelineDslItemType[];
   applicabilityRuleId?: string;
   applicabilityMessage?: string;
@@ -656,10 +658,11 @@ const itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes.",
     }),
-    waveform: derived(z.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
       runtimeConsumers: ["editor"],
+      persistence: "discard",
     }),
     entranceAnimation: authored(TimelineClipAnimationSchema, "Seek-safe visual entrance animation.", {
       required: false,
@@ -748,10 +751,11 @@ const itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes.",
     }),
-    waveform: derived(z.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
       runtimeConsumers: ["editor"],
+      persistence: "discard",
     }),
     audioFadeInFrames: authored(NonnegativeFrameSchema, "Canonical audio fade-in duration in frames.", {
       required: false,

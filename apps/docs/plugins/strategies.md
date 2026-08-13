@@ -1,5 +1,12 @@
 # Choosing a Strategy
 
+> This is a current authoring guide. The normative Host/Provider state machine
+> is the [Durable Run protocol](../guide/durable-run-protocol.md), and all media
+> handles and publication follow the
+> [Asset system](../guide/asset-system.md). Only the Local durable adapter is
+> implemented; Cloud execution and Cloud Asset storage in those guides are
+> future design.
+
 A plugin makes a handful of choices, and each one is a closed set. Closed because the host
 has to act on the answer — schedule work, reach an address, honour a guarantee — and it can
 only do that for shapes it already understands. A free-form field would be a plugin
@@ -16,9 +23,12 @@ which one to pick and why.
 | Takes the work, exposes a status check      | `accepted` + `pollState` | Asks again on a timer |
 | Takes the work, supports callbacks (future) | `accepted` + `pollState` | Keeps polling today   |
 
-Pick synchronous only when losing the host mid-call would not lose the work. Everything
-slower returns `accepted` with whatever the provider needs to be asked again — an id, a
-status URL, a job plus its region. The host stores it without reading it.
+Pick synchronous only when the Provider returns the result from that one submit
+call. Everything slower returns `accepted` with whatever the Provider needs to
+be asked again — an id, a status URL, a job plus its region. The Host stores it
+without reading it. The Plugin performs exactly one submit or poll operation
+per invocation; the Host alone owns retries, pacing, deadlines, restart
+recovery, and persistence.
 
 Callback transport is reserved for a future Host adapter. The current Host
 does not issue `callbackUrl` and does not receive Provider callbacks, so every

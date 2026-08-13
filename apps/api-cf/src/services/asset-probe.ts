@@ -1,10 +1,9 @@
 /**
  * Unified server-authoritative probe for uploaded / generated media.
  *
- * Single entry point used by:
- *   - routes/v1/assets.ts POST /api/v1/assets (user uploads)
- *   - agents/generation.ts custom action pipeline (AI outputs whose kind
- *     isn't known until the agent finishes running)
+ * Internal entry point used by hosted generation pipelines whose output kind
+ * is not known until the action finishes. The legacy public
+ * POST /api/v1/assets raw-key probe route is retired.
  *
  * Each kind dispatches to its own extractor (thumbnail.ts, image-metadata.ts,
  * audio-metadata.ts). The extractors each have their own dev/prod split —
@@ -100,7 +99,10 @@ export async function probeAsset(
 
   if (kind === "audio") {
     try {
-      const { durationMs, waveform } = await extractAudioMetadata(env, srcR2Key);
+      const { durationMs, waveform } = await extractAudioMetadata(
+        env,
+        srcR2Key,
+      );
       return { metadata: { durationMs, waveform, bytes } };
     } catch (e) {
       log.warn("audio probe failed", { srcR2Key, error: String(e) });

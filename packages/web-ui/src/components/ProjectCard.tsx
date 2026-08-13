@@ -1,14 +1,16 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router';
-import { FilmSlate, ImageSquare, Trash } from '@phosphor-icons/react';
+import { FilmSlate, Trash } from '@phosphor-icons/react';
 import type { ResolvedAsset } from '@clash/shared-types';
 import { deleteProject } from '@clash/web-ui/lib/clientActions';
 import { useConfirm } from './ConfirmDialog';
 import { IconButton } from './ui/icon-button';
+import { AssetThumbnail } from '../features/assets/AssetThumbnail';
+import { assetPreviewMedia } from '../features/assets/media-url';
+import { projectAssetDisplayName } from '../features/assets/projectAssetPresentation';
 
 export interface ProjectWithAssets {
   id: string;
@@ -23,39 +25,24 @@ interface ProjectCardProps {
   project: ProjectWithAssets;
 }
 
-function assetPreviewUrl(asset: ResolvedAsset): string | undefined {
-  return asset.thumbnailUrl ?? (asset.kind === 'image' ? asset.url : undefined);
-}
-
 function isProjectPreviewAsset(asset: ResolvedAsset) {
-  return asset.kind === 'image' || asset.kind === 'video';
+  return (asset.kind === 'image' || asset.kind === 'video')
+    && assetPreviewMedia(asset) !== null;
 }
 
 function ProjectAssetPreview({ asset }: { asset: ResolvedAsset }) {
-  const [failed, setFailed] = useState(false);
-  const src = assetPreviewUrl(asset);
-
-  if (!src || failed) {
-    const PlaceholderIcon = asset.kind === 'video'
-      ? FilmSlate
-      : ImageSquare;
-    return (
-      <div className="clash-project-card-asset-fallback" aria-hidden="true">
-        <PlaceholderIcon
-          className="clash-project-card-asset-fallback-mark"
-          weight="regular"
-        />
-      </div>
-    );
-  }
-
   return (
-    <img
-      src={src}
-      alt=""
-      className="clash-project-card-preview-img h-full w-full object-cover"
-      draggable={false}
-      onError={() => setFailed(true)}
+    <AssetThumbnail
+      kind={asset.kind}
+      src={asset.url ?? ''}
+      thumbnailSrc={asset.thumbnailUrl}
+      status={asset.status}
+      label={projectAssetDisplayName(asset)}
+      variant="card"
+      decorative
+      mediaClassName="clash-project-card-preview-img"
+      fallbackClassName="clash-project-card-asset-fallback"
+      fallbackIconClassName="clash-project-card-asset-fallback-mark"
     />
   );
 }
@@ -77,7 +64,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         (asset) =>
           asset.id === project.coverAssetId &&
           isProjectPreviewAsset(asset) &&
-          Boolean(assetPreviewUrl(asset)),
+          asset.lifecycle.state === 'active',
       )
     : undefined;
 

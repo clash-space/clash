@@ -1,8 +1,11 @@
 # Asset System: Product and Technical Design
 
-> Status: implemented for the Local Host except for the explicitly listed Local
-> purge delivery gap; Cloud replication and hosted storage are design-only
-> in the current work.
+> Status: the Local authority, resolver, Durable publication, and consumer-CAS
+> cutover are implemented. Poster, waveform, and filmstrip generation are
+> device-local frontend presentation concerns in this delivery; backend
+> representations are deferred. Physical purge and the explicitly listed
+> Local metadata-probe closure items remain deferred; Cloud replication and
+> hosted storage are design-only in the current work.
 
 The Local product now has one authority and one public read shape.
 `@clash/shared-types` defines the storage-free `ProjectAssetEntry`, immutable
@@ -19,8 +22,14 @@ The old Local `/api/v1/assets*` storage-row protocol is retired and returns
 Legacy rows remain readable only by the one-way materializer and storage doctor.
 The hosted api-cf Asset rows are not migrated in this work because Cloud
 execution, OSS binding, Project claims, and multi-device transfer are explicitly
-design-only. They must converge on the same contracts before Cloud delivery is
-claimed.
+design-only. The legacy hosted `/api/v1/assets*` raw-R2-key CRUD/probe router is
+therefore absent rather than exposed as a second Asset authority. The internal
+rows and probe helpers remain legacy inputs for hosted generation and Loro
+compatibility only; they are not a public Asset protocol. They must converge on
+the shared contracts before Cloud delivery is claimed. The old api-cf
+`/api/v1/edits` executor was likewise removed rather than kept as a second
+R2/D1, random-identity execution path; a future hosted edit must use the designed
+Workflow/OSS consumer-CAS protocol.
 
 This document defines one product model for media across Global Assets,
 Project Assets, Canvas, Timeline, Director, CLI, MCP, executable plugins, local
@@ -46,8 +55,24 @@ The system has five concepts, each with one responsibility:
    a loopback URL, cloud URL, or read-only workspace file. Projections are
    replaceable, device-local, and never identities.
 
+Entry identities are scoped by their owning collection. A
+`GlobalAssetEntry.id` and a `ProjectAssetEntry.id` are unrelated even when the
+two strings happen to be identical. Only an explicit Host admission/publication
+relation may connect them; GUI filtering must never infer that relation from id
+equality.
+
+The core Asset model deliberately stops at an authorized projection. Upload
+spinners, browser `blob:` previews, poster fallbacks, waveform/filmstrip
+decoding, hover frames, and delivery caches are a separate presentation plane.
+They may fail, expire, or recompute without changing Resource identity,
+Project/Global membership, Action bindings, lifecycle, or Durable Run success.
+Presentation code may consume a stable entry id, availability, and an
+authorized locator; it may not publish cache bytes or URLs as canonical
+metadata, use them as consumer-CAS keys, or create an alternate Asset API.
+
 ```mermaid
 flowchart TD
+  subgraph core["Core product authority"]
   resource["Immutable Resource\ncontent-addressed bytes"]
   global["GlobalAssetEntry\nreusable library entry"] --> resource
   project["ProjectAssetEntry\nowned entry or pinned link"] --> resource
@@ -56,7 +81,18 @@ flowchart TD
   timeline["Timeline projection"] --> action
   director["Director projection"] --> action
   host["Current Host projection\nURL or read-only file"] --> resource
+  end
+  subgraph presentation["Replaceable presentation adapters"]
+    blob["Upload blob preview"]
+    fallback["Device-local poster frame"]
+    cache["Device-local waveform / filmstrip cache"]
+  end
+  project -. "stable id + availability" .-> blob
+  host -. "authorized locator" .-> fallback
+  host -. "authorized locator" .-> cache
 ```
+
+The dotted presentation edges never point back into the core subgraph.
 
 ### Multi-member, multi-device synchronization
 
@@ -260,10 +296,30 @@ Resources use the same lifecycle. The Resource identity is a platform-internal
 stable key backed by a content digest; storage paths and object-store keys are
 not part of that identity.
 
-A Resource may have immutable derived representations such as a video poster
-or a low-resolution preview. They are Resource representations, not alternate
-Asset identities. A waveform or filmstrip may remain a regenerable local cache
-unless the product explicitly promotes it to a durable representation.
+A future backend may materialize immutable derived representations such as a
+video poster or low-resolution proxy, but that protocol is not part of the
+current Local delivery. Current Local treats poster frames, waveform peaks,
+Timeline filmstrips, and current-frame captures uniformly as device-local,
+disposable frontend caches derived by decoding an entry-authorized original
+media projection. They never enter Resource or ProjectAsset metadata, Action
+bindings, Timeline Loro state, or Durable Run completion.
+
+The target publication contract builds replicated descriptive media facts from
+a versioned Host byte probe rather than trusting a filename, browser
+`File.type`, Provider declaration, or renderer assertion. Current
+`asset-inspection/v3` can verify image dimensions; video dimensions, duration,
+frame rate, video codec, and explicit `hasAudio`; audio duration and codec; and
+supported glTF/GLB bytes. `hasAudio: false` means a verified silent video,
+while omission remains legacy/unknown. Digest and byte length remain immutable
+Resource facts; inspection facts live in the versioned Host processing
+registry. Neither is exposed with a Resource identity or local path through
+`ResolvedAsset`. `originalName` is a display hint, not a byte-derived fact.
+
+The current probe closure limitations are recorded under Delivery status. In
+particular, normalized rotation/display dimensions and audio-layout facts are
+not yet part of `asset-inspection/v3`, and an inspector-unavailable Host is not
+yet guaranteed to reject every new publication. Those limitations must not be
+described as verified metadata.
 
 ### GlobalAssetEntry
 
@@ -292,6 +348,13 @@ type GlobalAssetEntry = Readonly<{
 The library ID is authority context, not part of the entry or Resource identity. Global entries
 never carry a Project ID, storage key, path, URL, or projection state.
 
+The Local Host keeps cross-scope publication idempotent without merging those
+identities. Publishing the same `(projectId, projectAssetId)` to the same
+library derives one opaque Global-entry relation identity and retries return
+that entry. The digest used for this Host relation contains scoped entry
+identities only; it is not a `ResourceId` and is not exposed as storage
+authority.
+
 ### ProjectAssetEntry
 
 A ProjectAssetEntry is the only media identity that Canvas, Timeline, Director,
@@ -303,10 +366,22 @@ type ProjectAssetSource =
   | Readonly<{
       kind: "linked";
       resourceId: string;
-      origin: Readonly<{
-        scope: "global" | "catalog" | "project";
-        entryId: string;
-      }>;
+      origin:
+        | Readonly<{
+            scope: "global";
+            libraryId: string;
+            entryId: string;
+          }>
+        | Readonly<{
+            scope: "project";
+            projectId: string;
+            entryId: string;
+          }>
+        | Readonly<{
+            scope: "catalog";
+            catalogId: string;
+            entryId: string;
+          }>;
     }>;
 
 type ProjectAssetEntry = Readonly<{
@@ -352,6 +427,22 @@ operating-system symlink and it does not have Unix symlink failure semantics.
 It pins an immutable Resource and gives the Project its own access and
 retention claim. Deleting or renaming the origin entry therefore cannot break
 the Project.
+
+An origin is a complete, storage-free collection identity. `entryId` is never
+globally meaningful on its own: Global origins pair it with `libraryId`,
+cross-Project origins with `projectId`, and catalog origins with `catalogId`.
+URLs, paths, object keys, and projection locators are forbidden in every
+variant. The new-publication schema rejects the former ownerless
+`{ scope, entryId }` shape.
+
+For snapshots written before this invariant, the Loro read boundary performs a
+one-way semantic normalization only: an ownerless Global origin becomes
+`libraryId: "personal"`, an ownerless Project origin receives the currently
+opened Project ID, and an ownerless catalog origin becomes
+`catalogId: "legacy"`. This private compatibility shape is not exported as a
+publication contract and cannot pass `ProjectAssetEntrySchema` or the Asset SDK
+write boundary. Current Local Global admission always persists the explicit
+`libraryId: "personal"` identity.
 
 ### ActionAssetBinding
 
@@ -418,9 +509,14 @@ type ResolvedAsset = Readonly<{
 }>;
 ```
 
-`url` and `thumbnailUrl` are current-Host projections. The object must never
-expose an R2 key, canonical local path, cache path, or storage implementation.
-Transfer progress and errors are device-local and must not enter Project Loro.
+`url` is the current Host's authorized original-media projection.
+`thumbnailUrl` remains an optional, read-only compatibility projection for
+legacy or remote readers; Current Local does not generate it, request a backend
+poster for it, or treat its presence as evidence of a backend representation
+protocol. A GUI may consume a supplied compatibility value, but its canonical
+Local fallback derives a disposable poster from `url`. Neither field may expose
+an R2 key, canonical local path, cache path, or storage implementation. Transfer
+progress and errors are device-local and must not enter Project Loro.
 
 ## Product scopes
 
@@ -494,6 +590,32 @@ analysis bodies is a separate typed attachment system. An attachment can be
 addressed from an Asset or Action revision without being confused with the
 Resource's media bytes or URL.
 
+The shared attachment target is a strict storage-free union:
+
+```ts
+type MetadataAttachmentTarget =
+  | { kind: "project-asset"; projectId: string; assetId: string }
+  | {
+      kind: "action-revision";
+      projectId: string;
+      actionId: string;
+      actionRevisionId: string;
+    };
+```
+
+New fill envelopes use this target and validate the complete declared metadata
+schema; the former unscoped `targetAssetId` write shape is rejected. Local
+SQLite keeps a rebuildable query projection keyed by the canonical complete
+target plus `metadataKind`, so equal literal Asset and Action ids cannot
+collide. That index explicitly reports `authority: "projection-index"`; it is
+not a second Project or attachment authority and carries no storage locator.
+The former `(asset_id, metadata_kind)` index remains a private read-only
+migration input. Current CLI authoring persists Project-Asset attachment
+identity and out-of-line body hashes in its observed workspace manifest/CAS
+loop. The ActionRevision target is implemented in the shared address and Local
+query projection, but a synchronized ActionRevision attachment collection is
+not claimed by this delivery.
+
 ## Exactly when a link is created
 
 A Project Asset link is created only when immutable media crosses a durable
@@ -531,11 +653,221 @@ Importing a local file into a Project:
 
 1. hashes and verifies the file;
 2. installs an immutable Resource in the local content-addressed store;
-3. creates an owned ProjectAssetEntry;
-4. optionally binds it to the target Action;
-5. optionally creates a read-only workspace projection.
+3. runs the versioned Host byte probe and verifies the declared Asset kind and
+   media type;
+4. derives canonical dimensions, duration, codecs, frame rate, and explicit
+   `hasAudio` where the kind requires them;
+5. creates an owned ProjectAssetEntry from those verified facts;
+6. optionally publishes that entry and its Action binding in the same Project
+   mutation;
+7. optionally creates a read-only workspace projection.
 
 It never adds the Asset to Global Assets implicitly.
+
+There is deliberately no cross-store transaction spanning the immutable
+Resource store and Project Loro. The operation is an at-least-once pipeline:
+the Resource install and probe are repeatable by stable Resource identity, and
+the Project consumer publishes with its stable Project Asset or
+`(actionRunId, outputSlot)` identity under CAS. A crash before the Project
+mutation leaves reusable staged CAS bytes; a retry re-probes or reuses the
+versioned result. A crash after the mutation rereads and verifies the committed
+winner. It never creates a second Asset or binding.
+
+### Unified Resource ingest and finalization
+
+User imports, Provider outputs, edits, local model outputs, and Timeline renders
+all converge on one Resource ingest/finalization protocol. They differ only in
+how bytes reach staging and which stable consumer identity publishes the
+result. They do not have separate L0/L1 metadata pipelines.
+
+This is the target semantic protocol shared by Local and future Cloud adapters.
+Current Local import receives bytes through the Project-scoped multipart route;
+current generated output receives a durable Host staging receipt. A future Web
+or Cloud adapter may use an OSS signed PUT and a durable ingest journal, but
+that Cloud transport is design-only in this delivery.
+
+The target layers are:
+
+- **L0 Resource facts:** the verified byte sequence, digest, byte length, kind,
+  and canonical media type. L0 is required before a Resource can be consumed
+  by a new Asset publication.
+- **L1 editable-media facts:** the byte-derived facts required for correct
+  editing, such as display dimensions, duration, orientation, stream presence,
+  frame-rate/codec facts, and audio layout where applicable. A specific
+  operation may require only a subset, but a new publication cannot substitute
+  invented defaults for a required fact.
+- **L2/L3 presentation derivatives:** device-local poster frames, blob
+  previews, waveforms, filmstrips, and hover frames, plus any future backend
+  proxy/representation protocol. These are outside the current ingest protocol
+  and never gate Resource finalization, Asset publication, or Durable Run
+  success.
+
+Aspect ratio is not a third stored fact. It is derived from normalized display
+width and height. A generation request's `aspect_ratio` remains frozen Action
+input, while the generated Resource's actual dimensions remain L1 output facts.
+
+Current Local implements the common staging and consumer-CAS path and the
+`asset-inspection/v3` subset listed in the Resource section. Rotation/display
+matrix normalization plus sample rate, channel count, and channel layout are a
+future probe recipe. Until that recipe lands, consumers must not infer those
+facts or treat coded width/height as proof of normalized orientation. This is a
+metadata-probe delivery gap, not permission to create a second import or
+generation pipeline.
+
+```mermaid
+flowchart LR
+  user["User import\nLocal stream / future signed PUT"] --> receipt["StagedResourceReceipt"]
+  provider["Provider or local generated output\nHost broker / renderer staging"] --> receipt
+  receipt --> seal["Seal and verify exact bytes"]
+  seal --> l0["L0 Resource CAS"]
+  l0 --> l1["Versioned L1 probe CAS"]
+  l1 --> prepare["Prepare canonical Asset facts"]
+  prepare --> publish["Consumer CAS publication"]
+  publish --> imported["Import succeeded\nProjectAsset"]
+  publish --> generated["Run succeeded\nProjectAsset + output binding"]
+```
+
+#### Stable identities and transport capabilities
+
+Every byte-producing command fixes its public consumer identity before issuing
+an upload capability or invoking a byte producer:
+
+| Producer                           | Stable consumer identity          | Byte-transfer adapter                                                        |
+| ---------------------------------- | --------------------------------- | ---------------------------------------------------------------------------- |
+| User Project import                | preassigned `projectAssetId` UUID | Current Local multipart/stream; future Cloud upload slot and signed PUT      |
+| User Global import                 | preassigned `globalAssetId` UUID  | Current Local multipart/stream; future Cloud upload slot and signed PUT      |
+| Provider or local generated output | `(actionRunId, outputSlot)`       | Host Asset broker or Host-local durable staging                              |
+| Edit, crop, or render output       | `(actionRunId, outputSlot)`       | Host-local durable staging or synchronous transform followed by consumer CAS |
+
+For a user import, the client or command adapter generates the Asset id before
+the first request, normally with `crypto.randomUUID()` and the applicable
+opaque Asset-id prefix. Every retry sends that exact same `projectAssetId` or
+`globalAssetId`. A Host-generated UUID when the caller omitted the id is a
+legacy compatibility fallback, not the canonical retry path. Generated output
+does not allocate a fresh random Asset id on each attempt: the Host derives its
+stable opaque output identity from `(actionRunId, outputSlot)`.
+
+An Asset id names an entry in Project or Global authority. It is not the
+content digest and is not used for byte deduplication. Resource CAS derives and
+verifies its own digest from the uploaded or generated bytes.
+
+The current import adapters use `crypto.randomUUID()`. A UUID v4 has 122 random
+bits, so accidental collision is negligible at product scale; the authority
+still treats an attempted duplicate as a CAS comparison rather than assuming
+that equal ids imply equal facts. Canonical ids are never truncated to reduce
+collision resistance. Agent and CLI reads return the full opaque id, and
+subsequent writes echo that value exactly. A GUI or human-readable report may
+display a short suffix beside the Asset name, but that abbreviation is not an
+accepted mutation identity unless a Host resolver first expands it uniquely to
+the full id and rejects ambiguity.
+
+An upload slot, object key, ETag, or signed URL is replaceable private transport
+state. A signed URL is a short-lived capability, not Resource or Asset
+identity. Expiration therefore reissues a capability for the same preassigned
+Asset id or generated-output tuple; it never creates a new Asset. The first
+verified staging receipt is the winner. Reusing an identity with different
+frozen command facts is always a conflict. For a user import, different bytes
+also mean the caller changed the frozen file assertion and must use a new Asset
+id. A replaceable generated or transform attempt may legitimately produce
+different bytes under at-least-once execution; that is producer nondeterminism,
+not permission for another public result. Its consumer CAS keeps the first
+verified receipt, discards the loser, and makes every contender reread the same
+winner.
+
+The logical stages are:
+
+```text
+created -> uploading -> uploaded -> verifying -> probing -> publishing -> succeeded
+```
+
+`failed` records the stage and whether retry is allowed. Transient failure may
+wait between attempts without changing the last completed stage. The public
+status must not expose an object key, local path, Provider token, signed URL, or
+private journal revision.
+
+#### Client retry contract
+
+The client does not coordinate these stages. It retains the complete command
+and its preassigned `projectAssetId`/`globalAssetId`, or the existing
+`(actionRunId, outputSlot)` for generated output. After a network error,
+timeout, or retryable Host response, it replays that same high-level command.
+There is no additional `operationId`, no client API for choosing whether to
+retry L0, L1, probe, or publication, and the client does not inspect private
+checkpoints before retrying.
+
+The Host may repeat cheap pure work or reuse any verified checkpoint. Every
+consumer is therefore required to implement at-least-once handling with CAS:
+
+- repeated byte installation converges on the same digest-addressed Resource;
+- repeated probing converges on the same `(Resource, probe recipe version)`
+  facts;
+- repeated publication converges on the same Project/Global Asset or
+  `(actionRunId, outputSlot)` winner.
+
+For a user import, replay may repeat byte transfer when the Host cannot prove
+that staging completed. For generated media, replay retries finalization under
+the existing Durable Run identity; it must not create another Provider submit
+or regenerate bytes that already have a durable staging receipt.
+
+The client distinguishes only `succeeded`, `retryable failure`, and `terminal
+failure`. A retryable failure replays the original command with the same Asset
+id or generated-output tuple. Invalid input, lost authorization, or a CAS fact
+conflict is terminal and is shown to the user. A materially changed user file
+receives a new Asset id; a materially changed generated invocation receives a
+new `actionRunId` or output declaration.
+
+#### Failure and recovery contract
+
+The following matrix is Host-internal recovery and diagnostic detail. It does
+not add client-visible stage controls or require the GUI to select a recovery
+path.
+
+The owner persists each completed stage before starting the next side effect.
+Automatic retries use bounded backoff and the same logical identity. They resume
+from the last verified receipt; they do not re-upload bytes, re-run a Provider,
+or repeat a transform when a later stage alone failed.
+
+| Stage                                                | Representative failure                                                                                                   | Classification                                                 | Required recovery                                                                                                                        | Publication consequence                                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Begin/reserve identity                               | Lost response after command creation                                                                                     | Unknown result                                                 | Read by the preassigned Asset id or generated-output tuple; return the existing winner or replay the same command                        | No duplicate Asset identity                                                               |
+| Begin/reserve identity                               | Same identity reused with different project, kind, filename contract, output slot, or frozen Action revision             | Permanent conflict                                             | Reject; genuinely different work requires a new Asset id or Action run                                                                   | Publish nothing; never suffix or silently replace the identity                            |
+| Authorize upload                                     | Permission revoked                                                                                                       | Permanent authorization failure until access changes           | Stop work; obtain current Project/library authorization before a new attempt                                                             | Publish nothing                                                                           |
+| Authorize upload                                     | Signed URL or upload capability expires                                                                                  | Transient transport failure                                    | Reissue a capability for the same upload slot/operation after rechecking authorization                                                   | Do not create a new Resource or Asset                                                     |
+| Transfer bytes                                       | Timeout, disconnect, partial multipart upload, or process crash                                                          | Transient                                                      | Resume/retry the same slot when supported; otherwise upload the same frozen bytes again under the same consumer identity                 | No probe or publication before a complete object exists                                   |
+| Seal upload                                          | Completion notification or HTTP response is lost                                                                         | Unknown result                                                 | HEAD/read the staging object and verify its exact version, length, and checksum; do not assume success or blindly create another command | Advance only after verification                                                           |
+| Seal upload                                          | Expected digest/length disagrees with uploaded bytes                                                                     | Invalid attempt; permanent if the frozen input itself is wrong | Reject/quarantine that attempt. Re-upload is allowed only for the same frozen byte assertion; a different file requires a new operation  | Publish nothing from mismatched bytes                                                     |
+| Select staging winner                                | Two at-least-once attempts finish with identical verified bytes                                                          | Replay                                                         | CAS-select/reuse one receipt; losing staging is TTL-cleanable                                                                            | One logical Resource result                                                               |
+| Select import staging winner                         | The same preassigned import Asset id carries different verified bytes                                                    | Permanent frozen-input conflict                                | Keep the first verified winner and require a new Asset id for the changed file                                                           | Never overwrite the winner                                                                |
+| Select generated/transform staging winner            | At-least-once attempts for one output tuple produce different verified bytes                                             | Producer nondeterminism / replay contention                    | CAS-select the first verified receipt; discard the losing candidate and reread the winner                                                | One logical output; no second Asset and no overwrite                                      |
+| L0 verify/register                                   | Storage/database acknowledgement is lost after CAS install                                                               | Unknown result                                                 | Read by verified digest and immutable facts; reuse the committed Resource when it matches                                                | Do not upload again                                                                       |
+| L0 verify/register                                   | Bytes are corrupt, unsupported for the declared kind, or canonical media type conflicts with a frozen required assertion | Permanent invalid input                                        | Mark the operation failed with a sanitized diagnostic; retain staging only under its TTL policy                                          | No Project/Global entry or binding                                                        |
+| L0 verify/register                                   | Resource store or verifier is temporarily unavailable                                                                    | Transient                                                      | Retry L0 from the staging receipt                                                                                                        | No re-upload and no publication                                                           |
+| L1 probe                                             | Worker/ffprobe crash, timeout, resource exhaustion, or temporary decoder unavailability                                  | Transient                                                      | Retry the versioned probe from the L0 Resource                                                                                           | No re-upload or Provider reinvocation                                                     |
+| L1 probe                                             | Decodable bytes cannot supply facts required by the Asset kind/operation                                                 | Permanent unsupported-media failure                            | Fail the operation or require a different conversion/import; never invent dimensions, duration, orientation, or frame count              | Publish nothing for a new Asset                                                           |
+| L1 probe                                             | Browser/client hints disagree with Host-derived facts                                                                    | Diagnostic, not a conflict                                     | Host facts win; record bounded diagnostics if useful                                                                                     | Continue with Host facts                                                                  |
+| L1 probe                                             | A frozen required assertion such as kind or expected digest disagrees with Host facts                                    | Permanent fact conflict                                        | Reject the command; a materially different input uses a new Asset id or Action run                                                       | Publish nothing                                                                           |
+| Prepare publication                                  | Process crashes after L0/L1 but before Project mutation                                                                  | Transient                                                      | Reopen the verified Resource and cached versioned probe result                                                                           | Do not recompute earlier successful stages unnecessarily                                  |
+| Consumer CAS publication                             | Project/SQLite/Loro write acknowledgement is lost                                                                        | Unknown result                                                 | Read the target identity and compare the complete committed facts                                                                        | Matching winner is replay success; no second entry                                        |
+| Consumer CAS publication                             | Same Asset identity already contains different Resource, metadata facts, lifecycle, or provenance                        | Permanent CAS conflict                                         | Return a structured conflict and require the caller to read current state                                                                | Never overwrite or merge incompatible facts                                               |
+| Asset + binding publication                          | Entry or one binding collides                                                                                            | Permanent atomic publication conflict                          | Reject the complete mutation                                                                                                             | Neither a partial Asset nor a partial binding set may appear                              |
+| Public outcome checkpoint                            | Asset/binding committed but node or run acknowledgement was lost                                                         | Transient reconciliation                                       | Re-read the consumer winner, checkpoint it, then publish only the coarse outcome for the same frozen revision                            | Never call the Provider/renderer again merely to repair status                            |
+| Post-publication claim reconciliation (future Cloud) | Registry/OSS claim update fails                                                                                          | Transient background failure                                   | Retain the staging lease and retry reconciliation from authoritative Project/Global membership                                           | Do not roll back or duplicate the published Asset; remote availability may remain pending |
+| Final response                                       | Client disconnects after success                                                                                         | Unknown result to client, committed to Host                    | Query by the same import/run identity and return the existing `ResolvedAsset`/run result                                                 | Never begin a new import or generation implicitly                                         |
+
+A cancellation stops scheduling new work but cannot roll back an already
+committed Resource or Project mutation. Unpublished staging may be reclaimed
+only after its lease/TTL expires. Published Resources are governed by Asset
+claims and explicit Trash/Purge rules, never by the staging cleanup clock.
+
+User-import success and generated-output success share the same finalization
+boundary but have different public receipts:
+
+- an import succeeds only after its Project or Global Asset consumer CAS is
+  committed and readable;
+- a generated media run succeeds only after its Project Asset and complete
+  output binding set are atomically committed and checkpointed;
+- neither waits for poster, waveform, filmstrip, proxy, or future replication
+  to another device.
 
 ### Link/admit
 
@@ -552,6 +884,13 @@ The pre-publication Registry call may verify or stage the immutable Resource, bu
 Project membership. A crash before the Loro write therefore leaves only reusable staging state or a
 lease that expires. A crash after the Loro write is repaired by reconciliation. There is no
 distributed transaction between Project Loro and the Resource Registry.
+
+Admission is idempotent for the source relation. Repeating the same
+`(targetProjectId, sourceLibraryId, globalAssetId)` returns the same linked
+Project entry. The Local Host derives an opaque Project-entry relation identity
+from that tuple and atomically publishes it through the Project authority. It
+does not reuse the Global id, expose the Resource id, or ask the GUI to compare
+the two collections.
 
 The canonical admission path is now an identity-producing operation. A GUI
 adapter may still use `ensureProjectReference` as an internal callback name,
@@ -577,11 +916,32 @@ inputs and create owned Project Assets as outputs. Editing a linked Asset is
 copy-on-write: the origin link remains unchanged, the output is Project-owned,
 and selected consumers are rewired explicitly.
 
+One synchronous Local edit Apply owns one stable `actionRunId`; its only
+declared output slot is `output`. The GUI creates that identity when the Apply
+attempt starts and retains it while an unknown HTTP result can be retried. The
+Host derives the opaque Project Asset identity from the unambiguous
+`[actionRunId, "output"]` tuple, installs/probes the submitted bytes, and
+publishes the Project entry plus source/output `ActionAssetBinding` facts in one
+Project mutation.
+
+Both browser rendering and the ffmpeg crop transform are at-least-once
+computation. A lost response may cause the same transformation and CAS staging
+to run again; it does not create a second logical output. Replaying the same
+frozen invocation and Resource returns the existing winner. Reusing the run
+identity with a different invocation revision or different bytes returns HTTP
+`409` with `ACTION_ASSET_BINDING_ID_COLLISION` or
+`PROJECT_ASSET_ID_COLLISION`. Synchronous edits do not add a second execution
+journal: consumer CAS is the durable boundary, while generated outputs use the
+shared Durable Run Engine before reaching the same publication boundary.
+
 ### Publish
 
 Publishing to Global Assets creates an independent GlobalAssetEntry and claim
 for an existing Resource. It does not move the Project entry and does not make
-the Global entry depend on Project survival.
+the Global entry depend on Project survival. Retrying one publication of the
+same Project entry returns the same Global entry instead of adding another
+library membership; a separate explicit import remains free to create another
+Global entry over the same Resource.
 
 ### Read and flatten
 
@@ -681,9 +1041,27 @@ but it does not make the producing Action a consumer of its own output.
 Trashing a GlobalAssetEntry retains its Global claim during the library's
 recovery window. Purging it releases only that Global claim. Existing Projects
 remain valid because admission created independent Project claims and pinned
-ProjectAsset entries. The Local GUI and Host currently expose Trash and Restore;
-the terminal purge primitive exists below the transport boundary but has no
-product command or scheduler yet.
+ProjectAsset entries. The Local GUI, CLI, MCP, shared SDK, and Host expose Trash
+and Restore; the terminal purge primitive exists below the transport boundary
+but has no product command or scheduler yet.
+
+Global lifecycle delivery is at-least-once and the library authority is the CAS
+consumer. Trash owns a stable `deleteOperationId`: repeating that logical
+operation returns the same trashed fact, while a different operation cannot
+replace an existing trash. A read of a trashed Global Asset gives trusted client
+glue the operation it observed; Restore must present that operation back to the
+Host. The authority compares it inside the SQLite write transaction, so
+`trash(op1) -> restore(op1) -> trash(op2)` rejects a stale `restore(op1)`.
+Repeating the successful `restore(op1)` is safe until a newer trash exists. The
+operation is carried internally by GUI, CLI, MCP, and SDK glue; it is not a
+public force/version flag.
+
+| HTTP | Code                           | Meaning / recovery                                      |
+| ---- | ------------------------------ | ------------------------------------------------------- |
+| 400  | `INVALID_GLOBAL_ASSET_TRASH`   | Missing stable trash operation; fix the trusted client. |
+| 400  | `INVALID_GLOBAL_ASSET_RESTORE` | Missing observed delete operation; read before restore. |
+| 404  | `GLOBAL_ASSET_NOT_FOUND`       | The library entry does not exist.                       |
+| 409  | `GLOBAL_ASSET_FACT_MISMATCH`   | Competing trash or stale restore; read current state.   |
 
 ### Physical Resource deletion
 
@@ -721,7 +1099,8 @@ The following are not Asset GC:
 
 - TTL cleanup of incomplete upload staging files that never became Resources;
 - LRU eviction of downloadable device caches;
-- regeneration or eviction of local thumbnails, filmstrips, and waveforms;
+- client-owned recomputation or eviction of frontend poster, filmstrip, and
+  waveform caches;
 - processing a physical-delete queue produced by a successful explicit purge.
 
 None may infer that a canonical Asset is unreferenced and authorize deletion.
@@ -767,6 +1146,33 @@ type ActionRun = Readonly<{
   status: "queued" | "running" | "finalizing" | "succeeded" | "failed";
 }>;
 ```
+
+For every new Local Canvas execution, `actionRunId` is scoped to that immutable
+revision rather than to the mutable node:
+
+```text
+project:<projectId>:node:<nodeId>:revision:<ActionRevision sha256 hex>
+```
+
+Provider, Host-local, and custom executable-plugin paths all derive this ID
+from the same finalized frozen executor candidate. Its semantic payload
+includes the exact executor/plugin binding and endpoint, output kind, prompt,
+model/custom parameters, and ordered resolved input handles (slot, index, kind,
+and Project Asset ID). Host account routing, actor/task/attempt identity,
+coarse node status, display-only names, locators, and derived presentation
+metadata are excluded. The separate Canvas projection fingerprint includes the
+current resolved mention targets, so rewiring an authored mention creates a
+new run even if its mention node ID and prompt spelling stay unchanged.
+
+An older revision never owns the mutable node merely because it has the same
+node ID. It can finish at-least-once work and publish its immutable
+ProjectAsset/ActionAssetBinding through `(actionRunId, outputSlot)` consumer
+CAS, while node status/result projection is allowed only when its frozen
+fingerprint still equals the current authored revision. The new revision starts
+without waiting for the old run to become terminal. Pre-cutover base-key runs
+(`project:<projectId>:node:<nodeId>` and `local-custom-*`) remain restart inputs
+only: Local recovery advances and consumer-publishes them, but they lack enough
+frozen evidence to project any current Canvas outcome or reserve the node.
 
 Only the designated execution owner may advance the run or attach output
 bindings. In the future entity design, receiving an ActionRun through Project
@@ -978,6 +1384,61 @@ claim. Collaborators resolve the Resource through Project permission, not the
 creator's Global library or user-owned Asset row. Removing the creator from the
 team or deleting the source library entry cannot break the Project.
 
+Possessing a `resourceId`, an OSS key, a signed projection, or a synchronized
+ProjectAsset payload is never authority. `ProjectRoom` admits Project mutations
+under current membership and role; the Resource Registry serves or accepts a
+Resource only for an admitted Project claim or a short-lived staging/upload
+lease. The future cloud Action owner additionally needs Action execute
+permission and a hosted Provider account grant. The physical-delete worker is
+authorized only by a terminal Asset purge plus a current zero-claim result; it
+cannot infer authority from apparent orphanhood.
+
+### Cloud design responsibility and failure matrix
+
+This table is target design, not a statement that the Cloud adapter exists. It
+makes the owner, synchronized fact, private state, failure projection, and
+authorization boundary explicit for every cross-device media transition.
+
+| Transition                           | Responsible component                       | Synchronized product fact                                                              | Private/replaceable state                                     | Failure and recovery                                                                                                                                   | Authorization                                                            |
+| ------------------------------------ | ------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Local-origin create                  | Creating Local Host                         | `ProjectAssetEntry`, optional Action binding/node                                      | Local CAS installation                                        | Local use continues; remote projection stays `uploading`/`unavailable`                                                                                 | Project edit permission on the local mutation                            |
+| Local-origin upload                  | Resource replicator on the creating Host    | No second Loro mutation; Registry later emits readiness                                | Multipart/upload cursor, OSS object key, retries              | Resume by `resourceId`; verify an already-written object after restart                                                                                 | Project claim candidate plus scoped upload lease                         |
+| Cloud/Web Action output              | Cloud Durable Run owner                     | Placeholder may appear early; Project Asset/output binding only after OSS verification | Workflow journal, Provider state, staging key                 | Resume staging/publication by `actionRunId + outputSlot`; unpublished staging expires by TTL                                                           | Project execute permission, Provider account grant, declared output slot |
+| Deferred Cloud poster representation | Future representation Workflow owner        | No Project mutation; Asset identity and readiness stay unchanged                       | Recipe claim, OSS staging receipt, attempts                   | Generate at least once; CAS-publish one verified `(sourceResourceId, recipeVersion)` mapping; retry missing/corrupt mappings and expire losing staging | Readable source claim plus permission for the entry-scoped resolver      |
+| Project claim reconciliation         | Resource Registry reconciler                | ProjectAsset lifecycle remains authoritative                                           | Claim cursor and staging lease                                | Retry reconciliation; published Asset may remain pending, but is never duplicated                                                                      | Admitted Project state from `ProjectRoom`                                |
+| Peer/other-device download           | Receiving Local Host replicator             | No Loro mutation                                                                       | Signed read projection, download cursor, local progress/cache | Retry and verify before atomic CAS install; report `downloading`, `unavailable`, or `failed` locally                                                   | Current Project membership plus active Project claim                     |
+| Logical Trash/Restore                | Project authority through `ProjectRoom`     | `active <-> trashed` lifecycle                                                         | UI/transport receipts only                                    | CRDT synchronization/Undo; Registry and bytes remain unchanged                                                                                         | Project Asset mutation permission and reference/CAS checks               |
+| Terminal purge                       | Project authority, then Registry reconciler | Terminal `purged` tombstone                                                            | Claim-release work item                                       | Retry release without changing the tombstone                                                                                                           | Authorized purge after the recovery window                               |
+| Physical byte deletion               | Resource deletion worker                    | Resource tombstone/readiness only; never Project state                                 | Delete queue and object key                                   | Retry indefinitely or retain extra bytes; never resurrect or alter Assets                                                                              | Current zero-claim proof plus authorized delete item                     |
+
+The Web client never uploads into a Local Host or appoints one by observing
+sync. A Web-submitted generation is owned by the future Cloud runtime; a
+Desktop/CLI/MCP generation is owned by its selected Local Host. Likewise, an
+offline peer may download a ready Resource later, but it cannot resume the
+creator's upload or either realm's ActionRun from synchronized Project state.
+
+In this future Cloud design, the representation registry is private
+infrastructure, not another Asset collection. A recipe claim is valid only
+while at least one readable source claim exists. Serving a poster always begins
+with an authorized Project
+or library entry and then resolves the mapping; a caller cannot authorize a
+read by presenting the source Resource id, representation Resource id, recipe,
+or OSS key. Generation writes to OSS staging, verifies the representation
+digest and declared media recipe, and conditionally inserts the mapping. A
+crash after staging but before insertion is resumed from the Workflow journal;
+a duplicate worker may lose the conditional insert and must delete or let TTL
+reclaim only its unreferenced staging object.
+
+Derived bytes do not keep a deleted source alive forever. During logical
+Trash/Restore, the normal source claim and its representation reachability stay
+intact throughout the recovery window. Terminal purge releases the entry's
+source claim first; reconciliation then removes a representation reachability
+claim only after no remaining Project/library source claim can authorize it.
+Physical deletion checks zero claims independently for the original and each
+derived Resource. Failure may retain extra source or poster bytes, but it may
+never remove a still-authorized representation, resurrect an Asset, or change
+Project Loro state.
+
 ### Offline and concurrency
 
 - Existing local Resources remain usable offline.
@@ -1000,22 +1461,71 @@ team or deleting the source library entry cannot break the Project.
 ## Previews, thumbnails, and Project covers
 
 Consumers never guess whether a URL is original media or a cover.
-`ResolvedAsset.url` is playable/readable original media and
-`thumbnailUrl` is a visual preview. The Host chooses or generates each
-projection.
+`ResolvedAsset.url` is playable/readable original media. Its optional
+`thumbnailUrl` is only a read-only legacy/remote compatibility input; it does
+not imply that Current Local has a backend poster task, representation registry,
+or thumbnail endpoint. Current Local asks the Host only for the authorized
+original-media projection and lets frontend presentation adapters decode it.
 
-- A durable video poster is an immutable Resource representation.
-- Timeline filmstrips and current-frame captures are local derived caches by
-  default.
-- Waveforms may be compact descriptive metadata or a derived representation;
-  there is one resolver either way.
-- Preview cache keys are Resource/version based, not ad hoc component keys.
+- Poster frames, Timeline filmstrips, current-frame captures, and waveform
+  peaks are device-local, disposable frontend caches.
+- A legacy/remote `thumbnailUrl` may be displayed when already supplied, but
+  Current Local does not request one and falls back to frontend frame decoding.
+- A legacy inline waveform may still be read for migration, but every new Asset
+  publication and Timeline save strips it rather than synchronizing sampled
+  display data.
+- A canonical Project Asset component never uses a projected URL as cache
+  identity. Browser caches use a scoped, opaque Project/Asset key. A legacy
+  URL-only Remotion input may still derive a disposable, query-stripped cache
+  key when no Project Asset identity exists; that compatibility fallback is
+  neither synchronized nor accepted as Asset/reference authority.
+
+Current Local delivery uses one Host-private Resource processing registry in
+`local.sqlite`. When the packaged inspector is available, the current
+`asset-inspection/v3` probe stores its byte-derived media facts under
+`(sourceResourceId, probeRecipeVersion)`; empty, caller-only, partial, or failed
+probe results are never cached as ready. It validates the currently supported
+per-kind facts and decoded media type, and records explicit audio presence,
+including `hasAudio: false` for a verified silent video. It does not yet provide
+rotation-normalized display geometry or audio-layout facts. Competing
+at-least-once probes conditionally insert one row; a loser must compare all
+candidate facts with the CAS winner and reports a conflict instead of accepting
+different facts. This registry currently stores probe facts only. It does not
+store poster, waveform, or filmstrip mappings, and public Local `ResolvedAsset`
+reads do not depend on such mappings. Paths, Resource identities, recipes, and
+registry rows remain Host-private and are never written to Project Loro.
+
+The current Local model probe admits only glTF 2 (`.glb` or `.gltf`), whose
+header/JSON is verified from bytes. FBX, OBJ, BVH, and USDZ are not advertised as
+supported imports until a byte-verifying canonical probe exists for them.
+
+Poster, waveform, and filmstrip behavior intentionally stops at the device
+boundary in this delivery. Timeline first uses a legacy waveform only while
+reading an old Project; otherwise frontend adapters derive a poster frame,
+peaks, or sampled frames by decoding the authorized original-media projection.
+They keep results in component-lifetime or bounded LRU/TTL device caches and may
+evict and recompute them. None has a backend identity, publication receipt,
+Project binding, synchronized URL, or Durable step in the current Local
+product. A decode failure affects only presentation and never changes the
+original Asset's ready state. The shared read schema retains legacy `waveform`,
+while the Asset SDK's separate publication metadata schema rejects it for every
+new Project or Global entry.
+
+There is no generic `/thumbnails/<storage-key>` API. The former api-cf and
+standalone sync-worker route was unauthenticated, treated an object key as
+authority, and could fall back to returning the original video; it has been
+removed together with the Web gateway carve-out. Cloud preview delivery must
+enter through an authenticated Asset-entry resolver and must never restore that
+raw-key fallback. Current Local likewise has no Project/Global thumbnail route.
+Any future backend derivation protocol is a separate design task and cannot be
+inferred from the legacy `thumbnailUrl` compatibility field.
 
 A Project cover is product state, not an arbitrary aggregation of recent URLs.
 It should reference stable `projectAssetId` values plus a layout. A deterministic
 default may be generated from Project Assets, but the API returns stable Asset
-references and the current Host resolves their preview URLs. It never stores or
-synchronizes signed URLs.
+references and the current frontend derives their visual presentation from
+authorized original-media projections. It never stores or synchronizes signed
+URLs, poster frames, or cache locators.
 
 ## Client and plugin boundaries
 
@@ -1060,13 +1570,37 @@ business Asset model. Provider code never receives storage keys or selects an
 account scope. Traffic recording remains process instrumentation outside
 plugin business logic.
 
+Local and future Cloud Hosts expose that adapter through the permanently named
+Asset delivery `v0` contract. Upload returns only
+`{ assetId, uri, kind, mediaType? }`; reference resolution returns `bytes`,
+`provider-url`, or `text`. Cloud storage changes how the Host satisfies one of
+those forms, not the handle shape or protocol name. There is no `v1` alias and
+the retired `url + reach` dialect is never a compatibility path. See
+[SDK Context: Typed references](/plugins/sdk-context#typed-references-asset-delivery-v0).
+
 ### Renderers
 
 Preview and local render currently resolve ProjectAsset entries through the
 same Host/storage abstraction. They do not rewrite storage keys into private
 route dialects. A local render freezes the Timeline Action revision and its
-resolved input manifest before execution. Hosted render must adopt this same
-resolver in the future Cloud adapter; that cutover is design-only here.
+input bindings before execution. Its stable `actionRunId` and
+`render:output` slot enter the shared Local Durable Run journal; Remotion may be
+invoked at least once after a crash, but the Host-local output receipt uses
+consumer CAS and retains exactly one Resource winner. Only the subsequent
+atomic Project Asset + ActionAssetBinding publication checkpoint changes the
+render node to `completed`. Built-in `local-acp` and `local-tts` generation use
+the same graph and restart path rather than synchronous generation loops.
+Hosted render must adopt this same resolver in the future Cloud adapter; that
+cutover is design-only here.
+
+The GUI boundary is `ProjectedMedia` plus the shared Asset presentation
+helpers. It accepts only a URL projected by the current Host (`http(s)`,
+runtime-supported `blob`/`data`/`file`, or an explicit application route) and
+renders no media element for a bare object key. Remotion uses the equivalent
+`resolveProjectedMediaUrl` boundary. The retired browser signer hook, its
+storage-key fallback, the duplicate legacy InteractiveCanvas, and the
+unreachable Timeline video renderer were removed; no canonical Project UI or
+renderer calls `/assets/sign` or manufactures `/api/assets/view/<key>`.
 
 ## Storage and authority
 
@@ -1130,18 +1664,47 @@ listProjectAssetReferences(projectAssetId)
 trashProjectAsset(projectAssetId, observedProjectRevision)
 restoreProjectAsset(projectAssetId, observedProjectRevision)
 purgeProjectAsset(projectAssetId, observedProjectRevision)
-trashGlobalAsset(globalAssetId)
-restoreGlobalAsset(globalAssetId)
+trashGlobalAsset(globalAssetId, stableDeleteOperationId)
+restoreGlobalAsset(globalAssetId, observedDeleteOperationId)
 purgeGlobalAsset(globalAssetId)
 projectAssetToWorkspace(projectAssetId, name?)
 ```
 
-`/upload`, `/assets/sign`, and `/assets/sign-batch` are generic blob transport
-compatibility surfaces, not Project Asset APIs. They may still serve
-non-Project attachment/embed flows or project an existing opaque blob key, but
-their `storageKey` is never a Project Asset identity and cannot create or bind
-one. Every product media import uses the Project-scoped `import-file` operation
-above and returns `ResolvedAsset`.
+Bare `/upload`, `/assets/sign`, and `/assets/sign-batch` are retired in
+local-api and api-cf; the duplicate anonymous `/upload` and raw `/assets/*`
+routes were also removed from the legacy loro-sync worker. Cloud upload is a
+future Resource-replicator/OSS design responsibility, not a deployed generic
+blob API. Every canonical Local product media import uses the Project- or
+Global-scoped `import-file` operation above and returns `ResolvedAsset`.
+The shared runtime capability table therefore advertises hosted Asset upload
+as `disabled`; `remote` is not a selectable capability until that design is
+implemented.
+
+The hosted `/api/v1/assets*` raw-key metadata CRUD/probe surface is also
+retired. api-cf internal generation and Loro compatibility code may read or
+write legacy D1 rows while that infrastructure is migrated, but no public route
+accepts an R2 key, creates an owner-oriented row, or mutates a cover key.
+
+The hosted `/api/tasks/*` Workflow endpoint remains a compatibility transport
+for api-cf and the retired sync-worker path. Its legacy task payload may contain
+storage-shaped result fields, so it is explicitly not an Asset read contract
+and has no canonical GUI, CLI, or MCP caller. The former public `clash tasks
+status/wait` adapter is retired. Local clients observe the child Project node
+returned by `canvas execute` and resolve its Project Asset through the same Host
+Asset contract as every other reader. A future Cloud task surface must return
+the shared Action/Asset result rather than exposing that compatibility payload.
+
+api-cf temporarily retains `GET /assets/<opaque-locator>?exp=...&sig=...` only
+as a capability delivery transport for existing internal render/Provider and
+hosted compatibility consumers. No public endpoint mints that capability from
+a caller-supplied key: an already-authorized product service must mint it. The
+locator and signature are replaceable projection state, never Asset identity,
+authority, canonical metadata, synchronized state, or a Durable Run success
+condition. Local Project/Global reads use their entry-scoped `/media` routes
+instead of this transport.
+The authenticated legacy Project-card projection may carry that short-lived
+URL for presentation compatibility, but its response no longer exposes the
+underlying storage key.
 
 Batch read returns the same resolved shape. Byte serving, signing, upload slots,
 and plugin broker calls are internal protocol adapters rather than alternate
@@ -1186,8 +1749,13 @@ The Local authority foundation is implemented; the product cutover status is:
 
 - Project membership and lifecycle live in the Project Loro `projectAssets`
   authority collection, not `asset_refs`.
-- immutable bytes and verification facts live in the local Resource CAS;
-  storage keys never enter synchronized identity;
+- immutable bytes, digest, and byte length live in the local Resource CAS;
+  versioned L1 inspection facts live in the Host-private processing registry,
+  and storage keys never enter synchronized identity;
+- Project/Global import, edit, Provider/local generation, and Timeline render
+  share one staging, metadata-preparation, and consumer-CAS publication path.
+  With the packaged inspector present, new publications reuse its versioned
+  result and failed probing does not publish an entry or binding;
 - the personal Global library has its own authority and admits pinned links into
   Projects without merging the two lifecycles;
 - Action inputs and outputs use the Project Loro `actionAssetBindings`
@@ -1206,8 +1774,11 @@ The Local authority foundation is implemented; the product cutover status is:
   returns structured `ASSET_IN_USE`; there is no orphan-GC product command;
 - deletion is logical and CRDT-visible; physical Resource reclamation is a
   separate claim/recovery-window concern; and
-- legacy Local routes return `410`, while legacy tables are migration input
-  only and receive no new product writes.
+- legacy Local `/api/v1/assets*` routes return `410`; hosted
+  `/api/v1/assets*` and bare raw-key routes are absent (`404`); Local legacy
+  tables are migration input only and receive no new product writes, while
+  hosted internal rows remain compatibility infrastructure rather than a
+  public Asset authority.
 
 Canvas editable inputs now use the same direct authority model as Timeline and
 Director. Node and edge insert/update/delete, prompt/reference edits, source
@@ -1218,6 +1789,25 @@ post-marker field scanner.
 
 The following are intentionally **not implemented** in this work:
 
+- a synchronized ActionRevision attachment authority. The storage-free typed
+  target and Local query projection accept ActionRevision addresses, while the
+  current durable CLI authoring loop owns only Project-Asset attachment
+  manifests and out-of-line bodies;
+- fail-closed new publication when a custom/source Local Host starts without a
+  usable media inspector. The packaged distribution includes ffprobe, but the
+  optional-server path can currently fall back to caller metadata instead of
+  rejecting publication;
+- a strict publication boundary that treats caller dimensions, duration,
+  codecs, and audio flags only as hints while always letting Host facts win.
+  Current `asset-inspection/v3` can reject a differing hint, and facts not
+  produced by the inspector can still pass through the publication adapter;
+- staging/finalization that permits a byte sequence first presented with an
+  incorrect kind or media type to be sealed later under corrected Host facts.
+  The current Resource install records declared kind/media type before probe,
+  so a failed declaration can reserve that digest with incompatible facts;
+- rotation/display-matrix normalization and audio sample-rate/channel-layout
+  facts. They require a new versioned inspection recipe and schema rather than
+  invented defaults in `asset-inspection/v3`;
 - hosted api-cf migration from owner-oriented Asset rows to Project permission
   and Project claims;
 - OSS upload/finalization and the Cloud Resource Registry;
@@ -1303,6 +1893,19 @@ conflict may invent a Resource or silently fall back to `asset_refs` after cutov
   mutations compile the complete draft input set and replace its bindings in the same Project
   mutation. Removing and later re-adding a use receives a fresh binding identity. The one-way
   materializer uses the same compiler before the authority marker; it is not a post-marker index.
+- **Complete for synchronous Local edit outputs:** the GUI retains one
+  `actionRunId` for an ambiguous Apply retry; both client-rendered outputs and
+  ffmpeg crop use slot `output`; the Host derives one stable Project Asset id
+  and atomically CAS-publishes the entry plus frozen input/output bindings.
+  Identical replay returns the winner and conflicting bytes or invocation
+  facts return structured `409`.
+- **Complete for Local generation and Timeline render outputs:** Provider
+  plugins, built-in `local-acp` / `local-tts`, mock development executors, and
+  Remotion Timeline render all enter the shared SQLite Durable Run journal and
+  step graph. Host-local media attempts stage into Resource CAS under
+  `(actionRunId, outputSlot)` before one atomic Project Asset + output-binding
+  publication; restart recovery needs no client resubmission. Timeline keeps
+  its frozen Action revision/input bindings and uses `render:output`.
 - Raw `reference*Urls` and `reference*R2Keys` are not a second migration authority. An external URL
   must be fetched, verified, and imported as a Project Asset before it can become an Action input;
   execution must not fall back to storage-shaped node fields after cutover.
@@ -1331,7 +1934,23 @@ conflict may invent a Resource or silently fall back to `asset_refs` after cutov
 ### Phase 5: one resolver and one projection path
 
 - **Complete for Local:** return `ResolvedAsset` from local controllers and move
-  preview, Canvas, Timeline, waveform, local render, CLI, and MCP to the shared resolver.
+  preview, Canvas, Timeline, local render, CLI, and MCP to the shared resolver.
+- **Complete for new Local writes:** poster frames, waveform peaks, and
+  Timeline filmstrips are all scoped, disposable frontend caches derived from
+  an entry-authorized original-media projection. Current Local has no backend
+  poster request/publication path. Legacy `thumbnailUrl` and inline waveform
+  data are read-only compatibility inputs and are never new authority writes.
+- **Deferred:** any Local or Cloud backend representation registry, derivation
+  task, recipe, staging contract, and reclamation policy for poster, waveform,
+  or filmstrip bytes.
+- **Complete for the retired hosted compatibility path:** remove the public
+  `/thumbnails/<storage-key>` route from api-cf, the Web gateway, and the legacy
+  standalone sync worker. No storage key now authorizes preview or original-media reads.
+- **Complete for raw transport retirement:** remove Local raw upload/read/sign
+  routes, api-cf's anonymous upload and public caller-key signing routes, the
+  Web upload carve-out/R2 binding, and the legacy sync worker's duplicate R2
+  routes/binding. The remaining api-cf signed GET is capability delivery only;
+  hosted upload remains disabled and design-only.
 - **Complete for Local:** adapt plugin capability handles from frozen Action bindings.
 - **Complete for Local product paths:** delete storage-row URL dialects and duplicate
   identity resolvers. Device-local derived preview caches remain caches, never authorities.
@@ -1392,7 +2011,9 @@ conflict may invent a Resource or silently fall back to `asset_refs` after cutov
   in a separate Project recovery surface.
 - **Complete in the Local Host/GUI:** add Global-to-Project admit and Project-to-Global publish. The
   GUI updates its Project and Global collections from the returned canonical `ResolvedAsset`; it does
-  not manufacture a client-side URL, storage identity, lifecycle, or availability state.
+  not manufacture a client-side URL, storage identity, lifecycle, or availability state. Both Host
+  operations are retry-idempotent over an explicit scoped source tuple. The GUI treats equal literal
+  ids from different scopes as independent and never hides or skips an operation by comparing them.
 - **Covered by Local product tests:** the Global surface verifies direct import, the distinction
   between device unavailability and Trash, and recovery; the Project navigator verifies the same
   lifecycle/availability split and its Trash/Restore actions. Route and Host-client tests separately
@@ -1418,30 +2039,52 @@ do not claim deployed Cloud behavior.
 3. **Local:** A Global Asset admitted to a Project survives Global removal and creator
    departure.
 4. **Local:** Editing a linked Asset produces a new owned Project Asset.
-5. **Local:** Deleting a Canvas node or Timeline item never removes Project membership.
-6. **Local:** Removing a Project Asset reports every blocking Action reference and has no
+5. **Local:** Retried Global admission or Project publication returns one target entry, while equal
+   literal ids in Project and Global collections remain independent.
+6. **Local:** Deleting a Canvas node or Timeline item never removes Project membership.
+7. **Local:** Removing a Project Asset reports every blocking Action reference and has no
    force bypass.
-7. **Local:** No background process may infer Asset orphanhood and delete canonical media.
-8. **Local:** Logical deletion completes through Project Loro alone; CRDT Undo/Restore
+8. **Local:** No background process may infer Asset orphanhood and delete canonical media.
+9. **Local:** Logical deletion completes through Project Loro alone; CRDT Undo/Restore
    works throughout the recovery window without Registry or OSS writes.
-9. **Cloud design:** Physical deletion is asynchronous after terminal purge, and its failure can
-   retain extra bytes but cannot change synchronized product state.
-10. **Cloud design:** Another device can receive a Project Asset, download it asynchronously, and
+10. **Cloud design:** Physical deletion is asynchronous after terminal purge, and its failure can
+    retain extra bytes but cannot change synchronized product state.
+11. **Cloud design:** Another device can receive a Project Asset, download it asynchronously, and
     expose the same resolved shape with a different local URL.
-11. **Local:** Desktop, CLI, MCP, plugins, preview, and local render consume one
+12. **Local:** Desktop, CLI, MCP, plugins, preview, and local render consume one
     Host resolver and one Asset read contract. **Cloud design:** Web and hosted
     render must use the same contract.
-12. **Local:** Global and Project entries have independent logical lifecycles while their
+13. **Local:** Global and Project entries have independent logical lifecycles while their
     immutable Resources remain physically deduplicated.
-13. **Cloud design:** A Web submission has one cloud execution owner; a Desktop, CLI, or MCP
+14. **Cloud design:** A Web submission has one cloud execution owner; a Desktop, CLI, or MCP
     submission has one designated local Host owner. Project sync never appoints
     a second owner.
-14. **Local + Cloud design:** Local and cloud use the same durable step graph and retry policy. An
+15. **Local + Cloud design:** Local and cloud use the same durable step graph and retry policy. An
     ambiguous interrupted submit may be attempted again as an explicit product
     trade-off; once a task token is checkpointed, recovery only polls that task,
     and output finalization remains idempotent.
-15. **Cloud design:** Local-origin nodes and Asset metadata may synchronize before OSS readiness;
+16. **Cloud design:** Local-origin nodes and Asset metadata may synchronize before OSS readiness;
     cloud-origin ActionRun and placeholder-node state may also synchronize
     early, while its ProjectAsset and output binding appear only after OSS
     verification. Both realms converge to the same ProjectAsset contract
     without synchronizing OSS keys.
+17. **Local + Cloud design:** Plugin Asset delivery is always `v0`: one
+    `{ assetId, uri, kind, mediaType? }` handle and `bytes | provider-url | text`
+    resolution. Cloud must not add a `v1` alias, `url + reach` fallback, or
+    storage-specific handle.
+18. **Deferred Local metadata-probe closure:** Every new Project and Global
+    publication derives canonical media facts from bytes under a required
+    versioned probe receipt before the entry mutation. Caller waveform or media
+    hints cannot become authority facts; an unavailable or failed probe leaves
+    no entry or binding. The shared publication path and configured-inspector
+    behavior are implemented, but the inspector-unavailable, hint-separation,
+    pre-probe Resource sealing, orientation, and audio-layout gaps listed above
+    remain outside the current delivery.
+19. **Local:** Poster frames are scoped, disposable frontend caches decoded from
+    the entry-authorized original-media projection. Current Local neither
+    requests nor CAS-publishes a backend poster; legacy/remote `thumbnailUrl`
+    remains an optional read-only compatibility input only.
+20. **Local:** Waveform peaks and Timeline filmstrips follow the same frontend
+    presentation-cache rule as poster frames. New Project Asset and Timeline
+    state never synchronizes those samples, URLs, blobs, or cache keys, and
+    their availability never gates Durable Run success.

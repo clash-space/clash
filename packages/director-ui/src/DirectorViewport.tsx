@@ -167,6 +167,14 @@ export interface DirectorViewportProps {
   className?: string;
 }
 
+/** Resolve runtime model bytes without adding a URL dialect to Director Stage identity. */
+export function resolveDirectorModelProjectionUrl(
+  assetId: string,
+  assetUrls?: Record<string, string>,
+): string | undefined {
+  return assetUrls?.[assetId] ?? DIRECTOR_BUILTIN_MODEL_ASSET_URLS[assetId];
+}
+
 function materialColor(object: DirectorStageObject, palette: DirectorRenderPalette): string {
   if (object.kind === "mannequin") return object.color ?? palette.mannequin;
   if (object.kind === "creature") return object.color ?? "#7a5137";
@@ -936,17 +944,18 @@ function ObjectVisual({ object, palette, assetUrls, showSkeleton, showEditorHelp
     case "light": return <LightObject object={object} showHelper={showEditorHelpers} />;
     case "crowd": return <CrowdMesh object={object} palette={palette} />;
     case "model": {
-      const sourceUrl = assetUrls?.[object.model.assetId]
-        ?? DIRECTOR_BUILTIN_MODEL_ASSET_URLS[object.model.assetId]
-        ?? object.model.sourceUrl;
+      const projectionUrl = resolveDirectorModelProjectionUrl(
+        object.model.assetId,
+        assetUrls,
+      );
       const rig = object.model.animation ?? DIRECTOR_BUILTIN_MODEL_ASSETS.find(
         (asset) => asset.id === object.model.assetId,
       )?.rig;
-      return sourceUrl
+      return projectionUrl
         ? <Suspense fallback={null}>
             {rig ? (
               <RiggedModelMesh
-                src={sourceUrl}
+                src={projectionUrl}
                 rig={rig}
                 activeActions={activeActions}
                 timeSeconds={timeSeconds}
@@ -954,7 +963,7 @@ function ObjectVisual({ object, palette, assetUrls, showSkeleton, showEditorHelp
                 locomotionDistance={locomotionDistance}
               />
             ) : (
-              <Gltf src={sourceUrl} castShadow receiveShadow />
+              <Gltf src={projectionUrl} castShadow receiveShadow />
             )}
           </Suspense>
         : <mesh castShadow position={[0, 0.5, 0]}><boxGeometry /><meshStandardMaterial color={materialColor(object, palette)} wireframe /></mesh>;

@@ -88,6 +88,7 @@ interface TimelineTracksContainerProps {
   externalInsertPosition?: number | null;
   onAnnotationTargetContextMenu?: (target: AgentAnnotationObjectRef) => void;
   showTranscriptTimeline?: boolean;
+  previewCacheScope?: string;
 }
 
 // Store dragged data globally to work around dataTransfer issues
@@ -437,6 +438,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
   externalInsertPosition,
   onAnnotationTargetContextMenu,
   showTranscriptTimeline = false,
+  previewCacheScope,
 }) => {
   const dispatch = useEditorDispatch();
   const { beginHistoryGroup, endHistoryGroup } = useEditorHistory();
@@ -1357,6 +1359,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                       isSelected={selectedItemId === item.id}
                       assets={assets}
                       presentationReservesTranscriptWordbar={false}
+                      previewCacheScope={previewCacheScope}
                       onSelect={() => onSelectItem(item.id)}
                       onDelete={() => onDeleteItem(track.id, item.id)}
                       onUpdate={(itemId, updates) => onUpdateItem(track.id, itemId, updates)}

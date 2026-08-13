@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createActionAssetBinding,
   createProjectAsset,
+  listActionAssetBindings,
   listActionAssetReferences,
   listProjectAssets,
   MODEL_CARDS,
@@ -14,6 +15,7 @@ import {
 } from "@clash/shared-types";
 
 import { createLocalApiApp } from "./app.js";
+import { createLocalDurableRun } from "./durable-run-coordinator.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import { createProviderExecutionHandoffStore } from "./provider-execution-handoff.js";
 import type {
@@ -24,20 +26,23 @@ import type {
 import { createLocalWorkflowProcessor } from "./local-processor.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
+import { createLocalAssetInspectionService } from "./local-asset-inspections.js";
 
 const temporaryDirectories: string[] = [];
 
 async function temporaryDataDir(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "clash-durable-provider-workflow-"));
+  const directory = await mkdtemp(
+    join(tmpdir(), "clash-durable-provider-workflow-"),
+  );
   temporaryDirectories.push(directory);
   return directory;
 }
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories.splice(0).map((directory) =>
-      rm(directory, { recursive: true, force: true }),
-    ),
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
@@ -68,13 +73,27 @@ const plan: ProviderPluginExecutionPlan = {
   },
 };
 
-function aigc(planProviderPlugin: ExternalAigcService["planProviderPlugin"]): ExternalAigcService {
+function aigc(
+  planProviderPlugin: ExternalAigcService["planProviderPlugin"],
+): ExternalAigcService {
   return {
     planProviderPlugin,
     generateImage: vi.fn(),
     generateVideo: vi.fn(),
     generateAudio: vi.fn(),
     generateText: vi.fn(),
+  };
+}
+
+function identityFromProviderTaskId(
+  taskId: string,
+  outputSlot: string,
+): { actionRunId: string; outputSlot: string } {
+  const suffix = `:${encodeURIComponent(outputSlot)}`;
+  expect(taskId.endsWith(suffix)).toBe(true);
+  return {
+    actionRunId: taskId.slice(0, -suffix.length),
+    outputSlot,
   };
 }
 
@@ -94,7 +113,495 @@ function pendingDoc(): LoroDoc {
   return doc;
 }
 
+function pendingDocWithLoroReorderedModelParams(): LoroDoc {
+  const doc = new LoroDoc();
+  doc.getMap("nodes").set("node-1", {
+    canvasId: "main",
+    type: "video",
+    data: {
+      status: "pending",
+      modelId: "test-video",
+      referenceMode: "image-and-prompt",
+      aspectRatio: "auto",
+      actorType: "user",
+      actorUserId: "local-user",
+      model: "test-video",
+      actionType: "video-gen",
+      referenceVideoAssetIds: [],
+      label: "Test video",
+      prompt: "A paper city",
+      modelParams: {
+        duration: "auto",
+        aspect_ratio: "auto",
+        resolution: "480p",
+        generate_audio: false,
+        edit_mode: true,
+      },
+      duration: "auto",
+    },
+    parentId: null,
+    position: { x: 840, y: 30 },
+  });
+  return doc;
+}
+
+async function recoverCompletedDurableVideoAfterTargetMutation(
+  mutateTarget: (data: Record<string, unknown>) => Record<string, unknown>,
+  doc = pendingDoc(),
+): Promise<{
+  doc: LoroDoc;
+  actionRunId: string;
+  staged: Awaited<
+    ReturnType<ReturnType<typeof createLocalPluginAssetStagingStore>["stage"]>
+  >;
+}> {
+  const dataDir = await temporaryDataDir();
+  const now = { value: 100 };
+  let providerTaskId = "";
+  const first = createLocalWorkflowProcessor({
+    dataDir,
+    aigc: aigc(vi.fn(async () => plan)),
+    durableProviderRuns: {
+      ownerId: "local-api",
+      providerPluginExecutor: async (request) => {
+        providerTaskId = request.taskId;
+        return {
+          status: "accepted",
+          binding,
+          pollState: { providerTask: "task-1" },
+          retryAfterMs: 5,
+        };
+      },
+      now: () => now.value,
+    },
+  });
+
+  await first.process({ doc, projectId: "project-1" });
+
+  const nodes = doc.getMap("nodes");
+  const target = nodes.get("node-1") as Record<string, any>;
+  nodes.set("node-1", {
+    ...target,
+    data: mutateTarget(target.data as Record<string, unknown>),
+  });
+  const staged = await createLocalPluginAssetStagingStore({ dataDir }).stage({
+    projectId: "project-1",
+    taskId: providerTaskId,
+    slot: "media",
+    pluginId: binding.pluginId,
+    pluginVersion: binding.version,
+    invocationId: "provider-poll-result",
+    kind: "video",
+    mediaType: "video/mp4",
+    bytes: new Uint8Array([0, 0, 0, 24]),
+  });
+  now.value = 106;
+  const reopened = createLocalWorkflowProcessor({
+    dataDir,
+    aigc: aigc(vi.fn(async () => plan)),
+    durableProviderRuns: {
+      ownerId: "local-api",
+      providerPluginExecutor: async () => ({
+        status: "completed",
+        binding,
+        media: {
+          assetId: staged.projectAssetId,
+          uri: `clash-asset://${staged.projectAssetId}`,
+          kind: "video",
+          mediaType: "video/mp4",
+        },
+      }),
+      now: () => now.value,
+    },
+  });
+
+  await reopened.process({ doc, projectId: "project-1" });
+  return {
+    doc,
+    staged,
+    actionRunId: identityFromProviderTaskId(providerTaskId, "media")
+      .actionRunId,
+  };
+}
+
+async function seedLegacyCanvasVideoRun(input: {
+  dataDir: string;
+  doc: LoroDoc;
+  now: number;
+}): Promise<void> {
+  await createLocalDurableRun({
+    ownerId: "local-api",
+    journal: createSqliteDurableRunJournal(input.dataDir),
+    clock: { now: () => input.now },
+    command: {
+      type: "create",
+      actionRunId: "project:project-1:node:node-1",
+      outputSlot: "media",
+      deadlineAt: input.now + 30 * 60_000,
+      executor: {
+        binding,
+        accountId: "private-account",
+        kind: "video",
+        projectId: "project-1",
+        nodeId: "node-1",
+        provider: "test-provider",
+        modelEndpoint: "video-v1",
+        assetInputs: [],
+        input: {
+          values: {
+            modelId: "test-video",
+            upstreamModel: "video-v1",
+            prompt: "A paper city",
+            modelParams: {},
+          },
+          references: [],
+        },
+      },
+    },
+  });
+}
+
 describe("durable executable Provider generation", () => {
+  it("recovers a legacy run without projecting it onto or starving a newer node revision", async () => {
+    const dataDir = await temporaryDataDir();
+    const doc = pendingDoc();
+    const now = { value: 100 };
+    await seedLegacyCanvasVideoRun({ dataDir, doc, now: now.value });
+    const seededNodes = doc.getMap("nodes");
+    const seededNode = seededNodes.get("node-1") as Record<string, any>;
+    seededNodes.set("node-1", {
+      ...seededNode,
+      data: { ...seededNode.data, status: "completed" },
+    });
+    const submittedTaskIds: string[] = [];
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      aigc: aigc(async (input) => ({
+        ...plan,
+        modelEndpoint: input.model === "test-video-b" ? "video-v2" : "video-v1",
+        input: {
+          values: {
+            ...plan.input.values,
+            modelId: input.model,
+            upstreamModel:
+              input.model === "test-video-b" ? "video-v2" : "video-v1",
+            prompt: input.prompt,
+          },
+          references: [],
+        },
+      })),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        now: () => now.value,
+        providerPluginExecutor: async (request) => {
+          submittedTaskIds.push(request.taskId);
+          return {
+            status: "accepted",
+            binding,
+            pollState: { providerTask: request.taskId },
+            retryAfterMs: 5_000,
+          };
+        },
+      },
+    });
+
+    await processor.process({ doc, projectId: "project-1" });
+    const nodes = doc.getMap("nodes");
+    const revisionA = nodes.get("node-1") as Record<string, any>;
+    nodes.set("node-1", {
+      ...revisionA,
+      data: {
+        ...revisionA.data,
+        status: "pending",
+        prompt: "Revision B",
+        modelId: "test-video-b",
+      },
+    });
+
+    now.value = 101;
+    await processor.process({ doc, projectId: "project-1" });
+
+    expect((nodes.get("node-1") as Record<string, any>).data).toMatchObject({
+      status: "generating",
+      prompt: "Revision B",
+      modelId: "test-video-b",
+    });
+    expect(submittedTaskIds).toHaveLength(2);
+    expect(submittedTaskIds[0]).toBe("project:project-1:node:node-1:media");
+    expect(submittedTaskIds[1]).toMatch(
+      /^project:project-1:node:node-1:revision:[a-f0-9]{64}:media$/,
+    );
+
+    now.value = 5_101;
+    const staged = await createLocalPluginAssetStagingStore({ dataDir }).stage({
+      projectId: "project-1",
+      taskId: "project:project-1:node:node-1:media",
+      slot: "media",
+      pluginId: binding.pluginId,
+      pluginVersion: binding.version,
+      invocationId: "legacy-revision-a-result",
+      kind: "video",
+      mediaType: "video/mp4",
+      bytes: new Uint8Array([0, 0, 0, 24]),
+    });
+    const reopened = createLocalWorkflowProcessor({
+      dataDir,
+      aigc: aigc(async () => ({
+        ...plan,
+        modelEndpoint: "video-v2",
+        input: {
+          values: {
+            ...plan.input.values,
+            modelId: "test-video-b",
+            upstreamModel: "video-v2",
+            prompt: "Revision B",
+          },
+          references: [],
+        },
+      })),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        now: () => now.value,
+        providerPluginExecutor: async (request) => {
+          submittedTaskIds.push(request.taskId);
+          if (
+            request.taskId === "project:project-1:node:node-1:media" &&
+            request.pollState
+          ) {
+            return {
+              status: "completed",
+              binding,
+              media: {
+                assetId: staged.projectAssetId,
+                uri: `clash-asset://${staged.projectAssetId}`,
+                kind: "video",
+                mediaType: "video/mp4",
+              },
+            };
+          }
+          return {
+            status: "accepted",
+            binding,
+            pollState: { providerTask: request.taskId },
+            retryAfterMs: 5_000,
+          };
+        },
+      },
+    });
+
+    await reopened.process({ doc, projectId: "project-1" });
+
+    const revisionB = nodes.get("node-1") as Record<string, any>;
+    expect(revisionB.data).toMatchObject({
+      status: "generating",
+      prompt: "Revision B",
+      modelId: "test-video-b",
+    });
+    expect(revisionB.data.assetId).toBeUndefined();
+    expect(readProjectAsset(doc, staged.projectAssetId)).not.toBeNull();
+    expect(listActionAssetReferences(doc, staged.projectAssetId)).toEqual([
+      expect.objectContaining({
+        direction: "output",
+        owner: expect.objectContaining({
+          actionRunId: "project:project-1:node:node-1",
+        }),
+      }),
+    ]);
+    expect(
+      submittedTaskIds.filter(
+        (taskId) => taskId === "project:project-1:node:node-1:media",
+      ),
+    ).toHaveLength(2);
+    expect(
+      new Set(
+        submittedTaskIds.filter(
+          (taskId) => taskId !== "project:project-1:node:node-1:media",
+        ),
+      ),
+    ).toEqual(new Set([submittedTaskIds[1]]));
+  });
+
+  it("starts a distinct run when an authored mention resolves to another Asset", async () => {
+    const dataDir = await temporaryDataDir();
+    const doc = pendingDoc();
+    for (const assetId of ["reference-a", "reference-b"] as const) {
+      expect(
+        createProjectAsset(doc, {
+          id: assetId,
+          kind: "image",
+          source: {
+            kind: "owned",
+            resourceId: `sha256:${assetId === "reference-a" ? "a".repeat(64) : "b".repeat(64)}`,
+          },
+          lifecycle: { state: "active" },
+          metadata: { contentType: "image/png" },
+        }),
+      ).toMatchObject({ ok: true });
+    }
+    const nodes = doc.getMap("nodes");
+    const pending = nodes.get("node-1") as Record<string, any>;
+    nodes.set("node-1", {
+      ...pending,
+      data: {
+        ...pending.data,
+        prompt: "Animate @[Source](node:reference-node)",
+        referenceImageAssetIds: ["reference-a"],
+      },
+    });
+    nodes.set("reference-node", {
+      id: "reference-node",
+      type: "image",
+      position: { x: -100, y: 0 },
+      data: { status: "completed", assetId: "reference-a" },
+    });
+    const taskIds: string[] = [];
+    const now = { value: 100 };
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      aigc: aigc(async (input) => ({
+        ...plan,
+        input: {
+          ...plan.input,
+          references: input.references ?? [],
+        },
+      })),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        now: () => now.value,
+        providerPluginExecutor: async (request) => {
+          taskIds.push(request.taskId);
+          return {
+            status: "accepted",
+            binding,
+            pollState: { providerTask: request.taskId },
+            retryAfterMs: 5_000,
+          };
+        },
+      },
+    });
+
+    await processor.process({ doc, projectId: "project-1" });
+    const source = nodes.get("reference-node") as Record<string, any>;
+    nodes.set("reference-node", {
+      ...source,
+      data: { ...source.data, assetId: "reference-b" },
+    });
+    const target = nodes.get("node-1") as Record<string, any>;
+    nodes.set("node-1", {
+      ...target,
+      data: { ...target.data, status: "pending" },
+    });
+    now.value = 101;
+
+    await processor.process({ doc, projectId: "project-1" });
+
+    expect(taskIds).toHaveLength(2);
+    expect(taskIds[0]).toMatch(
+      /^project:project-1:node:node-1:revision:[a-f0-9]{64}:media$/,
+    );
+    expect(taskIds[1]).toMatch(
+      /^project:project-1:node:node-1:revision:[a-f0-9]{64}:media$/,
+    );
+    expect(taskIds[1]).not.toBe(taskIds[0]);
+  });
+
+  it("starts a distinct run when a label-backed execution prompt changes", async () => {
+    const dataDir = await temporaryDataDir();
+    const doc = pendingDoc();
+    const nodes = doc.getMap("nodes");
+    const pending = nodes.get("node-1") as Record<string, any>;
+    nodes.set("node-1", {
+      ...pending,
+      data: { ...pending.data, prompt: "", label: "Revision A label" },
+    });
+    const taskIds: string[] = [];
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      aigc: aigc(async (input) => ({
+        ...plan,
+        input: {
+          ...plan.input,
+          values: { ...plan.input.values, prompt: input.prompt },
+        },
+      })),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        providerPluginExecutor: async (request) => {
+          taskIds.push(request.taskId);
+          return {
+            status: "accepted",
+            binding,
+            pollState: { providerTask: request.taskId },
+            retryAfterMs: 5_000,
+          };
+        },
+        now: () => 100,
+      },
+    });
+
+    await processor.process({ doc, projectId: "project-1" });
+    const generating = nodes.get("node-1") as Record<string, any>;
+    nodes.set("node-1", {
+      ...generating,
+      data: {
+        ...generating.data,
+        status: "pending",
+        label: "Revision B label",
+      },
+    });
+    await processor.process({ doc, projectId: "project-1" });
+
+    expect(taskIds).toHaveLength(2);
+    expect(taskIds[1]).not.toBe(taskIds[0]);
+  });
+
+  it("reuses the frozen run when only presentation and derived node fields change", async () => {
+    const dataDir = await temporaryDataDir();
+    const doc = pendingDoc();
+    const taskIds: string[] = [];
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      aigc: aigc(async () => plan),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        providerPluginExecutor: async (request) => {
+          taskIds.push(request.taskId);
+          return {
+            status: "accepted",
+            binding,
+            pollState: { providerTask: request.taskId },
+            retryAfterMs: 5_000,
+          };
+        },
+        now: () => 100,
+      },
+    });
+
+    await processor.process({ doc, projectId: "project-1" });
+    const nodes = doc.getMap("nodes");
+    const generating = nodes.get("node-1") as Record<string, any>;
+    nodes.set("node-1", {
+      ...generating,
+      data: {
+        ...generating.data,
+        status: "pending",
+        label: "Renamed presentation",
+        name: "renamed.mp4",
+        posterUrl: "blob:presentation-only",
+        waveform: [0.1, 0.2],
+      },
+    });
+
+    await processor.process({ doc, projectId: "project-1" });
+
+    expect(taskIds).toHaveLength(1);
+    expect((nodes.get("node-1") as Record<string, any>).data).toMatchObject({
+      status: "generating",
+      label: "Renamed presentation",
+      name: "renamed.mp4",
+    });
+  });
+
   it("applies parameter-conditioned Model Card validation before planning", async () => {
     const dataDir = await temporaryDataDir();
     const doc = pendingDoc();
@@ -182,13 +689,15 @@ describe("durable executable Provider generation", () => {
   it("publishes input bindings even when Project Asset authority materialization already changed the replica", async () => {
     const dataDir = await temporaryDataDir();
     const doc = pendingDoc();
-    expect(createProjectAsset(doc, {
-      id: "reference-asset",
-      kind: "image",
-      source: { kind: "owned", resourceId: `sha256:${"a".repeat(64)}` },
-      lifecycle: { state: "active" },
-      metadata: {},
-    })).toMatchObject({ ok: true });
+    expect(
+      createProjectAsset(doc, {
+        id: "reference-asset",
+        kind: "image",
+        source: { kind: "owned", resourceId: `sha256:${"a".repeat(64)}` },
+        lifecycle: { state: "active" },
+        metadata: {},
+      }),
+    ).toMatchObject({ ok: true });
 
     const referencePlan: ProviderPluginExecutionPlan = {
       ...plan,
@@ -221,7 +730,9 @@ describe("durable executable Provider generation", () => {
       },
     });
 
-    await expect(processor.process({ doc, projectId: "project-1" })).resolves.toBe(true);
+    await expect(
+      processor.process({ doc, projectId: "project-1" }),
+    ).resolves.toBe(true);
     expect(listActionAssetReferences(doc, "reference-asset")).toEqual([
       expect.objectContaining({
         direction: "input",
@@ -285,9 +796,18 @@ describe("durable executable Provider generation", () => {
       },
     });
     expect(submit).not.toHaveBeenCalled();
+    const frozenInputBinding = listActionAssetReferences(
+      firstDoc,
+      "reference-asset",
+    )[0];
+    expect(frozenInputBinding?.owner.kind).toBe("run");
+    const frozenActionRunId =
+      frozenInputBinding?.owner.kind === "run"
+        ? frozenInputBinding.owner.actionRunId
+        : "missing-run";
     await expect(
       createSqliteDurableRunJournal(dataDir).load({
-        actionRunId: "project:project-1:node:node-1",
+        actionRunId: frozenActionRunId,
         outputSlot: "media",
       }),
     ).resolves.toMatchObject({ phase: "queued" });
@@ -306,7 +826,9 @@ describe("durable executable Provider generation", () => {
     const events: string[] = [];
     const recoveredSubmit = vi.fn<ProviderPluginExecutor>(async () => {
       events.push("submit");
-      expect(listActionAssetReferences(recoveredDoc, "reference-asset")).toEqual([
+      expect(
+        listActionAssetReferences(recoveredDoc, "reference-asset"),
+      ).toEqual([
         expect.objectContaining({ direction: "input", slot: "image:0" }),
       ]);
       return {
@@ -420,14 +942,12 @@ describe("durable executable Provider generation", () => {
   it("keeps a CLI-selected account out of Loro while freezing it into the durable run", async () => {
     const dataDir = await temporaryDataDir();
     const app = createLocalApiApp({ dataDir });
-    const command = (body: Record<string, unknown>) => app.request(
-      "/api/v1/projects/project-private-account/host-command",
-      {
+    const command = (body: Record<string, unknown>) =>
+      app.request("/api/v1/projects/project-private-account/host-command", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-      },
-    );
+      });
     const added = await command({
       action: "add",
       canvasId: "main",
@@ -452,8 +972,9 @@ describe("durable executable Provider generation", () => {
       }),
     );
 
-    const replica = await new FileReplicaStore(join(dataDir, "projects"))
-      .recover("project-private-account");
+    const replica = await new FileReplicaStore(
+      join(dataDir, "projects"),
+    ).recover("project-private-account");
     const beforeProcessing = JSON.stringify(replica.getMap("nodes").toJSON());
     expect(beforeProcessing).not.toContain("private-account");
     expect(beforeProcessing).not.toContain("providerAccountId");
@@ -487,18 +1008,22 @@ describe("durable executable Provider generation", () => {
         },
       }),
     );
+    let submittedTaskId = "";
     const processor = createLocalWorkflowProcessor({
       dataDir,
       modelCards: async () => [],
       aigc: aigc(planner),
       durableProviderRuns: {
         ownerId: "local-api",
-        providerPluginExecutor: async () => ({
-          status: "accepted",
-          binding,
-          pollState: { taskId: "provider-task" },
-          retryAfterMs: 5_000,
-        }),
+        providerPluginExecutor: async (request) => {
+          submittedTaskId = request.taskId;
+          return {
+            status: "accepted",
+            binding,
+            pollState: { taskId: "provider-task" },
+            retryAfterMs: 5_000,
+          };
+        },
         now: () => 100,
       },
     });
@@ -511,14 +1036,19 @@ describe("durable executable Provider generation", () => {
     expect(planner).toHaveBeenCalledWith(
       expect.objectContaining({
         providerAccountId: "private-account",
-        modelParams: expect.not.objectContaining({ provider_id: expect.anything() }),
+        modelParams: expect.not.objectContaining({
+          provider_id: expect.anything(),
+        }),
       }),
       "image",
     );
-    await expect(createSqliteDurableRunJournal(dataDir).load({
-      actionRunId: `project:project-private-account:node:${execution.childNodeId}`,
-      outputSlot: "media",
-    })).resolves.toMatchObject({
+    await expect(
+      createSqliteDurableRunJournal(dataDir).load({
+        actionRunId: identityFromProviderTaskId(submittedTaskId, "media")
+          .actionRunId,
+        outputSlot: "media",
+      }),
+    ).resolves.toMatchObject({
       executorInput: { accountId: "private-account" },
     });
     const afterProcessing = JSON.stringify(replica.getMap("nodes").toJSON());
@@ -595,11 +1125,17 @@ describe("durable executable Provider generation", () => {
       },
     });
 
-    await expect(first.process({ doc, projectId: "project-1" })).resolves.toBe(true);
+    await expect(first.process({ doc, projectId: "project-1" })).resolves.toBe(
+      true,
+    );
 
     expect(requests).toHaveLength(1);
+    const firstTaskId = requests[0]!.taskId;
+    expect(firstTaskId).toMatch(
+      /^project:project-1:node:node-1:revision:[a-f0-9]{64}:media$/,
+    );
     expect(requests[0]).toMatchObject({
-      taskId: "project:project-1:node:node-1:media",
+      taskId: firstTaskId,
       binding,
       accountId: "private-account",
       input: plan.input,
@@ -617,11 +1153,10 @@ describe("durable executable Provider generation", () => {
     ]) {
       expect(generating.data).not.toHaveProperty(field);
     }
-    const identity = {
-      actionRunId: "project:project-1:node:node-1",
-      outputSlot: "media",
-    };
-    await expect(createSqliteDurableRunJournal(dataDir).load(identity)).resolves.toMatchObject({
+    const identity = identityFromProviderTaskId(firstTaskId, "media");
+    await expect(
+      createSqliteDurableRunJournal(dataDir).load(identity),
+    ).resolves.toMatchObject({
       phase: "polling",
       pollState: { providerTask: "task-1" },
       executorInput: {
@@ -637,7 +1172,7 @@ describe("durable executable Provider generation", () => {
     now.value = 106;
     const staged = await createLocalPluginAssetStagingStore({ dataDir }).stage({
       projectId: "project-1",
-      taskId: "project:project-1:node:node-1:media",
+      taskId: firstTaskId,
       slot: "media",
       pluginId: binding.pluginId,
       pluginVersion: binding.version,
@@ -670,12 +1205,14 @@ describe("durable executable Provider generation", () => {
       },
     });
 
-    await expect(reopened.process({ doc, projectId: "project-1" })).resolves.toBe(true);
+    await expect(
+      reopened.process({ doc, projectId: "project-1" }),
+    ).resolves.toBe(true);
 
     expect(reopenedPlanner).not.toHaveBeenCalled();
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({
-      taskId: "project:project-1:node:node-1:media",
+      taskId: firstTaskId,
       pollState: { providerTask: "task-1" },
       binding,
       accountId: "private-account",
@@ -697,14 +1234,204 @@ describe("durable executable Provider generation", () => {
         projectAssetId: completed.data.assetId,
         owner: expect.objectContaining({
           kind: "run",
-          actionRunId: "project:project-1:node:node-1",
+          actionRunId: identity.actionRunId,
         }),
       }),
     ]);
 
-    await expect(reopened.process({ doc, projectId: "project-1" })).resolves.toBe(false);
+    await expect(
+      reopened.process({ doc, projectId: "project-1" }),
+    ).resolves.toBe(false);
     expect(requests).toHaveLength(2);
-    expect(listProjectAssets(doc).filter((asset) => asset.id === completed.data.assetId)).toHaveLength(1);
+    expect(
+      listProjectAssets(doc).filter(
+        (asset) => asset.id === completed.data.assetId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("derives recovered Asset provenance from the frozen executor input", async () => {
+    const { doc, staged, actionRunId } =
+      await recoverCompletedDurableVideoAfterTargetMutation((data) => ({
+        ...data,
+        prompt: "A glass city",
+        modelId: "mutated-video-model",
+        label: "Revision B output",
+        name: "revision-b.mp4",
+      }));
+
+    const published = readProjectAsset(doc, staged.projectAssetId);
+    expect(published).toMatchObject({
+      name: `${staged.projectAssetId}.mp4`,
+      provenance: {
+        kind: "generation",
+        actionRunId,
+        model: "video-v1",
+        prompt: "A paper city",
+      },
+    });
+  });
+
+  it("projects a recovered result when Loro reorders semantically identical model params", async () => {
+    const { doc, staged } =
+      await recoverCompletedDurableVideoAfterTargetMutation(
+        (data) => ({ ...data }),
+        pendingDocWithLoroReorderedModelParams(),
+      );
+
+    const target = doc.getMap("nodes").get("node-1") as Record<string, any>;
+    expect(target.data).toMatchObject({
+      status: "completed",
+      assetId: staged.projectAssetId,
+    });
+  });
+
+  it("does not project a recovered result after a model param value changes", async () => {
+    const { doc, staged } =
+      await recoverCompletedDurableVideoAfterTargetMutation(
+        (data) => ({
+          ...data,
+          modelParams: {
+            ...(data.modelParams as Record<string, unknown>),
+            edit_mode: false,
+          },
+        }),
+        pendingDocWithLoroReorderedModelParams(),
+      );
+
+    const target = doc.getMap("nodes").get("node-1") as Record<string, any>;
+    expect(target.data).toMatchObject({
+      status: "generating",
+      modelParams: { edit_mode: false },
+    });
+    expect(target.data.assetId).toBeUndefined();
+    expect(readProjectAsset(doc, staged.projectAssetId)).not.toBeNull();
+  });
+
+  it("does not project an old recovered run onto a target carrying another semantic revision", async () => {
+    const { doc, staged, actionRunId } =
+      await recoverCompletedDurableVideoAfterTargetMutation((data) => ({
+        ...data,
+        status: "failed",
+        prompt: "A glass city",
+        modelId: "mutated-video-model",
+        error: "The replacement revision failed",
+        failureCode: "invalid_request",
+      }));
+
+    const target = doc.getMap("nodes").get("node-1") as Record<string, any>;
+    expect(target.data).toMatchObject({
+      status: "failed",
+      prompt: "A glass city",
+      modelId: "mutated-video-model",
+      error: "The replacement revision failed",
+      failureCode: "invalid_request",
+    });
+    expect(target.data.assetId).toBeUndefined();
+    expect(readProjectAsset(doc, staged.projectAssetId)).not.toBeNull();
+    expect(listActionAssetReferences(doc, staged.projectAssetId)).toEqual([
+      expect.objectContaining({
+        direction: "output",
+        slot: "media",
+        projectAssetId: staged.projectAssetId,
+        owner: expect.objectContaining({
+          kind: "run",
+          actionRunId,
+        }),
+      }),
+    ]);
+  });
+
+  it("retries Host inspection from staged CAS before publishing a generated Asset", async () => {
+    const dataDir = await temporaryDataDir();
+    const now = { value: 100 };
+    const inspect = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("decoder temporarily unavailable"))
+      .mockResolvedValue({
+        width: 1_920,
+        height: 1_080,
+        durationMs: 2_500,
+        frameRate: 24,
+        videoCodec: "h264",
+        hasAudio: true,
+        audioCodec: "aac",
+      });
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      inspectResource: inspect,
+    });
+    const staged = await createLocalPluginAssetStagingStore({ dataDir }).stage({
+      projectId: "project-1",
+      taskId: "project:project-1:node:node-1:media",
+      slot: "media",
+      pluginId: binding.pluginId,
+      pluginVersion: binding.version,
+      invocationId: "provider-result-needing-inspection",
+      kind: "video",
+      mediaType: "video/mp4",
+      bytes: new Uint8Array([0, 0, 0, 24]),
+    });
+    let providerTaskId = "";
+    const execute = vi.fn<ProviderPluginExecutor>(async (request) => {
+      providerTaskId = request.taskId;
+      return {
+        status: "completed",
+        binding,
+        media: {
+          assetId: staged.projectAssetId,
+          uri: `clash-asset://${staged.projectAssetId}`,
+          kind: "video",
+          mediaType: "video/mp4",
+        },
+      };
+    });
+    const doc = pendingDoc();
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      assetInspection,
+      aigc: aigc(async () => plan),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        providerPluginExecutor: execute,
+        now: () => now.value,
+      },
+    });
+    await expect(
+      processor.process({ doc, projectId: "project-1" }),
+    ).resolves.toBe(true);
+    const identity = identityFromProviderTaskId(providerTaskId, "media");
+
+    expect(readProjectAsset(doc, staged.projectAssetId)).toBeNull();
+    await expect(
+      createSqliteDurableRunJournal(dataDir).load(identity),
+    ).resolves.toMatchObject({
+      phase: "finalizing",
+      nextAttemptAt: 1_100,
+      providerOutputs: expect.any(Array),
+    });
+
+    now.value = 1_101;
+    await expect(
+      processor.process({ doc, projectId: "project-1" }),
+    ).resolves.toBe(true);
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(readProjectAsset(doc, staged.projectAssetId)).toMatchObject({
+      metadata: {
+        width: 1_920,
+        height: 1_080,
+        durationMs: 2_500,
+        frameRate: 24,
+        videoCodec: "h264",
+        hasAudio: true,
+        audioCodec: "aac",
+      },
+    });
+    await expect(
+      createSqliteDurableRunJournal(dataDir).load(identity),
+    ).resolves.toMatchObject({ phase: "succeeded" });
   });
 
   it("consumes a project-scoped plugin staging receipt without downloading local bytes over HTTP", async () => {
@@ -721,27 +1448,33 @@ describe("durable executable Provider generation", () => {
       mediaType: "video/mp4",
       bytes: new Uint8Array([0, 0, 0, 24]),
     });
+    let providerTaskId = "";
     const processor = createLocalWorkflowProcessor({
       dataDir,
       aigc: aigc(async () => plan),
       durableProviderRuns: {
         ownerId: "local-api",
-        providerPluginExecutor: async () => ({
-          status: "completed",
-          binding,
-          media: {
-            assetId: staged.projectAssetId,
-            uri: `clash-asset://${staged.projectAssetId}`,
-            kind: "video",
-            mediaType: "video/mp4",
-          },
-        }),
+        providerPluginExecutor: async (request) => {
+          providerTaskId = request.taskId;
+          return {
+            status: "completed",
+            binding,
+            media: {
+              assetId: staged.projectAssetId,
+              uri: `clash-asset://${staged.projectAssetId}`,
+              kind: "video",
+              mediaType: "video/mp4",
+            },
+          };
+        },
         now: () => 100,
       },
     });
     const doc = pendingDoc();
 
-    await expect(processor.process({ doc, projectId: "project-1" })).resolves.toBe(true);
+    await expect(
+      processor.process({ doc, projectId: "project-1" }),
+    ).resolves.toBe(true);
 
     expect(doc.getMap("nodes").get("node-1")).toMatchObject({
       data: { status: "completed", assetId: staged.projectAssetId },
@@ -754,7 +1487,10 @@ describe("durable executable Provider generation", () => {
       expect.objectContaining({
         direction: "output",
         projectAssetId: staged.projectAssetId,
-        owner: expect.objectContaining({ actionRunId: "project:project-1:node:node-1" }),
+        owner: expect.objectContaining({
+          actionRunId: identityFromProviderTaskId(providerTaskId, "media")
+            .actionRunId,
+        }),
       }),
     ]);
   });
@@ -783,30 +1519,31 @@ describe("durable executable Provider generation", () => {
         metadata: {},
       }),
     ).toMatchObject({ ok: true });
-    expect(
-      createActionAssetBinding(doc, {
-        id: `action-asset:${taskId}:output`,
-        owner: { kind: "draft", actionId: "different-action" },
-        direction: "output",
-        slot: "different-slot",
-        projectAssetId: "existing-output",
-      }),
-    ).toMatchObject({ ok: true });
     const processor = createLocalWorkflowProcessor({
       dataDir,
       aigc: aigc(async () => plan),
       durableProviderRuns: {
         ownerId: "local-api",
-        providerPluginExecutor: async () => ({
-          status: "completed",
-          binding,
-          media: {
-            assetId: staged.projectAssetId,
-            uri: `clash-asset://${staged.projectAssetId}`,
-            kind: "video",
-            mediaType: "video/mp4",
-          },
-        }),
+        providerPluginExecutor: async (request) => {
+          const conflict = createActionAssetBinding(doc, {
+            id: `action-asset:${request.taskId}:output`,
+            owner: { kind: "draft", actionId: "different-action" },
+            direction: "output",
+            slot: "different-slot",
+            projectAssetId: "existing-output",
+          });
+          if (!conflict.ok) throw new Error(conflict.error.message);
+          return {
+            status: "completed",
+            binding,
+            media: {
+              assetId: staged.projectAssetId,
+              uri: `clash-asset://${staged.projectAssetId}`,
+              kind: "video",
+              mediaType: "video/mp4",
+            },
+          };
+        },
         now: () => 100,
       },
     });
@@ -816,6 +1553,108 @@ describe("durable executable Provider generation", () => {
     ).resolves.toBe(true);
 
     expect(readProjectAsset(doc, staged.projectAssetId)).toBeNull();
+  });
+
+  it("publishes distinct bindings for delimiter-bearing durable run identities", async () => {
+    const dataDir = await temporaryDataDir();
+    const journal = createSqliteDurableRunJournal(dataDir);
+    const doc = new LoroDoc();
+    const identities = [
+      { actionRunId: "a:b", outputSlot: "c", nodeId: "node-left" },
+      { actionRunId: "a", outputSlot: "b:c", nodeId: "node-right" },
+    ] as const;
+    for (const identity of identities) {
+      doc.getMap("nodes").set(identity.nodeId, {
+        id: identity.nodeId,
+        type: "video",
+        position: { x: 0, y: 0 },
+        data: { status: "generating" },
+      });
+      await createLocalDurableRun({
+        ownerId: "local-api",
+        journal,
+        clock: { now: () => 100 },
+        command: {
+          type: "create",
+          actionRunId: identity.actionRunId,
+          outputSlot: identity.outputSlot,
+          deadlineAt: 10_000,
+          executor: {
+            binding,
+            kind: "video",
+            projectId: "project-1",
+            nodeId: identity.nodeId,
+            provider: "test-provider",
+            modelEndpoint: "video-v1",
+            assetInputs: [],
+            input: {
+              values: {
+                modelId: "test-video",
+                upstreamModel: "video-v1",
+                prompt: "A paper city",
+                modelParams: {},
+              },
+              references: [],
+            },
+          },
+        },
+      });
+    }
+    const staging = createLocalPluginAssetStagingStore({ dataDir });
+    const processor = createLocalWorkflowProcessor({
+      dataDir,
+      aigc: aigc(async () => plan),
+      durableProviderRuns: {
+        ownerId: "local-api",
+        providerPluginExecutor: async (request) => {
+          const staged = await staging.stage({
+            projectId: request.projectId,
+            taskId: request.taskId,
+            slot: "media",
+            pluginId: binding.pluginId,
+            pluginVersion: binding.version,
+            invocationId: `invocation-${request.nodeId}`,
+            kind: "video",
+            mediaType: "video/mp4",
+            bytes: new Uint8Array([0, 0, 0, 24]),
+          });
+          return {
+            status: "completed",
+            binding,
+            media: {
+              assetId: staged.projectAssetId,
+              uri: `clash-asset://${staged.projectAssetId}`,
+              kind: "video",
+              mediaType: "video/mp4",
+            },
+          };
+        },
+        now: () => 100,
+      },
+    });
+
+    await expect(
+      processor.process({ doc, projectId: "project-1" }),
+    ).resolves.toBe(true);
+
+    const outputBindings = listActionAssetBindings(doc).filter((candidate) => {
+      if (candidate.direction !== "output" || candidate.owner.kind !== "run") {
+        return false;
+      }
+      const actionRunId = candidate.owner.actionRunId;
+      return identities.some(
+        (identity) => identity.actionRunId === actionRunId,
+      );
+    });
+    expect(outputBindings).toHaveLength(2);
+    expect(new Set(outputBindings.map((candidate) => candidate.id)).size).toBe(
+      2,
+    );
+    for (const identity of identities) {
+      await expect(journal.load(identity)).resolves.toMatchObject({
+        phase: "succeeded",
+      });
+    }
   });
 
   it("re-checkpoints an already projected node before marking the journal succeeded", async () => {
@@ -845,16 +1684,20 @@ describe("durable executable Provider generation", () => {
       mediaType: "image/png",
       bytes: new Uint8Array([137, 80, 78, 71]),
     });
-    const execute = vi.fn<ProviderPluginExecutor>(async () => ({
-      status: "completed",
-      binding,
-      media: {
-        assetId: staged.projectAssetId,
-        uri: `clash-asset://${staged.projectAssetId}`,
-        kind: "image",
-        mediaType: "image/png",
-      },
-    }));
+    let providerTaskId = "";
+    const execute = vi.fn<ProviderPluginExecutor>(async (request) => {
+      providerTaskId = request.taskId;
+      return {
+        status: "completed",
+        binding,
+        media: {
+          assetId: staged.projectAssetId,
+          uri: `clash-asset://${staged.projectAssetId}`,
+          kind: "image",
+          mediaType: "image/png",
+        },
+      };
+    });
     const doc = new LoroDoc();
     doc.getMap("nodes").set("node-1", {
       id: "node-1",
@@ -872,7 +1715,8 @@ describe("durable executable Provider generation", () => {
       const node = doc.getMap("nodes").get("node-1") as Record<string, any>;
       if (node.data.status !== "completed") return;
       completedCheckpoints += 1;
-      if (completedCheckpoints === 1) throw new Error("snapshot write interrupted");
+      if (completedCheckpoints === 1)
+        throw new Error("snapshot write interrupted");
     });
     const processor = createLocalWorkflowProcessor({
       dataDir,
@@ -883,14 +1727,12 @@ describe("durable executable Provider generation", () => {
         now: () => now.value,
       },
     });
-    const identity = {
-      actionRunId: "project:project-1:node:node-1",
-      outputSlot: "media",
-    };
-
     await processor.process({ doc, projectId: "project-1", checkpoint });
     expect(completedCheckpoints).toBe(1);
-    await expect(createSqliteDurableRunJournal(dataDir).load(identity)).resolves.toMatchObject({
+    const identity = identityFromProviderTaskId(providerTaskId, "media");
+    await expect(
+      createSqliteDurableRunJournal(dataDir).load(identity),
+    ).resolves.toMatchObject({
       phase: "finalizing",
     });
 
@@ -899,7 +1741,9 @@ describe("durable executable Provider generation", () => {
 
     expect(completedCheckpoints).toBe(2);
     expect(execute).toHaveBeenCalledTimes(1);
-    await expect(createSqliteDurableRunJournal(dataDir).load(identity)).resolves.toMatchObject({
+    await expect(
+      createSqliteDurableRunJournal(dataDir).load(identity),
+    ).resolves.toMatchObject({
       phase: "succeeded",
       projectedAt: 1_101,
     });

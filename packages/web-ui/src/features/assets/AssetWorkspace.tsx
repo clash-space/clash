@@ -1,5 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import type { ProjectCanvas, ProjectTimeline, ResolvedAsset } from '@clash/shared-types';
+import type {
+  ActionAssetBinding,
+  ProjectCanvas,
+  ProjectTimeline,
+  ResolvedAsset,
+} from '@clash/shared-types';
 import { useAsset } from '../../lib/hooks/useAsset';
 import type { EditApplyResult } from './action-client';
 import { ImageEditorPanel } from '../../components/ImageEditorContext';
@@ -10,6 +15,7 @@ import {
 } from '../../components/ProjectWorkspaceSurfaces';
 import { AssetRelationsPanel } from './AssetRelationsPanel';
 import { Button } from '../../components/ui/button';
+import { mergeResolvedAssetProjection } from './projectAssetPresentation';
 import {
   buildAssetRelationSummary,
   type AssetRelationEdge,
@@ -28,6 +34,7 @@ export function EditableProjectAssetSurface({
   timelines = [],
   relationNodes = [],
   relationEdges = [],
+  relationBindings = [],
   onOpenCanvas,
   onOpenTimeline,
   onOpenAsset,
@@ -43,6 +50,7 @@ export function EditableProjectAssetSurface({
   timelines?: ProjectTimeline[];
   relationNodes?: AssetRelationNode[];
   relationEdges?: AssetRelationEdge[];
+  relationBindings?: ActionAssetBinding[];
   onOpenCanvas?: (canvasId: string, nodeId?: string) => void;
   onOpenTimeline?: (timelineId: string) => void;
   onOpenAsset?: (assetId: string) => void;
@@ -51,27 +59,41 @@ export function EditableProjectAssetSurface({
   onProjectCoverChange?: (isCover: boolean) => void | Promise<void>;
   headerEndInset?: number;
 }) {
-  const sourceUrl = asset.url?.trim();
   const sourceAssetId = asset.id;
   const assetRecord = useAsset(projectId, sourceAssetId);
+  const resolvedAsset = assetRecord
+    ? mergeResolvedAssetProjection(assetRecord, asset)
+    : asset;
+  const sourceUrl =
+    resolvedAsset.status === 'ready' ? resolvedAsset.url?.trim() : undefined;
   const [coverBusy, setCoverBusy] = useState(false);
   const relations = useMemo(
     () => buildAssetRelationSummary({
       assetId: sourceAssetId,
-      asset: assetRecord,
+      asset: resolvedAsset,
       projectAssets,
       canvases,
       timelines,
       nodes: relationNodes,
       edges: relationEdges,
+      bindings: relationBindings,
     }),
-    [assetRecord, canvases, projectAssets, relationEdges, relationNodes, sourceAssetId, timelines],
+    [
+      canvases,
+      projectAssets,
+      relationBindings,
+      relationEdges,
+      relationNodes,
+      resolvedAsset,
+      sourceAssetId,
+      timelines,
+    ],
   );
 
   const renderEditor = useCallback(
     (metadata: ProjectAssetEditMetadata, close: () => void) => {
       if (!sourceUrl) return null;
-      if (asset.kind === 'image' && 'naturalWidth' in metadata) {
+      if (resolvedAsset.kind === 'image' && 'naturalWidth' in metadata) {
         return (
           <ImageEditorPanel
             input={{
@@ -89,7 +111,7 @@ export function EditableProjectAssetSurface({
           />
         );
       }
-      if (asset.kind === 'video' && 'durationSec' in metadata) {
+      if (resolvedAsset.kind === 'video' && 'durationSec' in metadata) {
         return (
           <VideoClipperPanel
             input={{
@@ -108,7 +130,7 @@ export function EditableProjectAssetSurface({
       }
       return null;
     },
-    [asset.kind, onApplied, projectId, sourceAssetId, sourceUrl],
+    [onApplied, projectId, resolvedAsset.kind, sourceAssetId, sourceUrl],
   );
 
   const toggleProjectCover = useCallback(async () => {
@@ -121,11 +143,13 @@ export function EditableProjectAssetSurface({
     }
   }, [coverBusy, isProjectCover, onProjectCoverChange]);
 
-  const canBeProjectCover = asset.kind === 'image' || asset.kind === 'video';
+  const canBeProjectCover =
+    resolvedAsset.status === 'ready' &&
+    (resolvedAsset.kind === 'image' || resolvedAsset.kind === 'video');
 
   return (
     <ProjectAssetSurface
-      asset={asset}
+      asset={resolvedAsset}
       headerEndInset={headerEndInset}
       headerAction={canBeProjectCover && onProjectCoverChange ? (
         <Button

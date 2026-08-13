@@ -3,7 +3,10 @@ import { agentReadToken } from "./agent-read-proof.js";
 import { Canvas } from "./canvas-ops.js";
 import { normalizeProjectTimelinePersistenceState } from "./timeline-persistence.js";
 import {
+  freezeDraftActionAssetInputBindings,
+  listActionAssetBindingsForOwner,
   replaceDraftActionAssetInputBindings,
+  type FreezeDraftActionAssetInputBindingsResult,
   type DraftActionAssetInput,
 } from "./action-asset-bindings.js";
 import {
@@ -60,7 +63,9 @@ export function projectTimelineActionId(
     : `timeline:${timelineId}`;
 }
 
-function projectTimelineAssetInputs(state: unknown): DraftActionAssetInput[] {
+export function projectTimelineAssetInputs(
+  state: unknown,
+): DraftActionAssetInput[] {
   if (!isRecord(state) || !Array.isArray(state.tracks)) return [];
   const inputs: DraftActionAssetInput[] = [];
   for (const track of state.tracks) {
@@ -82,6 +87,56 @@ function projectTimelineAssetInputs(state: unknown): DraftActionAssetInput[] {
     }
   }
   return inputs;
+}
+
+export function projectTimelineRenderActionRunId(renderNodeId: string): string {
+  return `timeline-render:${renderNodeId.trim()}`;
+}
+
+/**
+ * Freezes the current authoritative Timeline item bindings for one render run.
+ *
+ * The Timeline state is checked only as an integrity projection: the binding collection remains
+ * the usage authority. A missing, extra, or rewired draft binding means the Timeline mutation was
+ * not atomic and render submission fails closed instead of inventing an input from item fields.
+ */
+export function freezeProjectTimelineRunAssetInputs(
+  doc: LoroDoc,
+  timeline: Pick<ProjectTimeline, "id" | "owner" | "revisionId" | "state">,
+  actionRunIdInput: string,
+): FreezeDraftActionAssetInputBindingsResult {
+  const actionId = projectTimelineActionId(timeline.id, timeline.owner);
+  const expected = projectTimelineAssetInputs(timeline.state).sort((left, right) =>
+    left.slot.localeCompare(right.slot),
+  );
+  const current = listActionAssetBindingsForOwner(doc, {
+    kind: "draft",
+    actionId,
+  })
+    .filter((binding) => binding.direction === "input")
+    .sort((left, right) => left.slot.localeCompare(right.slot));
+  if (
+    expected.length !== current.length ||
+    expected.some((input, index) => {
+      const binding = current[index];
+      return (
+        !binding ||
+        binding.slot !== input.slot ||
+        binding.projectAssetId !== input.projectAssetId ||
+        binding.role !== input.role
+      );
+    })
+  ) {
+    return {
+      ok: false,
+      error: `Timeline ${timeline.id} item bindings do not match its current Project state`,
+    };
+  }
+  return freezeDraftActionAssetInputBindings(doc, {
+    actionId,
+    actionRevisionId: timeline.revisionId,
+    actionRunId: actionRunIdInput,
+  });
 }
 
 function syncProjectTimelineAssetInputs(

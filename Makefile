@@ -14,7 +14,7 @@ NO_PROXY ?=
 # Service ports (single source of truth)
 # apps/web (Vite + RR7 + CF Vite plugin) is the user-facing entry point on :3000.
 # It absorbed the gateway's proxy logic; there is no separate gateway worker
-# anymore. /sync/*, /agents/*, /assets/*, /thumbnails/*, /upload/*, /api/v1/*,
+# anymore. /sync/*, /agents/*, signed capability /assets/*, /api/v1/*,
 # /api/tasks/*, /api/describe, /api/generate/* are proxied to api-cf via the
 # service binding (or API_CF_URL fallback).
 WEB_PORT ?= 3000
@@ -115,7 +115,7 @@ dev: ## Start web (with api-cf as aux worker) + render-server in parallel
 	@echo "   │  ├─ /          → RR7 SPA                    │"
 	@echo "   │  ├─ /sync/*    → api-cf ProjectRoom        │"
 	@echo "   │  ├─ /agents/*  → api-cf SupervisorAgent    │"
-	@echo "   │  ├─ /assets/*  → api-cf R2 Assets          │"
+	@echo "   │  ├─ /assets/*  → signed delivery transport │"
 	@echo "   │  └─ /api/v1/*  → api-cf REST (auth-gated)  │"
 	@echo "   │                                             │"
 	@echo "   │  $(GREEN)Render:$(NC)  http://localhost:$(RENDER_PORT)              │"

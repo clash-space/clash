@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { ResolvedAsset } from "@clash/shared-types";
 import {
   canvasNodeAssetDisplayName,
+  mergeResolvedAssetProjection,
   projectAssetDisplayName,
-  projectAssetThumbnailSource,
   resolveCanvasNodeProjectAsset,
 } from "./projectAssetPresentation";
 
@@ -48,12 +48,6 @@ describe("project asset presentation", () => {
     ).toBe("Opening frame.JPG");
   });
 
-  it("uses the cover thumbnail before the source media", () => {
-    expect(projectAssetThumbnailSource(assets[2])).toBe(
-      "https://media.clash.test/thumbnails/asset-generated",
-    );
-  });
-
   it("resolves canvas nodes only by their stable Project Asset id", () => {
     expect(
       resolveCanvasNodeProjectAsset(
@@ -88,5 +82,28 @@ describe("project asset presentation", () => {
         assets[2],
       ),
     ).toBe("改一下");
+  });
+
+  it("never carries a stale media URL into an authoritative unavailable projection", () => {
+    expect(
+      mergeResolvedAssetProjection(
+        {
+          id: "asset-upload",
+          kind: "image",
+          lifecycle: { state: "active" },
+          status: "unavailable",
+          metadata: {},
+          error: "Not installed on this Host",
+        },
+        assets[0],
+      ),
+    ).toEqual({
+      id: "asset-upload",
+      kind: "image",
+      lifecycle: { state: "active" },
+      status: "unavailable",
+      metadata: { originalName: "8f73f0e81ad04c93b9f2.JPG" },
+      error: "Not installed on this Host",
+    });
   });
 });

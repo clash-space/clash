@@ -1,8 +1,8 @@
 import ReactMarkdown from "react-markdown";
 import { useMediaViewer } from "../MediaViewerContext";
 import { useCanvasFocus } from "../CanvasFocusContext";
-import { useSignedUrl } from "@clash/web-ui/lib/hooks/useSignedUrl";
 import type { MentionableNode } from "../MilkdownEditor";
+import { resolveAssetMediaUrl } from "../../features/assets/media-url";
 import { Button } from "../ui/button";
 import { Tooltip } from "../ui/tooltip";
 import { AgentAnnotationTray } from "./AgentAnnotationBlock";
@@ -26,12 +26,12 @@ function InlineThumbnail({
 }) {
   const { openViewer } = useMediaViewer();
   const { focusNode } = useCanvasFocus();
-  const signedUrl = useSignedUrl(src);
+  const projectedUrl = resolveAssetMediaUrl(src);
   const tooltipLabel = nodeId
     ? `${title} — click to focus, double-click to preview`
     : title;
 
-  return signedUrl ? (
+  return projectedUrl ? (
     <Tooltip label={tooltipLabel}>
       <Button
         aria-label={tooltipLabel}
@@ -50,12 +50,12 @@ function InlineThumbnail({
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
-          openViewer("image", signedUrl, title);
+          openViewer("image", projectedUrl, title);
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={signedUrl}
+          src={projectedUrl}
           alt={alt}
           className="h-full w-full rounded object-cover"
         />

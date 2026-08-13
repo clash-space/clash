@@ -1,5 +1,12 @@
 # Agent File Projection And CAS Spec
 
+> **Status:** Current for the agent working-tree, implicit observation, and
+> copy-on-write rules only. It is not the authority for Asset identity or
+> Action execution. Those contracts live in the
+> [Asset system](../apps/docs/guide/asset-system.md) and
+> [Durable Run protocol](../apps/docs/guide/durable-run-protocol.md). Cloud
+> replication and execution described there remain design-only.
+
 Last updated: 2026-07-10
 
 ## Purpose
@@ -85,8 +92,9 @@ clash canvas delete-plan
 clash timeline pull
 clash text pull
 clash projects get
-clash asset get
-clash asset ref get
+clash assets get
+clash assets refs
+clash assets global get
 clash models providers
 clash assets metadata kinds
 clash assets metadata list
@@ -169,13 +177,13 @@ clash text apply --node <text-node-id> --json
 
 ### Asset metadata
 
-`clash assets metadata set` attaches a declared kind, stores any body as an
-immutable content-addressed blob, materializes the editable metadata JSON,
-writes a source-provenance manifest, and records
-`asset-metadata:<projection-path>`. After native editing,
-`clash assets metadata apply` consumes that observation -- or an explicit
-`--expect-version` token outside a linked worktree -- and updates the asset row.
-The fill envelope is synthesized internally; there is no action file to author.
+The specialized `clash assets metadata set/apply` production projection records
+`asset-metadata:<projection-path>` and uses the same cwd observation rule. It is
+not an alternate Asset identity, resolver, publication path, or metadata
+authority. The former `--expect-version` escape hatch has been removed. The
+command now requires the implicit observation created by a successful read;
+missing observations fail with `READ_REQUIRED`, and stale observations fail
+with `STALE_READ` so the agent must read and merge again.
 
 A metadata body is an output, not editable state: it is addressed by hash and
 rewritten only by attaching a new one.

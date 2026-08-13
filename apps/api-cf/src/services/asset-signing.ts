@@ -1,11 +1,11 @@
 /**
- * HMAC signing helpers for R2 asset URLs.
+ * Internal capability minting for the replaceable R2 delivery transport.
  *
  * Public URL format: `/assets/<storageKey>?exp=<unix>&sig=<base64url>`
  * Signature: HMAC-SHA256(`<storageKey>:<exp>`) using JWT_SECRET.
  *
- * Extracted from routes/assets.ts so backend services (e.g. thumbnail
- * extraction) can mint signed URLs without going through HTTP.
+ * Only trusted product services import this module. There is intentionally no
+ * public route that signs a caller-supplied storage key.
  */
 
 import type { Env } from "../config";
@@ -21,7 +21,12 @@ function toBase64Url(bytes: ArrayBuffer): string {
 }
 
 export async function getSigningKey(env: Env): Promise<CryptoKey> {
-  const secret = requireSecret(env, "JWT_SECRET", env.JWT_SECRET, "dev-asset-signing-key");
+  const secret = requireSecret(
+    env,
+    "JWT_SECRET",
+    env.JWT_SECRET,
+    "dev-asset-signing-key",
+  );
   return crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -53,6 +58,8 @@ export async function verifySignature(
 
 /**
  * Produce a signed `/assets/<key>?exp=...&sig=...` path for a given R2 key.
+ * The caller is a trusted service and must establish Project/owner/workflow
+ * authority before calling; this function is not an authorization check.
  * Caller is responsible for prefixing with a base URL if an absolute URL is
  * needed (e.g. when embedding in Cloudflare Media Transformations URLs).
  */

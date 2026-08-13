@@ -271,6 +271,21 @@ describe("semantic Asset client", () => {
     };
   }
 
+  it("rejects legacy waveform samples at the Project publication boundary", async () => {
+    const fixture = clientFixture();
+
+    await expect(
+      fixture.client.createOwned({
+        projectId: "project-1",
+        entry: {
+          ...entry(),
+          metadata: { ...entry().metadata, waveform: [0.1, 0.4, 0.2] },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_PROJECT_ASSET" });
+    expect(fixture.authority.create).not.toHaveBeenCalled();
+  });
+
   it("reads and lists through the same resolver", async () => {
     const fixture = clientFixture();
     await fixture.client.createOwned({
@@ -303,7 +318,11 @@ describe("semantic Asset client", () => {
       source: {
         kind: "linked",
         resourceId: "resource-linked-1",
-        origin: { scope: "global", entryId: "global-1" },
+        origin: {
+          scope: "global",
+          libraryId: "library-personal",
+          entryId: "global-1",
+        },
       },
     };
 
@@ -333,6 +352,26 @@ describe("semantic Asset client", () => {
     ).rejects.toBeInstanceOf(AssetSdkContractError);
   });
 
+  it("refuses ownerless linked origins before calling the Project authority", async () => {
+    const fixture = clientFixture();
+    const ownerless = {
+      ...entry("linked-ownerless"),
+      source: {
+        kind: "linked",
+        resourceId: "resource-linked-ownerless",
+        origin: { scope: "global", entryId: "global-ownerless" },
+      },
+    };
+
+    await expect(
+      fixture.client.admitLinked({
+        projectId: "project-1",
+        entry: ownerless as never,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_PROJECT_ASSET" });
+    expect(fixture.authority.create).not.toHaveBeenCalled();
+  });
+
   it("refuses the wrong semantic creation path", async () => {
     const fixture = clientFixture();
     const linked: ProjectAssetEntry = {
@@ -340,7 +379,11 @@ describe("semantic Asset client", () => {
       source: {
         kind: "linked",
         resourceId: "resource-linked-1",
-        origin: { scope: "catalog", entryId: "catalog-1" },
+        origin: {
+          scope: "catalog",
+          catalogId: "catalog-stock",
+          entryId: "catalog-1",
+        },
       },
     };
 
@@ -475,6 +518,42 @@ describe("semantic Asset client", () => {
         purgedAt: "2026-08-29T00:00:00.000Z",
       }),
     ).resolves.toMatchObject({ lifecycle: { state: "purged" } });
+  });
+
+  it("uses the delete operation id as the at-least-once trash postcondition", async () => {
+    const fixture = clientFixture();
+    const committed: ProjectAssetEntry = {
+      ...entry(),
+      lifecycle: {
+        state: "trashed",
+        deleteOperationId: "delete:winner",
+        deletedAt: "2026-08-13T00:00:00.000Z",
+        purgeAfter: "2026-08-20T00:00:00.000Z",
+      },
+    };
+    fixture.authority.trashIfUnreferenced = vi.fn(async () => ({
+      ok: true as const,
+      entry: committed,
+    }));
+
+    await expect(
+      fixture.client.trash({
+        projectId: "project-1",
+        projectAssetId: "asset-1",
+        deleteOperationId: "delete:winner",
+        deletedAt: "2026-08-13T00:00:01.000Z",
+        purgeAfter: "2026-08-20T00:00:01.000Z",
+      }),
+    ).resolves.toEqual(committed);
+    await expect(
+      fixture.client.trash({
+        projectId: "project-1",
+        projectAssetId: "asset-1",
+        deleteOperationId: "delete:competing",
+        deletedAt: "2026-08-13T00:00:01.000Z",
+        purgeAfter: "2026-08-20T00:00:01.000Z",
+      }),
+    ).rejects.toMatchObject({ code: "AUTHORITY_CONTRACT_VIOLATION" });
   });
 
   it("forwards opaque observations to the authority that owns atomic CAS", async () => {

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  ensurePackagedMediaBinariesExecutable,
   packagedRuntimeArtifacts,
   resolveNpmInvocation,
 } from "./prepare-clash-cli.mjs";
+import { access, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 describe("prepare packaged Clash CLI", () => {
   it("only stages the runtime built by the root dependency graph", async () => {
@@ -47,5 +52,44 @@ describe("prepare packaged Clash CLI", () => {
         clashRuntime: { localApi: "./runtime/../other.cjs" },
       }),
     ).toThrow(/unsafe clashRuntime\.localApi/);
+  });
+
+  it("makes ignore-scripts media payloads executable before Desktop packaging", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "clash-desktop-media-"));
+    try {
+      const target = "darwin-arm64";
+      const ffmpeg = path.join(
+        root,
+        "node_modules",
+        "@ffmpeg-installer",
+        target,
+        "ffmpeg",
+      );
+      const ffprobe = path.join(
+        root,
+        "node_modules",
+        "@ffprobe-installer",
+        target,
+        "ffprobe",
+      );
+      await Promise.all([
+        mkdir(path.dirname(ffmpeg), { recursive: true }),
+        mkdir(path.dirname(ffprobe), { recursive: true }),
+      ]);
+      await Promise.all([
+        writeFile(ffmpeg, "ffmpeg"),
+        writeFile(ffprobe, "ffprobe"),
+      ]);
+      await Promise.all([chmod(ffmpeg, 0o644), chmod(ffprobe, 0o644)]);
+
+      await ensurePackagedMediaBinariesExecutable(root, {
+        platform: "darwin",
+        arch: "arm64",
+      });
+      await expect(access(ffmpeg, constants.X_OK)).resolves.toBeUndefined();
+      await expect(access(ffprobe, constants.X_OK)).resolves.toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

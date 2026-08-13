@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import type { AssetKind } from "@clash/shared-types";
@@ -9,6 +10,7 @@ import {
   type ProjectAssetHostClient,
   type ProjectAssetHostScope,
 } from "@clash/shared-runtime/project-asset-client";
+import { ProjectHostHttpError } from "@clash/shared-runtime/project-host-client";
 
 import type { AssetMcpToolName, AssetToolInput } from "./asset-contract.js";
 
@@ -31,6 +33,7 @@ async function readAssetImportFile(
   input: AssetToolInput,
   workspaceRoot: string,
 ): Promise<{
+  sourcePath: string;
   bytes: Uint8Array;
   fileName: string;
   contentType: string;
@@ -44,6 +47,7 @@ async function readAssetImportFile(
   }
   const fileType = resolveAssetImportFileType(filePath, input.kind);
   return {
+    sourcePath: filePath,
     bytes: new Uint8Array(await readFile(filePath)),
     fileName: basename(filePath),
     contentType: fileType.contentType,
@@ -51,12 +55,55 @@ async function readAssetImportFile(
   };
 }
 
+function optionalImportId(
+  input: AssetToolInput,
+  key: "projectAssetId" | "globalAssetId",
+): string | undefined {
+  const value = input[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${key} must be a non-empty string when provided`);
+  }
+  return value.trim();
+}
+
+type PendingImport = {
+  id: string;
+  file: Omit<Awaited<ReturnType<typeof readAssetImportFile>>, "sourcePath">;
+};
+
 /** Direct Project Asset transport with MCP-session read receipts and no CLI process. */
 export function createAssetProjectHostGateway(
   client: ProjectAssetHostClient = createProjectAssetHostClient(),
   globalClient: PersonalGlobalAssetHostClient = createPersonalGlobalAssetHostClient(),
 ): AssetProjectHostGateway {
   const observations = new Map<string, string>();
+  const deleteOperations = new Map<string, string>();
+  // These are pending logical commands, not a content index. Unknown results
+  // retain the first snapshot; success or a structured Host rejection clears it.
+  const pendingProjectImports = new Map<string, PendingImport>();
+  const pendingGlobalImports = new Map<string, PendingImport>();
+  const pendingGlobalTrash = new Map<string, string>();
+  const globalRestoreObservations = new Map<string, string>();
+  const deleteObservationKey = (
+    projectId: string,
+    assetId: string,
+    receipt: string,
+  ) => JSON.stringify([projectId, assetId, receipt]);
+  const deleteOperationFor = (
+    projectId: string,
+    assetId: string,
+    receipt: string,
+  ) => {
+    const key = deleteObservationKey(projectId, assetId, receipt);
+    const existing = deleteOperations.get(key);
+    if (existing) return existing;
+    const operationId = `delete:sha256:${createHash("sha256")
+      .update(key)
+      .digest("hex")}`;
+    deleteOperations.set(key, operationId);
+    return operationId;
+  };
   const scope = async (input: AssetToolInput) => {
     const context = await client.resolveContext({
       cwd: input.cwd,
@@ -98,6 +145,16 @@ export function createAssetProjectHostGateway(
             assetId,
           });
           observations.set(resolved.observationKey(assetId), observed.receipt);
+          if (observed.value.lifecycle.state === "trashed") {
+            deleteOperations.set(
+              deleteObservationKey(
+                resolved.context.projectId,
+                assetId,
+                observed.receipt,
+              ),
+              observed.value.lifecycle.deleteOperationId,
+            );
+          }
           return observed.value;
         }
         case "clash_assets_references": {
@@ -116,13 +173,45 @@ export function createAssetProjectHostGateway(
             input.cwd?.trim() ||
             resolved.context.workspaceRoot ||
             process.cwd();
-          const file = await readAssetImportFile(input, workspaceRoot);
-          return (
-            await client.importFile({
+          const { sourcePath, ...readFile } = await readAssetImportFile(
+            input,
+            workspaceRoot,
+          );
+          const explicitId = optionalImportId(input, "projectAssetId");
+          const pendingKey = explicitId
+            ? JSON.stringify([
+                "project-command",
+                resolved.context.projectId,
+                explicitId,
+              ])
+            : JSON.stringify([
+                "project",
+                resolved.context.projectId,
+                sourcePath,
+                readFile.kind,
+              ]);
+          const pending = pendingProjectImports.get(pendingKey) ?? {
+            id: explicitId ?? `asset:${randomUUID()}`,
+            file: readFile,
+          };
+          if (!pendingProjectImports.has(pendingKey)) {
+            pendingProjectImports.set(pendingKey, pending);
+          }
+          let imported;
+          try {
+            imported = await client.importFile({
               ...resolved.requestScope,
-              ...file,
-            })
-          ).value;
+              ...pending.file,
+              projectAssetId: pending.id,
+            });
+          } catch (error) {
+            if (error instanceof ProjectHostHttpError) {
+              pendingProjectImports.delete(pendingKey);
+            }
+            throw error;
+          }
+          pendingProjectImports.delete(pendingKey);
+          return imported.value;
         }
         case "clash_assets_admit": {
           const resolved = await scope(input);
@@ -143,13 +232,27 @@ export function createAssetProjectHostGateway(
         case "clash_assets_trash": {
           const assetId = requiredString(input, "assetId");
           const guarded = await requireReceipt(input, assetId);
+          const deleteOperationId = deleteOperationFor(
+            guarded.context.projectId,
+            assetId,
+            guarded.receipt,
+          );
           const observed = await client.trash({
             ...guarded.requestScope,
             assetId,
+            deleteOperationId,
             actorClientType: "mcp",
             receipt: guarded.receipt,
           });
           observations.set(guarded.observationKey(assetId), observed.receipt);
+          deleteOperations.set(
+            deleteObservationKey(
+              guarded.context.projectId,
+              assetId,
+              observed.receipt,
+            ),
+            deleteOperationId,
+          );
           return observed.value;
         }
         case "clash_assets_restore": {
@@ -166,15 +269,92 @@ export function createAssetProjectHostGateway(
         }
         case "clash_assets_global_list":
           return globalClient.list();
-        case "clash_assets_global_get":
-          return globalClient.get({
-            globalAssetId: requiredString(input, "globalAssetId"),
-          });
+        case "clash_assets_global_get": {
+          const globalAssetId = requiredString(input, "globalAssetId");
+          const value = await globalClient.get({ globalAssetId });
+          if (value.lifecycle.state === "trashed") {
+            globalRestoreObservations.set(
+              globalAssetId,
+              value.lifecycle.deleteOperationId,
+            );
+          } else {
+            globalRestoreObservations.delete(globalAssetId);
+          }
+          return value;
+        }
         case "clash_assets_global_import_file": {
           const workspaceRoot = input.cwd?.trim() || process.cwd();
-          return globalClient.importFile(
-            await readAssetImportFile(input, workspaceRoot),
+          const { sourcePath, ...readFile } = await readAssetImportFile(
+            input,
+            workspaceRoot,
           );
+          const explicitId = optionalImportId(input, "globalAssetId");
+          const pendingKey = explicitId
+            ? JSON.stringify(["global-command", explicitId])
+            : JSON.stringify(["global", sourcePath, readFile.kind]);
+          const pending = pendingGlobalImports.get(pendingKey) ?? {
+            id: explicitId ?? `global:${randomUUID()}`,
+            file: readFile,
+          };
+          if (!pendingGlobalImports.has(pendingKey)) {
+            pendingGlobalImports.set(pendingKey, pending);
+          }
+          let imported;
+          try {
+            imported = await globalClient.importFile({
+              ...pending.file,
+              globalAssetId: pending.id,
+            });
+          } catch (error) {
+            if (error instanceof ProjectHostHttpError) {
+              pendingGlobalImports.delete(pendingKey);
+            }
+            throw error;
+          }
+          pendingGlobalImports.delete(pendingKey);
+          return imported;
+        }
+        case "clash_assets_global_trash": {
+          const globalAssetId = requiredString(input, "globalAssetId");
+          const deleteOperationId =
+            pendingGlobalTrash.get(globalAssetId) ?? `delete:${randomUUID()}`;
+          pendingGlobalTrash.set(globalAssetId, deleteOperationId);
+          try {
+            const trashed = await globalClient.trash({
+              globalAssetId,
+              deleteOperationId,
+            });
+            pendingGlobalTrash.delete(globalAssetId);
+            return trashed;
+          } catch (error) {
+            if (error instanceof ProjectHostHttpError) {
+              pendingGlobalTrash.delete(globalAssetId);
+            }
+            throw error;
+          }
+        }
+        case "clash_assets_global_restore": {
+          const globalAssetId = requiredString(input, "globalAssetId");
+          const deleteOperationId =
+            globalRestoreObservations.get(globalAssetId);
+          if (!deleteOperationId) {
+            throw new Error(
+              `READ_REQUIRED: Read Global Asset ${globalAssetId} with clash_assets_global_get before restoring it.`,
+            );
+          }
+          try {
+            const restored = await globalClient.restore({
+              globalAssetId,
+              deleteOperationId,
+            });
+            globalRestoreObservations.delete(globalAssetId);
+            return restored;
+          } catch (error) {
+            if (error instanceof ProjectHostHttpError) {
+              globalRestoreObservations.delete(globalAssetId);
+            }
+            throw error;
+          }
         }
       }
     },

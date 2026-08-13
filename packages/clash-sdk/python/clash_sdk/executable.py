@@ -42,6 +42,7 @@ import base64
 import binascii
 import inspect
 import json
+import math
 import re
 import sys
 import traceback
@@ -55,6 +56,33 @@ RESULT_PROTOCOL = "clash.plugin.result/v1"
 BROKER_REQUEST_PROTOCOL = "clash.plugin.broker-request/v1"
 BROKER_RESPONSE_PROTOCOL = "clash.plugin.broker-response/v1"
 
+_FAILURE_CODES = frozenset({
+    "invalid_request",
+    "authentication_failed",
+    "permission_denied",
+    "content_rejected",
+    "rate_limited",
+    "quota_exhausted",
+    "provider_unavailable",
+    "provider_failed",
+    "task_not_found",
+    "task_expired",
+    "transport_timeout",
+    "transport_error",
+    "invalid_response",
+    "execution_failed",
+    "contract_violation",
+    "cancelled",
+    "plugin_unavailable",
+    "deadline_exceeded",
+    "output_persistence_failed",
+    "publication_failed",
+})
+_REQUEST_STATES = frozenset({"rejected", "unknown", "accepted"})
+_FAILURE_ERROR_KEYS = frozenset({
+    "code", "message", "retryable", "requestState", "providerCode", "details",
+})
+
 HostRequest = Callable[[Mapping[str, Any]], Awaitable[Any]]
 Handler = Callable[[Mapping[str, Any], "ExecutablePluginContext"], Any]
 HandlerSet = Mapping[str, Handler]
@@ -66,6 +94,92 @@ class HostDependencyError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+def _request_state_for(operation: str) -> str:
+    return "unknown" if operation == "submit" else "accepted"
+
+
+def _failure_result(
+    invocation_id: str,
+    *,
+    code: str,
+    message: str,
+    retryable: bool,
+    request_state: str,
+) -> Mapping[str, Any]:
+    return {
+        "protocol": RESULT_PROTOCOL,
+        "invocationId": invocation_id,
+        "status": "failed",
+        "error": {
+            "code": code,
+            "message": message,
+            "retryable": retryable,
+            "requestState": request_state,
+        },
+    }
+
+
+def _is_json_value(value: Any) -> bool:
+    if value is None or isinstance(value, (str, bool)):
+        return True
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return math.isfinite(value)
+    if isinstance(value, list):
+        return all(_is_json_value(entry) for entry in value)
+    if isinstance(value, Mapping):
+        return all(
+            isinstance(key, str) and _is_json_value(entry)
+            for key, entry in value.items()
+        )
+    return False
+
+
+def _author_failure_error(error: Any, operation: str) -> Mapping[str, Any]:
+    request_state = _request_state_for(operation)
+    invalid = {
+        "code": "contract_violation",
+        "message": "Plugin returned an invalid failed result.",
+        "retryable": False,
+        "requestState": request_state,
+    }
+    if not isinstance(error, Mapping) or set(error) - _FAILURE_ERROR_KEYS:
+        return invalid
+
+    code = error.get("code")
+    message = error.get("message")
+    retryable = error.get("retryable")
+    author_request_state = error.get("requestState")
+    provider_code = error.get("providerCode")
+    if (
+        not isinstance(code, str)
+        or code not in _FAILURE_CODES
+        or not isinstance(message, str)
+        or not message.strip()
+        or not isinstance(retryable, bool)
+        or not isinstance(author_request_state, str)
+        or author_request_state not in _REQUEST_STATES
+        or (
+            "providerCode" in error
+            and (not isinstance(provider_code, str) or not provider_code.strip())
+        )
+        or ("details" in error and not _is_json_value(error["details"]))
+    ):
+        return invalid
+
+    return {
+        "code": code,
+        "message": message.strip(),
+        "retryable": retryable,
+        "requestState": author_request_state,
+        **(
+            {"providerCode": provider_code.strip()}
+            if isinstance(provider_code, str)
+            else {}
+        ),
+        **({"details": error["details"]} if "details" in error else {}),
+    }
 
 
 def _asset_handle_from_host(answer: Any) -> dict[str, Any]:
@@ -379,7 +493,15 @@ async def _result_from(
     handler_value: Any,
     invocation_id: str,
     context: ExecutablePluginContext,
+    operation: str,
 ) -> Mapping[str, Any]:
+    if isinstance(handler_value, Mapping) and handler_value.get("status") == "failed":
+        return {
+            "protocol": RESULT_PROTOCOL,
+            "invocationId": invocation_id,
+            "status": "failed",
+            "error": _author_failure_error(handler_value.get("error"), operation),
+        }
     if isinstance(handler_value, Mapping) and handler_value.get("protocol") == RESULT_PROTOCOL:
         return handler_value
     if isinstance(handler_value, Mapping) and handler_value.get("status") == "accepted":
@@ -429,28 +551,22 @@ def serve(
         operation = str(message.get("operation") or "submit")
         handler = handler_set.get(operation) if handler_set is not None else None
         if handler_set is None:
-            _write_line(stdout, {
-                "protocol": RESULT_PROTOCOL,
-                "invocationId": invocation_id,
-                "status": "failed",
-                "error": {
-                    "code": "unknown_export",
-                    "message": f"No handler is registered for export {export_id!r}.",
-                    "retryable": False,
-                },
-            })
+            _write_line(stdout, _failure_result(
+                invocation_id,
+                code="contract_violation",
+                message=f"No handler is registered for export {export_id!r}.",
+                retryable=False,
+                request_state="rejected" if operation == "submit" else "accepted",
+            ))
             continue
         if handler is None:
-            _write_line(stdout, {
-                "protocol": RESULT_PROTOCOL,
-                "invocationId": invocation_id,
-                "status": "failed",
-                "error": {
-                    "code": "unsupported_operation",
-                    "message": f"Export {export_id!r} does not implement {operation!r}.",
-                    "retryable": False,
-                },
-            })
+            _write_line(stdout, _failure_result(
+                invocation_id,
+                code="contract_violation",
+                message=f"Export {export_id!r} does not implement {operation!r}.",
+                retryable=False,
+                request_state="rejected" if operation == "submit" else "accepted",
+            ))
             continue
         context = ExecutablePluginContext(
             _make_host_request(invocation_id, stdin, stdout, {"value": 0})
@@ -460,18 +576,15 @@ def serve(
                 value = handler(message, context)
                 if inspect.isawaitable(value):
                     value = await value
-                return await _result_from(value, invocation_id, context)
+                return await _result_from(value, invocation_id, context, operation)
 
             _write_line(stdout, asyncio.run(invoke()))
         except BaseException as error:  # noqa: BLE001 — every failure must surface on the wire
-            _write_line(stdout, {
-                "protocol": RESULT_PROTOCOL,
-                "invocationId": invocation_id,
-                "status": "failed",
-                "error": {
-                    "code": getattr(error, "code", "handler_error"),
-                    "message": str(error) or error.__class__.__name__,
-                    "retryable": False,
-                },
-            })
+            _write_line(stdout, _failure_result(
+                invocation_id,
+                code="execution_failed",
+                message=str(error) or error.__class__.__name__,
+                retryable=False,
+                request_state=_request_state_for(operation),
+            ))
             traceback.print_exc(file=sys.stderr)

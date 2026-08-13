@@ -511,7 +511,13 @@ describe("Canvas class", () => {
       idCounter = 0;
       const doc = new LoroDoc();
       const canvas = new Canvas(doc, () => {});
-      canvas.insertNode("gen-1", "text", { label: "Existing render id" }, null, { x: 1, y: 2 });
+      canvas.insertNode(
+        "gen-1",
+        "text",
+        { label: "Existing render id" },
+        null,
+        { x: 1, y: 2 },
+      );
       createProjectTimeline(doc, {
         id: "timeline-1",
         name: "Timeline 1",
@@ -519,9 +525,15 @@ describe("Canvas class", () => {
           tracks: [
             {
               id: "track-1",
-              type: "video",
+              type: "text",
               items: [
-                { id: "item-1", type: "video", from: 0, durationInFrames: 30 },
+                {
+                  id: "item-1",
+                  type: "text",
+                  text: "Title",
+                  from: 0,
+                  durationInFrames: 30,
+                },
               ],
             },
           ],
@@ -541,7 +553,11 @@ describe("Canvas class", () => {
       const existing = canvas.readNode("gen-1");
       expect(existing!.type).toBe("text");
       expect(existing!.data.label).toBe("Existing render id");
-      expect(canvas.listEdges().some((e) => e.source === "editor1" && e.target === "gen-1")).toBe(false);
+      expect(
+        canvas
+          .listEdges()
+          .some((e) => e.source === "editor1" && e.target === "gen-1"),
+      ).toBe(false);
     });
   });
 

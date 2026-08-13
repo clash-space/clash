@@ -26,6 +26,21 @@ v1 local/agent-first follow-up docs:
 Those docs refine this guide with concrete storage, SQLite, projection/CAS,
 and agent-editability constraints.
 
+The newer canonical contracts also supersede this guide wherever it discusses
+generation ownership or media lifecycle:
+
+- [`apps/docs/guide/durable-run-protocol.md`](../apps/docs/guide/durable-run-protocol.md)
+  owns the one-run/one-owner rule, Local journal implementation, and the
+  design-only Cloud Workflow adapter.
+- [`apps/docs/guide/asset-system.md`](../apps/docs/guide/asset-system.md) owns
+  Project/Global Asset identity, metadata-first local-origin replication,
+  verified cloud-origin publication, multi-device download, and deletion.
+
+In particular, a future Web-submitted generation is Cloud-owned; it is never
+silently rerouted to a user's Local Host. Desktop, CLI, and MCP submissions are
+Local-Host-owned. The Cloud execution and Resource replication adapters remain
+design-only in the current delivery.
+
 Terminology correction: `Local-only`, `Synced`, and `Shared` below are
 user-facing replication/collaboration states over the same local project
 replica. They are not separate project stores, working trees, or mutation
@@ -224,8 +239,9 @@ Local-only:
 
 Synced:
 
-- Asset metadata syncs first.
-- Media uploads lazily or by policy.
+- The stable ProjectAsset and `resourceId` may sync first.
+- The creating Local Host uploads immutable media silently and the Resource
+  Registry publishes readiness after digest/size verification.
 - Web shows unavailable placeholders for media that has not been uploaded.
 
 Shared:
@@ -313,8 +329,11 @@ Rules:
 - Local-only projects do not appear on Web, or appear as disabled records with `Enable sync from desktop`.
 - Synced projects open on Web using cloud Loro + cloud room log.
 - Shared projects open with multiplayer presence and membership.
-- If the user's desktop daemon is offline, local-only actions show unavailable or queue.
-- Cloud-native actions can be offered later, but should be visually distinct from local agent actions.
+- Local-agent/tool actions that explicitly require a user's machine show that
+  runtime as unavailable or queue under their own product contract.
+- A Project generation submitted from Web uses the future Cloud Durable Run
+  owner and is disabled until that Cloud adapter and required Provider route
+  exist; it does not fall back to the user's daemon.
 
 ## UX Copy Guide
 

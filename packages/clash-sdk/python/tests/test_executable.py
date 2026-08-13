@@ -112,8 +112,12 @@ def test_host_dependency_error_fails_the_invocation():
     )
     _request, result = _parse(out)
     assert result["status"] == "failed"
-    assert result["error"]["code"] == "unavailable"
-    assert "unavailable" in result["error"]["message"]
+    assert result["error"] == {
+        "code": "execution_failed",
+        "message": "Asset asset-1 is unavailable.",
+        "retryable": False,
+        "requestState": "unknown",
+    }
 
 
 def test_reference_resolves_the_full_slot_to_a_provider_url():
@@ -291,7 +295,12 @@ def test_reference_rejects_the_retired_url_reach_dialect():
     )
     _request, result = _parse(out)
     assert result["status"] == "failed"
-    assert result["error"]["code"] == "invalid_asset"
+    assert result["error"] == {
+        "code": "execution_failed",
+        "message": "The Host returned an invalid resolved reference.",
+        "retryable": False,
+        "requestState": "unknown",
+    }
 
 
 @pytest.mark.parametrize(
@@ -357,7 +366,12 @@ def test_unknown_export_fails_without_calling_handlers():
           stdin=_lines(_invoke(export_id="missing")), stdout=out)
     (result,) = _parse(out)
     assert result["status"] == "failed"
-    assert result["error"]["code"] == "unknown_export"
+    assert result["error"] == {
+        "code": "contract_violation",
+        "message": "No handler is registered for export 'missing'.",
+        "retryable": False,
+        "requestState": "rejected",
+    }
 
 
 def test_handler_exception_surfaces_as_failed_result():
@@ -369,7 +383,128 @@ def test_handler_exception_surfaces_as_failed_result():
     serve({"execute": {"submit": submit}}, stdin=_lines(_invoke()), stdout=out)
     (result,) = _parse(out)
     assert result["status"] == "failed"
-    assert result["error"]["message"] == "upstream rejected the request"
+    assert result["error"] == {
+        "code": "execution_failed",
+        "message": "upstream rejected the request",
+        "retryable": False,
+        "requestState": "unknown",
+    }
+
+
+def test_handler_can_return_a_canonical_failed_result():
+    out = io.StringIO()
+
+    async def submit(_invocation, _context):
+        return {
+            "status": "failed",
+            "error": {
+                "code": "content_rejected",
+                "message": "The Provider rejected this prompt.",
+                "retryable": False,
+                "requestState": "rejected",
+                "providerCode": "SAFETY_FILTER",
+                "details": {"category": "safety"},
+            },
+        }
+
+    serve({"execute": {"submit": submit}}, stdin=_lines(_invoke()), stdout=out)
+    (result,) = _parse(out)
+    assert result == {
+        "protocol": "clash.plugin.result/v1",
+        "invocationId": "inv-1",
+        "status": "failed",
+        "error": {
+            "code": "content_rejected",
+            "message": "The Provider rejected this prompt.",
+            "retryable": False,
+            "requestState": "rejected",
+            "providerCode": "SAFETY_FILTER",
+            "details": {"category": "safety"},
+        },
+    }
+
+
+def test_malformed_author_failure_becomes_a_canonical_contract_failure():
+    out = io.StringIO()
+
+    async def submit(_invocation, _context):
+        return {
+            "status": "failed",
+            "error": {
+                "code": "vendor_quota",
+                "message": "Vendor-specific codes are not Host policy.",
+                "retryable": True,
+            },
+        }
+
+    serve({"execute": {"submit": submit}}, stdin=_lines(_invoke()), stdout=out)
+    (result,) = _parse(out)
+    assert result["status"] == "failed"
+    assert result["error"]["code"] == "contract_violation"
+    assert result["error"]["retryable"] is False
+    assert result["error"]["requestState"] == "unknown"
+
+
+def test_non_scalar_author_failure_fields_become_a_contract_failure():
+    out = io.StringIO()
+
+    async def submit(_invocation, _context):
+        return {
+            "status": "failed",
+            "error": {
+                "code": ["provider_failed"],
+                "message": "Malformed code and request state.",
+                "retryable": False,
+                "requestState": {"state": "unknown"},
+            },
+        }
+
+    serve({"execute": {"submit": submit}}, stdin=_lines(_invoke()), stdout=out)
+    (result,) = _parse(out)
+    assert result["status"] == "failed"
+    assert result["error"]["code"] == "contract_violation"
+    assert result["error"]["retryable"] is False
+    assert result["error"]["requestState"] == "unknown"
+
+
+def test_missing_poll_handler_is_an_accepted_contract_failure():
+    out = io.StringIO()
+    invocation = _invoke()
+    invocation["operation"] = "poll"
+    invocation["pollState"] = {"taskId": "upstream-1"}
+
+    async def submit(_invocation, _context):
+        return []
+
+    serve({"execute": {"submit": submit}}, stdin=_lines(invocation), stdout=out)
+    (result,) = _parse(out)
+    assert result["status"] == "failed"
+    assert result["error"] == {
+        "code": "contract_violation",
+        "message": "Export 'execute' does not implement 'poll'.",
+        "retryable": False,
+        "requestState": "accepted",
+    }
+
+
+def test_poll_exception_cannot_reclassify_accepted_work_as_rejected():
+    out = io.StringIO()
+    invocation = _invoke()
+    invocation["operation"] = "poll"
+    invocation["pollState"] = {"taskId": "upstream-1"}
+
+    async def poll(_invocation, _context):
+        raise ValueError("Provider status response was invalid")
+
+    serve({"execute": {"poll": poll}}, stdin=_lines(invocation), stdout=out)
+    (result,) = _parse(out)
+    assert result["status"] == "failed"
+    assert result["error"] == {
+        "code": "execution_failed",
+        "message": "Provider status response was invalid",
+        "retryable": False,
+        "requestState": "accepted",
+    }
 
 
 def test_dispatches_poll_to_the_declared_poll_handler():
@@ -458,5 +593,7 @@ def test_asset_helper_rejects_a_host_projection_instead_of_exposing_it():
     )
     _request, result = _parse(out)
     assert result["status"] == "failed"
-    assert result["error"]["code"] == "invalid_asset"
+    assert result["error"]["code"] == "execution_failed"
+    assert result["error"]["retryable"] is False
+    assert result["error"]["requestState"] == "unknown"
     assert "Asset handle" in result["error"]["message"]

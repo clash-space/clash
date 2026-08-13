@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,11 +7,14 @@ import { LoroDoc } from "loro-crdt";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createActionAssetBinding,
+  listActionAssetBindings,
   listActionAssetReferences,
+  listProjectAssets,
   readProjectAsset,
 } from "@clash/shared-types";
 
 import { createLocalApiApp } from "./app.js";
+import type { LocalAssetInspector } from "./local-asset-inspections.js";
 import { createSqliteDurableRunJournal } from "./durable-run-journal.js";
 import {
   createLocalProjectAssetService,
@@ -23,6 +26,46 @@ import { LocalLoroRoomHub } from "./sync.js";
 const temporaryDirectories: string[] = [];
 const PROJECT_ASSET_RECEIPT_RE =
   /^project-asset-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+
+const inspectFixtureAsset: LocalAssetInspector = async ({ resource }) =>
+  resource.kind === "image"
+    ? {
+        width: 1,
+        height: 1,
+        videoCodec: "png",
+        ...(resource.contentType ? { contentType: resource.contentType } : {}),
+      }
+    : resource.kind === "video"
+      ? {
+          width: 1,
+          height: 1,
+          durationMs: 2_000,
+          frameRate: 24,
+          videoCodec: "h264",
+          hasAudio: false,
+          ...(resource.contentType
+            ? { contentType: resource.contentType }
+            : {}),
+        }
+      : {
+          durationMs: 2_000,
+          hasAudio: true,
+          audioCodec: "mp3",
+          ...(resource.contentType
+            ? { contentType: resource.contentType }
+            : {}),
+        };
+
+function projectTrashRequest(
+  deleteOperationId: string,
+  headers: Record<string, string> = {},
+): RequestInit {
+  return {
+    method: "DELETE",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify({ deleteOperationId }),
+  };
+}
 
 async function fixture() {
   const clashRoot = await mkdtemp(
@@ -50,12 +93,67 @@ async function fixture() {
     clashRoot,
     userId: "local-user",
     projectAssetProjectionOrigin: () => "http://127.0.0.1:49152",
+    inspectAssetResource: inspectFixtureAsset,
   };
   return {
     app: createLocalApiApp(appOptions),
     asset,
     clashRoot,
     dataDir,
+  };
+}
+
+function editBindingCollisionReplica(input: {
+  doc: LoroDoc;
+  actionId: "image-editor" | "video-clipper";
+  sourceAssetId: string;
+}): {
+  replica: LocalProjectAssetReplica;
+  arm(): void;
+  actionRunId(): string | null;
+} {
+  let armed = false;
+  let collisionRunId: string | null = null;
+  return {
+    replica: {
+      inspect: async (_id, read) => read(input.doc),
+      mutate: async (_id, mutation) => {
+        if (armed && collisionRunId === null) {
+          const probe = input.doc.fork();
+          await mutation(probe);
+          const editOutput = listProjectAssets(probe).find(
+            (entry) =>
+              entry.provenance?.kind === "edit" &&
+              !readProjectAsset(input.doc, entry.id),
+          );
+          const actionRunId = editOutput?.provenance?.actionRunId;
+          if (actionRunId) {
+            collisionRunId = actionRunId;
+            const collision = createActionAssetBinding(input.doc, {
+              id: `action-asset:${actionRunId}:output`,
+              owner: {
+                kind: "run",
+                actionId: input.actionId,
+                actionRevisionId: "collision-revision",
+                actionRunId,
+              },
+              direction: "output",
+              slot: "already-claimed",
+              projectAssetId: input.sourceAssetId,
+              role: "primary",
+            });
+            expect(collision).toMatchObject({ ok: true });
+          }
+        }
+        return (await mutation(input.doc)).value;
+      },
+    },
+    arm() {
+      armed = true;
+    },
+    actionRunId() {
+      return collisionRunId;
+    },
   };
 }
 
@@ -90,6 +188,12 @@ describe("Project-scoped ResolvedAsset routes", () => {
       userId: "local-user",
       projectAssetProjectionOrigin: "http://127.0.0.1:49152",
       projectAssetReplica: replica,
+      inspectAssetResource: async ({ resource }) => ({
+        width: 1,
+        height: 1,
+        videoCodec: "png",
+        ...(resource.contentType ? { contentType: resource.contentType } : {}),
+      }),
     });
 
     const bytes = new TextEncoder().encode("live room image");
@@ -105,12 +209,15 @@ describe("Project-scoped ResolvedAsset routes", () => {
       method: "POST",
       body: form,
     });
-    expect(imported.status).toBe(201);
+    expect(imported.status, await imported.clone().text()).toBe(201);
     expect(readProjectAsset(peer, "live:asset")?.lifecycle).toEqual({
       state: "active",
     });
 
-    const trashed = await app.request(assetUrl, { method: "DELETE" });
+    const trashed = await app.request(
+      assetUrl,
+      projectTrashRequest("delete:live-room"),
+    );
     expect(trashed.status, await trashed.clone().text()).toBe(200);
     expect(readProjectAsset(peer, "live:asset")?.lifecycle.state).toBe(
       "trashed",
@@ -135,6 +242,8 @@ describe("Project-scoped ResolvedAsset routes", () => {
       name: "result.unusual",
       metadata: {
         durationMs: 2_000,
+        hasAudio: true,
+        audioCodec: "mp3",
         bytes: 10,
         contentType: "audio/mpeg",
         originalName: "result.unusual",
@@ -143,7 +252,6 @@ describe("Project-scoped ResolvedAsset routes", () => {
       lifecycle: { state: "active" },
       status: "ready",
       url: mediaUrl,
-      thumbnailUrl: mediaUrl,
     };
 
     const listed = await app.request(
@@ -241,8 +349,11 @@ describe("Project-scoped ResolvedAsset routes", () => {
       kind: "image",
       name: "hero.png",
       metadata: {
+        width: 1,
+        height: 1,
         bytes: 15,
         contentType: "image/png",
+        videoCodec: "png",
         originalName: "hero.png",
       },
       provenance: { kind: "import" },
@@ -294,20 +405,27 @@ describe("Project-scoped ResolvedAsset routes", () => {
     editForm.set("editParams", JSON.stringify(invocation.params));
     editForm.set("origin", "asset-preview");
     editForm.set("invocation", JSON.stringify(invocation));
+    editForm.set("actionRunId", "edit:route-replay-1");
 
-    const response = await app.request("/api/v1/edits", {
+    const first = await app.request("/api/v1/edits", {
       method: "POST",
       body: editForm,
     });
-    expect(response.status, await response.clone().text()).toBe(200);
-    const output = (await response.json()) as { id: string };
+    const replay = await app.request("/api/v1/edits", {
+      method: "POST",
+      body: editForm,
+    });
+    expect(first.status, await first.clone().text()).toBe(200);
+    expect(replay.status, await replay.clone().text()).toBe(200);
+    const output = (await first.json()) as { id: string };
+    await expect(replay.json()).resolves.toEqual(output);
     expect(output).toMatchObject({
-      id: expect.stringMatching(/^asset:/),
+      id: expect.stringMatching(/^asset:edit:/),
       kind: "image",
       name: "edited.png",
       provenance: {
         kind: "edit",
-        actionRunId: expect.stringMatching(/^edit:/),
+        actionRunId: "edit:route-replay-1",
         model: "implicit:image-editor",
       },
       status: "ready",
@@ -336,6 +454,550 @@ describe("Project-scoped ResolvedAsset routes", () => {
         role: "primary",
       },
     ]);
+    expect(
+      listProjectAssets(doc).filter(
+        (entry) => entry.provenance?.actionRunId === "edit:route-replay-1",
+      ),
+    ).toHaveLength(1);
+    expect(
+      listActionAssetBindings(doc).filter(
+        (binding) =>
+          binding.owner.kind === "run" &&
+          binding.owner.actionRunId === "edit:route-replay-1",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("rejects reuse of an edit actionRunId for different immutable output bytes", async () => {
+    const { app, dataDir } = await fixture();
+    const sourceForm = new FormData();
+    sourceForm.set(
+      "file",
+      new File(["source image"], "source.png", { type: "image/png" }),
+    );
+    sourceForm.set("kind", "image");
+    sourceForm.set("projectAssetId", "source:image");
+    const imported = await app.request(
+      "http://127.0.0.1:49152/api/v1/projects/project-a/assets/import-file",
+      { method: "POST", body: sourceForm },
+    );
+    expect(imported.status, await imported.clone().text()).toBe(201);
+
+    const invocation = {
+      actionId: "image-editor",
+      projectId: "project-a",
+      source: { assetId: "source:image", kind: "image" },
+      params: { rotation: 90 },
+      surface: "asset-preview",
+      mode: "implicit",
+    };
+    const request = (bytes: string) => {
+      const form = new FormData();
+      form.set("file", new File([bytes], "edited.png", { type: "image/png" }));
+      form.set("projectId", "project-a");
+      form.set("sourceAssetId", "source:image");
+      form.set("editKind", "image-editor");
+      form.set("outputKind", "image");
+      form.set("editParams", JSON.stringify(invocation.params));
+      form.set("origin", "asset-preview");
+      form.set("invocation", JSON.stringify(invocation));
+      form.set("actionRunId", "edit:bytes-conflict-1");
+      return app.request("/api/v1/edits", { method: "POST", body: form });
+    };
+
+    const first = await request("first edited image");
+    const conflict = await request("different edited image");
+
+    expect(first.status, await first.clone().text()).toBe(200);
+    expect(conflict.status, await conflict.clone().text()).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({
+      code: "PROJECT_ASSET_ID_COLLISION",
+    });
+    const doc = await new FileReplicaStore(join(dataDir, "projects")).recover(
+      "project-a",
+    );
+    expect(
+      listProjectAssets(doc).filter(
+        (entry) => entry.provenance?.actionRunId === "edit:bytes-conflict-1",
+      ),
+    ).toHaveLength(1);
+    expect(
+      listActionAssetBindings(doc).filter(
+        (binding) =>
+          binding.owner.kind === "run" &&
+          binding.owner.actionRunId === "edit:bytes-conflict-1",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("rejects reuse of an edit actionRunId for a different frozen invocation", async () => {
+    const { app, dataDir } = await fixture();
+    const sourceForm = new FormData();
+    sourceForm.set(
+      "file",
+      new File(["source image"], "source.png", { type: "image/png" }),
+    );
+    sourceForm.set("kind", "image");
+    sourceForm.set("projectAssetId", "source:image");
+    const imported = await app.request(
+      "http://127.0.0.1:49152/api/v1/projects/project-a/assets/import-file",
+      { method: "POST", body: sourceForm },
+    );
+    expect(imported.status, await imported.clone().text()).toBe(201);
+
+    const request = (rotation: 90 | 180) => {
+      const invocation = {
+        actionId: "image-editor",
+        projectId: "project-a",
+        source: { assetId: "source:image", kind: "image" },
+        params: { rotation },
+        surface: "asset-preview",
+        mode: "implicit",
+      };
+      const form = new FormData();
+      form.set(
+        "file",
+        new File(["same edited bytes"], "edited.png", {
+          type: "image/png",
+        }),
+      );
+      form.set("projectId", "project-a");
+      form.set("sourceAssetId", "source:image");
+      form.set("editKind", "image-editor");
+      form.set("outputKind", "image");
+      form.set("editParams", JSON.stringify(invocation.params));
+      form.set("origin", "asset-preview");
+      form.set("invocation", JSON.stringify(invocation));
+      form.set("actionRunId", "edit:invocation-conflict-1");
+      return app.request("/api/v1/edits", { method: "POST", body: form });
+    };
+
+    const first = await request(90);
+    const conflict = await request(180);
+
+    expect(first.status, await first.clone().text()).toBe(200);
+    expect(conflict.status, await conflict.clone().text()).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({
+      code: "ACTION_ASSET_BINDING_ID_COLLISION",
+    });
+    const doc = await new FileReplicaStore(join(dataDir, "projects")).recover(
+      "project-a",
+    );
+    expect(
+      listProjectAssets(doc).filter(
+        (entry) =>
+          entry.provenance?.actionRunId === "edit:invocation-conflict-1",
+      ),
+    ).toHaveLength(1);
+    expect(
+      listActionAssetBindings(doc).filter(
+        (binding) =>
+          binding.owner.kind === "run" &&
+          binding.owner.actionRunId === "edit:invocation-conflict-1",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("converges repeated video-crop computation onto one output and one binding set", async () => {
+    const { app, clashRoot, dataDir } = await fixture();
+    const sourceForm = new FormData();
+    sourceForm.set(
+      "file",
+      new File(["source video"], "source.mp4", { type: "video/mp4" }),
+    );
+    sourceForm.set("kind", "video");
+    sourceForm.set("projectAssetId", "source:video");
+    const imported = await app.request(
+      "http://127.0.0.1:49152/api/v1/projects/project-a/assets/import-file",
+      { method: "POST", body: sourceForm },
+    );
+    expect(imported.status, await imported.clone().text()).toBe(201);
+
+    const fakeFfmpeg = join(clashRoot, "fake-replay-ffmpeg");
+    await writeFile(
+      fakeFfmpeg,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        "const args = process.argv.slice(2);",
+        'const input = args[args.indexOf("-i") + 1];',
+        "const output = args[args.length - 1];",
+        'const start = args[args.indexOf("-ss") + 1];',
+        'const duration = args[args.indexOf("-t") + 1];',
+        "fs.writeFileSync(output, Buffer.concat([fs.readFileSync(input), Buffer.from(` crop:${start}:${duration}`)]));",
+      ].join("\n"),
+    );
+    await chmod(fakeFfmpeg, 0o755);
+    const priorFfmpegPath = process.env.FFMPEG_PATH;
+    process.env.FFMPEG_PATH = fakeFfmpeg;
+    const params = { mode: "crop" as const, startSec: 0, endSec: 1 };
+    const body = {
+      actionRunId: "edit:crop-replay-1",
+      projectId: "project-a",
+      sourceAssetId: "source:video",
+      params,
+      origin: "asset-preview",
+      invocation: {
+        actionId: "video-clipper",
+        projectId: "project-a",
+        source: { assetId: "source:video", kind: "video" },
+        params,
+        surface: "asset-preview",
+        mode: "implicit",
+      },
+    };
+    const request = () =>
+      app.request("/api/v1/edits/video-crop", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    let first: Response;
+    let replay: Response;
+    let conflict: Response;
+    try {
+      first = await request();
+      replay = await request();
+      conflict = await app.request("/api/v1/edits/video-crop", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...body,
+          params: { mode: "crop", startSec: 0, endSec: 1.5 },
+          invocation: {
+            ...body.invocation,
+            params: { mode: "crop", startSec: 0, endSec: 1.5 },
+          },
+        }),
+      });
+    } finally {
+      if (priorFfmpegPath === undefined) delete process.env.FFMPEG_PATH;
+      else process.env.FFMPEG_PATH = priorFfmpegPath;
+    }
+
+    expect(first.status, await first.clone().text()).toBe(200);
+    expect(replay.status, await replay.clone().text()).toBe(200);
+    const output = (await first.json()) as { id: string };
+    await expect(replay.json()).resolves.toEqual(output);
+    expect(conflict.status, await conflict.clone().text()).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({
+      code: "PROJECT_ASSET_ID_COLLISION",
+    });
+    const doc = await new FileReplicaStore(join(dataDir, "projects")).recover(
+      "project-a",
+    );
+    expect(
+      listProjectAssets(doc).filter(
+        (entry) => entry.provenance?.actionRunId === "edit:crop-replay-1",
+      ),
+    ).toHaveLength(1);
+    expect(
+      listActionAssetBindings(doc).filter(
+        (binding) =>
+          binding.owner.kind === "run" &&
+          binding.owner.actionRunId === "edit:crop-replay-1",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("edits an admitted linked source by publishing a new owned entry without changing the source", async () => {
+    const { app, dataDir } = await fixture();
+    const globalAssetId = "global:linked-edit-source";
+    const globalForm = new FormData();
+    globalForm.set(
+      "file",
+      new File(["linked source image"], "linked-source.png", {
+        type: "image/png",
+      }),
+    );
+    globalForm.set("kind", "image");
+    globalForm.set("globalAssetId", globalAssetId);
+    const imported = await app.request(
+      "http://127.0.0.1:49152/api/v1/libraries/personal/assets/import-file",
+      { method: "POST", body: globalForm },
+    );
+    expect(imported.status, await imported.clone().text()).toBe(201);
+
+    const admittedResponse = await app.request(
+      "http://127.0.0.1:49152/api/v1/projects/project-a/assets/admit",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ globalAssetId }),
+      },
+    );
+    expect(admittedResponse.status, await admittedResponse.clone().text()).toBe(
+      201,
+    );
+    const admitted = (await admittedResponse.json()) as { id: string };
+    const replicas = new FileReplicaStore(join(dataDir, "projects"));
+    const sourceBefore = readProjectAsset(
+      await replicas.recover("project-a"),
+      admitted.id,
+    );
+    expect(sourceBefore).toMatchObject({
+      id: admitted.id,
+      source: {
+        kind: "linked",
+        origin: {
+          scope: "global",
+          libraryId: "personal",
+          entryId: globalAssetId,
+        },
+      },
+      lifecycle: { state: "active" },
+    });
+
+    const invocation = {
+      actionId: "image-editor",
+      projectId: "project-a",
+      source: { assetId: admitted.id, kind: "image" },
+      params: { rotation: 90 },
+      surface: "asset-preview",
+      mode: "implicit",
+    };
+    const editForm = new FormData();
+    editForm.set(
+      "file",
+      new File(["edited linked image"], "edited-linked.png", {
+        type: "image/png",
+      }),
+    );
+    editForm.set("projectId", "project-a");
+    editForm.set("sourceAssetId", admitted.id);
+    editForm.set("editKind", "image-editor");
+    editForm.set("outputKind", "image");
+    editForm.set("editParams", JSON.stringify(invocation.params));
+    editForm.set("origin", "asset-preview");
+    editForm.set("invocation", JSON.stringify(invocation));
+    editForm.set("actionRunId", "edit:linked-source-1");
+
+    const editedResponse = await app.request("/api/v1/edits", {
+      method: "POST",
+      body: editForm,
+    });
+    expect(editedResponse.status, await editedResponse.clone().text()).toBe(
+      200,
+    );
+    const edited = (await editedResponse.json()) as { id: string };
+    expect(edited.id).not.toBe(admitted.id);
+
+    const after = await replicas.recover("project-a");
+    expect(readProjectAsset(after, admitted.id)).toEqual(sourceBefore);
+    expect(readProjectAsset(after, edited.id)).toMatchObject({
+      id: edited.id,
+      source: { kind: "owned" },
+      lifecycle: { state: "active" },
+      provenance: { kind: "edit" },
+    });
+  });
+
+  it("keeps only staged bytes when an edit output binding identity collides", async () => {
+    const clashRoot = await mkdtemp(
+      join(tmpdir(), "clash-project-asset-edit-collision-"),
+    );
+    temporaryDirectories.push(clashRoot);
+    const dataDir = join(clashRoot, "local-api");
+    const projectId = "edit-collision-project";
+    const doc = new LoroDoc();
+    const collision = editBindingCollisionReplica({
+      doc,
+      actionId: "image-editor",
+      sourceAssetId: "source:image",
+    });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      replica: collision.replica,
+    });
+    await service.installOwned({
+      projectId,
+      projectAssetId: "source:image",
+      kind: "image",
+      bytes: new TextEncoder().encode("source image"),
+      contentType: "image/png",
+      name: "source.png",
+      metadata: {},
+    });
+    collision.arm();
+    const app = createLocalApiApp({
+      dataDir,
+      clashRoot,
+      userId: "local-user",
+      projectAssetProjectionOrigin: "http://127.0.0.1:49152",
+      projectAssetReplica: collision.replica,
+      inspectAssetResource: inspectFixtureAsset,
+    });
+    const invocation = {
+      actionId: "image-editor",
+      projectId,
+      source: { assetId: "source:image", kind: "image" },
+      params: { rotation: 90 },
+      surface: "asset-preview",
+      mode: "implicit",
+    };
+    const editForm = new FormData();
+    editForm.set(
+      "file",
+      new File(["edited image"], "edited.png", { type: "image/png" }),
+    );
+    editForm.set("projectId", projectId);
+    editForm.set("sourceAssetId", "source:image");
+    editForm.set("editKind", "image-editor");
+    editForm.set("outputKind", "image");
+    editForm.set("editParams", JSON.stringify(invocation.params));
+    editForm.set("origin", "asset-preview");
+    editForm.set("invocation", JSON.stringify(invocation));
+    editForm.set("actionRunId", "edit:binding-collision-1");
+
+    const response = await app.request("/api/v1/edits", {
+      method: "POST",
+      body: editForm,
+    });
+
+    expect(response.status, await response.clone().text()).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "ACTION_ASSET_BINDING_ID_COLLISION",
+    });
+    const collisionRunId = collision.actionRunId();
+    expect(collisionRunId).toMatch(/^edit:/);
+    expect(
+      listProjectAssets(doc).filter(
+        (entry) => entry.provenance?.actionRunId === collisionRunId,
+      ),
+    ).toEqual([]);
+    expect(
+      listActionAssetBindings(doc).filter(
+        (binding) =>
+          binding.owner.kind === "run" &&
+          binding.owner.actionRunId === collisionRunId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: `action-asset:${collisionRunId}:output`,
+        slot: "already-claimed",
+        projectAssetId: "source:image",
+      }),
+    ]);
+    const digest = createHash("sha256")
+      .update(new TextEncoder().encode("edited image"))
+      .digest("hex");
+    await expect(
+      service.resolveStagedOwned(`sha256:${digest}`),
+    ).resolves.toMatchObject({ resource: { id: `sha256:${digest}` } });
+  });
+
+  it("publishes no video-crop Project facts when its output binding identity collides", async () => {
+    const clashRoot = await mkdtemp(
+      join(tmpdir(), "clash-project-asset-crop-collision-"),
+    );
+    temporaryDirectories.push(clashRoot);
+    const dataDir = join(clashRoot, "local-api");
+    const projectId = "crop-collision-project";
+    const doc = new LoroDoc();
+    const collision = editBindingCollisionReplica({
+      doc,
+      actionId: "video-clipper",
+      sourceAssetId: "source:video",
+    });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      replica: collision.replica,
+    });
+    await service.installOwned({
+      projectId,
+      projectAssetId: "source:video",
+      kind: "video",
+      bytes: new TextEncoder().encode("source video"),
+      contentType: "video/mp4",
+      name: "source.mp4",
+      metadata: { durationMs: 2_000 },
+    });
+    collision.arm();
+    const fakeFfmpeg = join(clashRoot, "fake-ffmpeg");
+    await writeFile(
+      fakeFfmpeg,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        "const args = process.argv.slice(2);",
+        'const input = args[args.indexOf("-i") + 1];',
+        "const output = args[args.length - 1];",
+        'fs.writeFileSync(output, Buffer.concat([fs.readFileSync(input), Buffer.from(" cropped")]));',
+      ].join("\n"),
+    );
+    await chmod(fakeFfmpeg, 0o755);
+    const priorFfmpegPath = process.env.FFMPEG_PATH;
+    process.env.FFMPEG_PATH = fakeFfmpeg;
+    const app = createLocalApiApp({
+      dataDir,
+      clashRoot,
+      userId: "local-user",
+      projectAssetProjectionOrigin: "http://127.0.0.1:49152",
+      projectAssetReplica: collision.replica,
+      inspectAssetResource: inspectFixtureAsset,
+    });
+    const params = { mode: "crop", startSec: 0, endSec: 1 };
+    const invocation = {
+      actionId: "video-clipper",
+      projectId,
+      source: { assetId: "source:video", kind: "video" },
+      params,
+      surface: "asset-preview",
+      mode: "implicit",
+    };
+    let response: Response;
+    try {
+      response = await app.request("/api/v1/edits/video-crop", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          actionRunId: "edit:crop-binding-collision-1",
+          projectId,
+          sourceAssetId: "source:video",
+          params,
+          origin: "asset-preview",
+          invocation,
+        }),
+      });
+    } finally {
+      if (priorFfmpegPath === undefined) delete process.env.FFMPEG_PATH;
+      else process.env.FFMPEG_PATH = priorFfmpegPath;
+    }
+
+    expect(response.status, await response.clone().text()).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "ACTION_ASSET_BINDING_ID_COLLISION",
+    });
+    const collisionRunId = collision.actionRunId();
+    expect(collisionRunId).toMatch(/^edit:/);
+    expect(
+      listProjectAssets(doc).filter(
+        (entry) => entry.provenance?.actionRunId === collisionRunId,
+      ),
+    ).toEqual([]);
+    expect(
+      listActionAssetBindings(doc).filter(
+        (binding) =>
+          binding.owner.kind === "run" &&
+          binding.owner.actionRunId === collisionRunId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: `action-asset:${collisionRunId}:output`,
+        slot: "already-claimed",
+        projectAssetId: "source:video",
+      }),
+    ]);
+    const digest = createHash("sha256")
+      .update(new TextEncoder().encode("source video cropped"))
+      .digest("hex");
+    await expect(
+      service.resolveStagedOwned(`sha256:${digest}`),
+    ).resolves.toMatchObject({ resource: { id: `sha256:${digest}` } });
   });
 
   it("enqueues Director generation through the shared durable Provider journal", async () => {
@@ -431,18 +1093,15 @@ describe("Project-scoped ResolvedAsset routes", () => {
     expect(status.status).toBe(202);
     expect(wakes).toBeGreaterThanOrEqual(1);
 
-    const conflict = await app.request(
-      "/api/v1/director-model-generations",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          actionRunId: "director:request-1",
-          projectId,
-          prompt: "A different model",
-        }),
-      },
-    );
+    const conflict = await app.request("/api/v1/director-model-generations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        actionRunId: "director:request-1",
+        projectId,
+        prompt: "A different model",
+      }),
+    });
     expect(conflict.status).toBe(409);
   });
 
@@ -560,7 +1219,10 @@ describe("Project-scoped ResolvedAsset routes", () => {
       references: [expectedReference],
     });
 
-    const removed = await app.request(baseUrl, { method: "DELETE" });
+    const removed = await app.request(
+      baseUrl,
+      projectTrashRequest("delete:referenced-asset"),
+    );
     expect(removed.status, await removed.clone().text()).toBe(409);
     await expect(removed.json()).resolves.toEqual({
       error: "Project Asset result:one is still referenced.",
@@ -586,7 +1248,10 @@ describe("Project-scoped ResolvedAsset routes", () => {
       "original.unusual",
     );
 
-    const removed = await app.request(baseUrl, { method: "DELETE" });
+    const removed = await app.request(
+      baseUrl,
+      projectTrashRequest("delete:logical-trash"),
+    );
     expect(removed.status, await removed.clone().text()).toBe(200);
     await expect(removed.json()).resolves.toMatchObject({
       id: "result:one",
@@ -642,14 +1307,60 @@ describe("Project-scoped ResolvedAsset routes", () => {
     expect(await readFile(resourcePath, "utf8")).toBe("0123456789");
   });
 
+  it("requires a stable delete operation id from the Project Asset producer", async () => {
+    const { app, asset } = await fixture();
+    const baseUrl = `http://127.0.0.1:49152/api/v1/projects/project-a/assets/${encodeURIComponent(asset.id)}`;
+
+    const response = await app.request(baseUrl, { method: "DELETE" });
+
+    expect(response.status, await response.clone().text()).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "deleteOperationId is required",
+      code: "INVALID_PROJECT_ASSET_TRASH",
+    });
+  });
+
+  it("returns the committed delete for an at-least-once retry but CAS-rejects another operation", async () => {
+    const { app, asset } = await fixture();
+    const baseUrl = `http://127.0.0.1:49152/api/v1/projects/project-a/assets/${encodeURIComponent(asset.id)}`;
+    const read = await app.request(baseUrl);
+    const activeReceipt = read.headers.get("x-clash-read-receipt")!;
+    const remove = (deleteOperationId: string) =>
+      app.request(baseUrl, {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+          "x-clash-client-type": "agent",
+          "x-clash-if-match": activeReceipt,
+        },
+        body: JSON.stringify({ deleteOperationId }),
+      });
+
+    const first = await remove("delete:at-least-once");
+    const retried = await remove("delete:at-least-once");
+
+    expect(first.status, await first.clone().text()).toBe(200);
+    expect(retried.status, await retried.clone().text()).toBe(200);
+    const firstResult = await first.json();
+    await expect(retried.json()).resolves.toEqual(firstResult);
+
+    const competing = await remove("delete:competing-operation");
+    expect(competing.status, await competing.clone().text()).toBe(409);
+    await expect(competing.json()).resolves.toMatchObject({
+      code: "STALE_READ",
+    });
+  });
+
   it("requires and rotates a Host receipt for agent delete and restore", async () => {
     const { app, asset } = await fixture();
     const baseUrl = `http://127.0.0.1:49152/api/v1/projects/project-a/assets/${encodeURIComponent(asset.id)}`;
 
-    const missing = await app.request(baseUrl, {
-      method: "DELETE",
-      headers: { "x-clash-client-type": "agent" },
-    });
+    const missing = await app.request(
+      baseUrl,
+      projectTrashRequest("delete:missing-read", {
+        "x-clash-client-type": "agent",
+      }),
+    );
     expect(missing.status).toBe(409);
     await expect(missing.json()).resolves.toMatchObject({
       code: "READ_REQUIRED",
@@ -660,13 +1371,13 @@ describe("Project-scoped ResolvedAsset routes", () => {
     expect(activeReceipt).toMatch(PROJECT_ASSET_RECEIPT_RE);
     expect(JSON.stringify(await read.json())).not.toContain("readToken");
 
-    const removed = await app.request(baseUrl, {
-      method: "DELETE",
-      headers: {
+    const removed = await app.request(
+      baseUrl,
+      projectTrashRequest("delete:agent-receipt", {
         "x-clash-client-type": "agent",
         "x-clash-if-match": activeReceipt!,
-      },
-    });
+      }),
+    );
     expect(removed.status, await removed.clone().text()).toBe(200);
     const trashedReceipt = removed.headers.get("x-clash-read-receipt");
     expect(trashedReceipt).toMatch(PROJECT_ASSET_RECEIPT_RE);
@@ -693,13 +1404,13 @@ describe("Project-scoped ResolvedAsset routes", () => {
     const initialRead = await tamperedFixture.app.request(tamperedUrl);
     const receipt = initialRead.headers.get("x-clash-read-receipt")!;
     const tampered = `${receipt.slice(0, -1)}${receipt.endsWith("A") ? "B" : "A"}`;
-    const rejectedTampered = await tamperedFixture.app.request(tamperedUrl, {
-      method: "DELETE",
-      headers: {
+    const rejectedTampered = await tamperedFixture.app.request(
+      tamperedUrl,
+      projectTrashRequest("delete:tampered-receipt", {
         "x-clash-client-type": "agent",
         "x-clash-if-match": tampered,
-      },
-    });
+      }),
+    );
     expect(rejectedTampered.status).toBe(409);
     await expect(rejectedTampered.json()).resolves.toMatchObject({
       code: "INVALID_READ_PROOF",
@@ -725,13 +1436,13 @@ describe("Project-scoped ResolvedAsset routes", () => {
       return { value: undefined };
     });
 
-    const rejectedStale = await staleFixture.app.request(staleUrl, {
-      method: "DELETE",
-      headers: {
+    const rejectedStale = await staleFixture.app.request(
+      staleUrl,
+      projectTrashRequest("delete:stale-receipt", {
         "x-clash-client-type": "agent",
         "x-clash-if-match": staleReceipt,
-      },
-    });
+      }),
+    );
     expect(rejectedStale.status).toBe(409);
     await expect(rejectedStale.json()).resolves.toMatchObject({
       code: "STALE_READ",

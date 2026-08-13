@@ -8,6 +8,7 @@ import {
   statSync,
   readFileSync,
 } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
 import { basename, extname, join, resolve } from "node:path";
 import { Command } from "commander";
 import type {
@@ -27,6 +28,7 @@ import { isJsonMode, printJson } from "../lib/output";
 import { assetMetadataCommand } from "./asset-metadata";
 import { resolveProjectStatus } from "./projects";
 import {
+  forgetAgentObservation,
   isAgentInvocation,
   publicAgentCommandResult,
   recordAgentObservation,
@@ -71,6 +73,45 @@ export interface AssetReferencesResult {
 }
 
 export type AssetRecordResult = ResolvedAsset;
+
+const projectImportIds = new WeakMap<object, string>();
+const globalImportIds = new WeakMap<object, string>();
+const globalTrashIds = new WeakMap<object, string>();
+type ProjectImportSnapshot = {
+  sourcePath: string;
+  status: Awaited<ReturnType<typeof resolveProjectStatus>>;
+  kind: AssetKind;
+  request: Parameters<ProjectAssetHostClient["importFile"]>[0];
+};
+type GlobalImportSnapshot = {
+  request: Parameters<PersonalGlobalAssetHostClient["importFile"]>[0];
+};
+// One options object is one in-process CLI command. A new object intentionally
+// creates a new Asset even when it names the same file; no cross-process or
+// content-wide deduplication is implied.
+const projectImports = new WeakMap<object, ProjectImportSnapshot>();
+const globalImports = new WeakMap<object, GlobalImportSnapshot>();
+
+function stableCliImportId(
+  command: object,
+  requested: string | undefined,
+  ids: WeakMap<object, string>,
+  prefix: "asset" | "global" | "delete",
+): string {
+  const existing = ids.get(command);
+  if (existing) return existing;
+  const normalized = requested?.trim();
+  if (requested !== undefined && !normalized) {
+    throw new Error(
+      prefix === "delete"
+        ? "delete operation id is required"
+        : `${prefix} asset id is required`,
+    );
+  }
+  const id = normalized ?? `${prefix}:${randomUUID()}`;
+  ids.set(command, id);
+  return id;
+}
 
 export function resolveAssetLinkName(
   assetId: string,
@@ -169,6 +210,7 @@ export async function linkAssetIntoProject(options: {
 
 export async function importAssetFile(options: {
   filePath: string;
+  projectAssetId?: string;
   project?: string;
   cwd?: string;
   env?: Record<string, string | undefined>;
@@ -180,44 +222,59 @@ export async function importAssetFile(options: {
   download?: (assetId: string, projectId: string) => Promise<string | null>;
   createSymlink?: (target: string, path: string) => void;
 }): Promise<AssetImportResult> {
-  const sourcePath = resolve(options.filePath);
-  const info = statSync(sourcePath);
-  if (!info.isFile())
-    throw new Error(`asset import source is not a file: ${sourcePath}`);
+  let snapshot = projectImports.get(options);
+  if (!snapshot) {
+    const sourcePath = resolve(options.filePath);
+    const info = statSync(sourcePath);
+    if (!info.isFile())
+      throw new Error(`asset import source is not a file: ${sourcePath}`);
 
-  const status = await resolveProjectStatus({
-    project: options.project,
-    cwd: options.cwd,
-    env: options.env,
-    homeDir: options.homeDir,
-  });
-  const requestedKind = normalizeAssetKind(options.kind);
-  if (options.kind !== undefined && !requestedKind) {
-    throw new Error(
-      "asset kind must be image, video, audio, or model to import through the Host",
+    const status = await resolveProjectStatus({
+      project: options.project,
+      cwd: options.cwd,
+      env: options.env,
+      homeDir: options.homeDir,
+    });
+    const requestedKind = normalizeAssetKind(options.kind);
+    if (options.kind !== undefined && !requestedKind) {
+      throw new Error(
+        "asset kind must be image, video, audio, or model to import through the Host",
+      );
+    }
+    const fileType = resolveAssetImportFileType(
+      sourcePath,
+      requestedKind ?? undefined,
     );
+    snapshot = {
+      sourcePath,
+      status,
+      kind: fileType.kind,
+      request: {
+        projectId: status.projectId,
+        bytes: new Uint8Array(readFileSync(sourcePath)),
+        fileName: basename(sourcePath),
+        contentType: fileType.contentType,
+        kind: fileType.kind,
+        projectAssetId: stableCliImportId(
+          options,
+          options.projectAssetId,
+          projectImportIds,
+          "asset",
+        ),
+      },
+    };
+    projectImports.set(options, snapshot);
   }
-  const fileType = resolveAssetImportFileType(
-    sourcePath,
-    requestedKind ?? undefined,
-  );
-  const kind = fileType.kind;
   const imported = await (
     options.client ?? createCliProjectAssetHostClient()
-  ).importFile({
-    projectId: status.projectId,
-    bytes: new Uint8Array(readFileSync(sourcePath)),
-    fileName: basename(sourcePath),
-    contentType: fileType.contentType,
-    kind,
-  });
+  ).importFile(snapshot.request);
   const assetId = imported.value.id;
 
   const result: AssetImportResult = {
-    projectId: status.projectId,
+    projectId: snapshot.status.projectId,
     assetId,
-    kind,
-    sourcePath,
+    kind: snapshot.kind,
+    sourcePath: snapshot.sourcePath,
     registered: true,
     registration: imported.value,
   };
@@ -225,17 +282,17 @@ export async function importAssetFile(options: {
   if (options.link !== false) {
     const projectionPath = await (options.download ?? downloadAssetById)(
       assetId,
-      status.projectId,
+      snapshot.status.projectId,
     );
     if (!projectionPath) {
       throw new Error(`Unable to resolve imported Project Asset ${assetId}`);
     }
-    const extension = extname(sourcePath);
+    const extension = extname(snapshot.sourcePath);
     const defaultName = `${assetId}${extension}`;
     const link = createAssetLink({
       assetId,
       sourcePath: projectionPath,
-      assetLinksRoot: status.assetLinksRoot,
+      assetLinksRoot: snapshot.status.assetLinksRoot,
       name: options.name ?? defaultName,
       createSymlink: options.createSymlink,
     });
@@ -333,9 +390,21 @@ export async function trashProjectAsset(options: {
   observedVersion?: string;
   onObservation?: ProjectAssetObservationRecorder;
 }): Promise<ResolvedAsset> {
+  // A CLI process may exit after the Host committed but before it received the
+  // response. The same implicit observation therefore derives the same logical
+  // delete operation on a later invocation; a fresh post-Restore observation
+  // derives a new operation without exposing this identity to the user.
+  const deleteOperationId = `delete:sha256:${createHash("sha256")
+    .update(options.projectId)
+    .update("\0")
+    .update(options.assetId)
+    .update("\0")
+    .update(options.observedVersion ?? "")
+    .digest("hex")}`;
   const observed = await projectAssetClient(options).trash({
     projectId: options.projectId,
     assetId: options.assetId,
+    deleteOperationId,
     ...(options.actorClientType
       ? { actorClientType: options.actorClientType }
       : {}),
@@ -377,38 +446,67 @@ export async function listPersonalGlobalAssetRecords(
 export async function fetchPersonalGlobalAssetRecord(options: {
   globalAssetId: string;
   client?: PersonalGlobalAssetHostClient;
+  onObservation?: (
+    deleteOperationId: string | undefined,
+  ) => void | Promise<void>;
 }): Promise<ResolvedAsset> {
-  return (options.client ?? createCliPersonalGlobalAssetHostClient()).get({
+  const result = await (
+    options.client ?? createCliPersonalGlobalAssetHostClient()
+  ).get({
     globalAssetId: options.globalAssetId,
   });
+  await options.onObservation?.(
+    result.lifecycle.state === "trashed"
+      ? result.lifecycle.deleteOperationId
+      : undefined,
+  );
+  return result;
 }
 
 export async function importPersonalGlobalAssetFile(options: {
   filePath: string;
+  globalAssetId?: string;
   kind?: string;
   client?: PersonalGlobalAssetHostClient;
 }): Promise<ResolvedAsset> {
-  const sourcePath = resolve(options.filePath);
-  const info = statSync(sourcePath);
-  if (!info.isFile()) {
-    throw new Error(`Global Asset import source is not a file: ${sourcePath}`);
+  let snapshot = globalImports.get(options);
+  if (!snapshot) {
+    const sourcePath = resolve(options.filePath);
+    const info = statSync(sourcePath);
+    if (!info.isFile()) {
+      throw new Error(
+        `Global Asset import source is not a file: ${sourcePath}`,
+      );
+    }
+    const requestedKind = normalizeAssetKind(options.kind);
+    if (options.kind !== undefined && !requestedKind) {
+      throw new Error(
+        "Global Asset kind must be image, video, audio, or model",
+      );
+    }
+    const fileType = resolveAssetImportFileType(
+      sourcePath,
+      requestedKind ?? undefined,
+    );
+    snapshot = {
+      request: {
+        bytes: new Uint8Array(readFileSync(sourcePath)),
+        fileName: basename(sourcePath),
+        contentType: fileType.contentType,
+        kind: fileType.kind,
+        globalAssetId: stableCliImportId(
+          options,
+          options.globalAssetId,
+          globalImportIds,
+          "global",
+        ),
+      },
+    };
+    globalImports.set(options, snapshot);
   }
-  const requestedKind = normalizeAssetKind(options.kind);
-  if (options.kind !== undefined && !requestedKind) {
-    throw new Error("Global Asset kind must be image, video, audio, or model");
-  }
-  const fileType = resolveAssetImportFileType(
-    sourcePath,
-    requestedKind ?? undefined,
-  );
   return (
     options.client ?? createCliPersonalGlobalAssetHostClient()
-  ).importFile({
-    bytes: new Uint8Array(readFileSync(sourcePath)),
-    fileName: basename(sourcePath),
-    contentType: fileType.contentType,
-    kind: fileType.kind,
-  });
+  ).importFile(snapshot.request);
 }
 
 export async function admitPersonalGlobalAsset(options: {
@@ -433,6 +531,56 @@ export async function publishProjectAssetToPersonalGlobal(options: {
     projectId: options.projectId,
     projectAssetId: options.projectAssetId,
   });
+}
+
+export async function trashPersonalGlobalAsset(options: {
+  globalAssetId: string;
+  deleteOperationId?: string;
+  client?: PersonalGlobalAssetHostClient;
+  onObservation?: (deleteOperationId: string) => void | Promise<void>;
+}): Promise<ResolvedAsset> {
+  const deleteOperationId = stableCliImportId(
+    options,
+    options.deleteOperationId,
+    globalTrashIds,
+    "delete",
+  );
+  const result = await (
+    options.client ?? createCliPersonalGlobalAssetHostClient()
+  ).trash({
+    globalAssetId: options.globalAssetId,
+    deleteOperationId,
+  });
+  if (result.lifecycle.state !== "trashed") {
+    throw new Error(`Host did not trash Global Asset ${options.globalAssetId}`);
+  }
+  await options.onObservation?.(result.lifecycle.deleteOperationId);
+  return result;
+}
+
+export async function restorePersonalGlobalAsset(options: {
+  globalAssetId: string;
+  observedDeleteOperationId?: string;
+  client?: PersonalGlobalAssetHostClient;
+  onObservation?: (deleteOperationId: string) => void | Promise<void>;
+}): Promise<ResolvedAsset> {
+  const client = options.client ?? createCliPersonalGlobalAssetHostClient();
+  let deleteOperationId = options.observedDeleteOperationId?.trim();
+  if (!deleteOperationId) {
+    const observed = await client.get({ globalAssetId: options.globalAssetId });
+    if (observed.lifecycle.state !== "trashed") {
+      throw new Error(
+        `Global Asset ${options.globalAssetId} must be trashed before restore`,
+      );
+    }
+    deleteOperationId = observed.lifecycle.deleteOperationId;
+  }
+  const result = await client.restore({
+    globalAssetId: options.globalAssetId,
+    deleteOperationId,
+  });
+  await options.onObservation?.(deleteOperationId);
+  return result;
 }
 
 export async function replaceAssetFile(options: {
@@ -519,6 +667,27 @@ function projectAssetObservation(projectId: string, assetId: string) {
     entityId: assetId,
     project: projectId,
   } as const;
+}
+
+function personalGlobalAssetObservation(globalAssetId: string) {
+  return {
+    entityKind: "global-asset",
+    entityId: globalAssetId,
+  } as const;
+}
+
+async function recordPersonalGlobalAssetObservation(
+  globalAssetId: string,
+  deleteOperationId: string | undefined,
+): Promise<void> {
+  if (deleteOperationId) {
+    await recordAgentObservation({
+      ...personalGlobalAssetObservation(globalAssetId),
+      revision: deleteOperationId,
+    });
+    return;
+  }
+  await forgetAgentObservation(personalGlobalAssetObservation(globalAssetId));
 }
 
 async function recordProjectAssetObservation(
@@ -953,6 +1122,11 @@ personalGlobalAssetsCommand
     try {
       const result = await fetchPersonalGlobalAssetRecord({
         globalAssetId: options.asset,
+        onObservation: (deleteOperationId) =>
+          recordPersonalGlobalAssetObservation(
+            options.asset,
+            deleteOperationId,
+          ),
       });
       if (isJsonMode(options)) {
         printJson(publicAssetResult(result));
@@ -981,6 +1155,68 @@ personalGlobalAssetsCommand
         printJson(publicAssetResult(result));
       } else {
         console.log(`imported Global Asset ${result.id}`);
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+personalGlobalAssetsCommand
+  .command("delete")
+  .description("Move a personal Global Asset to the recovery window")
+  .requiredOption("--asset <id>", "Global Asset ID")
+  .option("--yes", "Confirm deletion")
+  .option("--json", "Output result as JSON")
+  .action(async (options: { asset: string; yes?: boolean; json?: boolean }) => {
+    try {
+      const confirmation = requireDestructiveConfirmation(
+        options,
+        `personal:${options.asset}`,
+      );
+      if (!confirmation.ok) throw new Error(confirmation.error);
+      const result = await trashPersonalGlobalAsset({
+        globalAssetId: options.asset,
+        onObservation: (deleteOperationId) =>
+          recordPersonalGlobalAssetObservation(
+            options.asset,
+            deleteOperationId,
+          ),
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(`trashed Global Asset ${result.id}`);
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+personalGlobalAssetsCommand
+  .command("restore")
+  .description("Restore a trashed personal Global Asset")
+  .requiredOption("--asset <id>", "Global Asset ID")
+  .option("--json", "Output result as JSON")
+  .action(async (options: { asset: string; json?: boolean }) => {
+    try {
+      const observedDeleteOperationId = await requireAgentObservation(
+        personalGlobalAssetObservation(options.asset),
+      );
+      const result = await restorePersonalGlobalAsset({
+        globalAssetId: options.asset,
+        observedDeleteOperationId,
+        onObservation: (deleteOperationId) =>
+          recordPersonalGlobalAssetObservation(
+            options.asset,
+            deleteOperationId,
+          ),
+      });
+      if (isJsonMode(options)) {
+        printJson(publicAssetResult(result));
+      } else {
+        console.log(`restored Global Asset ${result.id}`);
       }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));

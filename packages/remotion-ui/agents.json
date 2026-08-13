@@ -1,0 +1,14 @@
+{
+  "summary": "Timeline editing and preview UI over Project Asset projections and Remotion components.",
+  "context_hints": [
+    "InteractiveCanvas.tsx is the only InteractiveCanvas implementation and public export.",
+    "Timeline UI may consume Host-projected URLs but must never turn storage keys into /api/assets/view routes.",
+    "Poster, waveform, and filmstrip state is frontend-derived, scoped, bounded, disposable device cache state and never synchronized Timeline facts or Durable output."
+  ],
+  "key_files": {
+    "src/components/InteractiveCanvas.tsx": "Canonical interactive composition preview.",
+    "src/components/timeline/TimelineItem.tsx": "Timeline item presentation and ephemeral editor-only caches.",
+    "src/components/timeline/waveformCache.ts": "Bounded LRU/TTL cache for device-derived Timeline waveform samples.",
+    "src/components/timeline/items/renderers/ImageRenderer.tsx": "Image Timeline renderer over projected media URLs."
+  }
+}

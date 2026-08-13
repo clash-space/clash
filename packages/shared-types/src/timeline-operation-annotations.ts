@@ -145,11 +145,7 @@ const TimelineRenderReceiptSchema = z.object({
   renderNodeId: IdentifierSchema,
   target: TimelineRenderTargetSchema,
   status: z.enum(["pending", "completed", "failed"]),
-  asset: z.object({
-    id: IdentifierSchema,
-    signedUrl: IdentifierSchema.optional(),
-    srcR2Key: IdentifierSchema.optional(),
-  }).passthrough().optional(),
+  asset: z.object({ id: IdentifierSchema }).strict().optional(),
   error: z.string().min(1).optional(),
 }).passthrough();
 

@@ -10,6 +10,7 @@ import {
   createActionAssetBinding,
   createProjectAsset,
   createProjectTimeline,
+  listActionAssetBindings,
   listActionAssetReferences,
   listProjectAssets,
   markActionAssetBindingAuthority,
@@ -25,6 +26,7 @@ import {
 
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
+import { createLocalAssetInspectionService } from "./local-asset-inspections.js";
 import {
   LocalProjectAssetMigrationError,
   createLocalProjectAssetService,
@@ -95,6 +97,159 @@ async function seedLegacyAsset(
 }
 
 describe("Local Project Asset service", () => {
+  it("publishes Host-inspected media facts into the Project authority", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const bytes = new TextEncoder().encode("video bytes inspected by the Host");
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      clashRoot,
+      inspectResource: async ({ resource }) => ({
+        contentType: resource.contentType,
+        width: 1_920,
+        height: 1_080,
+        durationMs: 2_500,
+        frameRate: 24,
+        videoCodec: "h264",
+        hasAudio: true,
+        audioCodec: "aac",
+      }),
+    });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+
+    await service.installOwned({
+      projectId: "project-inspected",
+      projectAssetId: "asset:video",
+      kind: "video",
+      bytes,
+      contentType: "video/mp4",
+      name: "clip.mp4",
+      metadata: {},
+      provenance: { kind: "import" },
+    });
+
+    await expect(
+      service.readEntry("project-inspected", "asset:video"),
+    ).resolves.toMatchObject({
+      metadata: {
+        width: 1_920,
+        height: 1_080,
+        durationMs: 2_500,
+        frameRate: 24,
+        videoCodec: "h264",
+        hasAudio: true,
+        audioCodec: "aac",
+        bytes: bytes.byteLength,
+        contentType: "video/mp4",
+        originalName: "clip.mp4",
+      },
+    });
+  });
+
+  it("does not publish a caller waveform as canonical Resource metadata", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const bytes = new TextEncoder().encode("canonical audio bytes");
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      clashRoot,
+      inspectResource: async () => ({
+        durationMs: 2_000,
+        hasAudio: true,
+        audioCodec: "aac",
+      }),
+    });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+
+    await service.installOwned({
+      projectId: "project-audio",
+      projectAssetId: "asset:audio",
+      kind: "audio",
+      bytes,
+      contentType: "audio/mp4",
+      name: "voice.m4a",
+      metadata: { waveform: [0.25, 0.75] },
+      provenance: { kind: "generation", actionRunId: "run:audio" },
+    });
+
+    const entry = await service.readEntry("project-audio", "asset:audio");
+    expect(entry?.metadata).toMatchObject({
+      durationMs: 2_000,
+      hasAudio: true,
+      audioCodec: "aac",
+      bytes: bytes.byteLength,
+      contentType: "audio/mp4",
+    });
+    expect(entry?.metadata).not.toHaveProperty("waveform");
+  });
+
+  it("prepares staged bytes with Host-inspected facts before any Project mutation", async () => {
+    const { clashRoot, dataDir } = await fixture();
+    const bytes = new TextEncoder().encode("durable staged video bytes");
+    const assetInspection = createLocalAssetInspectionService({
+      dataDir,
+      clashRoot,
+      inspectResource: async () => ({
+        width: 1_280,
+        height: 720,
+        durationMs: 1_500,
+        frameRate: 30,
+        videoCodec: "h264",
+        hasAudio: false,
+      }),
+    });
+    const service = createLocalProjectAssetService({
+      dataDir,
+      clashRoot,
+      projectionOrigin: "http://127.0.0.1:49152",
+      assetInspection,
+    });
+    const staged = await service.stageOwned({
+      kind: "video",
+      bytes,
+      contentType: "video/mp4",
+      name: "generated.mp4",
+    });
+
+    const entry = await service.prepareStagedOwnedEntry({
+      projectAssetId: "asset:durable-video",
+      kind: "video",
+      resourceId: staged.resource.id,
+      name: "generated.mp4",
+      metadata: {},
+      provenance: {
+        kind: "generation",
+        actionRunId: "run:durable-video",
+      },
+    });
+
+    expect(entry).toMatchObject({
+      id: "asset:durable-video",
+      source: { kind: "owned", resourceId: staged.resource.id },
+      metadata: {
+        width: 1_280,
+        height: 720,
+        durationMs: 1_500,
+        frameRate: 30,
+        videoCodec: "h264",
+        bytes: bytes.byteLength,
+        contentType: "video/mp4",
+        originalName: "generated.mp4",
+      },
+    });
+    await expect(
+      service.readEntry("project-durable", entry.id),
+    ).resolves.toBeNull();
+  });
+
   it("publishes one Project Asset and its immutable bindings atomically and idempotently", () => {
     const doc = new LoroDoc();
     const entry: ProjectAssetEntry = {
@@ -357,6 +512,38 @@ describe("Local Project Asset service", () => {
     ).rejects.toMatchObject({ code: "PROJECT_ASSET_NOT_FOUND" });
   });
 
+  it("reuses original image media for thumbnails and leaves video derivation to presentation clients", async () => {
+    const { service } = await fixture();
+    const image = await service.installOwned({
+      projectId: "project-preview",
+      projectAssetId: "image-preview",
+      kind: "image",
+      bytes: new TextEncoder().encode("image bytes"),
+      contentType: "image/png",
+      metadata: {},
+    });
+    const video = await service.installOwned({
+      projectId: "project-preview",
+      projectAssetId: "video-preview",
+      kind: "video",
+      bytes: new TextEncoder().encode("video bytes"),
+      contentType: "video/mp4",
+      metadata: {},
+    });
+    const audio = await service.installOwned({
+      projectId: "project-preview",
+      projectAssetId: "audio-preview",
+      kind: "audio",
+      bytes: new TextEncoder().encode("audio bytes"),
+      contentType: "audio/mpeg",
+      metadata: {},
+    });
+
+    expect(image.thumbnailUrl).toBe(image.url);
+    expect(video).not.toHaveProperty("thumbnailUrl");
+    expect(audio).not.toHaveProperty("thumbnailUrl");
+  });
+
   it("resolves a Host-private staged Resource without writing Loro", async () => {
     const { replicas, service } = await fixture();
     const bytes = new TextEncoder().encode("staged plugin output");
@@ -374,6 +561,91 @@ describe("Local Project Asset service", () => {
     expect(
       projectAssetAuthorityVersion(await replicas.recover("project-a")),
     ).toBeUndefined();
+  });
+
+  it("keeps staged bytes but publishes no Project facts when a binding identity collides", async () => {
+    const { replicas, service } = await fixture();
+    const projectId = "atomic-edit-project";
+    const source = await service.installOwned({
+      projectId,
+      projectAssetId: "source:image",
+      kind: "image",
+      bytes: new TextEncoder().encode("source image"),
+      contentType: "image/png",
+      name: "source.png",
+      metadata: {},
+    });
+    const staged = await service.stageOwned({
+      kind: "image",
+      bytes: new TextEncoder().encode("edited image"),
+      contentType: "image/png",
+      name: "edited.png",
+    });
+    const owner = {
+      kind: "run" as const,
+      actionId: "image-editor",
+      actionRevisionId: "revision-1",
+      actionRunId: "edit:run-1",
+    };
+    const outputAssetId = "edit:output-1";
+    const inputBinding: ActionAssetBinding = {
+      id: "action-asset:edit:run-1:source:input",
+      owner,
+      direction: "input",
+      slot: "source",
+      projectAssetId: source.id,
+      role: "source",
+    };
+    const outputBinding: ActionAssetBinding = {
+      id: "action-asset:edit:run-1:output",
+      owner,
+      direction: "output",
+      slot: "output",
+      projectAssetId: outputAssetId,
+      role: "primary",
+    };
+    const conflictingBinding: ActionAssetBinding = {
+      ...outputBinding,
+      slot: "already-claimed",
+      projectAssetId: source.id,
+    };
+    await service.bind(projectId, conflictingBinding);
+
+    await expect(
+      service.publishStagedOwnedWithBindings({
+        projectId,
+        projectAssetId: outputAssetId,
+        kind: "image",
+        resourceId: staged.resource.id,
+        name: "edited.png",
+        metadata: {},
+        provenance: {
+          kind: "edit",
+          actionRunId: owner.actionRunId,
+          model: "implicit:image-editor",
+        },
+        bindings: [inputBinding, outputBinding],
+      }),
+    ).rejects.toMatchObject({
+      code: "ACTION_ASSET_BINDING_ID_COLLISION",
+    });
+
+    const doc = await replicas.recover(projectId);
+    expect(readProjectAsset(doc, outputAssetId)).toBeNull();
+    expect(readActionAssetBinding(doc, inputBinding.id)).toBeNull();
+    expect(readActionAssetBinding(doc, outputBinding.id)).toEqual(
+      conflictingBinding,
+    );
+    expect(
+      listActionAssetBindings(doc).filter(
+        (binding) =>
+          binding.owner.kind === "run" &&
+          binding.owner.actionRunId === owner.actionRunId,
+      ),
+    ).toEqual([conflictingBinding]);
+    await expect(
+      service.resolveStagedOwned(staged.resource.id),
+    ).resolves.toEqual(staged);
   });
 
   it("reads the Host-private Project membership entry after materialization", async () => {
@@ -459,6 +731,7 @@ describe("Local Project Asset service", () => {
       projectId: "project-a",
       kind: "image",
       resourceId,
+      originLibraryId: "personal",
       originEntryId: "global-entry",
       name: "shared.png",
       metadata: {
@@ -482,7 +755,11 @@ describe("Local Project Asset service", () => {
       source: {
         kind: "linked",
         resourceId,
-        origin: { scope: "global", entryId: "global-entry" },
+        origin: {
+          scope: "global",
+          libraryId: "personal",
+          entryId: "global-entry",
+        },
       },
     });
 

@@ -1,10 +1,22 @@
 # Asset Workspace Product Spec
 
+Status: Historical UX proposal; not the Asset identity or lifecycle authority
+
+The Preview/Edit interaction ideas below may remain useful, but Project/Global
+Asset identity, Action references, resolution, deletion, and Local/Cloud
+boundaries are defined by
+[`apps/docs/guide/asset-system.md`](../apps/docs/guide/asset-system.md). The
+historical “project reference”, blob-ownership, and immutable-asset-lineage
+wording below must be translated to `Resource`, `ProjectAssetEntry`, and
+`ActionAssetBinding`; it does not authorize storage-shaped product APIs.
+
 ## Scope
 
 This document defines how project assets, the reusable global asset library,
 Preview/Edit, and Canvas asset interactions behave. The action semantics are
-defined separately in [Action Spec System](./action-spec-system.md).
+described historically in [Action Spec System](./action-spec-system.md); current
+execution and publication semantics come from the canonical documents linked
+above.
 
 ## Asset scopes
 
@@ -91,8 +103,9 @@ Preview supports normal video playback controls. Edit supports at least:
 - From asset Preview: run an implicit action, create a new immutable asset, and
   keep the user in the same workspace showing the result.
 
-The source asset is never overwritten. See `docs/action-spec-system.md` for the
-canonical invocation and lineage rules.
+The source asset is never overwritten. See `docs/action-spec-system.md` only
+for the historical UI-intent shape; current lineage is an
+`ActionAssetBinding` over a ProjectAsset.
 
 Validation and execution failures are inline, readable, and actionable. Do not
 use browser/native `alert()` dialogs for editor state.

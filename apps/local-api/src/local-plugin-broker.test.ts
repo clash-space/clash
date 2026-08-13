@@ -18,16 +18,29 @@ const manifest = ExecutablePluginManifestSchema.parse({
     entrypoint: "handler.mjs",
   },
   contributes: {
-    functions: [{
-      id: "run",
-      kind: "provider-executor",
-      operations: ["submit", "poll"],
-    }],
+    functions: [
+      {
+        id: "run",
+        kind: "provider-executor",
+        operations: ["submit", "poll"],
+      },
+    ],
     hostTools: ["codex.imagegen"],
   },
 });
 
-function context() {
+function context(
+  references: Array<{
+    slot: string;
+    index: number;
+    asset: {
+      assetId: string;
+      uri: string;
+      kind: "image" | "video";
+      mediaType?: string;
+    };
+  }> = [],
+) {
   return {
     manifest,
     invocation: ExecutablePluginInvocationSchema.parse({
@@ -42,11 +55,13 @@ function context() {
         schemaHash: `sha256:${"a".repeat(64)}`,
         kind: "provider-executor",
       },
-      input: { values: {}, references: [] },
-      assetInputs: [{
-        match: { kinds: ["image"], slots: ["image"] },
-        representations: ["bytes"],
-      }],
+      input: { values: {}, references },
+      assetInputs: [
+        {
+          match: { kinds: ["image"], slots: ["image"] },
+          representations: ["bytes"],
+        },
+      ],
       actor: { kind: "agent", id: "agent-1" },
     }),
     accountId: "provider-account-1",
@@ -88,15 +103,116 @@ describe("local executable plugin host dependencies", () => {
       kind: "image",
       mediaType: "image/png",
     });
-    expect(openUploadSlot).toHaveBeenCalledWith(expect.objectContaining({
-      projectId: "project-1",
-      invocationId: "invocation-1",
-      slot: "image",
-      url: "https://cdn.example.test/output.png",
-    }));
+    expect(openUploadSlot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-1",
+        invocationId: "invocation-1",
+        slot: "image",
+        url: "https://cdn.example.test/output.png",
+      }),
+    );
   });
 
-  it("resolves only project-scoped assets through the Host context", async () => {
+  it("rejects an existing Project Asset that is not frozen into this invocation", async () => {
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [],
+      readAsset: async () => ({
+        kind: "image",
+        mediaType: "image/png",
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
+    });
+
+    await expect(
+      broker(
+        {
+          protocol: "clash.plugin.broker-request/v1",
+          requestId: "guessed-asset-1",
+          invocationId: "invocation-1",
+          operation: {
+            kind: "asset.resolve",
+            reference: {
+              slot: "image",
+              index: 0,
+              asset: {
+                assetId: "asset-1",
+                uri: "clash-asset://asset-1",
+                kind: "image",
+              },
+            },
+          },
+        },
+        context(),
+      ),
+    ).rejects.toMatchObject({
+      code: "PLUGIN_REFERENCE_NOT_AUTHORIZED",
+      message:
+        "Asset reference image:0 is not authorized for the active invocation.",
+    });
+  });
+
+  it.each([
+    {
+      name: "slot",
+      requested: {
+        slot: "otherImage",
+        index: 0,
+        asset: {
+          assetId: "asset-1",
+          uri: "clash-asset://asset-1",
+          kind: "image" as const,
+        },
+      },
+    },
+    {
+      name: "kind",
+      requested: {
+        slot: "image",
+        index: 0,
+        asset: {
+          assetId: "asset-1",
+          uri: "clash-asset://asset-1",
+          kind: "video" as const,
+        },
+      },
+    },
+  ])(
+    "does not authorize a guessed Asset id with a different frozen $name",
+    async ({ requested }) => {
+      const broker = createLocalExecutablePluginBroker({
+        loadProviderAccounts: async () => [],
+        readAsset: async () => ({
+          kind: "image",
+          mediaType: "image/png",
+          bytes: new Uint8Array([1, 2, 3]),
+        }),
+      });
+
+      await expect(
+        broker(
+          {
+            protocol: "clash.plugin.broker-request/v1",
+            requestId: `guessed-${requested.slot}-${requested.asset.kind}`,
+            invocationId: "invocation-1",
+            operation: { kind: "asset.resolve", reference: requested },
+          },
+          context([
+            {
+              slot: "image",
+              index: 0,
+              asset: {
+                assetId: "asset-1",
+                uri: "clash-asset://asset-1",
+                kind: "image",
+              },
+            },
+          ]),
+        ),
+      ).rejects.toMatchObject({ code: "PLUGIN_REFERENCE_NOT_AUTHORIZED" });
+    },
+  );
+
+  it("resolves a frozen Project Asset through its matching slot and kind", async () => {
     const broker = createLocalExecutablePluginBroker({
       loadProviderAccounts: async () => [],
       readAsset: async ({ assetId, projectId }) => {
@@ -131,7 +247,17 @@ describe("local executable plugin host dependencies", () => {
             },
           },
         },
-        context(),
+        context([
+          {
+            slot: "image",
+            index: 0,
+            asset: {
+              assetId: "asset-1",
+              uri: "clash-asset://asset-1",
+              kind: "image",
+            },
+          },
+        ]),
       ),
     ).resolves.toMatchObject({
       form: "bytes",
@@ -187,6 +313,109 @@ describe("local executable plugin host dependencies", () => {
     );
   });
 
+  it("rejects a Codex ImageGen reference that is not frozen into this invocation", async () => {
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [],
+      readAsset: async () => ({
+        kind: "image",
+        mediaType: "image/png",
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
+      generateCodexImage: async () => ({
+        mediaType: "image/png",
+        bytes: new Uint8Array([137, 80, 78, 71]),
+      }),
+      writeAsset: async () => ({
+        assetId: "generated-1",
+        uri: "clash-asset://generated-1",
+        kind: "image",
+        mediaType: "image/png",
+      }),
+    });
+
+    await expect(
+      broker(
+        {
+          protocol: "clash.plugin.broker-request/v1",
+          requestId: "codex-imagegen-guessed-reference",
+          invocationId: "invocation-1",
+          operation: {
+            kind: "codex.image.generate",
+            prompt: "A paper-cut moon",
+            aspectRatio: "16:9",
+            slot: "image",
+            references: [
+              {
+                assetId: "reference-1",
+                uri: "clash-asset://reference-1",
+                kind: "image",
+                mediaType: "image/png",
+              },
+            ],
+          },
+        },
+        context(),
+      ),
+    ).rejects.toMatchObject({ code: "PLUGIN_REFERENCE_NOT_AUTHORIZED" });
+  });
+
+  it("does not authorize a Codex ImageGen reference by Asset id when its frozen kind differs", async () => {
+    const broker = createLocalExecutablePluginBroker({
+      loadProviderAccounts: async () => [],
+      readAsset: async () => ({
+        kind: "image",
+        mediaType: "image/png",
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
+      generateCodexImage: async () => ({
+        mediaType: "image/png",
+        bytes: new Uint8Array([137, 80, 78, 71]),
+      }),
+      writeAsset: async () => ({
+        assetId: "generated-1",
+        uri: "clash-asset://generated-1",
+        kind: "image",
+        mediaType: "image/png",
+      }),
+    });
+
+    await expect(
+      broker(
+        {
+          protocol: "clash.plugin.broker-request/v1",
+          requestId: "codex-imagegen-wrong-kind",
+          invocationId: "invocation-1",
+          operation: {
+            kind: "codex.image.generate",
+            prompt: "A paper-cut moon",
+            aspectRatio: "16:9",
+            slot: "image",
+            references: [
+              {
+                assetId: "reference-1",
+                uri: "clash-asset://reference-1",
+                kind: "image",
+                mediaType: "image/png",
+              },
+            ],
+          },
+        },
+        context([
+          {
+            slot: "video",
+            index: 0,
+            asset: {
+              assetId: "reference-1",
+              uri: "clash-asset://reference-1",
+              kind: "video",
+              mediaType: "video/mp4",
+            },
+          },
+        ]),
+      ),
+    ).rejects.toMatchObject({ code: "PLUGIN_REFERENCE_NOT_AUTHORIZED" });
+  });
+
   it("runs Codex ImageGen and persists the result as a project asset", async () => {
     const generateCodexImage = vi.fn(async () => ({
       mediaType: "image/png",
@@ -220,15 +449,28 @@ describe("local executable plugin host dependencies", () => {
             prompt: "A paper-cut moon",
             aspectRatio: "16:9",
             slot: "image",
-            references: [{
+            references: [
+              {
+                assetId: "reference-1",
+                uri: "clash-asset://reference-1",
+                kind: "image",
+                mediaType: "image/png",
+              },
+            ],
+          },
+        },
+        context([
+          {
+            slot: "sourceImage",
+            index: 0,
+            asset: {
               assetId: "reference-1",
               uri: "clash-asset://reference-1",
               kind: "image",
               mediaType: "image/png",
-            }],
+            },
           },
-        },
-        context(),
+        ]),
       ),
     ).resolves.toEqual({
       assetId: "generated-1",
@@ -239,16 +481,18 @@ describe("local executable plugin host dependencies", () => {
     expect(generateCodexImage).toHaveBeenCalledWith({
       prompt: "A paper-cut moon",
       aspectRatio: "16:9",
-      references: [{
-        asset: {
-          assetId: "reference-1",
-          uri: "clash-asset://reference-1",
-          kind: "image",
+      references: [
+        {
+          asset: {
+            assetId: "reference-1",
+            uri: "clash-asset://reference-1",
+            kind: "image",
+            mediaType: "image/png",
+          },
           mediaType: "image/png",
+          bytes: new Uint8Array([1, 2, 3]),
         },
-        mediaType: "image/png",
-        bytes: new Uint8Array([1, 2, 3]),
-      }],
+      ],
     });
     expect(writeAsset).toHaveBeenCalledWith(
       expect.objectContaining({

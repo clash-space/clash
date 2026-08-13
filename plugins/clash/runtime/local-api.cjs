@@ -17138,7 +17138,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes5, createHash: createHash21 } = require("crypto");
+    var { randomBytes: randomBytes5, createHash: createHash22 } = require("crypto");
     var { Duplex, Readable: Readable9 } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -17806,7 +17806,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest3 = createHash21("sha1").update(key + GUID).digest("base64");
+        const digest3 = createHash22("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest3) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -18175,7 +18175,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash: createHash21 } = require("crypto");
+    var { createHash: createHash22 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -18482,7 +18482,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest3 = createHash21("sha1").update(key + GUID).digest("base64");
+        const digest3 = createHash22("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -22051,10 +22051,10 @@ var init_hex_encoding = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/serde/util-body-length/calculateBodyLength.js
-var import_node_fs7, calculateBodyLength;
+var import_node_fs8, calculateBodyLength;
 var init_calculateBodyLength = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/serde/util-body-length/calculateBodyLength.js"() {
-    import_node_fs7 = require("node:fs");
+    import_node_fs8 = require("node:fs");
     calculateBodyLength = (body) => {
       if (!body) {
         return 0;
@@ -22067,11 +22067,11 @@ var init_calculateBodyLength = __esm({
         return body.size;
       } else if (typeof body.start === "number" && typeof body.end === "number") {
         return body.end + 1 - body.start;
-      } else if (body instanceof import_node_fs7.ReadStream) {
+      } else if (body instanceof import_node_fs8.ReadStream) {
         if (body.path != null) {
-          return (0, import_node_fs7.lstatSync)(body.path).size;
+          return (0, import_node_fs8.lstatSync)(body.path).size;
         } else if (typeof body.fd === "number") {
-          return (0, import_node_fs7.fstatSync)(body.fd).size;
+          return (0, import_node_fs8.fstatSync)(body.fd).size;
         }
       }
       throw new Error(`Body Length computation failed for ${body}`);
@@ -22370,11 +22370,11 @@ var init_types = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getHomeDir.js
-var import_node_os8, import_node_path24, homeDirCache, getHomeDirCacheKey, getHomeDir;
+var import_node_os8, import_node_path25, homeDirCache, getHomeDirCacheKey, getHomeDir;
 var init_getHomeDir = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getHomeDir.js"() {
     import_node_os8 = require("node:os");
-    import_node_path24 = require("node:path");
+    import_node_path25 = require("node:path");
     homeDirCache = {};
     getHomeDirCacheKey = () => {
       if (process && process.geteuid) {
@@ -22383,7 +22383,7 @@ var init_getHomeDir = __esm({
       return "DEFAULT";
     };
     getHomeDir = () => {
-      const { HOME, USERPROFILE, HOMEPATH, HOMEDRIVE = `C:${import_node_path24.sep}` } = process.env;
+      const { HOME, USERPROFILE, HOMEPATH, HOMEDRIVE = `C:${import_node_path25.sep}` } = process.env;
       if (HOME)
         return HOME;
       if (USERPROFILE)
@@ -22409,25 +22409,25 @@ var init_getProfileName = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFilepath.js
-var import_node_crypto18, import_node_path25, getSSOTokenFilepath;
+var import_node_crypto18, import_node_path26, getSSOTokenFilepath;
 var init_getSSOTokenFilepath = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFilepath.js"() {
     import_node_crypto18 = require("node:crypto");
-    import_node_path25 = require("node:path");
+    import_node_path26 = require("node:path");
     init_getHomeDir();
     getSSOTokenFilepath = (id2) => {
       const hasher = (0, import_node_crypto18.createHash)("sha1");
       const cacheName = hasher.update(id2).digest("hex");
-      return (0, import_node_path25.join)(getHomeDir(), ".aws", "sso", "cache", `${cacheName}.json`);
+      return (0, import_node_path26.join)(getHomeDir(), ".aws", "sso", "cache", `${cacheName}.json`);
     };
   }
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFromFile.js
-var import_promises20, tokenIntercept, getSSOTokenFromFile;
+var import_promises21, tokenIntercept, getSSOTokenFromFile;
 var init_getSSOTokenFromFile = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getSSOTokenFromFile.js"() {
-    import_promises20 = require("node:fs/promises");
+    import_promises21 = require("node:fs/promises");
     init_getSSOTokenFilepath();
     tokenIntercept = {};
     getSSOTokenFromFile = async (id2) => {
@@ -22435,7 +22435,7 @@ var init_getSSOTokenFromFile = __esm({
         return tokenIntercept[id2];
       }
       const ssoTokenFilepath = getSSOTokenFilepath(id2);
-      const ssoTokenText = await (0, import_promises20.readFile)(ssoTokenFilepath, "utf8");
+      const ssoTokenText = await (0, import_promises21.readFile)(ssoTokenFilepath, "utf8");
       return JSON.parse(ssoTokenText);
     };
   }
@@ -22473,24 +22473,24 @@ var init_getConfigData = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getConfigFilepath.js
-var import_node_path26, ENV_CONFIG_PATH, getConfigFilepath;
+var import_node_path27, ENV_CONFIG_PATH, getConfigFilepath;
 var init_getConfigFilepath = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getConfigFilepath.js"() {
-    import_node_path26 = require("node:path");
+    import_node_path27 = require("node:path");
     init_getHomeDir();
     ENV_CONFIG_PATH = "AWS_CONFIG_FILE";
-    getConfigFilepath = () => process.env[ENV_CONFIG_PATH] || (0, import_node_path26.join)(getHomeDir(), ".aws", "config");
+    getConfigFilepath = () => process.env[ENV_CONFIG_PATH] || (0, import_node_path27.join)(getHomeDir(), ".aws", "config");
   }
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getCredentialsFilepath.js
-var import_node_path27, ENV_CREDENTIALS_PATH, getCredentialsFilepath;
+var import_node_path28, ENV_CREDENTIALS_PATH, getCredentialsFilepath;
 var init_getCredentialsFilepath = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/getCredentialsFilepath.js"() {
-    import_node_path27 = require("node:path");
+    import_node_path28 = require("node:path");
     init_getHomeDir();
     ENV_CREDENTIALS_PATH = "AWS_SHARED_CREDENTIALS_FILE";
-    getCredentialsFilepath = () => process.env[ENV_CREDENTIALS_PATH] || (0, import_node_path27.join)(getHomeDir(), ".aws", "credentials");
+    getCredentialsFilepath = () => process.env[ENV_CREDENTIALS_PATH] || (0, import_node_path28.join)(getHomeDir(), ".aws", "credentials");
   }
 });
 
@@ -22551,18 +22551,18 @@ var init_parseIni = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/readFile.js
-var import_promises21, filePromises, fileIntercept, readFile13;
+var import_promises22, filePromises, fileIntercept, readFile14;
 var init_readFile = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/readFile.js"() {
-    import_promises21 = require("node:fs/promises");
+    import_promises22 = require("node:fs/promises");
     filePromises = {};
     fileIntercept = {};
-    readFile13 = (path, options) => {
+    readFile14 = (path, options) => {
       if (fileIntercept[path] !== void 0) {
         return fileIntercept[path];
       }
       if (!filePromises[path] || options?.ignoreCache) {
-        filePromises[path] = (0, import_promises21.readFile)(path, "utf8");
+        filePromises[path] = (0, import_promises22.readFile)(path, "utf8");
       }
       return filePromises[path];
     };
@@ -22570,10 +22570,10 @@ var init_readFile = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/loadSharedConfigFiles.js
-var import_node_path28, swallowError, loadSharedConfigFiles;
+var import_node_path29, swallowError, loadSharedConfigFiles;
 var init_loadSharedConfigFiles = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/shared-ini-file-loader/loadSharedConfigFiles.js"() {
-    import_node_path28 = require("node:path");
+    import_node_path29 = require("node:path");
     init_getConfigData();
     init_getConfigFilepath();
     init_getCredentialsFilepath();
@@ -22588,17 +22588,17 @@ var init_loadSharedConfigFiles = __esm({
       const relativeHomeDirPrefix = "~/";
       let resolvedFilepath = filepath;
       if (filepath.startsWith(relativeHomeDirPrefix)) {
-        resolvedFilepath = (0, import_node_path28.join)(homeDir, filepath.slice(2));
+        resolvedFilepath = (0, import_node_path29.join)(homeDir, filepath.slice(2));
       }
       let resolvedConfigFilepath = configFilepath;
       if (configFilepath.startsWith(relativeHomeDirPrefix)) {
-        resolvedConfigFilepath = (0, import_node_path28.join)(homeDir, configFilepath.slice(2));
+        resolvedConfigFilepath = (0, import_node_path29.join)(homeDir, configFilepath.slice(2));
       }
       const parsedFiles = await Promise.all([
-        readFile13(resolvedConfigFilepath, {
+        readFile14(resolvedConfigFilepath, {
           ignoreCache: init.ignoreCache
         }).then(parseIni).then(getConfigData).catch(swallowError),
-        readFile13(resolvedFilepath, {
+        readFile14(resolvedFilepath, {
           ignoreCache: init.ignoreCache
         }).then(parseIni).catch(swallowError)
       ]);
@@ -22629,7 +22629,7 @@ var init_loadSsoSessionData = __esm({
     init_parseIni();
     init_readFile();
     swallowError2 = () => ({});
-    loadSsoSessionData = async (init = {}) => readFile13(init.configFilepath ?? getConfigFilepath()).then(parseIni).then(getSsoSessionData).catch(swallowError2);
+    loadSsoSessionData = async (init = {}) => readFile14(init.configFilepath ?? getConfigFilepath()).then(parseIni).then(getSsoSessionData).catch(swallowError2);
   }
 });
 
@@ -22692,11 +22692,11 @@ var init_externalDataInterceptor = __esm({
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/config/node-config-provider/getSelectorName.js
 function getSelectorName(functionString) {
   try {
-    const constants2 = new Set(Array.from(functionString.match(/([A-Z_]){3,}/g) ?? []));
-    constants2.delete("CONFIG");
-    constants2.delete("CONFIG_PREFIX_SEPARATOR");
-    constants2.delete("ENV");
-    return [...constants2].join(", ");
+    const constants3 = new Set(Array.from(functionString.match(/([A-Z_]){3,}/g) ?? []));
+    constants3.delete("CONFIG");
+    constants3.delete("CONFIG_PREFIX_SEPARATOR");
+    constants3.delete("ENV");
+    return [...constants3].join(", ");
   } catch (ignored) {
     return functionString;
   }
@@ -23274,7 +23274,7 @@ __export(config_exports, {
   nodeFipsConfigSelectors: () => nodeFipsConfigSelectors,
   numberSelector: () => numberSelector,
   parseKnownFiles: () => parseKnownFiles,
-  readFile: () => readFile13,
+  readFile: () => readFile14,
   resolveCustomEndpointsConfig: () => resolveCustomEndpointsConfig,
   resolveDefaultsModeConfig: () => resolveDefaultsModeConfig,
   resolveEndpointsConfig: () => resolveEndpointsConfig,
@@ -25696,17 +25696,17 @@ var init_HashCalculator = __esm({
 });
 
 // ../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/checksum/hash-stream-node/fileStreamHasher.js
-var import_node_fs8, fileStreamHasher, isReadStream;
+var import_node_fs9, fileStreamHasher, isReadStream;
 var init_fileStreamHasher = __esm({
   "../../node_modules/.pnpm/@smithy+core@3.32.0/node_modules/@smithy/core/dist-es/submodules/checksum/hash-stream-node/fileStreamHasher.js"() {
-    import_node_fs8 = require("node:fs");
+    import_node_fs9 = require("node:fs");
     init_HashCalculator();
     fileStreamHasher = (hashCtor, fileStream) => new Promise((resolve18, reject) => {
       if (!isReadStream(fileStream)) {
         reject(new Error("Unable to calculate hash for non-file streams."));
         return;
       }
-      const fileStreamTee = (0, import_node_fs8.createReadStream)(fileStream.path, {
+      const fileStreamTee = (0, import_node_fs9.createReadStream)(fileStream.path, {
         start: fileStream.start,
         end: fileStream.end
       });
@@ -34751,18 +34751,18 @@ var init_JsonShapeDeserializer2 = __esm({
         }
         return value;
       }
-      _readStruct(ns, record2) {
+      _readStruct(ns, record3) {
         const union2 = ns.isUnionSchema();
         const out = {};
         let nameMap;
-        const hasType = typeof record2.__type === "string";
+        const hasType = typeof record3.__type === "string";
         const { jsonName } = this.settings;
         if (jsonName && hasType) {
           nameMap = {};
         }
         let unionSerde;
         if (union2) {
-          unionSerde = new UnionSerde(record2, out);
+          unionSerde = new UnionSerde(record3, out);
         }
         for (const [memberName, memberSchema] of ns.structIterator()) {
           let fromKey = memberName;
@@ -34775,15 +34775,15 @@ var init_JsonShapeDeserializer2 = __esm({
           if (union2) {
             unionSerde.mark(fromKey);
           }
-          if (record2[fromKey] != null) {
-            out[memberName] = this._read(memberSchema, record2[fromKey]);
+          if (record3[fromKey] != null) {
+            out[memberName] = this._read(memberSchema, record3[fromKey]);
           }
         }
         if (union2) {
           unionSerde.writeUnknown();
         } else if (hasType) {
-          for (const k5 in record2) {
-            const v = record2[k5];
+          for (const k5 in record3) {
+            const v = record3[k5];
             const t = jsonName ? nameMap[k5] ?? k5 : k5;
             if (!(t in out)) {
               out[t] = v;
@@ -38921,7 +38921,7 @@ or increase socketAcquisitionWarningTimeout=(millis) in the NodeHttpHandler conf
         return this.connectOptions === void 0 ? http2.connect(url2) : http2.connect(url2, this.connectOptions);
       }
     };
-    var { constants: constants2 } = http2;
+    var { constants: constants3 } = http2;
     var NodeHttp2Handler = class _NodeHttp2Handler {
       config;
       configProvider;
@@ -39011,8 +39011,8 @@ or increase socketAcquisitionWarningTimeout=(millis) in the NodeHttpHandler conf
           }
           const clientHttp2Stream = session.request({
             ...request.headers,
-            [constants2.HTTP2_HEADER_PATH]: path,
-            [constants2.HTTP2_HEADER_METHOD]: method
+            [constants3.HTTP2_HEADER_PATH]: path,
+            [constants3.HTTP2_HEADER_METHOD]: method
           });
           if (effectiveRequestTimeout) {
             clientHttp2Stream.setTimeout(effectiveRequestTimeout, () => {
@@ -40344,11 +40344,11 @@ var require_dist_cjs9 = __commonJS({
         throw new TokenProviderError2(`Value not present for '${key}' in SSO Token${forRefresh ? ". Cannot refresh" : ""}. ${REFRESH_MESSAGE}`, false);
       }
     };
-    var { writeFile: writeFile16 } = promises;
+    var { writeFile: writeFile15 } = promises;
     var writeSSOTokenToFile = (id2, ssoToken) => {
       const tokenFilepath = getSSOTokenFilepath2(id2);
       const tokenString = JSON.stringify(ssoToken, null, 2);
-      return writeFile16(tokenFilepath, tokenString);
+      return writeFile15(tokenFilepath, tokenString);
     };
     var lastRefreshAttemptTime = /* @__PURE__ */ new Date(0);
     var fromSso = (init = {}) => async ({ callerClientConfig } = {}) => {
@@ -43441,10 +43441,10 @@ var require_dist_cjs11 = __commonJS({
     var { setCredentialFeature: setCredentialFeature2 } = (init_client3(), __toCommonJS(client_exports2));
     var { CredentialsProviderError: CredentialsProviderError2, parseKnownFiles: parseKnownFiles2, getProfileName: getProfileName2 } = (init_config2(), __toCommonJS(config_exports));
     var { HttpRequest: HttpRequest2 } = (init_protocols(), __toCommonJS(protocols_exports));
-    var { createHash: createHash21, createPrivateKey, createPublicKey, sign: sign3 } = require("node:crypto");
+    var { createHash: createHash22, createPrivateKey, createPublicKey, sign: sign3 } = require("node:crypto");
     var { promises } = require("node:fs");
     var { homedir: homedir6 } = require("node:os");
-    var { dirname: dirname16, join: join43 } = require("node:path");
+    var { dirname: dirname17, join: join45 } = require("node:path");
     var LoginCredentialsFetcher = class _LoginCredentialsFetcher {
       profileData;
       init;
@@ -43600,7 +43600,7 @@ var require_dist_cjs11 = __commonJS({
       }
       async saveToken(token) {
         const tokenFilePath = this.getTokenFilePath();
-        const directory = dirname16(tokenFilePath);
+        const directory = dirname17(tokenFilePath);
         try {
           await promises.mkdir(directory, { recursive: true });
         } catch (error53) {
@@ -43608,10 +43608,10 @@ var require_dist_cjs11 = __commonJS({
         await promises.writeFile(tokenFilePath, JSON.stringify(token, null, 2), "utf8");
       }
       getTokenFilePath() {
-        const directory = process.env.AWS_LOGIN_CACHE_DIRECTORY ?? join43(homedir6(), ".aws", "login", "cache");
+        const directory = process.env.AWS_LOGIN_CACHE_DIRECTORY ?? join45(homedir6(), ".aws", "login", "cache");
         const loginSessionBytes = Buffer.from(this.loginSession, "utf8");
-        const loginSessionSha256 = createHash21("sha256").update(loginSessionBytes).digest("hex");
-        return join43(directory, `${loginSessionSha256}.json`);
+        const loginSessionSha256 = createHash22("sha256").update(loginSessionBytes).digest("hex");
+        return join45(directory, `${loginSessionSha256}.json`);
       }
       derToRawSignature(derSignature) {
         let offset = 2;
@@ -43725,7 +43725,7 @@ var require_dist_cjs12 = __commonJS({
   "../../node_modules/.pnpm/@aws-sdk+credential-provider-process@3.972.68/node_modules/@aws-sdk/credential-provider-process/dist-cjs/index.js"(exports2) {
     var { externalDataInterceptor: externalDataInterceptor2, CredentialsProviderError: CredentialsProviderError2, parseKnownFiles: parseKnownFiles2, getProfileName: getProfileName2 } = (init_config2(), __toCommonJS(config_exports));
     var { exec } = require("node:child_process");
-    var { promisify: promisify6 } = require("node:util");
+    var { promisify: promisify7 } = require("node:util");
     var { setCredentialFeature: setCredentialFeature2 } = (init_client3(), __toCommonJS(client_exports2));
     var getValidatedProcessCredentials = (profileName, data, profiles) => {
       if (data.Version !== 1) {
@@ -43761,7 +43761,7 @@ var require_dist_cjs12 = __commonJS({
       if (profiles[profileName]) {
         const credentialProcess = profile["credential_process"];
         if (credentialProcess !== void 0) {
-          const execPromise = promisify6(externalDataInterceptor2?.getTokenRecord?.().exec ?? exec);
+          const execPromise = promisify7(externalDataInterceptor2?.getTokenRecord?.().exec ?? exec);
           try {
             const { stdout } = await execPromise(credentialProcess);
             let data;
@@ -54374,15 +54374,15 @@ var require_dist_cjs17 = __commonJS({
 // src/local-api-entry.ts
 var import_node_fs18 = require("node:fs");
 var import_node_url6 = require("node:url");
-var import_node_path46 = require("node:path");
+var import_node_path48 = require("node:path");
 
 // ../../apps/local-api/dist/server.js
-var import_node_module11 = require("node:module");
-var import_node_crypto34 = require("node:crypto");
-var import_node_path44 = require("node:path");
+var import_node_module14 = require("node:module");
+var import_node_crypto35 = require("node:crypto");
+var import_node_path46 = require("node:path");
 var import_node_url5 = require("node:url");
 var import_node_fs17 = require("node:fs");
-var import_promises38 = require("node:fs/promises");
+var import_promises40 = require("node:fs/promises");
 
 // ../../node_modules/.pnpm/@hono+node-server@1.19.14_hono@4.12.27/node_modules/@hono/node-server/dist/index.mjs
 var import_http = require("http");
@@ -59093,7 +59093,7 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-4F43M35N.js
+// ../../packages/shared-types/dist/chunk-CGTXLVQX.js
 function agentReadToken(options) {
   const namespace = normalizeTokenPart(options.namespace, "namespace");
   const version2 = normalizeTokenPart(options.version ?? "v1", "version");
@@ -59179,31 +59179,31 @@ function providerAccountsReadToken(accounts) {
     subject: { providers }
   });
 }
-function providerOAuthReadToken(record2) {
+function providerOAuthReadToken(record3) {
   return agentReadToken({
     namespace: "provider-oauth",
     subject: {
-      providerId: normalizeProjectText(record2.providerId ?? record2.provider_id),
-      accountId: normalizeProjectText(record2.accountId ?? record2.account_id),
-      status: normalizeProjectText(record2.status),
+      providerId: normalizeProjectText(record3.providerId ?? record3.provider_id),
+      accountId: normalizeProjectText(record3.accountId ?? record3.account_id),
+      status: normalizeProjectText(record3.status),
       verificationUri: normalizeProjectText(
-        record2.verificationUri ?? record2.verification_uri
+        record3.verificationUri ?? record3.verification_uri
       ),
-      userCode: normalizeProjectText(record2.userCode ?? record2.user_code),
-      deviceCode: normalizeProjectText(record2.deviceCode ?? record2.device_code),
+      userCode: normalizeProjectText(record3.userCode ?? record3.user_code),
+      deviceCode: normalizeProjectText(record3.deviceCode ?? record3.device_code),
       intervalSeconds: normalizeFiniteNumber(
-        record2.intervalSeconds ?? record2.interval_seconds
+        record3.intervalSeconds ?? record3.interval_seconds
       ),
       accountLabel: normalizeProjectText(
-        record2.accountLabel ?? record2.account_label
+        record3.accountLabel ?? record3.account_label
       ),
       expiresAt: normalizeProjectTimestamp(
-        record2.expiresAt ?? record2.expires_at
+        record3.expiresAt ?? record3.expires_at
       ),
-      error: normalizeProjectText(record2.error),
-      hasAccessToken: typeof (record2.hasAccessToken ?? record2.has_access_token) === "boolean" ? record2.hasAccessToken ?? record2.has_access_token : null,
+      error: normalizeProjectText(record3.error),
+      hasAccessToken: typeof (record3.hasAccessToken ?? record3.has_access_token) === "boolean" ? record3.hasAccessToken ?? record3.has_access_token : null,
       updatedAt: normalizeProjectTimestamp(
-        record2.updatedAt ?? record2.updated_at
+        record3.updatedAt ?? record3.updated_at
       )
     }
   });
@@ -59364,9 +59364,9 @@ function stableJson(value) {
   if (Array.isArray(value))
     return `[${value.map((item) => stableJson(item ?? null)).join(",")}]`;
   if (typeof value === "object") {
-    const record2 = value;
-    const keys = Object.keys(record2).filter((key) => record2[key] !== void 0).sort();
-    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(record2[key])}`).join(",")}}`;
+    const record3 = value;
+    const keys = Object.keys(record3).filter((key) => record3[key] !== void 0).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(record3[key])}`).join(",")}}`;
   }
   return "null";
 }
@@ -59397,19 +59397,40 @@ var ProjectAssetMetadataSchema = z.object({
   height: z.number().int().nonnegative().optional(),
   durationMs: z.number().int().nonnegative().optional(),
   bytes: z.number().int().nonnegative().optional(),
+  /** @deprecated Legacy read/migration field. New Asset publication strips waveform samples. */
   waveform: z.array(z.number()).optional(),
   contentType: z.string().trim().min(1).optional(),
   frameRate: z.number().positive().optional(),
   videoCodec: z.string().trim().min(1).optional(),
+  /** Byte-probed stream presence. `false` is a known silent video, not unknown. */
+  hasAudio: z.boolean().optional(),
   audioCodec: z.string().trim().min(1).optional(),
   originalName: z.string().trim().min(1).optional()
 }).strict();
+var ProjectAssetPublicationMetadataSchema = ProjectAssetMetadataSchema.omit({ waveform: true });
 var ProjectAssetProvenanceSchema = z.object({
   kind: z.enum(["import", "generation", "edit", "render", "admission"]),
   actionRunId: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1).optional(),
   prompt: z.string().optional()
 }).strict();
+var ProjectAssetLinkedOriginSchema = z.discriminatedUnion("scope", [
+  z.object({
+    scope: z.literal("global"),
+    libraryId: z.string().trim().min(1),
+    entryId: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    scope: z.literal("project"),
+    projectId: z.string().trim().min(1),
+    entryId: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    scope: z.literal("catalog"),
+    catalogId: z.string().trim().min(1),
+    entryId: z.string().trim().min(1)
+  }).strict()
+]);
 var ProjectAssetSourceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("owned"),
@@ -59418,10 +59439,7 @@ var ProjectAssetSourceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("linked"),
     resourceId: ResourceIdSchema,
-    origin: z.object({
-      scope: z.enum(["global", "catalog", "project"]),
-      entryId: z.string().trim().min(1)
-    }).strict()
+    origin: ProjectAssetLinkedOriginSchema
   }).strict()
 ]);
 var ProjectAssetLifecycleSchema = z.discriminatedUnion("state", [
@@ -59490,7 +59508,13 @@ var ResolvedAssetSchema = z.object({
   provenance: ProjectAssetProvenanceSchema.optional(),
   /** Synchronized logical lifecycle; independent from current-Host byte availability. */
   lifecycle: ProjectAssetLifecycleSchema,
-  status: z.enum(["uploading", "ready", "downloading", "unavailable", "failed"]),
+  status: z.enum([
+    "uploading",
+    "ready",
+    "downloading",
+    "unavailable",
+    "failed"
+  ]),
   url: z.string().url().optional(),
   thumbnailUrl: z.string().url().optional(),
   progress: z.number().min(0).max(1).optional(),
@@ -59501,10 +59525,12 @@ var AssetMetadataSchema = z.object({
   height: z.number().int().optional(),
   durationMs: z.number().int().optional(),
   bytes: z.number().int().optional(),
+  /** @deprecated Historical row payload; never emit from new publication. */
   waveform: z.array(z.number()).optional(),
   contentType: z.string().optional(),
   frameRate: z.number().positive().optional(),
   videoCodec: z.string().optional(),
+  hasAudio: z.boolean().optional(),
   audioCodec: z.string().optional(),
   contentHash: z.string().optional(),
   localBlobKey: z.string().optional(),
@@ -59550,7 +59576,7 @@ var AssetRefRowSchema = z.object({
   importedAt: z.number()
 });
 
-// ../../packages/shared-types/dist/chunk-QTM5MBKX.js
+// ../../packages/shared-types/dist/chunk-Y7VKLK6W.js
 var NONE = { network: false, store: false, assets: false, hostTools: [] };
 var BY_KIND = {
   // Talks to a vendor: needs the socket, the credential, and somewhere to put what comes back.
@@ -67462,7 +67488,7 @@ function parseObjectDef(def, refs) {
     type: "object",
     properties: {}
   };
-  const required3 = [];
+  const required4 = [];
   const shape = def.shape();
   for (const propName in shape) {
     let propDef = shape[propName];
@@ -67489,11 +67515,11 @@ function parseObjectDef(def, refs) {
     }
     result.properties[propName] = parsedDef;
     if (!propOptional) {
-      required3.push(propName);
+      required4.push(propName);
     }
   }
-  if (required3.length) {
-    result.required = required3;
+  if (required4.length) {
+    result.required = required4;
   }
   const additionalProperties = decideAdditionalProperties(def, refs);
   if (additionalProperties !== void 0) {
@@ -67828,7 +67854,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-22GF7SDG.js
+// ../../packages/shared-types/dist/chunk-F5H437YY.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -68181,8 +68207,8 @@ function timelineDslAnnotatedObjectShape(fields, options = {}) {
   return Object.fromEntries(
     Object.entries(fields).map(([name, annotation2]) => {
       const executable = options.overrides?.[name] ?? annotation2.schema.describe(annotation2.description);
-      const required3 = requiredness === "runtime" ? annotation2.required : requiredness === "authored" ? annotation2.authoredRequired : false;
-      return [name, required3 ? executable : executable.optional()];
+      const required4 = requiredness === "runtime" ? annotation2.required : requiredness === "authored" ? annotation2.authoredRequired : false;
+      return [name, required4 ? executable : executable.optional()];
     })
   );
 }
@@ -68694,10 +68720,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     entranceAnimation: authored(TimelineClipAnimationSchema, "Seek-safe visual entrance animation.", {
       required: false,
@@ -68786,10 +68813,11 @@ var itemTypeFields = {
       runtimeConsumers: ["preview", "render", "migration"],
       deprecated: "Use audioGainDb for new writes."
     }),
-    waveform: derived(z.array(FiniteNumberSchema), "Cached normalized waveform peaks.", {
+    waveform: derived(z.array(FiniteNumberSchema), "Legacy inline waveform peaks; browsers regenerate this disposable presentation cache.", {
       required: false,
       editor: noControl,
-      runtimeConsumers: ["editor"]
+      runtimeConsumers: ["editor"],
+      persistence: "discard"
     }),
     audioFadeInFrames: authored(NonnegativeFrameSchema, "Canonical audio fade-in duration in frames.", {
       required: false,
@@ -69064,11 +69092,7 @@ var TimelineRenderReceiptSchema = z.object({
   renderNodeId: IdentifierSchema,
   target: TimelineRenderTargetSchema,
   status: z.enum(["pending", "completed", "failed"]),
-  asset: z.object({
-    id: IdentifierSchema,
-    signedUrl: IdentifierSchema.optional(),
-    srcR2Key: IdentifierSchema.optional()
-  }).passthrough().optional(),
+  asset: z.object({ id: IdentifierSchema }).strict().optional(),
   error: z.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z.object({
@@ -70805,7 +70829,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 9,
+  schemaVersion: 11,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -71335,6 +71359,25 @@ var AgentAnnotationPromptPayloadSchema = z.object({
   kind: z.literal("clash-agent-annotations"),
   annotations: z.array(AgentAnnotationDraftSchema).min(1)
 });
+var ScopedIdSchema = z.string().trim().min(1);
+var ProjectAssetMetadataTargetSchema = z.object({
+  kind: z.literal("project-asset"),
+  projectId: ScopedIdSchema,
+  assetId: ScopedIdSchema
+}).strict();
+var ActionRevisionMetadataTargetSchema = z.object({
+  kind: z.literal("action-revision"),
+  projectId: ScopedIdSchema,
+  actionId: ScopedIdSchema,
+  actionRevisionId: ScopedIdSchema
+}).strict();
+var MetadataAttachmentTargetSchema = z.discriminatedUnion("kind", [
+  ProjectAssetMetadataTargetSchema,
+  ActionRevisionMetadataTargetSchema
+]);
+function metadataAttachmentTargetKey(value) {
+  return JSON.stringify(MetadataAttachmentTargetSchema.parse(value));
+}
 var FrameRangeSchema = z.object({
   startFrame: z.number().int().min(0),
   endFrame: z.number().int().min(0)
@@ -71390,7 +71433,13 @@ var AudioBeatMetadataSchema = z.object({
   sections: z.array(AudioSectionSchema).default([]),
   energyCurve: z.array(AudioEnergyPointSchema).default([])
 });
-var AudioStemTypeSchema = z.enum(["vocal", "instrumental", "drums", "bass", "other"]);
+var AudioStemTypeSchema = z.enum([
+  "vocal",
+  "instrumental",
+  "drums",
+  "bass",
+  "other"
+]);
 var AudioStemAssetSchema = z.object({
   stemAssetId: z.string().min(1),
   stemType: AudioStemTypeSchema,
@@ -71566,17 +71615,19 @@ var TalkingHeadMetadataSchema = z.object({
   words: z.array(TranscriptWordSchema),
   cuts: z.array(TextCutSchema).default([]),
   captionCues: z.array(CaptionCueSchema).default([]),
-  disfluencies: z.array(z.object({
-    id: z.string().optional(),
-    wordId: z.string().optional(),
-    startFrame: z.number().int().min(0).optional(),
-    endFrame: z.number().int().min(0).optional(),
-    text: z.string().optional(),
-    type: z.enum(["filler", "silence", "tone-particle", "repeat"]),
-    requiresReview: z.boolean().default(false),
-    confidence: z.number().min(0).max(1).optional(),
-    detectionSource: z.string().min(1).optional()
-  })).default([])
+  disfluencies: z.array(
+    z.object({
+      id: z.string().optional(),
+      wordId: z.string().optional(),
+      startFrame: z.number().int().min(0).optional(),
+      endFrame: z.number().int().min(0).optional(),
+      text: z.string().optional(),
+      type: z.enum(["filler", "silence", "tone-particle", "repeat"]),
+      requiresReview: z.boolean().default(false),
+      confidence: z.number().min(0).max(1).optional(),
+      detectionSource: z.string().min(1).optional()
+    })
+  ).default([])
 });
 var RightsMetadataSchema = z.object({
   license: z.string().min(1),
@@ -71676,26 +71727,32 @@ var CharacterReferenceViewSchema = z.object({
 });
 var ImageStoryboardMetadataSchema = z.object({
   kind: z.literal("image.storyboard-consistency"),
-  characters: z.array(z.object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    referenceAssetIds: z.array(z.string()).min(1),
-    requiredViews: z.array(CharacterReferenceViewKindSchema).default([]),
-    referenceViews: z.array(CharacterReferenceViewSchema).default([])
-  })).default([]),
-  scenes: z.array(z.object({
-    id: z.string().min(1),
-    referenceAssetIds: z.array(z.string()).default([]),
-    prompt: z.string().min(1)
-  })).default([]),
-  panels: z.array(z.object({
-    id: z.string().min(1),
-    sceneId: z.string().min(1),
-    characterIds: z.array(z.string()).default([]),
-    assetId: z.string().min(1),
-    path: z.string().min(1).optional(),
-    consistencyScore: z.number().min(0).max(1).optional()
-  })).default([])
+  characters: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      referenceAssetIds: z.array(z.string()).min(1),
+      requiredViews: z.array(CharacterReferenceViewKindSchema).default([]),
+      referenceViews: z.array(CharacterReferenceViewSchema).default([])
+    })
+  ).default([]),
+  scenes: z.array(
+    z.object({
+      id: z.string().min(1),
+      referenceAssetIds: z.array(z.string()).default([]),
+      prompt: z.string().min(1)
+    })
+  ).default([]),
+  panels: z.array(
+    z.object({
+      id: z.string().min(1),
+      sceneId: z.string().min(1),
+      characterIds: z.array(z.string()).default([]),
+      assetId: z.string().min(1),
+      path: z.string().min(1).optional(),
+      consistencyScore: z.number().min(0).max(1).optional()
+    })
+  ).default([])
 });
 var SemanticReferenceRoleKindSchema = z.enum([
   "identity-front",
@@ -71801,7 +71858,11 @@ var AnalysisBackendBenchmarkMetadataSchema = z.object({
   blockedReasons: z.array(z.string().min(1)).default([]),
   decisionLog: z.array(z.string().min(1)).default([])
 });
-var ImageEmbeddingDistanceMetricSchema = z.enum(["cosine", "dot", "euclidean"]);
+var ImageEmbeddingDistanceMetricSchema = z.enum([
+  "cosine",
+  "dot",
+  "euclidean"
+]);
 var ImageEmbeddingBaselineForSchema = z.enum([
   "identity",
   "product",
@@ -71831,7 +71892,10 @@ var ImageEmbeddingStoreMetadataSchema = z.object({
   items: z.array(ImageEmbeddingStoreItemSchema).min(1),
   copyOnWriteRequired: z.boolean()
 });
-var ImageComfyuiApiFormatSchema = z.enum(["comfyui-api-json", "comfyui-ui-json"]);
+var ImageComfyuiApiFormatSchema = z.enum([
+  "comfyui-api-json",
+  "comfyui-ui-json"
+]);
 var ImageComfyuiModelTypeSchema = z.enum([
   "checkpoint",
   "vae",
@@ -71876,8 +71940,16 @@ var ImageComfyuiInputSlotSchema = z.object({
   assetId: z.string().min(1).optional(),
   path: z.string().min(1).optional()
 });
-var ImageComfyuiOutputStatusSchema = z.enum(["planned", "materialized"]);
-var ImageComfyuiOutputMediaTypeSchema = z.enum(["image", "image-sequence", "mask", "metadata"]);
+var ImageComfyuiOutputStatusSchema = z.enum([
+  "planned",
+  "materialized"
+]);
+var ImageComfyuiOutputMediaTypeSchema = z.enum([
+  "image",
+  "image-sequence",
+  "mask",
+  "metadata"
+]);
 var ImageComfyuiOutputSchema = z.object({
   outputAssetId: z.string().min(1),
   nodeId: z.string().min(1),
@@ -72061,8 +72133,17 @@ var AdVisualQaMetadataSchema = z.object({
   visualQa: AdDeliveryVisualQaReportSchema,
   decisionLog: z.array(z.string().min(1)).default([])
 });
-var ContentCredentialModeSchema = z.enum(["unsigned-manifest", "signed-c2pa", "external"]);
-var ContentCredentialSignatureStatusSchema = z.enum(["unsigned", "signed", "external", "failed"]);
+var ContentCredentialModeSchema = z.enum([
+  "unsigned-manifest",
+  "signed-c2pa",
+  "external"
+]);
+var ContentCredentialSignatureStatusSchema = z.enum([
+  "unsigned",
+  "signed",
+  "external",
+  "failed"
+]);
 var ContentCredentialIngredientRelationshipSchema = z.enum([
   "source",
   "reference",
@@ -72135,12 +72216,12 @@ var ProductionMetadataSchema = ProductionMetadataBaseSchema.superRefine((metadat
 });
 var AssetMetadataFillActionSchema = z.object({
   actionId: z.string().min(1),
-  targetAssetId: z.string().min(1),
+  target: MetadataAttachmentTargetSchema,
   metadataKind: z.string().min(1),
   metadata: ProductionMetadataSchema,
   producer: z.string().min(1),
   createdAt: z.string().optional()
-});
+}).strict();
 var SourceHashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 var TimelineTranscriptSourceSchema = z.object({
   assetId: z.string().min(1),
@@ -72784,10 +72865,10 @@ function validateRefs(cardOrCap, counts, opts = {}) {
     return "Selected model does not accept reference audio.";
   }
   for (const modality of ["image", "video", "audio"]) {
-    const required3 = ref[modality].requiresAnyOf;
-    if (countsByModality[modality] === 0 || !required3?.length) continue;
-    if (!required3.some((companion) => countsByModality[companion] > 0)) {
-      const requirement = required3.length === 1 ? `reference ${required3[0]}` : `reference ${required3.slice(0, -1).join(", ")} or ${required3[required3.length - 1]}`;
+    const required4 = ref[modality].requiresAnyOf;
+    if (countsByModality[modality] === 0 || !required4?.length) continue;
+    if (!required4.some((companion) => countsByModality[companion] > 0)) {
+      const requirement = required4.length === 1 ? `reference ${required4[0]}` : `reference ${required4.slice(0, -1).join(", ")} or ${required4[required4.length - 1]}`;
       return `Selected model requires at least one ${requirement} when reference ${modality} is attached.`;
     }
   }
@@ -73781,7 +73862,7 @@ function nonEmptyString2(value) {
 }
 function storageFreeMediaRecord(input, label) {
   const source = nonEmptyString2(input.src);
-  const projectAssetId = nonEmptyString2(input.assetId);
+  const projectAssetId2 = nonEmptyString2(input.assetId);
   const itemType = nonEmptyString2(input.type);
   const requiresProjectAsset = itemType === "video" || itemType === "audio" || itemType === "image" || itemType === "sticker";
   if (Object.prototype.hasOwnProperty.call(input, "backingAssetId")) {
@@ -73790,22 +73871,22 @@ function storageFreeMediaRecord(input, label) {
       error: `${label} contains the removed backingAssetId field; use assetId`
     };
   }
-  if (!projectAssetId && source) {
+  if (!projectAssetId2 && source) {
     return {
       ok: false,
       error: `${label} must reference a Project Asset before it can be persisted`
     };
   }
-  if (requiresProjectAsset && !projectAssetId) {
+  if (requiresProjectAsset && !projectAssetId2) {
     return {
       ok: false,
       error: `${label} must reference a Project Asset before it can be persisted`
     };
   }
-  if (!projectAssetId && !source) {
+  if (!projectAssetId2 && !source) {
     return { ok: true, value: { ...input } };
   }
-  if (!projectAssetId) return { ok: true, value: { ...input } };
+  if (!projectAssetId2) return { ok: true, value: { ...input } };
   const {
     src: _src,
     previewUrl: _previewUrl,
@@ -73814,9 +73895,10 @@ function storageFreeMediaRecord(input, label) {
     localPath: _localPath,
     storageKey: _storageKey,
     srcR2Key: _srcR2Key,
+    waveform: _legacyWaveform,
     ...persisted
   } = input;
-  return { ok: true, value: { ...persisted, assetId: projectAssetId } };
+  return { ok: true, value: { ...persisted, assetId: projectAssetId2 } };
 }
 function normalizeProjectTimelinePersistenceState(input) {
   if (!isRecord(input)) return { ok: true, state: input };
@@ -73863,6 +73945,24 @@ var PROJECT_ASSET_SCHEMA_CONTAINER = "projectAssetSchema";
 var PROJECT_ASSET_AUTHORITY_VERSION = 1;
 var PROJECT_ASSET_AUTHORITY_VERSION_KEY = "authorityVersion";
 var PROJECT_ASSET_AUTHORITY_VERSIONS_KEY = "authorityVersions";
+var LegacyLinkedProjectAssetSourceSchema = z.object({
+  kind: z.literal("linked"),
+  resourceId: z.string().trim().min(1),
+  origin: z.discriminatedUnion("scope", [
+    z.object({
+      scope: z.literal("global"),
+      entryId: z.string().trim().min(1)
+    }).strict(),
+    z.object({
+      scope: z.literal("project"),
+      entryId: z.string().trim().min(1)
+    }).strict(),
+    z.object({
+      scope: z.literal("catalog"),
+      entryId: z.string().trim().min(1)
+    }).strict()
+  ])
+}).strict();
 function isRecord2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -73892,7 +73992,9 @@ function lifecycleFromFields(raw2) {
   const deletedAt = nonEmptyString22(field2(raw2, "deletedAt"));
   if (purgedAt) {
     if (!deleteOperationId || !deletedAt) {
-      throw new Error("A purged Project Asset is missing its delete operation or deletion time.");
+      throw new Error(
+        "A purged Project Asset is missing its delete operation or deletion time."
+      );
     }
     return { state: "purged", deleteOperationId, deletedAt, purgedAt };
   }
@@ -73900,19 +74002,75 @@ function lifecycleFromFields(raw2) {
   if (lifecycleState === "trashed") {
     const purgeAfter = nonEmptyString22(field2(raw2, "purgeAfter"));
     if (!deleteOperationId || !deletedAt || !purgeAfter) {
-      throw new Error("A trashed Project Asset is missing its recovery-window facts.");
+      throw new Error(
+        "A trashed Project Asset is missing its recovery-window facts."
+      );
     }
     return { state: "trashed", deleteOperationId, deletedAt, purgeAfter };
   }
   if (lifecycleState === "active") return { state: "active" };
-  throw new Error(`Invalid Project Asset lifecycle state: ${String(lifecycleState)}`);
+  throw new Error(
+    `Invalid Project Asset lifecycle state: ${String(lifecycleState)}`
+  );
 }
-function parseProjectAsset(id2, raw2) {
+function sourceFromFields(raw2, context) {
+  const source = field2(raw2, "source");
+  const current = ProjectAssetSourceSchema.safeParse(source);
+  if (current.success) return current.data;
+  const legacy = LegacyLinkedProjectAssetSourceSchema.safeParse(source);
+  if (!legacy.success) return source;
+  const { resourceId, origin } = legacy.data;
+  let normalized;
+  switch (origin.scope) {
+    case "global":
+      normalized = {
+        kind: "linked",
+        resourceId,
+        origin: {
+          scope: "global",
+          libraryId: "personal",
+          entryId: origin.entryId
+        }
+      };
+      break;
+    case "catalog":
+      normalized = {
+        kind: "linked",
+        resourceId,
+        origin: {
+          scope: "catalog",
+          catalogId: "legacy",
+          entryId: origin.entryId
+        }
+      };
+      break;
+    case "project": {
+      const projectId = nonEmptyString22(context?.projectId);
+      if (!projectId) {
+        throw new Error(
+          "A legacy Project Asset origin requires the current Project identity."
+        );
+      }
+      normalized = {
+        kind: "linked",
+        resourceId,
+        origin: {
+          scope: "project",
+          projectId,
+          entryId: origin.entryId
+        }
+      };
+      break;
+    }
+  }
+  return normalized;
+}
+function parseProjectAsset(id2, raw2, context) {
   if (!isRecord2(raw2) && !isLoroMap(raw2)) return null;
   const candidate = {
     id: id2,
     kind: field2(raw2, "kind"),
-    source: field2(raw2, "source"),
+    source: sourceFromFields(raw2, context),
     lifecycle: lifecycleFromFields(raw2),
     ...nonEmptyString22(field2(raw2, "name")) ? { name: field2(raw2, "name") } : {},
     metadata: field2(raw2, "metadata"),
@@ -73926,10 +74084,10 @@ function parseProjectAsset(id2, raw2) {
   }
   return parsed.data;
 }
-function mutationError(code, message, projectAssetId) {
+function mutationError(code, message, projectAssetId2) {
   return {
     ok: false,
-    error: { code, message, ...projectAssetId ? { projectAssetId } : {} }
+    error: { code, message, ...projectAssetId2 ? { projectAssetId: projectAssetId2 } : {} }
   };
 }
 function authorityError(version2) {
@@ -73950,7 +74108,8 @@ function rawProjectAssetAuthorityVersion(doc) {
   const versions2 = [];
   const legacy = schema.get(PROJECT_ASSET_AUTHORITY_VERSION_KEY);
   if (legacy !== void 0) {
-    if (typeof legacy !== "number" || !Number.isInteger(legacy) || legacy < 1) return legacy;
+    if (typeof legacy !== "number" || !Number.isInteger(legacy) || legacy < 1)
+      return legacy;
     versions2.push(legacy);
   }
   const facts = schema.get(PROJECT_ASSET_AUTHORITY_VERSIONS_KEY);
@@ -73968,7 +74127,8 @@ function rawProjectAssetAuthorityVersion(doc) {
 }
 function mutationAuthorityError(doc) {
   const version2 = rawProjectAssetAuthorityVersion(doc);
-  if (version2 === void 0 || version2 === PROJECT_ASSET_AUTHORITY_VERSION) return void 0;
+  if (version2 === void 0 || version2 === PROJECT_ASSET_AUTHORITY_VERSION)
+    return void 0;
   return { ok: false, error: authorityError(version2).error };
 }
 function markProjectAssetAuthority(doc) {
@@ -73979,18 +74139,19 @@ function markProjectAssetAuthority(doc) {
   doc.getMap(PROJECT_ASSET_SCHEMA_CONTAINER).ensureMergeableMap(PROJECT_ASSET_AUTHORITY_VERSIONS_KEY).set(String(PROJECT_ASSET_AUTHORITY_VERSION), true);
   return { ok: true, version: PROJECT_ASSET_AUTHORITY_VERSION };
 }
-function readProjectAsset(doc, id2) {
+function readProjectAsset(doc, id2, context) {
   const normalizedId = id2.trim();
   if (!normalizedId) return null;
   return parseProjectAsset(
     normalizedId,
-    doc.getMap(PROJECT_ASSETS_CONTAINER).get(normalizedId)
+    doc.getMap(PROJECT_ASSETS_CONTAINER).get(normalizedId),
+    context
   );
 }
-function listProjectAssets(doc) {
+function listProjectAssets(doc, context) {
   const entries = [];
   for (const [id2, raw2] of doc.getMap(PROJECT_ASSETS_CONTAINER).entries()) {
-    const entry = parseProjectAsset(id2, raw2);
+    const entry = parseProjectAsset(id2, raw2, context);
     if (entry) entries.push(entry);
   }
   return entries.sort((left, right) => left.id.localeCompare(right.id));
@@ -74083,7 +74244,11 @@ function trashProjectAsset(doc, input) {
     );
   }
   if (lifecycle.data.state !== "trashed") {
-    return mutationError("INVALID_PROJECT_ASSET", "Invalid trashed lifecycle.", input.id);
+    return mutationError(
+      "INVALID_PROJECT_ASSET",
+      "Invalid trashed lifecycle.",
+      input.id
+    );
   }
   found.fields.set("lifecycleState", "trashed");
   found.fields.set("deleteOperationId", lifecycle.data.deleteOperationId);
@@ -74151,7 +74316,11 @@ function purgeProjectAsset(doc, input) {
     );
   }
   if (lifecycle.data.state !== "purged") {
-    return mutationError("INVALID_PROJECT_ASSET", "Invalid purged lifecycle.", input.id);
+    return mutationError(
+      "INVALID_PROJECT_ASSET",
+      "Invalid purged lifecycle.",
+      input.id
+    );
   }
   found.fields.set("terminalLifecycle", lifecycle.data);
   return { ok: true, entry: { ...found.entry, lifecycle: lifecycle.data } };
@@ -74302,8 +74471,8 @@ function listActionAssetBindings(doc) {
   for (const binding of bindings) assertActiveBindingTarget(doc, binding);
   return bindings;
 }
-function listActionAssetReferences(doc, projectAssetId) {
-  return listStoredBindings(doc).filter((binding) => binding.projectAssetId === projectAssetId).sort((left, right) => left.id.localeCompare(right.id));
+function listActionAssetReferences(doc, projectAssetId2) {
+  return listStoredBindings(doc).filter((binding) => binding.projectAssetId === projectAssetId2).sort((left, right) => left.id.localeCompare(right.id));
 }
 function projectAssetMutationReadToken(input) {
   const inputBindings = input.references.filter((binding) => binding.direction === "input").map((binding) => ({
@@ -74323,8 +74492,8 @@ function projectAssetMutationReadToken(input) {
     }
   });
 }
-function projectAssetMutationReadTokenFromDoc(doc, projectId, projectAssetId) {
-  const entry = readProjectAsset(doc, projectAssetId);
+function projectAssetMutationReadTokenFromDoc(doc, projectId, projectAssetId2) {
+  const entry = readProjectAsset(doc, projectAssetId2);
   if (!entry) return null;
   return projectAssetMutationReadToken({
     projectId,
@@ -74382,6 +74551,11 @@ function sameBindingOwner(left, right) {
   if (left.kind === "revision" || right.kind === "revision") return true;
   return left.actionRunId === right.actionRunId;
 }
+function listActionAssetBindingsForOwner(doc, owner) {
+  return listActionAssetBindings(doc).filter(
+    (binding) => sameBindingOwner(binding.owner, owner)
+  );
+}
 function sameBindingFact(left, right) {
   return left.id === right.id && sameBindingOwner(left.owner, right.owner) && left.direction === right.direction && left.slot === right.slot && left.projectAssetId === right.projectAssetId && left.role === right.role;
 }
@@ -74411,6 +74585,68 @@ function ensureActionAssetBinding(doc, input) {
   const created = createActionAssetBinding(doc, parsed.data);
   if (!created.ok) return created;
   return { ok: true, binding: created.binding, changed: true };
+}
+function frozenRunInputBindingId(actionRunId, slot) {
+  return `action-asset:run:${encodeURIComponent(actionRunId)}:input:${encodeURIComponent(slot)}`;
+}
+function freezeDraftActionAssetInputBindings(doc, input) {
+  const actionId = input.actionId.trim();
+  const actionRevisionId = input.actionRevisionId.trim();
+  const actionRunId = input.actionRunId.trim();
+  if (!actionId || !actionRevisionId || !actionRunId) {
+    return {
+      ok: false,
+      error: "Action id, revision id, and run id are required to freeze Asset inputs"
+    };
+  }
+  if (actionAssetBindingAuthorityVersion(doc) !== ACTION_ASSET_BINDING_AUTHORITY_VERSION) {
+    return {
+      ok: false,
+      error: "Action Asset binding authority is required before freezing run inputs"
+    };
+  }
+  const draftOwner2 = { kind: "draft", actionId };
+  const draftInputs = listActionAssetBindingsForOwner(doc, draftOwner2).filter(
+    (binding) => binding.direction === "input"
+  );
+  const slots = /* @__PURE__ */ new Set();
+  for (const binding of draftInputs) {
+    if (slots.has(binding.slot)) {
+      return {
+        ok: false,
+        error: `Editable Action ${actionId} has duplicate Asset input slot ${binding.slot}`
+      };
+    }
+    slots.add(binding.slot);
+  }
+  const owner = {
+    kind: "run",
+    actionId,
+    actionRevisionId,
+    actionRunId
+  };
+  const bindings = [];
+  let changed = false;
+  for (const draft of draftInputs) {
+    const frozen = {
+      id: frozenRunInputBindingId(actionRunId, draft.slot),
+      owner,
+      direction: "input",
+      slot: draft.slot,
+      projectAssetId: draft.projectAssetId,
+      ...draft.role ? { role: draft.role } : {}
+    };
+    const ensured = ensureActionAssetBinding(doc, frozen);
+    if (!ensured.ok) return { ok: false, error: ensured.error.message };
+    bindings.push(ensured.binding);
+    changed || (changed = ensured.changed);
+  }
+  return {
+    ok: true,
+    owner,
+    bindings: bindings.sort((left, right) => left.slot.localeCompare(right.slot)),
+    changed
+  };
 }
 function updateActionAssetBinding(doc, input) {
   const parsed = ActionAssetBindingSchema.safeParse(input);
@@ -74474,8 +74710,8 @@ function replaceDraftActionAssetInputBindings(doc, actionIdInput, desiredInputs)
   const desiredBySlot = /* @__PURE__ */ new Map();
   for (const candidate of desiredInputs) {
     const slot = candidate.slot.trim();
-    const projectAssetId = candidate.projectAssetId.trim();
-    if (!slot || !projectAssetId) {
+    const projectAssetId2 = candidate.projectAssetId.trim();
+    if (!slot || !projectAssetId2) {
       return {
         ok: false,
         error: "Action Asset input slot and Project Asset id are required"
@@ -74487,16 +74723,16 @@ function replaceDraftActionAssetInputBindings(doc, actionIdInput, desiredInputs)
         error: `Action Asset input slot ${slot} is duplicated`
       };
     }
-    const asset = readProjectAsset(doc, projectAssetId);
+    const asset = readProjectAsset(doc, projectAssetId2);
     if (!asset || asset.lifecycle.state !== "active") {
       return {
         ok: false,
-        error: `Project Asset ${projectAssetId} is not active`
+        error: `Project Asset ${projectAssetId2} is not active`
       };
     }
     desiredBySlot.set(slot, {
       slot,
-      projectAssetId,
+      projectAssetId: projectAssetId2,
       ...candidate.role ? { role: candidate.role } : {}
     });
   }
@@ -74876,16 +75112,43 @@ function projectTimelineAssetInputs(state2) {
       if (!isRecord5(item) || typeof item.id !== "string" || !item.id.trim()) {
         continue;
       }
-      const projectAssetId = typeof item.assetId === "string" && item.assetId.trim() ? item.assetId.trim() : void 0;
-      if (!projectAssetId) continue;
+      const projectAssetId2 = typeof item.assetId === "string" && item.assetId.trim() ? item.assetId.trim() : void 0;
+      if (!projectAssetId2) continue;
       inputs.push({
         slot: `timeline:item:${item.id.trim()}`,
-        projectAssetId,
+        projectAssetId: projectAssetId2,
         role: "source"
       });
     }
   }
   return inputs;
+}
+function projectTimelineRenderActionRunId(renderNodeId) {
+  return `timeline-render:${renderNodeId.trim()}`;
+}
+function freezeProjectTimelineRunAssetInputs(doc, timeline, actionRunIdInput) {
+  const actionId = projectTimelineActionId(timeline.id, timeline.owner);
+  const expected = projectTimelineAssetInputs(timeline.state).sort(
+    (left, right) => left.slot.localeCompare(right.slot)
+  );
+  const current = listActionAssetBindingsForOwner(doc, {
+    kind: "draft",
+    actionId
+  }).filter((binding) => binding.direction === "input").sort((left, right) => left.slot.localeCompare(right.slot));
+  if (expected.length !== current.length || expected.some((input, index) => {
+    const binding = current[index];
+    return !binding || binding.slot !== input.slot || binding.projectAssetId !== input.projectAssetId || binding.role !== input.role;
+  })) {
+    return {
+      ok: false,
+      error: `Timeline ${timeline.id} item bindings do not match its current Project state`
+    };
+  }
+  return freezeDraftActionAssetInputBindings(doc, {
+    actionId,
+    actionRevisionId: timeline.revisionId,
+    actionRunId: actionRunIdInput
+  });
 }
 function syncProjectTimelineAssetInputs(doc, timeline) {
   const synced = replaceDraftActionAssetInputBindings(
@@ -75337,9 +75600,9 @@ function canvasActionAssetInputs(input) {
   const mergeProjectedSource = (candidates) => {
     const sourceMultiplicity = /* @__PURE__ */ new Map();
     for (const candidate of candidates) {
-      const projectAssetId = candidate.projectAssetId.trim();
-      if (!projectAssetId) continue;
-      const key = `${candidate.modality}\0${projectAssetId}`;
+      const projectAssetId2 = candidate.projectAssetId.trim();
+      if (!projectAssetId2) continue;
+      const key = `${candidate.modality}\0${projectAssetId2}`;
       const occurrence = (sourceMultiplicity.get(key) ?? 0) + 1;
       sourceMultiplicity.set(key, occurrence);
       if (occurrence <= (mergedMultiplicity.get(key) ?? 0)) continue;
@@ -75347,7 +75610,7 @@ function canvasActionAssetInputs(input) {
       const index = nextIndex[candidate.modality]++;
       inputs.push({
         slot: `${candidate.modality}:${index}`,
-        projectAssetId,
+        projectAssetId: projectAssetId2,
         role: "reference"
       });
     }
@@ -75358,9 +75621,9 @@ function canvasActionAssetInputs(input) {
       ["referenceVideoAssetIds", "video"],
       ["referenceAudioAssetIds", "audio"]
     ].flatMap(
-      ([field3, modality]) => stringList(input.node.data[field3]).map((projectAssetId) => ({
+      ([field3, modality]) => stringList(input.node.data[field3]).map((projectAssetId2) => ({
         modality,
-        projectAssetId
+        projectAssetId: projectAssetId2
       }))
     )
   );
@@ -75377,8 +75640,8 @@ function canvasActionAssetInputs(input) {
       const source = nodesById.get(sourceId);
       if (!source) return [];
       const modality = mediaModality(source);
-      const projectAssetId = nonEmptyString3(source.data.assetId);
-      return modality && projectAssetId ? [{ modality, projectAssetId }] : [];
+      const projectAssetId2 = nonEmptyString3(source.data.assetId);
+      return modality && projectAssetId2 ? [{ modality, projectAssetId: projectAssetId2 }] : [];
     })
   );
   const prompt = nonEmptyString3(input.node.data.prompt) ?? nonEmptyString3(input.node.data.content);
@@ -75388,8 +75651,8 @@ function canvasActionAssetInputs(input) {
         const source = nodesById.get(reference.nodeId);
         if (!source) return [];
         const modality = mediaModality(source);
-        const projectAssetId = nonEmptyString3(source.data.assetId);
-        return modality && projectAssetId ? [{ modality, projectAssetId }] : [];
+        const projectAssetId2 = nonEmptyString3(source.data.assetId);
+        return modality && projectAssetId2 ? [{ modality, projectAssetId: projectAssetId2 }] : [];
       })
     );
   }
@@ -76246,12 +76509,27 @@ var Canvas = class {
         error: `Node ${renderNodeId} already exists`
       };
     }
+    const actionRunId = projectTimelineRenderActionRunId(renderNodeId);
+    const frozenPreflight = freezeProjectTimelineRunAssetInputs(
+      this.doc.fork(),
+      timeline,
+      actionRunId
+    );
+    if (!frozenPreflight.ok) {
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: frozenPreflight.error
+      };
+    }
     const data = {
       label: "Rendered Video",
       status: TaskStatus.Pending,
       timelineDsl: { ...timelineDsl, durationInFrames: renderDurationInFrames },
       ...timelineId ? { sourceTimelineId: timelineId } : {},
+      sourceTimelineActionId: frozenPreflight.owner.actionId,
       sourceTimelineRevisionId: timeline.revisionId,
+      sourceTimelineActionRunId: actionRunId,
       pendingTask: null,
       naturalWidth,
       naturalHeight,
@@ -76264,6 +76542,16 @@ var Canvas = class {
       parentId: node.parent_id,
       sourceNodeId: editorNodeId
     });
+    const frozen = freezeProjectTimelineRunAssetInputs(
+      this.doc,
+      timeline,
+      actionRunId
+    );
+    if (!frozen.ok) {
+      throw new Error(
+        `Timeline ${timeline.id} input freeze changed after preflight: ${frozen.error}`
+      );
+    }
     return { renderNodeId, position: linked.position, error: null };
   }
   // ── Private ──────────────────────────────────────────
@@ -77150,9 +77438,9 @@ function hostMutationRejected(envelope, error53) {
 function compactEnvelope(envelope) {
   return compactRecord(envelope);
 }
-function compactRecord(record2) {
+function compactRecord(record3) {
   return Object.fromEntries(
-    Object.entries(record2).filter(([, value]) => value !== void 0)
+    Object.entries(record3).filter(([, value]) => value !== void 0)
   );
 }
 var id = z.string().trim().min(1);
@@ -78517,7 +78805,10 @@ function registerAssetMetadataKind(declaration) {
     return result.success ? [] : result.error.issues;
   };
   const complainsAbout = (issues, field3) => issues.some((issue3) => issue3.path.length === 1 && issue3.path[0] === field3);
-  if (complainsAbout(issuesFor({ schemaVersion: 1, kind: declaration.kind }), "kind")) {
+  if (complainsAbout(
+    issuesFor({ schemaVersion: 1, kind: declaration.kind }),
+    "kind"
+  )) {
     throw new Error(
       `Asset metadata kind ${declaration.kind} must declare a schema that pins its own kind`
     );
@@ -78530,13 +78821,33 @@ function registerAssetMetadataKind(declaration) {
   declaredKinds.set(declaration.kind, declaration);
 }
 var FillActionEnvelopeSchema = z.object({
-  actionId: z.string().min(1),
-  targetAssetId: z.string().min(1),
-  metadataKind: z.string().min(1),
-  metadata: z.object({ kind: z.string().min(1) }).passthrough(),
-  producer: z.string().min(1),
+  actionId: z.string().trim().min(1),
+  target: MetadataAttachmentTargetSchema,
+  metadataKind: z.string().trim().min(1),
+  metadata: z.object({ kind: z.string().trim().min(1) }).passthrough(),
+  producer: z.string().trim().min(1),
   createdAt: z.string().optional()
-});
+}).strict();
+function parseAssetMetadataFillAction(value) {
+  const envelope = FillActionEnvelopeSchema.parse(value);
+  if (envelope.metadata.kind !== envelope.metadataKind) {
+    throw new Error(
+      `metadata kind mismatch: ${envelope.metadataKind} does not match ${envelope.metadata.kind}`
+    );
+  }
+  const declared = declaredKinds.get(envelope.metadataKind);
+  if (!declared) {
+    throw new Error(
+      `Undeclared asset metadata kind: ${envelope.metadataKind}. Declare it with registerAssetMetadataKind first.`
+    );
+  }
+  return {
+    ...envelope,
+    metadata: declared.schema.parse(
+      envelope.metadata
+    )
+  };
+}
 registerAssetMetadataKind({
   kind: "media.transcript",
   schema: MediaTranscriptMetadataSchema
@@ -78614,6 +78925,15 @@ function requestTimelineRender(doc, input) {
   if (nodes5.get(renderNodeId) !== void 0) {
     return { ok: false, error: `Node ${renderNodeId} already exists` };
   }
+  const actionRunId = projectTimelineRenderActionRunId(renderNodeId);
+  const frozenPreflight = freezeProjectTimelineRunAssetInputs(
+    doc.fork(),
+    timeline,
+    actionRunId
+  );
+  if (!frozenPreflight.ok) {
+    return { ok: false, error: frozenPreflight.error };
+  }
   const naturalWidth = typeof timelineDsl.compositionWidth === "number" && timelineDsl.compositionWidth > 0 ? timelineDsl.compositionWidth : 1920;
   const naturalHeight = typeof timelineDsl.compositionHeight === "number" && timelineDsl.compositionHeight > 0 ? timelineDsl.compositionHeight : 1080;
   nodes5.set(renderNodeId, {
@@ -78625,7 +78945,9 @@ function requestTimelineRender(doc, input) {
       status: "pending",
       timelineDsl,
       sourceTimelineId: timeline.id,
+      sourceTimelineActionId: frozenPreflight.owner.actionId,
       sourceTimelineRevisionId: timeline.revisionId,
+      sourceTimelineActionRunId: actionRunId,
       pendingTask: null,
       naturalWidth,
       naturalHeight,
@@ -78636,6 +78958,16 @@ function requestTimelineRender(doc, input) {
       renderTarget: target
     }
   });
+  const frozen = freezeProjectTimelineRunAssetInputs(
+    doc,
+    timeline,
+    actionRunId
+  );
+  if (!frozen.ok) {
+    throw new Error(
+      `Timeline ${timeline.id} input freeze changed after preflight: ${frozen.error}`
+    );
+  }
   return {
     ok: true,
     renderNodeId,
@@ -78959,6 +79291,15 @@ var LoroSyncClient = class {
     return this.canvas.findNode(idOrAssetId);
   }
 };
+var CopilotProjectAssetReferenceSchema = z.object({
+  projectAssetId: z.string().trim().min(1),
+  kind: AssetKindSchema,
+  label: z.string().trim().min(1)
+}).strict();
+var CopilotProjectAssetSubmissionSchema = z.object({
+  actionId: z.string().trim().min(1),
+  assets: CopilotProjectAssetReferenceSchema.array().min(1)
+}).strict();
 var CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
   Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
     category,
@@ -78989,19 +79330,19 @@ function readProjectCoverAssetId(doc) {
   return currentCoverBinding(doc)?.projectAssetId ?? null;
 }
 function setProjectCoverAsset(doc, input) {
-  const projectAssetId = input.projectAssetId?.trim() || null;
+  const projectAssetId2 = input.projectAssetId?.trim() || null;
   const current = currentCoverBinding(doc);
-  if (current?.projectAssetId === projectAssetId) {
-    return { ok: true, coverAssetId: projectAssetId, changed: false };
+  if (current?.projectAssetId === projectAssetId2) {
+    return { ok: true, coverAssetId: projectAssetId2, changed: false };
   }
-  if (projectAssetId) {
-    const asset = readProjectAsset(doc, projectAssetId);
+  if (projectAssetId2) {
+    const asset = readProjectAsset(doc, projectAssetId2);
     if (!asset) {
       return {
         ok: false,
         error: {
           code: "PROJECT_ASSET_NOT_FOUND",
-          message: `Project Asset ${projectAssetId} not found.`
+          message: `Project Asset ${projectAssetId2} not found.`
         }
       };
     }
@@ -79010,7 +79351,7 @@ function setProjectCoverAsset(doc, input) {
         ok: false,
         error: {
           code: "PROJECT_ASSET_NOT_ACTIVE",
-          message: `Project Asset ${projectAssetId} is not active.`
+          message: `Project Asset ${projectAssetId2} is not active.`
         }
       };
     }
@@ -79034,7 +79375,7 @@ function setProjectCoverAsset(doc, input) {
     }
   }
   const presentation = doc.getMap(PROJECT_PRESENTATION_CONTAINER);
-  if (!projectAssetId) {
+  if (!projectAssetId2) {
     if (current) {
       const unbound = unbindActionAssetBinding(doc, current.id);
       if (!unbound.ok) {
@@ -79055,7 +79396,7 @@ function setProjectCoverAsset(doc, input) {
     owner: { kind: "draft", actionId: PROJECT_COVER_ACTION_ID },
     direction: "input",
     slot: "cover",
-    projectAssetId,
+    projectAssetId: projectAssetId2,
     role: "primary"
   };
   const created = createActionAssetBinding(doc, binding);
@@ -79081,7 +79422,7 @@ function setProjectCoverAsset(doc, input) {
     }
   }
   presentation.set(COVER_BINDING_ID_KEY, binding.id);
-  return { ok: true, coverAssetId: projectAssetId, changed: true };
+  return { ok: true, coverAssetId: projectAssetId2, changed: true };
 }
 function reconcileProjectCoverBindings(doc) {
   const current = currentCoverBinding(doc);
@@ -79159,8 +79500,8 @@ function timelineItems(state2) {
       const id2 = nonEmptyString4(candidate.id);
       const direct = nonEmptyString4(candidate.backingAssetId);
       const itemAssetId = nonEmptyString4(candidate.assetId);
-      const projectAssetId = direct ?? (itemAssetId ? catalog.get(itemAssetId) ?? itemAssetId : void 0);
-      if (id2 && projectAssetId) result.push({ id: id2, projectAssetId });
+      const projectAssetId2 = direct ?? (itemAssetId ? catalog.get(itemAssetId) ?? itemAssetId : void 0);
+      if (id2 && projectAssetId2) result.push({ id: id2, projectAssetId: projectAssetId2 });
     }
   }
   return result;
@@ -79172,17 +79513,17 @@ function planLegacyActionAssetBindingMaterialization(input) {
   const bindings = /* @__PURE__ */ new Map();
   const conflicts = /* @__PURE__ */ new Map();
   const addBinding = (options) => {
-    const projectAssetId = options.projectAssetId.trim();
-    if (!projectAssetId) return;
+    const projectAssetId2 = options.projectAssetId.trim();
+    if (!projectAssetId2) return;
     const actionId = options.owner.actionId;
-    if (!projectAssetIds.has(projectAssetId)) {
-      if (projectAssetId.startsWith("builtin:")) return;
+    if (!projectAssetIds.has(projectAssetId2)) {
+      if (projectAssetId2.startsWith("builtin:")) return;
       const key2 = [
         options.source,
         options.sourceId,
         actionId,
         options.slot,
-        projectAssetId
+        projectAssetId2
       ].join("\0");
       conflicts.set(key2, {
         code: "PROJECT_ASSET_NOT_FOUND",
@@ -79190,8 +79531,8 @@ function planLegacyActionAssetBindingMaterialization(input) {
         sourceId: options.sourceId,
         actionId,
         slot: options.slot,
-        projectAssetId,
-        message: `${options.source} ${options.sourceId} uses missing Project Asset ${projectAssetId} at ${options.slot}.`
+        projectAssetId: projectAssetId2,
+        message: `${options.source} ${options.sourceId} uses missing Project Asset ${projectAssetId2} at ${options.slot}.`
       });
       return;
     }
@@ -79201,7 +79542,7 @@ function planLegacyActionAssetBindingMaterialization(input) {
       owner: options.owner,
       direction: options.direction,
       slot: options.slot,
-      projectAssetId,
+      projectAssetId: projectAssetId2,
       ...options.role ? { role: options.role } : {}
     };
     const existing = bindings.get(id2);
@@ -79215,7 +79556,7 @@ function planLegacyActionAssetBindingMaterialization(input) {
       options.sourceId,
       actionId,
       options.slot,
-      projectAssetId
+      projectAssetId2
     ].join("\0");
     conflicts.set(key, {
       code: "ACTION_ASSET_SLOT_CONFLICT",
@@ -79223,7 +79564,7 @@ function planLegacyActionAssetBindingMaterialization(input) {
       sourceId: options.sourceId,
       actionId,
       slot: options.slot,
-      projectAssetId,
+      projectAssetId: projectAssetId2,
       message: `Action ${actionId} has conflicting legacy Assets for stable slot ${options.slot}.`
     });
   };
@@ -81816,7 +82157,7 @@ var desktopTrafficLightPosition = {
 function defaultRuntimeCapabilities(mode) {
   if (mode === "hosted") {
     return {
-      assets: { storage: "cloud", signing: "signed", upload: "remote" },
+      assets: { storage: "cloud", signing: "signed", upload: "disabled" },
       workflows: { runner: "cloudflare", mediaPostprocess: "cloud" },
       loro: { persistence: "remote", sync: "durable-object" },
       auth: { mode: "better-auth" }
@@ -81860,7 +82201,7 @@ var EMPTY_COUNTS = {
   publish: 0
 };
 function durableRunIdempotencyKey(run) {
-  return `${run.actionRunId}:${run.outputSlot}`;
+  return `${run.actionRunId}:${encodeURIComponent(run.outputSlot)}`;
 }
 function createDurableRunRecord(input) {
   if (input.deadlineAt <= input.createdAt) {
@@ -83040,6 +83381,9 @@ function validateCreatedEntry(value, requested) {
 }
 async function createEntry(ports, projectId, rawEntry, sourceKind) {
   const entry = parseEntry(rawEntry, "INVALID_PROJECT_ASSET");
+  if (!ProjectAssetPublicationMetadataSchema.safeParse(entry.metadata).success) {
+    throw contractError("INVALID_PROJECT_ASSET", `Project Asset ${entry.id} contains legacy derived metadata that cannot be published.`);
+  }
   if (entry.source.kind !== sourceKind || entry.lifecycle.state !== "active") {
     throw contractError("INVALID_PROJECT_ASSET", `This operation requires an active ${sourceKind} Project Asset.`);
   }
@@ -83121,7 +83465,7 @@ function createAssetClient(ports) {
         throw new AssetSdkContractError("ASSET_IN_USE", `Project Asset ${id2} is still referenced.`, { projectAssetId: id2, references });
       }
       const entry = validateAuthorityEntry(result.entry, id2);
-      if (JSON.stringify(entry.lifecycle) !== JSON.stringify(requestedLifecycle)) {
+      if (entry.lifecycle.state !== "trashed" || entry.lifecycle.deleteOperationId !== requestedLifecycle.deleteOperationId) {
         throw contractError("AUTHORITY_CONTRACT_VIOLATION", `Authority did not trash Project Asset ${id2} with the requested operation.`);
       }
       return entry;
@@ -83174,13 +83518,13 @@ function createAssetClient(ports) {
     },
     async listReferences(input) {
       const projectId = nonEmpty(input.projectId, "projectId");
-      const projectAssetId = nonEmpty(input.projectAssetId, "projectAssetId");
-      const values = await ports.authority.listReferences(projectId, projectAssetId);
+      const projectAssetId2 = nonEmpty(input.projectAssetId, "projectAssetId");
+      const values = await ports.authority.listReferences(projectId, projectAssetId2);
       if (!Array.isArray(values)) {
         throw contractError("AUTHORITY_CONTRACT_VIOLATION", "Authority reference list must be an array.");
       }
       const bindings = values.map((value) => parseBinding2(value, "AUTHORITY_CONTRACT_VIOLATION")).sort((left, right) => left.id.localeCompare(right.id));
-      if (bindings.some((binding) => binding.projectAssetId !== projectAssetId)) {
+      if (bindings.some((binding) => binding.projectAssetId !== projectAssetId2)) {
         throw contractError("AUTHORITY_CONTRACT_VIOLATION", "Authority returned a reference for another Project Asset.");
       }
       return bindings;
@@ -83328,6 +83672,9 @@ function createGlobalAssetClient(ports) {
     async create(input) {
       const libraryId = nonEmpty2(input.libraryId, "libraryId");
       const requested = parseEntry2(input.entry, "INVALID_GLOBAL_ASSET");
+      if (!ProjectAssetPublicationMetadataSchema.safeParse(requested.metadata).success) {
+        throw new AssetSdkContractError("INVALID_GLOBAL_ASSET", `Global Asset ${requested.id} contains legacy derived metadata that cannot be published.`);
+      }
       if (requested.lifecycle.state !== "active") {
         throw new AssetSdkContractError("INVALID_GLOBAL_ASSET", "A new Global Asset must be active.");
       }
@@ -83373,7 +83720,8 @@ function createGlobalAssetClient(ports) {
     async restore(input) {
       const libraryId = nonEmpty2(input.libraryId, "libraryId");
       const id2 = nonEmpty2(input.globalAssetId, "globalAssetId");
-      const entry = validateResult(await ports.authority.restore(libraryId, id2), id2);
+      const deleteOperationId = nonEmpty2(input.deleteOperationId, "deleteOperationId");
+      const entry = validateResult(await ports.authority.restore(libraryId, { id: id2, deleteOperationId }), id2);
       if (entry.lifecycle.state !== "active")
         throw error(`Authority did not restore Global Asset ${id2}.`);
       return entry;
@@ -83407,8 +83755,8 @@ var LOCAL_HOST_DATA_SCHEMA_VERSION = 1;
 function isLocalHostDiscoveryRecord(value) {
   if (!value || typeof value !== "object")
     return false;
-  const record2 = value;
-  return record2.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && typeof record2.protocolVersion === "number" && Number.isInteger(record2.protocolVersion) && typeof record2.dataSchemaVersion === "number" && Number.isInteger(record2.dataSchemaVersion) && typeof record2.hostId === "string" && record2.hostId.length > 0 && typeof record2.endpoint === "string" && record2.endpoint.length > 0 && typeof record2.pid === "number" && Number.isInteger(record2.pid) && record2.pid > 0 && isHostLaunchMode(record2.launchMode) && isHostStartedBy(record2.startedBy) && (record2.profile === void 0 || record2.profile === "dev" || record2.profile === "prod") && (record2.agentCliPath === void 0 || typeof record2.agentCliPath === "string" && record2.agentCliPath.length > 0) && (record2.ownerClientId === void 0 || typeof record2.ownerClientId === "string") && typeof record2.startedAt === "string" && typeof record2.updatedAt === "string";
+  const record3 = value;
+  return record3.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION && typeof record3.protocolVersion === "number" && Number.isInteger(record3.protocolVersion) && typeof record3.dataSchemaVersion === "number" && Number.isInteger(record3.dataSchemaVersion) && typeof record3.hostId === "string" && record3.hostId.length > 0 && typeof record3.endpoint === "string" && record3.endpoint.length > 0 && typeof record3.pid === "number" && Number.isInteger(record3.pid) && record3.pid > 0 && isHostLaunchMode(record3.launchMode) && isHostStartedBy(record3.startedBy) && (record3.profile === void 0 || record3.profile === "dev" || record3.profile === "prod") && (record3.agentCliPath === void 0 || typeof record3.agentCliPath === "string" && record3.agentCliPath.length > 0) && (record3.ownerClientId === void 0 || typeof record3.ownerClientId === "string") && typeof record3.startedAt === "string" && typeof record3.updatedAt === "string";
 }
 function isHostLaunchMode(value) {
   return value === "desktop" || value === "plugin" || value === "cli-once" || value === "user-service" || value === "launchd";
@@ -83418,12 +83766,11 @@ function isHostStartedBy(value) {
 }
 
 // ../../apps/local-api/dist/app.js
-var import_promises23 = require("node:fs/promises");
+var import_promises24 = require("node:fs/promises");
 var import_node_crypto24 = require("node:crypto");
-var import_node_child_process5 = require("node:child_process");
-var import_node_fs9 = require("node:fs");
-var import_node_path30 = require("node:path");
-var import_node_util5 = require("node:util");
+var import_node_child_process6 = require("node:child_process");
+var import_node_path31 = require("node:path");
+var import_node_util6 = require("node:util");
 
 // ../../node_modules/.pnpm/hono@4.12.27/node_modules/hono/dist/compose.js
 var compose = (middleware, onError, onNotFound) => {
@@ -85698,8 +86045,8 @@ function stableJson2(value) {
   if (Array.isArray(value))
     return `[${value.map(stableJson2).join(",")}]`;
   if (value && typeof value === "object") {
-    const record2 = value;
-    return `{${Object.keys(record2).sort().map((key) => `${JSON.stringify(key)}:${stableJson2(record2[key])}`).join(",")}}`;
+    const record3 = value;
+    return `{${Object.keys(record3).sort().map((key) => `${JSON.stringify(key)}:${stableJson2(record3[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
 }
@@ -87414,6 +87761,24 @@ function applySchema(db) {
       PRIMARY KEY (asset_id, metadata_kind)
     );
 
+    CREATE TABLE IF NOT EXISTS metadata_attachment_index (
+      target_key TEXT NOT NULL,
+      target_kind TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      target_json TEXT NOT NULL,
+      metadata_kind TEXT NOT NULL,
+      schema_version INTEGER,
+      content_hash TEXT,
+      body_hash TEXT,
+      producer TEXT NOT NULL,
+      summary_json TEXT,
+      identity_json TEXT NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      PRIMARY KEY (target_key, metadata_kind)
+    );
+    CREATE INDEX IF NOT EXISTS metadata_attachment_project_kind_idx
+      ON metadata_attachment_index (project_id, target_kind, metadata_kind);
+
     CREATE TABLE IF NOT EXISTS local_config (
       key TEXT PRIMARY KEY NOT NULL,
       value_json TEXT NOT NULL,
@@ -87870,13 +88235,13 @@ function createLocalMetadataStore(dataDir2) {
       await (0, import_promises6.chmod)(path, 384).catch(() => void 0);
     }
   }
-  function insertMutationAudit(db, record2) {
+  function insertMutationAudit(db, record3) {
     db.prepare(`
       INSERT INTO mutation_audit (
         id, created_at, operation, entity_kind, entity_id, actor_client_type,
         accepted, reason, result_entity_id, error, mutation_json
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(record2.id, record2.createdAt, record2.operation, record2.entity.kind, record2.entity.id, record2.actorClientType ?? null, record2.accepted ? 1 : 0, record2.reason ?? null, record2.resultEntityId ?? null, record2.error ?? null, JSON.stringify(record2.mutation));
+    `).run(record3.id, record3.createdAt, record3.operation, record3.entity.kind, record3.entity.id, record3.actorClientType ?? null, record3.accepted ? 1 : 0, record3.reason ?? null, record3.resultEntityId ?? null, record3.error ?? null, JSON.stringify(record3.mutation));
   }
   async function load() {
     if (!await exists2())
@@ -88239,9 +88604,10 @@ function createLocalMetadataStore(dataDir2) {
       }
     });
   }
-  async function restoreGlobalAsset(libraryIdInput, idInput) {
+  async function restoreGlobalAsset(libraryIdInput, input) {
     const libraryId = normalizedGlobalIdentity(libraryIdInput, "libraryId");
-    const id2 = normalizedGlobalIdentity(idInput, "globalAssetId");
+    const id2 = normalizedGlobalIdentity(input.id, "globalAssetId");
+    const deleteOperationId = normalizedGlobalIdentity(input.deleteOperationId, "deleteOperationId");
     return withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
@@ -88253,16 +88619,23 @@ function createLocalMetadataStore(dataDir2) {
           throw new Error(`Global Asset ${id2} has already been purged.`);
         }
         if (current.lifecycle.state === "active") {
-          db.exec("COMMIT");
-          return current;
+          if (rowOptionalString(row, "delete_operation_id") === deleteOperationId) {
+            db.exec("COMMIT");
+            return current;
+          }
+          throw new Error(`Global Asset ${id2} was not restored from ${deleteOperationId}.`);
+        }
+        if (current.lifecycle.deleteOperationId !== deleteOperationId) {
+          throw new Error(`Global Asset ${id2} is trashed by another operation.`);
         }
         db.prepare(`
           UPDATE global_asset_entry
-             SET lifecycle_state = 'active', delete_operation_id = NULL,
+             SET lifecycle_state = 'active',
                  deleted_at = NULL, purge_after = NULL, purged_at = NULL,
                  updated_at = ?
            WHERE library_id = ? AND id = ?
-        `).run(Date.now(), libraryId, id2);
+             AND lifecycle_state = 'trashed' AND delete_operation_id = ?
+        `).run(Date.now(), libraryId, id2, deleteOperationId);
         markMigration(db, dataDir2, "");
         db.exec("COMMIT");
         return { ...current, lifecycle: { state: "active" } };
@@ -88315,11 +88688,11 @@ function createLocalMetadataStore(dataDir2) {
       }
     });
   }
-  async function appendMutationAudit(record2) {
+  async function appendMutationAudit(record3) {
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
-        insertMutationAudit(db, record2);
+        insertMutationAudit(db, record3);
         markMigration(db, dataDir2, "");
         db.exec("COMMIT");
       } catch (error53) {
@@ -88364,7 +88737,7 @@ function createLocalMetadataStore(dataDir2) {
       mutation: parseJson(row.mutation_json, {})
     })));
   }
-  async function appendPluginBrokerAudit(record2) {
+  async function appendPluginBrokerAudit(record3) {
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
@@ -88373,7 +88746,7 @@ function createLocalMetadataStore(dataDir2) {
             id, occurred_at, plugin_id, plugin_version, project_id,
             invocation_id, request_id, operation, target, status, error
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(record2.id, record2.occurredAt, record2.pluginId, record2.pluginVersion, record2.projectId, record2.invocationId, record2.requestId, record2.operation, record2.target, record2.status, record2.error ?? null);
+        `).run(record3.id, record3.occurredAt, record3.pluginId, record3.pluginVersion, record3.projectId, record3.invocationId, record3.requestId, record3.operation, record3.target, record3.status, record3.error ?? null);
         markMigration(db, dataDir2, "");
         db.exec("COMMIT");
       } catch (error53) {
@@ -88476,15 +88849,20 @@ function createLocalMetadataStore(dataDir2) {
     `).get(projectId, revisionId));
     return row ? textRevisionFromRow(row) : null;
   }
-  async function upsertAssetMetadataIndex(record2) {
+  async function upsertMetadataAttachmentIndex(record3) {
+    const target = MetadataAttachmentTargetSchema.parse(record3.target);
+    const targetKey = metadataAttachmentTargetKey(target);
     await withDb((db) => {
       db.prepare(`
-      INSERT INTO asset_metadata_index (
-        asset_id, metadata_kind, project_id, schema_version, content_hash,
-        body_hash, producer, summary_json, identity_json, recorded_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(asset_id, metadata_kind) DO UPDATE SET
+      INSERT INTO metadata_attachment_index (
+        target_key, target_kind, project_id, target_json, metadata_kind,
+        schema_version, content_hash, body_hash, producer, summary_json,
+        identity_json, recorded_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(target_key, metadata_kind) DO UPDATE SET
+        target_kind = excluded.target_kind,
         project_id = excluded.project_id,
+        target_json = excluded.target_json,
         schema_version = excluded.schema_version,
         content_hash = excluded.content_hash,
         body_hash = excluded.body_hash,
@@ -88492,16 +88870,20 @@ function createLocalMetadataStore(dataDir2) {
         summary_json = excluded.summary_json,
         identity_json = excluded.identity_json,
         recorded_at = excluded.recorded_at
-    `).run(record2.assetId, record2.metadataKind, record2.projectId ?? null, record2.schemaVersion ?? null, record2.contentHash ?? null, record2.bodyHash ?? null, record2.producer, record2.summary === void 0 ? null : JSON.stringify(record2.summary), JSON.stringify(record2.identity), Date.now());
+    `).run(targetKey, target.kind, target.projectId, JSON.stringify(target), record3.metadataKind, record3.schemaVersion ?? null, record3.contentHash ?? null, record3.bodyHash ?? null, record3.producer, record3.summary === void 0 ? null : JSON.stringify(record3.summary), JSON.stringify(record3.identity), Date.now());
     });
   }
-  async function listAssetMetadataIndex(filter = {}) {
+  async function listMetadataAttachmentIndex(filter = {}) {
     return withDb((db) => {
       const conditions = [];
       const params = [];
-      if (filter.assetId) {
-        conditions.push("asset_id = ?");
-        params.push(filter.assetId);
+      if (filter.target) {
+        conditions.push("target_key = ?");
+        params.push(metadataAttachmentTargetKey(filter.target));
+      }
+      if (filter.targetKind) {
+        conditions.push("target_kind = ?");
+        params.push(filter.targetKind);
       }
       if (filter.metadataKind) {
         conditions.push("metadata_kind = ?");
@@ -88512,21 +88894,41 @@ function createLocalMetadataStore(dataDir2) {
         params.push(filter.projectId);
       }
       const rows = db.prepare(`
-      SELECT asset_id, metadata_kind, project_id, schema_version, content_hash,
+      SELECT target_json, metadata_kind, schema_version, content_hash,
              body_hash, producer, summary_json, identity_json, recorded_at
-        FROM asset_metadata_index
+        FROM metadata_attachment_index
         ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
-       ORDER BY asset_id, metadata_kind
+       ORDER BY target_key, metadata_kind
     `).all(...params);
       return rows.map((row) => ({
-        assetId: row.asset_id,
+        authority: "projection-index",
+        target: MetadataAttachmentTargetSchema.parse(JSON.parse(String(row.target_json))),
         metadataKind: row.metadata_kind,
-        ...row.project_id === null ? {} : { projectId: row.project_id },
         ...row.schema_version === null ? {} : { schemaVersion: row.schema_version },
         ...row.content_hash === null ? {} : { contentHash: row.content_hash },
         ...row.body_hash === null ? {} : { bodyHash: row.body_hash },
         producer: row.producer,
         ...typeof row.summary_json === "string" ? { summary: JSON.parse(row.summary_json) } : {},
+        identity: JSON.parse(String(row.identity_json)),
+        recordedAt: row.recorded_at
+      }));
+    });
+  }
+  async function listLegacyAssetMetadataIndex(filter = {}) {
+    return withDb((db) => {
+      const rows = filter.assetId ? db.prepare(`SELECT asset_id, metadata_kind, project_id, producer,
+                      identity_json, recorded_at
+                 FROM asset_metadata_index
+                WHERE asset_id = ?
+                ORDER BY asset_id, metadata_kind`).all(filter.assetId) : db.prepare(`SELECT asset_id, metadata_kind, project_id, producer,
+                      identity_json, recorded_at
+                 FROM asset_metadata_index
+                ORDER BY asset_id, metadata_kind`).all();
+      return rows.map((row) => ({
+        assetId: row.asset_id,
+        metadataKind: row.metadata_kind,
+        ...row.project_id === null ? {} : { projectId: row.project_id },
+        producer: row.producer,
         identity: JSON.parse(String(row.identity_json)),
         recordedAt: row.recorded_at
       }));
@@ -88549,8 +88951,9 @@ function createLocalMetadataStore(dataDir2) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
-    upsertAssetMetadataIndex,
-    listAssetMetadataIndex
+    upsertMetadataAttachmentIndex,
+    listMetadataAttachmentIndex,
+    listLegacyAssetMetadataIndex
   };
 }
 
@@ -88739,7 +89142,28 @@ function createLocalResourceStore(options) {
         if (!sameFacts(existing, intended)) {
           throw new Error(`Local Resource ${resourceId} already exists with different immutable facts.`);
         }
-        return projection(existing);
+        try {
+          return await projection(existing);
+        } catch {
+          const path2 = await assetPathForWrite(options.dataDir, existing.storageKey, options.clashRoot);
+          const temporaryPath2 = `${path2}.repair-${(0, import_node_crypto6.randomUUID)()}`;
+          await (0, import_promises7.writeFile)(temporaryPath2, input.bytes, {
+            flag: "wx",
+            mode: 292
+          });
+          try {
+            await verifyBytes({
+              path: temporaryPath2,
+              digest: digest3,
+              byteLength: input.bytes.byteLength
+            });
+            await (0, import_promises7.rename)(temporaryPath2, path2);
+          } finally {
+            await (0, import_promises7.unlink)(temporaryPath2).catch(() => void 0);
+          }
+          await (0, import_promises7.chmod)(path2, 292);
+          return projection(existing);
+        }
       }
       const storageKey = `local-blobs/${digest3}/original${extensionFor(input)}`;
       const path = await assetPathForWrite(options.dataDir, storageKey, options.clashRoot);
@@ -89019,8 +89443,8 @@ function provenanceFromLegacy(asset) {
   }
   return { kind: "import" };
 }
-function mediaUrl(origin, projectId, projectAssetId) {
-  return `${origin.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(projectAssetId)}/media`;
+function mediaUrl(origin, projectId, projectAssetId2) {
+  return `${origin.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(projectAssetId2)}/media`;
 }
 function mutationFailure(result) {
   throw new Error(`${result.error.code}: ${result.error.message}`);
@@ -89099,10 +89523,10 @@ function createLocalProjectAssetService(options) {
       return { value: published.entry, save: published.changed };
     });
   }
-  function assertMutationObservation(doc, projectId, projectAssetId, operation2, observation) {
-    const currentReadToken = projectAssetMutationReadTokenFromDoc(doc, projectId, projectAssetId);
+  function assertMutationObservation(doc, projectId, projectAssetId2, operation2, observation) {
+    const currentReadToken = projectAssetMutationReadTokenFromDoc(doc, projectId, projectAssetId2);
     if (!currentReadToken) {
-      throw new AssetSdkContractError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${projectAssetId} not found.`, { projectAssetId });
+      throw new AssetSdkContractError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${projectAssetId2} not found.`, { projectAssetId: projectAssetId2 });
     }
     const proof = validateAgentReadProof({
       actorClientType: observation?.actorClientType,
@@ -89111,23 +89535,33 @@ function createLocalProjectAssetService(options) {
       expectedReadToken: observation?.expectedReadToken,
       requireReceipt: true,
       readReceiptVerifier: options.readReceiptVerifier,
-      readCommandHint: `Run clash assets get --asset ${projectAssetId} again before retrying.`
+      readCommandHint: `Run clash assets get --asset ${projectAssetId2} again before retrying.`
     });
     if (proof.ok)
       return;
-    throw new AssetSdkContractError(proof.code === "READ_REQUIRED" || proof.code === "STALE_READ" || proof.code === "INVALID_READ_PROOF" ? proof.code : "AUTHORITY_CONTRACT_VIOLATION", proof.error, { projectAssetId });
+    throw new AssetSdkContractError(proof.code === "READ_REQUIRED" || proof.code === "STALE_READ" || proof.code === "INVALID_READ_PROOF" ? proof.code : "AUTHORITY_CONTRACT_VIOLATION", proof.error, { projectAssetId: projectAssetId2 });
   }
   const authority = {
     async read(projectId, id2) {
-      return replica.inspect(projectId, (doc) => readProjectAsset(doc, id2));
+      return replica.inspect(projectId, (doc) => readProjectAsset(doc, id2, { projectId }));
     },
     async list(projectId) {
-      return replica.inspect(projectId, (doc) => listProjectAssets(doc));
+      return replica.inspect(projectId, (doc) => listProjectAssets(doc, { projectId }));
     },
     create: createEntry2,
     async trashIfUnreferenced(projectId, input, observation) {
       return replica.mutate(projectId, (doc) => {
+        const current = readProjectAsset(doc, input.id, { projectId });
+        if (current?.lifecycle.state === "trashed" && current.lifecycle.deleteOperationId === input.deleteOperationId) {
+          return {
+            value: { ok: true, entry: current },
+            save: false
+          };
+        }
         assertMutationObservation(doc, projectId, input.id, "Project Asset deletion", observation);
+        if (current?.lifecycle.state === "trashed") {
+          throw new AssetSdkContractError("STALE_READ", `Project Asset ${input.id} was already deleted by another operation. Read it again before choosing the next action.`, { projectAssetId: input.id });
+        }
         const result = trashProjectAssetIfUnreferenced(doc, input);
         return { value: result, save: result.ok };
       });
@@ -89168,8 +89602,8 @@ function createLocalProjectAssetService(options) {
         return { value: result.binding };
       });
     },
-    async listReferences(projectId, projectAssetId) {
-      return replica.inspect(projectId, (doc) => listActionAssetReferences(doc, projectAssetId));
+    async listReferences(projectId, projectAssetId2) {
+      return replica.inspect(projectId, (doc) => listActionAssetReferences(doc, projectAssetId2));
     }
   };
   const resolverPorts = {
@@ -89193,19 +89627,103 @@ function createLocalProjectAssetService(options) {
       async resolve({ projectId, entry }) {
         const origin = typeof options.projectionOrigin === "function" ? options.projectionOrigin() : options.projectionOrigin;
         const url2 = mediaUrl(origin, projectId, entry.id);
-        return { status: "ready", url: url2, thumbnailUrl: url2 };
+        return {
+          status: "ready",
+          url: url2,
+          ...entry.kind === "image" ? { thumbnailUrl: url2 } : {}
+        };
       }
     }
   };
   const client2 = createAssetClient({ authority, ...resolverPorts });
+  async function enrichResolved(entry, resolved) {
+    if (!options.assetInspection || resolved.status !== "ready") {
+      return resolved;
+    }
+    const source = await resources.resolve(entry.source.resourceId);
+    if (!source)
+      return resolved;
+    try {
+      const inspection = await options.assetInspection.inspect({
+        source,
+        knownFacts: entry.metadata
+      });
+      return ResolvedAssetSchema.parse({
+        ...resolved,
+        metadata: { ...resolved.metadata, ...inspection.facts }
+      });
+    } catch {
+      return resolved;
+    }
+  }
+  async function resolveEntry(projectId, entry) {
+    return enrichResolved(entry, await resolveProjectAsset(resolverPorts, { projectId, entry }));
+  }
+  async function metadataForPublication(input) {
+    const { waveform: _legacyWaveform, ...metadata2 } = input.metadata;
+    const base = ProjectAssetMetadataSchema.parse({
+      ...metadata2,
+      bytes: input.source.resource.byteLength,
+      ...input.source.resource.contentType ? { contentType: input.source.resource.contentType } : {},
+      ...input.name && !input.metadata.originalName ? { originalName: input.name } : {}
+    });
+    if (!options.assetInspection)
+      return base;
+    const inspection = await options.assetInspection.inspect({
+      source: input.source,
+      knownFacts: base
+    });
+    return ProjectAssetMetadataSchema.parse({
+      ...base,
+      ...inspection.facts,
+      // Resource facts, not caller or probe claims, own these immutable fields.
+      bytes: input.source.resource.byteLength,
+      ...input.source.resource.contentType ? { contentType: input.source.resource.contentType } : {}
+    });
+  }
+  async function prepareStagedOwnedEntry(input) {
+    const projectAssetId2 = nonEmpty4(input.projectAssetId, "projectAssetId");
+    const resourceId = nonEmpty4(input.resourceId, "resourceId");
+    const projection = await resources.resolve(resourceId);
+    if (!projection) {
+      throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Staged Resource ${resourceId} is not installed on this Host.`);
+    }
+    if (projection.resource.kind !== input.kind) {
+      throw new LocalProjectAssetMigrationError("RESOURCE_KIND_CONFLICT", `Staged Resource ${resourceId} is ${projection.resource.kind}, not ${input.kind}.`);
+    }
+    return ProjectAssetEntrySchema.parse({
+      id: projectAssetId2,
+      kind: input.kind,
+      source: { kind: "owned", resourceId },
+      lifecycle: { state: "active" },
+      ...input.name ? { name: input.name } : {},
+      metadata: await metadataForPublication({
+        source: projection,
+        metadata: input.metadata,
+        ...input.name ? { name: input.name } : {}
+      }),
+      ...input.provenance ? { provenance: input.provenance } : {}
+    });
+  }
   async function publishInstalled(input) {
+    const source = await resources.resolve(input.resourceId);
+    if (!source) {
+      throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Resource ${input.resourceId} is not installed on this Host.`);
+    }
+    if (source.resource.kind !== input.kind) {
+      throw new LocalProjectAssetMigrationError("RESOURCE_KIND_CONFLICT", `Resource ${input.resourceId} is ${source.resource.kind}, not ${input.kind}.`);
+    }
     const entry = {
       id: nonEmpty4(input.projectAssetId, "projectAssetId"),
       kind: input.kind,
       source: { kind: "owned", resourceId: input.resourceId },
       lifecycle: { state: "active" },
       ...input.name ? { name: input.name } : {},
-      metadata: input.metadata,
+      metadata: await metadataForPublication({
+        source,
+        metadata: input.metadata,
+        ...input.name ? { name: input.name } : {}
+      }),
       ...input.provenance ? { provenance: input.provenance } : {}
     };
     await client2.createOwned({ projectId: input.projectId, entry });
@@ -89216,9 +89734,16 @@ function createLocalProjectAssetService(options) {
     if (!resolved) {
       throw new LocalProjectAssetMigrationError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${entry.id} disappeared after publication.`);
     }
-    return resolved;
+    return enrichResolved(entry, resolved);
   }
   async function publishLinked(input) {
+    const source = await resources.resolve(input.resourceId);
+    if (!source) {
+      throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Resource ${input.resourceId} is not installed on this Host.`);
+    }
+    if (source.resource.kind !== input.kind) {
+      throw new LocalProjectAssetMigrationError("RESOURCE_KIND_CONFLICT", `Resource ${input.resourceId} is ${source.resource.kind}, not ${input.kind}.`);
+    }
     const entry = {
       id: nonEmpty4(input.projectAssetId, "projectAssetId"),
       kind: input.kind,
@@ -89227,12 +89752,17 @@ function createLocalProjectAssetService(options) {
         resourceId: nonEmpty4(input.resourceId, "resourceId"),
         origin: {
           scope: "global",
+          libraryId: nonEmpty4(input.originLibraryId, "originLibraryId"),
           entryId: nonEmpty4(input.originEntryId, "originEntryId")
         }
       },
       lifecycle: { state: "active" },
       ...input.name ? { name: input.name } : {},
-      metadata: input.metadata,
+      metadata: await metadataForPublication({
+        source,
+        metadata: input.metadata,
+        ...input.name ? { name: input.name } : {}
+      }),
       ...input.provenance ? { provenance: input.provenance } : {}
     };
     await materialize(input.projectId);
@@ -89309,11 +89839,11 @@ function createLocalProjectAssetService(options) {
   }
   async function prepareLegacyEntries(projectId, doc, legacy) {
     if (projectAssetAuthorityVersion(doc) === 1) {
-      const plan2 = actionAssetBindingPlanForDoc(doc, listProjectAssets(doc).filter((entry) => entry.lifecycle.state === "active").map((entry) => entry.id));
+      const plan2 = actionAssetBindingPlanForDoc(doc, listProjectAssets(doc, { projectId }).filter((entry) => entry.lifecycle.state === "active").map((entry) => entry.id));
       assertActionAssetBindingPlan(plan2);
       return [];
     }
-    const existing = new Map(listProjectAssets(doc).map((entry) => [entry.id, entry]));
+    const existing = new Map(listProjectAssets(doc, { projectId }).map((entry) => [entry.id, entry]));
     const candidateIds = [
       ...[...existing.values()].filter((entry) => entry.lifecycle.state === "active").map((entry) => entry.id),
       ...(legacy.assets ?? []).filter((asset) => !existing.has(asset.id)).map((asset) => asset.id)
@@ -89322,7 +89852,7 @@ function createLocalProjectAssetService(options) {
     assertActionAssetBindingPlan(plan);
     return legacyEntries(projectId, legacy, plan.bindings.map((binding) => binding.projectAssetId));
   }
-  function applyMaterialization(doc, entries) {
+  function applyMaterialization(projectId, doc, entries) {
     const assetAuthority = projectAssetAuthorityVersion(doc);
     const bindingAuthority = actionAssetBindingAuthorityVersion(doc);
     if (assetAuthority === 1 && bindingAuthority === ACTION_ASSET_BINDING_AUTHORITY_VERSION) {
@@ -89335,12 +89865,12 @@ function createLocalProjectAssetService(options) {
       throw new LocalProjectAssetMigrationError("ACTION_ASSET_BINDING_MATERIALIZATION_CONFLICT", `Unsupported Action Asset binding authority version ${bindingAuthority}.`);
     }
     for (const entry of entries) {
-      const existing = readProjectAsset(doc, entry.id);
+      const existing = readProjectAsset(doc, entry.id, { projectId });
       if (existing && !sameEntry(existing, entry)) {
         throw new LocalProjectAssetMigrationError("PROJECT_ASSET_ID_COLLISION", `Project Asset ${entry.id} already identifies different immutable content.`);
       }
     }
-    const candidateAssetIds = new Set(listProjectAssets(doc).filter((entry) => entry.lifecycle.state === "active").map((entry) => entry.id));
+    const candidateAssetIds = new Set(listProjectAssets(doc, { projectId }).filter((entry) => entry.lifecycle.state === "active").map((entry) => entry.id));
     if (assetAuthority !== 1) {
       for (const entry of entries)
         candidateAssetIds.add(entry.id);
@@ -89364,7 +89894,7 @@ function createLocalProjectAssetService(options) {
     let changed = false;
     if (assetAuthority !== 1) {
       for (const entry of entries) {
-        if (readProjectAsset(doc, entry.id))
+        if (readProjectAsset(doc, entry.id, { projectId }))
           continue;
         const created = createProjectAsset(doc, entry);
         if (!created.ok)
@@ -89406,13 +89936,13 @@ function createLocalProjectAssetService(options) {
     const legacy = await metadata.load();
     const entries = await replica.inspect(projectId, (doc) => prepareLegacyEntries(projectId, doc, legacy));
     await replica.mutate(projectId, (doc) => {
-      const changed = applyMaterialization(doc, entries);
+      const changed = applyMaterialization(projectId, doc, entries);
       return { value: void 0, save: changed };
     });
   }
-  async function projectionFromEntry(projectId, entry, projectAssetId) {
+  async function projectionFromEntry(projectId, entry, projectAssetId2) {
     if (!entry || entry.lifecycle.state !== "active") {
-      throw new LocalProjectAssetMigrationError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${projectAssetId} is not available in Project ${projectId}.`);
+      throw new LocalProjectAssetMigrationError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${projectAssetId2} is not available in Project ${projectId}.`);
     }
     const projection = await resources.resolve(entry.source.resourceId);
     if (!projection || projection.resource.kind !== entry.kind) {
@@ -89420,37 +89950,35 @@ function createLocalProjectAssetService(options) {
     }
     return projection;
   }
-  async function requireResolved(projectId, projectAssetId) {
-    const resolved = await client2.read({ projectId, projectAssetId });
+  async function requireResolved(projectId, projectAssetId2) {
+    const entry = await authority.read(projectId, projectAssetId2);
+    const resolved = await client2.read({ projectId, projectAssetId: projectAssetId2 });
     if (!resolved) {
-      throw new LocalProjectAssetMigrationError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${projectAssetId} is not available in Project ${projectId}.`);
+      throw new LocalProjectAssetMigrationError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${projectAssetId2} is not available in Project ${projectId}.`);
     }
-    return resolved;
+    return entry ? enrichResolved(entry, resolved) : resolved;
   }
   async function observationSnapshot(projectIdInput, projectAssetIdInput) {
     const projectId = nonEmpty4(projectIdInput, "projectId");
-    const projectAssetId = nonEmpty4(projectAssetIdInput, "projectAssetId");
+    const projectAssetId2 = nonEmpty4(projectAssetIdInput, "projectAssetId");
     await materialize(projectId);
     return replica.inspect(projectId, (doc) => {
-      const entry = readProjectAsset(doc, projectAssetId);
+      const entry = readProjectAsset(doc, projectAssetId2, { projectId });
       if (!entry)
         return null;
-      const references = listActionAssetReferences(doc, projectAssetId);
-      const readToken = projectAssetMutationReadTokenFromDoc(doc, projectId, projectAssetId);
+      const references = listActionAssetReferences(doc, projectAssetId2);
+      const readToken = projectAssetMutationReadTokenFromDoc(doc, projectId, projectAssetId2);
       if (!readToken)
         return null;
       return { projectId, entry, references, readToken };
     });
   }
-  async function resolveObserved(projectId, projectAssetId) {
-    const observed2 = await observationSnapshot(projectId, projectAssetId);
+  async function resolveObserved(projectId, projectAssetId2) {
+    const observed2 = await observationSnapshot(projectId, projectAssetId2);
     if (!observed2)
       return null;
     return {
-      value: await resolveProjectAsset(resolverPorts, {
-        projectId: observed2.projectId,
-        entry: observed2.entry
-      }),
+      value: await resolveEntry(observed2.projectId, observed2.entry),
       readToken: observed2.readToken
     };
   }
@@ -89463,7 +89991,7 @@ function createLocalProjectAssetService(options) {
         return cover.changed;
       }
       const legacy = await metadata.load();
-      return applyMaterialization(doc, await prepareLegacyEntries(projectId, doc, legacy));
+      return applyMaterialization(projectId, doc, await prepareLegacyEntries(projectId, doc, legacy));
     },
     stageOwned(input) {
       return resources.install({
@@ -89480,6 +90008,17 @@ function createLocalProjectAssetService(options) {
         throw new LocalProjectAssetMigrationError("RESOURCE_DIGEST_UNAVAILABLE", `Staged Resource ${resourceId} is not installed on this Host.`);
       }
       return projection;
+    },
+    prepareStagedOwnedEntry,
+    async publishStagedOwnedWithBindings(input) {
+      const projectId = nonEmpty4(input.projectId, "projectId");
+      const entry = await prepareStagedOwnedEntry(input);
+      await materialize(projectId);
+      const published = await replica.mutate(projectId, (doc) => {
+        const result = publishLocalProjectAssetWithBindings(doc, entry, input.bindings);
+        return { value: result.entry, save: result.changed };
+      });
+      return resolveEntry(projectId, published);
     },
     async installOwned(input) {
       const projection = await resources.install({
@@ -89503,17 +90042,18 @@ function createLocalProjectAssetService(options) {
         ...input.provenance ? { provenance: input.provenance } : {}
       });
     },
-    async readEntry(projectIdInput, projectAssetId) {
+    async readEntry(projectIdInput, projectAssetId2) {
       const projectId = nonEmpty4(projectIdInput, "projectId");
       await materialize(projectId);
-      return authority.read(projectId, projectAssetId);
+      return authority.read(projectId, projectAssetId2);
     },
-    admitLinked(input) {
+    async admitLinked(input) {
       return publishLinked({
         projectId: nonEmpty4(input.projectId, "projectId"),
         projectAssetId: input.projectAssetId?.trim() || `asset:${(0, import_node_crypto8.randomUUID)()}`,
         kind: input.kind,
         resourceId: input.resourceId,
+        originLibraryId: input.originLibraryId,
         originEntryId: input.originEntryId,
         ...input.name ? { name: input.name } : {},
         metadata: input.metadata,
@@ -89530,22 +90070,22 @@ function createLocalProjectAssetService(options) {
       await materialize(projectId);
       return authority.unbind(projectId, bindingId);
     },
-    async read(projectId, projectAssetId) {
-      return (await resolveObserved(projectId, projectAssetId))?.value ?? null;
+    async read(projectId, projectAssetId2) {
+      return (await resolveObserved(projectId, projectAssetId2))?.value ?? null;
     },
     async readFromDoc(doc, projectIdInput, projectAssetIdInput) {
       const projectId = nonEmpty4(projectIdInput, "projectId");
-      const projectAssetId = nonEmpty4(projectAssetIdInput, "projectAssetId");
+      const projectAssetId2 = nonEmpty4(projectAssetIdInput, "projectAssetId");
       await this.materializeDoc(projectId, doc);
-      const entry = readProjectAsset(doc, projectAssetId);
-      return entry ? resolveProjectAsset(resolverPorts, { projectId, entry }) : null;
+      const entry = readProjectAsset(doc, projectAssetId2, { projectId });
+      return entry ? resolveEntry(projectId, entry) : null;
     },
-    readObserved(projectId, projectAssetId) {
-      return resolveObserved(projectId, projectAssetId);
+    readObserved(projectId, projectAssetId2) {
+      return resolveObserved(projectId, projectAssetId2);
     },
     async list(projectId) {
       await materialize(projectId);
-      return client2.list({ projectId });
+      return Promise.all((await authority.list(projectId)).map((entry) => resolveEntry(projectId, entry)));
     },
     async readProjectCover(projectIdInput) {
       const projectId = nonEmpty4(projectIdInput, "projectId");
@@ -89554,42 +90094,44 @@ function createLocalProjectAssetService(options) {
     },
     async setProjectCover(projectIdInput, projectAssetIdInput) {
       const projectId = nonEmpty4(projectIdInput, "projectId");
-      const projectAssetId = projectAssetIdInput?.trim() || null;
+      const projectAssetId2 = projectAssetIdInput?.trim() || null;
       await materialize(projectId);
       return replica.mutate(projectId, (doc) => {
         const result = setProjectCoverAsset(doc, {
-          projectAssetId,
-          ...projectAssetId ? { bindingId: `project-cover:${(0, import_node_crypto8.randomUUID)()}` } : {}
+          projectAssetId: projectAssetId2,
+          ...projectAssetId2 ? { bindingId: `project-cover:${(0, import_node_crypto8.randomUUID)()}` } : {}
         });
         if (!result.ok)
           mutationFailure(result);
         return { value: result.coverAssetId, save: result.changed };
       });
     },
-    async listReferences(projectIdInput, projectAssetId) {
-      return (await this.listReferencesObserved(projectIdInput, projectAssetId)).value;
+    async listReferences(projectIdInput, projectAssetId2) {
+      return (await this.listReferencesObserved(projectIdInput, projectAssetId2)).value;
     },
-    async listReferencesObserved(projectIdInput, projectAssetId) {
-      const observed2 = await observationSnapshot(projectIdInput, projectAssetId);
+    async listReferencesObserved(projectIdInput, projectAssetId2) {
+      const observed2 = await observationSnapshot(projectIdInput, projectAssetId2);
       if (!observed2) {
-        throw new LocalProjectAssetMigrationError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${projectAssetId} is not available in Project ${projectIdInput}.`);
+        throw new LocalProjectAssetMigrationError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${projectAssetId2} is not available in Project ${projectIdInput}.`);
       }
       return { value: observed2.references, readToken: observed2.readToken };
     },
     async trash(input) {
       const projectId = nonEmpty4(input.projectId, "projectId");
+      const projectAssetId2 = nonEmpty4(input.projectAssetId, "projectAssetId");
+      const deleteOperationId = nonEmpty4(input.deleteOperationId, "deleteOperationId");
       await materialize(projectId);
       await client2.trash({
         projectId,
-        projectAssetId: input.projectAssetId,
-        deleteOperationId: input.deleteOperationId,
+        projectAssetId: projectAssetId2,
+        deleteOperationId,
         deletedAt: input.deletedAt,
         purgeAfter: input.purgeAfter,
         ...input.observation ? { observation: input.observation } : {}
       });
-      const observed2 = await resolveObserved(projectId, input.projectAssetId);
+      const observed2 = await resolveObserved(projectId, projectAssetId2);
       if (!observed2) {
-        throw new LocalProjectAssetMigrationError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${input.projectAssetId} disappeared after deletion.`);
+        throw new LocalProjectAssetMigrationError("PROJECT_ASSET_NOT_FOUND", `Project Asset ${projectAssetId2} disappeared after deletion.`);
       }
       return observed2;
     },
@@ -89607,15 +90149,15 @@ function createLocalProjectAssetService(options) {
       }
       return observed2;
     },
-    async openProjection(projectId, projectAssetId) {
+    async openProjection(projectId, projectAssetId2) {
       await materialize(projectId);
-      const entry = await authority.read(projectId, projectAssetId);
-      return projectionFromEntry(projectId, entry, projectAssetId);
+      const entry = await authority.read(projectId, projectAssetId2);
+      return projectionFromEntry(projectId, entry, projectAssetId2);
     },
-    async openProjectionFromDoc(doc, projectIdInput, projectAssetId) {
+    async openProjectionFromDoc(doc, projectIdInput, projectAssetId2) {
       const projectId = nonEmpty4(projectIdInput, "projectId");
       await this.materializeDoc(projectId, doc);
-      return projectionFromEntry(projectId, readProjectAsset(doc, projectAssetId), projectAssetId);
+      return projectionFromEntry(projectId, readProjectAsset(doc, projectAssetId2, { projectId }), projectAssetId2);
     }
   };
 }
@@ -89689,16 +90231,72 @@ function createLocalGlobalAssetService(options) {
       async resolve({ libraryId, entry }) {
         const origin = typeof options.projectionOrigin === "function" ? options.projectionOrigin() : options.projectionOrigin;
         const url2 = mediaUrl2(origin, libraryId, entry.id);
-        return { status: "ready", url: url2, thumbnailUrl: url2 };
+        return {
+          status: "ready",
+          url: url2,
+          ...entry.kind === "image" ? { thumbnailUrl: url2 } : {}
+        };
       }
     }
   });
-  async function requireResolved(libraryId, globalAssetId) {
-    const resolved = await client2.read({ libraryId, globalAssetId });
+  async function enrichResolved(entry, resolved) {
+    if (!options.assetInspection || resolved.status !== "ready") {
+      return resolved;
+    }
+    const source = await resources.resolve(entry.resourceId);
+    if (!source)
+      return resolved;
+    try {
+      const inspection = await options.assetInspection.inspect({
+        source,
+        knownFacts: entry.metadata
+      });
+      return ResolvedAssetSchema.parse({
+        ...resolved,
+        metadata: { ...resolved.metadata, ...inspection.facts }
+      });
+    } catch {
+      return resolved;
+    }
+  }
+  async function resolveEntry(libraryId, entry) {
+    const resolved = await client2.read({
+      libraryId,
+      globalAssetId: entry.id
+    });
     if (!resolved) {
+      throw new LocalGlobalAssetError("GLOBAL_ASSET_NOT_FOUND", `Global Asset ${entry.id} was not found in library ${libraryId}.`);
+    }
+    return enrichResolved(entry, resolved);
+  }
+  async function requireResolved(libraryId, globalAssetId) {
+    const entry = await authority.read(libraryId, globalAssetId);
+    if (!entry) {
       throw new LocalGlobalAssetError("GLOBAL_ASSET_NOT_FOUND", `Global Asset ${globalAssetId} was not found in library ${libraryId}.`);
     }
-    return resolved;
+    return resolveEntry(libraryId, entry);
+  }
+  async function metadataForPublication(input) {
+    const { waveform: _legacyWaveform, ...metadata2 } = input.metadata ?? {};
+    const base = metadataForResource({
+      metadata: metadata2,
+      byteLength: input.source.resource.byteLength,
+      ...input.source.resource.contentType ? { contentType: input.source.resource.contentType } : {},
+      ...input.originalName ? { originalName: input.originalName } : {}
+    });
+    if (!options.assetInspection)
+      return base;
+    const inspection = await options.assetInspection.inspect({
+      source: input.source,
+      knownFacts: base
+    });
+    return ProjectAssetMetadataSchema.parse({
+      ...base,
+      ...inspection.facts,
+      // Resource facts, not caller or probe claims, own these immutable fields.
+      bytes: input.source.resource.byteLength,
+      ...input.source.resource.contentType ? { contentType: input.source.resource.contentType } : {}
+    });
   }
   async function publish(input) {
     const libraryId = nonEmpty5(input.libraryId, "libraryId");
@@ -89716,15 +90314,31 @@ function createLocalGlobalAssetService(options) {
       resourceId: projection.resource.id,
       lifecycle: { state: "active" },
       ...input.name ? { name: input.name } : {},
-      metadata: metadataForResource({
+      metadata: await metadataForPublication({
+        source: projection,
         metadata: input.metadata,
-        byteLength: projection.resource.byteLength,
-        ...projection.resource.contentType ? { contentType: projection.resource.contentType } : {},
         ...input.originalName ? { originalName: input.originalName } : {}
       }),
       ...input.provenance ? { provenance: input.provenance } : {}
     });
-    await client2.create({ libraryId, entry });
+    const existing = await authority.read(libraryId, globalAssetId);
+    if (existing) {
+      if (JSON.stringify(existing) !== JSON.stringify(entry)) {
+        throw new LocalGlobalAssetError("GLOBAL_ASSET_FACT_MISMATCH", `Global Asset ${globalAssetId} already exists with different facts in library ${libraryId}.`);
+      }
+      return resolveEntry(libraryId, existing);
+    }
+    try {
+      await client2.create({ libraryId, entry });
+    } catch (error53) {
+      const raced = await authority.read(libraryId, globalAssetId);
+      if (!raced)
+        throw error53;
+      if (JSON.stringify(raced) !== JSON.stringify(entry)) {
+        throw new LocalGlobalAssetError("GLOBAL_ASSET_FACT_MISMATCH", `Global Asset ${globalAssetId} already exists with different facts in library ${libraryId}.`, { cause: error53 });
+      }
+      return resolveEntry(libraryId, raced);
+    }
     return requireResolved(libraryId, globalAssetId);
   }
   return {
@@ -89753,18 +90367,62 @@ function createLocalGlobalAssetService(options) {
       const entry = await authority.read(libraryId, globalAssetId);
       return entry ? GlobalAssetEntrySchema.parse(entry) : null;
     },
-    read(libraryId, globalAssetId) {
-      return client2.read({ libraryId, globalAssetId });
+    async read(libraryId, globalAssetId) {
+      const entry = await authority.read(libraryId, globalAssetId);
+      return entry ? resolveEntry(libraryId, entry) : null;
     },
-    list(libraryId) {
-      return client2.list({ libraryId });
+    async list(libraryId) {
+      return Promise.all((await authority.list(libraryId)).map((entry) => resolveEntry(libraryId, entry)));
     },
     async trash(input) {
-      await client2.trash(input);
-      return requireResolved(input.libraryId, input.globalAssetId);
+      const libraryId = nonEmpty5(input.libraryId, "libraryId");
+      const globalAssetId = nonEmpty5(input.globalAssetId, "globalAssetId");
+      const deleteOperationId = nonEmpty5(input.deleteOperationId, "deleteOperationId");
+      if (!await authority.read(libraryId, globalAssetId)) {
+        throw new LocalGlobalAssetError("GLOBAL_ASSET_NOT_FOUND", `Global Asset ${globalAssetId} was not found in library ${libraryId}.`);
+      }
+      const reconcileRetry = async () => {
+        const current = await authority.read(libraryId, globalAssetId);
+        if (current?.lifecycle.state !== "trashed")
+          return null;
+        if (current.lifecycle.deleteOperationId !== deleteOperationId) {
+          throw new LocalGlobalAssetError("GLOBAL_ASSET_FACT_MISMATCH", `Global Asset ${globalAssetId} is already trashed by another operation.`);
+        }
+        return resolveEntry(libraryId, current);
+      };
+      const retried = await reconcileRetry();
+      if (retried)
+        return retried;
+      try {
+        await client2.trash({
+          ...input,
+          libraryId,
+          globalAssetId,
+          deleteOperationId
+        });
+      } catch (error53) {
+        const raced = await reconcileRetry();
+        if (raced)
+          return raced;
+        throw error53;
+      }
+      return requireResolved(libraryId, globalAssetId);
     },
-    async restore(libraryId, globalAssetId) {
-      await client2.restore({ libraryId, globalAssetId });
+    async restore(input) {
+      const libraryId = nonEmpty5(input.libraryId, "libraryId");
+      const globalAssetId = nonEmpty5(input.globalAssetId, "globalAssetId");
+      const deleteOperationId = nonEmpty5(input.deleteOperationId, "deleteOperationId");
+      if (!await authority.read(libraryId, globalAssetId)) {
+        throw new LocalGlobalAssetError("GLOBAL_ASSET_NOT_FOUND", `Global Asset ${globalAssetId} was not found in library ${libraryId}.`);
+      }
+      try {
+        await client2.restore({ libraryId, globalAssetId, deleteOperationId });
+      } catch (error53) {
+        const current = await authority.read(libraryId, globalAssetId);
+        if (current?.lifecycle.state === "purged")
+          throw error53;
+        throw new LocalGlobalAssetError("GLOBAL_ASSET_FACT_MISMATCH", `Global Asset ${globalAssetId} is not trashed by ${deleteOperationId}.`, { cause: error53 });
+      }
       return requireResolved(libraryId, globalAssetId);
     },
     async purge(input) {
@@ -89798,11 +90456,572 @@ function createLocalGlobalAssetService(options) {
   };
 }
 
+// ../../apps/local-api/dist/local-asset-inspections.js
+var import_node_module5 = require("node:module");
+var import_node_child_process3 = require("node:child_process");
+var import_promises10 = require("node:fs/promises");
+var import_node_util = require("node:util");
+
+// ../../apps/local-api/dist/local-media-binaries.js
+var import_node_fs4 = require("node:fs");
+var import_node_module4 = require("node:module");
+var import_node_path14 = require("node:path");
+var nodeRequire4 = (0, import_node_module4.createRequire)(__clash_import_meta_url);
+var installerPackage = {
+  ffmpeg: "@ffmpeg-installer/ffmpeg",
+  ffprobe: "@ffprobe-installer/ffprobe"
+};
+function packageBinaryPath(tool, loadPackage) {
+  try {
+    const loaded = loadPackage(installerPackage[tool]);
+    const value = loaded && typeof loaded === "object" && "default" in loaded ? loaded.default : loaded;
+    return value && typeof value === "object" && "path" in value ? String(value.path) : null;
+  } catch {
+    return null;
+  }
+}
+function defaultSystemPaths(tool) {
+  return [
+    `/opt/homebrew/bin/${tool}`,
+    `/usr/local/bin/${tool}`,
+    `/usr/bin/${tool}`
+  ];
+}
+function isExecutableFile(path, platform3) {
+  if (/(?:^|[\\/])app\.asar(?:[\\/]|$)/.test(path))
+    return false;
+  try {
+    if (!(0, import_node_fs4.statSync)(path).isFile())
+      return false;
+    (0, import_node_fs4.accessSync)(path, platform3 === "win32" ? import_node_fs4.constants.F_OK : import_node_fs4.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function preparePackagedExecutable(path, platform3) {
+  if (!path || /(?:^|[\\/])app\.asar(?:[\\/]|$)/.test(path))
+    return path;
+  if (platform3 !== "win32" && !isExecutableFile(path, platform3)) {
+    try {
+      if ((0, import_node_fs4.statSync)(path).isFile())
+        (0, import_node_fs4.chmodSync)(path, 493);
+    } catch {
+      return path;
+    }
+  }
+  return path;
+}
+function selectLocalMediaBinary(options) {
+  const overrideName = options.tool === "ffmpeg" ? "FFMPEG_PATH" : "FFPROBE_PATH";
+  const candidates = [
+    options.env[overrideName],
+    options.packagedPath,
+    ...options.systemPaths
+  ];
+  return candidates.filter((candidate) => Boolean(candidate)).find((candidate) => isExecutableFile(candidate, options.platform)) ?? null;
+}
+function resolveLocalMediaBinary(tool, options = {}) {
+  const loadPackage = options.loadPackage ?? ((name) => nodeRequire4(name));
+  const platform3 = options.platform ?? process.platform;
+  const env2 = { ...options.env ?? process.env };
+  if (tool === "ffprobe" && !env2.FFPROBE_PATH && env2.FFMPEG_PATH) {
+    env2.FFPROBE_PATH = (0, import_node_path14.join)((0, import_node_path14.dirname)(env2.FFMPEG_PATH), "ffprobe");
+  }
+  return selectLocalMediaBinary({
+    tool,
+    env: env2,
+    packagedPath: preparePackagedExecutable(packageBinaryPath(tool, loadPackage), platform3),
+    systemPaths: options.systemPaths ?? defaultSystemPaths(tool),
+    platform: platform3
+  });
+}
+function localFfmpegPath() {
+  return resolveLocalMediaBinary("ffmpeg");
+}
+function localFfprobePath() {
+  return resolveLocalMediaBinary("ffprobe");
+}
+
+// ../../apps/local-api/dist/local-asset-inspections.js
+var LOCAL_ASSET_INSPECTION_RECIPE = "asset-inspection/v3:canonical-media-facts";
+var LocalAssetInspectionFactsSchema = ProjectAssetMetadataSchema.pick({
+  width: true,
+  height: true,
+  durationMs: true,
+  contentType: true,
+  frameRate: true,
+  videoCodec: true,
+  hasAudio: true,
+  audioCodec: true
+});
+var execFileAsync = (0, import_node_util.promisify)(import_node_child_process3.execFile);
+function optionalNonEmptyString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : void 0;
+}
+function optionalPositiveInteger(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : void 0;
+}
+function frameRate(value) {
+  if (typeof value !== "string")
+    return void 0;
+  const match2 = /^(\d+(?:\.\d+)?)(?:\/(\d+(?:\.\d+)?))?$/.exec(value.trim());
+  if (!match2)
+    return void 0;
+  const numerator = Number(match2[1]);
+  const denominator = match2[2] ? Number(match2[2]) : 1;
+  const rate = numerator / denominator;
+  return Number.isFinite(rate) && rate > 0 ? rate : void 0;
+}
+function durationMs(value) {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return void 0;
+  }
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0)
+    return void 0;
+  return Math.round(seconds * 1e3);
+}
+function record(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+}
+function mediaTypeParameters(value) {
+  const [rawEssence = "", ...rawParameters] = (value ?? "").split(";");
+  const parameters = /* @__PURE__ */ new Map();
+  for (const rawParameter of rawParameters) {
+    const separator = rawParameter.indexOf("=");
+    if (separator <= 0)
+      continue;
+    parameters.set(rawParameter.slice(0, separator).trim().toLowerCase(), rawParameter.slice(separator + 1).trim().toLowerCase());
+  }
+  return { essence: rawEssence.trim().toLowerCase(), parameters };
+}
+function requireRegisteredMediaType(resource) {
+  const { essence } = mediaTypeParameters(resource.contentType);
+  const matches = resource.kind === "image" && essence.startsWith("image/") || resource.kind === "video" && essence.startsWith("video/") || resource.kind === "audio" && essence.startsWith("audio/") || resource.kind === "model" && (essence === "model/gltf-binary" || essence === "model/gltf+json");
+  if (!matches) {
+    throw new Error(`Registered ${resource.kind} Asset content type ${resource.contentType ?? "(missing)"} does not match its kind.`);
+  }
+  return essence;
+}
+function decodedMediaType(input) {
+  const formatNames = new Set((input.formatName ?? "").toLowerCase().split(",").map((value) => value.trim()).filter(Boolean));
+  if (input.kind === "image") {
+    const codec2 = input.videoCodec?.toLowerCase();
+    const mediaType = codec2 === "png" ? "image/png" : codec2 === "mjpeg" || codec2 === "jpeg2000" ? codec2 === "mjpeg" ? "image/jpeg" : "image/jp2" : codec2 === "gif" ? "image/gif" : codec2 === "webp" ? "image/webp" : codec2 === "svg" ? "image/svg+xml" : codec2 === "av1" && formatNames.has("mov") ? "image/avif" : void 0;
+    if (mediaType)
+      return mediaType;
+  } else if (formatNames.has("webm")) {
+    return input.kind === "video" ? "video/webm" : "audio/webm";
+  } else if (formatNames.has("matroska")) {
+    return input.kind === "video" ? "video/x-matroska" : "audio/x-matroska";
+  } else if (formatNames.has("mov") || formatNames.has("mp4") || formatNames.has("m4a") || formatNames.has("3gp") || formatNames.has("3g2") || formatNames.has("mj2")) {
+    return input.kind === "video" ? input.majorBrand?.trim().toLowerCase() === "qt" ? "video/quicktime" : "video/mp4" : "audio/mp4";
+  } else if (input.kind === "video" && formatNames.has("mpegts")) {
+    return "video/mp2t";
+  } else if (input.kind === "video" && formatNames.has("avi")) {
+    return "video/x-msvideo";
+  } else if (input.kind === "audio" && formatNames.has("mp3")) {
+    return "audio/mpeg";
+  } else if (input.kind === "audio" && formatNames.has("wav")) {
+    return "audio/wav";
+  } else if (input.kind === "audio" && formatNames.has("flac")) {
+    return "audio/flac";
+  } else if (input.kind === "audio" && formatNames.has("ogg")) {
+    return "audio/ogg";
+  } else if (input.kind === "audio" && formatNames.has("aac")) {
+    return "audio/aac";
+  }
+  throw new Error(`Decoded ${input.kind} Asset format ${input.formatName ?? "(missing)"}/${input.videoCodec ?? "(missing)"} has no canonical media type mapping.`);
+}
+function assertDecodedMediaType(input) {
+  if (input.resource.kind === "model")
+    return;
+  const decoded = decodedMediaType({
+    kind: input.resource.kind,
+    ...input.formatName ? { formatName: input.formatName } : {},
+    ...input.videoCodec ? { videoCodec: input.videoCodec } : {},
+    ...input.majorBrand ? { majorBrand: input.majorBrand } : {}
+  });
+  if (decoded !== input.registeredEssence) {
+    throw new Error(`Decoded ${input.resource.kind} Asset has canonical media type ${decoded}, not registered ${input.registeredEssence}.`);
+  }
+}
+function requireFact(value, name, kind) {
+  if (value === void 0) {
+    throw new Error(`Decoded ${kind} Asset is missing canonical ${name}.`);
+  }
+  return value;
+}
+function parseGltfDocument(value) {
+  const root5 = record(value);
+  const asset = record(root5?.asset);
+  const version2 = optionalNonEmptyString(asset?.version);
+  if (!version2 || !/^2(?:\.|$)/.test(version2)) {
+    throw new Error("glTF Asset bytes do not declare a supported 2.x asset version.");
+  }
+}
+async function inspectGltf(sourcePath, resource, essence) {
+  const bytes = await (0, import_promises10.readFile)(sourcePath);
+  if (bytes.byteLength !== resource.byteLength) {
+    throw new Error("glTF Asset bytes do not match immutable Resource length.");
+  }
+  if (essence === "model/gltf+json") {
+    try {
+      parseGltfDocument(JSON.parse(bytes.toString("utf8")));
+    } catch (error53) {
+      throw new Error("glTF JSON Asset bytes are invalid.", { cause: error53 });
+    }
+  } else {
+    if (bytes.byteLength < 20 || bytes.subarray(0, 4).toString() !== "glTF") {
+      throw new Error("GLB Asset bytes do not contain a valid glTF header.");
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const version2 = view.getUint32(4, true);
+    const declaredLength = view.getUint32(8, true);
+    const jsonLength = view.getUint32(12, true);
+    const jsonType = view.getUint32(16, true);
+    if (version2 !== 2 || declaredLength !== bytes.byteLength || jsonType !== 1313821514 || jsonLength > bytes.byteLength - 20) {
+      throw new Error("GLB Asset bytes do not contain a valid glTF 2 JSON chunk.");
+    }
+    try {
+      parseGltfDocument(JSON.parse(bytes.subarray(20, 20 + jsonLength).toString("utf8").trim()));
+    } catch (error53) {
+      throw new Error("GLB Asset JSON chunk is invalid.", { cause: error53 });
+    }
+  }
+  return LocalAssetInspectionFactsSchema.parse({
+    contentType: resource.contentType
+  });
+}
+function inspectRawL16(resource) {
+  const { essence, parameters } = mediaTypeParameters(resource.contentType);
+  if (essence !== "audio/l16" && essence !== "audio/pcm")
+    return void 0;
+  const rate = Number(parameters.get("rate"));
+  const channels = Number(parameters.get("channels") ?? "1");
+  if (!Number.isSafeInteger(rate) || rate <= 0 || !Number.isSafeInteger(channels) || channels <= 0 || resource.byteLength % (2 * channels) !== 0) {
+    throw new Error("Raw 16-bit PCM Asset metadata must provide a valid sample rate, channel count, and whole samples.");
+  }
+  return LocalAssetInspectionFactsSchema.parse({
+    durationMs: Math.round(resource.byteLength / (2 * channels * rate) * 1e3),
+    ...resource.contentType ? { contentType: resource.contentType } : {},
+    hasAudio: true,
+    audioCodec: "pcm_s16le"
+  });
+}
+function createLocalFfprobeAssetInspector(options) {
+  const run = options.run ?? (async (file2, args) => {
+    const result = await execFileAsync(file2, args, {
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024
+    });
+    return { stdout: result.stdout };
+  });
+  return async ({ sourcePath, resource }) => {
+    const essence = requireRegisteredMediaType(resource);
+    if (resource.kind === "model") {
+      return inspectGltf(sourcePath, resource, essence);
+    }
+    const rawL16 = inspectRawL16(resource);
+    if (rawL16)
+      return rawL16;
+    const { stdout } = await run(options.ffprobePath, [
+      "-v",
+      "error",
+      "-print_format",
+      "json",
+      "-show_streams",
+      "-show_format",
+      sourcePath
+    ]);
+    let output;
+    try {
+      output = JSON.parse(stdout);
+    } catch (error53) {
+      throw new Error("ffprobe returned malformed Asset inspection JSON.", {
+        cause: error53
+      });
+    }
+    const root5 = record(output);
+    if (!root5)
+      throw new Error("ffprobe returned no Asset inspection object.");
+    const streams = Array.isArray(root5.streams) ? root5.streams.map(record).filter((item) => !!item) : [];
+    const video = streams.find((stream) => stream.codec_type === "video");
+    const audio = streams.find((stream) => stream.codec_type === "audio");
+    const format2 = record(root5.format);
+    const formatName = optionalNonEmptyString(format2?.format_name);
+    const majorBrand = optionalNonEmptyString(record(format2?.tags)?.major_brand);
+    const width = optionalPositiveInteger(video?.width);
+    const height = optionalPositiveInteger(video?.height);
+    const duration3 = durationMs(format2?.duration ?? video?.duration ?? audio?.duration);
+    const rate = frameRate(video?.avg_frame_rate ?? video?.r_frame_rate);
+    const videoCodec = optionalNonEmptyString(video?.codec_name);
+    const audioCodec = optionalNonEmptyString(audio?.codec_name);
+    if (resource.kind === "image") {
+      if (!video)
+        throw new Error("Decoded image Asset has no visual stream.");
+      requireFact(width, "width", resource.kind);
+      requireFact(height, "height", resource.kind);
+      requireFact(videoCodec, "image codec", resource.kind);
+    } else if (resource.kind === "video") {
+      if (!video)
+        throw new Error("Decoded video Asset has no video stream.");
+      requireFact(width, "width", resource.kind);
+      requireFact(height, "height", resource.kind);
+      requireFact(duration3, "duration", resource.kind);
+      requireFact(rate, "frame rate", resource.kind);
+      requireFact(videoCodec, "video codec", resource.kind);
+      if (audio)
+        requireFact(audioCodec, "audio codec", resource.kind);
+    } else {
+      if (!audio)
+        throw new Error("Decoded audio Asset has no audio stream.");
+      requireFact(duration3, "duration", resource.kind);
+      requireFact(audioCodec, "audio codec", resource.kind);
+    }
+    assertDecodedMediaType({
+      resource,
+      registeredEssence: essence,
+      ...formatName ? { formatName } : {},
+      ...videoCodec ? { videoCodec } : {},
+      ...majorBrand ? { majorBrand } : {}
+    });
+    return LocalAssetInspectionFactsSchema.parse({
+      ...width === void 0 ? {} : { width },
+      ...height === void 0 ? {} : { height },
+      ...duration3 === void 0 ? {} : { durationMs: duration3 },
+      ...resource.contentType ? { contentType: resource.contentType } : {},
+      ...rate === void 0 ? {} : { frameRate: rate },
+      ...videoCodec ? { videoCodec } : {},
+      ...resource.kind === "video" || resource.kind === "audio" ? { hasAudio: !!audio } : {},
+      ...audioCodec ? { audioCodec } : {}
+    });
+  };
+}
+var nodeRequire5 = (0, import_node_module5.createRequire)(__clash_import_meta_url);
+function openDatabase3(path) {
+  const { DatabaseSync } = nodeRequire5("node:sqlite");
+  const database = new DatabaseSync(path);
+  database.exec(`
+    PRAGMA busy_timeout = 5000;
+    PRAGMA journal_mode = WAL;
+    DROP TABLE IF EXISTS local_asset_representations;
+    CREATE TABLE IF NOT EXISTS local_asset_inspections (
+      source_resource_id TEXT NOT NULL,
+      recipe TEXT NOT NULL,
+      facts_json TEXT NOT NULL,
+      inspected_at INTEGER NOT NULL,
+      PRIMARY KEY (source_resource_id, recipe)
+    );
+  `);
+  const inspectionTable = database.prepare(`
+      SELECT sql
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'local_asset_inspections'
+    `).get();
+  if (typeof inspectionTable?.sql !== "string" || !/\brecipe\b/i.test(inspectionTable.sql)) {
+    database.exec(`
+      BEGIN IMMEDIATE;
+      ALTER TABLE local_asset_inspections
+        RENAME TO local_asset_inspections_unversioned;
+      CREATE TABLE local_asset_inspections (
+        source_resource_id TEXT NOT NULL,
+        recipe TEXT NOT NULL,
+        facts_json TEXT NOT NULL,
+        inspected_at INTEGER NOT NULL,
+        PRIMARY KEY (source_resource_id, recipe)
+      );
+      DROP TABLE local_asset_inspections_unversioned;
+      COMMIT;
+    `);
+  }
+  return database;
+}
+function parseInspectionRow(row) {
+  const sourceResourceId = row.source_resource_id;
+  const recipe = row.recipe;
+  const factsJson = row.facts_json;
+  if (typeof sourceResourceId !== "string" || !sourceResourceId || typeof recipe !== "string" || !recipe || typeof factsJson !== "string") {
+    throw new Error("Local Asset inspection row is corrupt.");
+  }
+  let facts;
+  try {
+    facts = JSON.parse(factsJson);
+  } catch (error53) {
+    throw new Error("Local Asset inspection facts are corrupt.", {
+      cause: error53
+    });
+  }
+  return {
+    sourceResourceId,
+    recipe,
+    facts: LocalAssetInspectionFactsSchema.parse(facts)
+  };
+}
+function sameResourceFacts(left, right) {
+  return JSON.stringify(left.resource) === JSON.stringify(right.resource);
+}
+function assertCompleteInspectionFacts(resource, facts) {
+  if (facts.contentType !== resource.contentType) {
+    throw new Error(`Decoded ${resource.kind} Asset content type does not match immutable Resource facts.`);
+  }
+  if (resource.kind === "image") {
+    requireFact(facts.width, "width", resource.kind);
+    requireFact(facts.height, "height", resource.kind);
+  } else if (resource.kind === "video") {
+    requireFact(facts.width, "width", resource.kind);
+    requireFact(facts.height, "height", resource.kind);
+    requireFact(facts.durationMs, "duration", resource.kind);
+    requireFact(facts.frameRate, "frame rate", resource.kind);
+    requireFact(facts.videoCodec, "video codec", resource.kind);
+    requireFact(facts.hasAudio, "audio presence", resource.kind);
+    if (facts.hasAudio)
+      requireFact(facts.audioCodec, "audio codec", resource.kind);
+  } else if (resource.kind === "audio") {
+    requireFact(facts.durationMs, "duration", resource.kind);
+    if (facts.hasAudio !== true) {
+      throw new Error("Decoded audio Asset is missing canonical audio presence.");
+    }
+    requireFact(facts.audioCodec, "audio codec", resource.kind);
+  }
+  return facts;
+}
+function createLocalAssetInspectionService(options) {
+  const databasePath2 = `${options.dataDir}/local.sqlite`;
+  const resources = createLocalResourceStore({
+    dataDir: options.dataDir,
+    ...options.clashRoot ? { clashRoot: options.clashRoot } : {}
+  });
+  const inspectionInFlight = /* @__PURE__ */ new Map();
+  async function withDatabase(task) {
+    await (0, import_promises10.mkdir)(options.dataDir, { recursive: true });
+    const database = openDatabase3(databasePath2);
+    try {
+      return task(database);
+    } finally {
+      database.close();
+      await (0, import_promises10.chmod)(databasePath2, 384).catch(() => void 0);
+    }
+  }
+  async function readInspection(sourceResourceId) {
+    return withDatabase((database) => {
+      const row = database.prepare(`
+          SELECT source_resource_id, recipe, facts_json
+          FROM local_asset_inspections
+          WHERE source_resource_id = ? AND recipe = ?
+        `).get(sourceResourceId, LOCAL_ASSET_INSPECTION_RECIPE);
+      return row ? parseInspectionRow(row) : void 0;
+    });
+  }
+  async function persistInspection(input) {
+    const facts = assertCompleteInspectionFacts(input.source.resource, LocalAssetInspectionFactsSchema.parse(input.facts));
+    await withDatabase((database) => {
+      database.prepare(`
+          INSERT OR IGNORE INTO local_asset_inspections (
+            source_resource_id, recipe, facts_json, inspected_at
+          ) VALUES (?, ?, ?, ?)
+        `).run(input.source.resource.id, LOCAL_ASSET_INSPECTION_RECIPE, JSON.stringify(facts), Date.now());
+    });
+    const stored = await readInspection(input.source.resource.id);
+    if (!stored) {
+      throw new Error(`Local Asset inspection for ${input.source.resource.id} was not indexed.`);
+    }
+    assertCompleteInspectionFacts(input.source.resource, stored.facts);
+    if (JSON.stringify(stored.facts) !== JSON.stringify(facts)) {
+      throw new Error(`Local Asset inspection candidate for ${input.source.resource.id} conflicts with the inspection CAS winner.`);
+    }
+    return stored;
+  }
+  async function ensureInspection(source) {
+    const stored = await readInspection(source.resource.id);
+    if (stored) {
+      assertCompleteInspectionFacts(source.resource, stored.facts);
+      return stored;
+    }
+    const inspectResource = options.inspectResource;
+    if (!inspectResource)
+      return void 0;
+    const key = `${source.resource.id}\0${LOCAL_ASSET_INSPECTION_RECIPE}`;
+    const existing = inspectionInFlight.get(key);
+    if (existing)
+      return existing;
+    const task = (async () => {
+      const raced = await readInspection(source.resource.id);
+      if (raced) {
+        assertCompleteInspectionFacts(source.resource, raced.facts);
+        return raced;
+      }
+      const probed = LocalAssetInspectionFactsSchema.parse(await inspectResource({
+        sourcePath: source.path,
+        resource: source.resource
+      }));
+      return persistInspection({
+        source,
+        facts: mergeInspectionFacts(source.resource.id, inspectionFactsFromKnown(source, void 0), probed)
+      });
+    })();
+    inspectionInFlight.set(key, task);
+    try {
+      return await task;
+    } finally {
+      if (inspectionInFlight.get(key) === task) {
+        inspectionInFlight.delete(key);
+      }
+    }
+  }
+  async function installedSource(input) {
+    const source = await resources.resolve(input.resource.id);
+    if (!source || !sameResourceFacts(source, input)) {
+      throw new Error(`Source Resource ${input.resource.id} is not installed with the claimed immutable facts.`);
+    }
+    return source;
+  }
+  function inspectionFactsFromKnown(source, knownFacts) {
+    if (knownFacts?.contentType !== void 0 && knownFacts.contentType !== source.resource.contentType) {
+      throw new Error(`Inspection content type for ${source.resource.id} conflicts with its immutable Resource facts.`);
+    }
+    const selected = knownFacts ? {
+      ...knownFacts.width === void 0 ? {} : { width: knownFacts.width },
+      ...knownFacts.height === void 0 ? {} : { height: knownFacts.height },
+      ...knownFacts.durationMs === void 0 ? {} : { durationMs: knownFacts.durationMs },
+      ...knownFacts.frameRate === void 0 ? {} : { frameRate: knownFacts.frameRate },
+      ...knownFacts.videoCodec === void 0 ? {} : { videoCodec: knownFacts.videoCodec },
+      ...knownFacts.hasAudio === void 0 ? {} : { hasAudio: knownFacts.hasAudio },
+      ...knownFacts.audioCodec === void 0 ? {} : { audioCodec: knownFacts.audioCodec }
+    } : {};
+    return LocalAssetInspectionFactsSchema.parse({
+      ...selected,
+      ...source.resource.contentType ? { contentType: source.resource.contentType } : {}
+    });
+  }
+  function mergeInspectionFacts(sourceResourceId, left, right) {
+    const merged = { ...left };
+    for (const [key, value] of Object.entries(right)) {
+      const existing = merged[key];
+      if (existing !== void 0 && JSON.stringify(existing) !== JSON.stringify(value)) {
+        throw new Error(`Inspection fact ${key} for ${sourceResourceId} conflicts with the persisted Resource facts.`);
+      }
+      merged[key] = value;
+    }
+    return LocalAssetInspectionFactsSchema.parse(merged);
+  }
+  return {
+    async inspect(input) {
+      const source = await installedSource(input.source);
+      const knownFacts = inspectionFactsFromKnown(source, input.knownFacts);
+      const inspection = await ensureInspection(source);
+      const facts = inspection ? mergeInspectionFacts(source.resource.id, inspection.facts, knownFacts) : knownFacts;
+      return { facts };
+    }
+  };
+}
+
 // ../../apps/local-api/dist/local-token-import.js
 var import_node_crypto10 = require("node:crypto");
-var import_promises10 = require("node:fs/promises");
+var import_promises11 = require("node:fs/promises");
 var import_node_os5 = require("node:os");
-var import_node_path14 = require("node:path");
+var import_node_path15 = require("node:path");
 var ENCRYPTED_V2_PREFIX = "v2enc:";
 var KEY_LENGTH = 32;
 var IV_LENGTH = 16;
@@ -89812,18 +91031,18 @@ function defaultLocalTokenAppDataRoot(options = {}) {
   const homeDirectory = options.homeDirectory ?? (0, import_node_os5.homedir)();
   const env2 = options.env ?? process.env;
   if (platform3 === "darwin")
-    return (0, import_node_path14.join)(homeDirectory, "Library", "Application Support");
+    return (0, import_node_path15.join)(homeDirectory, "Library", "Application Support");
   if (platform3 === "win32")
-    return env2.APPDATA?.trim() || (0, import_node_path14.join)(homeDirectory, "AppData", "Roaming");
-  return env2.XDG_CONFIG_HOME?.trim() || (0, import_node_path14.join)(homeDirectory, ".config");
+    return env2.APPDATA?.trim() || (0, import_node_path15.join)(homeDirectory, "AppData", "Roaming");
+  return env2.XDG_CONFIG_HOME?.trim() || (0, import_node_path15.join)(homeDirectory, ".config");
 }
 function resolveInside(root5, relativePath) {
-  const absoluteRoot = (0, import_node_path14.resolve)(root5);
-  const target = (0, import_node_path14.resolve)(absoluteRoot, relativePath);
-  const fromRoot = (0, import_node_path14.relative)(absoluteRoot, target);
+  const absoluteRoot = (0, import_node_path15.resolve)(root5);
+  const target = (0, import_node_path15.resolve)(absoluteRoot, relativePath);
+  const fromRoot = (0, import_node_path15.relative)(absoluteRoot, target);
   if (!fromRoot || fromRoot === ".")
     return target;
-  if ((0, import_node_path14.isAbsolute)(fromRoot) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
+  if ((0, import_node_path15.isAbsolute)(fromRoot) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
     throw new Error("Local token source escapes the application data root.");
   }
   return target;
@@ -89872,7 +91091,7 @@ async function importLocalProviderToken(options) {
   const appDataDirectory = resolveInside(root5, options.auth.source.appDataSubdirectory);
   const configPath = resolveInside(appDataDirectory, options.auth.source.configFile);
   const keyPath = resolveInside(appDataDirectory, options.auth.source.keyFile);
-  const [configBytes, key] = await Promise.all([(0, import_promises10.readFile)(configPath), (0, import_promises10.readFile)(keyPath)]);
+  const [configBytes, key] = await Promise.all([(0, import_promises11.readFile)(configPath), (0, import_promises11.readFile)(keyPath)]);
   if (key.length !== KEY_LENGTH) {
     throw new Error(`Local token key must be ${KEY_LENGTH} bytes.`);
   }
@@ -89888,21 +91107,21 @@ async function importLocalProviderToken(options) {
   }
   return {
     accessToken: decodeV2Token(stored.trim(), key),
-    importedFrom: (0, import_node_path14.basename)(appDataDirectory)
+    importedFrom: (0, import_node_path15.basename)(appDataDirectory)
   };
 }
 
 // ../../apps/local-api/dist/plugin-store.js
-var import_node_module5 = require("node:module");
+var import_node_module7 = require("node:module");
 var import_node_crypto12 = require("node:crypto");
-var import_promises12 = require("node:fs/promises");
-var import_node_path16 = require("node:path");
+var import_promises13 = require("node:fs/promises");
+var import_node_path17 = require("node:path");
 
 // ../../apps/local-api/dist/local-provider-store.js
 var import_node_crypto11 = require("node:crypto");
-var import_node_module4 = require("node:module");
-var import_promises11 = require("node:fs/promises");
-var import_node_path15 = require("node:path");
+var import_node_module6 = require("node:module");
+var import_promises12 = require("node:fs/promises");
+var import_node_path16 = require("node:path");
 
 // ../../apps/local-api/dist/provider-accounts.js
 function stringField(value) {
@@ -90003,25 +91222,25 @@ function configuredCredentialsForAccount(account) {
   return Object.entries(account.credentials ?? {}).filter(([, value]) => typeof value === "string" && value.trim().length > 0).map(([key]) => key).sort();
 }
 function authorizedOAuthRecords(records, userId) {
-  return records.filter((record2) => (record2.userId ?? userId) === userId).filter((record2) => record2.status === "authorized");
+  return records.filter((record3) => (record3.userId ?? userId) === userId).filter((record3) => record3.status === "authorized");
 }
-function oauthAccount(record2) {
+function oauthAccount(record3) {
   return {
-    ...record2.accountId ? { id: record2.accountId } : {},
-    providerId: record2.providerId,
-    upstreamId: record2.providerId,
-    ...record2.accountLabel ? { label: record2.accountLabel } : {},
+    ...record3.accountId ? { id: record3.accountId } : {},
+    providerId: record3.providerId,
+    upstreamId: record3.providerId,
+    ...record3.accountLabel ? { label: record3.accountLabel } : {},
     enabled: true,
-    ...record2.accessToken ? { credentials: { apiKey: record2.accessToken } } : {}
+    ...record3.accessToken ? { credentials: { apiKey: record3.accessToken } } : {}
   };
 }
 function oauthForAccount(account, records) {
-  return [...new Set(records.flatMap((record2) => {
-    const matchesAccount = !record2.accountId || !account.id || record2.accountId === account.id;
+  return [...new Set(records.flatMap((record3) => {
+    const matchesAccount = !record3.accountId || !account.id || record3.accountId === account.id;
     if (!matchesAccount)
       return [];
-    if (record2.providerId === account.providerId)
-      return [record2.providerId];
+    if (record3.providerId === account.providerId)
+      return [record3.providerId];
     return [];
   }))];
 }
@@ -90046,20 +91265,20 @@ function providerAccountsForRuntime(stored, userId, oauthRecords = []) {
       continue;
     merged.set(providerAccountKey(account), account);
   }
-  for (const record2 of connectedOAuth) {
-    const oauth = oauthAccount(record2);
+  for (const record3 of connectedOAuth) {
+    const oauth = oauthAccount(record3);
     const existingEntry = [...merged.entries()].find(([, account]) => {
       if (account.providerId !== oauth.providerId)
         return false;
-      return record2.accountId ? account.id === record2.accountId : true;
+      return record3.accountId ? account.id === record3.accountId : true;
     });
     if (existingEntry) {
       const [key, account] = existingEntry;
       merged.set(key, {
         ...account,
         ...oauth.label && !account.label ? { label: oauth.label } : {},
-        ...record2.accessToken ? {
-          credentials: { ...account.credentials ?? {}, apiKey: record2.accessToken }
+        ...record3.accessToken ? {
+          credentials: { ...account.credentials ?? {}, apiKey: record3.accessToken }
         } : {}
       });
     } else {
@@ -90095,21 +91314,21 @@ function providerAccountsForRuntime(stored, userId, oauthRecords = []) {
 }
 
 // ../../apps/local-api/dist/local-provider-store.js
-var require3 = (0, import_node_module4.createRequire)(__clash_import_meta_url);
+var require3 = (0, import_node_module6.createRequire)(__clash_import_meta_url);
 var PROVIDER_ACCOUNTS_MIGRATION_ID = "provider-accounts-sqlite-v1";
 var PROVIDER_OAUTH_MIGRATION_ID = "provider-oauth-sqlite-v1";
 var SECRET_PREFIX = "enc:v1:";
 var secretKeyCache = /* @__PURE__ */ new Map();
-var nodeRequire4 = (0, import_node_module4.createRequire)(__clash_import_meta_url);
+var nodeRequire6 = (0, import_node_module6.createRequire)(__clash_import_meta_url);
 function sqlitePath2(dataDir2) {
-  return (0, import_node_path15.join)(dataDir2, "local.sqlite");
+  return (0, import_node_path16.join)(dataDir2, "local.sqlite");
 }
 function providerSecretKeyPath(dataDir2) {
   const home = process.env.HOME || process.env.USERPROFILE || dataDir2;
-  return (0, import_node_path15.join)(home, ".clash", "keys", "provider-secret.key");
+  return (0, import_node_path16.join)(home, ".clash", "keys", "provider-secret.key");
 }
-function openDatabase3(path) {
-  const { DatabaseSync } = nodeRequire4("node:sqlite");
+function openDatabase4(path) {
+  const { DatabaseSync } = nodeRequire6("node:sqlite");
   const db = new DatabaseSync(path);
   configureDatabase2(db);
   return db;
@@ -90494,16 +91713,16 @@ function keyFromString(value) {
 async function resolveKeyFromFile(dataDir2) {
   const path = providerSecretKeyPath(dataDir2);
   try {
-    const existing = (await (0, import_promises11.readFile)(path, "utf8")).trim();
+    const existing = (await (0, import_promises12.readFile)(path, "utf8")).trim();
     if (existing)
       return keyFromString(`base64:${existing}`);
   } catch {
   }
-  await (0, import_promises11.mkdir)((0, import_node_path15.dirname)(path), { recursive: true, mode: 448 });
+  await (0, import_promises12.mkdir)((0, import_node_path16.dirname)(path), { recursive: true, mode: 448 });
   const generated = (0, import_node_crypto11.randomBytes)(32).toString("base64");
-  await (0, import_promises11.writeFile)(path, `${generated}
+  await (0, import_promises12.writeFile)(path, `${generated}
 `, { mode: 384 });
-  await (0, import_promises11.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises12.chmod)(path, 384).catch(() => void 0);
   return keyFromString(`base64:${generated}`);
 }
 async function resolveProviderSecretKey(dataDir2) {
@@ -90655,10 +91874,10 @@ function replaceProviderOAuthUnsafe(db, records, secretKey) {
       account_label, expires_at, error, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  for (const record2 of records) {
-    const userId = record2.userId ?? "local-user";
-    const accountId = record2.accountId ?? "";
-    insert.run(userId, record2.providerId, accountId, record2.status, record2.accessToken ? encryptSecret(record2.accessToken, secretKey, providerOAuthAad(userId, record2.providerId, accountId, "access_token")) : null, record2.refreshToken ? encryptSecret(record2.refreshToken, secretKey, providerOAuthAad(userId, record2.providerId, accountId, "refresh_token")) : null, record2.tokenType ?? null, record2.verificationUri ?? null, record2.userCode ? encryptSecret(record2.userCode, secretKey, providerOAuthAad(userId, record2.providerId, accountId, "user_code")) : null, record2.deviceCode ? encryptSecret(record2.deviceCode, secretKey, providerOAuthAad(userId, record2.providerId, accountId, "device_code")) : null, record2.oauthState ? encryptSecret(record2.oauthState, secretKey, providerOAuthAad(userId, record2.providerId, accountId, "oauth_state")) : null, record2.intervalSeconds ?? null, record2.accountLabel ?? null, record2.expiresAt ?? null, record2.error ?? null, record2.createdAt ?? null, record2.updatedAt ?? null);
+  for (const record3 of records) {
+    const userId = record3.userId ?? "local-user";
+    const accountId = record3.accountId ?? "";
+    insert.run(userId, record3.providerId, accountId, record3.status, record3.accessToken ? encryptSecret(record3.accessToken, secretKey, providerOAuthAad(userId, record3.providerId, accountId, "access_token")) : null, record3.refreshToken ? encryptSecret(record3.refreshToken, secretKey, providerOAuthAad(userId, record3.providerId, accountId, "refresh_token")) : null, record3.tokenType ?? null, record3.verificationUri ?? null, record3.userCode ? encryptSecret(record3.userCode, secretKey, providerOAuthAad(userId, record3.providerId, accountId, "user_code")) : null, record3.deviceCode ? encryptSecret(record3.deviceCode, secretKey, providerOAuthAad(userId, record3.providerId, accountId, "device_code")) : null, record3.oauthState ? encryptSecret(record3.oauthState, secretKey, providerOAuthAad(userId, record3.providerId, accountId, "oauth_state")) : null, record3.intervalSeconds ?? null, record3.accountLabel ?? null, record3.expiresAt ?? null, record3.error ?? null, record3.createdAt ?? null, record3.updatedAt ?? null);
   }
 }
 function readProviderAccountsUnsafe(db, secretKey) {
@@ -90851,21 +92070,21 @@ function createLocalProviderStore(dataDir2) {
   const path = sqlitePath2(dataDir2);
   async function exists2() {
     try {
-      await (0, import_promises11.stat)(path);
+      await (0, import_promises12.stat)(path);
       return true;
     } catch {
       return false;
     }
   }
   async function withDb(task) {
-    await (0, import_promises11.mkdir)(dataDir2, { recursive: true });
-    const db = openDatabase3(path);
+    await (0, import_promises12.mkdir)(dataDir2, { recursive: true });
+    const db = openDatabase4(path);
     try {
       applySchema2(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises11.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises12.chmod)(path, 384).catch(() => void 0);
     }
   }
   async function ensureProviderAccountsMigrated() {
@@ -91088,7 +92307,7 @@ function createLocalProviderStore(dataDir2) {
 
 // ../../apps/local-api/dist/plugin-store.js
 var SECRET_PREFIX2 = "enc:v1:";
-var nodeRequire5 = (0, import_node_module5.createRequire)(__clash_import_meta_url);
+var nodeRequire7 = (0, import_node_module7.createRequire)(__clash_import_meta_url);
 function encrypt(value, key) {
   const iv = (0, import_node_crypto12.randomBytes)(12);
   const cipher = (0, import_node_crypto12.createCipheriv)("aes-256-gcm", key, iv);
@@ -91112,9 +92331,9 @@ function decrypt(stored, key) {
   ]).toString("utf8");
 }
 async function openPluginStore(options) {
-  await (0, import_promises12.mkdir)(options.dataDir, { recursive: true });
-  const { DatabaseSync } = nodeRequire5("node:sqlite");
-  const db = new DatabaseSync((0, import_node_path16.join)(options.dataDir, "local.sqlite"));
+  await (0, import_promises13.mkdir)(options.dataDir, { recursive: true });
+  const { DatabaseSync } = nodeRequire7("node:sqlite");
+  const db = new DatabaseSync((0, import_node_path17.join)(options.dataDir, "local.sqlite"));
   db.exec(`
     CREATE TABLE IF NOT EXISTS plugin_store (
       plugin_id TEXT NOT NULL,
@@ -91179,8 +92398,8 @@ async function openPluginStore(options) {
 
 // ../../apps/local-api/dist/text-revision-content.js
 var import_node_crypto13 = require("node:crypto");
-var import_promises13 = require("node:fs/promises");
-var import_node_path17 = require("node:path");
+var import_promises14 = require("node:fs/promises");
+var import_node_path18 = require("node:path");
 function textRevisionContentHash(content) {
   return (0, import_node_crypto13.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
@@ -91188,7 +92407,7 @@ function textRevisionContentBlobPath(dataDir2, contentHash2) {
   if (!/^[a-f0-9]{16}$/.test(contentHash2)) {
     throw new Error("Invalid text revision content hash");
   }
-  return (0, import_node_path17.join)(dataDir2, "text-revision-blobs", contentHash2.slice(0, 2), `${contentHash2}.md`);
+  return (0, import_node_path18.join)(dataDir2, "text-revision-blobs", contentHash2.slice(0, 2), `${contentHash2}.md`);
 }
 function textRevisionContentUrl(revision) {
   return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/text-revisions/${encodeURIComponent(revision.revisionId)}/content`;
@@ -91214,7 +92433,7 @@ async function storeTextRevisionContentBlob(dataDir2, revision, content) {
     throw new Error("text revision contentHash does not match content");
   }
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const existing = await (0, import_promises13.readFile)(path, "utf8").catch((error53) => {
+  const existing = await (0, import_promises14.readFile)(path, "utf8").catch((error53) => {
     if (error53 && typeof error53 === "object" && error53.code === "ENOENT")
       return null;
     throw error53;
@@ -91223,21 +92442,21 @@ async function storeTextRevisionContentBlob(dataDir2, revision, content) {
     if (existing !== content) {
       throw new Error("text revision content blob already exists with different content");
     }
-    await (0, import_promises13.chmod)(path, 292).catch(() => void 0);
+    await (0, import_promises14.chmod)(path, 292).catch(() => void 0);
     return {
       ...textRevisionContentDescriptor(revision, { stored: true })
     };
   }
-  await (0, import_promises13.mkdir)((0, import_node_path17.dirname)(path), { recursive: true });
-  await (0, import_promises13.writeFile)(path, content, { encoding: "utf8", mode: 292 });
-  await (0, import_promises13.chmod)(path, 292).catch(() => void 0);
+  await (0, import_promises14.mkdir)((0, import_node_path18.dirname)(path), { recursive: true });
+  await (0, import_promises14.writeFile)(path, content, { encoding: "utf8", mode: 292 });
+  await (0, import_promises14.chmod)(path, 292).catch(() => void 0);
   return {
     ...textRevisionContentDescriptor(revision, { stored: true })
   };
 }
 async function withTextRevisionContentDescriptor(dataDir2, revision) {
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const fileStat = await (0, import_promises13.stat)(path).catch(() => null);
+  const fileStat = await (0, import_promises14.stat)(path).catch(() => null);
   if (!fileStat?.isFile())
     return revision;
   return {
@@ -91247,14 +92466,14 @@ async function withTextRevisionContentDescriptor(dataDir2, revision) {
 }
 
 // ../../apps/local-api/dist/fal-mock.js
-var import_node_child_process3 = require("node:child_process");
+var import_node_child_process4 = require("node:child_process");
 var import_node_crypto14 = require("node:crypto");
-var import_node_fs4 = require("node:fs");
-var import_promises14 = require("node:fs/promises");
+var import_node_fs5 = require("node:fs");
+var import_promises15 = require("node:fs/promises");
 var import_node_os6 = require("node:os");
-var import_node_path18 = require("node:path");
-var import_node_util = require("node:util");
-var execFileAsync = (0, import_node_util.promisify)(import_node_child_process3.execFile);
+var import_node_path19 = require("node:path");
+var import_node_util2 = require("node:util");
+var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process4.execFile);
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -91358,11 +92577,11 @@ function inferOutputKind(modelId, input) {
   }
   return "image";
 }
-function makeSvg(record2) {
-  const prompt = escapeXml(record2.prompt || "Mock fal image");
-  const model = escapeXml(record2.modelId);
-  const requestId = escapeXml(record2.requestId);
-  const { width, height } = record2;
+function makeSvg(record3) {
+  const prompt = escapeXml(record3.prompt || "Mock fal image");
+  const model = escapeXml(record3.modelId);
+  const requestId = escapeXml(record3.requestId);
+  const { width, height } = record3;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>
     <linearGradient id="fal-bg" x1="0" y1="0" x2="1" y2="1">
@@ -91390,11 +92609,11 @@ function resolveFfmpegPath() {
     "/usr/local/bin/ffmpeg",
     "/usr/bin/ffmpeg"
   ].filter((value) => !!value);
-  return candidates.find((candidate) => (0, import_node_fs4.existsSync)(candidate)) ?? null;
+  return candidates.find((candidate) => (0, import_node_fs5.existsSync)(candidate)) ?? null;
 }
 function resolveQlmanagePath() {
   const candidates = ["/usr/bin/qlmanage"].filter((value) => !!value);
-  return candidates.find((candidate) => (0, import_node_fs4.existsSync)(candidate)) ?? null;
+  return candidates.find((candidate) => (0, import_node_fs5.existsSync)(candidate)) ?? null;
 }
 var FONT_5X7 = {
   " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
@@ -91468,10 +92687,10 @@ function wrapDisplayText(text, maxChars) {
     lines.push(current);
   return lines.slice(0, 3);
 }
-function makeVideoFrameLayout(record2) {
-  const size = Math.max(record2.width, record2.height);
-  if (record2.width >= record2.height) {
-    const contentHeight = Math.round(size * (record2.height / record2.width));
+function makeVideoFrameLayout(record3) {
+  const size = Math.max(record3.width, record3.height);
+  if (record3.width >= record3.height) {
+    const contentHeight = Math.round(size * (record3.height / record3.width));
     return {
       canvasWidth: size,
       canvasHeight: size,
@@ -91481,7 +92700,7 @@ function makeVideoFrameLayout(record2) {
       contentHeight
     };
   }
-  const contentWidth = Math.round(size * (record2.width / record2.height));
+  const contentWidth = Math.round(size * (record3.width / record3.height));
   return {
     canvasWidth: size,
     canvasHeight: size,
@@ -91494,14 +92713,14 @@ function makeVideoFrameLayout(record2) {
 function makeEven(value) {
   return Math.max(2, Math.round(value / 2) * 2);
 }
-function makeVideoFrameSvg(record2, layout) {
+function makeVideoFrameSvg(record3, layout) {
   const { canvasWidth, canvasHeight, contentX, contentY, contentWidth, contentHeight } = layout;
-  const { width, height } = record2;
-  const promptLines = wrapDisplayText(record2.prompt, Math.max(8, Math.floor(width / 26)));
+  const { width, height } = record3;
+  const promptLines = wrapDisplayText(record3.prompt, Math.max(8, Math.floor(width / 26)));
   const lineHeight = Math.round(Math.min(width, height) * 0.062);
   const promptFontSize = Math.round(Math.min(width, height) * 0.048);
   const promptStartY = Math.round(contentY + contentHeight * 0.62 - (promptLines.length - 1) * lineHeight / 2);
-  const meta3 = `${record2.durationSec}s \u2022 ${record2.modelId}`;
+  const meta3 = `${record3.durationSec}s \u2022 ${record3.modelId}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}">
   <defs>
     <linearGradient id="video-bg" x1="0" y1="0" x2="1" y2="1">
@@ -91522,19 +92741,19 @@ function makeVideoFrameSvg(record2, layout) {
   <text x="${Math.round(contentX + contentWidth * 0.5)}" y="${Math.round(contentY + contentHeight * 0.755)}" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-size="${Math.round(Math.min(width, height) * 0.024)}" fill="#64748b">${escapeXml(meta3)}</text>
 </svg>`;
 }
-async function makeRenderedVideoFrame(record2, dir) {
+async function makeRenderedVideoFrame(record3, dir) {
   const qlmanage = resolveQlmanagePath();
   if (!qlmanage)
     return null;
-  const layout = makeVideoFrameLayout(record2);
-  const svgPath = (0, import_node_path18.join)(dir, "frame.svg");
-  await (0, import_promises14.writeFile)(svgPath, makeVideoFrameSvg(record2, layout), "utf8");
-  await execFileAsync(qlmanage, ["-t", "-s", String(layout.canvasWidth), "-o", dir, svgPath], { timeout: 1e4, maxBuffer: 1024 * 1024 * 10 });
+  const layout = makeVideoFrameLayout(record3);
+  const svgPath = (0, import_node_path19.join)(dir, "frame.svg");
+  await (0, import_promises15.writeFile)(svgPath, makeVideoFrameSvg(record3, layout), "utf8");
+  await execFileAsync2(qlmanage, ["-t", "-s", String(layout.canvasWidth), "-o", dir, svgPath], { timeout: 1e4, maxBuffer: 1024 * 1024 * 10 });
   const pngPath = `${svgPath}.png`;
-  return (0, import_node_fs4.existsSync)(pngPath) ? { path: pngPath, layout } : null;
+  return (0, import_node_fs5.existsSync)(pngPath) ? { path: pngPath, layout } : null;
 }
-function makePpmFrame(record2) {
-  const { width, height } = record2;
+function makePpmFrame(record3) {
+  const { width, height } = record3;
   const header = Buffer.from(`P6
 ${width} ${height}
 255
@@ -91601,7 +92820,7 @@ ${width} ${height}
   fillRect(width * 0.68, height * 0.28, Math.min(width, height) * 0.2, Math.min(width, height) * 0.2, [147, 197, 253]);
   const scale = Math.max(3, Math.round(Math.min(width, height) / 180));
   const maxChars = Math.max(10, Math.floor(width * 0.72 / (6 * scale)));
-  const lines = wrapText(makePrintableFrameText(record2.prompt || "Mock fal video").toUpperCase(), maxChars);
+  const lines = wrapText(makePrintableFrameText(record3.prompt || "Mock fal video").toUpperCase(), maxChars);
   const lineHeight = 9 * scale;
   const startY = Math.round(height * 0.63 - (lines.length - 1) * lineHeight / 2);
   for (let i5 = 0; i5 < lines.length; i5 += 1) {
@@ -91609,31 +92828,31 @@ ${width} ${height}
     const textWidth = line.length * 6 * scale;
     drawText(line, Math.round((width - textWidth) / 2), startY + i5 * lineHeight, scale, [17, 24, 39]);
   }
-  const meta3 = `${record2.durationSec}S ${record2.modelId}`.toUpperCase();
+  const meta3 = `${record3.durationSec}S ${record3.modelId}`.toUpperCase();
   const metaScale = Math.max(2, Math.round(scale * 0.7));
   drawText(meta3.slice(0, maxChars), Math.round((width - Math.min(meta3.length, maxChars) * 6 * metaScale) / 2), Math.round(height * 0.77), metaScale, [100, 116, 139]);
   return Buffer.concat([header, pixels]);
 }
-async function makeMp4(record2) {
+async function makeMp4(record3) {
   const ffmpeg = resolveFfmpegPath();
   if (!ffmpeg) {
     return {
-      bytes: makeSvg(record2),
+      bytes: makeSvg(record3),
       contentType: "video/mp4",
       extension: ".mp4"
     };
   }
-  const dir = await (0, import_promises14.mkdtemp)((0, import_node_path18.join)((0, import_node_os6.tmpdir)(), "clash-fal-video-"));
-  const framePath = (0, import_node_path18.join)(dir, "frame.ppm");
-  const outputPath = (0, import_node_path18.join)(dir, "mock.mp4");
+  const dir = await (0, import_promises15.mkdtemp)((0, import_node_path19.join)((0, import_node_os6.tmpdir)(), "clash-fal-video-"));
+  const framePath = (0, import_node_path19.join)(dir, "frame.ppm");
+  const outputPath = (0, import_node_path19.join)(dir, "mock.mp4");
   try {
-    const renderedFrame = await makeRenderedVideoFrame(record2, dir).catch(() => null);
+    const renderedFrame = await makeRenderedVideoFrame(record3, dir).catch(() => null);
     const inputFramePath = renderedFrame?.path ?? framePath;
     if (!renderedFrame) {
-      await (0, import_promises14.writeFile)(framePath, makePpmFrame(record2));
+      await (0, import_promises15.writeFile)(framePath, makePpmFrame(record3));
     }
-    const videoFilter = renderedFrame ? `crop=${makeEven(renderedFrame.layout.contentWidth)}:${makeEven(renderedFrame.layout.contentHeight)}:${makeEven(renderedFrame.layout.contentX)}:${makeEven(renderedFrame.layout.contentY)},scale=${record2.width}:${record2.height},setsar=1` : void 0;
-    await execFileAsync(ffmpeg, [
+    const videoFilter = renderedFrame ? `crop=${makeEven(renderedFrame.layout.contentWidth)}:${makeEven(renderedFrame.layout.contentHeight)}:${makeEven(renderedFrame.layout.contentX)}:${makeEven(renderedFrame.layout.contentY)},scale=${record3.width}:${record3.height},setsar=1` : void 0;
+    await execFileAsync2(ffmpeg, [
       "-hide_banner",
       "-loglevel",
       "error",
@@ -91644,7 +92863,7 @@ async function makeMp4(record2) {
       "-i",
       inputFramePath,
       "-t",
-      String(record2.durationSec),
+      String(record3.durationSec),
       "-an",
       ...videoFilter ? ["-vf", videoFilter] : [],
       "-c:v",
@@ -91654,17 +92873,17 @@ async function makeMp4(record2) {
       "-movflags",
       "+faststart",
       "-metadata",
-      `comment=Mock fal prompt: ${record2.prompt}`,
+      `comment=Mock fal prompt: ${record3.prompt}`,
       "-y",
       outputPath
     ], { timeout: 3e4, maxBuffer: 1024 * 1024 * 10 });
     return {
-      bytes: await (0, import_promises14.readFile)(outputPath),
+      bytes: await (0, import_promises15.readFile)(outputPath),
       contentType: "video/mp4",
       extension: ".mp4"
     };
   } finally {
-    await (0, import_promises14.rm)(dir, { recursive: true, force: true });
+    await (0, import_promises15.rm)(dir, { recursive: true, force: true });
   }
 }
 function waveformForPrompt(prompt, bars = 128) {
@@ -91688,13 +92907,13 @@ function makeInfoChunk(prompt, durationSec, requestId) {
   header.writeUInt32LE(listSize, 4);
   return Buffer.concat([header, Buffer.from("INFO", "ascii"), sub, padded]);
 }
-function makeWav(record2) {
+function makeWav(record3) {
   const sampleRate = 44100;
   const channels = 1;
   const bitsPerSample = 16;
-  const samples = Math.max(1, Math.round(record2.durationSec * sampleRate));
+  const samples = Math.max(1, Math.round(record3.durationSec * sampleRate));
   const dataSize = samples * channels * (bitsPerSample / 8);
-  const infoChunk = makeInfoChunk(record2.prompt, record2.durationSec, record2.requestId);
+  const infoChunk = makeInfoChunk(record3.prompt, record3.durationSec, record3.requestId);
   const byteRate = sampleRate * channels * (bitsPerSample / 8);
   const blockAlign = channels * (bitsPerSample / 8);
   const riffSize = 4 + (8 + 16) + (8 + dataSize) + infoChunk.length;
@@ -91726,7 +92945,7 @@ function makeWav(record2) {
   offset += 4;
   buffer.writeUInt32LE(dataSize, offset);
   offset += 4;
-  const frequency = 220 + record2.seed % 420;
+  const frequency = 220 + record3.seed % 420;
   for (let i5 = 0; i5 < samples; i5 += 1) {
     const t = i5 / sampleRate;
     const envelope = Math.min(1, i5 / (sampleRate * 0.05), (samples - i5) / (sampleRate * 0.08));
@@ -91741,17 +92960,17 @@ function makeWav(record2) {
     extension: ".wav"
   };
 }
-async function makeMedia(record2) {
-  if (record2.kind === "image") {
+async function makeMedia(record3) {
+  if (record3.kind === "image") {
     return {
-      bytes: makeSvg(record2),
+      bytes: makeSvg(record3),
       contentType: "image/svg+xml",
       extension: ".svg"
     };
   }
-  if (record2.kind === "video")
-    return makeMp4(record2);
-  return makeWav(record2);
+  if (record3.kind === "video")
+    return makeMp4(record3);
+  return makeWav(record3);
 }
 function log(message, offsetMs = 0) {
   return {
@@ -91759,36 +92978,36 @@ function log(message, offsetMs = 0) {
     timestamp: new Date(Date.now() + offsetMs).toISOString()
   };
 }
-function statusForRecord(record2, includeLogs, origin) {
-  const response_url = requestUrl(origin, record2.modelId, record2.requestId, "/response");
-  if (record2.statusChecks <= 1) {
+function statusForRecord(record3, includeLogs, origin) {
+  const response_url = requestUrl(origin, record3.modelId, record3.requestId, "/response");
+  if (record3.statusChecks <= 1) {
     return {
       status: "IN_QUEUE",
-      request_id: record2.requestId,
+      request_id: record3.requestId,
       queue_position: 0,
       response_url
     };
   }
-  if (record2.statusChecks === 2) {
+  if (record3.statusChecks === 2) {
     return {
       status: "IN_PROGRESS",
-      request_id: record2.requestId,
+      request_id: record3.requestId,
       response_url,
       ...includeLogs ? {
         logs: [
           log("Loading model weights..."),
-          log(`Generating ${record2.kind}...`, 250)
+          log(`Generating ${record3.kind}...`, 250)
         ]
       } : {}
     };
   }
   return {
     status: "COMPLETED",
-    request_id: record2.requestId,
+    request_id: record3.requestId,
     response_url,
     ...includeLogs ? { logs: [log("Done.")] } : {},
     metrics: {
-      inference_time: Number(((Date.now() - record2.createdAt) / 1e3 || 0.01).toFixed(2))
+      inference_time: Number(((Date.now() - record3.createdAt) / 1e3 || 0.01).toFixed(2))
     }
   };
 }
@@ -91802,7 +93021,7 @@ function createMockFalQueueService() {
       const kind = inferOutputKind(modelId, input);
       const { width, height } = dimensionsForInput(input);
       const durationSec = kind === "image" ? 0 : durationForInput(input, kind === "audio" ? 5 : 4);
-      const record2 = {
+      const record3 = {
         requestId,
         modelId,
         kind,
@@ -91822,8 +93041,8 @@ function createMockFalQueueService() {
           extension: ".bin"
         }
       };
-      record2.media = await makeMedia(record2);
-      records.set(requestId, record2);
+      record3.media = await makeMedia(record3);
+      records.set(requestId, record3);
       const origin = normalizeOrigin(options?.origin);
       return {
         request_id: requestId,
@@ -91834,64 +93053,64 @@ function createMockFalQueueService() {
       };
     },
     status(modelId, requestId, options) {
-      const record2 = records.get(requestId);
-      if (!record2 || record2.modelId !== modelId || record2.cancelled)
+      const record3 = records.get(requestId);
+      if (!record3 || record3.modelId !== modelId || record3.cancelled)
         return null;
-      record2.statusChecks += 1;
-      return statusForRecord(record2, !!options?.logs, normalizeOrigin(options?.origin));
+      record3.statusChecks += 1;
+      return statusForRecord(record3, !!options?.logs, normalizeOrigin(options?.origin));
     },
     result(modelId, requestId, options) {
-      const record2 = records.get(requestId);
-      if (!record2 || record2.modelId !== modelId || record2.cancelled)
+      const record3 = records.get(requestId);
+      if (!record3 || record3.modelId !== modelId || record3.cancelled)
         return null;
-      record2.statusChecks = Math.max(record2.statusChecks, 3);
+      record3.statusChecks = Math.max(record3.statusChecks, 3);
       const origin = normalizeOrigin(options?.origin);
-      const url2 = mediaUrl3(origin, requestId, record2.media.extension);
-      if (record2.kind === "video") {
+      const url2 = mediaUrl3(origin, requestId, record3.media.extension);
+      if (record3.kind === "video") {
         return {
           video: {
             url: url2,
-            width: record2.width,
-            height: record2.height,
-            duration: record2.durationSec,
-            content_type: record2.media.contentType
+            width: record3.width,
+            height: record3.height,
+            duration: record3.durationSec,
+            content_type: record3.media.contentType
           },
-          prompt: record2.prompt,
-          seed: record2.seed
+          prompt: record3.prompt,
+          seed: record3.seed
         };
       }
-      if (record2.kind === "audio") {
+      if (record3.kind === "audio") {
         return {
           audio: {
             url: url2,
-            duration: record2.durationSec,
-            content_type: record2.media.contentType
+            duration: record3.durationSec,
+            content_type: record3.media.contentType
           },
-          prompt: record2.prompt,
-          transcript: record2.prompt,
-          seed: record2.seed,
-          waveform: record2.waveform
+          prompt: record3.prompt,
+          transcript: record3.prompt,
+          seed: record3.seed,
+          waveform: record3.waveform
         };
       }
       return {
         images: [
           {
             url: url2,
-            width: record2.width,
-            height: record2.height,
-            content_type: record2.media.contentType
+            width: record3.width,
+            height: record3.height,
+            content_type: record3.media.contentType
           }
         ],
-        prompt: record2.prompt,
-        seed: record2.seed,
+        prompt: record3.prompt,
+        seed: record3.seed,
         has_nsfw_concepts: [false]
       };
     },
     cancel(modelId, requestId) {
-      const record2 = records.get(requestId);
-      if (!record2 || record2.modelId !== modelId)
+      const record3 = records.get(requestId);
+      if (!record3 || record3.modelId !== modelId)
         return false;
-      record2.cancelled = true;
+      record3.cancelled = true;
       return true;
     },
     media(requestId) {
@@ -92431,11 +93650,11 @@ ${input.prompt || "Mock text"}`),
 
 // ../../apps/local-api/dist/local-plugin-asset-staging.js
 var import_node_crypto15 = require("node:crypto");
-var import_node_module6 = require("node:module");
-var import_promises15 = require("node:fs/promises");
-var nodeRequire6 = (0, import_node_module6.createRequire)(__clash_import_meta_url);
-function openDatabase4(path) {
-  const { DatabaseSync } = nodeRequire6("node:sqlite");
+var import_node_module8 = require("node:module");
+var import_promises16 = require("node:fs/promises");
+var nodeRequire8 = (0, import_node_module8.createRequire)(__clash_import_meta_url);
+function openDatabase5(path) {
+  const { DatabaseSync } = nodeRequire8("node:sqlite");
   const database = new DatabaseSync(path);
   database.exec(`
     PRAGMA busy_timeout = 5000;
@@ -92467,7 +93686,7 @@ function required(value, label) {
 }
 function parseRow2(row) {
   const projectId = row.project_id;
-  const projectAssetId = row.project_asset_id;
+  const projectAssetId2 = row.project_asset_id;
   const resourceId = row.resource_id;
   const kind = AssetKindSchema.safeParse(row.kind);
   const taskId = row.task_id;
@@ -92477,12 +93696,12 @@ function parseRow2(row) {
   const invocationId = row.invocation_id;
   const mediaType = row.media_type;
   const createdAt = row.created_at;
-  if (typeof projectId !== "string" || typeof projectAssetId !== "string" || typeof resourceId !== "string" || !kind.success || typeof taskId !== "string" || typeof slot !== "string" || typeof pluginId !== "string" || typeof pluginVersion !== "string" || typeof invocationId !== "string" || mediaType !== null && typeof mediaType !== "string" || typeof createdAt !== "number" || !Number.isSafeInteger(createdAt)) {
+  if (typeof projectId !== "string" || typeof projectAssetId2 !== "string" || typeof resourceId !== "string" || !kind.success || typeof taskId !== "string" || typeof slot !== "string" || typeof pluginId !== "string" || typeof pluginVersion !== "string" || typeof invocationId !== "string" || mediaType !== null && typeof mediaType !== "string" || typeof createdAt !== "number" || !Number.isSafeInteger(createdAt)) {
     throw new Error("Local plugin Asset staging row is corrupt.");
   }
   return {
     projectId,
-    projectAssetId,
+    projectAssetId: projectAssetId2,
     resourceId,
     kind: kind.data,
     taskId,
@@ -92505,13 +93724,13 @@ function createLocalPluginAssetStagingStore(options) {
     ...options.clashRoot ? { clashRoot: options.clashRoot } : {}
   });
   async function withDatabase(task) {
-    await (0, import_promises15.mkdir)(options.dataDir, { recursive: true });
-    const database = openDatabase4(databasePath2);
+    await (0, import_promises16.mkdir)(options.dataDir, { recursive: true });
+    const database = openDatabase5(databasePath2);
     try {
       return task(database);
     } finally {
       database.close();
-      await (0, import_promises15.chmod)(databasePath2, 384).catch(() => void 0);
+      await (0, import_promises16.chmod)(databasePath2, 384).catch(() => void 0);
     }
   }
   async function load(input) {
@@ -92541,11 +93760,11 @@ function createLocalPluginAssetStagingStore(options) {
       const projectId = required(input.projectId, "projectId");
       const taskId = required(input.taskId, "taskId");
       const slot = required(input.slot, "slot");
-      const projectAssetId = pluginOutputProjectAssetId({ projectId, taskId, slot });
-      const existing = await load({ projectId, projectAssetId });
+      const projectAssetId2 = pluginOutputProjectAssetId({ projectId, taskId, slot });
+      const existing = await load({ projectId, projectAssetId: projectAssetId2 });
       if (existing) {
         if (existing.taskId !== taskId || existing.slot !== slot || existing.kind !== input.kind) {
-          throw new Error(`Staged plugin Asset receipt ${projectAssetId} conflicts with its identity.`);
+          throw new Error(`Staged plugin Asset receipt ${projectAssetId2} conflicts with its identity.`);
         }
         return resolved(existing);
       }
@@ -92556,7 +93775,7 @@ function createLocalPluginAssetStagingStore(options) {
       });
       const intended = {
         projectId,
-        projectAssetId,
+        projectAssetId: projectAssetId2,
         resourceId: projection.resource.id,
         kind: input.kind,
         taskId,
@@ -92575,25 +93794,25 @@ function createLocalPluginAssetStagingStore(options) {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(intended.projectId, intended.projectAssetId, intended.resourceId, intended.kind, intended.taskId, intended.slot, intended.pluginId, intended.pluginVersion, intended.invocationId, intended.mediaType ?? null, intended.createdAt);
       });
-      const stored = await load({ projectId, projectAssetId });
+      const stored = await load({ projectId, projectAssetId: projectAssetId2 });
       if (!stored)
-        throw new Error(`Staged plugin Asset ${projectAssetId} was not recorded.`);
+        throw new Error(`Staged plugin Asset ${projectAssetId2} was not recorded.`);
       return resolved(stored);
     },
     async resolve(input) {
       const projectId = required(input.projectId, "projectId");
-      const projectAssetId = required(input.projectAssetId, "projectAssetId");
-      const row = await load({ projectId, projectAssetId });
+      const projectAssetId2 = required(input.projectAssetId, "projectAssetId");
+      const row = await load({ projectId, projectAssetId: projectAssetId2 });
       return row ? resolved(row) : void 0;
     }
   };
 }
 
 // ../../apps/local-api/dist/audio-config.js
-var import_node_fs6 = require("node:fs");
-var import_promises19 = require("node:fs/promises");
+var import_node_fs7 = require("node:fs");
+var import_promises20 = require("node:fs/promises");
 var import_node_os7 = require("node:os");
-var import_node_path22 = require("node:path");
+var import_node_path23 = require("node:path");
 var import_node_url = require("node:url");
 
 // ../../packages/clash-sdk/js/dist/chunk-KWHOV5HP.js
@@ -92889,7 +94108,7 @@ function asTranscription(value) {
   const text = requiredString(raw2.text, "transcript text");
   const backendId = requiredString(raw2.backendId, "backendId");
   const modelId = requiredString(raw2.modelId, "modelId");
-  const durationMs = nonNegativeInteger(raw2.durationMs, "durationMs");
+  const durationMs2 = nonNegativeInteger(raw2.durationMs, "durationMs");
   if (!Array.isArray(raw2.words) || raw2.words.length === 0) {
     throw new Error("Local ASR runtime returned no word timestamps");
   }
@@ -92901,7 +94120,7 @@ function asTranscription(value) {
     ids.add(word.id);
     if (word.startMs < previousStartMs) throw new Error("Local ASR words must be ordered by startMs");
     previousStartMs = word.startMs;
-    if (word.endMs > durationMs) throw new Error(`Local ASR word ${word.id} exceeds durationMs`);
+    if (word.endMs > durationMs2) throw new Error(`Local ASR word ${word.id} exceeds durationMs`);
   }
   if (!Array.isArray(raw2.segments)) {
     throw new Error("Local ASR runtime returned no segments array");
@@ -92916,7 +94135,7 @@ function asTranscription(value) {
     backendId,
     modelId,
     ...typeof raw2.language === "string" && raw2.language.trim() ? { language: raw2.language.trim() } : {},
-    durationMs,
+    durationMs: durationMs2,
     words,
     segments
   };
@@ -92932,7 +94151,7 @@ function asSynthesis(value) {
   const backendId = requiredString(raw2.backendId, "TTS backendId");
   const modelId = requiredString(raw2.modelId, "TTS modelId");
   const sampleRate = positiveInteger(raw2.sampleRate, "TTS sampleRate");
-  const durationMs = positiveInteger(raw2.durationMs, "TTS durationMs");
+  const durationMs2 = positiveInteger(raw2.durationMs, "TTS durationMs");
   const outputPath = requiredString(raw2.outputPath, "TTS outputPath");
   return {
     schemaVersion: 1,
@@ -92942,7 +94161,7 @@ function asSynthesis(value) {
     ...typeof raw2.voiceId === "string" && raw2.voiceId.trim() ? { voiceId: raw2.voiceId.trim() } : {},
     format: "wav",
     sampleRate,
-    durationMs,
+    durationMs: durationMs2,
     outputPath
   };
 }
@@ -93011,16 +94230,16 @@ function optionalConfidence(value, label) {
 }
 
 // ../../apps/local-api/dist/local-config-store.js
-var import_node_module7 = require("node:module");
-var import_promises16 = require("node:fs/promises");
-var import_node_path19 = require("node:path");
-var require4 = (0, import_node_module7.createRequire)(__clash_import_meta_url);
-var nodeRequire7 = (0, import_node_module7.createRequire)(__clash_import_meta_url);
+var import_node_module9 = require("node:module");
+var import_promises17 = require("node:fs/promises");
+var import_node_path20 = require("node:path");
+var require4 = (0, import_node_module9.createRequire)(__clash_import_meta_url);
+var nodeRequire9 = (0, import_node_module9.createRequire)(__clash_import_meta_url);
 function sqlitePath3(dataDir2) {
-  return (0, import_node_path19.join)(dataDir2, "local.sqlite");
+  return (0, import_node_path20.join)(dataDir2, "local.sqlite");
 }
-function openDatabase5(path) {
-  const { DatabaseSync } = nodeRequire7("node:sqlite");
+function openDatabase6(path) {
+  const { DatabaseSync } = nodeRequire9("node:sqlite");
   const db = new DatabaseSync(path);
   db.exec(`
     PRAGMA journal_mode = WAL;
@@ -93042,7 +94261,7 @@ function applySchema3(db) {
 }
 async function exists(path) {
   try {
-    await (0, import_promises16.stat)(path);
+    await (0, import_promises17.stat)(path);
     return true;
   } catch {
     return false;
@@ -93051,14 +94270,14 @@ async function exists(path) {
 function createSqliteLocalConfigStore(dataDir2) {
   const path = sqlitePath3(dataDir2);
   async function withDb(task) {
-    await (0, import_promises16.mkdir)(dataDir2, { recursive: true });
-    const db = openDatabase5(path);
+    await (0, import_promises17.mkdir)(dataDir2, { recursive: true });
+    const db = openDatabase6(path);
     try {
       applySchema3(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises16.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises17.chmod)(path, 384).catch(() => void 0);
     }
   }
   return {
@@ -93099,9 +94318,9 @@ function createSqliteLocalConfigStore(dataDir2) {
 
 // ../../apps/local-api/dist/user-config.js
 var import_node_crypto16 = require("node:crypto");
-var import_node_fs5 = require("node:fs");
-var import_promises17 = require("node:fs/promises");
-var import_node_path20 = require("node:path");
+var import_node_fs6 = require("node:fs");
+var import_promises18 = require("node:fs/promises");
+var import_node_path21 = require("node:path");
 var import_yaml2 = __toESM(require_dist(), 1);
 var writes = /* @__PURE__ */ new Map();
 var LOCK_TIMEOUT_MS = 5e3;
@@ -93120,13 +94339,13 @@ function optionalRecord(root5, key) {
     throw new Error(`${key} must be a mapping`);
   return value;
 }
-function validateStringField(record2, key, path) {
-  if (record2[key] !== void 0 && typeof record2[key] !== "string") {
+function validateStringField(record3, key, path) {
+  if (record3[key] !== void 0 && typeof record3[key] !== "string") {
     throw new Error(`${path}.${key} must be a string`);
   }
 }
-function validateNullableStringField(record2, key, path) {
-  if (record2[key] !== void 0 && record2[key] !== null && typeof record2[key] !== "string") {
+function validateNullableStringField(record3, key, path) {
+  if (record3[key] !== void 0 && record3[key] !== null && typeof record3[key] !== "string") {
     throw new Error(`${path}.${key} must be a string or null`);
   }
 }
@@ -93199,7 +94418,7 @@ function validateClashUserConfig(value) {
 }
 async function readText(path) {
   try {
-    return await (0, import_promises17.readFile)(path, "utf8");
+    return await (0, import_promises18.readFile)(path, "utf8");
   } catch (error53) {
     if (error53.code === "ENOENT")
       return null;
@@ -93207,38 +94426,38 @@ async function readText(path) {
   }
 }
 async function atomicWrite(path, contents) {
-  await (0, import_promises17.mkdir)((0, import_node_path20.dirname)(path), { recursive: true, mode: 448 });
+  await (0, import_promises18.mkdir)((0, import_node_path21.dirname)(path), { recursive: true, mode: 448 });
   const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
   try {
-    await (0, import_promises17.writeFile)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
-    await (0, import_promises17.chmod)(temporaryPath, 384);
-    await (0, import_promises17.rename)(temporaryPath, path);
-    await (0, import_promises17.chmod)(path, 384);
+    await (0, import_promises18.writeFile)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
+    await (0, import_promises18.chmod)(temporaryPath, 384);
+    await (0, import_promises18.rename)(temporaryPath, path);
+    await (0, import_promises18.chmod)(path, 384);
   } finally {
-    await (0, import_promises17.rm)(temporaryPath, { force: true }).catch(() => void 0);
+    await (0, import_promises18.rm)(temporaryPath, { force: true }).catch(() => void 0);
   }
 }
 async function wait(milliseconds) {
   await new Promise((resolve18) => setTimeout(resolve18, milliseconds));
 }
 async function withConfigLock(clashHome, task) {
-  await (0, import_promises17.mkdir)(clashHome, { recursive: true, mode: 448 });
-  await (0, import_promises17.chmod)(clashHome, 448);
-  const lockPath = (0, import_node_path20.join)(clashHome, ".config.lock");
+  await (0, import_promises18.mkdir)(clashHome, { recursive: true, mode: 448 });
+  await (0, import_promises18.chmod)(clashHome, 448);
+  const lockPath = (0, import_node_path21.join)(clashHome, ".config.lock");
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   while (true) {
     try {
-      await (0, import_promises17.mkdir)(lockPath, { mode: 448 });
-      await (0, import_promises17.writeFile)((0, import_node_path20.join)(lockPath, "owner"), `pid=${process.pid}
+      await (0, import_promises18.mkdir)(lockPath, { mode: 448 });
+      await (0, import_promises18.writeFile)((0, import_node_path21.join)(lockPath, "owner"), `pid=${process.pid}
 created_at=${(/* @__PURE__ */ new Date()).toISOString()}
 `, { encoding: "utf8", mode: 384 });
       break;
     } catch (error53) {
       if (error53.code !== "EEXIST")
         throw error53;
-      const info = await (0, import_promises17.stat)(lockPath).catch(() => null);
+      const info = await (0, import_promises18.stat)(lockPath).catch(() => null);
       if (info && Date.now() - info.mtimeMs > STALE_LOCK_MS) {
-        await (0, import_promises17.rm)(lockPath, { recursive: true, force: true });
+        await (0, import_promises18.rm)(lockPath, { recursive: true, force: true });
         continue;
       }
       if (Date.now() >= deadline) {
@@ -93250,7 +94469,7 @@ created_at=${(/* @__PURE__ */ new Date()).toISOString()}
   try {
     return await task();
   } finally {
-    await (0, import_promises17.rm)(lockPath, { recursive: true, force: true });
+    await (0, import_promises18.rm)(lockPath, { recursive: true, force: true });
   }
 }
 function serializeYamlSection(source, name, value) {
@@ -93297,9 +94516,9 @@ async function serializedWrite(path, task) {
 }
 function createClashUserConfigStore(localDataDir) {
   const clashHome = clashHomeForLocalDataDir(localDataDir);
-  const configPath = (0, import_node_path20.join)(clashHome, "config.yaml");
-  const credentialsPath = (0, import_node_path20.join)(clashHome, "credentials.json");
-  const legacyConfigPath = (0, import_node_path20.join)(clashHome, "config.json");
+  const configPath = (0, import_node_path21.join)(clashHome, "config.yaml");
+  const credentialsPath = (0, import_node_path21.join)(clashHome, "credentials.json");
+  const legacyConfigPath = (0, import_node_path21.join)(clashHome, "config.json");
   let rootMigration = null;
   const ensureRootMigrated = () => {
     rootMigration ??= (async () => {
@@ -93334,7 +94553,7 @@ function createClashUserConfigStore(localDataDir) {
             ...typeof current.cliApiKey === "string" ? {} : { cliApiKey: legacy.apiKey }
           })));
         }
-        await (0, import_promises17.unlink)(legacyConfigPath).catch((error53) => {
+        await (0, import_promises18.unlink)(legacyConfigPath).catch((error53) => {
           if (error53.code !== "ENOENT")
             throw error53;
         });
@@ -93394,13 +94613,13 @@ function createClashUserConfigStore(localDataDir) {
 }
 function watchClashUserConfig(localDataDir, options) {
   const store = createClashUserConfigStore(localDataDir);
-  (0, import_node_fs5.mkdirSync)(store.clashHome, { recursive: true, mode: 448 });
+  (0, import_node_fs6.mkdirSync)(store.clashHome, { recursive: true, mode: 448 });
   let timer = null;
   let closed = false;
   let lastAppliedHash;
   let lastAppliedConfig = null;
   try {
-    const initialSource = (0, import_node_fs5.readFileSync)(store.configPath, "utf8");
+    const initialSource = (0, import_node_fs6.readFileSync)(store.configPath, "utf8");
     lastAppliedHash = sourceHash(initialSource);
     const initialDocument = (0, import_yaml2.parseDocument)(initialSource);
     if (initialDocument.errors.length === 0) {
@@ -93431,7 +94650,7 @@ function watchClashUserConfig(localDataDir, options) {
     lastAppliedHash = hash2;
     lastAppliedConfig = value;
   };
-  const watcher = (0, import_node_fs5.watch)(store.clashHome, (eventType, filename) => {
+  const watcher = (0, import_node_fs6.watch)(store.clashHome, (eventType, filename) => {
     if (closed || filename?.toString() !== "config.yaml")
       return;
     if (eventType !== "change" && eventType !== "rename")
@@ -93457,20 +94676,20 @@ function watchClashUserConfig(localDataDir, options) {
 }
 
 // ../../apps/local-api/dist/managed-local-model-python.js
-var import_node_child_process4 = require("node:child_process");
-var import_promises18 = require("node:fs/promises");
-var import_node_path21 = require("node:path");
-var import_node_util2 = require("node:util");
-var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process4.execFile);
+var import_node_child_process5 = require("node:child_process");
+var import_promises19 = require("node:fs/promises");
+var import_node_path22 = require("node:path");
+var import_node_util3 = require("node:util");
+var execFileAsync3 = (0, import_node_util3.promisify)(import_node_child_process5.execFile);
 var MANAGED_RUNTIME_SCHEMA_VERSION = 1;
-var MANAGED_RUNTIME_RELATIVE_ROOT = (0, import_node_path21.join)("runtimes", "python", "local-models");
+var MANAGED_RUNTIME_RELATIVE_ROOT = (0, import_node_path22.join)("runtimes", "python", "local-models");
 var MANAGED_RUNTIME_STAMP = "runtime.json";
 var preparations = /* @__PURE__ */ new Map();
 function pythonBinaryForVenv(venvDir) {
-  return process.platform === "win32" ? (0, import_node_path21.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path21.join)(venvDir, "bin", "python");
+  return process.platform === "win32" ? (0, import_node_path22.join)(venvDir, "Scripts", "python.exe") : (0, import_node_path22.join)(venvDir, "bin", "python");
 }
 async function defaultRunCommand(command6, args, options) {
-  const result = await execFileAsync2(command6, args, options);
+  const result = await execFileAsync3(command6, args, options);
   return {
     stdout: result.stdout?.toString() ?? "",
     stderr: result.stderr?.toString() ?? ""
@@ -93479,14 +94698,14 @@ async function defaultRunCommand(command6, args, options) {
 function pythonEnvironment(env2, sdkPythonPath) {
   return {
     ...env2,
-    PYTHONPATH: [sdkPythonPath, env2.PYTHONPATH].filter(Boolean).join(import_node_path21.delimiter),
+    PYTHONPATH: [sdkPythonPath, env2.PYTHONPATH].filter(Boolean).join(import_node_path22.delimiter),
     PIP_DISABLE_PIP_VERSION_CHECK: "1",
     PIP_NO_INPUT: "1"
   };
 }
 async function readStamp(path) {
   try {
-    const parsed = JSON.parse(await (0, import_promises18.readFile)(path, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises19.readFile)(path, "utf8"));
     if (parsed.version !== MANAGED_RUNTIME_SCHEMA_VERSION)
       return null;
     if (typeof parsed.sdkPythonPath !== "string" || !parsed.sdkPythonPath)
@@ -93500,17 +94719,17 @@ async function readStamp(path) {
 }
 async function pathExists(path) {
   try {
-    await (0, import_promises18.access)(path);
+    await (0, import_promises19.access)(path);
     return true;
   } catch {
     return false;
   }
 }
 function createManagedLocalModelPythonEnvironment(options) {
-  const runtimeRoot = (0, import_node_path21.join)(options.clashHome, MANAGED_RUNTIME_RELATIVE_ROOT);
-  const venvDir = (0, import_node_path21.join)(runtimeRoot, "venv");
+  const runtimeRoot = (0, import_node_path22.join)(options.clashHome, MANAGED_RUNTIME_RELATIVE_ROOT);
+  const venvDir = (0, import_node_path22.join)(runtimeRoot, "venv");
   const pythonBinary = pythonBinaryForVenv(venvDir);
-  const stampPath = (0, import_node_path21.join)(runtimeRoot, MANAGED_RUNTIME_STAMP);
+  const stampPath = (0, import_node_path22.join)(runtimeRoot, MANAGED_RUNTIME_STAMP);
   const bootstrapPython = options.bootstrapPython ?? options.env?.CLASH_LOCAL_MODELS_BOOTSTRAP_PYTHON ?? process.env.CLASH_LOCAL_MODELS_BOOTSTRAP_PYTHON ?? "python3";
   const runCommand = options.runCommand ?? defaultRunCommand;
   const env2 = pythonEnvironment(options.env ?? process.env, options.sdkPythonPath);
@@ -93525,17 +94744,17 @@ function createManagedLocalModelPythonEnvironment(options) {
     return stamp?.sdkPythonPath === options.sdkPythonPath;
   }
   async function prepare() {
-    await (0, import_promises18.mkdir)(runtimeRoot, { recursive: true });
+    await (0, import_promises19.mkdir)(runtimeRoot, { recursive: true });
     if (await pathExists(pythonBinary)) {
       try {
         await verify(pythonBinary);
         verified = true;
       } catch {
-        await (0, import_promises18.rm)(venvDir, { recursive: true, force: true });
+        await (0, import_promises19.rm)(venvDir, { recursive: true, force: true });
       }
     }
     if (!await pathExists(pythonBinary)) {
-      const stagingDir = (0, import_node_path21.join)(runtimeRoot, `.venv-${process.pid}-${Date.now()}`);
+      const stagingDir = (0, import_node_path22.join)(runtimeRoot, `.venv-${process.pid}-${Date.now()}`);
       try {
         await runCommand(bootstrapPython, ["-m", "venv", stagingDir], {
           env: env2,
@@ -93545,14 +94764,14 @@ function createManagedLocalModelPythonEnvironment(options) {
         const stagingPython = pythonBinaryForVenv(stagingDir);
         await verify(stagingPython);
         try {
-          await (0, import_promises18.rename)(stagingDir, venvDir);
+          await (0, import_promises19.rename)(stagingDir, venvDir);
         } catch (error53) {
           if (!await pathExists(pythonBinary))
             throw error53;
           await verify(pythonBinary);
         }
       } finally {
-        await (0, import_promises18.rm)(stagingDir, { recursive: true, force: true });
+        await (0, import_promises19.rm)(stagingDir, { recursive: true, force: true });
       }
       verified = true;
     }
@@ -93561,10 +94780,10 @@ function createManagedLocalModelPythonEnvironment(options) {
       sdkPythonPath: options.sdkPythonPath,
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    const temporaryStamp = (0, import_node_path21.join)((0, import_node_path21.dirname)(stampPath), `.${MANAGED_RUNTIME_STAMP}-${process.pid}`);
-    await (0, import_promises18.writeFile)(temporaryStamp, `${JSON.stringify(stamp, null, 2)}
+    const temporaryStamp = (0, import_node_path22.join)((0, import_node_path22.dirname)(stampPath), `.${MANAGED_RUNTIME_STAMP}-${process.pid}`);
+    await (0, import_promises19.writeFile)(temporaryStamp, `${JSON.stringify(stamp, null, 2)}
 `, { mode: 384 });
-    await (0, import_promises18.rename)(temporaryStamp, stampPath);
+    await (0, import_promises19.rename)(temporaryStamp, stampPath);
     return pythonBinary;
   }
   return {
@@ -93775,9 +94994,9 @@ async function readLegacyConfig(store) {
 function normalizeYamlAudioConfig(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return null;
-  const record2 = value;
-  const asr = record2.asr && typeof record2.asr === "object" && !Array.isArray(record2.asr) ? record2.asr : {};
-  const tts = record2.tts && typeof record2.tts === "object" && !Array.isArray(record2.tts) ? record2.tts : {};
+  const record3 = value;
+  const asr = record3.asr && typeof record3.asr === "object" && !Array.isArray(record3.asr) ? record3.asr : {};
+  const tts = record3.tts && typeof record3.tts === "object" && !Array.isArray(record3.tts) ? record3.tts : {};
   return {
     version: 2,
     asrEnabled: asr.enabled === true,
@@ -93788,7 +95007,7 @@ function normalizeYamlAudioConfig(value) {
     ttsEnabled: tts.enabled === true,
     ttsProvider: normalizeTtsProvider(tts.provider),
     ttsModel: normalizeModel(tts.model, DEFAULT_TTS_MODEL),
-    updatedAt: typeof record2.updated_at === "string" ? record2.updated_at : (/* @__PURE__ */ new Date(0)).toISOString()
+    updatedAt: typeof record3.updated_at === "string" ? record3.updated_at : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 }
 function yamlAudioConfig(config2) {
@@ -93812,11 +95031,11 @@ async function writeConfig(store, config2) {
 function defaultClashSdkPythonPath() {
   const explicit = process.env.CLASH_PYTHON_SDK_PATH?.trim();
   if (explicit)
-    return (0, import_node_path22.resolve)(explicit);
-  const inherited = process.env.PYTHONPATH?.split(import_node_path22.delimiter).find((entry) => entry && (0, import_node_fs6.existsSync)((0, import_node_path22.join)(entry, "clash_sdk", "local_models", "rpc.py")));
+    return (0, import_node_path23.resolve)(explicit);
+  const inherited = process.env.PYTHONPATH?.split(import_node_path23.delimiter).find((entry) => entry && (0, import_node_fs7.existsSync)((0, import_node_path23.join)(entry, "clash_sdk", "local_models", "rpc.py")));
   if (inherited)
-    return (0, import_node_path22.resolve)(inherited);
-  return (0, import_node_path22.resolve)((0, import_node_path22.dirname)((0, import_node_url.fileURLToPath)(__clash_import_meta_url)), "../../..", "packages", "clash-sdk", "python");
+    return (0, import_node_path23.resolve)(inherited);
+  return (0, import_node_path23.resolve)((0, import_node_path23.dirname)((0, import_node_url.fileURLToPath)(__clash_import_meta_url)), "../../..", "packages", "clash-sdk", "python");
 }
 function displayErrorMessage(error53) {
   return error53 instanceof Error ? error53.message : String(error53);
@@ -93891,7 +95110,7 @@ function createHookBackedRuntime(options, pythonBinary, cacheDir, pythonPath) {
     async transcribe(input) {
       if (!options.builtinTranscribe)
         return fallback2.transcribe(input);
-      const file2 = new File([await (0, import_promises19.readFile)(input.audioPath)], (0, import_node_path22.basename)(input.audioPath), { type: "audio/webm" });
+      const file2 = new File([await (0, import_promises20.readFile)(input.audioPath)], (0, import_node_path23.basename)(input.audioPath), { type: "audio/webm" });
       return options.builtinTranscribe({
         file: file2,
         model: input.model,
@@ -93915,11 +95134,11 @@ function createDefaultTtsRuntime(options, pythonBinary, cacheDir, pythonPath) {
   });
 }
 async function transcribeWithRuntime(runtime, input, model) {
-  const dir = await (0, import_promises19.mkdtemp)((0, import_node_path22.join)((0, import_node_os7.tmpdir)(), "clash-asr-"));
-  const extension2 = (0, import_node_path22.extname)(input.file.name || "") || ".webm";
-  const audioPath = (0, import_node_path22.join)(dir, (0, import_node_path22.basename)(input.file.name || `input${extension2}`));
+  const dir = await (0, import_promises20.mkdtemp)((0, import_node_path23.join)((0, import_node_os7.tmpdir)(), "clash-asr-"));
+  const extension2 = (0, import_node_path23.extname)(input.file.name || "") || ".webm";
+  const audioPath = (0, import_node_path23.join)(dir, (0, import_node_path23.basename)(input.file.name || `input${extension2}`));
   try {
-    await (0, import_promises19.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
+    await (0, import_promises20.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
     return await runtime.transcribe({
       model,
       audioPath,
@@ -93930,7 +95149,7 @@ async function transcribeWithRuntime(runtime, input, model) {
       throw error53;
     throw new LocalAudioConfigError(`Local ASR transcription failed: ${displayErrorMessage(error53)}`, 502);
   } finally {
-    await (0, import_promises19.rm)(dir, { recursive: true, force: true });
+    await (0, import_promises20.rm)(dir, { recursive: true, force: true });
   }
 }
 function createLocalAudioConfigStore(options) {
@@ -93944,10 +95163,10 @@ function createLocalAudioConfigStore(options) {
     sdkPythonPath: pythonSdkPath
   }) : null;
   const pythonBinary = explicitPythonBinary ?? managedPythonEnvironment?.pythonBinary ?? DEFAULT_PYTHON_BINARY;
-  const asrCacheDir = (0, import_node_path22.join)(options.dataDir, "models", "speech", "asr");
+  const asrCacheDir = (0, import_node_path23.join)(options.dataDir, "models", "speech", "asr");
   const defaultAsrRuntime = createDefaultAsrRuntime(options, pythonBinary, asrCacheDir, pythonSdkPath);
   const asrRuntime = managedPythonEnvironment && !options.asrRuntime && !options.builtinStatus && !options.builtinInstall && !options.builtinTranscribe ? withManagedPythonAsrRuntime(defaultAsrRuntime, managedPythonEnvironment) : defaultAsrRuntime;
-  const ttsCacheDir = (0, import_node_path22.join)(options.dataDir, "models", "speech", "tts");
+  const ttsCacheDir = (0, import_node_path23.join)(options.dataDir, "models", "speech", "tts");
   const defaultTtsRuntime = createDefaultTtsRuntime(options, pythonBinary, ttsCacheDir, pythonSdkPath);
   const ttsRuntime = managedPythonEnvironment && !options.ttsRuntime ? withManagedPythonTtsRuntime(defaultTtsRuntime, managedPythonEnvironment) : defaultTtsRuntime;
   const asrStatusCache = createRuntimeStatusCache();
@@ -94157,8 +95376,8 @@ function createLocalAudioConfigStore(options) {
       if (!status.available) {
         throw new LocalAudioConfigError(`Selected TTS model is not downloaded. Open Settings > Models and download it.${status.message ? ` ${status.message}.` : ""}`, 409);
       }
-      const dir = await (0, import_promises19.mkdtemp)((0, import_node_path22.join)((0, import_node_os7.tmpdir)(), "clash-tts-"));
-      const outputPath = (0, import_node_path22.join)(dir, "speech.wav");
+      const dir = await (0, import_promises20.mkdtemp)((0, import_node_path23.join)((0, import_node_os7.tmpdir)(), "clash-tts-"));
+      const outputPath = (0, import_node_path23.join)(dir, "speech.wav");
       try {
         const synthesis = await ttsRuntime.synthesize({
           model,
@@ -94170,7 +95389,7 @@ function createLocalAudioConfigStore(options) {
         });
         const { outputPath: _outputPath, ...metadata } = synthesis;
         return {
-          audio: new Uint8Array(await (0, import_promises19.readFile)(outputPath)),
+          audio: new Uint8Array(await (0, import_promises20.readFile)(outputPath)),
           metadata
         };
       } catch (error53) {
@@ -94178,7 +95397,7 @@ function createLocalAudioConfigStore(options) {
           throw error53;
         throw new LocalAudioConfigError(`Local TTS synthesis failed: ${displayErrorMessage(error53)}`, 502);
       } finally {
-        await (0, import_promises19.rm)(dir, { recursive: true, force: true });
+        await (0, import_promises20.rm)(dir, { recursive: true, force: true });
       }
     }
   };
@@ -94186,7 +95405,7 @@ function createLocalAudioConfigStore(options) {
 
 // ../../apps/local-api/dist/sync.js
 var import_node_crypto17 = require("node:crypto");
-var import_node_path23 = require("node:path");
+var import_node_path24 = require("node:path");
 var import_loro_crdt8 = __toESM(require_nodejs(), 1);
 
 // ../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/wrapper.mjs
@@ -94256,7 +95475,7 @@ function createHttpRemoteLoroPersistence(options) {
   };
 }
 async function loadDoc(options) {
-  const store = new FileReplicaStore((0, import_node_path23.join)(options.dataDir, "projects"));
+  const store = new FileReplicaStore((0, import_node_path24.join)(options.dataDir, "projects"));
   let doc;
   try {
     doc = await store.recover(options.projectId);
@@ -94762,11 +95981,11 @@ function normalizeCapabilities(value, fallback2 = defaultSyncCapabilities()) {
   if (typeof value !== "object" || Array.isArray(value)) {
     throw new LocalSyncConfigError("capabilities must be an object");
   }
-  const record2 = value;
+  const record3 = value;
   return {
-    canvas: record2.canvas === void 0 ? fallback2.canvas : record2.canvas === true,
-    asset_metadata: record2.asset_metadata === void 0 ? fallback2.asset_metadata : record2.asset_metadata === true,
-    revision_content: record2.revision_content === void 0 ? fallback2.revision_content : record2.revision_content === true
+    canvas: record3.canvas === void 0 ? fallback2.canvas : record3.canvas === true,
+    asset_metadata: record3.asset_metadata === void 0 ? fallback2.asset_metadata : record3.asset_metadata === true,
+    revision_content: record3.revision_content === void 0 ? fallback2.revision_content : record3.revision_content === true
   };
 }
 function envConfig(env2) {
@@ -94816,16 +96035,16 @@ async function readConfig(store) {
   const value = await store.getSection("sync");
   if (!value || typeof value !== "object" || Array.isArray(value))
     return null;
-  const record2 = value;
-  const remote = record2.remote_loro && typeof record2.remote_loro === "object" && !Array.isArray(record2.remote_loro) ? record2.remote_loro : {};
+  const record3 = value;
+  const remote = record3.remote_loro && typeof record3.remote_loro === "object" && !Array.isArray(record3.remote_loro) ? record3.remote_loro : {};
   const credentials = await store.getCredentials();
   return {
     version: 1,
-    mode: normalizeMode(record2.mode),
+    mode: normalizeMode(record3.mode),
     remoteLoroUrl: normalizeRemoteUrl(remote.url),
     remoteLoroToken: trimToNull(credentials.syncRemoteLoroToken),
-    capabilities: normalizeCapabilities(record2.capabilities),
-    updatedAt: typeof record2.updated_at === "string" ? record2.updated_at : (/* @__PURE__ */ new Date(0)).toISOString()
+    capabilities: normalizeCapabilities(record3.capabilities),
+    updatedAt: typeof record3.updated_at === "string" ? record3.updated_at : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 }
 async function writeConfig2(store, config2) {
@@ -94982,27 +96201,27 @@ function normalizeEndpoint(value) {
   return parsed.toString().replace(/\/$/, "");
 }
 function normalizeStoredConfig(value) {
-  const record2 = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const provider = providerOrNull(record2.provider);
-  const region = stringOrNull(record2.region);
+  const record3 = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const provider = providerOrNull(record3.provider);
+  const region = stringOrNull(record3.region);
   return {
-    mode: modeOrDisabled(record2.mode),
+    mode: modeOrDisabled(record3.mode),
     provider,
-    accountId: stringOrNull(record2.account_id),
-    endpoint: stringOrNull(record2.endpoint),
-    bucket: stringOrNull(record2.bucket),
+    accountId: stringOrNull(record3.account_id),
+    endpoint: stringOrNull(record3.endpoint),
+    bucket: stringOrNull(record3.bucket),
     region: provider === "r2" ? "auto" : region,
-    keyPrefix: cleanKeyPart(stringOrNull(record2.key_prefix) ?? DEFAULT_KEY_PREFIX),
-    forcePathStyle: booleanOr(record2.force_path_style, provider === "custom-s3")
+    keyPrefix: cleanKeyPart(stringOrNull(record3.key_prefix) ?? DEFAULT_KEY_PREFIX),
+    forcePathStyle: booleanOr(record3.force_path_style, provider === "custom-s3")
   };
 }
 function normalizeStoredCredentials(root5) {
   const value = root5[CREDENTIALS_KEY];
-  const record2 = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const record3 = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
-    accessKeyId: stringOrNull(record2.accessKeyId),
-    secretAccessKey: stringOrNull(record2.secretAccessKey),
-    sessionToken: stringOrNull(record2.sessionToken)
+    accessKeyId: stringOrNull(record3.accessKeyId),
+    secretAccessKey: stringOrNull(record3.secretAccessKey),
+    sessionToken: stringOrNull(record3.sessionToken)
   };
 }
 function resolveEndpoint2(config2) {
@@ -95208,7 +96427,7 @@ function createPublicAssetStorageService(options) {
 }
 
 // ../../apps/local-api/dist/durable-run-coordinator.js
-var import_node_util3 = require("node:util");
+var import_node_util4 = require("node:util");
 var DEFAULT_LOCAL_PROVIDER_RUN_DEADLINE_MS = 30 * 6e4;
 var FrozenExecutorInputError = class extends Error {
   name = "FrozenExecutorInputError";
@@ -95236,7 +96455,7 @@ function parseFrozenExecutorInputUnchecked(input) {
   }
   const binding = ExecutablePluginBindingSchema.parse(json3.binding);
   const targetKind = json3.targetKind ?? "provider-executor";
-  if (targetKind !== "provider-executor" && targetKind !== "action") {
+  if (targetKind !== "provider-executor" && targetKind !== "action" && targetKind !== "local-executor") {
     throw new FrozenExecutorInputError("Frozen executable targetKind is not recognized.");
   }
   if (typeof json3.kind !== "string" || !PROVIDER_KINDS.has(json3.kind)) {
@@ -95257,6 +96476,8 @@ function parseFrozenExecutorInputUnchecked(input) {
   const nodeId = json3.nodeId;
   const actionId = json3.actionId;
   const actor = json3.actor;
+  const publicOwner = json3.publicOwner;
+  const nodeProjectionRevisionId = json3.nodeProjectionRevisionId;
   const assetInputs = json3.assetInputs === void 0 ? [] : Array.isArray(json3.assetInputs) ? json3.assetInputs.map((input2) => ProviderAssetInputSchema.parse(input2)) : (() => {
     throw new FrozenExecutorInputError("Frozen Provider executor assetInputs must be an array.");
   })();
@@ -95294,7 +96515,17 @@ function parseFrozenExecutorInputUnchecked(input) {
       ...actor.id === void 0 ? {} : { id: nonEmptyString6(actor.id, "actor.id") }
     };
   }
-  if (targetKind === "action") {
+  let parsedPublicOwner;
+  if (publicOwner !== void 0) {
+    if (!publicOwner || typeof publicOwner !== "object" || Array.isArray(publicOwner)) {
+      throw new FrozenExecutorInputError("Frozen executable publicOwner must be an object.");
+    }
+    parsedPublicOwner = {
+      actionId: nonEmptyString6(publicOwner.actionId, "publicOwner.actionId"),
+      actionRevisionId: nonEmptyString6(publicOwner.actionRevisionId, "publicOwner.actionRevisionId")
+    };
+  }
+  if (targetKind === "action" || targetKind === "local-executor") {
     if (actionId === void 0) {
       throw new FrozenExecutorInputError("Frozen Action executor actionId is missing.");
     }
@@ -95307,10 +96538,14 @@ function parseFrozenExecutorInputUnchecked(input) {
   }
   return {
     schemaVersion: 1,
-    ...targetKind === "action" ? { targetKind } : {},
+    ...targetKind === "provider-executor" ? {} : { targetKind },
     binding,
     ...actionId === void 0 ? {} : { actionId: nonEmptyString6(actionId, "actionId") },
     ...parsedActor ? { actor: parsedActor } : {},
+    ...parsedPublicOwner ? { publicOwner: parsedPublicOwner } : {},
+    ...nodeProjectionRevisionId === void 0 ? {} : {
+      nodeProjectionRevisionId: nonEmptyString6(nodeProjectionRevisionId, "nodeProjectionRevisionId")
+    },
     ...accountId === void 0 ? {} : { accountId: nonEmptyString6(accountId, "accountId") },
     kind: json3.kind,
     projectId: nonEmptyString6(json3.projectId, "projectId"),
@@ -95414,7 +96649,7 @@ function customActionStep(run, result) {
         {
           slot: run.outputSlot,
           kind: "value",
-          value: customActionText(output2.value)
+          value: frozen.targetKind === "local-executor" ? output2.value : customActionText(output2.value)
         }
       ]
     };
@@ -95481,7 +96716,7 @@ function providerRequest(run, idempotencyKey, now, pollState) {
 }
 function customActionRequest(run, now) {
   const frozen = parseFrozenExecutorInput(run.executorInput);
-  if (frozen.targetKind !== "action" || !frozen.actor) {
+  if (frozen.targetKind !== "action" && frozen.targetKind !== "local-executor" || !frozen.actor) {
     throw new FrozenExecutorInputError("A custom Action request requires a frozen Action target and actor.");
   }
   return {
@@ -95494,7 +96729,7 @@ function customActionRequest(run, now) {
     timeoutMs: remainingAttemptTimeoutMs(run, now)
   };
 }
-function classifyThrownError(error53, operation2) {
+function classifyThrownError(error53, operation2, run) {
   const message = error53 instanceof Error ? error53.message : String(error53);
   if (error53 instanceof FrozenExecutorInputError) {
     return {
@@ -95520,6 +96755,14 @@ function classifyThrownError(error53, operation2) {
       requestState: operation2 === "submit" ? "unknown" : "accepted"
     };
   }
+  if (operation2 === "submit" && parseFrozenExecutorInput(run.executorInput).targetKind === "local-executor") {
+    return {
+      code: "execution_failed",
+      message,
+      retryable: true,
+      requestState: "unknown"
+    };
+  }
   if (operation2 === "submit" || operation2 === "poll") {
     return {
       code: "execution_failed",
@@ -95536,7 +96779,7 @@ function classifyThrownError(error53, operation2) {
   };
 }
 function sameCreation(existing, intended) {
-  return existing.actionRunId === intended.actionRunId && existing.outputSlot === intended.outputSlot && existing.owner.realm === intended.owner.realm && existing.owner.id === intended.owner.id && existing.deadlineAt === intended.deadlineAt && (0, import_node_util3.isDeepStrictEqual)(existing.executorInput, intended.executorInput);
+  return existing.actionRunId === intended.actionRunId && existing.outputSlot === intended.outputSlot && existing.owner.realm === intended.owner.realm && existing.owner.id === intended.owner.id && existing.deadlineAt === intended.deadlineAt && (0, import_node_util4.isDeepStrictEqual)(existing.executorInput, intended.executorInput);
 }
 async function createLocalDurableRun(options) {
   if (!options.ownerId.trim()) {
@@ -95582,6 +96825,12 @@ function createLocalDurableRunCoordinator(options) {
     provider: {
       async submit({ run, idempotencyKey }) {
         const frozen = parseFrozenExecutorInput(run.executorInput);
+        if (frozen.targetKind === "local-executor") {
+          if (!options.localExecutor) {
+            throw new ProviderPluginHostUnavailableError("Host-local durable executor is unavailable.");
+          }
+          return customActionStep(run, await options.localExecutor(customActionRequest(run, clock.now())));
+        }
         if (frozen.targetKind === "action") {
           if (!options.executablePluginAction) {
             throw new ProviderPluginHostUnavailableError("Executable plugin Action runtime is unavailable.");
@@ -95593,7 +96842,7 @@ function createLocalDurableRunCoordinator(options) {
       },
       async poll({ run, pollState }) {
         const frozen = parseFrozenExecutorInput(run.executorInput);
-        if (frozen.targetKind === "action") {
+        if (frozen.targetKind === "action" || frozen.targetKind === "local-executor") {
           return {
             status: "failed",
             error: {
@@ -95656,11 +96905,11 @@ function createLocalDurableRunCoordinator(options) {
 }
 
 // ../../apps/local-api/dist/durable-run-journal.js
-var import_node_module8 = require("node:module");
-var import_promises22 = require("node:fs/promises");
-var import_node_path29 = require("node:path");
-var import_node_util4 = require("node:util");
-var nodeRequire8 = (0, import_node_module8.createRequire)(__clash_import_meta_url);
+var import_node_module10 = require("node:module");
+var import_promises23 = require("node:fs/promises");
+var import_node_path30 = require("node:path");
+var import_node_util5 = require("node:util");
+var nodeRequire10 = (0, import_node_module10.createRequire)(__clash_import_meta_url);
 var PHASES = /* @__PURE__ */ new Set([
   "queued",
   "submitting",
@@ -95670,10 +96919,10 @@ var PHASES = /* @__PURE__ */ new Set([
   "failed"
 ]);
 function databasePath(dataDir2) {
-  return (0, import_node_path29.join)(dataDir2, "local.sqlite");
+  return (0, import_node_path30.join)(dataDir2, "local.sqlite");
 }
-function openDatabase6(path) {
-  const { DatabaseSync } = nodeRequire8("node:sqlite");
+function openDatabase7(path) {
+  const { DatabaseSync } = nodeRequire10("node:sqlite");
   const database = new DatabaseSync(path);
   database.exec(`
     PRAGMA busy_timeout = 5000;
@@ -95713,23 +96962,23 @@ function parseRecord(text, sourceIdentity) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw corrupt(sourceIdentity, "the JSON root must be an object");
   }
-  const record2 = value;
-  if (record2.schemaVersion !== 1) {
+  const record3 = value;
+  if (record3.schemaVersion !== 1) {
     throw corrupt(sourceIdentity, "schemaVersion must be 1");
   }
-  if (typeof record2.actionRunId !== "string" || !record2.actionRunId.trim()) {
+  if (typeof record3.actionRunId !== "string" || !record3.actionRunId.trim()) {
     throw corrupt(sourceIdentity, "actionRunId must be a non-empty string");
   }
-  if (typeof record2.outputSlot !== "string" || !record2.outputSlot.trim()) {
+  if (typeof record3.outputSlot !== "string" || !record3.outputSlot.trim()) {
     throw corrupt(sourceIdentity, "outputSlot must be a non-empty string");
   }
-  if (!Number.isSafeInteger(record2.revision) || record2.revision < 0) {
+  if (!Number.isSafeInteger(record3.revision) || record3.revision < 0) {
     throw corrupt(sourceIdentity, "revision must be a non-negative safe integer");
   }
-  if (typeof record2.phase !== "string" || !PHASES.has(record2.phase)) {
+  if (typeof record3.phase !== "string" || !PHASES.has(record3.phase)) {
     throw corrupt(sourceIdentity, "phase is not recognized");
   }
-  const owner = record2.owner;
+  const owner = record3.owner;
   if (!owner || typeof owner !== "object" || Array.isArray(owner)) {
     throw corrupt(sourceIdentity, "owner must be an object");
   }
@@ -95740,18 +96989,18 @@ function parseRecord(text, sourceIdentity) {
   if (typeof ownerRecord.id !== "string" || !ownerRecord.id.trim()) {
     throw corrupt(sourceIdentity, "owner.id must be a non-empty string");
   }
-  if (!("executorInput" in record2)) {
+  if (!("executorInput" in record3)) {
     throw corrupt(sourceIdentity, "executorInput is missing");
   }
   for (const field3 of ["createdAt", "updatedAt", "deadlineAt"]) {
-    if (typeof record2[field3] !== "number" || !Number.isFinite(record2[field3])) {
+    if (typeof record3[field3] !== "number" || !Number.isFinite(record3[field3])) {
       throw corrupt(sourceIdentity, `${field3} must be a finite number`);
     }
   }
-  if (record2.recoveryFinalizationDeadlineAt !== void 0 && (!Number.isSafeInteger(record2.recoveryFinalizationDeadlineAt) || record2.recoveryFinalizationDeadlineAt <= record2.deadlineAt)) {
+  if (record3.recoveryFinalizationDeadlineAt !== void 0 && (!Number.isSafeInteger(record3.recoveryFinalizationDeadlineAt) || record3.recoveryFinalizationDeadlineAt <= record3.deadlineAt)) {
     throw corrupt(sourceIdentity, "recoveryFinalizationDeadlineAt must be a safe integer later than deadlineAt");
   }
-  return record2;
+  return record3;
 }
 function identityText(identity) {
   return `${identity.actionRunId}/${identity.outputSlot}`;
@@ -95780,20 +97029,20 @@ function parseRow3(row) {
   if (typeof row.record_json !== "string") {
     throw corrupt(sourceIdentity, "record_json is missing");
   }
-  const record2 = parseRecord(row.record_json, sourceIdentity);
-  if (record2.actionRunId !== actionRunId || record2.outputSlot !== outputSlot) {
+  const record3 = parseRecord(row.record_json, sourceIdentity);
+  if (record3.actionRunId !== actionRunId || record3.outputSlot !== outputSlot) {
     throw corrupt(sourceIdentity, "JSON identity does not match its table key");
   }
-  if (record2.revision !== row.revision) {
+  if (record3.revision !== row.revision) {
     throw corrupt(sourceIdentity, "JSON revision does not match its indexed revision");
   }
-  if (record2.phase !== row.phase) {
+  if (record3.phase !== row.phase) {
     throw corrupt(sourceIdentity, "JSON phase does not match its indexed phase");
   }
-  if (record2.owner.realm !== row.owner_realm || record2.owner.id !== row.owner_id) {
+  if (record3.owner.realm !== row.owner_realm || record3.owner.id !== row.owner_id) {
     throw corrupt(sourceIdentity, "JSON owner does not match its indexed owner");
   }
-  return record2;
+  return record3;
 }
 function recoveryAt(run) {
   if (run.phase === "succeeded")
@@ -95838,7 +97087,7 @@ function runProjectId(run) {
   return projectId;
 }
 function sameFrozenFields(current, next) {
-  return current.schemaVersion === next.schemaVersion && current.actionRunId === next.actionRunId && current.outputSlot === next.outputSlot && current.owner.realm === next.owner.realm && current.owner.id === next.owner.id && current.createdAt === next.createdAt && current.deadlineAt === next.deadlineAt && (current.recoveryFinalizationDeadlineAt === void 0 || current.recoveryFinalizationDeadlineAt === next.recoveryFinalizationDeadlineAt) && (0, import_node_util4.isDeepStrictEqual)(current.executorInput, next.executorInput);
+  return current.schemaVersion === next.schemaVersion && current.actionRunId === next.actionRunId && current.outputSlot === next.outputSlot && current.owner.realm === next.owner.realm && current.owner.id === next.owner.id && current.createdAt === next.createdAt && current.deadlineAt === next.deadlineAt && (current.recoveryFinalizationDeadlineAt === void 0 || current.recoveryFinalizationDeadlineAt === next.recoveryFinalizationDeadlineAt) && (0, import_node_util5.isDeepStrictEqual)(current.executorInput, next.executorInput);
 }
 function changes(result) {
   return typeof result.changes === "bigint" ? Number(result.changes) : result.changes;
@@ -95846,14 +97095,14 @@ function changes(result) {
 function createSqliteDurableRunJournal(dataDir2) {
   const path = databasePath(dataDir2);
   async function withDatabase(task) {
-    await (0, import_promises22.mkdir)(dataDir2, { recursive: true });
-    const database = openDatabase6(path);
+    await (0, import_promises23.mkdir)(dataDir2, { recursive: true });
+    const database = openDatabase7(path);
     try {
       applySchema4(database);
       return task(database);
     } finally {
       database.close();
-      await (0, import_promises22.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises23.chmod)(path, 384).catch(() => void 0);
     }
   }
   return {
@@ -95871,7 +97120,7 @@ function createSqliteDurableRunJournal(dataDir2) {
           `).get(normalized.actionRunId, normalized.outputSlot);
           if (existingRow) {
             const existing = parseRow3(existingRow);
-            if (!(0, import_node_util4.isDeepStrictEqual)(existing, normalized)) {
+            if (!(0, import_node_util5.isDeepStrictEqual)(existing, normalized)) {
               throw new Error(`Durable run ${normalized.actionRunId}/${normalized.outputSlot} already exists with different content.`);
             }
           } else {
@@ -95989,7 +97238,7 @@ function createSqliteDurableRunJournal(dataDir2) {
 }
 
 // ../../apps/local-api/dist/app.js
-var execFileAsync3 = (0, import_node_util5.promisify)(import_node_child_process5.execFile);
+var execFileAsync4 = (0, import_node_util6.promisify)(import_node_child_process6.execFile);
 function parseAssetEditInvocation(input) {
   if (typeof input.raw === "string" && input.raw.trim()) {
     return AssetEditActionInvocationSchema.parse(JSON.parse(input.raw));
@@ -96006,14 +97255,6 @@ function parseAssetEditInvocation(input) {
     surface,
     mode: invocationModeForSurface(surface)
   });
-}
-function localFfmpegPath() {
-  return [
-    process.env.FFMPEG_PATH,
-    "/opt/homebrew/bin/ffmpeg",
-    "/usr/local/bin/ffmpeg",
-    "/usr/bin/ffmpeg"
-  ].filter((candidate) => !!candidate).find((candidate) => (0, import_node_fs9.existsSync)(candidate)) ?? null;
 }
 function createLocalTtsGenerationHandler(audioConfig) {
   return async (input) => {
@@ -96060,7 +97301,7 @@ async function preflightTextRevisionContentBlob(dataDir2, revision, content) {
     throw new Error("text revision contentHash does not match content");
   }
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const existing = await (0, import_promises23.readFile)(path, "utf8").catch((error53) => {
+  const existing = await (0, import_promises24.readFile)(path, "utf8").catch((error53) => {
     if (error53 && typeof error53 === "object" && error53.code === "ENOENT")
       return null;
     throw error53;
@@ -96080,6 +97321,10 @@ var PROJECT_ASSET_READ_RECEIPT_HEADER3 = "x-clash-read-receipt";
 var PROJECT_PURGE_DELAY_MS = 7 * 24 * 60 * 60 * 1e3;
 var ASSET_PURGE_DELAY_MS = PROJECT_PURGE_DELAY_MS;
 var PERSONAL_GLOBAL_ASSET_LIBRARY_ID = "personal";
+function scopedAssetRelationId(targetNamespace, sourceIdentity) {
+  const digest3 = (0, import_node_crypto24.createHash)("sha256").update("clash.asset-scope-relation.v1\0").update(targetNamespace).update("\0").update(JSON.stringify(sourceIdentity)).digest("hex");
+  return `${targetNamespace}:${digest3}`;
+}
 function localApiProjectAssetReadReceipt(readToken) {
   return (0, import_node_crypto24.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`project-asset:${readToken}`).digest("base64url");
 }
@@ -96208,11 +97453,8 @@ async function finalizeRuntimeSessionId(db, temporarySessionId, finalSessionId, 
     state2.sessionMessages = state2.sessionMessages.map((message) => message.session_id === temporarySessionId ? { ...message, session_id: finalSessionId } : message);
   });
 }
-function sanitizeFileName(name) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
 function contentTypeForPath(path) {
-  const ext = (0, import_node_path30.extname)(path).toLowerCase();
+  const ext = (0, import_node_path31.extname)(path).toLowerCase();
   if (ext === ".png")
     return "image/png";
   if (ext === ".jpg" || ext === ".jpeg")
@@ -96273,7 +97515,7 @@ function parseAssetByteRange(rangeHeader, size) {
   };
 }
 async function serveImmutableFileProjection(options) {
-  const fileInfo = await (0, import_promises23.stat)(options.path);
+  const fileInfo = await (0, import_promises24.stat)(options.path);
   if (!fileInfo.isFile() || options.expectedByteLength !== void 0 && fileInfo.size !== options.expectedByteLength) {
     throw new Error("Immutable Asset projection no longer matches its Resource facts.");
   }
@@ -96289,7 +97531,7 @@ async function serveImmutableFileProjection(options) {
   }
   if (range2) {
     const length = range2.end - range2.start + 1;
-    const handle = await (0, import_promises23.open)(options.path, "r");
+    const handle = await (0, import_promises24.open)(options.path, "r");
     try {
       const bytes2 = new Uint8Array(length);
       const { bytesRead } = await handle.read(bytes2, 0, length, range2.start);
@@ -96308,7 +97550,7 @@ async function serveImmutableFileProjection(options) {
       await handle.close();
     }
   }
-  const bytes = await (0, import_promises23.readFile)(options.path);
+  const bytes = await (0, import_promises24.readFile)(options.path);
   return new Response(bytes, {
     headers: {
       "accept-ranges": "bytes",
@@ -96317,14 +97559,6 @@ async function serveImmutableFileProjection(options) {
       "cache-control": "public, max-age=31536000, immutable",
       "x-content-type-options": "nosniff"
     }
-  });
-}
-async function serveLocalAssetFile(options) {
-  const path = await assetPathForRead(options.dataDir, options.storageKey, options.clashRoot);
-  return serveImmutableFileProjection({
-    path,
-    contentType: contentTypeForPath(options.storageKey),
-    ...options.rangeHeader ? { rangeHeader: options.rangeHeader } : {}
   });
 }
 function nowIso() {
@@ -96386,8 +97620,8 @@ function createDb(dataDir2) {
     writeQueue = task.then(() => void 0, () => void 0);
     return task;
   }
-  async function appendMutationAudit(record2) {
-    const task = writeQueue.catch(() => void 0).then(() => metadataStore.appendMutationAudit(record2));
+  async function appendMutationAudit(record3) {
+    const task = writeQueue.catch(() => void 0).then(() => metadataStore.appendMutationAudit(record3));
     writeQueue = task.then(() => void 0, () => void 0);
     return task;
   }
@@ -96408,14 +97642,14 @@ function createDb(dataDir2) {
     await writeQueue.catch(() => void 0);
     return metadataStore.getTextRevision(projectId, revisionId);
   }
-  async function upsertAssetMetadataIndex(record2) {
-    const task = writeQueue.catch(() => void 0).then(() => metadataStore.upsertAssetMetadataIndex(record2));
+  async function upsertMetadataAttachmentIndex(record3) {
+    const task = writeQueue.catch(() => void 0).then(() => metadataStore.upsertMetadataAttachmentIndex(record3));
     writeQueue = task.then(() => void 0, () => void 0);
     return task;
   }
-  async function listAssetMetadataIndex(filter) {
+  async function listMetadataAttachmentIndex(filter) {
     await writeQueue.catch(() => void 0);
-    return metadataStore.listAssetMetadataIndex(filter);
+    return metadataStore.listMetadataAttachmentIndex(filter);
   }
   async function listProviderUsageEvents(userId, limit) {
     await writeQueue.catch(() => void 0);
@@ -96429,8 +97663,8 @@ function createDb(dataDir2) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
-    upsertAssetMetadataIndex,
-    listAssetMetadataIndex,
+    upsertMetadataAttachmentIndex,
+    listMetadataAttachmentIndex,
     listProviderUsageEvents
   };
 }
@@ -96675,7 +97909,7 @@ function inferProjectAssetFileKind(file2) {
   if (contentType === "model/gltf-binary" || contentType === "model/gltf+json") {
     return "model";
   }
-  const extension2 = (0, import_node_path30.extname)(file2.name).toLowerCase();
+  const extension2 = (0, import_node_path31.extname)(file2.name).toLowerCase();
   if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif"].includes(extension2)) {
     return "image";
   }
@@ -96685,7 +97919,7 @@ function inferProjectAssetFileKind(file2) {
   if ([".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"].includes(extension2)) {
     return "audio";
   }
-  if ([".glb", ".gltf", ".fbx", ".bvh", ".obj", ".usdz"].includes(extension2)) {
+  if ([".glb", ".gltf"].includes(extension2)) {
     return "model";
   }
   return void 0;
@@ -96722,12 +97956,6 @@ function isAllowedLocalBrowserOrigin(origin) {
   } catch {
     return false;
   }
-}
-function localAssetUrl(c5, storageKey) {
-  return `${requestOrigin(c5)}/assets/${storageKey}`;
-}
-function signedUrlExp() {
-  return Math.floor(Date.now() / 1e3) + 365 * 24 * 60 * 60;
 }
 function isDeletedProject(project) {
   return typeof project.deletedAt === "string" && project.deletedAt.length > 0;
@@ -96906,17 +98134,17 @@ function providerAccountsReceiptReadToken(accounts) {
 function verifyLocalApiProviderAccountsReadReceipt(proof) {
   return proof.namespace === "provider-accounts" && proof.receipt === localApiProviderAccountsReadReceipt(proof.baseReadToken);
 }
-function providerOAuthBaseReadToken(record2) {
+function providerOAuthBaseReadToken(record3) {
   return providerOAuthReadToken({
-    ...publicProviderOAuth(record2),
-    updatedAt: record2.updatedAt
+    ...publicProviderOAuth(record3),
+    updatedAt: record3.updatedAt
   });
 }
 function localApiProviderOAuthReadReceipt(readToken) {
   return (0, import_node_crypto24.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET2).update(`provider-oauth:${readToken}`).digest("base64url");
 }
-function providerOAuthReceiptReadToken(record2) {
-  const readToken = providerOAuthBaseReadToken(record2);
+function providerOAuthReceiptReadToken(record3) {
+  const readToken = providerOAuthBaseReadToken(record3);
   return agentReadReceiptToken({
     readToken,
     receipt: localApiProviderOAuthReadReceipt(readToken)
@@ -96925,10 +98153,10 @@ function providerOAuthReceiptReadToken(record2) {
 function verifyLocalApiProviderOAuthReadReceipt(proof) {
   return proof.namespace === "provider-oauth" && proof.receipt === localApiProviderOAuthReadReceipt(proof.baseReadToken);
 }
-function publicProviderOAuthWithReadReceipt(record2) {
+function publicProviderOAuthWithReadReceipt(record3) {
   return {
-    ...publicProviderOAuth(record2),
-    readToken: providerOAuthReceiptReadToken(record2)
+    ...publicProviderOAuth(record3),
+    readToken: providerOAuthReceiptReadToken(record3)
   };
 }
 function publicProviderAccountsWithReadReceipts(accounts) {
@@ -97521,24 +98749,24 @@ function browserOAuthToken(callbackUrl, auth) {
   }
   return accessToken.trim();
 }
-function publicProviderOAuth(record2) {
-  const browserState = parseBrowserProviderOAuthState(record2.oauthState);
+function publicProviderOAuth(record3) {
+  const browserState = parseBrowserProviderOAuthState(record3.oauthState);
   return {
-    providerId: record2.providerId,
-    ...record2.accountId ? { accountId: record2.accountId } : {},
-    status: record2.status,
-    ...record2.verificationUri ? { verificationUri: record2.verificationUri } : {},
-    ...record2.userCode ? { userCode: record2.userCode } : {},
-    ...record2.deviceCode ? { deviceCode: record2.deviceCode } : {},
-    ...record2.expiresAt ? { expiresAt: record2.expiresAt } : {},
-    ...record2.intervalSeconds !== void 0 ? { intervalSeconds: record2.intervalSeconds } : {},
-    ...record2.accountLabel ? { accountLabel: record2.accountLabel } : {},
-    ...record2.error ? { error: record2.error } : {},
+    providerId: record3.providerId,
+    ...record3.accountId ? { accountId: record3.accountId } : {},
+    status: record3.status,
+    ...record3.verificationUri ? { verificationUri: record3.verificationUri } : {},
+    ...record3.userCode ? { userCode: record3.userCode } : {},
+    ...record3.deviceCode ? { deviceCode: record3.deviceCode } : {},
+    ...record3.expiresAt ? { expiresAt: record3.expiresAt } : {},
+    ...record3.intervalSeconds !== void 0 ? { intervalSeconds: record3.intervalSeconds } : {},
+    ...record3.accountLabel ? { accountLabel: record3.accountLabel } : {},
+    ...record3.error ? { error: record3.error } : {},
     ...browserState ? {
       flow: "browser",
       ...callbackDescription(browserState.auth)
     } : {},
-    hasAccessToken: typeof record2.accessToken === "string" && record2.accessToken.trim().length > 0
+    hasAccessToken: typeof record3.accessToken === "string" && record3.accessToken.trim().length > 0
   };
 }
 function providerOAuthEntityId(providerId, accountId) {
@@ -97547,12 +98775,12 @@ function providerOAuthEntityId(providerId, accountId) {
 function upsertProviderOAuth(state2, userId, providerId, patch) {
   const now = nowIso();
   const accountId = patch.accountId;
-  const existing = state2.providerOAuth.find((record3) => record3.userId === userId && record3.providerId === providerId && (record3.accountId ?? "") === (accountId ?? ""));
+  const existing = state2.providerOAuth.find((record4) => record4.userId === userId && record4.providerId === providerId && (record4.accountId ?? "") === (accountId ?? ""));
   if (existing) {
     Object.assign(existing, patch, { updatedAt: now });
     return existing;
   }
-  const record2 = {
+  const record3 = {
     userId,
     providerId,
     status: patch.status ?? "pending",
@@ -97560,14 +98788,14 @@ function upsertProviderOAuth(state2, userId, providerId, patch) {
     updatedAt: now,
     ...patch
   };
-  state2.providerOAuth.unshift(record2);
-  return record2;
+  state2.providerOAuth.unshift(record3);
+  return record3;
 }
 function stringBodyField(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
 }
-function providerOAuthMatches(record2, userId, providerId, accountId) {
-  return record2.userId === userId && record2.providerId === providerId && (record2.accountId ?? "") === (accountId ?? "");
+function providerOAuthMatches(record3, userId, providerId, accountId) {
+  return record3.userId === userId && record3.providerId === providerId && (record3.accountId ?? "") === (accountId ?? "");
 }
 function builtinLocalAgentMembers(userId, createdAt) {
   return BUILTIN_AGENT_TEMPLATES.map((template) => ({
@@ -97878,9 +99106,9 @@ function createLocalApiApp(options) {
   const db = createDb(options.dataDir);
   let importedPluginStore;
   const pluginStoreForImport = () => importedPluginStore ??= openPluginStore({ dataDir: options.dataDir });
-  const localApiDataDir = (0, import_node_path30.resolve)(options.dataDir);
+  const localApiDataDir = (0, import_node_path31.resolve)(options.dataDir);
   const clashRoot = clashHomeForLocalDataDir(options.dataDir, options.clashRoot);
-  const replicaStore = new FileReplicaStore((0, import_node_path30.join)(options.dataDir, "projects"));
+  const replicaStore = new FileReplicaStore((0, import_node_path31.join)(options.dataDir, "projects"));
   const providerExecutionHandoffs = createProviderExecutionHandoffStore(options.dataDir);
   const durableRunJournal = createSqliteDurableRunJournal(options.dataDir);
   const providerReferenceAssets = createLocalPluginAssetStagingStore({
@@ -97899,11 +99127,12 @@ function createLocalApiApp(options) {
       clashRoot,
       projectionOrigin: configuredProjectionOrigin?.trim() || requestProjectionOrigin,
       ...options.projectAssetReplica ? { replica: options.projectAssetReplica } : {},
-      readReceiptVerifier: verifyLocalApiProjectAssetReadReceipt
+      readReceiptVerifier: verifyLocalApiProjectAssetReadReceipt,
+      assetInspection
     });
     return projectAssetService;
   };
-  const bindEditActionAssets = async (input) => {
+  const editActionAssetBindings = (input) => {
     const revisionDigest = (0, import_node_crypto24.createHash)("sha256").update(JSON.stringify(input.invocation)).digest("hex");
     const owner = {
       kind: "run",
@@ -97911,33 +99140,46 @@ function createLocalApiApp(options) {
       actionRevisionId: `sha256:${revisionDigest}`,
       actionRunId: input.actionRunId
     };
-    await input.service.bind(input.invocation.projectId, {
-      id: `action-asset:${input.actionRunId}:source:input`,
-      owner,
-      direction: "input",
-      slot: "source",
-      projectAssetId: input.invocation.source.assetId,
-      role: "source"
-    });
-    await input.service.bind(input.invocation.projectId, {
-      id: `action-asset:${input.actionRunId}:output`,
-      owner,
-      direction: "output",
-      slot: "output",
-      projectAssetId: input.outputAssetId,
-      role: "primary"
-    });
+    return [
+      {
+        id: `action-asset:${input.actionRunId}:source:input`,
+        owner,
+        direction: "input",
+        slot: "source",
+        projectAssetId: input.invocation.source.assetId,
+        role: "source"
+      },
+      {
+        id: `action-asset:${input.actionRunId}:output`,
+        owner,
+        direction: "output",
+        slot: "output",
+        projectAssetId: input.outputAssetId,
+        role: "primary"
+      }
+    ];
   };
+  const editOutputAssetId = (actionRunId) => `asset:edit:${(0, import_node_crypto24.createHash)("sha256").update("clash.asset-edit-output.v1\0").update(durableRunIdempotencyKey({ actionRunId, outputSlot: "output" })).digest("hex")}`;
   let globalAssetService;
   const globalAssetServiceAt = (requestProjectionOrigin) => {
     const configuredProjectionOrigin = typeof options.projectAssetProjectionOrigin === "function" ? options.projectAssetProjectionOrigin() : options.projectAssetProjectionOrigin;
     globalAssetService ??= createLocalGlobalAssetService({
       dataDir: options.dataDir,
       clashRoot,
-      projectionOrigin: configuredProjectionOrigin?.trim() || requestProjectionOrigin
+      projectionOrigin: configuredProjectionOrigin?.trim() || requestProjectionOrigin,
+      assetInspection
     });
     return globalAssetService;
   };
+  const ffprobePath = localFfprobePath();
+  const inspectAssetResource = options.inspectAssetResource ?? (ffprobePath ? createLocalFfprobeAssetInspector({ ffprobePath }) : async () => {
+    throw new Error("ffprobe is required to verify media before Asset publication");
+  });
+  const assetInspection = options.assetInspection ?? createLocalAssetInspectionService({
+    dataDir: options.dataDir,
+    clashRoot,
+    inspectResource: inspectAssetResource
+  });
   const sessionMessageStore = createLocalSessionMessageStore(db);
   options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
   const falMock2 = options.falMock ?? createMockFalQueueService();
@@ -97988,13 +99230,13 @@ function createLocalApiApp(options) {
     if (run.phase === "succeeded") {
       const staged = jsonRecord(run.stagedOutput);
       const entry = jsonRecord(staged?.projectAsset);
-      const projectAssetId = typeof entry?.id === "string" ? entry.id : void 0;
-      if (!projectAssetId) {
+      const projectAssetId2 = typeof entry?.id === "string" ? entry.id : void 0;
+      if (!projectAssetId2) {
         return c5.json({ error: "Director generation published no Project Asset" }, 500);
       }
-      const asset = await projectAssetServiceAt(requestOrigin(c5)).read(facts.projectId, projectAssetId);
+      const asset = await projectAssetServiceAt(requestOrigin(c5)).read(facts.projectId, projectAssetId2);
       if (!asset) {
-        return c5.json({ error: `Generated Project Asset ${projectAssetId} is unavailable` }, 500);
+        return c5.json({ error: `Generated Project Asset ${projectAssetId2} is unavailable` }, 500);
       }
       return c5.json({
         status: "completed",
@@ -98137,22 +99379,30 @@ function createLocalApiApp(options) {
   });
   app.get("/api/v1/projects/:projectId/assets/:projectAssetId/references", async (c5) => {
     try {
-      const projectAssetId = c5.req.param("projectAssetId");
-      const observed2 = await projectAssetServiceAt(requestOrigin(c5)).listReferencesObserved(c5.req.param("projectId"), projectAssetId);
+      const projectAssetId2 = c5.req.param("projectAssetId");
+      const observed2 = await projectAssetServiceAt(requestOrigin(c5)).listReferencesObserved(c5.req.param("projectId"), projectAssetId2);
       c5.header(PROJECT_ASSET_READ_RECEIPT_HEADER3, projectAssetReceiptReadToken(observed2.readToken));
-      return c5.json({ projectAssetId, references: observed2.value });
+      return c5.json({ projectAssetId: projectAssetId2, references: observed2.value });
     } catch (error53) {
       return localProjectAssetErrorResponse(error53);
     }
   });
   app.delete("/api/v1/projects/:projectId/assets/:projectAssetId", async (c5) => {
+    const body = await c5.req.json().catch(() => null);
+    const deleteOperationIdValue = isRecord11(body) ? body.deleteOperationId : void 0;
+    if (typeof deleteOperationIdValue !== "string" || !deleteOperationIdValue.trim() || deleteOperationIdValue.length > 512) {
+      return c5.json({
+        error: "deleteOperationId is required",
+        code: "INVALID_PROJECT_ASSET_TRASH"
+      }, 400);
+    }
     try {
       const now = Date.now();
       const preconditions = requestProjectWritePreconditions(c5);
       const observed2 = await projectAssetServiceAt(requestOrigin(c5)).trash({
         projectId: c5.req.param("projectId"),
         projectAssetId: c5.req.param("projectAssetId"),
-        deleteOperationId: crypto.randomUUID(),
+        deleteOperationId: deleteOperationIdValue.trim(),
         deletedAt: new Date(now).toISOString(),
         purgeAfter: new Date(now + ASSET_PURGE_DELAY_MS).toISOString(),
         observation: {
@@ -98230,9 +99480,16 @@ function createLocalApiApp(options) {
     }
     const file2 = form.get("file");
     const kind = AssetKindSchema.safeParse(form.get("kind"));
+    const globalAssetIdValue = form.get("globalAssetId");
     if (!file2 || typeof file2 === "string" || !kind.success) {
       return c5.json({
         error: "Global Asset import requires file and kind",
+        code: "INVALID_GLOBAL_ASSET_IMPORT"
+      }, 400);
+    }
+    if (globalAssetIdValue !== null && (typeof globalAssetIdValue !== "string" || !globalAssetIdValue.trim() || globalAssetIdValue.length > 512)) {
+      return c5.json({
+        error: "Invalid Global Asset id",
         code: "INVALID_GLOBAL_ASSET_IMPORT"
       }, 400);
     }
@@ -98245,6 +99502,7 @@ function createLocalApiApp(options) {
       const contentType = !declaredContentType || declaredContentType === "application/octet-stream" ? contentTypeForPath(file2.name) : declaredContentType;
       const asset = await globalAssetServiceAt(requestOrigin(c5)).importBytes({
         libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        ...typeof globalAssetIdValue === "string" ? { globalAssetId: globalAssetIdValue.trim() } : {},
         kind: kind.data,
         bytes: new Uint8Array(await file2.arrayBuffer()),
         contentType,
@@ -98260,15 +99518,15 @@ function createLocalApiApp(options) {
   app.post("/api/v1/libraries/personal/assets/publish", async (c5) => {
     const body = await c5.req.json().catch(() => null);
     const projectId = isRecord11(body) ? optionalBodyString(body.projectId) : void 0;
-    const projectAssetId = isRecord11(body) ? optionalBodyString(body.projectAssetId) : void 0;
-    if (!projectId || !projectAssetId) {
+    const projectAssetId2 = isRecord11(body) ? optionalBodyString(body.projectAssetId) : void 0;
+    if (!projectId || !projectAssetId2) {
       return c5.json({
         error: "projectId and projectAssetId are required",
         code: "INVALID_GLOBAL_ASSET_PUBLISH"
       }, 400);
     }
     try {
-      const source = await projectAssetServiceAt(requestOrigin(c5)).readEntry(projectId, projectAssetId);
+      const source = await projectAssetServiceAt(requestOrigin(c5)).readEntry(projectId, projectAssetId2);
       if (!source) {
         return c5.json({
           error: "Project Asset not found",
@@ -98283,6 +99541,11 @@ function createLocalApiApp(options) {
       }
       const asset = await globalAssetServiceAt(requestOrigin(c5)).publishResource({
         libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        globalAssetId: scopedAssetRelationId("global:project", [
+          PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+          projectId,
+          projectAssetId2
+        ]),
         resourceId: source.source.resourceId,
         kind: source.kind,
         ...source.name ? { name: source.name } : {},
@@ -98319,8 +99582,14 @@ function createLocalApiApp(options) {
       }
       const asset = await projectAssetServiceAt(requestOrigin(c5)).admitLinked({
         projectId: c5.req.param("projectId"),
+        projectAssetId: scopedAssetRelationId("asset:global", [
+          c5.req.param("projectId"),
+          PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+          source.id
+        ]),
         kind: source.kind,
         resourceId: source.resourceId,
+        originLibraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
         originEntryId: source.id,
         ...source.name ? { name: source.name } : {},
         metadata: source.metadata,
@@ -98359,12 +99628,20 @@ function createLocalApiApp(options) {
     }
   });
   app.delete("/api/v1/libraries/personal/assets/:globalAssetId", async (c5) => {
+    const body = await c5.req.json().catch(() => null);
+    const deleteOperationIdValue = isRecord11(body) ? body.deleteOperationId : void 0;
+    if (typeof deleteOperationIdValue !== "string" || !deleteOperationIdValue.trim() || deleteOperationIdValue.length > 512) {
+      return c5.json({
+        error: "deleteOperationId is required",
+        code: "INVALID_GLOBAL_ASSET_TRASH"
+      }, 400);
+    }
     try {
       const now = Date.now();
       const asset = await globalAssetServiceAt(requestOrigin(c5)).trash({
         libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
         globalAssetId: c5.req.param("globalAssetId"),
-        deleteOperationId: (0, import_node_crypto24.randomUUID)(),
+        deleteOperationId: deleteOperationIdValue.trim(),
         deletedAt: new Date(now).toISOString(),
         purgeAfter: new Date(now + ASSET_PURGE_DELAY_MS).toISOString()
       });
@@ -98374,8 +99651,20 @@ function createLocalApiApp(options) {
     }
   });
   app.post("/api/v1/libraries/personal/assets/:globalAssetId/restore", async (c5) => {
+    const body = await c5.req.json().catch(() => null);
+    const deleteOperationIdValue = isRecord11(body) ? body.deleteOperationId : void 0;
+    if (typeof deleteOperationIdValue !== "string" || !deleteOperationIdValue.trim() || deleteOperationIdValue.length > 512) {
+      return c5.json({
+        error: "deleteOperationId is required",
+        code: "INVALID_GLOBAL_ASSET_RESTORE"
+      }, 400);
+    }
     try {
-      const asset = await globalAssetServiceAt(requestOrigin(c5)).restore(PERSONAL_GLOBAL_ASSET_LIBRARY_ID, c5.req.param("globalAssetId"));
+      const asset = await globalAssetServiceAt(requestOrigin(c5)).restore({
+        libraryId: PERSONAL_GLOBAL_ASSET_LIBRARY_ID,
+        globalAssetId: c5.req.param("globalAssetId"),
+        deleteOperationId: deleteOperationIdValue.trim()
+      });
       return c5.json(asset);
     } catch (error53) {
       return localGlobalAssetErrorResponse(error53);
@@ -98531,7 +99820,7 @@ function createLocalApiApp(options) {
       const beforeAccounts = state2.providerAccounts.length;
       const beforeOAuth = state2.providerOAuth.length;
       state2.providerAccounts = state2.providerAccounts.filter((account) => !((account.userId ?? userId) === userId && account.id === accountId));
-      state2.providerOAuth = state2.providerOAuth.filter((record2) => !((record2.userId ?? userId) === userId && record2.accountId === accountId));
+      state2.providerOAuth = state2.providerOAuth.filter((record3) => !((record3.userId ?? userId) === userId && record3.accountId === accountId));
       state2.modelCardConfigs = state2.modelCardConfigs.map((config2) => ({
         ...config2,
         providerBindings: config2.providerBindings.filter((binding) => binding.providerAccountId !== accountId)
@@ -98853,7 +100142,7 @@ function createLocalApiApp(options) {
   app.get("/api/v1/provider-oauth", async (c5) => {
     const state2 = await db.load();
     return c5.json({
-      providers: state2.providerOAuth.filter((record2) => record2.userId === userId).sort((a5, b5) => a5.providerId.localeCompare(b5.providerId) || (a5.accountId ?? "").localeCompare(b5.accountId ?? "")).map(publicProviderOAuthWithReadReceipt)
+      providers: state2.providerOAuth.filter((record3) => record3.userId === userId).sort((a5, b5) => a5.providerId.localeCompare(b5.providerId) || (a5.accountId ?? "").localeCompare(b5.accountId ?? "")).map(publicProviderOAuthWithReadReceipt)
     });
   });
   app.post("/api/v1/provider-oauth/:providerId/import-local", async (c5) => {
@@ -98903,7 +100192,7 @@ function createLocalApiApp(options) {
         }, message)
       }, 404);
     }
-    const beforeRecord = beforeState.providerOAuth.find((record3) => providerOAuthMatches(record3, userId, providerId, accountId));
+    const beforeRecord = beforeState.providerOAuth.find((record4) => providerOAuthMatches(record4, userId, providerId, accountId));
     const needsReadProof = !!preconditions.actorClientType || !!preconditions.expectedReadToken;
     const hostMutation = beforeRecord && needsReadProof ? validateProviderOAuthReadMutation({
       record: beforeRecord,
@@ -98948,7 +100237,7 @@ function createLocalApiApp(options) {
       value: imported.accessToken,
       secret: true
     });
-    const record2 = await db.update((state2) => upsertProviderOAuth(state2, userId, providerId, {
+    const record3 = await db.update((state2) => upsertProviderOAuth(state2, userId, providerId, {
       accountId,
       status: "authorized",
       accessToken: void 0,
@@ -98963,7 +100252,7 @@ function createLocalApiApp(options) {
       expiresAt: void 0,
       error: void 0
     }));
-    const readToken = providerOAuthReceiptReadToken(record2);
+    const readToken = providerOAuthReceiptReadToken(record3);
     const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
       operation: "provider_oauth_import",
       entity: { kind: "provider-oauth", id: entityId }
@@ -98977,7 +100266,7 @@ function createLocalApiApp(options) {
       reason: "provider OAuth local token import"
     }));
     return c5.json({
-      ...publicProviderOAuth(record2),
+      ...publicProviderOAuth(record3),
       importedFrom: imported.importedFrom,
       ...hostMutation ? { readToken } : {},
       mutation
@@ -99033,7 +100322,7 @@ function createLocalApiApp(options) {
         }, accountId ? 404 : 400);
       }
     }
-    const beforeRecord = beforeState.providerOAuth.find((record3) => providerOAuthMatches(record3, userId, providerId, accountId));
+    const beforeRecord = beforeState.providerOAuth.find((record4) => providerOAuthMatches(record4, userId, providerId, accountId));
     const needsReadProof = !!preconditions.actorClientType || !!preconditions.expectedReadToken;
     const hostMutation = beforeRecord && needsReadProof ? validateProviderOAuthReadMutation({
       record: beforeRecord,
@@ -99069,7 +100358,7 @@ function createLocalApiApp(options) {
         auth: browserAuth
       })
     };
-    const record2 = await db.update((state2) => {
+    const record3 = await db.update((state2) => {
       return upsertProviderOAuth(state2, userId, providerId, {
         ...accountId ? { accountId } : {},
         status: "pending",
@@ -99086,7 +100375,7 @@ function createLocalApiApp(options) {
         error: void 0
       });
     });
-    const readToken = providerOAuthReceiptReadToken(record2);
+    const readToken = providerOAuthReceiptReadToken(record3);
     const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
       operation: "provider_oauth_start",
       entity: {
@@ -99103,7 +100392,7 @@ function createLocalApiApp(options) {
       reason: "provider OAuth start"
     }));
     return c5.json({
-      ...publicProviderOAuth(record2),
+      ...publicProviderOAuth(record3),
       ...browserAuth ? {
         flow: "browser",
         ...callbackDescription(browserAuth)
@@ -99145,7 +100434,7 @@ function createLocalApiApp(options) {
     const accountId = stringBodyField(body.accountId);
     const preconditions = requestProjectWritePreconditions(c5, body);
     const initialState = await db.load();
-    const existing = initialState.providerOAuth.find((record3) => providerOAuthMatches(record3, userId, providerId, accountId));
+    const existing = initialState.providerOAuth.find((record4) => providerOAuthMatches(record4, userId, providerId, accountId));
     const effectiveBrowserAuth = driver ? null : parseBrowserProviderOAuthState(existing?.oauthState)?.auth ?? browserAuth;
     if (effectiveBrowserAuth?.pluginStore) {
       const selectedAccount = accountId ? initialState.providerAccounts.find((account) => (account.userId ?? userId) === userId && account.id === accountId && account.providerId === providerId) : void 0;
@@ -99215,7 +100504,7 @@ function createLocalApiApp(options) {
       };
     } catch (error53) {
       const message = error53 instanceof Error ? error53.message : String(error53);
-      const record3 = await db.update((state2) => {
+      const record4 = await db.update((state2) => {
         return upsertProviderOAuth(state2, userId, providerId, {
           ...accountId ? { accountId } : {},
           status: "error",
@@ -99233,7 +100522,7 @@ function createLocalApiApp(options) {
         }
       }, {
         resultEntityId: providerOAuthEntityId(providerId, accountId),
-        ...hostMutation ? { afterReadToken: providerOAuthReceiptReadToken(record3) } : {}
+        ...hostMutation ? { afterReadToken: providerOAuthReceiptReadToken(record4) } : {}
       });
       await db.appendMutationAudit(mutationAuditRecord({
         mutation: mutation2,
@@ -99256,7 +100545,7 @@ function createLocalApiApp(options) {
         ...completed.expiresAt ? { expiresAt: Date.parse(completed.expiresAt) } : {}
       });
     }
-    const record2 = await db.update((state2) => {
+    const record3 = await db.update((state2) => {
       return upsertProviderOAuth(state2, userId, providerId, {
         ...accountId ? { accountId } : {},
         status: completed.availabilityError ? "error" : "authorized",
@@ -99273,7 +100562,7 @@ function createLocalApiApp(options) {
         error: completed.availabilityError
       });
     });
-    const readToken = providerOAuthReceiptReadToken(record2);
+    const readToken = providerOAuthReceiptReadToken(record3);
     const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
       operation: "provider_oauth_complete",
       entity: {
@@ -99290,7 +100579,7 @@ function createLocalApiApp(options) {
       reason: "provider OAuth complete"
     }));
     return c5.json({
-      ...publicProviderOAuth(record2),
+      ...publicProviderOAuth(record3),
       ...hostMutation ? { readToken } : {},
       mutation
     });
@@ -99313,7 +100602,7 @@ function createLocalApiApp(options) {
     const accountId = stringBodyField(c5.req.query("accountId"));
     const preconditions = requestProjectWritePreconditions(c5);
     const beforeState = await db.load();
-    const beforeRecord = beforeState.providerOAuth.find((record2) => providerOAuthMatches(record2, userId, providerId, accountId));
+    const beforeRecord = beforeState.providerOAuth.find((record3) => providerOAuthMatches(record3, userId, providerId, accountId));
     const needsReadProof = !!preconditions.actorClientType || !!preconditions.expectedReadToken;
     const hostMutation = beforeRecord && needsReadProof ? validateProviderOAuthReadMutation({
       record: beforeRecord,
@@ -99341,7 +100630,7 @@ function createLocalApiApp(options) {
       }, 409);
     }
     await db.update((state2) => {
-      state2.providerOAuth = state2.providerOAuth.filter((record2) => !providerOAuthMatches(record2, userId, providerId, accountId));
+      state2.providerOAuth = state2.providerOAuth.filter((record3) => !providerOAuthMatches(record3, userId, providerId, accountId));
     });
     const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
       operation: "provider_oauth_delete",
@@ -99636,38 +100925,49 @@ function createLocalApiApp(options) {
   });
   app.get("/api/v1/local/audio", async (c5) => c5.json(publicLocalAudioConfig(await localAudioReadState(audioConfig))));
   app.put("/api/v1/local/asset-metadata", async (c5) => {
-    const body = await c5.req.json().catch(() => null);
-    if (!body || typeof body.assetId !== "string" || !body.assetId.trim() || typeof body.metadataKind !== "string" || !body.metadataKind.trim() || typeof body.producer !== "string" || !body.producer.trim() || !body.identity || typeof body.identity !== "object" || Array.isArray(body.identity)) {
-      return c5.json({
-        error: "assetId, metadataKind, producer, and an identity object are required"
-      }, 400);
+    let attachment;
+    try {
+      attachment = parseAssetMetadataFillAction(await c5.req.json().catch(() => null));
+    } catch (error53) {
+      return c5.json({ error: error53 instanceof Error ? error53.message : String(error53) }, 400);
     }
-    const identity = body.identity;
-    if (identity.kind !== body.metadataKind) {
-      return c5.json({ error: `identity.kind must equal metadataKind ${body.metadataKind}` }, 400);
-    }
-    await db.upsertAssetMetadataIndex({
-      assetId: body.assetId,
-      metadataKind: body.metadataKind,
-      ...typeof body.projectId === "string" && body.projectId.trim() ? { projectId: body.projectId } : {},
+    const identity = attachment.metadata;
+    await db.upsertMetadataAttachmentIndex({
+      target: attachment.target,
+      metadataKind: attachment.metadataKind,
       ...typeof identity.schemaVersion === "number" ? { schemaVersion: identity.schemaVersion } : {},
       ...typeof identity.contentHash === "string" ? { contentHash: identity.contentHash } : {},
       ...typeof identity.bodyHash === "string" ? { bodyHash: identity.bodyHash } : {},
-      producer: body.producer,
+      producer: attachment.producer,
       ...identity.summary === void 0 ? {} : { summary: identity.summary },
       identity
     });
     return c5.json({
       recorded: true,
-      assetId: body.assetId,
-      metadataKind: body.metadataKind
+      authority: "projection-index",
+      target: attachment.target,
+      metadataKind: attachment.metadataKind
     });
   });
   app.get("/api/v1/local/asset-metadata", async (c5) => {
-    const rows = await db.listAssetMetadataIndex({
-      ...c5.req.query("assetId") ? { assetId: c5.req.query("assetId") } : {},
+    const targetKind = c5.req.query("targetKind");
+    const projectId = c5.req.query("projectId");
+    const assetId = c5.req.query("assetId");
+    const actionId = c5.req.query("actionId");
+    const actionRevisionId = c5.req.query("actionRevisionId");
+    let target;
+    if (targetKind || assetId || actionId || actionRevisionId) {
+      try {
+        target = MetadataAttachmentTargetSchema.parse(targetKind === "project-asset" ? { kind: targetKind, projectId, assetId } : targetKind === "action-revision" ? { kind: targetKind, projectId, actionId, actionRevisionId } : null);
+      } catch (error53) {
+        return c5.json({ error: error53 instanceof Error ? error53.message : String(error53) }, 400);
+      }
+    }
+    const rows = await db.listMetadataAttachmentIndex({
+      ...target ? { target } : {},
+      ...targetKind === "project-asset" || targetKind === "action-revision" ? { targetKind } : {},
       ...c5.req.query("kind") ? { metadataKind: c5.req.query("kind") } : {},
-      ...c5.req.query("projectId") ? { projectId: c5.req.query("projectId") } : {}
+      ...projectId ? { projectId } : {}
     });
     return c5.json({ metadata: rows });
   });
@@ -100986,7 +102286,7 @@ function createLocalApiApp(options) {
       return c5.json({ error: "text revision not found" }, 404);
     let content;
     try {
-      content = await (0, import_promises23.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
+      content = await (0, import_promises24.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
     } catch {
       return c5.json({ error: "text revision content not found" }, 404);
     }
@@ -101204,10 +102504,16 @@ function createLocalApiApp(options) {
     }
     let result;
     try {
-      result = await replicaStore.updateSnapshotAtomic(projectId, (doc) => ({
-        value: handleProjectCommand(projectId, doc, body, hostContext),
-        save: projectCommandMutates(action)
-      }));
+      const mutatesProject = projectCommandMutates(action);
+      result = await replicaStore.updateSnapshotAtomic(projectId, async (doc) => {
+        if (mutatesProject) {
+          await projectAssetServiceAt(requestOrigin(c5)).materializeDoc(projectId, doc);
+        }
+        return {
+          value: handleProjectCommand(projectId, doc, body, hostContext),
+          save: mutatesProject
+        };
+      });
     } catch (error53) {
       if (handoffNodeId) {
         await providerExecutionHandoffs.remove(projectId, handoffNodeId);
@@ -102308,80 +103614,10 @@ function createLocalApiApp(options) {
     }
     return c5.json(result.body, result.status);
   });
-  app.get("/assets/sign", (c5) => {
-    const key = c5.req.query("key");
-    if (!key)
-      return c5.json({ error: "Missing key" }, 400);
-    return c5.json({
-      url: localAssetUrl(c5, key),
-      exp: signedUrlExp()
-    });
-  });
-  app.post("/assets/sign-batch", async (c5) => {
-    const body = await c5.req.json().catch(() => ({}));
-    const keys = Array.isArray(body.keys) ? body.keys.filter((key) => typeof key === "string" && key.length > 0) : [];
-    const exp = signedUrlExp();
-    return c5.json({
-      urls: keys.map((key) => ({ key, url: localAssetUrl(c5, key), exp }))
-    });
-  });
   app.all("/api/custom-action/upload", (c5) => c5.json({
     error: "Legacy ClashAgent custom-action transport is retired; install a clash.plugin/v1 executable plugin.",
     code: "LEGACY_CUSTOM_ACTION_PROTOCOL_RETIRED"
   }, 410));
-  app.post("/upload", async (c5) => {
-    const form = await c5.req.formData();
-    const file2 = form.get("file");
-    if (!file2 || typeof file2 === "string") {
-      const envelope2 = localMutationEnvelope("asset_blob_upload", "asset-blob", "");
-      return c5.json({
-        error: "Missing file",
-        mutation: hostMutationRejected(envelope2, "Missing file")
-      }, 400);
-    }
-    const storageKey = `uploads/${crypto.randomUUID().slice(0, 8)}-${sanitizeFileName(file2.name)}`;
-    const envelope = localMutationEnvelope("asset_blob_upload", "asset-blob", storageKey);
-    let path;
-    try {
-      path = await assetPathForWrite(options.dataDir, storageKey);
-    } catch (error53) {
-      const message = errorMessage(error53);
-      return c5.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message)
-      }, 400);
-    }
-    await (0, import_promises23.writeFile)(path, new Uint8Array(await file2.arrayBuffer()));
-    const preconditions = requestProjectWritePreconditions(c5);
-    const mutation = hostMutationSucceeded(envelope, {
-      resultEntityId: storageKey
-    });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "asset blob upload"
-    }));
-    return c5.json({
-      storageKey,
-      mutation
-    });
-  });
-  app.get("/assets/*", async (c5) => {
-    const storageKey = c5.req.path.slice("/assets/".length);
-    if (!storageKey || storageKey === "sign" || storageKey === "sign-batch") {
-      return c5.text("Not found", 404);
-    }
-    try {
-      return await serveLocalAssetFile({
-        dataDir: options.dataDir,
-        clashRoot,
-        storageKey,
-        ...c5.req.header("range") ? { rangeHeader: c5.req.header("range") } : {}
-      });
-    } catch {
-      return c5.text("Asset not found", 404);
-    }
-  });
   app.put("/api/v1/plugin-uploads/:token", async (c5) => {
     const accepted = options.acceptPluginUpload?.(c5.req.param("token"), new Uint8Array(await c5.req.arrayBuffer()));
     if (!accepted)
@@ -102517,8 +103753,12 @@ function createLocalApiApp(options) {
     const outputKind = String(form.get("outputKind") ?? "").trim();
     const originRaw = String(form.get("origin") ?? "canvas-node").trim();
     const origin = originRaw === "asset-preview" ? "asset-preview" : "canvas-node";
+    const actionRunId = String(form.get("actionRunId") ?? "").trim();
     if (!projectId || !sourceAssetId) {
       return c5.json({ error: "Missing projectId or sourceAssetId" }, 400);
+    }
+    if (!actionRunId || actionRunId.length > 256) {
+      return c5.json({ error: "actionRunId is required and must be at most 256 characters" }, 400);
     }
     if (editKind !== "image-editor" && editKind !== "video-clipper") {
       return c5.json({ error: `Invalid editKind: ${editKind}` }, 400);
@@ -102560,26 +103800,31 @@ function createLocalApiApp(options) {
     }
     const bytes = new Uint8Array(await file2.arrayBuffer());
     const contentType = file2.type || (outputKind === "image" ? "image/png" : outputKind === "video" ? "video/mp4" : "audio/mpeg");
-    const actionRunId = `edit:${(0, import_node_crypto24.randomUUID)()}`;
+    const outputAssetId = editOutputAssetId(actionRunId);
     try {
-      const asset = await assetService.installOwned({
-        projectId,
+      const staged = await assetService.stageOwned({
         kind: outputKind,
         bytes,
         contentType,
+        name: file2.name || `edit-${actionRunId}`
+      });
+      const asset = await assetService.publishStagedOwnedWithBindings({
+        projectId,
+        projectAssetId: outputAssetId,
+        kind: outputKind,
+        resourceId: staged.resource.id,
         name: file2.name || `edit-${actionRunId}`,
         metadata: { bytes: bytes.byteLength, contentType },
         provenance: {
           kind: "edit",
           actionRunId,
           model: actionSourceModel(invocation)
-        }
-      });
-      await bindEditActionAssets({
-        service: assetService,
-        invocation,
-        actionRunId,
-        outputAssetId: asset.id
+        },
+        bindings: editActionAssetBindings({
+          invocation,
+          actionRunId,
+          outputAssetId
+        })
       });
       return c5.json(asset);
     } catch (error53) {
@@ -102589,7 +103834,8 @@ function createLocalApiApp(options) {
   app.post("/api/v1/edits/video-crop", async (c5) => {
     const body = await c5.req.json().catch(() => ({}));
     const { projectId, sourceAssetId, params } = body;
-    if (!projectId || !sourceAssetId || params?.mode !== "crop" || typeof params.startSec !== "number" || typeof params.endSec !== "number" || params.startSec < 0 || params.endSec <= params.startSec) {
+    const actionRunId = body.actionRunId?.trim() ?? "";
+    if (!actionRunId || actionRunId.length > 256 || !projectId || !sourceAssetId || params?.mode !== "crop" || typeof params.startSec !== "number" || typeof params.endSec !== "number" || params.startSec < 0 || params.endSec <= params.startSec) {
       return c5.json({ error: "Invalid video crop request" }, 400);
     }
     const origin = body.origin === "asset-preview" ? "asset-preview" : "canvas-node";
@@ -102624,11 +103870,11 @@ function createLocalApiApp(options) {
     } catch (error53) {
       return localProjectAssetErrorResponse(error53);
     }
-    await (0, import_promises23.mkdir)(options.dataDir, { recursive: true });
-    const tempDir = await (0, import_promises23.mkdtemp)((0, import_node_path30.join)(options.dataDir, "video-crop-"));
-    const outputPath = (0, import_node_path30.join)(tempDir, "output.mp4");
+    await (0, import_promises24.mkdir)(options.dataDir, { recursive: true });
+    const tempDir = await (0, import_promises24.mkdtemp)((0, import_node_path31.join)(options.dataDir, "video-crop-"));
+    const outputPath = (0, import_node_path31.join)(tempDir, "output.mp4");
     try {
-      await execFileAsync3(ffmpeg, [
+      await execFileAsync4(ffmpeg, [
         "-y",
         "-ss",
         String(params.startSec),
@@ -102645,35 +103891,39 @@ function createLocalApiApp(options) {
         outputPath
       ]);
     } catch (error53) {
-      await (0, import_promises23.rm)(tempDir, { recursive: true, force: true });
+      await (0, import_promises24.rm)(tempDir, { recursive: true, force: true });
       return c5.json({ error: `Video trim failed: ${errorMessage(error53)}` }, 500);
     }
-    const bytes = new Uint8Array(await (0, import_promises23.readFile)(outputPath));
-    await (0, import_promises23.rm)(tempDir, { recursive: true, force: true });
-    const actionRunId = `edit:${(0, import_node_crypto24.randomUUID)()}`;
+    const bytes = new Uint8Array(await (0, import_promises24.readFile)(outputPath));
+    await (0, import_promises24.rm)(tempDir, { recursive: true, force: true });
+    const outputAssetId = editOutputAssetId(actionRunId);
     try {
-      const asset = await assetService.installOwned({
-        projectId,
+      const staged = await assetService.stageOwned({
         kind: "video",
         bytes,
         contentType: "video/mp4",
+        name: `trimmed-${source.name ?? source.id}.mp4`
+      });
+      const asset = await assetService.publishStagedOwnedWithBindings({
+        projectId,
+        projectAssetId: outputAssetId,
+        kind: "video",
+        resourceId: staged.resource.id,
         name: `trimmed-${source.name ?? source.id}.mp4`,
         metadata: {
           bytes: bytes.byteLength,
-          contentType: "video/mp4",
-          durationMs: Math.round((invocation.params.endSec - invocation.params.startSec) * 1e3)
+          contentType: "video/mp4"
         },
         provenance: {
           kind: "edit",
           actionRunId,
           model: actionSourceModel(invocation)
-        }
-      });
-      await bindEditActionAssets({
-        service: assetService,
-        invocation,
-        actionRunId,
-        outputAssetId: asset.id
+        },
+        bindings: editActionAssetBindings({
+          invocation,
+          actionRunId,
+          outputAssetId
+        })
       });
       return c5.json(asset);
     } catch (error53) {
@@ -102685,13 +103935,13 @@ function createLocalApiApp(options) {
 
 // ../../apps/local-api/dist/host-discovery.js
 var import_node_crypto25 = require("node:crypto");
-var import_promises24 = require("node:fs/promises");
-var import_node_path31 = require("node:path");
+var import_promises25 = require("node:fs/promises");
+var import_node_path32 = require("node:path");
 function getDefaultHostDiscoveryRunDir(env2 = process.env) {
-  return (0, import_node_path31.join)(clashHomeForLocalDataDir(defaultLocalApiDataDir(env2)), "run");
+  return (0, import_node_path32.join)(clashHomeForLocalDataDir(defaultLocalApiDataDir(env2)), "run");
 }
 function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()) {
-  return (0, import_node_path31.join)(runDir, "host.json");
+  return (0, import_node_path32.join)(runDir, "host.json");
 }
 function createHostDiscoveryRecord(options) {
   const now = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
@@ -102711,36 +103961,36 @@ function createHostDiscoveryRecord(options) {
     updatedAt: now
   };
 }
-async function writeHostDiscovery(record2, options = {}) {
-  if (!isLocalHostDiscoveryRecord(record2)) {
+async function writeHostDiscovery(record3, options = {}) {
+  if (!isLocalHostDiscoveryRecord(record3)) {
     throw new Error("Invalid local host discovery record");
   }
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
-  await (0, import_promises24.mkdir)(runDir, { recursive: true });
+  await (0, import_promises25.mkdir)(runDir, { recursive: true });
   const finalPath = getHostDiscoveryPath(runDir);
   const pidExists = options.pidExists ?? defaultPidExists;
   let incumbent;
   try {
-    incumbent = JSON.parse(await (0, import_promises24.readFile)(finalPath, "utf8"));
+    incumbent = JSON.parse(await (0, import_promises25.readFile)(finalPath, "utf8"));
   } catch (error53) {
     if (!isNotFound(error53))
       throw error53;
   }
-  if (isLocalHostDiscoveryRecord(incumbent) && incumbent.pid !== record2.pid && pidExists(incumbent.pid)) {
+  if (isLocalHostDiscoveryRecord(incumbent) && incumbent.pid !== record3.pid && pidExists(incumbent.pid)) {
     throw new Error(`A local host is already active on ${incumbent.endpoint} (pid ${incumbent.pid}); stop it before starting another.`);
   }
-  const tmpPath = (0, import_node_path31.join)(runDir, `host.${record2.hostId}.${process.pid}.${Date.now()}.tmp`);
-  await (0, import_promises24.writeFile)(tmpPath, `${JSON.stringify(record2, null, 2)}
+  const tmpPath = (0, import_node_path32.join)(runDir, `host.${record3.hostId}.${process.pid}.${Date.now()}.tmp`);
+  await (0, import_promises25.writeFile)(tmpPath, `${JSON.stringify(record3, null, 2)}
 `, { encoding: "utf8", mode: 384 });
-  await (0, import_promises24.rename)(tmpPath, finalPath);
-  await (0, import_promises24.chmod)(finalPath, 384).catch(() => void 0);
+  await (0, import_promises25.rename)(tmpPath, finalPath);
+  await (0, import_promises25.chmod)(finalPath, 384).catch(() => void 0);
 }
 async function removeHostDiscovery(hostId, options = {}) {
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
   const filePath = getHostDiscoveryPath(runDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises24.readFile)(filePath, "utf8"));
+    parsed = JSON.parse(await (0, import_promises25.readFile)(filePath, "utf8"));
   } catch (error53) {
     if (isNotFound(error53))
       return;
@@ -102748,7 +103998,7 @@ async function removeHostDiscovery(hostId, options = {}) {
   }
   if (!isLocalHostDiscoveryRecord(parsed) || parsed.hostId !== hostId)
     return;
-  await (0, import_promises24.rm)(filePath, { force: true });
+  await (0, import_promises25.rm)(filePath, { force: true });
 }
 function defaultPidExists(pid) {
   try {
@@ -103052,15 +104302,15 @@ function createExecutablePluginActionInvoker(options) {
 
 // ../../apps/local-api/dist/bundled-plugins.js
 var import_node_fs11 = require("node:fs");
-var import_promises26 = require("node:fs/promises");
-var import_node_module9 = require("node:module");
-var import_node_path33 = require("node:path");
+var import_promises27 = require("node:fs/promises");
+var import_node_module11 = require("node:module");
+var import_node_path34 = require("node:path");
 var import_node_url2 = require("node:url");
 
 // ../../apps/local-api/dist/runtime/plugin-package.js
 var import_node_fs10 = require("node:fs");
-var import_promises25 = require("node:fs/promises");
-var import_node_path32 = require("node:path");
+var import_promises26 = require("node:fs/promises");
+var import_node_path33 = require("node:path");
 function decodeJsonDocuments(paths2, files, kind) {
   const documents = {};
   for (const declaration of paths2) {
@@ -103105,11 +104355,11 @@ function validateHostExecutablePluginPackage(input) {
 async function writeHostPackageDirectory(directory, input) {
   const manifest = validateHostExecutablePluginPackage(input);
   for (const [relativePath, encoded] of Object.entries(input.files)) {
-    const destination = (0, import_node_path32.join)(directory, relativePath);
-    await (0, import_promises25.mkdir)((0, import_node_path32.dirname)(destination), { recursive: true });
-    await (0, import_promises25.writeFile)(destination, Buffer.from(encoded, "base64"));
+    const destination = (0, import_node_path33.join)(directory, relativePath);
+    await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(destination), { recursive: true });
+    await (0, import_promises26.writeFile)(destination, Buffer.from(encoded, "base64"));
   }
-  await (0, import_promises25.writeFile)((0, import_node_path32.join)(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
+  await (0, import_promises26.writeFile)((0, import_node_path33.join)(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
 `);
 }
 async function contractTestHostPackage(directory, input) {
@@ -103121,47 +104371,47 @@ async function contractTestHostPackage(directory, input) {
 async function writeActivationReceipt(actionsRoot, pluginDir) {
   const receipt = await createExecutablePluginActivationReceipt(pluginDir);
   const target = executablePluginActivationReceiptPath(actionsRoot, receipt.pluginId);
-  await (0, import_promises25.mkdir)((0, import_node_path32.dirname)(target), { recursive: true });
-  const staging = await (0, import_promises25.mkdtemp)((0, import_node_path32.join)((0, import_node_path32.dirname)(target), `.${receipt.pluginId}-`));
-  const stagedReceipt = (0, import_node_path32.join)(staging, "receipt.json");
+  await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(target), { recursive: true });
+  const staging = await (0, import_promises26.mkdtemp)((0, import_node_path33.join)((0, import_node_path33.dirname)(target), `.${receipt.pluginId}-`));
+  const stagedReceipt = (0, import_node_path33.join)(staging, "receipt.json");
   try {
-    await (0, import_promises25.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
+    await (0, import_promises26.writeFile)(stagedReceipt, `${JSON.stringify(receipt, null, 2)}
 `);
-    await (0, import_promises25.rename)(stagedReceipt, target);
+    await (0, import_promises26.rename)(stagedReceipt, target);
   } finally {
-    await (0, import_promises25.rm)(staging, { recursive: true, force: true });
+    await (0, import_promises26.rm)(staging, { recursive: true, force: true });
   }
 }
 async function activateHostExecutablePluginPackage(input, actionsRoot) {
   const manifest = validateHostExecutablePluginPackage(input);
-  const targetDir = (0, import_node_path32.join)(actionsRoot, manifest.id);
+  const targetDir = (0, import_node_path33.join)(actionsRoot, manifest.id);
   if ((0, import_node_fs10.existsSync)(targetDir)) {
-    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises25.readFile)((0, import_node_path32.join)(targetDir, "manifest.json"), "utf8")));
+    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8")));
     throw new Error(`Executable plugin ${manifest.id} version ${existing.version} is already active.`);
   }
-  await (0, import_promises25.mkdir)(actionsRoot, { recursive: true });
-  const stagingDir = await (0, import_promises25.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
+  await (0, import_promises26.mkdir)(actionsRoot, { recursive: true });
+  const stagingDir = await (0, import_promises26.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
   let contractTests;
   try {
     await writeHostPackageDirectory(stagingDir, input);
     contractTests = await contractTestHostPackage(stagingDir, input);
-    await (0, import_promises25.rename)(stagingDir, targetDir);
+    await (0, import_promises26.rename)(stagingDir, targetDir);
     await writeActivationReceipt(actionsRoot, targetDir);
     return {
       targetDir,
       ...contractTests ? { contractTests } : {}
     };
   } catch (error53) {
-    await (0, import_promises25.rm)(stagingDir, { recursive: true, force: true });
+    await (0, import_promises26.rm)(stagingDir, { recursive: true, force: true });
     if ((0, import_node_fs10.existsSync)(targetDir))
-      await (0, import_promises25.rm)(targetDir, { recursive: true, force: true });
+      await (0, import_promises26.rm)(targetDir, { recursive: true, force: true });
     throw error53;
   }
 }
 async function validateHostExecutablePluginPackageContracts(input, actionsRoot) {
   const manifest = validateHostExecutablePluginPackage(input);
-  await (0, import_promises25.mkdir)((0, import_node_path32.dirname)(actionsRoot), { recursive: true });
-  const stagingDir = await (0, import_promises25.mkdtemp)(`${actionsRoot}.validate-${manifest.id}-`);
+  await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(actionsRoot), { recursive: true });
+  const stagingDir = await (0, import_promises26.mkdtemp)(`${actionsRoot}.validate-${manifest.id}-`);
   try {
     await writeHostPackageDirectory(stagingDir, input);
     const contractTests = await contractTestHostPackage(stagingDir, input);
@@ -103171,43 +104421,43 @@ async function validateHostExecutablePluginPackageContracts(input, actionsRoot) 
       ...contractTests ? { contractTests } : {}
     };
   } finally {
-    await (0, import_promises25.rm)(stagingDir, { recursive: true, force: true });
+    await (0, import_promises26.rm)(stagingDir, { recursive: true, force: true });
   }
 }
 async function activateOrUpdateHostExecutablePluginPackage(input, actionsRoot) {
   const manifest = validateHostExecutablePluginPackage(input);
-  const targetDir = (0, import_node_path32.join)(actionsRoot, manifest.id);
-  if ((0, import_node_fs10.existsSync)((0, import_node_path32.join)(targetDir, "manifest.json"))) {
-    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises25.readFile)((0, import_node_path32.join)(targetDir, "manifest.json"), "utf8")));
+  const targetDir = (0, import_node_path33.join)(actionsRoot, manifest.id);
+  if ((0, import_node_fs10.existsSync)((0, import_node_path33.join)(targetDir, "manifest.json"))) {
+    const existing = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8")));
     if (existing.version === manifest.version) {
       throw new Error(`Executable plugin ${manifest.id} version ${manifest.version} is already active; bump the version before changing or reactivating executable code.`);
     }
   }
-  await (0, import_promises25.mkdir)(actionsRoot, { recursive: true });
-  const stagingDir = await (0, import_promises25.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
+  await (0, import_promises26.mkdir)(actionsRoot, { recursive: true });
+  const stagingDir = await (0, import_promises26.mkdtemp)(`${actionsRoot}.staging-${manifest.id}-`);
   let rollbackDir;
   try {
     await writeHostPackageDirectory(stagingDir, input);
     const contractTests = await contractTestHostPackage(stagingDir, input);
     if ((0, import_node_fs10.existsSync)(targetDir)) {
-      const rollbackRoot = (0, import_node_path32.join)(actionsRoot, ".rollback", manifest.id);
-      await (0, import_promises25.mkdir)(rollbackRoot, { recursive: true });
-      const existing = JSON.parse(await (0, import_promises25.readFile)((0, import_node_path32.join)(targetDir, "manifest.json"), "utf8"));
-      rollbackDir = (0, import_node_path32.join)(rollbackRoot, `${String(Date.now()).padStart(16, "0")}-${existing.version ?? "unknown"}`);
-      await (0, import_promises25.rename)(targetDir, rollbackDir);
+      const rollbackRoot = (0, import_node_path33.join)(actionsRoot, ".rollback", manifest.id);
+      await (0, import_promises26.mkdir)(rollbackRoot, { recursive: true });
+      const existing = JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8"));
+      rollbackDir = (0, import_node_path33.join)(rollbackRoot, `${String(Date.now()).padStart(16, "0")}-${existing.version ?? "unknown"}`);
+      await (0, import_promises26.rename)(targetDir, rollbackDir);
     }
     try {
-      await (0, import_promises25.rename)(stagingDir, targetDir);
+      await (0, import_promises26.rename)(stagingDir, targetDir);
       await writeActivationReceipt(actionsRoot, targetDir);
     } catch (error53) {
       if ((0, import_node_fs10.existsSync)(targetDir) && !(0, import_node_fs10.existsSync)(stagingDir)) {
         try {
-          await (0, import_promises25.rename)(targetDir, stagingDir);
+          await (0, import_promises26.rename)(targetDir, stagingDir);
         } catch {
         }
       }
       if (rollbackDir && !(0, import_node_fs10.existsSync)(targetDir))
-        await (0, import_promises25.rename)(rollbackDir, targetDir);
+        await (0, import_promises26.rename)(rollbackDir, targetDir);
       throw error53;
     }
     return {
@@ -103219,67 +104469,67 @@ async function activateOrUpdateHostExecutablePluginPackage(input, actionsRoot) {
     };
   } catch (error53) {
     if ((0, import_node_fs10.existsSync)(stagingDir))
-      await (0, import_promises25.rm)(stagingDir, { recursive: true, force: true });
+      await (0, import_promises26.rm)(stagingDir, { recursive: true, force: true });
     throw error53;
   }
 }
 async function rollbackHostExecutablePluginPackage(actionsRoot, inputId) {
   const id2 = pluginIdSchema.parse(inputId);
-  const rollbackRoot = (0, import_node_path32.join)(actionsRoot, ".rollback", id2);
-  const entries = (await (0, import_promises25.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
+  const rollbackRoot = (0, import_node_path33.join)(actionsRoot, ".rollback", id2);
+  const entries = (await (0, import_promises26.readdir)(rollbackRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory() && /^\d{16}-/.test(entry.name)).map((entry) => entry.name).sort().reverse();
   const selected = entries[0];
   if (!selected)
     throw new Error(`No rollback version is available for ${id2}.`);
-  const targetDir = (0, import_node_path32.join)(actionsRoot, id2);
-  const selectedDir = (0, import_node_path32.join)(rollbackRoot, selected);
-  const displacedDir = (0, import_node_path32.join)(actionsRoot, ".rollback-displaced", id2, String(Date.now()));
+  const targetDir = (0, import_node_path33.join)(actionsRoot, id2);
+  const selectedDir = (0, import_node_path33.join)(rollbackRoot, selected);
+  const displacedDir = (0, import_node_path33.join)(actionsRoot, ".rollback-displaced", id2, String(Date.now()));
   if ((0, import_node_fs10.existsSync)(targetDir)) {
-    await (0, import_promises25.mkdir)((0, import_node_path32.dirname)(displacedDir), { recursive: true });
-    await (0, import_promises25.rename)(targetDir, displacedDir);
+    await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(displacedDir), { recursive: true });
+    await (0, import_promises26.rename)(targetDir, displacedDir);
   }
   try {
-    await (0, import_promises25.rename)(selectedDir, targetDir);
+    await (0, import_promises26.rename)(selectedDir, targetDir);
     await writeActivationReceipt(actionsRoot, targetDir);
   } catch (error53) {
     if ((0, import_node_fs10.existsSync)(targetDir) && !(0, import_node_fs10.existsSync)(selectedDir)) {
       try {
-        await (0, import_promises25.rename)(targetDir, selectedDir);
+        await (0, import_promises26.rename)(targetDir, selectedDir);
       } catch {
       }
     }
     if ((0, import_node_fs10.existsSync)(displacedDir) && !(0, import_node_fs10.existsSync)(targetDir)) {
-      await (0, import_promises25.rename)(displacedDir, targetDir);
+      await (0, import_promises26.rename)(displacedDir, targetDir);
     }
     throw error53;
   }
-  const restored = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises25.readFile)((0, import_node_path32.join)(targetDir, "manifest.json"), "utf8")));
+  const restored = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8")));
   return { id: id2, targetDir, version: restored.version };
 }
 async function collectHostPackageFiles(root5, directory, output) {
-  for (const entry of await (0, import_promises25.readdir)(directory, { withFileTypes: true })) {
+  for (const entry of await (0, import_promises26.readdir)(directory, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === "manifest.json")
       continue;
-    const absolutePath = (0, import_node_path32.join)(directory, entry.name);
+    const absolutePath = (0, import_node_path33.join)(directory, entry.name);
     const relativePath = absolutePath.slice(root5.length + 1).split("\\").join("/");
     if (!isSafePluginRelativePath(relativePath)) {
       throw new Error(`Refusing suspicious active plugin path: ${relativePath}`);
     }
-    const metadata = await (0, import_promises25.lstat)(absolutePath);
+    const metadata = await (0, import_promises26.lstat)(absolutePath);
     if (metadata.isSymbolicLink()) {
       throw new Error(`Active plugins cannot contain symbolic links: ${relativePath}`);
     }
     if (metadata.isDirectory()) {
       await collectHostPackageFiles(root5, absolutePath, output);
     } else if (metadata.isFile()) {
-      output[relativePath] = (await (0, import_promises25.readFile)(absolutePath)).toString("base64");
+      output[relativePath] = (await (0, import_promises26.readFile)(absolutePath)).toString("base64");
     }
   }
 }
 async function readHostExecutablePluginPackage(actionsRoot, inputId) {
   const id2 = pluginIdSchema.parse(inputId);
-  const pluginDir = (0, import_node_path32.join)(actionsRoot, id2);
-  const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises25.readFile)((0, import_node_path32.join)(pluginDir, "manifest.json"), "utf8")));
-  const storedReceipt = ExecutablePluginActivationReceiptSchema.parse(JSON.parse(await (0, import_promises25.readFile)(executablePluginActivationReceiptPath(actionsRoot, id2), "utf8")));
+  const pluginDir = (0, import_node_path33.join)(actionsRoot, id2);
+  const manifest = ExecutablePluginManifestSchema.parse(JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(pluginDir, "manifest.json"), "utf8")));
+  const storedReceipt = ExecutablePluginActivationReceiptSchema.parse(JSON.parse(await (0, import_promises26.readFile)(executablePluginActivationReceiptPath(actionsRoot, id2), "utf8")));
   const currentReceipt = await createExecutablePluginActivationReceipt(pluginDir);
   if (storedReceipt.pluginId !== currentReceipt.pluginId || storedReceipt.version !== currentReceipt.version || storedReceipt.schemaHash !== currentReceipt.schemaHash || storedReceipt.contentHash !== currentReceipt.contentHash) {
     throw new Error(`Active plugin ${id2} differs from its activation receipt; restore or reactivate it before checkout.`);
@@ -103290,16 +104540,16 @@ async function readHostExecutablePluginPackage(actionsRoot, inputId) {
 }
 async function removeHostExecutablePluginPackage(actionsRoot, inputId) {
   const id2 = pluginIdSchema.parse(inputId);
-  const targetDir = (0, import_node_path32.join)(actionsRoot, id2);
+  const targetDir = (0, import_node_path33.join)(actionsRoot, id2);
   if (!(0, import_node_fs10.existsSync)(targetDir))
     return { id: id2, removed: false };
-  const trashDir = (0, import_node_path32.join)(actionsRoot, ".trash", `${id2}-${Date.now()}`);
-  await (0, import_promises25.mkdir)((0, import_node_path32.dirname)(trashDir), { recursive: true });
-  await (0, import_promises25.rename)(targetDir, trashDir);
+  const trashDir = (0, import_node_path33.join)(actionsRoot, ".trash", `${id2}-${Date.now()}`);
+  await (0, import_promises26.mkdir)((0, import_node_path33.dirname)(trashDir), { recursive: true });
+  await (0, import_promises26.rename)(targetDir, trashDir);
   const receiptPath = executablePluginActivationReceiptPath(actionsRoot, id2);
   if ((0, import_node_fs10.existsSync)(receiptPath)) {
-    const receiptTrash = (0, import_node_path32.join)(trashDir, ".activation-receipt.json");
-    await (0, import_promises25.rename)(receiptPath, receiptTrash);
+    const receiptTrash = (0, import_node_path33.join)(trashDir, ".activation-receipt.json");
+    await (0, import_promises26.rename)(receiptPath, receiptTrash);
   }
   return { id: id2, removed: true, trashDir };
 }
@@ -103307,13 +104557,13 @@ async function listHostExecutablePluginPackages(actionsRoot) {
   if (!(0, import_node_fs10.existsSync)(actionsRoot))
     return [];
   const results = [];
-  for (const entry of await (0, import_promises25.readdir)(actionsRoot, { withFileTypes: true })) {
+  for (const entry of await (0, import_promises26.readdir)(actionsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith("."))
       continue;
-    const targetDir = (0, import_node_path32.join)(actionsRoot, entry.name);
+    const targetDir = (0, import_node_path33.join)(actionsRoot, entry.name);
     let manifest;
     try {
-      manifest = JSON.parse(await (0, import_promises25.readFile)((0, import_node_path32.join)(targetDir, "manifest.json"), "utf8"));
+      manifest = JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8"));
     } catch {
       continue;
     }
@@ -103389,25 +104639,25 @@ function bundledPluginPaths(id2, moduleUrl = __clash_import_meta_url) {
   const plugin = BUNDLED_PLUGINS.find((candidate) => candidate.id === id2);
   if (!plugin)
     throw new Error(`${id2} is not a bundled plugin.`);
-  const packagedPlugin = (0, import_node_path33.resolve)((0, import_node_path33.dirname)((0, import_node_url2.fileURLToPath)(moduleUrl)), "bundled-plugins", plugin.workspaceDir);
-  const packagedManifest = (0, import_node_path33.join)(packagedPlugin, "manifest.json");
-  const packagedEntrypoint = (0, import_node_path33.join)(packagedPlugin, "dist", "stdio.mjs");
+  const packagedPlugin = (0, import_node_path34.resolve)((0, import_node_path34.dirname)((0, import_node_url2.fileURLToPath)(moduleUrl)), "bundled-plugins", plugin.workspaceDir);
+  const packagedManifest = (0, import_node_path34.join)(packagedPlugin, "manifest.json");
+  const packagedEntrypoint = (0, import_node_path34.join)(packagedPlugin, "dist", "stdio.mjs");
   if ((0, import_node_fs11.existsSync)(packagedManifest) && (0, import_node_fs11.existsSync)(packagedEntrypoint)) {
     return {
       manifestPath: packagedManifest,
       entrypointPath: packagedEntrypoint
     };
   }
-  const require5 = (0, import_node_module9.createRequire)(__clash_import_meta_url);
+  const require5 = (0, import_node_module11.createRequire)(__clash_import_meta_url);
   try {
     return {
       manifestPath: require5.resolve(`${plugin.packageName}/manifest.json`),
       entrypointPath: require5.resolve(`${plugin.packageName}/stdio`)
     };
   } catch (error53) {
-    const workspacePlugin = (0, import_node_path33.resolve)((0, import_node_path33.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), `../../../plugins/${plugin.workspaceDir}`);
-    const manifestPath = (0, import_node_path33.join)(workspacePlugin, "manifest.json");
-    const entrypointPath = (0, import_node_path33.join)(workspacePlugin, "dist", "stdio.mjs");
+    const workspacePlugin = (0, import_node_path34.resolve)((0, import_node_path34.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), `../../../plugins/${plugin.workspaceDir}`);
+    const manifestPath = (0, import_node_path34.join)(workspacePlugin, "manifest.json");
+    const entrypointPath = (0, import_node_path34.join)(workspacePlugin, "dist", "stdio.mjs");
     if ((0, import_node_fs11.existsSync)(manifestPath) && (0, import_node_fs11.existsSync)(entrypointPath)) {
       return { manifestPath, entrypointPath };
     }
@@ -103415,16 +104665,16 @@ function bundledPluginPaths(id2, moduleUrl = __clash_import_meta_url) {
   }
 }
 function bundledCodexImagegenPaths() {
-  const require5 = (0, import_node_module9.createRequire)(__clash_import_meta_url);
+  const require5 = (0, import_node_module11.createRequire)(__clash_import_meta_url);
   try {
     return {
       manifestPath: require5.resolve("@clash-plugin/codex-imagegen/manifest.json"),
       entrypointPath: require5.resolve("@clash-plugin/codex-imagegen/stdio")
     };
   } catch (error53) {
-    const workspacePlugin = (0, import_node_path33.resolve)((0, import_node_path33.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), "../../../plugins/codex-imagegen");
-    const manifestPath = (0, import_node_path33.join)(workspacePlugin, "manifest.json");
-    const entrypointPath = (0, import_node_path33.join)(workspacePlugin, "dist", "stdio.mjs");
+    const workspacePlugin = (0, import_node_path34.resolve)((0, import_node_path34.dirname)((0, import_node_url2.fileURLToPath)(__clash_import_meta_url)), "../../../plugins/codex-imagegen");
+    const manifestPath = (0, import_node_path34.join)(workspacePlugin, "manifest.json");
+    const entrypointPath = (0, import_node_path34.join)(workspacePlugin, "dist", "stdio.mjs");
     if ((0, import_node_fs11.existsSync)(manifestPath) && (0, import_node_fs11.existsSync)(entrypointPath)) {
       return { manifestPath, entrypointPath };
     }
@@ -103432,7 +104682,7 @@ function bundledCodexImagegenPaths() {
   }
 }
 function createCodexImagegenMarketplace(options) {
-  const targetDir = (0, import_node_path33.join)(options.actionsRoot, CODEX_IMAGEGEN_PLUGIN_ID);
+  const targetDir = (0, import_node_path34.join)(options.actionsRoot, CODEX_IMAGEGEN_PLUGIN_ID);
   const sourcePaths = () => {
     if (options.manifestPath && options.entrypointPath) {
       return {
@@ -103445,9 +104695,9 @@ function createCodexImagegenMarketplace(options) {
   return {
     actions: [CODEX_IMAGEGEN_MARKETPLACE_ACTION],
     async listInstalled() {
-      if (!(0, import_node_fs11.existsSync)((0, import_node_path33.join)(targetDir, "manifest.json")))
+      if (!(0, import_node_fs11.existsSync)((0, import_node_path34.join)(targetDir, "manifest.json")))
         return [];
-      const manifest = JSON.parse(await (0, import_promises26.readFile)((0, import_node_path33.join)(targetDir, "manifest.json"), "utf8"));
+      const manifest = JSON.parse(await (0, import_promises27.readFile)((0, import_node_path34.join)(targetDir, "manifest.json"), "utf8"));
       return [
         {
           actionId: CODEX_IMAGEGEN_ACTION_ID,
@@ -103465,7 +104715,7 @@ function createCodexImagegenMarketplace(options) {
       if (packageId !== CODEX_IMAGEGEN_PLUGIN_ID) {
         throw new Error(`Unknown local action package: ${packageId}`);
       }
-      if ((0, import_node_fs11.existsSync)((0, import_node_path33.join)(targetDir, "manifest.json"))) {
+      if ((0, import_node_fs11.existsSync)((0, import_node_path34.join)(targetDir, "manifest.json"))) {
         return {
           actionId: CODEX_IMAGEGEN_ACTION_ID,
           packageId,
@@ -103474,20 +104724,20 @@ function createCodexImagegenMarketplace(options) {
         };
       }
       const { manifestPath, entrypointPath } = sourcePaths();
-      const manifest = JSON.parse(await (0, import_promises26.readFile)(manifestPath, "utf8"));
+      const manifest = JSON.parse(await (0, import_promises27.readFile)(manifestPath, "utf8"));
       if (manifest.id !== CODEX_IMAGEGEN_PLUGIN_ID || !manifest.runtime?.entrypoint) {
         throw new Error("Bundled Codex ImageGen package is invalid.");
       }
       const files = {
-        [manifest.runtime.entrypoint]: (await (0, import_promises26.readFile)(entrypointPath)).toString("base64")
+        [manifest.runtime.entrypoint]: (await (0, import_promises27.readFile)(entrypointPath)).toString("base64")
       };
       for (const card of manifest.contributes?.cards ?? []) {
         if (!card.path)
           continue;
-        files[card.path] = (await (0, import_promises26.readFile)((0, import_node_path33.join)((0, import_node_path33.dirname)(manifestPath), card.path))).toString("base64");
+        files[card.path] = (await (0, import_promises27.readFile)((0, import_node_path34.join)((0, import_node_path34.dirname)(manifestPath), card.path))).toString("base64");
       }
       for (const contractPath of manifest.contractTests ?? []) {
-        files[contractPath] = (await (0, import_promises26.readFile)((0, import_node_path33.join)((0, import_node_path33.dirname)(manifestPath), contractPath))).toString("base64");
+        files[contractPath] = (await (0, import_promises27.readFile)((0, import_node_path34.join)((0, import_node_path34.dirname)(manifestPath), contractPath))).toString("base64");
       }
       const activated = await activateHostExecutablePluginPackage({
         id: CODEX_IMAGEGEN_PLUGIN_ID,
@@ -103507,34 +104757,34 @@ function createCodexImagegenMarketplace(options) {
       }
       if (!(0, import_node_fs11.existsSync)(targetDir))
         return;
-      const trashRoot = (0, import_node_path33.join)(options.actionsRoot, ".trash");
-      await (0, import_promises26.mkdir)(trashRoot, { recursive: true });
-      const firstTrash = (0, import_node_path33.join)(trashRoot, CODEX_IMAGEGEN_PLUGIN_ID);
-      const destination = (0, import_node_fs11.existsSync)(firstTrash) ? (0, import_node_path33.join)(trashRoot, `${CODEX_IMAGEGEN_PLUGIN_ID}-${Date.now()}`) : firstTrash;
-      await (0, import_promises26.rename)(targetDir, destination);
+      const trashRoot = (0, import_node_path34.join)(options.actionsRoot, ".trash");
+      await (0, import_promises27.mkdir)(trashRoot, { recursive: true });
+      const firstTrash = (0, import_node_path34.join)(trashRoot, CODEX_IMAGEGEN_PLUGIN_ID);
+      const destination = (0, import_node_fs11.existsSync)(firstTrash) ? (0, import_node_path34.join)(trashRoot, `${CODEX_IMAGEGEN_PLUGIN_ID}-${Date.now()}`) : firstTrash;
+      await (0, import_promises27.rename)(targetDir, destination);
     }
   };
 }
 async function ensureBundledPlugin(options) {
-  const targetDir = (0, import_node_path33.join)(options.actionsRoot, options.id);
-  if ((0, import_node_fs11.existsSync)((0, import_node_path33.join)(targetDir, "manifest.json"))) {
+  const targetDir = (0, import_node_path34.join)(options.actionsRoot, options.id);
+  if ((0, import_node_fs11.existsSync)((0, import_node_path34.join)(targetDir, "manifest.json"))) {
     return { installed: false, targetDir };
   }
   const defaults = options.manifestPath && options.entrypointPath ? null : bundledPluginPaths(options.id);
   const manifestPath = options.manifestPath ?? defaults.manifestPath;
   const entrypointPath = options.entrypointPath ?? defaults.entrypointPath;
-  const manifest = JSON.parse(await (0, import_promises26.readFile)(manifestPath, "utf8"));
+  const manifest = JSON.parse(await (0, import_promises27.readFile)(manifestPath, "utf8"));
   if (manifest.id !== options.id) {
     throw new Error(`Expected the bundled manifest for ${options.id}, but it declares ${manifest.id}.`);
   }
   if (manifest.runtime?.kind !== "local" || !manifest.runtime.entrypoint) {
     throw new Error(`Bundled plugin ${options.id} must have a local entrypoint.`);
   }
-  const entrypoint = await (0, import_promises26.readFile)(entrypointPath);
+  const entrypoint = await (0, import_promises27.readFile)(entrypointPath);
   const files = {
     [manifest.runtime.entrypoint]: entrypoint.toString("base64")
   };
-  const manifestDir = (0, import_node_path33.dirname)(manifestPath);
+  const manifestDir = (0, import_node_path34.dirname)(manifestPath);
   const declaredDocuments = [
     ...(manifest.contributes?.cards ?? []).map((card) => card.path),
     ...(manifest.contributes?.providers ?? []).map((provider) => provider.path),
@@ -103544,7 +104794,7 @@ async function ensureBundledPlugin(options) {
   for (const relativePath of declaredDocuments) {
     if (!relativePath)
       continue;
-    files[relativePath] = (await (0, import_promises26.readFile)((0, import_node_path33.join)(manifestDir, relativePath))).toString("base64");
+    files[relativePath] = (await (0, import_promises27.readFile)((0, import_node_path34.join)(manifestDir, relativePath))).toString("base64");
   }
   const activated = await activateHostExecutablePluginPackage({
     id: options.id,
@@ -103555,18 +104805,18 @@ async function ensureBundledPlugin(options) {
 }
 
 // ../../apps/local-api/dist/codex-imagegen.js
-var import_node_child_process6 = require("node:child_process");
+var import_node_child_process7 = require("node:child_process");
 var import_node_fs12 = require("node:fs");
-var import_promises27 = require("node:fs/promises");
+var import_promises28 = require("node:fs/promises");
 var import_node_os10 = require("node:os");
-var import_node_path34 = require("node:path");
+var import_node_path35 = require("node:path");
 var PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 function executableNames() {
   return process.platform === "win32" ? ["codex.exe", "codex.cmd", "codex"] : ["codex"];
 }
 function resolveCodexCli(env2 = process.env) {
   if (env2.CODEX_BIN) {
-    const configured = (0, import_node_path34.resolve)(env2.CODEX_BIN);
+    const configured = (0, import_node_path35.resolve)(env2.CODEX_BIN);
     if ((0, import_node_fs12.existsSync)(configured))
       return configured;
   }
@@ -103579,9 +104829,9 @@ function resolveCodexCli(env2 = process.env) {
   const installed = candidates.find((candidate) => (0, import_node_fs12.existsSync)(candidate));
   if (installed)
     return installed;
-  for (const directory of (env2.PATH ?? "").split(import_node_path34.delimiter).filter(Boolean)) {
+  for (const directory of (env2.PATH ?? "").split(import_node_path35.delimiter).filter(Boolean)) {
     for (const name of executableNames()) {
-      const candidate = (0, import_node_path34.resolve)(directory, name);
+      const candidate = (0, import_node_path35.resolve)(directory, name);
       if ((0, import_node_fs12.existsSync)(candidate))
         return candidate;
     }
@@ -103595,7 +104845,7 @@ function referenceExtension(mediaType, asset) {
     return ".webp";
   if (mediaType === "image/heic")
     return ".heic";
-  const uriExtension = (0, import_node_path34.extname)(asset.uri).toLowerCase();
+  const uriExtension = (0, import_node_path35.extname)(asset.uri).toLowerCase();
   return [".png", ".jpg", ".jpeg", ".webp", ".heic"].includes(uriExtension) ? uriExtension : ".png";
 }
 function codexPrompt(input, outputPath) {
@@ -103614,7 +104864,7 @@ function createCodexImageGenerator(options = {}) {
   const environment = options.env ?? process.env;
   const codexPath = options.codexPath ?? resolveCodexCli(environment);
   const run = options.exec ?? ((file2, args, execOptions) => new Promise((resolveRun, rejectRun) => {
-    const child = (0, import_node_child_process6.execFile)(file2, args, {
+    const child = (0, import_node_child_process7.execFile)(file2, args, {
       ...execOptions,
       encoding: "utf8"
     }, (error53, stdout, stderr) => {
@@ -103630,13 +104880,13 @@ function createCodexImageGenerator(options = {}) {
     if (!codexPath) {
       throw new Error("Codex CLI was not found. Install Codex or set CODEX_BIN, then sign in with `codex login`.");
     }
-    const workDir = await (0, import_promises27.mkdtemp)((0, import_node_path34.join)((0, import_node_os10.tmpdir)(), "clash.codex-imagegen-"));
-    const outputPath = (0, import_node_path34.join)(workDir, "result.png");
+    const workDir = await (0, import_promises28.mkdtemp)((0, import_node_path35.join)((0, import_node_os10.tmpdir)(), "clash.codex-imagegen-"));
+    const outputPath = (0, import_node_path35.join)(workDir, "result.png");
     try {
       const referencePaths = [];
       for (const [index, reference] of input.references.entries()) {
-        const path = (0, import_node_path34.join)(workDir, `reference-${index + 1}${referenceExtension(reference.mediaType, reference.asset)}`);
-        await (0, import_promises27.writeFile)(path, reference.bytes);
+        const path = (0, import_node_path35.join)(workDir, `reference-${index + 1}${referenceExtension(reference.mediaType, reference.asset)}`);
+        await (0, import_promises28.writeFile)(path, reference.bytes);
         referencePaths.push(path);
       }
       const args = [
@@ -103665,7 +104915,7 @@ function createCodexImageGenerator(options = {}) {
         const detail = [processError?.stderr, processError?.stdout, processError?.message].map((value) => typeof value === "string" ? value.trim() : "").find(Boolean)?.slice(-2e3) ?? String(error53);
         throw new Error(`Codex ImageGen failed: ${detail}`);
       }
-      const bytes = await (0, import_promises27.readFile)(outputPath).catch(() => null);
+      const bytes = await (0, import_promises28.readFile)(outputPath).catch(() => null);
       if (!bytes) {
         throw new Error("Codex ImageGen completed without writing result.png.");
       }
@@ -103674,16 +104924,16 @@ function createCodexImageGenerator(options = {}) {
       }
       return { mediaType: "image/png", bytes: new Uint8Array(bytes) };
     } finally {
-      await (0, import_promises27.rm)(workDir, { recursive: true, force: true });
+      await (0, import_promises28.rm)(workDir, { recursive: true, force: true });
     }
   };
 }
 
 // ../../apps/local-api/dist/local-acp.js
-var import_node_child_process9 = require("node:child_process");
+var import_node_child_process10 = require("node:child_process");
 var import_node_crypto30 = require("node:crypto");
-var import_promises33 = require("node:fs/promises");
-var import_node_path40 = require("node:path");
+var import_promises34 = require("node:fs/promises");
+var import_node_path41 = require("node:path");
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -103879,7 +105129,7 @@ __export(external_exports, {
   promise: () => promise,
   property: () => _property,
   readonly: () => readonly,
-  record: () => record,
+  record: () => record2,
   refine: () => refine,
   regex: () => _regex,
   regexes: () => regexes_exports,
@@ -116217,7 +117467,7 @@ __export(schemas_exports2, {
   preprocess: () => preprocess,
   promise: () => promise,
   readonly: () => readonly,
-  record: () => record,
+  record: () => record2,
   refine: () => refine,
   set: () => set,
   strictObject: () => strictObject,
@@ -117186,7 +118436,7 @@ var ZodRecord2 = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
   inst.keyType = def.keyType;
   inst.valueType = def.valueType;
 });
-function record(keyType, valueType, params) {
+function record2(keyType, valueType, params) {
   if (!valueType || !valueType._zod) {
     return new ZodRecord2({
       type: "record",
@@ -117653,7 +118903,7 @@ var stringbool = (...args) => _stringbool({
 }, ...args);
 function json2(params) {
   const jsonSchema = lazy(() => {
-    return union([string2(params), number2(), boolean2(), _null3(), array(jsonSchema), record(string2(), jsonSchema)]);
+    return union([string2(params), number2(), boolean2(), _null3(), array(jsonSchema), record2(string2(), jsonSchema)]);
   });
   return jsonSchema;
 }
@@ -118271,24 +119521,24 @@ function vecSkipError(itemSchema) {
 
 // ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.25.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/zod.gen.js
 var zAuthCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   terminal: boolean2().optional().default(false)
 });
 var zAuthEnvVar = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   label: string2().nullish(),
   name: string2(),
   optional: boolean2().optional().default(false),
   secret: boolean2().optional().default(true)
 });
 var zAuthMethodAgent = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   description: string2().nullish(),
   id: string2(),
   name: string2()
 });
 var zAuthMethodEnvVar = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   description: string2().nullish(),
   id: string2(),
   link: string2().nullish(),
@@ -118296,10 +119546,10 @@ var zAuthMethodEnvVar = object({
   vars: array(zAuthEnvVar)
 });
 var zAuthMethodTerminal = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   args: array(string2()).optional(),
   description: string2().nullish(),
-  env: record(string2(), string2()).optional(),
+  env: record2(string2(), string2()).optional(),
   id: string2(),
   name: string2()
 });
@@ -118313,14 +119563,14 @@ var zAuthMethod = union([
   zAuthMethodAgent
 ]);
 var zAuthenticateRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   methodId: string2()
 });
 var zAuthenticateResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zBlobResourceContents = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   blob: string2(),
   mimeType: string2().nullish(),
   uri: string2()
@@ -118331,37 +119581,37 @@ var zBooleanPropertySchema = object({
   title: string2().nullish()
 });
 var zCloseNesResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCloseSessionResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCost = object({
   amount: number2(),
   currency: string2()
 });
 var zCreateTerminalResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   terminalId: string2()
 });
 var zDeleteSessionResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDiff = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   newText: string2(),
   oldText: string2().nullish(),
   path: string2()
 });
 var zDisableProviderRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   id: string2()
 });
 var zDisableProviderResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDisconnectMcpResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationContentValue = union([
   string2(),
@@ -118371,7 +119621,7 @@ var zElicitationContentValue = union([
   array(string2())
 ]);
 var zElicitationAcceptAction = object({
-  content: record(string2(), zElicitationContentValue).nullish()
+  content: record2(string2(), zElicitationContentValue).nullish()
 });
 var zCreateElicitationResponse = intersection(union([
   zElicitationAcceptAction.and(object({
@@ -118384,23 +119634,23 @@ var zCreateElicitationResponse = intersection(union([
     action: literal("cancel")
   })
 ]), object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 }));
 var zElicitationFormCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationId = string2();
 var zCompleteElicitationNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   elicitationId: zElicitationId
 });
 var zElicitationSchemaType = literal("object");
 var zElicitationStringType = literal("string");
 var zElicitationUrlCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   form: defaultOnError(zElicitationFormCapabilities.nullish(), () => void 0),
   url: defaultOnError(zElicitationUrlCapabilities.nullish(), () => void 0)
 });
@@ -118409,7 +119659,7 @@ var zEnumOption = object({
   title: string2()
 });
 var zEnvVariable = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   name: string2(),
   value: string2()
 });
@@ -118438,17 +119688,17 @@ var zExtNotification = unknown();
 var zExtRequest = unknown();
 var zExtResponse = unknown();
 var zFileSystemCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   readTextFile: boolean2().optional().default(false),
   writeTextFile: boolean2().optional().default(false)
 });
 var zHttpHeader = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   name: string2(),
   value: string2()
 });
 var zImplementation = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   name: string2(),
   title: string2().nullish(),
   version: string2()
@@ -118461,13 +119711,13 @@ var zIntegerPropertySchema = object({
   title: string2().nullish()
 });
 var zKillTerminalResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zListProvidersRequest = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zListSessionsRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   cursor: string2().nullish(),
   cwd: string2().nullish()
 });
@@ -118480,57 +119730,57 @@ var zLlmProtocol = union([
   string2()
 ]);
 var zLogoutCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAgentAuthCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   logout: defaultOnError(zLogoutCapabilities.nullish(), () => void 0)
 });
 var zLogoutRequest = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zLogoutResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMcpCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   acp: boolean2().optional().default(false),
   http: boolean2().optional().default(false),
   sse: boolean2().optional().default(false)
 });
 var zMcpConnectionId = string2();
 var zConnectMcpResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   connectionId: zMcpConnectionId
 });
 var zDisconnectMcpRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   connectionId: zMcpConnectionId
 });
 var zMcpServerAcpId = string2();
 var zConnectMcpRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   acpId: zMcpServerAcpId
 });
 var zMcpServerAcp = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   id: zMcpServerAcpId,
   name: string2()
 });
 var zMcpServerHttp = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   headers: array(zHttpHeader),
   name: string2(),
   url: string2()
 });
 var zMcpServerSse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   headers: array(zHttpHeader),
   name: string2(),
   url: string2()
 });
 var zMcpServerStdio = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   args: array(string2()),
   command: string2(),
   env: array(zEnvVariable),
@@ -118550,16 +119800,16 @@ var zMcpServer = union([
 ]);
 var zMessageId = string2();
 var zMessageMcpNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   connectionId: zMcpConnectionId,
   method: string2(),
-  params: record(string2(), unknown()).nullish()
+  params: record2(string2(), unknown()).nullish()
 });
 var zMessageMcpRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   connectionId: zMcpConnectionId,
   method: string2(),
-  params: record(string2(), unknown()).nullish()
+  params: record2(string2(), unknown()).nullish()
 });
 var zMessageMcpResponse = unknown();
 var zNesDiagnosticSeverity = union([
@@ -118569,22 +119819,22 @@ var zNesDiagnosticSeverity = union([
   literal("hint")
 ]);
 var zNesDiagnosticsCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDocumentDidCloseCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDocumentDidFocusCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDocumentDidOpenCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDocumentDidSaveCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesEditHistoryCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   maxCount: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish()
@@ -118603,10 +119853,10 @@ var zNesExcerpt = object({
   text: string2()
 });
 var zNesJumpCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesOpenFilesCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRecentFile = object({
   languageId: string2(),
@@ -118614,7 +119864,7 @@ var zNesRecentFile = object({
   uri: string2()
 });
 var zNesRecentFilesCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   maxCount: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish()
@@ -118630,10 +119880,10 @@ var zNesRelatedSnippet = object({
   uri: string2()
 });
 var zNesRelatedSnippetsCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRenameCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRepository = object({
   name: string2(),
@@ -118641,10 +119891,10 @@ var zNesRepository = object({
   remoteUrl: string2()
 });
 var zNesSearchAndReplaceCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zClientNesCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   jump: defaultOnError(zNesJumpCapabilities.nullish(), () => void 0),
   rename: defaultOnError(zNesRenameCapabilities.nullish(), () => void 0),
   searchAndReplace: defaultOnError(zNesSearchAndReplaceCapabilities.nullish(), () => void 0)
@@ -118662,13 +119912,13 @@ var zNesTriggerKind = union([
   literal("manual")
 ]);
 var zNesUserActionsCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   maxCount: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish()
 });
 var zNesContextCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   diagnostics: defaultOnError(zNesDiagnosticsCapabilities.nullish(), () => void 0),
   editHistory: defaultOnError(zNesEditHistoryCapabilities.nullish(), () => void 0),
   openFiles: defaultOnError(zNesOpenFilesCapabilities.nullish(), () => void 0),
@@ -118677,7 +119927,7 @@ var zNesContextCapabilities = object({
   userActions: defaultOnError(zNesUserActionsCapabilities.nullish(), () => void 0)
 });
 var zNewSessionRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   additionalDirectories: array(string2()).optional(),
   cwd: string2(),
   mcpServers: array(zMcpServer)
@@ -118697,13 +119947,13 @@ var zPermissionOptionKind = union([
   literal("reject_always")
 ]);
 var zPermissionOption = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   kind: zPermissionOptionKind,
   name: string2(),
   optionId: zPermissionOptionId
 });
 var zPlanCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPlanEntryPriority = union([
   literal("high"),
@@ -118716,33 +119966,33 @@ var zPlanEntryStatus = union([
   literal("completed")
 ]);
 var zPlanEntry = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   content: string2(),
   priority: zPlanEntryPriority,
   status: zPlanEntryStatus
 });
 var zPlan = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   entries: requiredDefaultOnError(vecSkipError(zPlanEntry), () => [])
 });
 var zPlanId = string2();
 var zPlanFile = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   id: zPlanId,
   uri: string2()
 });
 var zPlanItems = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   entries: requiredDefaultOnError(vecSkipError(zPlanEntry), () => []),
   id: zPlanId
 });
 var zPlanMarkdown = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   content: string2(),
   id: zPlanId
 });
 var zPlanRemoved = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   id: zPlanId
 });
 var zPlanUpdateContent = union([
@@ -118757,7 +120007,7 @@ var zPlanUpdateContent = union([
   }))
 ]);
 var zPlanUpdate = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   plan: zPlanUpdateContent
 });
 var zPosition = object({
@@ -118791,7 +120041,7 @@ var zPositionEncodingKind = union([
   literal("utf-8")
 ]);
 var zClientCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   auth: zAuthCapabilities.optional().default({ terminal: false }),
   elicitation: defaultOnError(zElicitationCapabilities.nullish(), () => void 0),
   fs: zFileSystemCapabilities.optional().default({ readTextFile: false, writeTextFile: false }),
@@ -118801,14 +120051,14 @@ var zClientCapabilities = object({
   terminal: boolean2().optional().default(false)
 });
 var zPromptCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   audio: boolean2().optional().default(false),
   embeddedContext: boolean2().optional().default(false),
   image: boolean2().optional().default(false)
 });
 var zProtocolVersion = int().gte(0).lte(65535);
 var zInitializeRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   clientCapabilities: zClientCapabilities.optional().default({
     auth: { terminal: false },
     fs: { readTextFile: false, writeTextFile: false },
@@ -118822,18 +120072,18 @@ var zProviderCurrentConfig = object({
   baseUrl: string2()
 });
 var zProviderInfo = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   current: zProviderCurrentConfig.nullish(),
   id: string2(),
   required: boolean2(),
   supported: requiredDefaultOnError(vecSkipError(zLlmProtocol), () => [])
 });
 var zListProvidersResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   providers: requiredDefaultOnError(vecSkipError(zProviderInfo), () => [])
 });
 var zProvidersCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zRange = object({
   end: zPosition,
@@ -118852,7 +120102,7 @@ var zNesOpenFile = object({
   visibleRange: defaultOnError(zRange.nullish(), () => void 0)
 });
 var zNesSuggestContext = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   diagnostics: defaultOnError(vecSkipError(zNesDiagnostic).nullish(), () => void 0),
   editHistory: defaultOnError(vecSkipError(zNesEditHistoryEntry).nullish(), () => void 0),
   openFiles: defaultOnError(vecSkipError(zNesOpenFile).nullish(), () => void 0),
@@ -118885,15 +120135,15 @@ var zNesSuggestion = union([
   }))
 ]);
 var zReadTextFileResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   content: string2()
 });
 var zReleaseTerminalResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zRequestId = union([number2(), string2()]).nullable();
 var zCancelRequestNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   requestId: zRequestId
 });
 var zElicitationRequestScope = object({
@@ -118901,26 +120151,26 @@ var zElicitationRequestScope = object({
 });
 var zRole = _enum2(["assistant", "user"]);
 var zAnnotations = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   audience: defaultOnError(vecSkipError(zRole).nullish(), () => void 0),
   lastModified: string2().nullish(),
   priority: number2().nullish()
 });
 var zAudioContent = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
   data: string2(),
   mimeType: string2()
 });
 var zImageContent = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
   data: string2(),
   mimeType: string2(),
   uri: string2().nullish()
 });
 var zResourceLink = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
   description: string2().nullish(),
   mimeType: string2().nullish(),
@@ -118930,7 +120180,7 @@ var zResourceLink = object({
   uri: string2()
 });
 var zSelectedPermissionOutcome = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   optionId: zPermissionOptionId
 });
 var zRequestPermissionOutcome = union([
@@ -118942,14 +120192,14 @@ var zRequestPermissionOutcome = union([
   }))
 ]);
 var zRequestPermissionResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   outcome: zRequestPermissionOutcome
 });
 var zSessionAdditionalDirectoriesCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionCloseCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionConfigBoolean = object({
   currentValue: boolean2()
@@ -118964,13 +120214,13 @@ var zSessionConfigOptionCategory = union([
 ]);
 var zSessionConfigValueId = string2();
 var zSessionConfigSelectOption = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   description: string2().nullish(),
   name: string2(),
   value: zSessionConfigValueId
 });
 var zSessionConfigSelectGroup = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   group: zSessionConfigGroupId,
   name: string2(),
   options: array(zSessionConfigSelectOption)
@@ -118991,42 +120241,42 @@ var zSessionConfigOption = intersection(union([
     type: literal("boolean")
   }))
 ]), object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   category: defaultOnError(zSessionConfigOptionCategory.nullish(), () => void 0),
   description: string2().nullish(),
   id: zSessionConfigId,
   name: string2()
 }));
 var zConfigOptionUpdate = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   configOptions: requiredDefaultOnError(vecSkipError(zSessionConfigOption), () => [])
 });
 var zSessionDeleteCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionForkCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionId = string2();
 var zAcceptNesNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   id: string2(),
   sessionId: zSessionId
 });
 var zCancelNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId
 });
 var zCloseNesRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId
 });
 var zCloseSessionRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId
 });
 var zCreateTerminalRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   args: array(string2()).optional(),
   command: string2(),
   cwd: string2().nullish(),
@@ -119035,16 +120285,16 @@ var zCreateTerminalRequest = object({
   sessionId: zSessionId
 });
 var zDeleteSessionRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId
 });
 var zDidCloseDocumentNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId,
   uri: string2()
 });
 var zDidFocusDocumentNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   position: zPosition,
   sessionId: zSessionId,
   uri: string2(),
@@ -119052,7 +120302,7 @@ var zDidFocusDocumentNotification = object({
   visibleRange: zRange
 });
 var zDidOpenDocumentNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   languageId: string2(),
   sessionId: zSessionId,
   text: string2(),
@@ -119060,31 +120310,31 @@ var zDidOpenDocumentNotification = object({
   version: number2()
 });
 var zDidSaveDocumentNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId,
   uri: string2()
 });
 var zForkSessionRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   additionalDirectories: array(string2()).optional(),
   cwd: string2(),
   mcpServers: array(zMcpServer).optional(),
   sessionId: zSessionId
 });
 var zKillTerminalRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId,
   terminalId: string2()
 });
 var zLoadSessionRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   additionalDirectories: array(string2()).optional(),
   cwd: string2(),
   mcpServers: array(zMcpServer),
   sessionId: zSessionId
 });
 var zReadTextFileRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   limit: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
@@ -119095,25 +120345,25 @@ var zReadTextFileRequest = object({
   sessionId: zSessionId
 });
 var zRejectNesNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   id: string2(),
   reason: defaultOnError(zNesRejectReason.nullish(), () => void 0),
   sessionId: zSessionId
 });
 var zReleaseTerminalRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId,
   terminalId: string2()
 });
 var zResumeSessionRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   additionalDirectories: array(string2()).optional(),
   cwd: string2(),
   mcpServers: array(zMcpServer).optional(),
   sessionId: zSessionId
 });
 var zSessionInfo = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   additionalDirectories: array(string2()).optional(),
   cwd: string2(),
   sessionId: zSessionId,
@@ -119121,61 +120371,61 @@ var zSessionInfo = object({
   updatedAt: defaultOnError(string2().nullish(), () => void 0)
 });
 var zListSessionsResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   nextCursor: string2().nullish(),
   sessions: requiredDefaultOnError(vecSkipError(zSessionInfo), () => [])
 });
 var zSessionInfoUpdate = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   title: string2().nullish(),
   updatedAt: string2().nullish()
 });
 var zSessionListCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionModeId = string2();
 var zCurrentModeUpdate = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   currentModeId: zSessionModeId
 });
 var zSessionMode = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   description: string2().nullish(),
   id: zSessionModeId,
   name: string2()
 });
 var zSessionModeState = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   availableModes: requiredDefaultOnError(vecSkipError(zSessionMode), () => []),
   currentModeId: zSessionModeId
 });
 var zForkSessionResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
   modes: defaultOnError(zSessionModeState.nullish(), () => void 0),
   sessionId: zSessionId
 });
 var zLoadSessionResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
   modes: defaultOnError(zSessionModeState.nullish(), () => void 0)
 });
 var zNewSessionResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
   modes: defaultOnError(zSessionModeState.nullish(), () => void 0),
   sessionId: zSessionId
 });
 var zResumeSessionResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   configOptions: defaultOnError(vecSkipError(zSessionConfigOption).nullish(), () => void 0),
   modes: defaultOnError(zSessionModeState.nullish(), () => void 0)
 });
 var zSessionResumeCapabilities = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   additionalDirectories: defaultOnError(zSessionAdditionalDirectoriesCapabilities.nullish(), () => void 0),
   close: defaultOnError(zSessionCloseCapabilities.nullish(), () => void 0),
   delete: defaultOnError(zSessionDeleteCapabilities.nullish(), () => void 0),
@@ -119184,14 +120434,14 @@ var zSessionCapabilities = object({
   resume: defaultOnError(zSessionResumeCapabilities.nullish(), () => void 0)
 });
 var zSetProviderRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   apiType: zLlmProtocol,
   baseUrl: string2(),
-  headers: record(string2(), string2()).optional(),
+  headers: record2(string2(), string2()).optional(),
   id: string2()
 });
 var zSetProviderResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSetSessionConfigOptionRequest = intersection(union([
   object({
@@ -119202,24 +120452,24 @@ var zSetSessionConfigOptionRequest = intersection(union([
     value: zSessionConfigValueId
   })
 ]), object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   configId: zSessionConfigId,
   sessionId: zSessionId
 }));
 var zSetSessionConfigOptionResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   configOptions: requiredDefaultOnError(vecSkipError(zSessionConfigOption), () => [])
 });
 var zSetSessionModeRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   modeId: zSessionModeId,
   sessionId: zSessionId
 });
 var zSetSessionModeResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zStartNesResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId
 });
 var zStopReason = union([
@@ -119251,7 +120501,7 @@ var zStringPropertySchema = object({
   title: string2().nullish()
 });
 var zSuggestNesRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   context: defaultOnError(zNesSuggestContext.nullish(), () => void 0),
   position: zPosition,
   selection: defaultOnError(zRange.nullish(), () => void 0),
@@ -119261,33 +120511,33 @@ var zSuggestNesRequest = object({
   version: number2()
 });
 var zSuggestNesResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   suggestions: requiredDefaultOnError(vecSkipError(zNesSuggestion), () => [])
 });
 var zTerminal = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   terminalId: string2()
 });
 var zTerminalExitStatus = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   exitCode: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
   signal: string2().nullish()
 });
 var zTerminalOutputRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId,
   terminalId: string2()
 });
 var zTerminalOutputResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   exitStatus: zTerminalExitStatus.nullish(),
   output: string2(),
   truncated: boolean2()
 });
 var zTextContent = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
   text: string2()
 });
@@ -119296,7 +120546,7 @@ var zTextDocumentContentChangeEvent = object({
   text: string2()
 });
 var zDidChangeDocumentNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   contentChanges: array(zTextDocumentContentChangeEvent),
   sessionId: zSessionId,
   uri: string2(),
@@ -119322,11 +120572,11 @@ var zTextDocumentSyncKind = union([
   literal("incremental")
 ]);
 var zNesDocumentDidChangeCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   syncKind: zTextDocumentSyncKind
 });
 var zNesDocumentEventCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   didChange: defaultOnError(zNesDocumentDidChangeCapabilities.nullish(), () => void 0),
   didClose: defaultOnError(zNesDocumentDidCloseCapabilities.nullish(), () => void 0),
   didFocus: defaultOnError(zNesDocumentDidFocusCapabilities.nullish(), () => void 0),
@@ -119334,16 +120584,16 @@ var zNesDocumentEventCapabilities = object({
   didSave: defaultOnError(zNesDocumentDidSaveCapabilities.nullish(), () => void 0)
 });
 var zNesEventCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   document: defaultOnError(zNesDocumentEventCapabilities.nullish(), () => void 0)
 });
 var zNesCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   context: defaultOnError(zNesContextCapabilities.nullish(), () => void 0),
   events: defaultOnError(zNesEventCapabilities.nullish(), () => void 0)
 });
 var zAgentCapabilities = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   auth: zAgentAuthCapabilities.optional().default({}),
   loadSession: boolean2().optional().default(false),
   mcpCapabilities: zMcpCapabilities.optional().default({
@@ -119362,7 +120612,7 @@ var zAgentCapabilities = object({
   sessionCapabilities: zSessionCapabilities.optional().default({})
 });
 var zInitializeResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   agentCapabilities: zAgentCapabilities.optional().default({
     auth: {},
     loadSession: false,
@@ -119383,7 +120633,7 @@ var zInitializeResponse = object({
   protocolVersion: zProtocolVersion
 });
 var zTextResourceContents = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   mimeType: string2().nullish(),
   text: string2(),
   uri: string2()
@@ -119393,7 +120643,7 @@ var zEmbeddedResourceResource = union([
   zBlobResourceContents
 ]);
 var zEmbeddedResource = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   annotations: defaultOnError(zAnnotations.nullish(), () => void 0),
   resource: zEmbeddedResourceResource
 });
@@ -119415,16 +120665,16 @@ var zContentBlock = union([
   }))
 ]);
 var zContent = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   content: zContentBlock
 });
 var zContentChunk = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   content: zContentBlock,
   messageId: zMessageId.nullish()
 });
 var zPromptRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   prompt: array(zContentBlock),
   sessionId: zSessionId
 });
@@ -119452,7 +120702,7 @@ var zElicitationUrlMode = intersection(union([zElicitationSessionScope, zElicita
   url: url()
 }));
 var zToolCallLocation = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   line: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
@@ -119477,7 +120727,7 @@ var zToolKind = union([
   literal("other")
 ]);
 var zToolCall = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   content: defaultOnError(vecSkipError(zToolCallContent).optional(), () => []),
   kind: zToolKind.optional(),
   locations: defaultOnError(vecSkipError(zToolCallLocation).optional(), () => []),
@@ -119488,7 +120738,7 @@ var zToolCall = object({
   toolCallId: zToolCallId
 });
 var zToolCallUpdate = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   content: defaultOnError(vecSkipError(zToolCallContent).nullish(), () => void 0),
   kind: defaultOnError(zToolKind.nullish(), () => void 0),
   locations: defaultOnError(vecSkipError(zToolCallLocation).nullish(), () => void 0),
@@ -119499,24 +120749,24 @@ var zToolCallUpdate = object({
   toolCallId: zToolCallId
 });
 var zRequestPermissionRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   options: array(zPermissionOption),
   sessionId: zSessionId,
   toolCall: zToolCallUpdate
 });
 var zUnstructuredCommandInput = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   hint: string2()
 });
 var zAvailableCommandInput = zUnstructuredCommandInput;
 var zAvailableCommand = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   description: string2(),
   input: defaultOnError(zAvailableCommandInput.nullish(), () => void 0),
   name: string2()
 });
 var zAvailableCommandsUpdate = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   availableCommands: requiredDefaultOnError(vecSkipError(zAvailableCommand), () => [])
 });
 var zUntitledMultiSelectItems = object({
@@ -119554,7 +120804,7 @@ var zElicitationPropertySchema = union([
 ]);
 var zElicitationSchema = object({
   description: string2().nullish(),
-  properties: record(string2(), zElicitationPropertySchema).optional().default({}),
+  properties: record2(string2(), zElicitationPropertySchema).optional().default({}),
   required: array(string2()).nullish(),
   title: string2().nullish(),
   type: zElicitationSchemaType.optional().default("object")
@@ -119570,7 +120820,7 @@ var zCreateElicitationRequest = intersection(union([
     mode: literal("url")
   }))
 ]), object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   message: string2()
 }));
 var zUsage = object({
@@ -119582,7 +120832,7 @@ var zUsage = object({
   totalTokens: number2()
 });
 var zPromptResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   stopReason: zStopReason,
   usage: defaultOnError(zUsage.nullish(), () => void 0)
 });
@@ -119619,7 +120869,7 @@ var zAgentResponse = union([
   })
 ]);
 var zUsageUpdate = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   cost: defaultOnError(zCost.nullish(), () => void 0),
   size: number2(),
   used: number2()
@@ -119666,7 +120916,7 @@ var zSessionUpdate = union([
   }))
 ]);
 var zSessionNotification = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId,
   update: zSessionUpdate
 });
@@ -119680,12 +120930,12 @@ var zAgentNotification = object({
   ]).nullish()
 });
 var zWaitForTerminalExitRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   sessionId: zSessionId,
   terminalId: string2()
 });
 var zWaitForTerminalExitResponse = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   exitCode: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
@@ -119696,7 +120946,7 @@ var zWorkspaceFolder = object({
   uri: string2()
 });
 var zStartNesRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   repository: defaultOnError(zNesRepository.nullish(), () => void 0),
   workspaceFolders: defaultOnError(vecSkipError(zWorkspaceFolder).nullish(), () => void 0),
   workspaceUri: string2().nullish()
@@ -119729,7 +120979,7 @@ var zClientRequest = object({
   ]).nullish()
 });
 var zWriteTextFileRequest = object({
-  _meta: record(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish(),
   content: string2(),
   path: string2(),
   sessionId: zSessionId
@@ -119754,7 +121004,7 @@ var zAgentRequest = object({
   ]).nullish()
 });
 var zWriteTextFileResponse = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zClientResponse = union([
   object({
@@ -121181,7 +122431,7 @@ var AcpRuntimeImpl = class {
 };
 
 // ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/acp-runtime/spawners/node.js
-var import_node_child_process7 = require("node:child_process");
+var import_node_child_process8 = require("node:child_process");
 var activeChildren = /* @__PURE__ */ new Set();
 var cleanupHandlersInstalled = false;
 function killProcessTree(child, signal, detached) {
@@ -121227,7 +122477,7 @@ var NodeSpawner = class {
         env2[key] = value;
     }
     const detached = process.platform !== "win32";
-    const child = (0, import_node_child_process7.spawn)(spec.command, spec.args ?? [], {
+    const child = (0, import_node_child_process8.spawn)(spec.command, spec.args ?? [], {
       env: env2,
       cwd: spec.cwd,
       stdio: ["pipe", "pipe", "pipe"],
@@ -121387,9 +122637,9 @@ function nodeWritableToWeb(stream) {
 
 // ../../apps/local-api/dist/runtime/host/_acp-runtime/probe.js
 var import_node_fs13 = require("node:fs");
-var import_promises28 = require("node:fs/promises");
+var import_promises29 = require("node:fs/promises");
 var import_node_os11 = require("node:os");
-var import_node_path35 = require("node:path");
+var import_node_path36 = require("node:path");
 
 // ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/schema/index.js
 var AGENT_METHODS2 = {
@@ -121468,7 +122718,7 @@ var zWriteTextFileRequest2 = object({
   sessionId: zSessionId2,
   path: string2(),
   content: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zReadTextFileRequest2 = object({
   sessionId: zSessionId2,
@@ -121479,7 +122729,7 @@ var zReadTextFileRequest2 = object({
   limit: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zToolCallId2 = string2();
 var zToolKind2 = union([
@@ -121505,25 +122755,25 @@ var zAnnotations2 = object({
   audience: defaultOnError2(vecSkipError2(zRole2).nullish(), () => void 0),
   lastModified: string2().nullish(),
   priority: number2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zTextContent2 = object({
   annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
   text: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zImageContent2 = object({
   annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
   data: string2(),
   mimeType: string2(),
   uri: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAudioContent2 = object({
   annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
   data: string2(),
   mimeType: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zResourceLink2 = object({
   annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
@@ -121533,19 +122783,19 @@ var zResourceLink2 = object({
   size: number2().nullish(),
   title: string2().nullish(),
   uri: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zTextResourceContents2 = object({
   mimeType: string2().nullish(),
   text: string2(),
   uri: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zBlobResourceContents2 = object({
   blob: string2(),
   mimeType: string2().nullish(),
   uri: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zEmbeddedResourceResource2 = union([
   zTextResourceContents2,
@@ -121554,7 +122804,7 @@ var zEmbeddedResourceResource2 = union([
 var zEmbeddedResource2 = object({
   annotations: defaultOnError2(zAnnotations2.nullish(), () => void 0),
   resource: zEmbeddedResourceResource2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zContentBlock2 = union([
   zTextContent2.and(object({
@@ -121575,18 +122825,18 @@ var zContentBlock2 = union([
 ]);
 var zContent2 = object({
   content: zContentBlock2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDiff2 = object({
   path: string2(),
   oldText: string2().nullish(),
   newText: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zTerminalId = string2();
 var zTerminal2 = object({
   terminalId: zTerminalId,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zToolCallContent2 = union([
   zContent2.and(object({
@@ -121604,7 +122854,7 @@ var zToolCallLocation2 = object({
   line: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zToolCallUpdate2 = object({
   toolCallId: zToolCallId2,
@@ -121615,7 +122865,7 @@ var zToolCallUpdate2 = object({
   locations: defaultOnError2(vecSkipError2(zToolCallLocation2).nullish(), () => void 0),
   rawInput: unknown().optional(),
   rawOutput: unknown().optional(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPermissionOptionId2 = string2();
 var zPermissionOptionKind2 = union([
@@ -121628,18 +122878,18 @@ var zPermissionOption2 = object({
   optionId: zPermissionOptionId2,
   name: string2(),
   kind: zPermissionOptionKind2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zRequestPermissionRequest2 = object({
   sessionId: zSessionId2,
   toolCall: zToolCallUpdate2,
   options: array(zPermissionOption2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zEnvVariable2 = object({
   name: string2(),
   value: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCreateTerminalRequest2 = object({
   sessionId: zSessionId2,
@@ -121648,27 +122898,27 @@ var zCreateTerminalRequest2 = object({
   env: array(zEnvVariable2).optional(),
   cwd: string2().nullish(),
   outputByteLimit: number2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zTerminalOutputRequest2 = object({
   sessionId: zSessionId2,
   terminalId: zTerminalId,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zReleaseTerminalRequest2 = object({
   sessionId: zSessionId2,
   terminalId: zTerminalId,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zWaitForTerminalExitRequest2 = object({
   sessionId: zSessionId2,
   terminalId: zTerminalId,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zKillTerminalRequest2 = object({
   sessionId: zSessionId2,
   terminalId: zTerminalId,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationSessionScope2 = object({
   sessionId: zSessionId2,
@@ -121687,7 +122937,7 @@ var zStringFormat2 = union([
 var zEnumOption2 = object({
   const: string2(),
   title: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zStringPropertySchema2 = object({
   title: string2().nullish(),
@@ -121703,7 +122953,7 @@ var zStringPropertySchema2 = object({
   default: string2().nullish(),
   enum: array(string2()).nullish(),
   oneOf: array(zEnumOption2).nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNumberPropertySchema2 = object({
   title: string2().nullish(),
@@ -121711,7 +122961,7 @@ var zNumberPropertySchema2 = object({
   minimum: number2().nullish(),
   maximum: number2().nullish(),
   default: number2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zIntegerPropertySchema2 = object({
   title: string2().nullish(),
@@ -121719,23 +122969,23 @@ var zIntegerPropertySchema2 = object({
   minimum: number2().nullish(),
   maximum: number2().nullish(),
   default: number2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zBooleanPropertySchema2 = object({
   title: string2().nullish(),
   description: string2().nullish(),
   default: boolean2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationStringType2 = literal("string");
 var zUntitledMultiSelectItems2 = object({
   type: zElicitationStringType2,
   enum: array(string2()),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zTitledMultiSelectItems2 = object({
   anyOf: array(zEnumOption2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMultiSelectItems2 = union([
   zUntitledMultiSelectItems2,
@@ -121748,7 +122998,7 @@ var zMultiSelectPropertySchema2 = object({
   maxItems: number2().nullish(),
   items: zMultiSelectItems2,
   default: array(string2()).nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationPropertySchema2 = union([
   zStringPropertySchema2.and(object({
@@ -121770,10 +123020,10 @@ var zElicitationPropertySchema2 = union([
 var zElicitationSchema2 = object({
   type: zElicitationSchemaType2.optional().default("object"),
   title: string2().nullish(),
-  properties: record(string2(), zElicitationPropertySchema2).optional().default({}),
+  properties: record2(string2(), zElicitationPropertySchema2).optional().default({}),
   required: array(string2()).nullish(),
   description: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationFormMode2 = intersection(union([zElicitationSessionScope2, zElicitationRequestScope2]), object({
   requestedSchema: zElicitationSchema2
@@ -121792,23 +123042,23 @@ var zCreateElicitationRequest2 = intersection(union([
   }))
 ]), object({
   message: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 }));
 var zMcpServerAcpId2 = string2();
 var zConnectMcpRequest2 = object({
   acpId: zMcpServerAcpId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMcpConnectionId2 = string2();
 var zMessageMcpRequest2 = object({
   connectionId: zMcpConnectionId2,
   method: string2(),
-  params: record(string2(), unknown()).nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  params: record2(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDisconnectMcpRequest2 = object({
   connectionId: zMcpConnectionId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zExtRequest2 = unknown();
 var zAgentRequest2 = object({
@@ -121835,31 +123085,31 @@ var zPromptCapabilities2 = object({
   image: boolean2().optional().default(false),
   audio: boolean2().optional().default(false),
   embeddedContext: boolean2().optional().default(false),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMcpCapabilities2 = object({
   http: boolean2().optional().default(false),
   sse: boolean2().optional().default(false),
   acp: boolean2().optional().default(false),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionListCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionDeleteCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionAdditionalDirectoriesCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionForkCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionResumeCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionCloseCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionCapabilities2 = object({
   list: defaultOnError2(zSessionListCapabilities2.nullish(), () => void 0),
@@ -121868,20 +123118,20 @@ var zSessionCapabilities2 = object({
   fork: defaultOnError2(zSessionForkCapabilities2.nullish(), () => void 0),
   resume: defaultOnError2(zSessionResumeCapabilities2.nullish(), () => void 0),
   close: defaultOnError2(zSessionCloseCapabilities2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zLogoutCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAgentAuthCapabilities2 = object({
   logout: defaultOnError2(zLogoutCapabilities2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zProvidersCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDocumentDidOpenCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zTextDocumentSyncKind2 = union([
   literal("full"),
@@ -121889,16 +123139,16 @@ var zTextDocumentSyncKind2 = union([
 ]);
 var zNesDocumentDidChangeCapabilities2 = object({
   syncKind: zTextDocumentSyncKind2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDocumentDidCloseCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDocumentDidSaveCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDocumentDidFocusCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDocumentEventCapabilities2 = object({
   didOpen: defaultOnError2(zNesDocumentDidOpenCapabilities2.nullish(), () => void 0),
@@ -121906,38 +123156,38 @@ var zNesDocumentEventCapabilities2 = object({
   didClose: defaultOnError2(zNesDocumentDidCloseCapabilities2.nullish(), () => void 0),
   didSave: defaultOnError2(zNesDocumentDidSaveCapabilities2.nullish(), () => void 0),
   didFocus: defaultOnError2(zNesDocumentDidFocusCapabilities2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesEventCapabilities2 = object({
   document: defaultOnError2(zNesDocumentEventCapabilities2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRecentFilesCapabilities2 = object({
   maxCount: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRelatedSnippetsCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesEditHistoryCapabilities2 = object({
   maxCount: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesUserActionsCapabilities2 = object({
   maxCount: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesOpenFilesCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDiagnosticsCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesContextCapabilities2 = object({
   recentFiles: defaultOnError2(zNesRecentFilesCapabilities2.nullish(), () => void 0),
@@ -121946,12 +123196,12 @@ var zNesContextCapabilities2 = object({
   userActions: defaultOnError2(zNesUserActionsCapabilities2.nullish(), () => void 0),
   openFiles: defaultOnError2(zNesOpenFilesCapabilities2.nullish(), () => void 0),
   diagnostics: defaultOnError2(zNesDiagnosticsCapabilities2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesCapabilities2 = object({
   events: defaultOnError2(zNesEventCapabilities2.nullish(), () => void 0),
   context: defaultOnError2(zNesContextCapabilities2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPositionEncodingKind2 = union([
   literal("utf-16"),
@@ -121975,7 +123225,7 @@ var zAgentCapabilities2 = object({
   providers: defaultOnError2(zProvidersCapabilities2.nullish(), () => void 0),
   nes: defaultOnError2(zNesCapabilities2.nullish(), () => void 0),
   positionEncoding: defaultOnError2(zPositionEncodingKind2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAuthMethodId = string2();
 var zAuthEnvVar2 = object({
@@ -121983,7 +123233,7 @@ var zAuthEnvVar2 = object({
   label: string2().nullish(),
   secret: boolean2().optional().default(true),
   optional: boolean2().optional().default(false),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAuthMethodEnvVar2 = object({
   id: zAuthMethodId,
@@ -121991,21 +123241,21 @@ var zAuthMethodEnvVar2 = object({
   description: string2().nullish(),
   vars: array(zAuthEnvVar2),
   link: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAuthMethodTerminal2 = object({
   id: zAuthMethodId,
   name: string2(),
   description: string2().nullish(),
   args: array(string2()).optional(),
-  env: record(string2(), string2()).optional(),
-  _meta: record(string2(), unknown()).nullish()
+  env: record2(string2(), string2()).optional(),
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAuthMethodAgent2 = object({
   id: zAuthMethodId,
   name: string2(),
   description: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAuthMethod2 = union([
   zAuthMethodEnvVar2.and(object({
@@ -122020,7 +123270,7 @@ var zImplementation2 = object({
   name: string2(),
   title: string2().nullish(),
   version: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zInitializeResponse2 = object({
   protocolVersion: zProtocolVersion2,
@@ -122041,10 +123291,10 @@ var zInitializeResponse2 = object({
   }),
   authMethods: defaultOnError2(vecSkipError2(zAuthMethod2).optional().default([]), () => []),
   agentInfo: defaultOnError2(zImplementation2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAuthenticateResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zLlmProtocol2 = union([
   literal("anthropic"),
@@ -122057,39 +123307,39 @@ var zLlmProtocol2 = union([
 var zProviderCurrentConfig2 = object({
   apiType: zLlmProtocol2,
   baseUrl: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zProviderInfo2 = object({
   id: string2(),
   supported: requiredDefaultOnError2(vecSkipError2(zLlmProtocol2), () => []),
   required: boolean2(),
   current: zProviderCurrentConfig2.nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zListProvidersResponse2 = object({
   providers: requiredDefaultOnError2(vecSkipError2(zProviderInfo2), () => []),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSetProviderResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDisableProviderResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zLogoutResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionModeId2 = string2();
 var zSessionMode2 = object({
   id: zSessionModeId2,
   name: string2(),
   description: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionModeState2 = object({
   currentModeId: zSessionModeId2,
   availableModes: requiredDefaultOnError2(vecSkipError2(zSessionMode2), () => []),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionConfigId2 = string2();
 var zSessionConfigOptionCategory2 = union([
@@ -122104,14 +123354,14 @@ var zSessionConfigSelectOption2 = object({
   value: zSessionConfigValueId2,
   name: string2(),
   description: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionConfigGroupId2 = string2();
 var zSessionConfigSelectGroup2 = object({
   group: zSessionConfigGroupId2,
   name: string2(),
   options: array(zSessionConfigSelectOption2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionConfigSelectOptions2 = union([
   array(zSessionConfigSelectOption2),
@@ -122136,18 +123386,18 @@ var zSessionConfigOption2 = intersection(union([
   name: string2(),
   description: string2().nullish(),
   category: defaultOnError2(zSessionConfigOptionCategory2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 }));
 var zNewSessionResponse2 = object({
   sessionId: zSessionId2,
   modes: defaultOnError2(zSessionModeState2.nullish(), () => void 0),
   configOptions: defaultOnError2(vecSkipError2(zSessionConfigOption2).nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zLoadSessionResponse2 = object({
   modes: defaultOnError2(zSessionModeState2.nullish(), () => void 0),
   configOptions: defaultOnError2(vecSkipError2(zSessionConfigOption2).nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionInfo2 = object({
   sessionId: zSessionId2,
@@ -122155,36 +123405,36 @@ var zSessionInfo2 = object({
   additionalDirectories: array(string2()).optional(),
   title: defaultOnError2(string2().nullish(), () => void 0),
   updatedAt: defaultOnError2(string2().nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zListSessionsResponse2 = object({
   sessions: requiredDefaultOnError2(vecSkipError2(zSessionInfo2), () => []),
   nextCursor: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDeleteSessionResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zForkSessionResponse2 = object({
   sessionId: zSessionId2,
   modes: defaultOnError2(zSessionModeState2.nullish(), () => void 0),
   configOptions: defaultOnError2(vecSkipError2(zSessionConfigOption2).nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zResumeSessionResponse2 = object({
   modes: defaultOnError2(zSessionModeState2.nullish(), () => void 0),
   configOptions: defaultOnError2(vecSkipError2(zSessionConfigOption2).nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCloseSessionResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSetSessionModeResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSetSessionConfigOptionResponse2 = object({
   configOptions: requiredDefaultOnError2(vecSkipError2(zSessionConfigOption2), () => []),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zStopReason2 = union([
   literal("end_turn"),
@@ -122200,16 +123450,16 @@ var zUsage2 = object({
   thoughtTokens: number2().nullish(),
   cachedReadTokens: number2().nullish(),
   cachedWriteTokens: number2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPromptResponse2 = object({
   stopReason: zStopReason2,
   usage: defaultOnError2(zUsage2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zStartNesResponse2 = object({
   sessionId: zSessionId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPosition2 = object({
   line: int().gte(0).max(4294967295, {
@@ -122218,37 +123468,37 @@ var zPosition2 = object({
   character: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zRange2 = object({
   start: zPosition2,
   end: zPosition2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesTextEdit2 = object({
   range: zRange2,
   newText: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesEditSuggestion2 = object({
   id: string2(),
   uri: string2(),
   edits: array(zNesTextEdit2),
   cursorPosition: defaultOnError2(zPosition2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesJumpSuggestion2 = object({
   id: string2(),
   uri: string2(),
   position: zPosition2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRenameSuggestion2 = object({
   id: string2(),
   uri: string2(),
   position: zPosition2,
   newName: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesSearchAndReplaceSuggestion2 = object({
   id: string2(),
@@ -122256,7 +123506,7 @@ var zNesSearchAndReplaceSuggestion2 = object({
   search: string2(),
   replace: string2(),
   isRegex: boolean2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesSuggestion2 = union([
   zNesEditSuggestion2.and(object({
@@ -122274,10 +123524,10 @@ var zNesSuggestion2 = union([
 ]);
 var zSuggestNesResponse2 = object({
   suggestions: requiredDefaultOnError2(vecSkipError2(zNesSuggestion2), () => []),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCloseNesResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zExtResponse2 = unknown();
 var zMessageMcpResponse2 = unknown();
@@ -122338,7 +123588,7 @@ var zMessageId2 = string2();
 var zContentChunk2 = object({
   content: zContentBlock2,
   messageId: zMessageId2.nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zToolCall2 = object({
   toolCallId: zToolCallId2,
@@ -122349,7 +123599,7 @@ var zToolCall2 = object({
   locations: defaultOnError2(vecSkipError2(zToolCallLocation2).optional(), () => []),
   rawInput: unknown().optional(),
   rawOutput: unknown().optional(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPlanEntryPriority2 = union([
   literal("high"),
@@ -122365,27 +123615,27 @@ var zPlanEntry2 = object({
   content: string2(),
   priority: zPlanEntryPriority2,
   status: zPlanEntryStatus2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPlan2 = object({
   entries: requiredDefaultOnError2(vecSkipError2(zPlanEntry2), () => []),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPlanId2 = string2();
 var zPlanItems2 = object({
   id: zPlanId2,
   entries: requiredDefaultOnError2(vecSkipError2(zPlanEntry2), () => []),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPlanFile2 = object({
   id: zPlanId2,
   uri: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPlanMarkdown2 = object({
   id: zPlanId2,
   content: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPlanUpdateContent2 = union([
   zPlanItems2.and(object({
@@ -122400,50 +123650,50 @@ var zPlanUpdateContent2 = union([
 ]);
 var zPlanUpdate2 = object({
   plan: zPlanUpdateContent2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPlanRemoved2 = object({
   id: zPlanId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zUnstructuredCommandInput2 = object({
   hint: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAvailableCommandInput2 = zUnstructuredCommandInput2;
 var zAvailableCommand2 = object({
   name: string2(),
   description: string2(),
   input: defaultOnError2(zAvailableCommandInput2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAvailableCommandsUpdate2 = object({
   availableCommands: requiredDefaultOnError2(vecSkipError2(zAvailableCommand2), () => []),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCurrentModeUpdate2 = object({
   currentModeId: zSessionModeId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zConfigOptionUpdate2 = object({
   configOptions: requiredDefaultOnError2(vecSkipError2(zSessionConfigOption2), () => []),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionInfoUpdate2 = object({
   title: string2().nullish(),
   updatedAt: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCost2 = object({
   amount: number2(),
   currency: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zUsageUpdate2 = object({
   used: number2(),
   size: number2(),
   cost: defaultOnError2(zCost2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSessionUpdate2 = union([
   zContentChunk2.and(object({
@@ -122489,17 +123739,17 @@ var zSessionUpdate2 = union([
 var zSessionNotification2 = object({
   sessionId: zSessionId2,
   update: zSessionUpdate2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCompleteElicitationNotification2 = object({
   elicitationId: zElicitationId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMessageMcpNotification2 = object({
   connectionId: zMcpConnectionId2,
   method: string2(),
-  params: record(string2(), unknown()).nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  params: record2(string2(), unknown()).nullish(),
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zExtNotification2 = unknown();
 var zAgentNotification2 = object({
@@ -122514,40 +123764,40 @@ var zAgentNotification2 = object({
 var zFileSystemCapabilities2 = object({
   readTextFile: boolean2().optional().default(false),
   writeTextFile: boolean2().optional().default(false),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zPlanCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAuthCapabilities2 = object({
   terminal: boolean2().optional().default(false),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationFormCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationUrlCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationCapabilities2 = object({
   form: defaultOnError2(zElicitationFormCapabilities2.nullish(), () => void 0),
   url: defaultOnError2(zElicitationUrlCapabilities2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesJumpCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRenameCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesSearchAndReplaceCapabilities2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zClientNesCapabilities2 = object({
   jump: defaultOnError2(zNesJumpCapabilities2.nullish(), () => void 0),
   rename: defaultOnError2(zNesRenameCapabilities2.nullish(), () => void 0),
   searchAndReplace: defaultOnError2(zNesSearchAndReplaceCapabilities2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zClientCapabilities2 = object({
   fs: zFileSystemCapabilities2.optional().default({ readTextFile: false, writeTextFile: false }),
@@ -122557,7 +123807,7 @@ var zClientCapabilities2 = object({
   elicitation: defaultOnError2(zElicitationCapabilities2.nullish(), () => void 0),
   nes: defaultOnError2(zClientNesCapabilities2.nullish(), () => void 0),
   positionEncodings: defaultOnError2(vecSkipError2(zPositionEncodingKind2).optional(), () => []),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zInitializeRequest2 = object({
   protocolVersion: zProtocolVersion2,
@@ -122567,57 +123817,57 @@ var zInitializeRequest2 = object({
     auth: { terminal: false }
   }),
   clientInfo: defaultOnError2(zImplementation2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAuthenticateRequest2 = object({
   methodId: zAuthMethodId,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zListProvidersRequest2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSetProviderRequest2 = object({
   id: string2(),
   apiType: zLlmProtocol2,
   baseUrl: string2(),
-  headers: record(string2(), string2()).optional(),
-  _meta: record(string2(), unknown()).nullish()
+  headers: record2(string2(), string2()).optional(),
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDisableProviderRequest2 = object({
   id: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zLogoutRequest2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zHttpHeader2 = object({
   name: string2(),
   value: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMcpServerHttp2 = object({
   name: string2(),
   url: string2(),
   headers: array(zHttpHeader2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMcpServerSse2 = object({
   name: string2(),
   url: string2(),
   headers: array(zHttpHeader2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMcpServerAcp2 = object({
   name: string2(),
   id: zMcpServerAcpId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMcpServerStdio2 = object({
   name: string2(),
   command: string2(),
   args: array(string2()),
   env: array(zEnvVariable2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zMcpServer2 = union([
   zMcpServerHttp2.and(object({
@@ -122635,46 +123885,46 @@ var zNewSessionRequest2 = object({
   cwd: string2(),
   additionalDirectories: array(string2()).optional(),
   mcpServers: array(zMcpServer2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zLoadSessionRequest2 = object({
   mcpServers: array(zMcpServer2),
   cwd: string2(),
   additionalDirectories: array(string2()).optional(),
   sessionId: zSessionId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zListSessionsRequest2 = object({
   cwd: string2().nullish(),
   cursor: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDeleteSessionRequest2 = object({
   sessionId: zSessionId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zForkSessionRequest2 = object({
   sessionId: zSessionId2,
   cwd: string2(),
   additionalDirectories: array(string2()).optional(),
   mcpServers: array(zMcpServer2).optional(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zResumeSessionRequest2 = object({
   sessionId: zSessionId2,
   cwd: string2(),
   additionalDirectories: array(string2()).optional(),
   mcpServers: array(zMcpServer2).optional(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCloseSessionRequest2 = object({
   sessionId: zSessionId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSetSessionModeRequest2 = object({
   sessionId: zSessionId2,
   modeId: zSessionModeId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSetSessionConfigOptionRequest2 = intersection(union([
   object({
@@ -122687,29 +123937,29 @@ var zSetSessionConfigOptionRequest2 = intersection(union([
 ]), object({
   sessionId: zSessionId2,
   configId: zSessionConfigId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 }));
 var zPromptRequest2 = object({
   sessionId: zSessionId2,
   prompt: array(zContentBlock2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zWorkspaceFolder2 = object({
   uri: string2(),
   name: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRepository2 = object({
   name: string2(),
   owner: string2(),
   remoteUrl: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zStartNesRequest2 = object({
   workspaceUri: string2().nullish(),
   workspaceFolders: defaultOnError2(vecSkipError2(zWorkspaceFolder2).nullish(), () => void 0),
   repository: defaultOnError2(zNesRepository2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesTriggerKind2 = union([
   literal("automatic"),
@@ -122720,7 +123970,7 @@ var zNesRecentFile2 = object({
   uri: string2(),
   languageId: string2(),
   text: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesExcerpt2 = object({
   startLine: int().gte(0).max(4294967295, {
@@ -122730,31 +123980,31 @@ var zNesExcerpt2 = object({
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }),
   text: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRelatedSnippet2 = object({
   uri: string2(),
   excerpts: array(zNesExcerpt2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesEditHistoryEntry2 = object({
   uri: string2(),
   diff: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesUserAction2 = object({
   action: string2(),
   uri: string2(),
   position: zPosition2,
   timestampMs: number2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesOpenFile2 = object({
   uri: string2(),
   languageId: string2(),
   visibleRange: defaultOnError2(zRange2.nullish(), () => void 0),
   lastFocusedMs: defaultOnError2(number2().nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesDiagnosticSeverity2 = union([
   literal("error"),
@@ -122767,7 +124017,7 @@ var zNesDiagnostic2 = object({
   range: zRange2,
   severity: zNesDiagnosticSeverity2,
   message: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesSuggestContext2 = object({
   recentFiles: defaultOnError2(vecSkipError2(zNesRecentFile2).nullish(), () => void 0),
@@ -122776,7 +124026,7 @@ var zNesSuggestContext2 = object({
   userActions: defaultOnError2(vecSkipError2(zNesUserAction2).nullish(), () => void 0),
   openFiles: defaultOnError2(vecSkipError2(zNesOpenFile2).nullish(), () => void 0),
   diagnostics: defaultOnError2(vecSkipError2(zNesDiagnostic2).nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSuggestNesRequest2 = object({
   sessionId: zSessionId2,
@@ -122786,11 +124036,11 @@ var zSuggestNesRequest2 = object({
   selection: defaultOnError2(zRange2.nullish(), () => void 0),
   triggerKind: zNesTriggerKind2,
   context: defaultOnError2(zNesSuggestContext2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCloseNesRequest2 = object({
   sessionId: zSessionId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zClientRequest2 = object({
   id: zRequestId2,
@@ -122820,15 +124070,15 @@ var zClientRequest2 = object({
   ]).nullish()
 });
 var zWriteTextFileResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zReadTextFileResponse2 = object({
   content: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zSelectedPermissionOutcome2 = object({
   optionId: zPermissionOptionId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zRequestPermissionOutcome2 = union([
   object({
@@ -122840,37 +124090,37 @@ var zRequestPermissionOutcome2 = union([
 ]);
 var zRequestPermissionResponse2 = object({
   outcome: zRequestPermissionOutcome2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zCreateTerminalResponse2 = object({
   terminalId: zTerminalId,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zTerminalExitStatus2 = object({
   exitCode: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
   signal: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zTerminalOutputResponse2 = object({
   output: string2(),
   truncated: boolean2(),
   exitStatus: zTerminalExitStatus2.nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zReleaseTerminalResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zWaitForTerminalExitResponse2 = object({
   exitCode: int().gte(0).max(4294967295, {
     error: "Invalid value: Expected uint32 to be <= 4294967295"
   }).nullish(),
   signal: string2().nullish(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zKillTerminalResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zElicitationContentValue2 = union([
   string2(),
@@ -122880,7 +124130,7 @@ var zElicitationContentValue2 = union([
   array(string2())
 ]);
 var zElicitationAcceptAction2 = object({
-  content: record(string2(), zElicitationContentValue2).nullish()
+  content: record2(string2(), zElicitationContentValue2).nullish()
 });
 var zCreateElicitationResponse2 = intersection(union([
   zElicitationAcceptAction2.and(object({
@@ -122893,14 +124143,14 @@ var zCreateElicitationResponse2 = intersection(union([
     action: literal("cancel")
   })
 ]), object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 }));
 var zConnectMcpResponse2 = object({
   connectionId: zMcpConnectionId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDisconnectMcpResponse2 = object({
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zClientResponse2 = union([
   object({
@@ -122928,7 +124178,7 @@ var zClientResponse2 = union([
 ]);
 var zCancelNotification2 = object({
   sessionId: zSessionId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDidOpenDocumentNotification2 = object({
   sessionId: zSessionId2,
@@ -122936,29 +124186,29 @@ var zDidOpenDocumentNotification2 = object({
   languageId: string2(),
   version: number2(),
   text: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zTextDocumentContentChangeEvent2 = object({
   range: zRange2.nullish(),
   text: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDidChangeDocumentNotification2 = object({
   sessionId: zSessionId2,
   uri: string2(),
   version: number2(),
   contentChanges: array(zTextDocumentContentChangeEvent2),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDidCloseDocumentNotification2 = object({
   sessionId: zSessionId2,
   uri: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDidSaveDocumentNotification2 = object({
   sessionId: zSessionId2,
   uri: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zDidFocusDocumentNotification2 = object({
   sessionId: zSessionId2,
@@ -122966,12 +124216,12 @@ var zDidFocusDocumentNotification2 = object({
   version: number2(),
   position: zPosition2,
   visibleRange: zRange2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zAcceptNesNotification2 = object({
   sessionId: zSessionId2,
   id: string2(),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zNesRejectReason2 = union([
   literal("rejected"),
@@ -122983,7 +124233,7 @@ var zRejectNesNotification2 = object({
   sessionId: zSessionId2,
   id: string2(),
   reason: defaultOnError2(zNesRejectReason2.nullish(), () => void 0),
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 var zClientNotification2 = object({
   method: string2(),
@@ -123002,7 +124252,7 @@ var zClientNotification2 = object({
 });
 var zCancelRequestNotification2 = object({
   requestId: zRequestId2,
-  _meta: record(string2(), unknown()).nullish()
+  _meta: record2(string2(), unknown()).nullish()
 });
 
 // ../../node_modules/.pnpm/@agentclientprotocol+sdk@0.28.1_zod@4.4.3/node_modules/@agentclientprotocol/sdk/dist/stream.js
@@ -125470,8 +126720,8 @@ async function allowDiagnosticsToFlush() {
   await new Promise((resolve18) => setTimeout(resolve18, 25));
 }
 async function probeAgentSessionConfig(options) {
-  const cwd = options.cwd ?? (0, import_node_path35.join)((0, import_node_os11.tmpdir)(), "clash-acp-probe");
-  await (0, import_promises28.mkdir)(cwd, { recursive: true });
+  const cwd = options.cwd ?? (0, import_node_path36.join)((0, import_node_os11.tmpdir)(), "clash-acp-probe");
+  await (0, import_promises29.mkdir)(cwd, { recursive: true });
   let updatedConfigOptions = [];
   let updatedAvailableCommands = [];
   let updatedModeId = null;
@@ -125574,8 +126824,8 @@ async function probeAgentSessionConfig(options) {
   }
 }
 async function authenticateAgent(options) {
-  const cwd = options.cwd ?? (0, import_node_path35.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth");
-  await (0, import_promises28.mkdir)(cwd, { recursive: true });
+  const cwd = options.cwd ?? (0, import_node_path36.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth");
+  await (0, import_promises29.mkdir)(cwd, { recursive: true });
   const env2 = mergedStringEnv(options.agent.env, options.env);
   let authTerminalId = 0;
   let activeAuthMethodName = "Agent";
@@ -125710,8 +126960,8 @@ async function authenticateAgent(options) {
   }
 }
 async function probeAgentAuthStatus(options) {
-  const cwd = options.cwd ?? (0, import_node_path35.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth-probe");
-  await (0, import_promises28.mkdir)(cwd, { recursive: true });
+  const cwd = options.cwd ?? (0, import_node_path36.join)((0, import_node_os11.tmpdir)(), "clash-acp-auth-probe");
+  await (0, import_promises29.mkdir)(cwd, { recursive: true });
   const connection = await spawnAcpProbeAgent({
     agent: options.agent,
     cwd,
@@ -125828,8 +127078,8 @@ async function listLocalAgentSessions(agent2) {
 
 // ../../apps/local-api/dist/runtime/host/_acp-runtime/registry.js
 var import_node_fs14 = require("node:fs");
-var import_promises29 = require("node:fs/promises");
-var import_node_path36 = require("node:path");
+var import_promises30 = require("node:fs/promises");
+var import_node_path37 = require("node:path");
 function registryShimName(id2) {
   return `clash-acp-${id2}`;
 }
@@ -125959,14 +127209,14 @@ var KNOWN_ACP_AGENTS = [
 ];
 async function isExecutable(path, platform3 = process.platform) {
   try {
-    await (0, import_promises29.access)(path, platform3 === "win32" ? import_node_fs14.constants.F_OK : import_node_fs14.constants.X_OK);
+    await (0, import_promises30.access)(path, platform3 === "win32" ? import_node_fs14.constants.F_OK : import_node_fs14.constants.X_OK);
     return true;
   } catch {
     return false;
   }
 }
 function splitBinPath(value) {
-  return value?.split(import_node_path36.delimiter).filter(Boolean) ?? [];
+  return value?.split(import_node_path37.delimiter).filter(Boolean) ?? [];
 }
 function candidateBinDirs(options) {
   const env2 = options.env ?? process.env;
@@ -125989,19 +127239,19 @@ function candidateSystemDirs(options) {
   if (env2.PNPM_HOME)
     dirs.push(env2.PNPM_HOME);
   if (env2.VOLTA_HOME)
-    dirs.push((0, import_node_path36.join)(env2.VOLTA_HOME, "bin"));
+    dirs.push((0, import_node_path37.join)(env2.VOLTA_HOME, "bin"));
   if (home) {
-    dirs.push((0, import_node_path36.join)(home, ".volta", "bin"), (0, import_node_path36.join)(home, ".asdf", "shims"), (0, import_node_path36.join)(home, ".local", "share", "mise", "shims"), (0, import_node_path36.join)(home, ".mise", "shims"), (0, import_node_path36.join)(home, ".local", "bin"), (0, import_node_path36.join)(home, "Library", "pnpm"), (0, import_node_path36.join)(home, ".bun", "bin"));
+    dirs.push((0, import_node_path37.join)(home, ".volta", "bin"), (0, import_node_path37.join)(home, ".asdf", "shims"), (0, import_node_path37.join)(home, ".local", "share", "mise", "shims"), (0, import_node_path37.join)(home, ".mise", "shims"), (0, import_node_path37.join)(home, ".local", "bin"), (0, import_node_path37.join)(home, "Library", "pnpm"), (0, import_node_path37.join)(home, ".bun", "bin"));
   }
   return [...new Set(dirs)];
 }
 async function candidateNodeVersionDirs(root5, suffix) {
   const dirs = [];
   try {
-    for (const entry of await (0, import_promises29.readdir)(root5, { withFileTypes: true })) {
+    for (const entry of await (0, import_promises30.readdir)(root5, { withFileTypes: true })) {
       if (!entry.isDirectory())
         continue;
-      dirs.push((0, import_node_path36.join)(root5, entry.name, ...suffix));
+      dirs.push((0, import_node_path37.join)(root5, entry.name, ...suffix));
     }
   } catch {
   }
@@ -126011,13 +127261,13 @@ async function candidateSystemBinDirs(options) {
   const env2 = options.env ?? process.env;
   const dirs = candidateSystemDirs(options);
   const home = env2.HOME ?? env2.USERPROFILE;
-  const nvmDir = env2.NVM_DIR ?? (home ? (0, import_node_path36.join)(home, ".nvm") : void 0);
+  const nvmDir = env2.NVM_DIR ?? (home ? (0, import_node_path37.join)(home, ".nvm") : void 0);
   if (nvmDir) {
-    dirs.push(...await candidateNodeVersionDirs((0, import_node_path36.join)(nvmDir, "versions", "node"), ["bin"]));
+    dirs.push(...await candidateNodeVersionDirs((0, import_node_path37.join)(nvmDir, "versions", "node"), ["bin"]));
   }
-  const fnmDir = env2.FNM_DIR ?? (home ? (0, import_node_path36.join)(home, ".fnm") : void 0);
+  const fnmDir = env2.FNM_DIR ?? (home ? (0, import_node_path37.join)(home, ".fnm") : void 0);
   if (fnmDir) {
-    dirs.push(...await candidateNodeVersionDirs((0, import_node_path36.join)(fnmDir, "node-versions"), ["installation", "bin"]));
+    dirs.push(...await candidateNodeVersionDirs((0, import_node_path37.join)(fnmDir, "node-versions"), ["installation", "bin"]));
   }
   return [...new Set(dirs)];
 }
@@ -126031,7 +127281,7 @@ function candidateApplicationDirs(options) {
   return [
     "/Applications",
     "/System/Applications",
-    ...home ? [(0, import_node_path36.join)(home, "Applications")] : []
+    ...home ? [(0, import_node_path37.join)(home, "Applications")] : []
   ];
 }
 function candidateMacAppExecutables(entry, options) {
@@ -126045,7 +127295,7 @@ function candidateMacAppExecutables(entry, options) {
   for (const appDir of candidateApplicationDirs(options)) {
     for (const bundleName of bundleNames) {
       for (const executableName of executableNames2) {
-        candidates.push((0, import_node_path36.join)(appDir, bundleName, "Contents", "MacOS", executableName));
+        candidates.push((0, import_node_path37.join)(appDir, bundleName, "Contents", "MacOS", executableName));
       }
     }
   }
@@ -126053,7 +127303,7 @@ function candidateMacAppExecutables(entry, options) {
 }
 function candidateCommandNames(command6, options) {
   const platform3 = options.platform ?? process.platform;
-  if (platform3 !== "win32" || (0, import_node_path36.extname)(command6))
+  if (platform3 !== "win32" || (0, import_node_path37.extname)(command6))
     return [command6];
   const env2 = options.env ?? process.env;
   const extensions = (env2.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").map((extension2) => extension2.trim().toLowerCase()).filter(Boolean);
@@ -126061,11 +127311,11 @@ function candidateCommandNames(command6, options) {
 }
 async function resolveCommandInDirs(command6, dirs, options) {
   const platform3 = options.platform ?? process.platform;
-  if ((0, import_node_path36.isAbsolute)(command6))
+  if ((0, import_node_path37.isAbsolute)(command6))
     return await isExecutable(command6, platform3) ? command6 : null;
   for (const dir of dirs) {
     for (const name of candidateCommandNames(command6, options)) {
-      const candidate = (0, import_node_path36.join)(dir, name);
+      const candidate = (0, import_node_path37.join)(dir, name);
       if (await isExecutable(candidate, platform3))
         return candidate;
     }
@@ -126125,14 +127375,14 @@ async function detectAll(options = {}) {
 }
 
 // ../../apps/local-api/dist/runtime/host/lib/cc-sessions.js
-var import_promises30 = require("node:fs/promises");
+var import_promises31 = require("node:fs/promises");
 var import_node_os12 = require("node:os");
-var import_node_path37 = require("node:path");
-var ROOT = (0, import_node_path37.join)((0, import_node_os12.homedir)(), ".claude", "projects");
+var import_node_path38 = require("node:path");
+var ROOT = (0, import_node_path38.join)((0, import_node_os12.homedir)(), ".claude", "projects");
 async function listLocalCcSessions(limit = 20) {
   let projectDirs;
   try {
-    projectDirs = await (0, import_promises30.readdir)(ROOT);
+    projectDirs = await (0, import_promises31.readdir)(ROOT);
   } catch (e5) {
     if (e5.code === "ENOENT")
       return [];
@@ -126144,19 +127394,19 @@ async function listLocalCcSessions(limit = 20) {
     const decoded = decodeCcProjectDir(projDir);
     if (!decoded.startsWith(sessionsRoot + "/") && decoded !== sessionsRoot)
       continue;
-    const projPath = (0, import_node_path37.join)(ROOT, projDir);
+    const projPath = (0, import_node_path38.join)(ROOT, projDir);
     let entries = [];
     try {
-      entries = await (0, import_promises30.readdir)(projPath);
+      entries = await (0, import_promises31.readdir)(projPath);
     } catch {
       continue;
     }
     for (const entry of entries) {
       if (!entry.endsWith(".jsonl"))
         continue;
-      const file2 = (0, import_node_path37.join)(projPath, entry);
+      const file2 = (0, import_node_path38.join)(projPath, entry);
       try {
-        const st = await (0, import_promises30.stat)(file2);
+        const st = await (0, import_promises31.stat)(file2);
         if (!st.isFile())
           continue;
         const id2 = entry.slice(0, -".jsonl".length);
@@ -126179,7 +127429,7 @@ async function listLocalCcSessions(limit = 20) {
 async function readFirstSummary(file2) {
   let text;
   try {
-    const buf = await (0, import_promises30.readFile)(file2, { encoding: "utf-8" });
+    const buf = await (0, import_promises31.readFile)(file2, { encoding: "utf-8" });
     text = buf;
   } catch {
     return "";
@@ -126269,9 +127519,9 @@ function reduceSessionLifecycle(state2, event) {
 }
 
 // ../../apps/local-api/dist/runtime/host/lib/session-cwd.js
-var import_promises31 = require("node:fs/promises");
+var import_promises32 = require("node:fs/promises");
 var import_node_fs15 = require("node:fs");
-var import_node_path38 = require("node:path");
+var import_node_path39 = require("node:path");
 var import_node_url3 = require("node:url");
 
 // ../../apps/local-api/dist/runtime/host/lib/agent-skills.js
@@ -126301,7 +127551,7 @@ var DEFAULT_PROJECT = "_default";
 function resolveBundledAgentsDir(env2 = process.env) {
   const externalRoot = env2.CLASH_AGENT_BUNDLE_ROOT?.trim();
   if (externalRoot)
-    return (0, import_node_path38.resolve)(externalRoot);
+    return (0, import_node_path39.resolve)(externalRoot);
   const candidates = [
     new URL("./agents/", __clash_import_meta_url),
     new URL("../../../../dist/agents/", __clash_import_meta_url),
@@ -126320,7 +127570,7 @@ function bundledAgentsDir() {
 }
 async function readAgentRuntime(agentTemplateId) {
   try {
-    const text = await (0, import_promises31.readFile)((0, import_node_path38.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
+    const text = await (0, import_promises32.readFile)((0, import_node_path39.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
     return JSON.parse(text);
   } catch {
     return null;
@@ -126330,8 +127580,8 @@ function isRecord13(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function assertInside(root5, candidate, label) {
-  const fromRoot = (0, import_node_path38.relative)(root5, candidate);
-  if (fromRoot === ".." || fromRoot.startsWith(`..${import_node_path38.sep}`) || (0, import_node_path38.isAbsolute)(fromRoot)) {
+  const fromRoot = (0, import_node_path39.relative)(root5, candidate);
+  if (fromRoot === ".." || fromRoot.startsWith(`..${import_node_path39.sep}`) || (0, import_node_path39.isAbsolute)(fromRoot)) {
     throw new Error(`${label} must stay inside the bundled plugin`);
   }
   return candidate;
@@ -126339,7 +127589,7 @@ function assertInside(root5, candidate, label) {
 function resolvePluginPath(pluginRoot, base, value) {
   if (!value.startsWith("./") && !value.startsWith("../"))
     return value;
-  return assertInside(pluginRoot, (0, import_node_path38.resolve)(base, value), `plugin path '${value}'`);
+  return assertInside(pluginRoot, (0, import_node_path39.resolve)(base, value), `plugin path '${value}'`);
 }
 function configuredEnv(value) {
   if (value === void 0)
@@ -126365,14 +127615,14 @@ function pluginMcpEnv(runtimeEnv, pluginEnv, usesElectronNode) {
   return [...merged].map(([name, value]) => ({ name, value }));
 }
 async function resolvePluginMcpServers(pluginRoot, runtimeEnv) {
-  const manifest = JSON.parse(await (0, import_promises31.readFile)((0, import_node_path38.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
+  const manifest = JSON.parse(await (0, import_promises32.readFile)((0, import_node_path39.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
   const pluginName = typeof manifest.name === "string" ? manifest.name : "plugin";
   const mcpManifestPath = manifest.mcpServers;
   if (typeof mcpManifestPath !== "string" || !mcpManifestPath.startsWith("./")) {
     throw new Error(`built-in plugin '${pluginName}' has no valid mcpServers manifest`);
   }
   const mcpPath = resolvePluginPath(pluginRoot, pluginRoot, mcpManifestPath);
-  const mcpConfig = JSON.parse(await (0, import_promises31.readFile)(mcpPath, "utf8"));
+  const mcpConfig = JSON.parse(await (0, import_promises32.readFile)(mcpPath, "utf8"));
   const wrapped = isRecord13(mcpConfig.mcpServers) ? mcpConfig.mcpServers : isRecord13(mcpConfig.mcp_servers) ? mcpConfig.mcp_servers : mcpConfig;
   const servers = [];
   for (const [serverName, rawServer] of Object.entries(wrapped)) {
@@ -126409,15 +127659,15 @@ async function resolveAgentMcpServers(agentTemplateId, runtimeEnv) {
   const runtime = await readAgentRuntime(agentTemplateId);
   if (!runtime?.plugins?.length)
     return [];
-  const agentRoot = (0, import_node_path38.join)(bundledAgentsDir(), sanitize(agentTemplateId));
+  const agentRoot = (0, import_node_path39.join)(bundledAgentsDir(), sanitize(agentTemplateId));
   const resolved = await Promise.all(runtime.plugins.map((pluginId) => resolvePluginMcpServers(resolveAgentPluginRoot(agentRoot, pluginId, runtimeEnv), runtimeEnv)));
   return resolved.flat();
 }
 async function ensureAgentCwd(agentTemplateId, projectId, capabilities = {}) {
   const canonicalProjectId = projectId && projectId.length > 0 ? projectId : DEFAULT_PROJECT;
   const projectPathSegment = projectIdPathSegment(canonicalProjectId);
-  const cwd = (0, import_node_path38.join)(paths().projectsDir, projectPathSegment);
-  await (0, import_promises31.mkdir)(cwd, { recursive: true });
+  const cwd = (0, import_node_path39.join)(paths().projectsDir, projectPathSegment);
+  await (0, import_promises32.mkdir)(cwd, { recursive: true });
   await ensureProjectWorkspaceLayout(cwd);
   await assertAgentTemplate(agentTemplateId);
   await installNativeAgentSkills(agentTemplateId, resolveHarnessProjectSkillDirectory(capabilities.harnessId ?? ""), cwd);
@@ -126426,16 +127676,16 @@ async function ensureAgentCwd(agentTemplateId, projectId, capabilities = {}) {
 }
 async function ensureProjectWorkspaceLayout(cwd) {
   await Promise.all([
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "drafts"), { recursive: true }),
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "projections", "text"), { recursive: true }),
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "projections", "timelines"), { recursive: true }),
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "projections", "storyboards"), { recursive: true }),
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "projections", "prompts"), { recursive: true }),
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "projections", "metadata"), { recursive: true }),
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "timelines"), { recursive: true }),
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "sessions"), { recursive: true }),
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "assets", "links"), { recursive: true }),
-    (0, import_promises31.mkdir)((0, import_node_path38.join)(cwd, "runtime"), { recursive: true })
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "drafts"), { recursive: true }),
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "text"), { recursive: true }),
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "timelines"), { recursive: true }),
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "storyboards"), { recursive: true }),
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "prompts"), { recursive: true }),
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "projections", "metadata"), { recursive: true }),
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "timelines"), { recursive: true }),
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "sessions"), { recursive: true }),
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "assets", "links"), { recursive: true }),
+    (0, import_promises32.mkdir)((0, import_node_path39.join)(cwd, "runtime"), { recursive: true })
   ]);
 }
 function sanitize(id2) {
@@ -126443,9 +127693,9 @@ function sanitize(id2) {
 }
 function resolveAgentPluginRoot(agentRoot, pluginId, runtimeEnv) {
   if (pluginId === "clash" && runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT) {
-    return (0, import_node_path38.resolve)(runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT);
+    return (0, import_node_path39.resolve)(runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT);
   }
-  const packaged = (0, import_node_path38.join)(agentRoot, "plugins", sanitize(pluginId));
+  const packaged = (0, import_node_path39.join)(agentRoot, "plugins", sanitize(pluginId));
   if ((0, import_node_fs15.existsSync)(packaged) || pluginId !== "clash")
     return packaged;
   const workspaceSource = (0, import_node_url3.fileURLToPath)(new URL("../../../../../../plugins/clash/", __clash_import_meta_url));
@@ -126453,9 +127703,9 @@ function resolveAgentPluginRoot(agentRoot, pluginId, runtimeEnv) {
 }
 async function assertAgentTemplate(agentTemplateId) {
   const templateId = sanitize(agentTemplateId);
-  const runtimePath = (0, import_node_path38.join)(bundledAgentsDir(), templateId, "runtime.json");
+  const runtimePath = (0, import_node_path39.join)(bundledAgentsDir(), templateId, "runtime.json");
   try {
-    const runtime = await (0, import_promises31.lstat)(runtimePath);
+    const runtime = await (0, import_promises32.lstat)(runtimePath);
     if (!runtime.isFile())
       throw new Error(`unknown agent template: ${templateId}`);
   } catch (e5) {
@@ -126468,18 +127718,18 @@ async function assertAgentTemplate(agentTemplateId) {
 function resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory) {
   if (!workspaceSkillDirectory)
     return null;
-  if ((0, import_node_path38.isAbsolute)(workspaceSkillDirectory)) {
+  if ((0, import_node_path39.isAbsolute)(workspaceSkillDirectory)) {
     throw new Error("workspace Skill directory must be relative to the session cwd");
   }
-  const root5 = (0, import_node_path38.resolve)(cwd, workspaceSkillDirectory);
-  const fromCwd = (0, import_node_path38.relative)(cwd, root5);
-  if (fromCwd === ".." || fromCwd.startsWith(`..${import_node_path38.sep}`) || (0, import_node_path38.isAbsolute)(fromCwd)) {
+  const root5 = (0, import_node_path39.resolve)(cwd, workspaceSkillDirectory);
+  const fromCwd = (0, import_node_path39.relative)(cwd, root5);
+  if (fromCwd === ".." || fromCwd.startsWith(`..${import_node_path39.sep}`) || (0, import_node_path39.isAbsolute)(fromCwd)) {
     throw new Error("workspace Skill directory must stay inside the session cwd");
   }
   return root5;
 }
 async function replaceManagedSkillLink(target, source) {
-  const current = await (0, import_promises31.lstat)(target).catch((error53) => {
+  const current = await (0, import_promises32.lstat)(target).catch((error53) => {
     if (error53.code === "ENOENT")
       return null;
     throw error53;
@@ -126488,11 +127738,11 @@ async function replaceManagedSkillLink(target, source) {
     if (!current.isSymbolicLink()) {
       throw new Error(`Cannot install bundled Clash skill over an existing workspace entry: ${target}`);
     }
-    if (await (0, import_promises31.readlink)(target) === source)
+    if (await (0, import_promises32.readlink)(target) === source)
       return;
-    await (0, import_promises31.unlink)(target);
+    await (0, import_promises32.unlink)(target);
   }
-  await (0, import_promises31.symlink)(source, target, "dir");
+  await (0, import_promises32.symlink)(source, target, "dir");
 }
 async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory, cwd) {
   const root5 = resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory);
@@ -126501,27 +127751,27 @@ async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory
   const runtime = await readAgentRuntime(agentTemplateId);
   if (!runtime?.plugins?.length)
     return;
-  await (0, import_promises31.mkdir)(root5, { recursive: true });
+  await (0, import_promises32.mkdir)(root5, { recursive: true });
   for (const pluginId of runtime.plugins) {
-    const agentRoot = (0, import_node_path38.join)(bundledAgentsDir(), sanitize(agentTemplateId));
+    const agentRoot = (0, import_node_path39.join)(bundledAgentsDir(), sanitize(agentTemplateId));
     const pluginRoot = resolveAgentPluginRoot(agentRoot, pluginId, process.env);
-    const manifest = JSON.parse(await (0, import_promises31.readFile)((0, import_node_path38.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
+    const manifest = JSON.parse(await (0, import_promises32.readFile)((0, import_node_path39.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
     const configuredRoots = typeof manifest.skills === "string" ? [manifest.skills] : Array.isArray(manifest.skills) ? manifest.skills.filter((entry) => typeof entry === "string") : [];
     for (const configuredRoot of configuredRoots) {
       const skillRoot = resolvePluginPath(pluginRoot, pluginRoot, configuredRoot);
-      const entries = await (0, import_promises31.readdir)(skillRoot, { withFileTypes: true });
+      const entries = await (0, import_promises32.readdir)(skillRoot, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory())
           continue;
-        await replaceManagedSkillLink((0, import_node_path38.join)(root5, sanitize(entry.name)), (0, import_node_path38.join)(skillRoot, entry.name));
+        await replaceManagedSkillLink((0, import_node_path39.join)(root5, sanitize(entry.name)), (0, import_node_path39.join)(skillRoot, entry.name));
       }
     }
   }
 }
 async function writeProjectMarker(cwd, projectId) {
-  const markerDir = (0, import_node_path38.join)(cwd, ".clash");
-  await (0, import_promises31.mkdir)(markerDir, { recursive: true });
-  await (0, import_promises31.writeFile)((0, import_node_path38.join)(markerDir, "project.toml"), [
+  const markerDir = (0, import_node_path39.join)(cwd, ".clash");
+  await (0, import_promises32.mkdir)(markerDir, { recursive: true });
+  await (0, import_promises32.writeFile)((0, import_node_path39.join)(markerDir, "project.toml"), [
     "schema_version = 1",
     `project_id = ${JSON.stringify(projectId)}`,
     `workspace_id = ${JSON.stringify(projectWorkspaceId("managed", projectId, cwd))}`,
@@ -127061,12 +128311,12 @@ var SessionManager = class {
 };
 
 // ../../apps/local-api/dist/acp-registry-installer.js
-var import_node_child_process8 = require("node:child_process");
+var import_node_child_process9 = require("node:child_process");
 var import_node_crypto29 = require("node:crypto");
-var import_promises32 = require("node:fs/promises");
-var import_node_path39 = require("node:path");
-var import_node_util6 = require("node:util");
-var execFileAsync4 = (0, import_node_util6.promisify)(import_node_child_process8.execFile);
+var import_promises33 = require("node:fs/promises");
+var import_node_path40 = require("node:path");
+var import_node_util7 = require("node:util");
+var execFileAsync5 = (0, import_node_util7.promisify)(import_node_child_process9.execFile);
 var ACP_REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 function currentPlatformKey() {
   const os = process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : process.platform === "win32" ? "windows" : process.platform;
@@ -127123,9 +128373,9 @@ function renderShellShim(commandPath, args = [], env2 = {}) {
   ].join("\n");
 }
 async function writeExecutableShim(shimPath, commandPath, args = [], env2 = {}) {
-  await (0, import_promises32.mkdir)((0, import_node_path39.dirname)(shimPath), { recursive: true });
-  await (0, import_promises32.writeFile)(shimPath, renderShellShim(commandPath, args, env2), "utf8");
-  await (0, import_promises32.chmod)(shimPath, 493);
+  await (0, import_promises33.mkdir)((0, import_node_path40.dirname)(shimPath), { recursive: true });
+  await (0, import_promises33.writeFile)(shimPath, renderShellShim(commandPath, args, env2), "utf8");
+  await (0, import_promises33.chmod)(shimPath, 493);
 }
 async function fetchBytes(url2, fetchImpl) {
   const response = await fetchImpl(url2);
@@ -127157,7 +128407,7 @@ async function listAcpRegistryCatalog(options = {}) {
   });
 }
 function assertSafeRelativeCommand(cmd) {
-  if ((0, import_node_path39.isAbsolute)(cmd))
+  if ((0, import_node_path40.isAbsolute)(cmd))
     throw new Error(`Registry command must be relative: ${cmd}`);
   const normalized = cmd.replace(/\\/g, "/");
   if (normalized.split("/").includes(".."))
@@ -127197,23 +128447,23 @@ function rawBinaryFileName(url2) {
 function versionedInstallDir(root5, registryId, version2, archiveUrl) {
   const versionLabel = sanitizePathComponent(version2 ?? "unknown");
   const hash2 = (0, import_node_crypto29.createHash)("sha256").update(`${version2 ?? ""}\0${archiveUrl}`).digest("hex").slice(0, 16);
-  return (0, import_node_path39.join)(root5, "registry", sanitizePathComponent(registryId), `v_${versionLabel}_${hash2}`);
+  return (0, import_node_path40.join)(root5, "registry", sanitizePathComponent(registryId), `v_${versionLabel}_${hash2}`);
 }
 function registryInstallMetadataPath(root5, registryId) {
-  return (0, import_node_path39.join)(root5, "registry", sanitizePathComponent(registryId), "install.json");
+  return (0, import_node_path40.join)(root5, "registry", sanitizePathComponent(registryId), "install.json");
 }
 async function writeRegistryInstallMetadata(options, metadata) {
   const installRoot = options.installRoot ?? options.binDir;
   if (!installRoot)
     throw new Error("Install metadata requires an install root");
   const metadataPath = registryInstallMetadataPath(installRoot, options.registryId);
-  await (0, import_promises32.mkdir)((0, import_node_path39.dirname)(metadataPath), { recursive: true });
-  await (0, import_promises32.writeFile)(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+  await (0, import_promises33.mkdir)((0, import_node_path40.dirname)(metadataPath), { recursive: true });
+  await (0, import_promises33.writeFile)(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
 }
 async function readAcpRegistryInstallMetadata(options) {
   const installRoot = options.installRoot ?? options.binDir;
   try {
-    const parsed = JSON.parse(await (0, import_promises32.readFile)(registryInstallMetadataPath(installRoot, options.registryId), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises33.readFile)(registryInstallMetadataPath(installRoot, options.registryId), "utf8"));
     if (parsed.source !== "registry" || parsed.registryId !== options.registryId || typeof parsed.shimName !== "string") {
       return null;
     }
@@ -127242,40 +128492,40 @@ async function installBinaryDistribution(agent2, target, options) {
   const installRoot = options.installRoot ?? options.binDir;
   const finalDir = versionedInstallDir(installRoot, options.registryId, agent2.version, target.archive);
   const commandRelativePath = assertSafeRelativeCommand(target.cmd);
-  const commandPath = (0, import_node_path39.resolve)(finalDir, commandRelativePath);
-  const relativeCommandPath = (0, import_node_path39.relative)((0, import_node_path39.resolve)(finalDir), commandPath);
-  if (relativeCommandPath.startsWith("..") || (0, import_node_path39.isAbsolute)(relativeCommandPath)) {
+  const commandPath = (0, import_node_path40.resolve)(finalDir, commandRelativePath);
+  const relativeCommandPath = (0, import_node_path40.relative)((0, import_node_path40.resolve)(finalDir), commandPath);
+  if (relativeCommandPath.startsWith("..") || (0, import_node_path40.isAbsolute)(relativeCommandPath)) {
     throw new Error(`Registry command escapes install directory: ${target.cmd}`);
   }
   try {
-    await (0, import_promises32.chmod)(commandPath, 493);
+    await (0, import_promises33.chmod)(commandPath, 493);
   } catch {
     const tmpDir = `${finalDir}.tmp-${process.pid}-${Date.now()}`;
-    await (0, import_promises32.rm)(tmpDir, { recursive: true, force: true });
-    await (0, import_promises32.mkdir)(tmpDir, { recursive: true });
+    await (0, import_promises33.rm)(tmpDir, { recursive: true, force: true });
+    await (0, import_promises33.mkdir)(tmpDir, { recursive: true });
     const bytes = await fetchBytes(target.archive, fetchImpl);
     verifySha256(bytes, target.sha256);
     const kind = archiveKind(target.archive);
-    const archivePath = (0, import_node_path39.join)(tmpDir, `download${kind === "zip" ? ".zip" : kind === "tar-gz" ? ".tar.gz" : kind === "tar-bz2" ? ".tar.bz2" : (0, import_node_path39.extname)(rawBinaryFileName(target.archive))}`);
+    const archivePath = (0, import_node_path40.join)(tmpDir, `download${kind === "zip" ? ".zip" : kind === "tar-gz" ? ".tar.gz" : kind === "tar-bz2" ? ".tar.bz2" : (0, import_node_path40.extname)(rawBinaryFileName(target.archive))}`);
     if (kind === "raw") {
-      await (0, import_promises32.writeFile)((0, import_node_path39.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
+      await (0, import_promises33.writeFile)((0, import_node_path40.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
     } else {
-      await (0, import_promises32.writeFile)(archivePath, bytes);
+      await (0, import_promises33.writeFile)(archivePath, bytes);
       if (kind === "zip") {
-        await execFileAsync4("unzip", ["-q", archivePath, "-d", tmpDir]);
+        await execFileAsync5("unzip", ["-q", archivePath, "-d", tmpDir]);
       } else if (kind === "tar-gz") {
-        await execFileAsync4("tar", ["-xzf", archivePath, "-C", tmpDir]);
+        await execFileAsync5("tar", ["-xzf", archivePath, "-C", tmpDir]);
       } else {
-        await execFileAsync4("tar", ["-xjf", archivePath, "-C", tmpDir]);
+        await execFileAsync5("tar", ["-xjf", archivePath, "-C", tmpDir]);
       }
-      await (0, import_promises32.rm)(archivePath, { force: true });
+      await (0, import_promises33.rm)(archivePath, { force: true });
     }
-    await (0, import_promises32.rm)(finalDir, { recursive: true, force: true });
-    await (0, import_promises32.mkdir)((0, import_node_path39.dirname)(finalDir), { recursive: true });
-    await (0, import_promises32.rename)(tmpDir, finalDir);
-    await (0, import_promises32.chmod)(commandPath, 493);
+    await (0, import_promises33.rm)(finalDir, { recursive: true, force: true });
+    await (0, import_promises33.mkdir)((0, import_node_path40.dirname)(finalDir), { recursive: true });
+    await (0, import_promises33.rename)(tmpDir, finalDir);
+    await (0, import_promises33.chmod)(commandPath, 493);
   }
-  const shimPath = (0, import_node_path39.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path40.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, commandPath, options.shimArgs ?? target.args ?? [], {
     ...target.env ?? {},
     ...options.shimEnv ?? {}
@@ -127295,20 +128545,20 @@ function packagePathParts(packageName) {
 }
 async function resolvePackageBin(prefixDir, packageSpec) {
   const packageName = packageNameFromSpec(packageSpec);
-  const packageJsonPath = (0, import_node_path39.join)(prefixDir, "node_modules", ...packagePathParts(packageName), "package.json");
-  const pkg = JSON.parse(await (0, import_promises32.readFile)(packageJsonPath, "utf8"));
-  const unscopedName = (0, import_node_path39.basename)(packageName);
+  const packageJsonPath = (0, import_node_path40.join)(prefixDir, "node_modules", ...packagePathParts(packageName), "package.json");
+  const pkg = JSON.parse(await (0, import_promises33.readFile)(packageJsonPath, "utf8"));
+  const unscopedName = (0, import_node_path40.basename)(packageName);
   const binName = typeof pkg.bin === "string" ? unscopedName : pkg.bin?.[unscopedName] ? unscopedName : Object.keys(pkg.bin ?? {})[0];
   if (!binName)
     throw new Error(`${packageSpec} does not expose an executable bin`);
-  const candidate = (0, import_node_path39.join)(prefixDir, "node_modules", ".bin", process.platform === "win32" ? `${binName}.cmd` : binName);
+  const candidate = (0, import_node_path40.join)(prefixDir, "node_modules", ".bin", process.platform === "win32" ? `${binName}.cmd` : binName);
   return candidate;
 }
 async function installNpxDistribution(npx, options) {
   const installRoot = options.installRoot ?? options.binDir;
-  const prefixDir = (0, import_node_path39.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "npx");
-  await (0, import_promises32.mkdir)(prefixDir, { recursive: true });
-  await execFileAsync4(options.npmCommand ?? "npm", ["install", "--prefix", prefixDir, "--omit=dev", "--no-audit", "--no-fund", npx.package], {
+  const prefixDir = (0, import_node_path40.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "npx");
+  await (0, import_promises33.mkdir)(prefixDir, { recursive: true });
+  await execFileAsync5(options.npmCommand ?? "npm", ["install", "--prefix", prefixDir, "--omit=dev", "--no-audit", "--no-fund", npx.package], {
     env: {
       ...process.env,
       ...options.env ?? {}
@@ -127317,7 +128567,7 @@ async function installNpxDistribution(npx, options) {
     maxBuffer: 1024 * 1024
   });
   const packageBin = await resolvePackageBin(prefixDir, npx.package);
-  const shimPath = (0, import_node_path39.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path40.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, packageBin, options.shimArgs ?? npx.args ?? [], {
     ...npx.env ?? {},
     ...options.shimEnv ?? {}
@@ -127328,18 +128578,18 @@ function pythonPackageNameFromSpec(packageSpec) {
   return packageSpec.split(/[<>=!~\[]/, 1)[0].trim().replace(/_/g, "-");
 }
 async function firstExecutableInDir(binDir, preferredName) {
-  const entries = await (0, import_promises32.readdir)(binDir).catch(() => []);
+  const entries = await (0, import_promises33.readdir)(binDir).catch(() => []);
   const preferred = [
     preferredName,
     preferredName.replace(/-/g, "_"),
-    (0, import_node_path39.basename)(preferredName)
+    (0, import_node_path40.basename)(preferredName)
   ];
   for (const name of [...preferred, ...entries]) {
     if (!entries.includes(name))
       continue;
-    const candidate = (0, import_node_path39.join)(binDir, name);
+    const candidate = (0, import_node_path40.join)(binDir, name);
     try {
-      await (0, import_promises32.access)(candidate);
+      await (0, import_promises33.access)(candidate);
       return candidate;
     } catch {
     }
@@ -127348,11 +128598,11 @@ async function firstExecutableInDir(binDir, preferredName) {
 }
 async function installUvxDistribution(uvx, options) {
   const installRoot = options.installRoot ?? options.binDir;
-  const prefixDir = (0, import_node_path39.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "uvx");
-  const toolDir = (0, import_node_path39.join)(prefixDir, "tools");
-  const toolBinDir = (0, import_node_path39.join)(prefixDir, "bin");
-  await (0, import_promises32.mkdir)(toolBinDir, { recursive: true });
-  await execFileAsync4("uv", ["tool", "install", "--force", uvx.package], {
+  const prefixDir = (0, import_node_path40.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "uvx");
+  const toolDir = (0, import_node_path40.join)(prefixDir, "tools");
+  const toolBinDir = (0, import_node_path40.join)(prefixDir, "bin");
+  await (0, import_promises33.mkdir)(toolBinDir, { recursive: true });
+  await execFileAsync5("uv", ["tool", "install", "--force", uvx.package], {
     env: {
       ...process.env,
       ...options.env ?? {},
@@ -127363,7 +128613,7 @@ async function installUvxDistribution(uvx, options) {
     maxBuffer: 1024 * 1024
   });
   const packageBin = await firstExecutableInDir(toolBinDir, pythonPackageNameFromSpec(uvx.package));
-  const shimPath = (0, import_node_path39.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path40.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, packageBin, options.shimArgs ?? uvx.args ?? [], {
     ...uvx.env ?? {},
     ...options.shimEnv ?? {}
@@ -127425,22 +128675,22 @@ async function installAcpRegistryAgent(options) {
 async function installManagedAdapter(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const bytes = await fetchBytes(options.downloadUrl, fetchImpl);
-  await (0, import_promises32.mkdir)(options.binDir, { recursive: true });
-  const commandPath = (0, import_node_path39.join)(options.binDir, (0, import_node_path39.basename)(options.command));
-  await (0, import_promises32.writeFile)(commandPath, bytes);
-  await (0, import_promises32.chmod)(commandPath, 493);
+  await (0, import_promises33.mkdir)(options.binDir, { recursive: true });
+  const commandPath = (0, import_node_path40.join)(options.binDir, (0, import_node_path40.basename)(options.command));
+  await (0, import_promises33.writeFile)(commandPath, bytes);
+  await (0, import_promises33.chmod)(commandPath, 493);
   return { commandPath };
 }
 async function uninstallAcpRegistryAgent(options) {
   const installRoot = options.installRoot ?? options.binDir;
-  await (0, import_promises32.rm)((0, import_node_path39.join)(options.binDir, options.shimName), { force: true });
-  await (0, import_promises32.rm)((0, import_node_path39.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
+  await (0, import_promises33.rm)((0, import_node_path40.join)(options.binDir, options.shimName), { force: true });
+  await (0, import_promises33.rm)((0, import_node_path40.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
     recursive: true,
     force: true
   });
 }
 async function uninstallManagedAdapter(options) {
-  await (0, import_promises32.rm)((0, import_node_path39.join)(options.binDir, (0, import_node_path39.basename)(options.command)), { force: true });
+  await (0, import_promises33.rm)((0, import_node_path40.join)(options.binDir, (0, import_node_path40.basename)(options.command)), { force: true });
 }
 
 // ../../apps/local-api/dist/local-acp.js
@@ -127734,9 +128984,9 @@ var LOCAL_ACP_RUN_PREFERENCES_KEY = "local-acp-run-preferences";
 function harnessConfigFromLegacy(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return null;
-  const record2 = value;
-  const enabled = Array.isArray(record2.enabled) ? record2.enabled : Array.isArray(record2.enabled_harness_ids) ? record2.enabled_harness_ids : Array.isArray(record2.enabledHarnessIds) ? record2.enabledHarnessIds : null;
-  const agents = record2.agents && typeof record2.agents === "object" && !Array.isArray(record2.agents) ? record2.agents : record2.agent_servers && typeof record2.agent_servers === "object" && !Array.isArray(record2.agent_servers) ? record2.agent_servers : record2.agentServers && typeof record2.agentServers === "object" && !Array.isArray(record2.agentServers) ? record2.agentServers : null;
+  const record3 = value;
+  const enabled = Array.isArray(record3.enabled) ? record3.enabled : Array.isArray(record3.enabled_harness_ids) ? record3.enabled_harness_ids : Array.isArray(record3.enabledHarnessIds) ? record3.enabledHarnessIds : null;
+  const agents = record3.agents && typeof record3.agents === "object" && !Array.isArray(record3.agents) ? record3.agents : record3.agent_servers && typeof record3.agent_servers === "object" && !Array.isArray(record3.agent_servers) ? record3.agent_servers : record3.agentServers && typeof record3.agentServers === "object" && !Array.isArray(record3.agentServers) ? record3.agentServers : null;
   if (!enabled && !agents)
     return null;
   return {
@@ -127745,16 +128995,16 @@ function harnessConfigFromLegacy(value) {
   };
 }
 function normalizeRunPreferences(value) {
-  const record2 = isPlainObject2(value) ? value : {};
-  const agentId = typeof record2.agent_id === "string" && record2.agent_id.trim() ? record2.agent_id.trim() : typeof record2.agent === "string" && record2.agent.trim() ? record2.agent.trim() : void 0;
-  const rawConfig = isPlainObject2(record2.config_by_agent) ? record2.config_by_agent : isPlainObject2(record2.config) ? record2.config : {};
+  const record3 = isPlainObject2(value) ? value : {};
+  const agentId = typeof record3.agent_id === "string" && record3.agent_id.trim() ? record3.agent_id.trim() : typeof record3.agent === "string" && record3.agent.trim() ? record3.agent.trim() : void 0;
+  const rawConfig = isPlainObject2(record3.config_by_agent) ? record3.config_by_agent : isPlainObject2(record3.config) ? record3.config : {};
   const configByAgent = {};
   for (const [id2, rawValues] of Object.entries(rawConfig)) {
     if (!isPlainObject2(rawValues))
       continue;
     configByAgent[id2] = Object.fromEntries(Object.entries(rawValues).filter((entry) => typeof entry[1] === "string" || typeof entry[1] === "boolean"));
   }
-  const rawModes = isPlainObject2(record2.mode_by_agent) ? record2.mode_by_agent : isPlainObject2(record2.mode) ? record2.mode : {};
+  const rawModes = isPlainObject2(record3.mode_by_agent) ? record3.mode_by_agent : isPlainObject2(record3.mode) ? record3.mode : {};
   const modeByAgent = Object.fromEntries(Object.entries(rawModes).filter((entry) => typeof entry[1] === "string"));
   return {
     ...agentId ? { agent_id: agentId } : {},
@@ -127765,7 +129015,7 @@ function normalizeRunPreferences(value) {
 function createLocalHarnessConfigStore(dataDir2) {
   const userConfig = createClashUserConfigStore(dataDir2);
   const legacyStore = createSqliteLocalConfigStore(dataDir2);
-  const legacySidecarPath = (0, import_node_path40.join)(dataDir2, "harnesses.json");
+  const legacySidecarPath = (0, import_node_path41.join)(dataDir2, "harnesses.json");
   let migration = null;
   const ensureMigrated = () => {
     migration ??= (async () => {
@@ -127773,7 +129023,7 @@ function createLocalHarnessConfigStore(dataDir2) {
         return;
       let legacy = null;
       try {
-        legacy = JSON.parse(await (0, import_promises33.readFile)(legacySidecarPath, "utf8"));
+        legacy = JSON.parse(await (0, import_promises34.readFile)(legacySidecarPath, "utf8"));
       } catch {
         legacy = await legacyStore.getJson(LOCAL_HARNESS_CONFIG_KEY);
       }
@@ -127782,7 +129032,7 @@ function createLocalHarnessConfigStore(dataDir2) {
         return;
       await userConfig.setSection("harnesses", migrated);
       await legacyStore.delete(LOCAL_HARNESS_CONFIG_KEY);
-      await (0, import_promises33.unlink)(legacySidecarPath).catch(() => void 0);
+      await (0, import_promises34.unlink)(legacySidecarPath).catch(() => void 0);
     })();
     return migration;
   };
@@ -128001,7 +129251,7 @@ async function geminiAuthPreflight(env2) {
       message: "Cannot inspect Gemini auth because HOME is not set."
     };
   }
-  const settings = readJsonObject(await (0, import_promises33.readFile)((0, import_node_path40.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
+  const settings = readJsonObject(await (0, import_promises34.readFile)((0, import_node_path41.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
   const selectedType = nestedString(settings, ["security", "auth", "selectedType"]);
   if (selectedType) {
     return {
@@ -128009,7 +129259,7 @@ async function geminiAuthPreflight(env2) {
       message: `Gemini auth method selected: ${selectedType}.`
     };
   }
-  const accounts = readJsonObject(await (0, import_promises33.readFile)((0, import_node_path40.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
+  const accounts = readJsonObject(await (0, import_promises34.readFile)((0, import_node_path41.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
   const activeAccount = nestedString(accounts, ["active"]);
   const hadOldAccounts = Array.isArray(accounts?.old) && accounts.old.length > 0;
   return {
@@ -128053,7 +129303,7 @@ function terminalAuthShellCommand(options) {
 }
 function spawnDetachedCommand(command6, args, options = {}) {
   return new Promise((resolve18, reject) => {
-    const child = (0, import_node_child_process9.spawn)(command6, args, {
+    const child = (0, import_node_child_process10.spawn)(command6, args, {
       env: {
         ...process.env,
         ...mergedStringEnv2(options.env ?? {})
@@ -128089,7 +129339,7 @@ async function launchInteractiveAuthCommand(options) {
   if (!terminal) {
     throw new Error(`Interactive auth launch is not supported on ${process.platform}. Run ${[options.command, ...options.args].join(" ")} manually.`);
   }
-  const child = (0, import_node_child_process9.spawn)(terminal, ["-e", "sh", "-lc", shellCommand], {
+  const child = (0, import_node_child_process10.spawn)(terminal, ["-e", "sh", "-lc", shellCommand], {
     detached: true,
     stdio: "ignore"
   });
@@ -128555,8 +129805,8 @@ var LocalAcpRuntimeAdapter = class {
         ...registryLatestVersion ? { latestVersion: registryLatestVersion } : {}
       };
     }
-    const shimPath = (0, import_node_path40.join)(this.harnessDownloadDir, (0, import_node_path40.basename)(entry.spec.command));
-    const installed = await (0, import_promises33.access)(shimPath).then(() => true, () => false);
+    const shimPath = (0, import_node_path41.join)(this.harnessDownloadDir, (0, import_node_path41.basename)(entry.spec.command));
+    const installed = await (0, import_promises34.access)(shimPath).then(() => true, () => false);
     if (!installed) {
       return {
         installed: false,
@@ -128592,7 +129842,7 @@ var LocalAcpRuntimeAdapter = class {
     if (!this.harnessDownloadDir)
       return void 0;
     try {
-      const packageJson = JSON.parse(await (0, import_promises33.readFile)((0, import_node_path40.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
+      const packageJson = JSON.parse(await (0, import_promises34.readFile)((0, import_node_path41.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
       return typeof packageJson.version === "string" && packageJson.version.length > 0 ? packageJson.version : void 0;
     } catch {
       return void 0;
@@ -128714,7 +129964,7 @@ var LocalAcpRuntimeAdapter = class {
         throw new Error(`${entry.label} is missing an ACP registry id`);
       await installAcpRegistryAgent({
         registryId: entry.registryId,
-        shimName: (0, import_node_path40.basename)(entry.spec.command),
+        shimName: (0, import_node_path41.basename)(entry.spec.command),
         binDir: this.harnessDownloadDir,
         installRoot: this.harnessDownloadDir,
         fetchImpl: this.fetchImpl,
@@ -128764,7 +130014,7 @@ var LocalAcpRuntimeAdapter = class {
         throw new Error(`${entry.label} is missing an ACP registry id`);
       await uninstallAcpRegistryAgent({
         registryId: entry.registryId,
-        shimName: (0, import_node_path40.basename)(entry.spec.command),
+        shimName: (0, import_node_path41.basename)(entry.spec.command),
         binDir: this.harnessDownloadDir,
         installRoot: this.harnessDownloadDir
       });
@@ -129695,7 +130945,189 @@ function attachLocalAcpSessions(server2, adapter) {
 }
 
 // ../../apps/local-api/dist/local-processor.js
+var import_node_crypto32 = require("node:crypto");
+
+// ../../apps/local-api/dist/local-durable-output-staging.js
 var import_node_crypto31 = require("node:crypto");
+var import_node_module12 = require("node:module");
+var import_promises35 = require("node:fs/promises");
+var import_node_path42 = require("node:path");
+var nodeRequire11 = (0, import_node_module12.createRequire)(__clash_import_meta_url);
+function required3(value, label) {
+  const normalized = value.trim();
+  if (!normalized)
+    throw new Error(`${label} must not be empty.`);
+  return normalized;
+}
+function projectAssetId(input) {
+  const digest3 = (0, import_node_crypto31.createHash)("sha256").update(input.projectId).update("\0").update(input.actionRunId).update("\0").update(input.outputSlot).digest("hex");
+  return `local-output:${digest3}`;
+}
+function openDatabase8(path) {
+  const { DatabaseSync } = nodeRequire11("node:sqlite");
+  const database = new DatabaseSync(path);
+  database.exec(`
+    PRAGMA busy_timeout = 5000;
+    PRAGMA journal_mode = WAL;
+    CREATE TABLE IF NOT EXISTS local_durable_output_staging (
+      project_id TEXT NOT NULL,
+      action_run_id TEXT NOT NULL,
+      output_slot TEXT NOT NULL,
+      project_asset_id TEXT NOT NULL,
+      resource_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      metadata_json TEXT NOT NULL,
+      result_json TEXT,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (project_id, action_run_id, output_slot)
+    );
+  `);
+  return database;
+}
+function parseRow4(row) {
+  const projectId = row.project_id;
+  const actionRunId = row.action_run_id;
+  const outputSlot = row.output_slot;
+  const projectAssetIdValue = row.project_asset_id;
+  const resourceId = row.resource_id;
+  const kind = AssetKindSchema.safeParse(row.kind);
+  if (typeof projectId !== "string" || typeof actionRunId !== "string" || typeof outputSlot !== "string" || typeof projectAssetIdValue !== "string" || typeof resourceId !== "string" || !kind.success || typeof row.metadata_json !== "string" || row.result_json !== null && typeof row.result_json !== "string") {
+    throw new Error("Local durable output staging row is corrupt.");
+  }
+  let metadataValue;
+  try {
+    metadataValue = JSON.parse(row.metadata_json);
+  } catch {
+    throw new Error("Local durable output staging metadata is corrupt.");
+  }
+  let result;
+  if (typeof row.result_json === "string") {
+    const value = JSON.parse(row.result_json);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("Local durable output staging result is corrupt.");
+    }
+    const record3 = value;
+    for (const field3 of ["provider", "modelEndpoint", "requestId"]) {
+      if (record3[field3] !== void 0 && typeof record3[field3] !== "string") {
+        throw new Error("Local durable output staging result is corrupt.");
+      }
+    }
+    result = record3;
+  }
+  return {
+    projectId,
+    actionRunId,
+    outputSlot,
+    projectAssetId: projectAssetIdValue,
+    resourceId,
+    kind: kind.data,
+    metadata: ProjectAssetMetadataSchema.parse(metadataValue),
+    ...result ? { result } : {}
+  };
+}
+function createLocalDurableOutputStagingStore(options) {
+  const databasePath2 = (0, import_node_path42.join)(options.dataDir, "local.sqlite");
+  const resources = createLocalResourceStore({ dataDir: options.dataDir });
+  async function withDatabase(task) {
+    await (0, import_promises35.mkdir)(options.dataDir, { recursive: true });
+    const database = openDatabase8(databasePath2);
+    try {
+      return task(database);
+    } finally {
+      database.close();
+      await (0, import_promises35.chmod)(databasePath2, 384).catch(() => void 0);
+    }
+  }
+  async function load(input) {
+    return withDatabase((database) => {
+      const row = database.prepare(`SELECT project_id, action_run_id, output_slot, project_asset_id,
+                  resource_id, kind, metadata_json, result_json
+             FROM local_durable_output_staging
+            WHERE project_id = ? AND action_run_id = ? AND output_slot = ?`).get(input.projectId, input.actionRunId, input.outputSlot);
+      return row ? parseRow4(row) : void 0;
+    });
+  }
+  async function resolveStored(stored) {
+    const projection = await resources.resolve(stored.resourceId);
+    if (!projection || projection.resource.kind !== stored.kind) {
+      throw new Error(`Durable output ${stored.actionRunId}/${stored.outputSlot} has no matching immutable Resource.`);
+    }
+    return { ...stored, projection };
+  }
+  return {
+    async stage(input) {
+      const identity = {
+        projectId: required3(input.projectId, "projectId"),
+        actionRunId: required3(input.actionRunId, "actionRunId"),
+        outputSlot: required3(input.outputSlot, "outputSlot")
+      };
+      const existing = await load(identity);
+      if (existing)
+        return resolveStored(existing);
+      const projection = await resources.install({
+        kind: input.kind,
+        bytes: input.bytes,
+        contentType: input.contentType
+      });
+      const metadata = ProjectAssetMetadataSchema.parse({
+        ...input.metadata ?? {},
+        bytes: projection.resource.byteLength,
+        contentType: projection.resource.contentType ?? input.contentType
+      });
+      const intended = {
+        ...identity,
+        projectAssetId: projectAssetId(identity),
+        resourceId: projection.resource.id,
+        kind: input.kind,
+        metadata,
+        ...input.result ? { result: input.result } : {}
+      };
+      await withDatabase((database) => {
+        database.prepare(`INSERT OR IGNORE INTO local_durable_output_staging (
+               project_id, action_run_id, output_slot, project_asset_id,
+               resource_id, kind, metadata_json, result_json, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(intended.projectId, intended.actionRunId, intended.outputSlot, intended.projectAssetId, intended.resourceId, intended.kind, JSON.stringify(intended.metadata), intended.result ? JSON.stringify(intended.result) : null, Date.now());
+      });
+      const winner = await load(identity);
+      if (!winner)
+        throw new Error("Durable output staging receipt was not recorded.");
+      return resolveStored(winner);
+    },
+    async resolve(input) {
+      const identity = {
+        projectId: required3(input.projectId, "projectId"),
+        actionRunId: required3(input.actionRunId, "actionRunId"),
+        outputSlot: required3(input.outputSlot, "outputSlot")
+      };
+      const stored = await load(identity);
+      return stored ? resolveStored(stored) : void 0;
+    }
+  };
+}
+
+// ../../apps/local-api/dist/local-processor.js
+var LOCAL_EXECUTOR_BINDING = ExecutablePluginBindingSchema.parse({
+  pluginId: "clash.local-executor",
+  version: "1.0.0",
+  exportId: "execute",
+  schemaHash: `sha256:${(0, import_node_crypto32.createHash)("sha256").update("clash.local-executor/v1").digest("hex")}`
+});
+function jsonSnapshot(value) {
+  return ExecutablePluginJsonValueSchema.parse(JSON.parse(JSON.stringify(value)));
+}
+function canonicalJson2(value) {
+  const serialized = JSON.stringify(value, (_key, entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      return entry;
+    }
+    const record3 = entry;
+    return Object.fromEntries(Object.keys(record3).sort().map((key) => [key, record3[key]]));
+  });
+  if (serialized === void 0) {
+    throw new TypeError("Action revision input must be JSON-serializable.");
+  }
+  return serialized;
+}
 function sanitizeStorageSegment(value) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^-+|-+$/g, "") || "item";
 }
@@ -129774,13 +131206,91 @@ function durableProviderNodeData(data, updates) {
   }
   return next;
 }
-function durableProviderIdentity(projectId, nodeId, kind) {
+function canvasNodeProjectionRevisionId(input) {
+  const prompt = input.executionPrompt ?? authoredPromptFromData(input.nodeData, `Mock ${input.kind}`);
+  const mentions = [];
+  for (const [index, part] of parsePromptParts(prompt).entries()) {
+    if (part.type !== "asset_ref" || !part.nodeId)
+      continue;
+    const resolved = input.resolveMention(part.nodeId);
+    mentions.push(resolved ? { index, nodeId: part.nodeId, ...resolved } : { index, nodeId: part.nodeId, missing: true });
+  }
+  const parsedBinding = ExecutablePluginBindingSchema.safeParse(input.nodeData.pluginBinding);
+  const commonProjection = {
+    schemaVersion: 1,
+    projectId: input.projectId,
+    nodeId: input.nodeId,
+    kind: input.kind,
+    actionType: input.nodeData.actionType,
+    prompt,
+    referenceImageAssetIds: stringList2(input.nodeData.referenceImageAssetIds),
+    referenceVideoAssetIds: stringList2(input.nodeData.referenceVideoAssetIds),
+    referenceAudioAssetIds: stringList2(input.nodeData.referenceAudioAssetIds),
+    mentions,
+    ...parsedBinding.success ? { pluginBinding: parsedBinding.data } : {}
+  };
+  const semanticProjection = input.targetKind === "action" ? {
+    ...commonProjection,
+    customActionId: input.nodeData.customActionId,
+    customActionParams: input.nodeData.customActionParams,
+    outputType: input.nodeData.outputType
+  } : {
+    ...commonProjection,
+    model: modelFromData(input.nodeData, `mock-${input.kind}`),
+    modelParams: modelParams(input.nodeData),
+    aspectRatio: aspectRatioFromData(input.nodeData),
+    duration: input.nodeData.duration ?? modelParams(input.nodeData).duration,
+    referenceMode: input.nodeData.referenceMode
+  };
+  const digest3 = (0, import_node_crypto32.createHash)("sha256").update(canonicalJson2(semanticProjection)).digest("hex");
+  return `sha256:${digest3}`;
+}
+function canvasExecutorActionRevisionId(executor) {
+  let semanticInput = executor.input;
+  if (executor.targetKind === "local-executor" && executor.input.values.localExecutor === "generation") {
+    const generationInput = executor.input.values.generationInput;
+    if (generationInput && typeof generationInput === "object" && !Array.isArray(generationInput)) {
+      const { taskId: _taskId, projectId: _projectId, nodeId: _nodeId, actorType: _actorType, actorUserId: _actorUserId, actorAgentId: _actorAgentId, providerAccountId: _providerAccountId, ...semanticGenerationInput } = generationInput;
+      semanticInput = {
+        ...executor.input,
+        values: {
+          ...executor.input.values,
+          generationInput: semanticGenerationInput
+        }
+      };
+    }
+  }
+  const digest3 = (0, import_node_crypto32.createHash)("sha256").update(canonicalJson2({
+    schemaVersion: 1,
+    targetKind: executor.targetKind ?? "provider-executor",
+    binding: executor.binding,
+    ...executor.actionId ? { actionId: executor.actionId } : {},
+    kind: executor.kind,
+    projectId: executor.projectId,
+    ...executor.nodeId ? { nodeId: executor.nodeId } : {},
+    assetInputs: executor.assetInputs ?? [],
+    ...executor.delivery ? { delivery: executor.delivery } : {},
+    ...executor.provider ? { provider: executor.provider } : {},
+    ...executor.modelEndpoint ? { modelEndpoint: executor.modelEndpoint } : {},
+    ...executor.nodeProjectionRevisionId ? { nodeProjectionRevisionId: executor.nodeProjectionRevisionId } : {},
+    input: semanticInput
+  })).digest("hex");
+  return `sha256:${digest3}`;
+}
+function durableProviderIdentity(input) {
   return {
-    actionRunId: `project:${projectId}:node:${nodeId}`,
-    outputSlot: kind === "text" ? "text" : "media"
+    actionRunId: `project:${input.projectId}:node:${input.nodeId}:revision:` + input.actionRevisionId.slice("sha256:".length),
+    outputSlot: input.kind === "text" ? "text" : "media"
   };
 }
 function durableActionOwner(frozen, actionRunId) {
+  if (frozen.publicOwner) {
+    return {
+      kind: "run",
+      ...frozen.publicOwner,
+      actionRunId
+    };
+  }
   const actionId = frozen.delivery?.actionId ?? `node:${frozen.nodeId ?? "project"}`;
   const publicRevision = {
     targetKind: frozen.targetKind ?? "provider-executor",
@@ -129794,7 +131304,7 @@ function durableActionOwner(frozen, actionRunId) {
     ...frozen.modelEndpoint ? { modelEndpoint: frozen.modelEndpoint } : {},
     input: frozen.input
   };
-  const digest3 = (0, import_node_crypto31.createHash)("sha256").update(JSON.stringify(publicRevision)).digest("hex");
+  const digest3 = (0, import_node_crypto32.createHash)("sha256").update(JSON.stringify(publicRevision)).digest("hex");
   return {
     kind: "run",
     actionId,
@@ -129802,21 +131312,20 @@ function durableActionOwner(frozen, actionRunId) {
     actionRunId
   };
 }
-function nodeActionOwner(input) {
-  const digest3 = (0, import_node_crypto31.createHash)("sha256").update(JSON.stringify({
-    projectId: input.projectId,
-    nodeId: input.nodeId,
-    kind: input.kind,
-    model: modelFromData(input.nodeData, `mock-${input.kind}`),
-    prompt: providerPromptFromData(input.nodeData, `Mock ${input.kind}`),
-    modelParams: modelParams(input.nodeData)
-  })).digest("hex");
-  return {
-    kind: "run",
-    actionId: `node:${input.nodeId}`,
-    actionRevisionId: `sha256:${digest3}`,
-    actionRunId: input.actionRunId
-  };
+function isCurrentProviderNodeRevision(input) {
+  const { frozen } = input;
+  if (!frozen.nodeId)
+    return true;
+  if (frozen.kind === "model")
+    return false;
+  if (frozen.targetKind === "local-executor" && frozen.input.values.localExecutor === "timeline-render") {
+    const owner = timelineRenderInputOwner(input.nodeData);
+    return !!owner && !!frozen.publicOwner && owner.actionId === frozen.publicOwner.actionId && owner.actionRevisionId === frozen.publicOwner.actionRevisionId;
+  }
+  if (frozen.nodeProjectionRevisionId) {
+    return frozen.nodeProjectionRevisionId === input.currentProjectionRevisionId;
+  }
+  return false;
 }
 function frozenExecutorInput(run) {
   return run.executorInput;
@@ -129923,7 +131432,7 @@ function mixedContentReferences(input) {
   return ordered.map((entry, index) => "text" in entry ? { slot: "content", index, text: entry.text } : assetReference(entry.asset, "content", index));
 }
 function textHash2(content) {
-  return (0, import_node_crypto31.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_node_crypto32.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function textRevisionActor(nodeData, userId) {
   if (nodeData.actorType !== "user" && nodeData.actorType !== "agent")
@@ -129946,7 +131455,7 @@ function generatedTextRevision(options) {
     createdAt,
     actor: actor ?? null
   });
-  const suffix = (0, import_node_crypto31.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
+  const suffix = (0, import_node_crypto32.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
   return {
     schemaVersion: 1,
     kind: "clash.text.revision",
@@ -129974,7 +131483,7 @@ async function recordGeneratedTextRevision(options) {
   }, { resultEntityId: revision.revisionId });
   await storeTextRevisionContentBlob(options.dataDir, revision, options.content);
   await metadataStore.upsertTextRevision(revision, {
-    id: options.auditId ?? (0, import_node_crypto31.randomUUID)(),
+    id: options.auditId ?? (0, import_node_crypto32.randomUUID)(),
     createdAt: Date.now(),
     operation: mutation.operation,
     entity: mutation.entity,
@@ -129993,13 +131502,16 @@ function pendingCustomNode(node) {
     return null;
   if (typeof data.actionType !== "string" || !data.actionType.startsWith("custom:"))
     return null;
-  if (data.status !== "pending")
+  if (data.status !== "pending" && data.status !== "generating")
     return null;
   if (data.pendingTask)
     return null;
   const actionId = typeof data.customActionId === "string" && data.customActionId ? data.customActionId : data.actionType.slice("custom:".length);
   const outputType = data.outputType === "video" || data.outputType === "audio" || data.outputType === "text" ? data.outputType : "image";
   return { actionId, outputType };
+}
+function customActionPromptFromData(data) {
+  return extractPromptText(parsePromptParts(typeof data.prompt === "string" ? data.prompt : typeof data.content === "string" ? data.content : ""));
 }
 function pendingKindForNode(node) {
   if (node.type !== "image" && node.type !== "video" && node.type !== "audio" && node.type !== "text")
@@ -130016,6 +131528,15 @@ function pendingKindForNode(node) {
   if (data.actionType && data.actionType !== expectedActionType)
     return null;
   return kind;
+}
+function timelineRenderInputOwner(data) {
+  const parsed = ActionBindingOwnerSchema.safeParse({
+    kind: "run",
+    actionId: data.sourceTimelineActionId,
+    actionRevisionId: data.sourceTimelineRevisionId,
+    actionRunId: data.sourceTimelineActionRunId
+  });
+  return parsed.success && parsed.data.kind === "run" ? parsed.data : null;
 }
 function extensionForContentType(contentType) {
   if (contentType.includes("image/svg"))
@@ -130053,7 +131574,6 @@ function ownedProjectAssetEntry(options) {
       ...options.width === void 0 ? {} : { width: options.width },
       ...options.height === void 0 ? {} : { height: options.height },
       ...options.durationMs === void 0 ? {} : { durationMs: options.durationMs },
-      ...options.waveform ? { waveform: options.waveform } : {},
       bytes: options.projection.resource.byteLength,
       ...options.projection.resource.contentType ? { contentType: options.projection.resource.contentType } : {},
       ...options.name ? { originalName: name } : {}
@@ -130068,31 +131588,6 @@ function ownedProjectAssetEntry(options) {
     }
   });
 }
-async function saveAsset(options) {
-  const assetId = `local-asset-${sanitizeStorageSegment(options.taskId)}`;
-  const projection = await options.projectAssets.stageOwned({
-    kind: options.kind,
-    bytes: options.bytes,
-    contentType: options.contentType,
-    name: `${assetId}${extensionForContentType(options.contentType)}`
-  });
-  const entry = ownedProjectAssetEntry({ ...options, projection });
-  return publishLocalProjectAssetWithBindings(options.doc, entry, [
-    {
-      id: `action-asset:${options.taskId}:output`,
-      owner: nodeActionOwner({
-        projectId: options.projectId,
-        nodeId: options.nodeId,
-        actionRunId: options.taskId,
-        kind: options.kind,
-        nodeData: options.nodeData
-      }),
-      direction: "output",
-      slot: options.provider === "local-render" ? "render:output" : "media",
-      projectAssetId: entry.id
-    }
-  ]).entry;
-}
 async function resolveLocalTimelineDslReferences(options) {
   const resolved = structuredClone(options.timelineDsl);
   const projectAssets = createLocalProjectAssetService({
@@ -130105,6 +131600,14 @@ async function resolveLocalTimelineDslReferences(options) {
   });
   await projectAssets.materializeDoc(options.projectId, options.doc);
   const nodes5 = options.doc.getMap("nodes");
+  const frozenInputs = listActionAssetBindingsForOwner(options.doc, options.inputOwner).filter((binding) => binding.direction === "input");
+  const frozenBySlot = /* @__PURE__ */ new Map();
+  for (const binding of frozenInputs) {
+    if (frozenBySlot.has(binding.slot)) {
+      throw new Error(`Timeline render run ${options.inputOwner.actionRunId} has duplicate input slot ${binding.slot}`);
+    }
+    frozenBySlot.set(binding.slot, binding);
+  }
   for (const track of resolved.tracks ?? []) {
     for (const item of track.items ?? []) {
       if (item.type === "composition" && item.runtime === "remotion") {
@@ -130128,25 +131631,17 @@ async function resolveLocalTimelineDslReferences(options) {
       }
       if (item.type !== "video" && item.type !== "image" && item.type !== "audio")
         continue;
-      const lookupIds = [item.assetId, item.sourceNodeId].filter((value) => typeof value === "string" && value.length > 0);
-      if (typeof item.sourceNodeId === "string" && item.sourceNodeId.startsWith("timeline-asset:")) {
-        lookupIds.push(item.sourceNodeId.slice("timeline-asset:".length));
+      const itemId = typeof item.id === "string" ? item.id.trim() : "";
+      if (!itemId) {
+        throw new Error("Timeline render media items require a stable item id");
       }
-      let asset = lookupIds.map((id2) => readProjectAsset(options.doc, id2)).find((candidate) => candidate?.lifecycle.state === "active");
+      const slot = `timeline:item:${itemId}`;
+      const binding = frozenBySlot.get(slot);
+      const asset = binding ? readProjectAsset(options.doc, binding.projectAssetId) : null;
       if (!asset) {
-        for (const id2 of lookupIds) {
-          const node = nodes5.get(id2);
-          const nodeProjectAssetId = typeof node?.data?.assetId === "string" ? node.data.assetId : void 0;
-          const backing = nodeProjectAssetId ? readProjectAsset(options.doc, nodeProjectAssetId) : null;
-          if (backing?.lifecycle.state === "active") {
-            asset = backing;
-            break;
-          }
-        }
+        throw new Error(`Timeline render run ${options.inputOwner.actionRunId} has no readable frozen input for ${slot}`);
       }
-      if (!asset) {
-        throw new Error(`Timeline render cannot resolve media item ${String(item.id ?? "unknown")}`);
-      }
+      item.assetId = asset.id;
       const resolvedAsset = await projectAssets.readFromDoc(options.doc, options.projectId, asset.id);
       if (!options.mediaBaseUrl) {
         throw new Error("Timeline rendering requires a local media base URL");
@@ -130163,8 +131658,8 @@ function createLocalWorkflowProcessor(options) {
   const generationDeadlineMs = providerGenerationDeadlineMs(options.providerGenerationDeadlineMs);
   const aigc = options.aigc ?? createMockExternalAigcService();
   const userId = options.userId ?? "local-user";
-  const durableOwnerId = options.durableProviderRuns?.ownerId ?? (options.executablePluginAction ? "local-api" : void 0);
-  const durableJournal = durableOwnerId ? createSqliteDurableRunJournal(options.dataDir) : void 0;
+  const durableOwnerId = options.durableProviderRuns?.ownerId ?? "local-api";
+  const durableJournal = createSqliteDurableRunJournal(options.dataDir);
   const providerExecutionHandoffs = createProviderExecutionHandoffStore(options.dataDir);
   const projectAssets = createLocalProjectAssetService({
     dataDir: options.dataDir,
@@ -130172,16 +131667,18 @@ function createLocalWorkflowProcessor(options) {
       if (!options.mediaBaseUrl)
         return "http://127.0.0.1";
       return typeof options.mediaBaseUrl === "function" ? options.mediaBaseUrl() : options.mediaBaseUrl;
-    }
+    },
+    ...options.assetInspection ? { assetInspection: options.assetInspection } : {}
   });
   const pluginAssetStaging = createLocalPluginAssetStagingStore({
+    dataDir: options.dataDir
+  });
+  const localOutputStaging = createLocalDurableOutputStagingStore({
     dataDir: options.dataDir
   });
   return {
     ...options.providerPollDelayCapMs === void 0 ? {} : { minimumPollDelayMs: options.providerPollDelayCapMs },
     async nextWakeAt(projectId) {
-      if (!durableJournal || !durableOwnerId)
-        return void 0;
       return durableJournal.nextWakeAt(durableOwnerId, projectId);
     },
     async process(input) {
@@ -130189,8 +131686,189 @@ function createLocalWorkflowProcessor(options) {
       const nodes5 = doc.getMap("nodes");
       const modelCards = options.modelCards ? await options.modelCards() : MODEL_CARDS;
       let changed = await projectAssets.materializeDoc(projectId, doc);
+      const nodeProjectionRevisionId = (nodeId, kind, nodeData, executionPrompt, targetKind) => canvasNodeProjectionRevisionId({
+        projectId,
+        nodeId,
+        kind,
+        nodeData,
+        ...targetKind === void 0 ? {} : { targetKind },
+        ...executionPrompt === void 0 ? {} : { executionPrompt },
+        resolveMention(mentionedNodeId) {
+          const referencedNode = nodes5.get(mentionedNodeId);
+          const assetId = typeof referencedNode?.data?.assetId === "string" ? referencedNode.data.assetId : void 0;
+          const modality = referencedNode?.type;
+          return assetId && (modality === "image" || modality === "video" || modality === "audio") ? { assetId, kind: modality } : void 0;
+        }
+      });
       const durable = options.durableProviderRuns;
-      const coordinator = durableOwnerId && durableJournal ? createLocalDurableRunCoordinator({
+      const localExecutor = async (request) => {
+        const attemptBudgetMs = request.timeoutMs ?? generationDeadlineMs;
+        const attemptDeadlineAt = Date.now() + attemptBudgetMs;
+        const beforeAttemptDeadline = (operation2) => beforeProviderGenerationDeadline(operation2, attemptDeadlineAt, attemptBudgetMs);
+        const mode = request.input.values.localExecutor;
+        const outputSlot = request.input.values.outputSlot;
+        if (typeof mode !== "string" || typeof outputSlot !== "string") {
+          throw new Error("Frozen Host-local executor input is invalid.");
+        }
+        const invocationId = `${request.taskId}:${outputSlot}`;
+        if (mode === "timeline-render") {
+          if (!options.timelineRenderer) {
+            throw new Error("Timeline rendering backend is unavailable");
+          }
+          const timelineDsl = request.input.values.timelineDsl;
+          const inputOwnerValue = request.input.values.inputOwner;
+          if (!timelineDsl || typeof timelineDsl !== "object" || Array.isArray(timelineDsl) || !inputOwnerValue || typeof inputOwnerValue !== "object" || Array.isArray(inputOwnerValue)) {
+            throw new Error("Frozen Timeline render input is invalid.");
+          }
+          const inputOwner = ActionBindingOwnerSchema.parse(inputOwnerValue);
+          if (inputOwner.kind !== "run") {
+            throw new Error("Frozen Timeline render owner is not a run.");
+          }
+          const resolvedDsl = await resolveLocalTimelineDslReferences({
+            dataDir: options.dataDir,
+            doc,
+            projectId: request.projectId,
+            mediaBaseUrl: options.mediaBaseUrl,
+            timelineDsl,
+            inputOwner
+          });
+          const rendered = await beforeAttemptDeadline(options.timelineRenderer.render({
+            projectId: request.projectId,
+            taskId: request.taskId,
+            timelineDsl: resolvedDsl
+          }));
+          const staged2 = await localOutputStaging.stage({
+            projectId: request.projectId,
+            actionRunId: request.taskId,
+            outputSlot,
+            kind: "video",
+            bytes: rendered.bytes,
+            contentType: rendered.contentType ?? "video/mp4",
+            metadata: {
+              ...rendered.width === void 0 ? {} : { width: rendered.width },
+              ...rendered.height === void 0 ? {} : { height: rendered.height },
+              ...rendered.durationMs === void 0 ? {} : { durationMs: rendered.durationMs }
+            },
+            result: {
+              provider: "local-render",
+              modelEndpoint: "remotion-render"
+            }
+          });
+          return {
+            protocol: "clash.plugin.result/v1",
+            invocationId,
+            status: "completed",
+            outputs: [
+              {
+                slot: outputSlot,
+                kind: "asset",
+                asset: {
+                  assetId: staged2.projectAssetId,
+                  uri: `clash-asset://${staged2.projectAssetId}`,
+                  kind: "video",
+                  mediaType: staged2.projection.resource.contentType
+                }
+              }
+            ]
+          };
+        }
+        if (mode !== "generation") {
+          throw new Error(`Host-local executor ${mode} is not recognized.`);
+        }
+        const generationKind = request.input.values.generationKind;
+        const snapshot = request.input.values.generationInput;
+        if (generationKind !== "image" && generationKind !== "video" && generationKind !== "audio" && generationKind !== "text" || !snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+          throw new Error("Frozen Host-local generation input is invalid.");
+        }
+        const generationInput = {
+          ...snapshot,
+          taskId: request.taskId,
+          projectId: request.projectId,
+          ...request.nodeId ? { nodeId: request.nodeId } : {},
+          references: request.input.references
+        };
+        if (generationKind === "text") {
+          let generated2;
+          if (request.input.values.useLocalTextAgent === true) {
+            if (!options.textAgent) {
+              throw new ProviderPluginHostUnavailableError("The frozen local text executor is unavailable.");
+            }
+            generated2 = await beforeAttemptDeadline(options.textAgent.generate({
+              projectId: request.projectId,
+              prompt: generationInput.prompt,
+              modelId: generationInput.model,
+              modelParams: generationInput.modelParams,
+              actorAgentId: generationInput.actorAgentId
+            }));
+          } else {
+            generated2 = await beforeAttemptDeadline(aigc.generateText(generationInput));
+          }
+          return {
+            protocol: "clash.plugin.result/v1",
+            invocationId,
+            status: "completed",
+            outputs: [
+              {
+                slot: outputSlot,
+                kind: "value",
+                value: {
+                  text: generated2.text,
+                  ...generated2.provider ? { provider: generated2.provider } : {},
+                  ...generated2.modelEndpoint ? { modelEndpoint: generated2.modelEndpoint } : {}
+                }
+              }
+            ]
+          };
+        }
+        const generated = await beforeAttemptDeadline(generationKind === "image" ? aigc.generateImage(generationInput) : generationKind === "video" ? aigc.generateVideo(generationInput) : aigc.generateAudio(generationInput));
+        if (generated.status === "accepted") {
+          throw new Error("An accepted Provider result requires the durable executable Provider path.");
+        }
+        if (generated.status === "failed") {
+          return {
+            protocol: "clash.plugin.result/v1",
+            invocationId,
+            status: "failed",
+            error: generated.error
+          };
+        }
+        const staged = await localOutputStaging.stage({
+          projectId: request.projectId,
+          actionRunId: request.taskId,
+          outputSlot,
+          kind: generationKind,
+          bytes: generated.bytes,
+          contentType: generated.contentType,
+          metadata: {
+            ...generated.width === void 0 ? {} : { width: generated.width },
+            ...generated.height === void 0 ? {} : { height: generated.height },
+            ...generated.durationMs === void 0 ? {} : { durationMs: generated.durationMs }
+          },
+          result: {
+            ...generated.provider ? { provider: generated.provider } : {},
+            ...generated.modelEndpoint ? { modelEndpoint: generated.modelEndpoint } : {},
+            ...generated.requestId ? { requestId: generated.requestId } : {}
+          }
+        });
+        return {
+          protocol: "clash.plugin.result/v1",
+          invocationId,
+          status: "completed",
+          outputs: [
+            {
+              slot: outputSlot,
+              kind: "asset",
+              asset: {
+                assetId: staged.projectAssetId,
+                uri: `clash-asset://${staged.projectAssetId}`,
+                kind: generationKind,
+                mediaType: staged.projection.resource.contentType
+              }
+            }
+          ]
+        };
+      };
+      const coordinator = createLocalDurableRunCoordinator({
         ownerId: durableOwnerId,
         journal: durableJournal,
         providerPluginExecutor: async (request) => {
@@ -130207,6 +131885,7 @@ function createLocalWorkflowProcessor(options) {
           };
         },
         ...options.executablePluginAction ? { executablePluginAction: options.executablePluginAction } : {},
+        localExecutor,
         outputStore: {
           async stage({ run, idempotencyKey, outputs }) {
             const frozen = frozenExecutorInput(run);
@@ -130217,7 +131896,7 @@ function createLocalWorkflowProcessor(options) {
             if (frozen.nodeId && (!rawTarget?.data || typeof rawTarget.data !== "object")) {
               throw new Error(`Durable Provider target node ${frozen.nodeId} is missing.`);
             }
-            const output = outputs.find((candidate) => candidate.slot === run.outputSlot);
+            const output = outputs.find((candidate2) => candidate2.slot === run.outputSlot);
             if (!output) {
               throw new Error(`Durable Provider output slot ${run.outputSlot} is missing.`);
             }
@@ -130228,7 +131907,9 @@ function createLocalWorkflowProcessor(options) {
               if (!frozen.nodeId || !rawTarget?.data) {
                 throw new Error("A durable Provider text output requires a target node.");
               }
-              if (typeof output.value !== "string" || !output.value.trim()) {
+              const localValue = frozen.targetKind === "local-executor" && output.value && typeof output.value === "object" && !Array.isArray(output.value) ? output.value : void 0;
+              const content = localValue?.text ?? output.value;
+              if (typeof content !== "string" || !content.trim()) {
                 throw new Error("Durable Provider text output must be a non-empty string.");
               }
               const revision = await recordGeneratedTextRevision({
@@ -130236,24 +131917,69 @@ function createLocalWorkflowProcessor(options) {
                 userId,
                 projectId: frozen.projectId,
                 nodeId: frozen.nodeId,
-                nodeData: frozen.targetKind === "action" ? {
+                nodeData: frozen.targetKind === "action" || frozen.targetKind === "local-executor" ? {
                   actorType: frozen.actor?.kind,
                   ...frozen.actor?.kind === "agent" && frozen.actor.id ? { actorAgentId: frozen.actor.id } : {}
                 } : rawTarget.data,
-                content: output.value,
+                content,
                 createdAt: new Date(run.createdAt).toISOString(),
                 auditId: `durable:${idempotencyKey}:text`
               });
               return {
                 kind: "text",
-                content: output.value,
-                revisionId: revision.revisionId
+                content,
+                revisionId: revision.revisionId,
+                ...typeof localValue?.provider === "string" ? { provider: localValue.provider } : {},
+                ...typeof localValue?.modelEndpoint === "string" ? { modelEndpoint: localValue.modelEndpoint } : {}
               };
             }
             if (output.kind !== "asset") {
               throw new Error("Durable Provider media output must be a canonical Asset handle.");
             }
             const media = output.asset;
+            if (frozen.targetKind === "local-executor") {
+              const staged2 = await localOutputStaging.resolve({
+                projectId: frozen.projectId,
+                actionRunId: run.actionRunId,
+                outputSlot: run.outputSlot
+              });
+              if (!staged2 || staged2.projectAssetId !== media.assetId) {
+                throw new Error("Host-local durable media output requires its stable staging receipt.");
+              }
+              if (staged2.kind !== frozen.kind) {
+                throw new Error(`Host-local durable output is ${staged2.kind}, not ${frozen.kind}.`);
+              }
+              const prompt = typeof frozen.input.values.prompt === "string" ? frozen.input.values.prompt : `Generate ${frozen.kind}`;
+              const candidate2 = ownedProjectAssetEntry({
+                projectAssetId: staged2.projectAssetId,
+                projectId: frozen.projectId,
+                taskId: idempotencyKey,
+                actionRunId: run.actionRunId,
+                kind: staged2.kind,
+                prompt,
+                projection: staged2.projection,
+                width: staged2.metadata.width,
+                height: staged2.metadata.height,
+                durationMs: staged2.metadata.durationMs,
+                provider: staged2.result?.provider ?? frozen.provider,
+                modelEndpoint: staged2.result?.modelEndpoint ?? frozen.modelEndpoint
+              });
+              const projectAsset2 = await projectAssets.prepareStagedOwnedEntry({
+                projectAssetId: candidate2.id,
+                kind: candidate2.kind,
+                resourceId: staged2.projection.resource.id,
+                ...candidate2.name ? { name: candidate2.name } : {},
+                metadata: {
+                  ...candidate2.metadata,
+                  ...staged2.metadata
+                },
+                ...candidate2.provenance ? { provenance: candidate2.provenance } : {}
+              });
+              return {
+                kind: "asset",
+                projectAsset: projectAsset2
+              };
+            }
             const staged = await pluginAssetStaging.resolve({
               projectId: frozen.projectId,
               projectAssetId: media.assetId
@@ -130266,21 +131992,26 @@ function createLocalWorkflowProcessor(options) {
             }
             const assetId = staged.projectAssetId;
             const projection = await projectAssets.resolveStagedOwned(staged.resourceId);
-            const projectAsset = ownedProjectAssetEntry({
+            const candidate = ownedProjectAssetEntry({
               projectAssetId: assetId,
               projectId: frozen.projectId,
               taskId: idempotencyKey,
               actionRunId: run.actionRunId,
               kind: frozen.kind,
-              ...rawTarget?.data && frozen.targetKind !== "action" ? {
-                nodeData: rawTarget.data
-              } : {},
-              ...frozen.targetKind === "action" && typeof frozen.input.values.prompt === "string" ? { prompt: frozen.input.values.prompt } : {},
+              ...typeof frozen.input.values.prompt === "string" ? { prompt: frozen.input.values.prompt } : {},
               ...frozen.delivery?.name ? { name: frozen.delivery.name } : {},
               ...frozen.delivery?.prompt ? { prompt: frozen.delivery.prompt } : {},
               projection,
               ...frozen.provider ? { provider: frozen.provider } : {},
               ...frozen.modelEndpoint ? { modelEndpoint: frozen.modelEndpoint } : {}
+            });
+            const projectAsset = await projectAssets.prepareStagedOwnedEntry({
+              projectAssetId: candidate.id,
+              kind: candidate.kind,
+              resourceId: projection.resource.id,
+              ...candidate.name ? { name: candidate.name } : {},
+              metadata: candidate.metadata,
+              ...candidate.provenance ? { provenance: candidate.provenance } : {}
             });
             return {
               kind: "asset",
@@ -130310,7 +132041,7 @@ function createLocalWorkflowProcessor(options) {
               }
               const publication = publishLocalProjectAssetWithBindings(doc, parsed.data, [
                 {
-                  id: `action-asset:${run.actionRunId}:${run.outputSlot}:output`,
+                  id: `action-asset:${durableRunIdempotencyKey(run)}:output`,
                   owner: durableActionOwner(frozen, run.actionRunId),
                   direction: "output",
                   slot: run.outputSlot,
@@ -130327,13 +132058,27 @@ function createLocalWorkflowProcessor(options) {
               await input.checkpoint?.();
               return;
             }
-            const updates = publishedAsset ? { status: "completed", assetId: publishedAsset.id } : staged.kind === "text" && typeof staged.content === "string" ? { status: "completed", content: staged.content } : void 0;
+            const updates = publishedAsset ? { status: "completed", assetId: publishedAsset.id } : staged.kind === "text" && typeof staged.content === "string" ? {
+              status: "completed",
+              content: staged.content,
+              ...typeof staged.provider === "string" ? { provider: staged.provider } : {},
+              ...typeof staged.modelEndpoint === "string" ? { modelEndpoint: staged.modelEndpoint } : {}
+            } : void 0;
             if (!updates)
               throw new Error("Durable Provider staged output is incomplete.");
             if (!frozen.nodeId || !target?.data) {
               throw new Error("A Canvas Provider publication requires a target node.");
             }
             const current = target.data;
+            if (!isCurrentProviderNodeRevision({
+              frozen,
+              actionRunId: run.actionRunId,
+              nodeData: current,
+              currentProjectionRevisionId: frozen.kind === "model" ? "" : nodeProjectionRevisionId(frozen.nodeId, frozen.kind, current, frozen.targetKind === "action" ? customActionPromptFromData(current) : void 0, frozen.targetKind === "action" ? "action" : void 0)
+            })) {
+              await input.checkpoint?.();
+              return;
+            }
             if (current.status === updates.status && ("assetId" in updates ? current.assetId === updates.assetId : current.content === updates.content)) {
               await input.checkpoint?.();
               return;
@@ -130353,6 +132098,15 @@ function createLocalWorkflowProcessor(options) {
             if (!target?.data || typeof target.data !== "object")
               return;
             const current = target.data;
+            if (!isCurrentProviderNodeRevision({
+              frozen,
+              actionRunId: run.actionRunId,
+              nodeData: current,
+              currentProjectionRevisionId: frozen.kind === "model" ? "" : nodeProjectionRevisionId(frozen.nodeId, frozen.kind, current, frozen.targetKind === "action" ? customActionPromptFromData(current) : void 0, frozen.targetKind === "action" ? "action" : void 0)
+            })) {
+              await input.checkpoint?.();
+              return;
+            }
             if (current.status === "failed" && current.failureCode === failure.code && current.error === failure.message) {
               await input.checkpoint?.();
               return;
@@ -130375,7 +132129,7 @@ function createLocalWorkflowProcessor(options) {
           maxDelayMs: 6e4
         }),
         ...durable?.now ? { clock: { now: durable.now } } : {}
-      }) : void 0;
+      });
       const driveDurableRun = async (identity) => {
         if (!coordinator)
           return;
@@ -130418,6 +132172,33 @@ function createLocalWorkflowProcessor(options) {
           await input.checkpoint?.();
         }
         return run;
+      };
+      const resumeCanvasDurableRun = async (options2) => {
+        if (!durableJournal)
+          return false;
+        const existing = await durableJournal.load(options2.identity);
+        if (!existing)
+          return false;
+        await ensureDurableInputBindings(options2.identity);
+        await providerExecutionHandoffs.remove(projectId, options2.nodeId);
+        const ownsCurrentRevision = isCurrentProviderNodeRevision({
+          frozen: frozenExecutorInput(existing),
+          actionRunId: options2.identity.actionRunId,
+          nodeData: options2.nodeData,
+          currentProjectionRevisionId: options2.projectionRevisionId
+        });
+        if (ownsCurrentRevision && options2.nodeData.status !== "generating") {
+          nodes5.set(options2.nodeId, {
+            ...options2.node,
+            data: durableProviderNodeData(options2.nodeData, {
+              status: "generating"
+            })
+          });
+          changed = true;
+          await input.checkpoint?.();
+        }
+        await driveDurableRun(options2.identity);
+        return true;
       };
       if (coordinator && durableJournal) {
         const recovery = await coordinator.coordinate({ type: "recoverable" });
@@ -130468,20 +132249,9 @@ function createLocalWorkflowProcessor(options) {
                   }
                 }))
               ];
-              const prompt = extractPromptText(parsePromptParts(typeof data2.prompt === "string" ? data2.prompt : typeof data2.content === "string" ? data2.content : ""));
+              const prompt = customActionPromptFromData(data2);
               const params = data2.customActionParams && typeof data2.customActionParams === "object" && !Array.isArray(data2.customActionParams) ? data2.customActionParams : {};
-              const taskIdPrefix = `local-custom-${sanitizeStorageSegment(nodeId)}`;
               const outputSlot = custom3.outputType === "text" ? "text" : "media";
-              let runNumber = 1;
-              let taskId2 = taskIdPrefix;
-              let identity = { actionRunId: taskId2, outputSlot };
-              let existingRun = await durableJournal.load(identity);
-              while (existingRun?.phase === "succeeded" || existingRun?.phase === "failed" && existingRun.projectedAt !== void 0) {
-                runNumber += 1;
-                taskId2 = `${taskIdPrefix}:${runNumber}`;
-                identity = { actionRunId: taskId2, outputSlot };
-                existingRun = await durableJournal.load(identity);
-              }
               const actor = data2.actorType === "agent" ? {
                 kind: "agent",
                 ...typeof data2.actorAgentId === "string" ? { id: data2.actorAgentId } : {}
@@ -130489,29 +132259,53 @@ function createLocalWorkflowProcessor(options) {
                 kind: "user",
                 ...typeof data2.actorUserId === "string" ? { id: data2.actorUserId } : {}
               };
-              if (!existingRun) {
-                const createdAt = durable?.now?.() ?? Date.now();
-                await coordinator.coordinate({
-                  type: "create",
-                  ...identity,
-                  deadlineAt: createdAt + generationDeadlineMs,
-                  executor: {
-                    targetKind: "action",
-                    binding: parsedBinding.data,
-                    actionId: custom3.actionId,
-                    actor,
-                    kind: custom3.outputType,
-                    projectId,
-                    nodeId,
-                    provider: `plugin:${parsedBinding.data.pluginId}`,
-                    modelEndpoint: custom3.actionId,
-                    input: {
-                      values: { prompt, ...params },
-                      references
-                    }
-                  }
-                });
+              const projectionRevisionId = nodeProjectionRevisionId(nodeId, custom3.outputType, data2, prompt, "action");
+              const executorCandidate = {
+                targetKind: "action",
+                binding: parsedBinding.data,
+                actionId: custom3.actionId,
+                actor,
+                kind: custom3.outputType,
+                projectId,
+                nodeId,
+                provider: `plugin:${parsedBinding.data.pluginId}`,
+                modelEndpoint: custom3.actionId,
+                nodeProjectionRevisionId: projectionRevisionId,
+                input: {
+                  values: { prompt, ...params },
+                  references
+                }
+              };
+              const actionRevisionId = canvasExecutorActionRevisionId(executorCandidate);
+              const identity = durableProviderIdentity({
+                projectId,
+                nodeId,
+                kind: custom3.outputType,
+                actionRevisionId
+              });
+              if (await resumeCanvasDurableRun({
+                identity,
+                node,
+                nodeId,
+                kind: custom3.outputType,
+                nodeData: data2,
+                projectionRevisionId
+              })) {
+                continue;
               }
+              const createdAt = durable?.now?.() ?? Date.now();
+              await coordinator.coordinate({
+                type: "create",
+                ...identity,
+                deadlineAt: createdAt + generationDeadlineMs,
+                executor: {
+                  ...executorCandidate,
+                  publicOwner: {
+                    actionId: custom3.actionId,
+                    actionRevisionId
+                  }
+                }
+              });
               await ensureDurableInputBindings(identity);
               nodes5.set(nodeId, {
                 ...node,
@@ -130550,51 +132344,61 @@ function createLocalWorkflowProcessor(options) {
         const renderData = node.data && typeof node.data === "object" ? node.data : {};
         const isTimelineRender = node.type === "video" && renderData.status === "pending" && !renderData.assetId && !renderData.pendingTask && renderData.timelineDsl && typeof renderData.timelineDsl === "object";
         if (isTimelineRender) {
-          const taskId2 = `local-render-${sanitizeStorageSegment(nodeId)}`;
           try {
             if (!options.timelineRenderer) {
               throw new Error("Timeline rendering backend is unavailable");
             }
-            const timelineDsl = await resolveLocalTimelineDslReferences({
-              dataDir: options.dataDir,
-              doc,
-              projectId,
-              mediaBaseUrl: options.mediaBaseUrl,
-              timelineDsl: renderData.timelineDsl
-            });
-            const rendered = await options.timelineRenderer.render({
-              projectId,
-              taskId: taskId2,
-              timelineDsl
-            });
-            const asset = await saveAsset({
-              doc,
-              projectAssets,
-              projectId,
-              nodeId,
-              taskId: taskId2,
-              kind: "video",
-              nodeData: {
-                ...renderData,
-                modelId: "remotion-render",
-                prompt: `Render Timeline ${String(renderData.sourceTimelineId ?? nodeId)}`
-              },
-              bytes: rendered.bytes,
-              contentType: rendered.contentType ?? "video/mp4",
-              width: rendered.width,
-              height: rendered.height,
-              durationMs: rendered.durationMs,
-              provider: "local-render"
-            });
-            const nextData = {
-              ...renderData,
-              status: "completed",
-              assetId: asset.id
+            const inputOwner = timelineRenderInputOwner(renderData);
+            if (!inputOwner) {
+              throw new Error("Timeline render is missing its frozen Action input owner");
+            }
+            const identity = {
+              actionRunId: inputOwner.actionRunId,
+              outputSlot: "render:output"
             };
-            delete nextData.pendingTask;
-            delete nextData.pendingTaskAt;
-            delete nextData.error;
-            nodes5.set(nodeId, { ...node, data: nextData });
+            const createdAt = durable?.now?.() ?? Date.now();
+            await coordinator.coordinate({
+              type: "create",
+              ...identity,
+              deadlineAt: createdAt + generationDeadlineMs,
+              executor: {
+                targetKind: "local-executor",
+                binding: LOCAL_EXECUTOR_BINDING,
+                actionId: inputOwner.actionId,
+                actor: {
+                  kind: renderData.actorType === "agent" ? "agent" : "user",
+                  ...renderData.actorType === "agent" && typeof renderData.actorAgentId === "string" ? { id: renderData.actorAgentId } : typeof renderData.actorUserId === "string" ? { id: renderData.actorUserId } : {}
+                },
+                publicOwner: {
+                  actionId: inputOwner.actionId,
+                  actionRevisionId: inputOwner.actionRevisionId
+                },
+                kind: "video",
+                projectId,
+                nodeId,
+                provider: "local-render",
+                modelEndpoint: "remotion-render",
+                input: {
+                  values: {
+                    localExecutor: "timeline-render",
+                    outputSlot: identity.outputSlot,
+                    timelineDsl: jsonSnapshot(renderData.timelineDsl),
+                    inputOwner: jsonSnapshot(inputOwner),
+                    prompt: `Render Timeline ${String(renderData.sourceTimelineId ?? nodeId)}`
+                  },
+                  references: []
+                }
+              }
+            });
+            nodes5.set(nodeId, {
+              ...node,
+              data: durableProviderNodeData(renderData, {
+                status: "generating"
+              })
+            });
+            changed = true;
+            await input.checkpoint?.();
+            await driveDurableRun(identity);
           } catch (error53) {
             const nextData = {
               ...renderData,
@@ -130611,27 +132415,8 @@ function createLocalWorkflowProcessor(options) {
         const kind = pendingKindForNode(node);
         if (!kind)
           continue;
-        const durableIdentity = durableProviderIdentity(projectId, nodeId, kind);
-        if (durableJournal) {
-          const existingDurableRun = await durableJournal.load(durableIdentity);
-          if (existingDurableRun) {
-            await ensureDurableInputBindings(durableIdentity);
-            await providerExecutionHandoffs.remove(projectId, nodeId);
-            const existingData = node.data;
-            if (existingData.status !== "generating") {
-              nodes5.set(nodeId, {
-                ...node,
-                data: durableProviderNodeData(existingData, {
-                  status: "generating"
-                })
-              });
-              changed = true;
-              await input.checkpoint?.();
-            }
-            await driveDurableRun(durableIdentity);
-            continue;
-          }
-        }
+        const currentNodeData = node.data;
+        const currentNodeProjectionRevisionId = nodeProjectionRevisionId(nodeId, kind, currentNodeData);
         const taskId = `local-gen-${sanitizeStorageSegment(nodeId)}`;
         let data = node.data;
         let selectedProviderAccountId;
@@ -130657,45 +132442,45 @@ function createLocalWorkflowProcessor(options) {
             if (referenceError)
               throw new Error(referenceError);
           }
-          const projectAssetById = new Map(listProjectAssets(doc).map((asset2) => [asset2.id, asset2]));
+          const projectAssetById = new Map(listProjectAssets(doc).map((asset) => [asset.id, asset]));
           const referenceEntries = (ids, kind2) => ids.map((assetId) => {
-            const asset2 = projectAssetById.get(assetId);
-            if (!asset2 || asset2.lifecycle.state !== "active") {
+            const asset = projectAssetById.get(assetId);
+            if (!asset || asset.lifecycle.state !== "active") {
               throw new Error(`Reference Project Asset ${assetId} is not available in Project ${projectId}.`);
             }
-            if (asset2.kind !== kind2) {
-              throw new Error(`Reference Project Asset ${assetId} is ${asset2.kind}, not ${kind2}.`);
+            if (asset.kind !== kind2) {
+              throw new Error(`Reference Project Asset ${assetId} is ${asset.kind}, not ${kind2}.`);
             }
-            return asset2;
+            return asset;
           });
           const referenceImageEntries = referenceEntries(referenceImageAssetIds, "image");
           const referenceVideoEntries = referenceEntries(referenceVideoAssetIds, "video");
           const referenceAudioEntries = referenceEntries(referenceAudioAssetIds, "audio");
           if (modelCard) {
             const mediaReferences = [
-              ...referenceImageEntries.map((asset2) => ({
-                asset: asset2,
+              ...referenceImageEntries.map((asset) => ({
+                asset,
                 modality: "image"
               })),
-              ...referenceVideoEntries.map((asset2) => ({
-                asset: asset2,
+              ...referenceVideoEntries.map((asset) => ({
+                asset,
                 modality: "video"
               })),
-              ...referenceAudioEntries.map((asset2) => ({
-                asset: asset2,
+              ...referenceAudioEntries.map((asset) => ({
+                asset,
                 modality: "audio"
               }))
-            ].map(({ asset: asset2, modality }) => ({
+            ].map(({ asset, modality }) => ({
               modality,
-              contentType: asset2.metadata.contentType,
-              fileName: asset2.metadata.originalName ?? asset2.name,
-              bytes: asset2.metadata.bytes,
-              width: asset2.metadata.width,
-              height: asset2.metadata.height,
-              durationMs: asset2.metadata.durationMs,
-              frameRate: asset2.metadata.frameRate,
-              videoCodec: asset2.metadata.videoCodec,
-              audioCodec: asset2.metadata.audioCodec,
+              contentType: asset.metadata.contentType,
+              fileName: asset.metadata.originalName ?? asset.name,
+              bytes: asset.metadata.bytes,
+              width: asset.metadata.width,
+              height: asset.metadata.height,
+              durationMs: asset.metadata.durationMs,
+              frameRate: asset.metadata.frameRate,
+              videoCodec: asset.metadata.videoCodec,
+              audioCodec: asset.metadata.audioCodec,
               embedded: !!options.mediaBaseUrl
             }));
             const mediaError = validateReferenceMedia(modelCard, mediaReferences, { modelParams: effectiveModelParams });
@@ -130703,16 +132488,16 @@ function createLocalWorkflowProcessor(options) {
               throw new Error(mediaError);
           }
           const globalReferences = [
-            ...referenceImageEntries.map((asset2) => ({
-              asset: asset2,
+            ...referenceImageEntries.map((asset) => ({
+              asset,
               kind: "image"
             })),
-            ...referenceVideoEntries.map((asset2) => ({
-              asset: asset2,
+            ...referenceVideoEntries.map((asset) => ({
+              asset,
               kind: "video"
             })),
-            ...referenceAudioEntries.map((asset2) => ({
-              asset: asset2,
+            ...referenceAudioEntries.map((asset) => ({
+              asset,
               kind: "audio"
             }))
           ];
@@ -130720,9 +132505,9 @@ function createLocalWorkflowProcessor(options) {
           const referenceBindingType = modelCard?.input.referenceBinding?.type;
           if (isStartEnd) {
             references = [
-              ...referenceImageEntries.flatMap((asset2, index) => index === 0 ? [assetReference(asset2, "startFrame", 0)] : index === 1 ? [assetReference(asset2, "endFrame", 0)] : [assetReference(asset2, "image", index - 2)]),
-              ...referenceVideoEntries.map((asset2, index) => assetReference(asset2, "video", index)),
-              ...referenceAudioEntries.map((asset2, index) => assetReference(asset2, "audio", index))
+              ...referenceImageEntries.flatMap((asset, index) => index === 0 ? [assetReference(asset, "startFrame", 0)] : index === 1 ? [assetReference(asset, "endFrame", 0)] : [assetReference(asset, "image", index - 2)]),
+              ...referenceVideoEntries.map((asset, index) => assetReference(asset, "video", index)),
+              ...referenceAudioEntries.map((asset, index) => assetReference(asset, "audio", index))
             ];
           } else if (referenceBindingType === "ordered-content-parts" || referenceBindingType === "positional-tokens") {
             references = mixedContentReferences({
@@ -130741,9 +132526,9 @@ function createLocalWorkflowProcessor(options) {
             });
           } else {
             references = [
-              ...referenceImageEntries.map((asset2, index) => assetReference(asset2, "image", index)),
-              ...referenceVideoEntries.map((asset2, index) => assetReference(asset2, "video", index)),
-              ...referenceAudioEntries.map((asset2, index) => assetReference(asset2, "audio", index))
+              ...referenceImageEntries.map((asset, index) => assetReference(asset, "image", index)),
+              ...referenceVideoEntries.map((asset, index) => assetReference(asset, "video", index)),
+              ...referenceAudioEntries.map((asset, index) => assetReference(asset, "audio", index))
             ];
           }
           const requestedAspectRatio = kind === "image" || kind === "video" ? aspectRatioFromData(data) : void 0;
@@ -130776,9 +132561,9 @@ function createLocalWorkflowProcessor(options) {
               if (!durable || !coordinator) {
                 throw new Error("Provider-backed generation requires the Host durable run coordinator before submit.");
               }
-              const createdAt = durable?.now?.() ?? Date.now();
               const executor = {
                 binding: plan.binding,
+                nodeProjectionRevisionId: currentNodeProjectionRevisionId,
                 ...plan.accountId ? { accountId: plan.accountId } : {},
                 kind: plan.kind,
                 projectId: plan.projectId,
@@ -130788,112 +132573,109 @@ function createLocalWorkflowProcessor(options) {
                 assetInputs: plan.assetInputs,
                 input: plan.input
               };
+              const actionRevisionId2 = canvasExecutorActionRevisionId(executor);
+              executor.publicOwner = {
+                actionId: `node:${nodeId}`,
+                actionRevisionId: actionRevisionId2
+              };
+              const durableIdentity2 = durableProviderIdentity({
+                projectId,
+                nodeId,
+                kind,
+                actionRevisionId: actionRevisionId2
+              });
+              if (await resumeCanvasDurableRun({
+                identity: durableIdentity2,
+                node,
+                nodeId,
+                kind,
+                nodeData: data,
+                projectionRevisionId: currentNodeProjectionRevisionId
+              })) {
+                continue;
+              }
+              const createdAt2 = durable?.now?.() ?? Date.now();
               await coordinator.coordinate({
                 type: "create",
-                ...durableIdentity,
-                deadlineAt: createdAt + generationDeadlineMs,
+                ...durableIdentity2,
+                deadlineAt: createdAt2 + generationDeadlineMs,
                 executor
               });
-              await ensureDurableInputBindings(durableIdentity);
+              await ensureDurableInputBindings(durableIdentity2);
               await providerExecutionHandoffs.remove(projectId, nodeId);
               data = durableProviderNodeData(data, { status: "generating" });
               nodes5.set(nodeId, { ...node, data });
               changed = true;
               await input.checkpoint?.();
-              await driveDurableRun(durableIdentity);
+              await driveDurableRun(durableIdentity2);
               continue;
             }
           }
-          const invocationStartedAt = Date.now();
-          const providerDeadlineAt = invocationStartedAt + generationDeadlineMs;
-          if (kind === "text") {
-            let generated2;
-            if (options.textAgent && model === "local-acp") {
-              try {
-                generated2 = await beforeProviderGenerationDeadline(options.textAgent.generate({
-                  projectId,
-                  prompt,
-                  modelId: model,
-                  modelParams: effectiveModelParams,
-                  actorAgentId: typeof data.actorAgentId === "string" ? data.actorAgentId : void 0
-                }), providerDeadlineAt, generationDeadlineMs);
-              } catch {
-                generated2 = await beforeProviderGenerationDeadline(aigc.generateText(commonInput), providerDeadlineAt, generationDeadlineMs);
-              }
-            } else {
-              generated2 = await beforeProviderGenerationDeadline(aigc.generateText(commonInput), providerDeadlineAt, generationDeadlineMs);
-            }
-            await recordGeneratedTextRevision({
-              dataDir: options.dataDir,
-              userId,
-              projectId,
-              nodeId,
-              nodeData: data,
-              content: generated2.text
-            });
-            const nextData2 = durableProviderNodeData(data, {
-              status: "completed",
-              content: generated2.text,
-              ...generated2.provider ? { provider: generated2.provider } : {},
-              ...generated2.modelEndpoint ? { modelEndpoint: generated2.modelEndpoint } : {}
-            });
-            nodes5.set(nodeId, { ...node, data: nextData2 });
-            changed = true;
-            if (selectedProviderAccountId) {
-              await providerExecutionHandoffs.remove(projectId, nodeId);
-            }
-            continue;
-          }
-          const generation = kind === "image" ? aigc.generateImage(commonInput) : kind === "video" ? aigc.generateVideo(commonInput) : aigc.generateAudio(commonInput);
-          const generated = await beforeProviderGenerationDeadline(generation, providerDeadlineAt, generationDeadlineMs);
-          if (generated.status === "accepted") {
-            throw new Error("An accepted Provider result requires the durable executable Provider path.");
-          }
-          if (generated.status === "failed") {
-            nodes5.set(nodeId, {
-              ...node,
-              data: durableProviderNodeData(data, {
-                status: "failed",
-                error: generated.error.message,
-                failureCode: generated.error.code
-              })
-            });
-            changed = true;
-            if (selectedProviderAccountId) {
-              await providerExecutionHandoffs.remove(projectId, nodeId);
-            }
-            continue;
-          }
-          const asset = await saveAsset({
-            doc,
-            projectAssets,
+          const outputSlot = kind === "text" ? "text" : "media";
+          const localExecutorCandidate = {
+            targetKind: "local-executor",
+            binding: LOCAL_EXECUTOR_BINDING,
+            actionId: `node:${nodeId}`,
+            nodeProjectionRevisionId: currentNodeProjectionRevisionId,
+            actor: {
+              kind: data.actorType === "agent" ? "agent" : "user",
+              ...data.actorType === "agent" && typeof data.actorAgentId === "string" ? { id: data.actorAgentId } : typeof data.actorUserId === "string" ? { id: data.actorUserId } : {}
+            },
+            kind,
             projectId,
             nodeId,
-            taskId,
+            provider: "local-executor",
+            modelEndpoint: model,
+            input: {
+              values: {
+                localExecutor: "generation",
+                outputSlot,
+                generationKind: kind,
+                generationInput: jsonSnapshot(commonInput),
+                useLocalTextAgent: usesLocalTextAgent,
+                prompt
+              },
+              references
+            }
+          };
+          const actionRevisionId = canvasExecutorActionRevisionId(localExecutorCandidate);
+          localExecutorCandidate.publicOwner = {
+            actionId: `node:${nodeId}`,
+            actionRevisionId
+          };
+          const durableIdentity = durableProviderIdentity({
+            projectId,
+            nodeId,
+            kind,
+            actionRevisionId
+          });
+          if (await resumeCanvasDurableRun({
+            identity: durableIdentity,
+            node,
+            nodeId,
             kind,
             nodeData: data,
-            bytes: generated.bytes,
-            contentType: generated.contentType,
-            width: generated.width,
-            height: generated.height,
-            durationMs: generated.durationMs,
-            waveform: generated.waveform,
-            transcript: generated.transcript,
-            requestId: generated.requestId,
-            provider: generated.provider,
-            modelEndpoint: generated.modelEndpoint,
-            remoteUrl: generated.remoteUrl
+            projectionRevisionId: currentNodeProjectionRevisionId
+          })) {
+            continue;
+          }
+          const createdAt = durable?.now?.() ?? Date.now();
+          await coordinator.coordinate({
+            type: "create",
+            ...durableIdentity,
+            deadlineAt: createdAt + generationDeadlineMs,
+            executor: localExecutorCandidate
           });
-          const nextData = durableProviderNodeData(data, {
-            status: "completed",
-            assetId: asset.id,
-            ...generated.pluginBinding ? { pluginBinding: generated.pluginBinding } : {}
-          });
-          nodes5.set(nodeId, { ...node, data: nextData });
+          await ensureDurableInputBindings(durableIdentity);
+          data = durableProviderNodeData(data, { status: "generating" });
+          nodes5.set(nodeId, { ...node, data });
           changed = true;
           if (selectedProviderAccountId) {
             await providerExecutionHandoffs.remove(projectId, nodeId);
           }
+          await input.checkpoint?.();
+          await driveDurableRun(durableIdentity);
+          continue;
         } catch (error53) {
           if (selectedProviderAccountId) {
             await providerExecutionHandoffs.remove(projectId, nodeId);
@@ -130930,6 +132712,13 @@ async function fetchIntoSlot(url2, options = {}) {
 }
 
 // ../../apps/local-api/dist/local-plugin-broker.js
+var LocalPluginBrokerAuthorizationError = class extends Error {
+  code = "PLUGIN_REFERENCE_NOT_AUTHORIZED";
+  constructor(slot, index) {
+    super(`Asset reference ${slot}:${index} is not authorized for the active invocation.`);
+    this.name = "LocalPluginBrokerAuthorizationError";
+  }
+};
 function requestTarget(operation2) {
   if (operation2.kind === "store.get" || operation2.kind === "store.put")
     return operation2.key;
@@ -130981,6 +132770,10 @@ function createLocalExecutablePluginBroker(options) {
         if (!options.readAsset)
           throw new Error("Local asset broker is unavailable.");
         const reference = operation2.reference;
+        const authorized = context.invocation.input.references.some((candidate) => "asset" in candidate && candidate.slot === reference.slot && candidate.asset.assetId === reference.asset.assetId && candidate.asset.kind === reference.asset.kind);
+        if (!authorized) {
+          throw new LocalPluginBrokerAuthorizationError(reference.slot, reference.index);
+        }
         const asset = await options.readAsset({
           assetId: reference.asset.assetId,
           projectId: context.invocation.projectId
@@ -131146,6 +132939,12 @@ function createLocalExecutablePluginBroker(options) {
         if (!options.readAsset || !options.writeAsset) {
           throw new Error("Codex ImageGen requires local asset read and write brokers.");
         }
+        for (const [index, reference] of operation2.references.entries()) {
+          const authorized = context.invocation.input.references.some((candidate) => "asset" in candidate && candidate.asset.assetId === reference.assetId && candidate.asset.kind === reference.kind);
+          if (!authorized) {
+            throw new LocalPluginBrokerAuthorizationError("codex.imagegen", index);
+          }
+        }
         const references = await Promise.all(operation2.references.map(async (asset) => {
           const resolved = await options.readAsset({
             assetId: asset.assetId,
@@ -131189,11 +132988,11 @@ function createLocalExecutablePluginBroker(options) {
 }
 
 // ../../apps/local-api/dist/marketplace-skills.js
-var import_node_child_process10 = require("node:child_process");
-var import_node_util7 = require("node:util");
-var execFileAsync5 = (0, import_node_util7.promisify)(import_node_child_process10.execFile);
+var import_node_child_process11 = require("node:child_process");
+var import_node_util8 = require("node:util");
+var execFileAsync6 = (0, import_node_util8.promisify)(import_node_child_process11.execFile);
 async function defaultCommandRunner(executable, args) {
-  const result = await execFileAsync5(executable, args, {
+  const result = await execFileAsync6(executable, args, {
     encoding: "utf8",
     timeout: 30 * 60 * 1e3,
     maxBuffer: 10 * 1024 * 1024
@@ -131988,10 +133787,10 @@ var registry_default = {
 };
 
 // ../../apps/local-api/dist/remotion-timeline-renderer.js
-var import_promises34 = require("node:fs/promises");
+var import_promises36 = require("node:fs/promises");
 var import_node_os13 = require("node:os");
-var import_node_path41 = require("node:path");
-var import_promises35 = require("node:fs/promises");
+var import_node_path43 = require("node:path");
+var import_promises37 = require("node:fs/promises");
 function positiveNumber(value, fallback2, label) {
   const candidate = value === void 0 ? fallback2 : value;
   if (typeof candidate !== "number" || !Number.isFinite(candidate) || candidate <= 0) {
@@ -132022,9 +133821,9 @@ function createRemotionTimelineRenderer(options) {
   const render = (request) => {
     const current = queue.then(async () => {
       const inputProps = renderInput(request.timelineDsl);
-      const outputDir = await (0, import_promises35.mkdtemp)((0, import_node_path41.join)((0, import_node_os13.tmpdir)(), "clash-timeline-render-"));
+      const outputDir = await (0, import_promises37.mkdtemp)((0, import_node_path43.join)((0, import_node_os13.tmpdir)(), "clash-timeline-render-"));
       options.onRenderDirectory?.(outputDir);
-      const outputPath = (0, import_node_path41.join)(outputDir, `${safeTaskSegment(request.taskId)}.mp4`);
+      const outputPath = (0, import_node_path43.join)(outputDir, `${safeTaskSegment(request.taskId)}.mp4`);
       try {
         const [serveUrl, renderer] = await Promise.all([
           // Development resolvers fingerprint workspace source here. Do not
@@ -132046,7 +133845,7 @@ function createRemotionTimelineRenderer(options) {
           inputProps
         });
         return {
-          bytes: await (0, import_promises34.readFile)(outputPath),
+          bytes: await (0, import_promises36.readFile)(outputPath),
           contentType: "video/mp4",
           width: inputProps.compositionWidth,
           height: inputProps.compositionHeight,
@@ -132058,7 +133857,7 @@ function createRemotionTimelineRenderer(options) {
           cause: error53
         });
       } finally {
-        await (0, import_promises34.rm)(outputDir, { recursive: true, force: true });
+        await (0, import_promises36.rm)(outputDir, { recursive: true, force: true });
       }
     });
     queue = current.then(() => void 0, () => void 0);
@@ -132068,10 +133867,10 @@ function createRemotionTimelineRenderer(options) {
 }
 
 // ../../apps/local-api/dist/director-stage-renderer.js
-var import_node_crypto32 = require("node:crypto");
+var import_node_crypto33 = require("node:crypto");
 var import_node_http = require("node:http");
-var import_promises36 = require("node:fs/promises");
-var import_node_path42 = require("node:path");
+var import_promises38 = require("node:fs/promises");
+var import_node_path44 = require("node:path");
 var MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -132083,7 +133882,7 @@ var MIME_TYPES = {
   ".wasm": "application/wasm"
 };
 function sha2563(value) {
-  return (0, import_node_crypto32.createHash)("sha256").update(value).digest("hex");
+  return (0, import_node_crypto33.createHash)("sha256").update(value).digest("hex");
 }
 function validatedRequest(input) {
   const state2 = DirectorStageStateSchema.parse(input.state);
@@ -132110,24 +133909,24 @@ function validatedRequest(input) {
   return { ...input, state: state2, frames };
 }
 async function startBundleServer(bundleDir) {
-  const bundleRoot = (0, import_node_path42.resolve)(bundleDir);
-  const staticRoot = (0, import_node_path42.dirname)(bundleRoot);
-  if (!(await (0, import_promises36.stat)((0, import_node_path42.resolve)(bundleRoot, "index.html"))).isFile()) {
+  const bundleRoot = (0, import_node_path44.resolve)(bundleDir);
+  const staticRoot = (0, import_node_path44.dirname)(bundleRoot);
+  if (!(await (0, import_promises38.stat)((0, import_node_path44.resolve)(bundleRoot, "index.html"))).isFile()) {
     throw new Error(`Packaged Director renderer is missing index.html: ${bundleRoot}`);
   }
   const server2 = (0, import_node_http.createServer)(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url ?? "/", "http://127.0.0.1").pathname);
       const requestedPath = pathname === "/" ? "/director-bundle/index.html" : pathname;
-      const filePath = (0, import_node_path42.resolve)(staticRoot, `.${requestedPath}`);
-      const outside = (0, import_node_path42.relative)(staticRoot, filePath);
-      if (outside === ".." || outside.startsWith(`..${import_node_path42.sep}`)) {
+      const filePath = (0, import_node_path44.resolve)(staticRoot, `.${requestedPath}`);
+      const outside = (0, import_node_path44.relative)(staticRoot, filePath);
+      if (outside === ".." || outside.startsWith(`..${import_node_path44.sep}`)) {
         response.writeHead(403).end("forbidden");
         return;
       }
-      const content = await (0, import_promises36.readFile)(filePath);
+      const content = await (0, import_promises38.readFile)(filePath);
       response.writeHead(200, {
-        "content-type": MIME_TYPES[(0, import_node_path42.extname)(filePath).toLowerCase()] ?? "application/octet-stream",
+        "content-type": MIME_TYPES[(0, import_node_path44.extname)(filePath).toLowerCase()] ?? "application/octet-stream",
         "cache-control": "no-store"
       });
       response.end(content);
@@ -132247,15 +134046,15 @@ function createHeadlessDirectorStageRenderer(options) {
 }
 
 // ../../apps/local-api/dist/development-bundled-plugins.js
-var import_node_util8 = require("node:util");
+var import_node_util9 = require("node:util");
 var import_node_fs16 = require("node:fs");
-var import_promises37 = require("node:fs/promises");
-var import_node_crypto33 = require("node:crypto");
-var import_node_module10 = require("node:module");
-var import_node_path43 = require("node:path");
+var import_promises39 = require("node:fs/promises");
+var import_node_crypto34 = require("node:crypto");
+var import_node_module13 = require("node:module");
+var import_node_path45 = require("node:path");
 var import_node_url4 = require("node:url");
 function workspaceRoot() {
-  return (0, import_node_path43.resolve)((0, import_node_path43.dirname)((0, import_node_url4.fileURLToPath)(__clash_import_meta_url)), "../../..");
+  return (0, import_node_path45.resolve)((0, import_node_path45.dirname)((0, import_node_url4.fileURLToPath)(__clash_import_meta_url)), "../../..");
 }
 function developmentLauncher(options) {
   const sourceUrl = (0, import_node_url4.pathToFileURL)(options.sourceEntrypoint).href;
@@ -132271,12 +134070,12 @@ function developmentLauncher(options) {
   ].join("\n");
 }
 async function developmentPackage(options) {
-  const manifestPath = (0, import_node_path43.join)(options.pluginRoot, "manifest.json");
-  const sourceEntrypoint = (0, import_node_path43.join)(options.pluginRoot, "src", "stdio.ts");
+  const manifestPath = (0, import_node_path45.join)(options.pluginRoot, "manifest.json");
+  const sourceEntrypoint = (0, import_node_path45.join)(options.pluginRoot, "src", "stdio.ts");
   if (!(0, import_node_fs16.existsSync)(sourceEntrypoint)) {
     throw new Error(`Development plugin ${options.expectedId} has no src/stdio.ts entrypoint.`);
   }
-  const manifest = JSON.parse(await (0, import_promises37.readFile)(manifestPath, "utf8"));
+  const manifest = JSON.parse(await (0, import_promises39.readFile)(manifestPath, "utf8"));
   if (manifest.id !== options.expectedId) {
     throw new Error(`Expected development plugin ${options.expectedId}, but ${manifestPath} declares ${manifest.id}.`);
   }
@@ -132299,7 +134098,7 @@ async function developmentPackage(options) {
   for (const relativePath of documents) {
     if (!relativePath)
       continue;
-    files[relativePath] = (await (0, import_promises37.readFile)((0, import_node_path43.join)(options.pluginRoot, relativePath))).toString("base64");
+    files[relativePath] = (await (0, import_promises39.readFile)((0, import_node_path45.join)(options.pluginRoot, relativePath))).toString("base64");
   }
   return { id: options.expectedId, manifest, files };
 }
@@ -132307,23 +134106,23 @@ async function activePackageMatches(actionsRoot, input) {
   try {
     const active = await readHostExecutablePluginPackage(actionsRoot, input.id);
     const manifest = validateHostExecutablePluginPackage(input);
-    return (0, import_node_util8.isDeepStrictEqual)(active.manifest, manifest) && (0, import_node_util8.isDeepStrictEqual)(active.files, input.files);
+    return (0, import_node_util9.isDeepStrictEqual)(active.manifest, manifest) && (0, import_node_util9.isDeepStrictEqual)(active.files, input.files);
   } catch {
     return false;
   }
 }
 async function prepareDevelopmentBundledPlugins(options) {
   const root5 = options.root ?? workspaceRoot();
-  const tsxApiUrl = (0, import_node_url4.pathToFileURL)((0, import_node_module10.createRequire)(__clash_import_meta_url).resolve("tsx/esm/api")).href;
+  const tsxApiUrl = (0, import_node_url4.pathToFileURL)((0, import_node_module13.createRequire)(__clash_import_meta_url).resolve("tsx/esm/api")).href;
   const watchRoots = {};
   const refreshed = [];
-  const actionSdkSource = (0, import_node_path43.join)(root5, "packages", "action-sdk", "src");
-  const sharedRuntimeSource = (0, import_node_path43.join)(root5, "packages", "shared-runtime", "src");
-  const sharedTypesSource = (0, import_node_path43.join)(root5, "packages", "shared-types", "src");
-  await (0, import_promises37.mkdir)(options.actionsRoot, { recursive: true });
+  const actionSdkSource = (0, import_node_path45.join)(root5, "packages", "action-sdk", "src");
+  const sharedRuntimeSource = (0, import_node_path45.join)(root5, "packages", "shared-runtime", "src");
+  const sharedTypesSource = (0, import_node_path45.join)(root5, "packages", "shared-types", "src");
+  await (0, import_promises39.mkdir)(options.actionsRoot, { recursive: true });
   const plugins = options.pluginIds === void 0 ? BUNDLED_PLUGINS : BUNDLED_PLUGINS.filter((plugin) => options.pluginIds.includes(plugin.id));
   for (const plugin of plugins) {
-    const pluginRoot = (0, import_node_path43.join)(root5, "plugins", plugin.workspaceDir);
+    const pluginRoot = (0, import_node_path45.join)(root5, "plugins", plugin.workspaceDir);
     const input = await developmentPackage({
       pluginRoot,
       expectedId: plugin.id,
@@ -132331,7 +134130,7 @@ async function prepareDevelopmentBundledPlugins(options) {
       tsxApiUrl
     });
     watchRoots[plugin.id] = [
-      (0, import_node_path43.join)(pluginRoot, "src"),
+      (0, import_node_path45.join)(pluginRoot, "src"),
       // Every bundled executable imports the shared Action SDK. Its source is loaded directly by
       // the development launcher, so an SDK edit must recycle every affected long-lived child.
       actionSdkSource,
@@ -132340,22 +134139,22 @@ async function prepareDevelopmentBundledPlugins(options) {
     ];
     if (await activePackageMatches(options.actionsRoot, input))
       continue;
-    const targetDir = (0, import_node_path43.join)(options.actionsRoot, plugin.id);
+    const targetDir = (0, import_node_path45.join)(options.actionsRoot, plugin.id);
     let backupDir;
     if ((0, import_node_fs16.existsSync)(targetDir)) {
-      const backupRoot = (0, import_node_path43.join)(`${options.actionsRoot}.development-backups`, plugin.id);
-      await (0, import_promises37.mkdir)(backupRoot, { recursive: true });
-      backupDir = (0, import_node_path43.join)(backupRoot, `${Date.now()}-${(0, import_node_crypto33.randomUUID)()}`);
-      await (0, import_promises37.rename)(targetDir, backupDir);
+      const backupRoot = (0, import_node_path45.join)(`${options.actionsRoot}.development-backups`, plugin.id);
+      await (0, import_promises39.mkdir)(backupRoot, { recursive: true });
+      backupDir = (0, import_node_path45.join)(backupRoot, `${Date.now()}-${(0, import_node_crypto34.randomUUID)()}`);
+      await (0, import_promises39.rename)(targetDir, backupDir);
     }
     try {
       await activateHostExecutablePluginPackage(input, options.actionsRoot);
       refreshed.push(plugin.id);
     } catch (error53) {
       if ((0, import_node_fs16.existsSync)(targetDir))
-        await (0, import_promises37.rm)(targetDir, { recursive: true, force: true });
+        await (0, import_promises39.rm)(targetDir, { recursive: true, force: true });
       if (backupDir && (0, import_node_fs16.existsSync)(backupDir))
-        await (0, import_promises37.rename)(backupDir, targetDir);
+        await (0, import_promises39.rename)(backupDir, targetDir);
       throw error53;
     }
   }
@@ -132382,19 +134181,19 @@ function resolveClashCliEntry(env2) {
   throw new Error("CLASH_CLI_ENTRY_PATH is required when local-api is installed without the optional agent CLI resource.");
 }
 function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl, env: env2 = process.env }) {
-  const localDataDir = (0, import_node_path44.resolve)(dataDir2);
+  const localDataDir = (0, import_node_path46.resolve)(dataDir2);
   const clashHome = clashHomeForLocalDataDir(localDataDir);
   const profile = resolveClashProfile(env2);
-  const binDir = (0, import_node_path44.join)(localDataDir, "agent-bin");
+  const binDir = (0, import_node_path46.join)(localDataDir, "agent-bin");
   (0, import_node_fs17.mkdirSync)(binDir, { recursive: true });
   const apiUrl2 = apiBaseUrl;
   const cliEntry = resolveClashCliEntry(env2);
-  const cliLoader = cliEntry.endsWith(".ts") ? (0, import_node_module11.createRequire)(__clash_import_meta_url).resolve("tsx") : void 0;
+  const cliLoader = cliEntry.endsWith(".ts") ? (0, import_node_module14.createRequire)(__clash_import_meta_url).resolve("tsx") : void 0;
   const cliInvocation = [
     ...cliLoader ? ["--import", cliLoader] : [],
     cliEntry
   ].map(shellQuote3).join(" ");
-  const shim = (0, import_node_path44.join)(binDir, "clash");
+  const shim = (0, import_node_path46.join)(binDir, "clash");
   (0, import_node_fs17.writeFileSync)(shim, [
     "#!/bin/sh",
     `export CLASH_API_URL=${shellQuote3(apiUrl2)}`,
@@ -132426,7 +134225,7 @@ function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl, env: env2 = pr
     ...env2.CLASH_CLI_ENTRY_PATH ? { CLASH_CLI_ENTRY_PATH: env2.CLASH_CLI_ENTRY_PATH } : {},
     ...env2.CLASH_CLI_NODE_PATH ? { CLASH_CLI_NODE_PATH: env2.CLASH_CLI_NODE_PATH } : {},
     ...env2.TSX_TSCONFIG_PATH ? { TSX_TSCONFIG_PATH: env2.TSX_TSCONFIG_PATH } : {},
-    PATH: [binDir, env2.PATH].filter(Boolean).join(import_node_path44.delimiter)
+    PATH: [binDir, env2.PATH].filter(Boolean).join(import_node_path46.delimiter)
   };
 }
 function createMockCanvasPatch(turnId, text) {
@@ -132692,7 +134491,7 @@ function createMockAcpSessionManager(send) {
   };
 }
 function withMockHarnessUpdateFixture(adapter, localDataDir) {
-  const readyPath = (0, import_node_path44.join)(localDataDir, ".e2e-harness-update-ready");
+  const readyPath = (0, import_node_path46.join)(localDataDir, ".e2e-harness-update-ready");
   const listHarnesses = adapter.listHarnesses.bind(adapter);
   const getSessionRuntimeStatus = adapter.getSessionRuntimeStatus.bind(adapter);
   const restartSession = adapter.restartSession.bind(adapter);
@@ -132764,14 +134563,14 @@ function createConfiguredLocalAcpAdapter(env2 = process.env, options = {}) {
     });
     return env2.CLASH_E2E_STUB_HARNESS_UPDATE === "1" ? withMockHarnessUpdateFixture(adapter, localDataDir) : adapter;
   }
-  const harnessDownloadDir = (0, import_node_path44.join)(localDataDir, "acp-bin");
+  const harnessDownloadDir = (0, import_node_path46.join)(localDataDir, "acp-bin");
   const acpBinDir = env2.CLASH_ACP_TEST_BIN_DIR || harnessDownloadDir;
   return createLocalAcpAdapter({
     harnessConfig: createLocalHarnessConfigStore(localDataDir),
     runPreferences: createLocalAcpRunPreferencesStore(localDataDir),
     capabilityCache: createLocalAcpCapabilityCacheStore(localDataDir),
     harnessDownloadDir,
-    probeCwd: (0, import_node_path44.join)(localDataDir, "acp-probe"),
+    probeCwd: (0, import_node_path46.join)(localDataDir, "acp-probe"),
     spawnEnv: {
       ...createLocalAgentToolEnv({
         dataDir: localDataDir,
@@ -132868,7 +134667,7 @@ function createLocalPluginBrokerServices(options) {
       return {
         kind: projection.resource.kind,
         ...projection.resource.contentType ? { mediaType: projection.resource.contentType } : {},
-        bytes: new Uint8Array(await (0, import_promises38.readFile)(projection.path))
+        bytes: new Uint8Array(await (0, import_promises40.readFile)(projection.path))
       };
     },
     ...options.publicAssetStorage ? {
@@ -132918,7 +134717,7 @@ function createLocalPluginBrokerServices(options) {
      * plugin makes the same two calls either way.
      */
     openUploadSlot: async ({ pluginId, pluginVersion, projectId, invocationId, taskId, slot, kind, byteLength, mediaType, url: url2 }) => {
-      const token = (0, import_node_crypto34.randomUUID)();
+      const token = (0, import_node_crypto35.randomUUID)();
       const assetId = `upload-${token}`;
       if (url2) {
         const fetched = await fetchIntoSlot(url2, {
@@ -132962,17 +134761,17 @@ function createLocalPluginBrokerServices(options) {
       return await writeAssetBytes({ ...input, bytes: pending.bytes });
     },
     writeAsset: writeAssetBytes,
-    audit: (record2) => metadataStore.appendPluginBrokerAudit({
-      id: (0, import_node_crypto34.randomUUID)(),
-      ...record2
+    audit: (record3) => metadataStore.appendPluginBrokerAudit({
+      id: (0, import_node_crypto35.randomUUID)(),
+      ...record3
     })
   });
 }
 function startLocalApiServer(options) {
   const clashHome = clashHomeForLocalDataDir(options.dataDir);
-  const actionsRoot = (0, import_node_path44.join)(clashHome, "actions");
+  const actionsRoot = (0, import_node_path46.join)(clashHome, "actions");
   const discoveryEnabled = options.discovery?.enabled !== false;
-  const pendingDiscoveryHostId = discoveryEnabled ? (0, import_node_crypto34.randomUUID)() : void 0;
+  const pendingDiscoveryHostId = discoveryEnabled ? (0, import_node_crypto35.randomUUID)() : void 0;
   const discoveryProfile = resolveClashProfile(process.env);
   const codexImagegenMarketplace = createCodexImagegenMarketplace({
     actionsRoot
@@ -132980,7 +134779,7 @@ function startLocalApiServer(options) {
   const npxSkillsMarketplace = createNpxSkillsMarketplace({
     registry: registry_default
   });
-  const projectAssetFileReplica = new FileReplicaStore((0, import_node_path44.join)(options.dataDir, "projects"));
+  const projectAssetFileReplica = new FileReplicaStore((0, import_node_path46.join)(options.dataDir, "projects"));
   let roomHub;
   const projectAssetReplica = {
     async inspect(projectId, read) {
@@ -133014,7 +134813,7 @@ function startLocalApiServer(options) {
   });
   const bundledPluginsReady = (async () => {
     try {
-      const pruned = await pruneOrphanActivationReceipts((0, import_node_path44.join)(clashHome, "actions"));
+      const pruned = await pruneOrphanActivationReceipts((0, import_node_path46.join)(clashHome, "actions"));
       if (pruned.length > 0) {
         console.warn(`[local-api] pruned orphaned activation receipts: ${pruned.join(", ")}`);
       }
@@ -133025,7 +134824,7 @@ function startLocalApiServer(options) {
       try {
         await ensureBundledPlugin({
           id: plugin.id,
-          actionsRoot: (0, import_node_path44.join)(clashHome, "actions")
+          actionsRoot: (0, import_node_path46.join)(clashHome, "actions")
         });
       } catch (error53) {
         console.error(`[local-api] bundled plugin ${plugin.id} seed degraded:`, error53 instanceof Error ? error53.message : String(error53));
@@ -133049,7 +134848,7 @@ function startLocalApiServer(options) {
   let pluginRuntimeReady = null;
   const ensurePluginRuntime = () => pluginRuntimeReady ??= bundledPluginsReady.then(async () => {
     const host = new ActionsHost({
-      actionsRoot: (0, import_node_path44.join)(clashHome, "actions"),
+      actionsRoot: (0, import_node_path46.join)(clashHome, "actions"),
       pluginBroker,
       ...options.providerHttpInstrumentation ? { providerHttpInstrumentation: options.providerHttpInstrumentation } : {},
       ...options.developmentPluginWatchRoots ? { developmentPluginWatchRoots: options.developmentPluginWatchRoots } : {}
@@ -133096,7 +134895,7 @@ function startLocalApiServer(options) {
     await ensurePluginRuntime();
     return pluginHostClient.listModelBindings();
   };
-  const discoveryRunDir = options.discovery?.runDir ?? (0, import_node_path44.join)(clashHome, "run");
+  const discoveryRunDir = options.discovery?.runDir ?? (0, import_node_path46.join)(clashHome, "run");
   const localAcp = options.localAcp ?? createConfiguredLocalAcpAdapter(process.env, {
     apiBaseUrl: `http://127.0.0.1:${options.port}`,
     dataDir: options.dataDir
@@ -133138,6 +134937,13 @@ function startLocalApiServer(options) {
     console.error("[local-api] voice input startup probe degraded:", error53 instanceof Error ? error53.message : String(error53));
   });
   const localTts = createLocalTtsGenerationHandler(audioConfig);
+  const ffprobePath = localFfprobePath();
+  const inspectAssetResource = ffprobePath ? createLocalFfprobeAssetInspector({ ffprobePath }) : void 0;
+  const assetInspection = createLocalAssetInspectionService({
+    dataDir: options.dataDir,
+    clashRoot: clashHome,
+    ...inspectAssetResource ? { inspectResource: inspectAssetResource } : {}
+  });
   const app = createLocalApiApp({
     dataDir: options.dataDir,
     projectAssetProjectionOrigin: localOrigin,
@@ -133156,6 +134962,7 @@ function startLocalApiServer(options) {
     publicAssetStorage,
     audioConfig,
     providerPluginExecutor,
+    assetInspection,
     ...options.providerGenerationDeadlineMs === void 0 ? {} : {
       providerGenerationDeadlineMs: options.providerGenerationDeadlineMs
     },
@@ -133192,6 +134999,7 @@ function startLocalApiServer(options) {
   });
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
+    assetInspection,
     mediaBaseUrl: resolveMediaBaseUrl(() => boundPort),
     ...options.providerGenerationDeadlineMs === void 0 ? {} : {
       providerGenerationDeadlineMs: options.providerGenerationDeadlineMs
@@ -133227,15 +135035,15 @@ function startLocalApiServer(options) {
       modelCards: async () => loadLocalModelCards(options.dataDir, "local-user", await listPluginCards(), await listPluginModelBindings()),
       providerPluginProjector,
       providerPluginExecutor,
-      resolveProviderPluginStagedAsset: async ({ projectId, projectAssetId }) => {
+      resolveProviderPluginStagedAsset: async ({ projectId, projectAssetId: projectAssetId2 }) => {
         const staged = await pluginAssetStaging.resolve({
           projectId,
-          projectAssetId
+          projectAssetId: projectAssetId2
         });
         if (!staged)
           return void 0;
         return {
-          bytes: new Uint8Array(await (0, import_promises38.readFile)(staged.projection.path)),
+          bytes: new Uint8Array(await (0, import_promises40.readFile)(staged.projection.path)),
           kind: staged.projection.resource.kind,
           ...staged.projection.resource.contentType ? { contentType: staged.projection.resource.contentType } : {}
         };
@@ -133317,17 +135125,17 @@ function startLocalApiServer(options) {
   return listening;
 }
 async function writeServerDiscoveryRecord(actualPort, options, runDir, hostId, profile) {
-  const record2 = createHostDiscoveryRecord({
+  const record3 = createHostDiscoveryRecord({
     hostId,
     endpoint: `http://127.0.0.1:${actualPort}`,
-    agentCliPath: (0, import_node_path44.join)(options.dataDir, "agent-bin", "clash"),
+    agentCliPath: (0, import_node_path46.join)(options.dataDir, "agent-bin", "clash"),
     launchMode: options.discovery?.launchMode ?? "cli-once",
     startedBy: options.discovery?.startedBy ?? "cli",
     ownerClientId: options.discovery?.ownerClientId,
     profile
   });
-  await writeHostDiscovery(record2, { runDir });
-  return record2.hostId;
+  await writeHostDiscovery(record3, { runDir });
+  return record3.hostId;
 }
 function wrapServerCloseWithLifecycleCleanup(server2, disposeLocalAcp, getHostId, runDir) {
   const originalClose = server2.close.bind(server2);
@@ -133358,10 +135166,10 @@ if (__clash_import_meta_url === directRunUrl && !process.env.CLASH_LOCAL_API_WRA
 }
 
 // src/development-browser-assets.ts
-var import_node_crypto35 = require("node:crypto");
-var import_promises39 = require("node:fs/promises");
+var import_node_crypto36 = require("node:crypto");
+var import_promises41 = require("node:fs/promises");
 var import_node_os14 = require("node:os");
-var import_node_path45 = require("node:path");
+var import_node_path47 = require("node:path");
 var REMOTION_SOURCE_PACKAGES = [
   "remotion-components",
   "remotion-core",
@@ -133380,18 +135188,18 @@ var DIRECTOR_SOURCE_PACKAGES = [
   "shared-types"
 ];
 async function sourceFingerprint(paths2) {
-  const hash2 = (0, import_node_crypto35.createHash)("sha256");
+  const hash2 = (0, import_node_crypto36.createHash)("sha256");
   const visit = async (path) => {
-    const metadata = await (0, import_promises39.stat)(path);
+    const metadata = await (0, import_promises41.stat)(path);
     hash2.update(path);
     hash2.update(String(metadata.size));
     hash2.update(String(metadata.mtimeMs));
     if (!metadata.isDirectory()) return;
-    const entries = await (0, import_promises39.readdir)(path, { withFileTypes: true });
+    const entries = await (0, import_promises41.readdir)(path, { withFileTypes: true });
     entries.sort((left, right) => left.name.localeCompare(right.name));
     for (const entry of entries) {
       if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-      await visit((0, import_node_path45.join)(path, entry.name));
+      await visit((0, import_node_path47.join)(path, entry.name));
     }
   };
   for (const path of paths2) await visit(path);
@@ -133399,22 +135207,22 @@ async function sourceFingerprint(paths2) {
 }
 function packageInputs(repoRoot, packageNames) {
   return packageNames.flatMap((packageName) => [
-    (0, import_node_path45.join)(repoRoot, "packages", packageName, "package.json"),
-    (0, import_node_path45.join)(repoRoot, "packages", packageName, "src")
+    (0, import_node_path47.join)(repoRoot, "packages", packageName, "package.json"),
+    (0, import_node_path47.join)(repoRoot, "packages", packageName, "src")
   ]);
 }
 function createDevelopmentBrowserAssets(options) {
-  const repoRoot = (0, import_node_path45.resolve)(options.repoRoot);
-  const cacheKey2 = (0, import_node_crypto35.createHash)("sha256").update(repoRoot).digest("hex").slice(0, 12);
-  const cacheRoot = (0, import_node_path45.resolve)(
-    options.cacheRoot ?? (0, import_node_path45.join)((0, import_node_os14.tmpdir)(), `clash-browser-assets-${cacheKey2}`)
+  const repoRoot = (0, import_node_path47.resolve)(options.repoRoot);
+  const cacheKey2 = (0, import_node_crypto36.createHash)("sha256").update(repoRoot).digest("hex").slice(0, 12);
+  const cacheRoot = (0, import_node_path47.resolve)(
+    options.cacheRoot ?? (0, import_node_path47.join)((0, import_node_os14.tmpdir)(), `clash-browser-assets-${cacheKey2}`)
   );
-  const directorBundleDir = (0, import_node_path45.join)(cacheRoot, "director-bundle");
-  const directorAssetsDir = (0, import_node_path45.join)(cacheRoot, "assets");
+  const directorBundleDir = (0, import_node_path47.join)(cacheRoot, "director-bundle");
+  const directorAssetsDir = (0, import_node_path47.join)(cacheRoot, "assets");
   const remotionInputs = packageInputs(repoRoot, REMOTION_SOURCE_PACKAGES);
   const directorInputs = [
     ...packageInputs(repoRoot, DIRECTOR_SOURCE_PACKAGES),
-    (0, import_node_path45.join)(repoRoot, "packages", "director-ui", "assets")
+    (0, import_node_path47.join)(repoRoot, "packages", "director-ui", "assets")
   ];
   let remotionBundle;
   let remotionBuild;
@@ -133433,7 +135241,7 @@ function createDevelopmentBrowserAssets(options) {
       );
       const { bundle } = await import("@remotion/bundler");
       const path = await bundle({
-        entryPoint: (0, import_node_path45.join)(
+        entryPoint: (0, import_node_path47.join)(
           repoRoot,
           "packages",
           "remotion-components",
@@ -133443,7 +135251,7 @@ function createDevelopmentBrowserAssets(options) {
       });
       const previousPath = remotionBundle?.path;
       if (previousPath && previousPath !== path) {
-        await (0, import_promises39.rm)(previousPath, { recursive: true, force: true });
+        await (0, import_promises41.rm)(previousPath, { recursive: true, force: true });
       }
       return { fingerprint, path };
     })();
@@ -133468,22 +135276,22 @@ function createDevelopmentBrowserAssets(options) {
         directorFingerprint ? "[clash] Director source changed; rebuilding the development bundle" : "[clash] Building the Director development bundle from source"
       );
       const { build: build2 } = await import("esbuild");
-      await (0, import_promises39.rm)(directorBundleDir, { recursive: true, force: true });
-      await (0, import_promises39.mkdir)(directorBundleDir, { recursive: true });
+      await (0, import_promises41.rm)(directorBundleDir, { recursive: true, force: true });
+      await (0, import_promises41.mkdir)(directorBundleDir, { recursive: true });
       await build2({
         absWorkingDir: repoRoot,
         entryPoints: [
-          (0, import_node_path45.join)(repoRoot, "packages", "director-ui", "src", "headless-entry.tsx")
+          (0, import_node_path47.join)(repoRoot, "packages", "director-ui", "src", "headless-entry.tsx")
         ],
-        outfile: (0, import_node_path45.join)(directorBundleDir, "index.js"),
+        outfile: (0, import_node_path47.join)(directorBundleDir, "index.js"),
         bundle: true,
         platform: "browser",
         format: "esm",
         target: "chrome120",
         sourcemap: "inline"
       });
-      await (0, import_promises39.writeFile)(
-        (0, import_node_path45.join)(directorBundleDir, "index.html"),
+      await (0, import_promises41.writeFile)(
+        (0, import_node_path47.join)(directorBundleDir, "index.html"),
         [
           "<!doctype html>",
           '<html><head><meta charset="utf-8"><style>html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;background:#171816}</style></head>',
@@ -133492,9 +135300,9 @@ function createDevelopmentBrowserAssets(options) {
         ].join("\n"),
         "utf8"
       );
-      await (0, import_promises39.rm)(directorAssetsDir, { recursive: true, force: true });
-      await (0, import_promises39.cp)(
-        (0, import_node_path45.join)(repoRoot, "packages", "director-ui", "assets"),
+      await (0, import_promises41.rm)(directorAssetsDir, { recursive: true, force: true });
+      await (0, import_promises41.cp)(
+        (0, import_node_path47.join)(repoRoot, "packages", "director-ui", "assets"),
         directorAssetsDir,
         { recursive: true }
       );
@@ -133540,7 +135348,7 @@ async function main() {
   const dataDir2 = defaultLocalApiDataDir(process.env);
   const sourceRuntime = process.env.CLASH_SOURCE_RUNTIME === "1";
   const pluginDevelopment = sourceRuntime ? await prepareDevelopmentBundledPlugins({
-    actionsRoot: (0, import_node_path46.join)(clashHomeForLocalDataDir(dataDir2), "actions"),
+    actionsRoot: (0, import_node_path48.join)(clashHomeForLocalDataDir(dataDir2), "actions"),
     tsconfigPath: (0, import_node_url6.fileURLToPath)(
       new URL("../../../apps/local-api/tsconfig.dev.json", __clash_import_meta_url)
     )
@@ -133585,7 +135393,7 @@ async function main() {
       });
     }
   });
-  const runDir = process.env.CLASH_HOST_RUN_DIR?.trim() || (0, import_node_path46.join)(clashHomeForLocalDataDir(dataDir2), "run");
+  const runDir = process.env.CLASH_HOST_RUN_DIR?.trim() || (0, import_node_path48.join)(clashHomeForLocalDataDir(dataDir2), "run");
   server = await startLocalApiServer({
     port: Number(process.env.PORT ?? 0),
     dataDir: dataDir2,

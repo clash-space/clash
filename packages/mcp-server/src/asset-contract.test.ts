@@ -42,6 +42,8 @@ test("MCP exposes the Project Asset peer surface without public CAS inputs", asy
       "clash_assets_global_list",
       "clash_assets_global_get",
       "clash_assets_global_import_file",
+      "clash_assets_global_trash",
+      "clash_assets_global_restore",
     ],
   );
   assert.deepEqual([...tools.keys()], [...ASSET_MCP_TOOL_NAMES]);
@@ -51,6 +53,17 @@ test("MCP exposes the Project Asset peer surface without public CAS inputs", asy
   }
   assert.equal(
     tools.get("clash_assets_trash")?.config.annotations.destructiveHint,
+    true,
+  );
+  assert.ok(
+    tools.get("clash_assets_import_file")?.config.inputSchema.projectAssetId,
+  );
+  assert.ok(
+    tools.get("clash_assets_global_import_file")?.config.inputSchema
+      .globalAssetId,
+  );
+  assert.equal(
+    tools.get("clash_assets_global_trash")?.config.annotations.destructiveHint,
     true,
   );
   const listed = await tools

@@ -196,7 +196,7 @@ describe("durable Provider generation deadline", () => {
       expect((doc.getMap("nodes").get("sync-text") as any).data).toMatchObject({
         status: "failed",
         error:
-          "Provider did not reach a final state within 7ms after submission.",
+          "Generation failed. See the owning Host for private diagnostics.",
       });
     } finally {
       vi.useRealTimers();

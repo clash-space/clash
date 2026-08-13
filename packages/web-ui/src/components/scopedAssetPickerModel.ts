@@ -8,6 +8,7 @@ import {
 } from "@clash/shared-types";
 import type { EditorAssetInput } from "@clash/remotion-core";
 import type { AssetRelationNode } from "../features/assets/relations";
+import { assetAvailabilityLabel } from "../features/assets/availability";
 import { projectAssetPlaybackUrl } from "../features/assets/media-url";
 
 const UUID_PATTERN =
@@ -35,6 +36,11 @@ export interface ScopedAssetOption {
   type: "image" | "video" | "audio";
   src: string;
   thumbnail?: string;
+  status: ResolvedAsset["status"];
+  progress?: number;
+  error?: string;
+  /** Operation-specific reason this otherwise visible Project member cannot be selected. */
+  disabledReason?: string;
   source: AssetScopeSource;
   sourceNodeId?: string;
 }
@@ -45,6 +51,57 @@ export interface ScopedAssetSection {
   description: string;
   assets: ScopedAssetOption[];
   allowLocalUpload?: boolean;
+}
+
+export interface ScopedTimelineAssetInsertRequest {
+  timelineId: string;
+  requestId: string;
+  asset: EditorAssetInput;
+}
+
+/**
+ * Makes Timeline insertion the final publication step after scope admission.
+ * The returned editor request is disposable UI state; Project Timeline state
+ * and its ActionAssetBinding are committed together by the Project authority.
+ */
+export async function commitScopedTimelineAssetInsertion({
+  option,
+  target,
+  runCascade,
+  resolveProjectAsset,
+  createRequestId,
+  publishRequest,
+}: {
+  option: ScopedAssetOption;
+  target: Extract<AssetScopeTarget, { kind: "timeline" }>;
+  runCascade: () => Promise<{ assetId?: string; sourceNodeId?: string }>;
+  resolveProjectAsset: (projectAssetId: string) => Promise<ResolvedAsset>;
+  createRequestId: () => string;
+  publishRequest: (request: ScopedTimelineAssetInsertRequest) => void;
+}): Promise<ScopedTimelineAssetInsertRequest> {
+  if (option.disabledReason) throw new Error(option.disabledReason);
+  if (option.status !== "ready") {
+    throw new Error(assetAvailabilityLabel(option));
+  }
+  if (!option.src) throw new Error("Asset bytes are unavailable");
+
+  const cascade = await runCascade();
+  const projectAssetId = cascade.assetId ?? option.assetId;
+  const sourceNodeId =
+    cascade.sourceNodeId ?? `timeline-asset:${projectAssetId}`;
+  const authoritativeAsset = await resolveProjectAsset(projectAssetId);
+  const request: ScopedTimelineAssetInsertRequest = {
+    timelineId: target.timelineId,
+    requestId: createRequestId(),
+    asset: buildScopedTimelineAssetInput({
+      option,
+      sourceNodeId,
+      projectAssetId,
+      asset: authoritativeAsset,
+    }),
+  };
+  publishRequest(request);
+  return request;
 }
 
 export function buildScopedTimelineAssetInput({
@@ -58,12 +115,19 @@ export function buildScopedTimelineAssetInput({
   projectAssetId: string;
   asset?: ResolvedAsset;
 }): EditorAssetInput {
+  const resolvedStatus = asset?.status ?? option.status;
+  const resolvedSource = asset?.url ?? option.src;
+  if (resolvedStatus !== "ready" || !resolvedSource) {
+    throw new Error(
+      option.disabledReason ?? assetAvailabilityLabel(asset ?? option),
+    );
+  }
   return {
     id: sourceNodeId,
     projectAssetId,
     sourceNodeId,
     name: option.name,
-    src: asset?.url ?? option.src,
+    src: resolvedSource,
     thumbnail: asset?.thumbnailUrl ?? option.thumbnail,
     type: option.type,
     width: asset?.metadata?.width,
@@ -71,7 +135,6 @@ export function buildScopedTimelineAssetInput({
     duration: asset?.metadata?.durationMs
       ? asset.metadata.durationMs / 1000
       : undefined,
-    waveform: asset?.metadata?.waveform,
   };
 }
 
@@ -88,6 +151,28 @@ export function buildScopedAssetSections({
   globalAssets: ResolvedAsset[];
   nodes: AssetRelationNode[];
 }): ScopedAssetSection[] {
+  const operationDisabledReason = (
+    asset: ResolvedAsset,
+    source: AssetSourceScope,
+  ): string | undefined => {
+    const hasReadableBytes =
+      asset.status === "ready" && Boolean(projectAssetPlaybackUrl(asset));
+    if (hasReadableBytes) return undefined;
+    if (target.kind === "timeline" || source === "external") {
+      return assetAvailabilityLabel(asset);
+    }
+    return undefined;
+  };
+
+  const availability = (asset: ResolvedAsset, source: AssetSourceScope) => ({
+    status: asset.status,
+    ...(asset.progress === undefined ? {} : { progress: asset.progress }),
+    ...(asset.error === undefined ? {} : { error: asset.error }),
+    ...(operationDisabledReason(asset, source)
+      ? { disabledReason: operationDisabledReason(asset, source) }
+      : {}),
+  });
+
   const projectById = new Map<string, ResolvedAsset>();
   for (const asset of projectAssets) {
     projectById.set(asset.id, asset);
@@ -147,6 +232,7 @@ export function buildScopedAssetSections({
         type: asset.kind as ScopedAssetOption["type"],
         src: projectAssetPlaybackUrl(asset) ?? "",
         thumbnail: asset.thumbnailUrl,
+        ...availability(asset, "current-canvas"),
         source: {
           kind: "current-canvas",
           assetId,
@@ -172,18 +258,13 @@ export function buildScopedAssetSections({
         type: asset.kind as ScopedAssetOption["type"],
         src: projectAssetPlaybackUrl(asset) ?? "",
         thumbnail: asset.thumbnailUrl,
+        ...availability(asset, "project"),
         source: { kind: "project", assetId },
       };
     });
 
-  const projectIds = new Set(projectAssets.map((asset) => asset.id));
   const globalOptions = globalAssets
-    .filter(
-      (asset) =>
-        !alreadyInTarget(asset) &&
-        !projectIds.has(asset.id) &&
-        asset.kind !== "model",
-    )
+    .filter((asset) => asset.kind !== "model")
     .map((asset): ScopedAssetOption => {
       const assetId = asset.id;
       return {
@@ -192,6 +273,7 @@ export function buildScopedAssetSections({
         type: asset.kind as ScopedAssetOption["type"],
         src: projectAssetPlaybackUrl(asset) ?? "",
         thumbnail: asset.thumbnailUrl,
+        ...availability(asset, "external"),
         source: { kind: "global-library", assetId },
       };
     });

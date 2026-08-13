@@ -5,6 +5,22 @@ type CanvasAssetNode = {
   data?: Record<string, unknown>;
 };
 
+/**
+ * Preserve only descriptive fallback metadata while treating the Host read as
+ * authoritative for lifecycle, availability, and every media projection.
+ */
+export function mergeResolvedAssetProjection(
+  authoritative: ResolvedAsset,
+  fallback?: ResolvedAsset,
+): ResolvedAsset {
+  const name = authoritative.name ?? fallback?.name;
+  return {
+    ...authoritative,
+    metadata: { ...fallback?.metadata, ...authoritative.metadata },
+    ...(name === undefined ? {} : { name }),
+  };
+}
+
 function basename(value?: string | null): string {
   return value?.split(/[\\/]/).filter(Boolean).at(-1)?.trim() ?? "";
 }
@@ -54,10 +70,6 @@ export function projectAssetDisplayName(asset: ResolvedAsset): string {
   return provenanceLabel
     ? `${provenanceLabel} ${kind}`
     : kind[0].toLocaleUpperCase() + kind.slice(1);
-}
-
-export function projectAssetThumbnailSource(asset: ResolvedAsset): string {
-  return asset.thumbnailUrl?.trim() || asset.url?.trim() || "";
 }
 
 export function resolveCanvasNodeProjectAsset(

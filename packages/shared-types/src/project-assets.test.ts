@@ -41,6 +41,22 @@ const owned = (id: string, resourceId = `resource-${id}`) => ({
   metadata: { width: 1024, height: 768, contentType: "image/png" },
 });
 
+function seedLegacyLinkedProjectAsset(
+  doc: LoroDoc,
+  id: string,
+  scope: "global" | "project" | "catalog",
+): void {
+  const fields = doc.getMap("projectAssets").ensureMergeableMap(id);
+  fields.set("kind", "image");
+  fields.set("source", {
+    kind: "linked",
+    resourceId: `resource-${id}`,
+    origin: { scope, entryId: `origin-${id}` },
+  });
+  fields.set("metadata", { contentType: "image/png" });
+  fields.set("lifecycleState", "active");
+}
+
 describe("Project Asset contract", () => {
   it("defines Global library entries without Project or storage topology", () => {
     const global = {
@@ -53,69 +69,129 @@ describe("Project Asset contract", () => {
     };
 
     expect(GlobalAssetEntrySchema.parse(global)).toEqual(global);
-    expect(GlobalAssetEntrySchema.safeParse({ ...global, projectId: "project-1" }).success)
-      .toBe(false);
-    expect(GlobalAssetEntrySchema.safeParse({ ...global, storageKey: "bucket/key" }).success)
-      .toBe(false);
+    expect(
+      GlobalAssetEntrySchema.safeParse({ ...global, projectId: "project-1" })
+        .success,
+    ).toBe(false);
+    expect(
+      GlobalAssetEntrySchema.safeParse({ ...global, storageKey: "bucket/key" })
+        .success,
+    ).toBe(false);
   });
 
   it("defines one semantic Action Asset binding shape", () => {
-    expect(ActionBindingOwnerSchema.parse({
-      kind: "run",
-      actionId: "action-1",
-      actionRevisionId: "revision-1",
-      actionRunId: "run-1",
-    })).toMatchObject({ kind: "run", actionRunId: "run-1" });
-    expect(ActionAssetBindingSchema.parse({
-      id: "binding-1",
-      owner: { kind: "draft", actionId: "action-1" },
-      direction: "input",
-      slot: "timeline:item:item-1",
-      projectAssetId: "asset-1",
-      role: "primary",
-    })).toMatchObject({ id: "binding-1", projectAssetId: "asset-1" });
-    expect(ActionAssetBindingSchema.safeParse({
-      id: "binding-1",
-      owner: { kind: "draft", actionId: "action-1" },
-      direction: "input",
-      slot: "reference:0",
-      projectAssetId: "asset-1",
-      url: "https://forbidden.example/a.png",
-    }).success).toBe(false);
+    expect(
+      ActionBindingOwnerSchema.parse({
+        kind: "run",
+        actionId: "action-1",
+        actionRevisionId: "revision-1",
+        actionRunId: "run-1",
+      }),
+    ).toMatchObject({ kind: "run", actionRunId: "run-1" });
+    expect(
+      ActionAssetBindingSchema.parse({
+        id: "binding-1",
+        owner: { kind: "draft", actionId: "action-1" },
+        direction: "input",
+        slot: "timeline:item:item-1",
+        projectAssetId: "asset-1",
+        role: "primary",
+      }),
+    ).toMatchObject({ id: "binding-1", projectAssetId: "asset-1" });
+    expect(
+      ActionAssetBindingSchema.safeParse({
+        id: "binding-1",
+        owner: { kind: "draft", actionId: "action-1" },
+        direction: "input",
+        slot: "reference:0",
+        projectAssetId: "asset-1",
+        url: "https://forbidden.example/a.png",
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps storage topology and projections out of synchronized entries", () => {
-    expect(ProjectAssetEntrySchema.safeParse({
-      ...owned("asset-1"),
-      url: "http://127.0.0.1/assets/a.png",
-    }).success).toBe(false);
-    expect(ProjectAssetEntrySchema.safeParse({
-      ...owned("asset-1"),
-      storageKey: "projects/p/assets/a.png",
-    }).success).toBe(false);
-    expect(ProjectAssetEntrySchema.safeParse({
-      ...owned("asset-1"),
-      metadata: { localBlobKey: "cas/a", remoteUrl: "https://cdn.example/a.png" },
-    }).success).toBe(false);
-    expect(ProjectAssetEntrySchema.safeParse({
-      ...owned("asset-1"),
-      metadata: { transcript: "production metadata belongs in a typed attachment" },
-    }).success).toBe(false);
+    expect(
+      ProjectAssetEntrySchema.safeParse({
+        ...owned("asset-1"),
+        url: "http://127.0.0.1/assets/a.png",
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectAssetEntrySchema.safeParse({
+        ...owned("asset-1"),
+        storageKey: "projects/p/assets/a.png",
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectAssetEntrySchema.safeParse({
+        ...owned("asset-1"),
+        metadata: {
+          localBlobKey: "cas/a",
+          remoteUrl: "https://cdn.example/a.png",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectAssetEntrySchema.safeParse({
+        ...owned("asset-1"),
+        metadata: {
+          transcript: "production metadata belongs in a typed attachment",
+        },
+      }).success,
+    ).toBe(false);
   });
 
-  it("represents an admitted Resource with a Project-local linked identity", () => {
-    expect(ProjectAssetEntrySchema.parse({
-      ...owned("project-asset-1", "resource-shared"),
-      source: {
+  it("represents linked origins with their complete owning collection identity", () => {
+    const origins = [
+      {
+        scope: "global" as const,
+        libraryId: "library-personal",
+        entryId: "global-asset-1",
+      },
+      {
+        scope: "project" as const,
+        projectId: "project-source",
+        entryId: "project-asset-1",
+      },
+      {
+        scope: "catalog" as const,
+        catalogId: "catalog-stock",
+        entryId: "catalog-asset-1",
+      },
+    ];
+
+    for (const origin of origins) {
+      expect(
+        ProjectAssetEntrySchema.parse({
+          ...owned("project-asset-1", "resource-shared"),
+          source: {
+            kind: "linked",
+            resourceId: "resource-shared",
+            origin,
+          },
+        }).source,
+      ).toEqual({
         kind: "linked",
         resourceId: "resource-shared",
-        origin: { scope: "global", entryId: "global-asset-1" },
-      },
-    }).source).toEqual({
-      kind: "linked",
-      resourceId: "resource-shared",
-      origin: { scope: "global", entryId: "global-asset-1" },
-    });
+        origin,
+      });
+    }
+  });
+
+  it("rejects ownerless linked origins at the new-publication schema boundary", () => {
+    for (const scope of ["global", "project", "catalog"] as const) {
+      expect(
+        ProjectAssetEntrySchema.safeParse({
+          ...owned(`project-asset-${scope}`, "resource-shared"),
+          source: {
+            kind: "linked",
+            resourceId: "resource-shared",
+            origin: { scope, entryId: "ambiguous-entry" },
+          },
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("defines immutable Resource facts without embedding storage", () => {
@@ -127,48 +203,104 @@ describe("Project Asset contract", () => {
       contentType: "image/png",
     };
     expect(ResourceSchema.parse(resource)).toEqual(resource);
-    expect(ResourceSchema.safeParse({ ...resource, storageKey: "bucket/key" }).success).toBe(false);
-    expect(ResourceSchema.safeParse({ ...resource, url: "https://cdn.example/a.png" }).success)
-      .toBe(false);
+    expect(
+      ResourceSchema.safeParse({ ...resource, storageKey: "bucket/key" })
+        .success,
+    ).toBe(false);
+    expect(
+      ResourceSchema.safeParse({
+        ...resource,
+        url: "https://cdn.example/a.png",
+      }).success,
+    ).toBe(false);
   });
 
   it("defines one read-only resolved projection", () => {
-    expect(ResolvedAssetSchema.parse({
-      id: "asset-1",
-      kind: "image",
-      name: "Hero",
-      metadata: { width: 1024, height: 768 },
-      lifecycle: { state: "active" },
-      status: "ready",
-      url: "https://host.example/assets/asset-1",
-    })).toMatchObject({
+    expect(
+      ResolvedAssetSchema.parse({
+        id: "asset-1",
+        kind: "image",
+        name: "Hero",
+        metadata: { width: 1024, height: 768 },
+        lifecycle: { state: "active" },
+        status: "ready",
+        url: "https://host.example/assets/asset-1",
+      }),
+    ).toMatchObject({
       id: "asset-1",
       lifecycle: { state: "active" },
       status: "ready",
     });
-    expect(ResolvedAssetSchema.safeParse({
-      id: "asset-1",
-      kind: "image",
-      metadata: {},
-      status: "unavailable",
-    }).success).toBe(false);
-    expect(ResolvedAssetSchema.safeParse({
-      id: "asset-1",
-      kind: "image",
-      metadata: {},
-      lifecycle: { state: "active" },
-      status: "ready",
-      storageKey: "bucket/key",
-    }).success).toBe(false);
+    expect(
+      ResolvedAssetSchema.safeParse({
+        id: "asset-1",
+        kind: "image",
+        metadata: {},
+        status: "unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolvedAssetSchema.safeParse({
+        id: "asset-1",
+        kind: "image",
+        metadata: {},
+        lifecycle: { state: "active" },
+        status: "ready",
+        storageKey: "bucket/key",
+      }).success,
+    ).toBe(false);
   });
 });
 
 describe("Project Asset Loro authority", () => {
+  it("normalizes ownerless linked origins from legacy snapshots at the read boundary", () => {
+    const doc = new LoroDoc();
+    seedLegacyLinkedProjectAsset(doc, "legacy-global", "global");
+    seedLegacyLinkedProjectAsset(doc, "legacy-project", "project");
+    seedLegacyLinkedProjectAsset(doc, "legacy-catalog", "catalog");
+
+    expect(
+      readProjectAsset(doc, "legacy-global", {
+        projectId: "project-current",
+      })?.source,
+    ).toMatchObject({
+      origin: {
+        scope: "global",
+        libraryId: "personal",
+        entryId: "origin-legacy-global",
+      },
+    });
+    expect(
+      readProjectAsset(doc, "legacy-project", {
+        projectId: "project-current",
+      })?.source,
+    ).toMatchObject({
+      origin: {
+        scope: "project",
+        projectId: "project-current",
+        entryId: "origin-legacy-project",
+      },
+    });
+    expect(
+      readProjectAsset(doc, "legacy-catalog", {
+        projectId: "project-current",
+      })?.source,
+    ).toMatchObject({
+      origin: {
+        scope: "catalog",
+        catalogId: "legacy",
+        entryId: "origin-legacy-catalog",
+      },
+    });
+  });
+
   it("stores entries in their own Project collection and marks the authority version", () => {
     const doc = new LoroDoc();
 
     expect(markProjectAssetAuthority(doc)).toEqual({ ok: true, version: 1 });
-    expect(createProjectAsset(doc, owned("asset-1"))).toMatchObject({ ok: true });
+    expect(createProjectAsset(doc, owned("asset-1"))).toMatchObject({
+      ok: true,
+    });
     expect(readProjectAsset(doc, "asset-1")).toEqual(owned("asset-1"));
     expect(doc.getMap("projectAssets").get("asset-1")).toBeDefined();
     expect(doc.getMap("nodes").size).toBe(0);
@@ -178,7 +310,9 @@ describe("Project Asset Loro authority", () => {
   it("does not mark a partially materialized legacy Project as cut over", () => {
     const doc = new LoroDoc();
 
-    expect(createProjectAsset(doc, owned("asset-1"))).toMatchObject({ ok: true });
+    expect(createProjectAsset(doc, owned("asset-1"))).toMatchObject({
+      ok: true,
+    });
     expect(projectAssetAuthorityVersion(doc)).toBeUndefined();
   });
 
@@ -214,7 +348,9 @@ describe("Project Asset Loro authority", () => {
       ok: false,
       error: { code: "UNSUPPORTED_PROJECT_ASSET_AUTHORITY" },
     });
-    expect(doc.getMap("projectAssetSchema").get("authorityVersion")).toBe("future-format");
+    expect(doc.getMap("projectAssetSchema").get("authorityVersion")).toBe(
+      "future-format",
+    );
   });
 
   it("keeps the highest authority version across a concurrent stale marker write", () => {
@@ -226,7 +362,10 @@ describe("Project Asset Loro authority", () => {
     const staleVersion = stalePeer.version();
 
     futurePeer.getMap("projectAssetSchema").set("authorityVersion", 2);
-    expect(markProjectAssetAuthority(stalePeer)).toEqual({ ok: true, version: 1 });
+    expect(markProjectAssetAuthority(stalePeer)).toEqual({
+      ok: true,
+      version: 1,
+    });
     mergePeers(futurePeer, stalePeer, futureVersion, staleVersion);
 
     for (const doc of [futurePeer, stalePeer]) {
@@ -243,29 +382,43 @@ describe("Project Asset Loro authority", () => {
     createProjectAsset(doc, owned("asset-1"));
     doc.getMap("projectAssetSchema").set("authorityVersion", 2);
 
-    expect(trashProjectAsset(doc, {
-      id: "asset-1",
-      deleteOperationId: "delete-1",
-      deletedAt: "2026-08-13T01:00:00.000Z",
-      purgeAfter: "2026-08-20T01:00:00.000Z",
-    })).toMatchObject({ ok: false, error: { code: "UNSUPPORTED_PROJECT_ASSET_AUTHORITY" } });
+    expect(
+      trashProjectAsset(doc, {
+        id: "asset-1",
+        deleteOperationId: "delete-1",
+        deletedAt: "2026-08-13T01:00:00.000Z",
+        purgeAfter: "2026-08-20T01:00:00.000Z",
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "UNSUPPORTED_PROJECT_ASSET_AUTHORITY" },
+    });
     expect(restoreProjectAsset(doc, "asset-1")).toMatchObject({
       ok: false,
       error: { code: "UNSUPPORTED_PROJECT_ASSET_AUTHORITY" },
     });
-    expect(purgeProjectAsset(doc, {
-      id: "asset-1",
-      deleteOperationId: "delete-1",
-      purgedAt: "2026-08-21T01:00:00.000Z",
-    })).toMatchObject({ ok: false, error: { code: "UNSUPPORTED_PROJECT_ASSET_AUTHORITY" } });
+    expect(
+      purgeProjectAsset(doc, {
+        id: "asset-1",
+        deleteOperationId: "delete-1",
+        purgedAt: "2026-08-21T01:00:00.000Z",
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "UNSUPPORTED_PROJECT_ASSET_AUTHORITY" },
+    });
   });
 
   it("does not reinterpret an unknown lifecycle as active", () => {
     const doc = new LoroDoc();
     createProjectAsset(doc, owned("asset-1"));
     const raw = doc.getMap("projectAssets").get("asset-1");
-    if (!raw || typeof raw !== "object" || !("set" in raw)) throw new Error("missing entry");
-    (raw as { set(key: string, value: unknown): void }).set("lifecycleState", "archived");
+    if (!raw || typeof raw !== "object" || !("set" in raw))
+      throw new Error("missing entry");
+    (raw as { set(key: string, value: unknown): void }).set(
+      "lifecycleState",
+      "archived",
+    );
 
     expect(() => readProjectAsset(doc, "asset-1")).toThrow(/lifecycle/i);
   });
@@ -274,13 +427,19 @@ describe("Project Asset Loro authority", () => {
     const doc = new LoroDoc();
     createProjectAsset(doc, owned("asset-1"));
     const raw = doc.getMap("projectAssets").get("asset-1");
-    if (!raw || typeof raw !== "object" || !("set" in raw)) throw new Error("missing entry");
-    (raw as { set(key: string, value: unknown): void }).set("terminalLifecycle", {
-      state: "purged",
-      purgedAt: "2026-08-21T01:00:00.000Z",
-    });
+    if (!raw || typeof raw !== "object" || !("set" in raw))
+      throw new Error("missing entry");
+    (raw as { set(key: string, value: unknown): void }).set(
+      "terminalLifecycle",
+      {
+        state: "purged",
+        purgedAt: "2026-08-21T01:00:00.000Z",
+      },
+    );
 
-    expect(() => readProjectAsset(doc, "asset-1")).toThrow(/terminal lifecycle/i);
+    expect(() => readProjectAsset(doc, "asset-1")).toThrow(
+      /terminal lifecycle/i,
+    );
   });
 
   it("merges concurrent additions without turning one entry into the authority for another", () => {
@@ -297,7 +456,10 @@ describe("Project Asset Loro authority", () => {
     mergePeers(left, right, leftVersion, rightVersion);
 
     for (const doc of [left, right]) {
-      expect(listProjectAssets(doc).map((entry) => entry.id)).toEqual(["asset-a", "asset-b"]);
+      expect(listProjectAssets(doc).map((entry) => entry.id)).toEqual([
+        "asset-a",
+        "asset-b",
+      ]);
     }
   });
 
@@ -316,11 +478,13 @@ describe("Project Asset Loro authority", () => {
     const leftVersion = left.version();
     const rightVersion = right.version();
 
-    expect(purgeProjectAsset(left, {
-      id: "asset-1",
-      deleteOperationId: "delete-1",
-      purgedAt: "2026-08-21T01:00:00.000Z",
-    })).toMatchObject({ ok: true });
+    expect(
+      purgeProjectAsset(left, {
+        id: "asset-1",
+        deleteOperationId: "delete-1",
+        purgedAt: "2026-08-21T01:00:00.000Z",
+      }),
+    ).toMatchObject({ ok: true });
     expect(restoreProjectAsset(right, "asset-1")).toMatchObject({ ok: true });
     mergePeers(left, right, leftVersion, rightVersion);
 
@@ -353,18 +517,24 @@ describe("Project Asset Loro authority", () => {
     const purgingVersion = purgingPeer.version();
     const staleVersion = stalePeer.version();
 
-    expect(purgeProjectAsset(purgingPeer, {
-      id: "asset-1",
-      deleteOperationId: "delete-1",
-      purgedAt: "2026-08-21T01:00:00.000Z",
-    })).toMatchObject({ ok: true });
-    expect(restoreProjectAsset(stalePeer, "asset-1")).toMatchObject({ ok: true });
-    expect(trashProjectAsset(stalePeer, {
-      id: "asset-1",
-      deleteOperationId: "delete-2",
-      deletedAt: "2026-08-22T01:00:00.000Z",
-      purgeAfter: "2026-08-29T01:00:00.000Z",
-    })).toMatchObject({ ok: true });
+    expect(
+      purgeProjectAsset(purgingPeer, {
+        id: "asset-1",
+        deleteOperationId: "delete-1",
+        purgedAt: "2026-08-21T01:00:00.000Z",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(restoreProjectAsset(stalePeer, "asset-1")).toMatchObject({
+      ok: true,
+    });
+    expect(
+      trashProjectAsset(stalePeer, {
+        id: "asset-1",
+        deleteOperationId: "delete-2",
+        deletedAt: "2026-08-22T01:00:00.000Z",
+        purgeAfter: "2026-08-29T01:00:00.000Z",
+      }),
+    ).toMatchObject({ ok: true });
     mergePeers(purgingPeer, stalePeer, purgingVersion, staleVersion);
 
     for (const doc of [purgingPeer, stalePeer]) {

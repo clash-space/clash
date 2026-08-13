@@ -14,20 +14,14 @@ import {
   restorePersonalGlobalAsset,
   trashPersonalGlobalAsset,
 } from "../lib/hooks/useAsset";
+import { AssetThumbnail } from "../features/assets/AssetThumbnail";
+import { projectAssetDisplayName } from "../features/assets/projectAssetPresentation";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
 type TrashedResolvedAsset = ResolvedAsset & {
   lifecycle: Extract<ResolvedAsset["lifecycle"], { state: "trashed" }>;
 };
-
-function assetLabel(asset: ResolvedAsset): string {
-  return asset.metadata?.originalName ?? asset.name ?? asset.id;
-}
-
-function assetPreviewUrl(asset: ResolvedAsset): string {
-  return asset.thumbnailUrl ?? asset.url ?? "";
-}
 
 function kindForFile(file: File): AssetKind | null {
   if (file.type.startsWith("image/")) return "image";
@@ -88,7 +82,7 @@ export default function GlobalAssetsClient({
     setMutatingAssetId(asset.id);
     setError(null);
     try {
-      updateAsset(await trashPersonalGlobalAsset(asset.id));
+      updateAsset(await trashPersonalGlobalAsset({ globalAssetId: asset.id }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -100,7 +94,13 @@ export default function GlobalAssetsClient({
     setMutatingAssetId(asset.id);
     setError(null);
     try {
-      updateAsset(await restorePersonalGlobalAsset(asset.id));
+      if (asset.lifecycle.state !== "trashed") return;
+      updateAsset(
+        await restorePersonalGlobalAsset(
+          asset.id,
+          asset.lifecycle.deleteOperationId,
+        ),
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -187,64 +187,54 @@ export default function GlobalAssetsClient({
                 className="grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-3 xl:grid-cols-5"
               >
                 {activeAssets.map((asset) => {
-              const label = assetLabel(asset);
-              const Icon =
-                asset.kind === "video"
-                  ? FilmSlate
-                  : asset.kind === "audio"
-                    ? MusicNote
-                    : ImageIcon;
-              return (
-                <li key={asset.id} className="group min-w-0">
-                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-warm-muted ring-1 ring-warm-border/80">
-                    {asset.kind === "image" && assetPreviewUrl(asset) ? (
-                      <img
-                        src={assetPreviewUrl(asset)}
-                        alt=""
-                        className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025]"
-                      />
-                    ) : asset.kind === "video" && assetPreviewUrl(asset) ? (
-                      <video
-                        src={assetPreviewUrl(asset)}
-                        muted
-                        playsInline
-                        preload="metadata"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center bg-warm-muted text-content-muted">
-                        <Icon className="h-9 w-9" weight="light" />
+                  const label = projectAssetDisplayName(asset);
+                  const Icon =
+                    asset.kind === "video"
+                      ? FilmSlate
+                      : asset.kind === "audio"
+                        ? MusicNote
+                        : ImageIcon;
+                  return (
+                    <li key={asset.id} className="group min-w-0">
+                      <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-warm-muted ring-1 ring-warm-border/80">
+                        <AssetThumbnail
+                          kind={asset.kind}
+                          src={asset.url ?? ""}
+                          thumbnailSrc={asset.thumbnailUrl}
+                          status={asset.status}
+                          label={label}
+                          variant="card"
+                          decorative
+                        />
+                        <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-stone-950/75 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-50">
+                          <Icon className="h-3 w-3" />
+                          {asset.kind}
+                        </span>
                       </div>
-                    )}
-                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-stone-950/75 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-50">
-                      <Icon className="h-3 w-3" />
-                      {asset.kind}
-                    </span>
-                  </div>
-                  <p
-                    className="mt-2 truncate text-sm font-semibold text-content-primary"
-                    title={label}
-                  >
-                    {label}
-                  </p>
-                  {asset.status === "unavailable" ? (
-                    <p className="mt-1 text-xs text-content-muted">
-                      Unavailable on this device
-                    </p>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    shape="rounded"
-                    disabled={mutatingAssetId === asset.id}
-                    onClick={() => void trashAsset(asset)}
-                    leftIcon={<Trash className="h-3.5 w-3.5" />}
-                    aria-label={`Move ${label} to Trash`}
-                    className="mt-2"
-                  >
-                    Move to Trash
-                  </Button>
-                </li>
-              );
+                      <p
+                        className="mt-2 truncate text-sm font-semibold text-content-primary"
+                        title={label}
+                      >
+                        {label}
+                      </p>
+                      {asset.status === "unavailable" ? (
+                        <p className="mt-1 text-xs text-content-muted">
+                          Unavailable on this device
+                        </p>
+                      ) : null}
+                      <Button
+                        size="sm"
+                        shape="rounded"
+                        disabled={mutatingAssetId === asset.id}
+                        onClick={() => void trashAsset(asset)}
+                        leftIcon={<Trash className="h-3.5 w-3.5" />}
+                        aria-label={`Move ${label} to Trash`}
+                        className="mt-2"
+                      >
+                        Move to Trash
+                      </Button>
+                    </li>
+                  );
                 })}
               </ul>
             )}
@@ -252,7 +242,10 @@ export default function GlobalAssetsClient({
         )}
 
         {trashedAssets.length > 0 ? (
-          <section aria-labelledby="global-asset-trash-heading" className="mt-14">
+          <section
+            aria-labelledby="global-asset-trash-heading"
+            className="mt-14"
+          >
             <h2
               id="global-asset-trash-heading"
               className="mb-4 font-display text-lg font-semibold text-content-primary"
@@ -264,10 +257,16 @@ export default function GlobalAssetsClient({
               className="grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-3 xl:grid-cols-5"
             >
               {trashedAssets.map((asset) => {
-                const label = assetLabel(asset);
+                const label = projectAssetDisplayName(asset);
                 return (
-                  <li key={asset.id} className="rounded-xl border border-warm-border bg-warm-surface p-4">
-                    <p className="truncate text-sm font-semibold text-content-primary" title={label}>
+                  <li
+                    key={asset.id}
+                    className="rounded-xl border border-warm-border bg-warm-surface p-4"
+                  >
+                    <p
+                      className="truncate text-sm font-semibold text-content-primary"
+                      title={label}
+                    >
                       {label}
                     </p>
                     <p className="mt-1 text-xs text-content-muted">
@@ -278,7 +277,9 @@ export default function GlobalAssetsClient({
                       shape="rounded"
                       disabled={mutatingAssetId === asset.id}
                       onClick={() => void restoreAsset(asset)}
-                      leftIcon={<ArrowCounterClockwise className="h-3.5 w-3.5" />}
+                      leftIcon={
+                        <ArrowCounterClockwise className="h-3.5 w-3.5" />
+                      }
                       aria-label={`Restore ${label}`}
                       className="mt-3"
                     >

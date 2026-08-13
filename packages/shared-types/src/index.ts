@@ -804,6 +804,16 @@ export {
 // Declared asset metadata kinds: the open registry behind the published
 // asset-metadata-fill-action contract.
 export {
+  ActionRevisionMetadataTargetSchema,
+  MetadataAttachmentTargetSchema,
+  ProjectAssetMetadataTargetSchema,
+  metadataAttachmentTargetKey,
+  type ActionRevisionMetadataTarget,
+  type MetadataAttachmentTarget,
+  type ProjectAssetMetadataTarget,
+} from "./metadata-attachments.js";
+
+export {
   MediaTranscriptMetadataSchema,
   getDeclaredAssetMetadataKind,
   listDeclaredAssetMetadataKinds,
@@ -878,9 +888,12 @@ export {
   listProjectTimelines,
   listStandaloneTimelines,
   projectCanvasReadToken,
+  projectTimelineAssetInputs,
   projectTimelineActionId,
+  projectTimelineRenderActionRunId,
   projectTimelineReadToken,
   projectTimelineRevisionId,
+  freezeProjectTimelineRunAssetInputs,
   readProjectTimeline,
   reconcileProjectTimelineOwnership,
   renameProjectCanvas,
@@ -943,6 +956,7 @@ export {
 
 // Collaboration visibility (presence + activity)
 export * from "./presence.js";
+export * from "./copilot-asset-reference.js";
 
 // Timeline YAML projection (agent-facing surface)
 export {
@@ -1056,7 +1070,9 @@ export {
   ResourceIdSchema,
   ResourceSchema,
   ProjectAssetMetadataSchema,
+  ProjectAssetPublicationMetadataSchema,
   ProjectAssetProvenanceSchema,
+  ProjectAssetLinkedOriginSchema,
   ProjectAssetSourceSchema,
   ProjectAssetLifecycleSchema,
   ProjectAssetEntrySchema,
@@ -1076,7 +1092,9 @@ export {
   type ResourceId,
   type Resource,
   type ProjectAssetMetadata,
+  type ProjectAssetPublicationMetadata,
   type ProjectAssetProvenance,
+  type ProjectAssetLinkedOrigin,
   type ProjectAssetSource,
   type ProjectAssetLifecycle,
   type ProjectAssetEntry,
@@ -1098,6 +1116,7 @@ export {
   trashProjectAsset,
   restoreProjectAsset,
   purgeProjectAsset,
+  type ProjectAssetReadContext,
   type ProjectAssetMutationErrorCode,
   type ProjectAssetMutationError,
   type ProjectAssetMutationResult,
@@ -1112,6 +1131,7 @@ export {
   markActionAssetBindingAuthority,
   readActionAssetBinding,
   listActionAssetBindings,
+  listActionAssetBindingsForOwner,
   listActionAssetReferences,
   projectAssetMutationReadToken,
   projectAssetMutationReadTokenFromDoc,
@@ -1121,6 +1141,7 @@ export {
   updateActionAssetBinding,
   unbindActionAssetBinding,
   replaceDraftActionAssetInputBindings,
+  freezeDraftActionAssetInputBindings,
   trashProjectAssetIfUnreferenced,
   type ActionAssetBindingMutationErrorCode,
   type ActionAssetBindingMutationError,
@@ -1129,6 +1150,7 @@ export {
   type ActionAssetBindingAuthorityResult,
   type DraftActionAssetInput,
   type ReplaceDraftActionAssetInputBindingsResult,
+  type FreezeDraftActionAssetInputBindingsResult,
   type AssetInUseError,
   type ActionAssetBindingAuthorityRequiredError,
   type ActionAssetBindingTargetReconciliation,

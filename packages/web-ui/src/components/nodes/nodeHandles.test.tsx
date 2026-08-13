@@ -34,7 +34,9 @@ vi.mock("./SourceHandleMenu", () => ({
 }));
 
 vi.mock("./DraftPlaceholder", () => ({
-  default: ({ nodeId }: { nodeId: string }) => <div data-testid="draft-placeholder" data-node-id={nodeId} />,
+  default: ({ nodeId }: { nodeId: string }) => (
+    <div data-testid="draft-placeholder" data-node-id={nodeId} />
+  ),
 }));
 
 vi.mock("../LoroSyncContext", () => ({
@@ -53,15 +55,13 @@ vi.mock("../MilkdownEditor", () => ({
 }));
 
 vi.mock("react-markdown", () => ({
-  default: ({ children }: { children: React.ReactNode }) => <div data-testid="markdown-preview">{children}</div>,
+  default: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="markdown-preview">{children}</div>
+  ),
 }));
 
 vi.mock("../../../lib/hooks/useAsset", () => ({
   useAsset: () => undefined,
-}));
-
-vi.mock("../../../lib/hooks/useSignedUrl", () => ({
-  useSignedUrl: (url?: string) => url,
 }));
 
 describe("node handle wiring", () => {

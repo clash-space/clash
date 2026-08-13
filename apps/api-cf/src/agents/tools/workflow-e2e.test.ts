@@ -18,11 +18,12 @@ import { chatWithSupervisor as sendSupervisorChat } from "./e2e-chat";
 // api-cf dev server. Makefile binds :8789 but the existing e2e in this
 // directory targets :8787 — keep them aligned by environment override.
 const API_URL = process.env.API_CF_URL ?? "http://localhost:8787";
-const PROJECT_ID = process.env.E2E_PROJECT_ID ?? "857d7caa-9fb9-4442-80fa-67bc709a0288";
+const PROJECT_ID =
+  process.env.E2E_PROJECT_ID ?? "857d7caa-9fb9-4442-80fa-67bc709a0288";
 
 async function isServerRunning(): Promise<boolean> {
   try {
-    await fetch(`${API_URL}/assets/sign?key=test`, { signal: AbortSignal.timeout(2000) });
+    await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(2000) });
     return true;
   } catch {
     return false;
@@ -85,7 +86,10 @@ describe("workflow_op — LLM e2e", () => {
     );
 
     console.log("[E2E build-preview] text:\n", text);
-    console.log("[E2E build-preview] tool calls:", JSON.stringify(toolCalls, null, 2));
+    console.log(
+      "[E2E build-preview] tool calls:",
+      JSON.stringify(toolCalls, null, 2),
+    );
 
     // Two acceptable paths:
     //   A) No drafts on canvas → agent lists nodes, reports no drafts, does not
@@ -98,7 +102,8 @@ describe("workflow_op — LLM e2e", () => {
     const workflowCalls = toolCalls.filter((c) => c.toolName === "workflow_op");
     if (workflowCalls.length > 0) {
       for (const c of workflowCalls) {
-        const input = typeof c.input === "object" && c.input !== null ? c.input : {};
+        const input =
+          typeof c.input === "object" && c.input !== null ? c.input : {};
         expect(input).toHaveProperty("kind", "build");
         expect(input).toHaveProperty("target_node_id");
         // Preview path — apply should be absent or false.
@@ -106,7 +111,9 @@ describe("workflow_op — LLM e2e", () => {
       }
     } else {
       // Must have reasoned that there's nothing to build.
-      expect(text.toLowerCase()).toMatch(/no drafts?|nothing to build|no draft node/);
+      expect(text.toLowerCase()).toMatch(
+        /no drafts?|nothing to build|no draft node/,
+      );
     }
   }, 180_000);
 });

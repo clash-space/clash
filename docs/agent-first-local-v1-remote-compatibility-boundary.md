@@ -1,4 +1,14 @@
-# Agent-First Local v1 Remote Compatibility Boundary
+# Historical: Agent-First Local v1 Remote Compatibility Boundary
+
+> **Status:** Historical boundary analysis, not a current implementation
+> inventory. It remains useful for understanding why hosted ProjectRoom and
+> authentication surfaces were preserved, but individual “keep” and “current
+> evidence” items below must be checked against code. Current Asset and run
+> contracts live in the
+> [Asset system](../apps/docs/guide/asset-system.md) and
+> [Durable Run protocol](../apps/docs/guide/durable-run-protocol.md). Their
+> Cloud storage, execution, and failover sections are future design, not
+> delivered behavior.
 
 Last updated: 2026-07-05
 

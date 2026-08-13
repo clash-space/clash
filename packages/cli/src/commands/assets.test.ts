@@ -16,7 +16,10 @@ import {
   trashProjectAsset,
 } from "./assets";
 import * as assetCommands from "./assets";
-import type { ProjectAssetHostClient } from "@clash/shared-runtime/project-asset-client";
+import type {
+  PersonalGlobalAssetHostClient,
+  ProjectAssetHostClient,
+} from "@clash/shared-runtime/project-asset-client";
 import { initProject } from "./projects";
 
 async function tempDir(): Promise<string> {
@@ -48,7 +51,7 @@ test("assets command registers link subcommand", () => {
   assert.ok(global);
   assert.deepEqual(
     global.commands.map((command) => command.name()),
-    ["list", "get", "import"],
+    ["list", "get", "import", "delete", "restore"],
   );
   const get = assetsCommand.commands.find(
     (command) => command.name() === "get",
@@ -158,8 +161,10 @@ test("global asset import sends local bytes through the personal-library client"
     assetCommands as unknown as {
       importPersonalGlobalAssetFile?: (options: {
         filePath: string;
+        globalAssetId?: string;
         client: {
           importFile(input: {
+            globalAssetId?: string;
             bytes: Uint8Array;
             fileName: string;
             contentType: string;
@@ -174,6 +179,7 @@ test("global asset import sends local bytes through the personal-library client"
   if (!importGlobal) return;
   const result = await importGlobal({
     filePath: source,
+    globalAssetId: "global:voice-command",
     client: {
       async importFile(input) {
         calls.push({ ...input, bytes: Array.from(input.bytes) });
@@ -189,8 +195,51 @@ test("global asset import sends local bytes through the personal-library client"
       fileName: "voice.mp3",
       contentType: "audio/mpeg",
       kind: "audio",
+      globalAssetId: "global:voice-command",
     },
   ]);
+});
+
+test("CLI Global import reuses its Asset id when the same command object retries an unknown result", async () => {
+  const source = join(await tempDir(), "voice.mp3");
+  await writeFile(source, new Uint8Array([4, 5, 6]));
+  const imports: Array<{ id: string; bytes: number[] }> = [];
+  const command = {
+    filePath: source,
+    client: {
+      async importFile(input: {
+        globalAssetId?: string;
+        bytes: Uint8Array;
+        fileName: string;
+        contentType: string;
+        kind: "audio";
+      }) {
+        imports.push({
+          id: input.globalAssetId ?? "",
+          bytes: Array.from(input.bytes),
+        });
+        if (imports.length === 1) throw new TypeError("connection lost");
+        return {
+          id: input.globalAssetId!,
+          kind: "audio" as const,
+          lifecycle: { state: "active" as const },
+          status: "ready" as const,
+          metadata: { bytes: 3, contentType: "audio/mpeg" },
+        };
+      },
+    } as PersonalGlobalAssetHostClient,
+  };
+
+  await assert.rejects(
+    assetCommands.importPersonalGlobalAssetFile(command),
+    /connection lost/,
+  );
+  await writeFile(source, new Uint8Array([9, 9, 9]));
+  await assetCommands.importPersonalGlobalAssetFile(command);
+
+  assert.notEqual(imports[0]?.id, "");
+  assert.equal(imports[1]?.id, imports[0]?.id);
+  assert.deepEqual(imports[1]?.bytes, imports[0]?.bytes);
 });
 
 test("CLI Global import accepts the same OGG audio representation as MCP", async () => {
@@ -200,6 +249,7 @@ test("CLI Global import accepts the same OGG audio representation as MCP", async
 
   await assetCommands.importPersonalGlobalAssetFile({
     filePath: source,
+    globalAssetId: "global:ogg-command",
     client: {
       async importFile(input) {
         imports.push({
@@ -223,6 +273,12 @@ test("CLI Global import accepts the same OGG audio representation as MCP", async
       async publish() {
         throw new Error("not used");
       },
+      async trash() {
+        throw new Error("not used");
+      },
+      async restore() {
+        throw new Error("not used");
+      },
     },
   });
 
@@ -232,7 +288,123 @@ test("CLI Global import accepts the same OGG audio representation as MCP", async
       fileName: "voice.ogg",
       contentType: "audio/ogg",
       kind: "audio",
+      globalAssetId: "global:ogg-command",
     },
+  ]);
+});
+
+test("CLI Global lifecycle uses the observed delete operation for restore and stable trash retries", async () => {
+  const module = assetCommands as unknown as {
+    trashPersonalGlobalAsset?: (options: {
+      globalAssetId: string;
+      client: PersonalGlobalAssetHostClient;
+      onObservation?: (deleteOperationId: string) => void | Promise<void>;
+    }) => Promise<unknown>;
+    restorePersonalGlobalAsset?: (options: {
+      globalAssetId: string;
+      observedDeleteOperationId?: string;
+      client: PersonalGlobalAssetHostClient;
+      onObservation?: (deleteOperationId: string) => void | Promise<void>;
+    }) => Promise<unknown>;
+  };
+  assert.equal(typeof module.trashPersonalGlobalAsset, "function");
+  assert.equal(typeof module.restorePersonalGlobalAsset, "function");
+  if (!module.trashPersonalGlobalAsset || !module.restorePersonalGlobalAsset)
+    return;
+  const calls: unknown[] = [];
+  const observations: string[] = [];
+  const trashed = {
+    id: "global:one",
+    kind: "image" as const,
+    lifecycle: {
+      state: "trashed" as const,
+      deleteOperationId: "delete:observed",
+      deletedAt: "2026-08-13T00:00:00.000Z",
+      purgeAfter: "2026-08-20T00:00:00.000Z",
+    },
+    status: "unavailable" as const,
+    metadata: { bytes: 4, contentType: "image/png" },
+  };
+  const active = {
+    ...trashed,
+    lifecycle: { state: "active" as const },
+    status: "ready" as const,
+  };
+  let trashAttempts = 0;
+  const client: PersonalGlobalAssetHostClient = {
+    async list() {
+      return [];
+    },
+    async get(input) {
+      calls.push({ method: "get", input });
+      return trashed;
+    },
+    async importFile() {
+      throw new Error("not used");
+    },
+    async publish() {
+      throw new Error("not used");
+    },
+    async trash(input) {
+      calls.push({ method: "trash", input });
+      trashAttempts += 1;
+      if (trashAttempts === 1) throw new TypeError("connection lost");
+      return {
+        ...trashed,
+        lifecycle: {
+          ...trashed.lifecycle,
+          deleteOperationId: input.deleteOperationId!,
+        },
+      };
+    },
+    async restore(input) {
+      calls.push({ method: "restore", input });
+      return active;
+    },
+  };
+  const trashCommand = {
+    globalAssetId: "global:one",
+    client,
+    onObservation: (deleteOperationId: string) => {
+      observations.push(deleteOperationId);
+    },
+  };
+
+  await assert.rejects(
+    module.trashPersonalGlobalAsset(trashCommand),
+    /connection lost/,
+  );
+  await module.trashPersonalGlobalAsset(trashCommand);
+  const trashCalls = calls.filter(
+    (
+      call,
+    ): call is { method: "trash"; input: { deleteOperationId?: string } } =>
+      (call as { method?: string }).method === "trash",
+  );
+  assert.ok(trashCalls[0]?.input.deleteOperationId);
+  assert.equal(
+    trashCalls[1]?.input.deleteOperationId,
+    trashCalls[0]?.input.deleteOperationId,
+  );
+
+  await module.restorePersonalGlobalAsset({
+    globalAssetId: "global:one",
+    observedDeleteOperationId: "delete:observed",
+    client,
+    onObservation: (deleteOperationId) => {
+      observations.push(deleteOperationId);
+    },
+  });
+  assert.deepEqual(calls.at(-1), {
+    method: "restore",
+    input: {
+      globalAssetId: "global:one",
+      deleteOperationId: "delete:observed",
+    },
+  });
+  assert.deepEqual(observations, [
+    trashCalls[1]?.input.deleteOperationId,
+    "delete:observed",
   ]);
 });
 
@@ -424,6 +596,7 @@ test("asset import sends workspace bytes through the shared Host client and link
 
   const result = await importAssetFile({
     filePath: source,
+    projectAssetId: "asset:hero-command",
     cwd,
     env: {},
     homeDir,
@@ -467,9 +640,51 @@ test("asset import sends workspace bytes through the shared Host client and link
       fileName: "hero.png",
       contentType: "image/png",
       kind: "image",
+      projectAssetId: "asset:hero-command",
     },
   ]);
   assert.equal(JSON.stringify(imports).includes("localBlobKey"), false);
+});
+
+test("CLI Project import reuses its Asset id when the same command object retries an unknown result", async () => {
+  const cwd = await tempDir();
+  const source = join(await tempDir(), "hero.png");
+  await writeFile(source, "asset-bytes", "utf8");
+  await initProject({ cwd, projectId: "asset_project" });
+  const imports: Array<{ id: string; bytes: number[] }> = [];
+  const command = {
+    filePath: source,
+    cwd,
+    env: {},
+    link: false,
+    client: {
+      async importFile(input) {
+        imports.push({
+          id: input.projectAssetId ?? "",
+          bytes: Array.from(input.bytes),
+        });
+        if (imports.length === 1) throw new TypeError("connection lost");
+        return {
+          projectId: "asset_project",
+          value: {
+            id: input.projectAssetId!,
+            kind: "image" as const,
+            lifecycle: { state: "active" as const },
+            status: "ready" as const,
+            metadata: { bytes: 11, contentType: "image/png" },
+          },
+        };
+      },
+    } as ProjectAssetHostClient,
+  };
+
+  await assert.rejects(importAssetFile(command), /connection lost/);
+  await writeFile(source, "changed!!!!", "utf8");
+  await importAssetFile(command);
+
+  assert.notEqual(imports[0]?.id, "");
+  assert.equal(imports[1]?.id, imports[0]?.id);
+  assert.deepEqual(imports[1]?.bytes, imports[0]?.bytes);
 });
 
 test("asset import infers Director GLB files and leaves Resource deduplication to the Host", async () => {
@@ -710,13 +925,15 @@ test("asset delete returns the opaque receipt through client glue and sends agen
         headers: init?.headers,
         body: init?.body,
       });
+      const deleteOperationId = JSON.parse(String(init?.body))
+        .deleteOperationId as string;
       return new Response(
         JSON.stringify({
           id: "asset-live",
           kind: "image",
           lifecycle: {
             state: "trashed",
-            deleteOperationId: "delete:test",
+            deleteOperationId,
             deletedAt: "2026-08-13T00:00:00.000Z",
             purgeAfter: "2026-09-12T00:00:00.000Z",
           },
@@ -734,19 +951,67 @@ test("asset delete returns the opaque receipt through client glue and sends agen
   });
 
   assert.equal(result.status, "unavailable");
+  await trashProjectAsset({
+    projectId: "project-a",
+    assetId: "asset-live",
+    actorClientType: "agent",
+    observedVersion: "project-asset:receipt:before-delete",
+    request: async (path, init) => {
+      calls.push({
+        path,
+        method: init?.method,
+        headers: init?.headers,
+        body: init?.body,
+      });
+      const deleteOperationId = JSON.parse(String(init?.body))
+        .deleteOperationId as string;
+      return Response.json(
+        {
+          id: "asset-live",
+          kind: "image",
+          lifecycle: {
+            state: "trashed",
+            deleteOperationId,
+            deletedAt: "2026-08-13T00:00:00.000Z",
+            purgeAfter: "2026-09-12T00:00:00.000Z",
+          },
+          status: "unavailable",
+          metadata: { bytes: 11 },
+        },
+        {
+          headers: {
+            "x-clash-read-receipt": "project-asset:receipt:after-delete",
+          },
+        },
+      );
+    },
+  });
   assert.equal("readToken" in result, false);
   assert.deepEqual(observations, ["project-asset:receipt:after-delete"]);
-  assert.deepEqual(calls, [
-    {
-      path: "/api/v1/projects/project-a/assets/asset-live",
-      method: "DELETE",
-      headers: {
-        "x-clash-client-type": "agent",
-        "x-clash-if-match": "project-asset:receipt:before-delete",
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.deepEqual(
+      {
+        path: call.path,
+        method: call.method,
+        headers: call.headers,
       },
-      body: undefined,
-    },
-  ]);
+      {
+        path: "/api/v1/projects/project-a/assets/asset-live",
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+          "x-clash-client-type": "agent",
+          "x-clash-if-match": "project-asset:receipt:before-delete",
+        },
+      },
+    );
+  }
+  const firstOperation = JSON.parse(String(calls[0]?.body)).deleteOperationId;
+  const retriedOperation = JSON.parse(String(calls[1]?.body)).deleteOperationId;
+  assert.equal(typeof firstOperation, "string");
+  assert.ok(firstOperation.length > 0);
+  assert.equal(retriedOperation, firstOperation);
 });
 
 test("asset restore returns the opaque receipt through client glue and sends agent CAS headers", async () => {

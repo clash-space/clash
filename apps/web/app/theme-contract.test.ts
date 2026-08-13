@@ -28,7 +28,7 @@ describe("application theme contract", () => {
     expect(html).toContain('name="color-scheme"');
     expect(html).toContain("clash.appearance");
     expect(html).toContain("prefers-color-scheme: dark");
-    expect(html).toContain("classList.toggle(\"dark\"");
+    expect(html).toContain('classList.toggle("dark"');
   });
 
   it("persists and applies a contrast-safe custom accent before first paint", () => {
@@ -77,9 +77,7 @@ describe("application theme contract", () => {
     expect(css).toContain(
       "--color-content-secondary: var(--clash-content-secondary)",
     );
-    expect(css).toContain(
-      "--color-content-muted: var(--clash-content-muted)",
-    );
+    expect(css).toContain("--color-content-muted: var(--clash-content-muted)");
     expect(css).toContain(
       "--color-content-disabled: var(--clash-content-disabled)",
     );
@@ -197,7 +195,12 @@ describe("application theme contract", () => {
       },
       {
         path: "packages/web-ui/src/components/ScopedAssetPicker.tsx",
-        tokens: ["bg-[#f8f7f5]", "bg-white/90", "bg-white/55", "border-stone-300"],
+        tokens: [
+          "bg-[#f8f7f5]",
+          "bg-white/90",
+          "bg-white/55",
+          "border-stone-300",
+        ],
       },
       {
         path: "packages/remotion-ui/src/components/PropertiesPanel.tsx",
@@ -210,7 +213,7 @@ describe("application theme contract", () => {
       {
         path: "packages/web-ui/src/components/nodes/ActionBadge.tsx",
         tokens: [
-          "overlayClassName=\"bg-white/80\"",
+          'overlayClassName="bg-white/80"',
           "bg-white/60",
           "hover:bg-white",
           "border-slate-300",
@@ -239,15 +242,16 @@ describe("application theme contract", () => {
       },
       {
         path: "packages/remotion-ui/src/components/InteractiveCanvas.tsx",
-        tokens: ["#0066ff", "background: #ffffff"],
-      },
-      {
-        path: "packages/remotion-ui/src/components/InteractiveCanvasV2.tsx",
         tokens: ['stroke="#FF6B50"', 'fill="#ffffff"'],
       },
       {
         path: "packages/remotion-ui/src/components/timeline/PrimaryTranscriptWordbar.tsx",
-        tokens: ["#e7e2dc", "rgba(241, 239, 236, 0.96)", "#ffe4dc", "rgba(255, 254, 253, 0.94)"],
+        tokens: [
+          "#e7e2dc",
+          "rgba(241, 239, 236, 0.96)",
+          "#ffe4dc",
+          "rgba(255, 254, 253, 0.94)",
+        ],
       },
       {
         path: "packages/remotion-ui/src/components/timeline/TimelineItem.tsx",
@@ -301,10 +305,7 @@ describe("application theme contract", () => {
       },
       {
         path: "packages/web-ui/src/components/GlobalAssetsClient.tsx",
-        tokens: [
-          "bg-stone-100 text-stone-400",
-          "font-semibold text-slate-900",
-        ],
+        tokens: ["bg-stone-100 text-stone-400", "font-semibold text-slate-900"],
       },
       {
         path: "packages/web-ui/src/components/ProjectWorkspaceSurfaces.tsx",
@@ -335,10 +336,7 @@ describe("application theme contract", () => {
       },
       {
         path: "packages/web-ui/src/components/UserControls.tsx",
-        tokens: [
-          "hover:bg-stone-200/70",
-          "hover:text-stone-950",
-        ],
+        tokens: ["hover:bg-stone-200/70", "hover:text-stone-950"],
       },
       {
         path: "packages/web-ui/src/components/copilot/NodeProposalCard.tsx",
@@ -356,32 +354,23 @@ describe("application theme contract", () => {
       },
       {
         path: "packages/remotion-ui/src/components/CaptionWorkspace.tsx",
-        tokens: [
-          "text-stone-",
-          "text-slate-",
-        ],
+        tokens: ["text-stone-", "text-slate-"],
       },
       {
         path: "packages/web-ui/src/components/nodes/DirectorStageNode.tsx",
         tokens: [
-          'text-[#5f9eff]',
+          "text-[#5f9eff]",
           "font-semibold text-slate-800",
           "font-medium text-emerald-700",
         ],
       },
       {
         path: "packages/web-ui/src/components/nodes/TextNode.tsx",
-        tokens: [
-          "prose-headings:text-slate-900",
-          "prose-p:text-slate-700",
-        ],
+        tokens: ["prose-headings:text-slate-900", "prose-p:text-slate-700"],
       },
       {
         path: "packages/web-ui/src/components/nodes/PromptNode.tsx",
-        tokens: [
-          "prose-headings:text-slate-900",
-          "prose-p:text-slate-700",
-        ],
+        tokens: ["prose-headings:text-slate-900", "prose-p:text-slate-700"],
       },
       {
         path: "packages/web-ui/src/components/nodes/VideoClipperNode.tsx",
@@ -449,7 +438,7 @@ describe("application theme contract", () => {
     expect(css).toMatch(
       /\.dark \.clash-copilot-launcher \.clash-agent-motion__pen\s*\{[\s\S]*?fill: #ff6b50/,
     );
-    expect(topNavigation).toContain('/brand/logo-mark-dark.svg');
+    expect(topNavigation).toContain("/brand/logo-mark-dark.svg");
     expect(topNavigation).not.toContain("dark:grayscale");
   });
 
@@ -478,7 +467,7 @@ describe("application theme contract", () => {
     expect(login).toContain("dark:text-neutral-50");
     expect(login).toContain("dark:text-neutral-100");
     expect(login).toContain("dark:placeholder:text-neutral-500");
-    expect(login).toContain('/brand/logo-mark-dark.svg');
+    expect(login).toContain("/brand/logo-mark-dark.svg");
   });
 
   it("exposes Appearance as a real persisted settings section", () => {

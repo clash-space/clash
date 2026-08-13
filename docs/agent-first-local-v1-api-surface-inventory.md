@@ -1,6 +1,15 @@
-# Agent-First Local v1 API Surface
+# Historical: Agent-First Local v1 API Surface Snapshot
 
-Status: Current
+> **Status:** Historical snapshot; superseded as a current API contract. The
+> command list below records the Local v1 convergence work at the date shown,
+> but later Asset and Durable Run migrations changed public and internal
+> surfaces. Use live `clash --help` output for the shipped CLI, the
+> [Asset system](../apps/docs/guide/asset-system.md) for Asset identity and
+> lifecycle, and the
+> [Durable Run protocol](../apps/docs/guide/durable-run-protocol.md) for
+> execution semantics. Cloud Asset storage and Cloud execution described by
+> those guides remain design-only; this snapshot is not evidence that they are
+> implemented.
 
 Last updated: 2026-07-11
 

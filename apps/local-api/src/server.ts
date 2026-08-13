@@ -81,6 +81,11 @@ import {
   createLocalProjectAssetService,
   type LocalProjectAssetReplica,
 } from "./local-project-assets.js";
+import {
+  createLocalAssetInspectionService,
+  createLocalFfprobeAssetInspector,
+  localFfprobePath,
+} from "./local-asset-inspections.js";
 import { createLocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import type { LocalPluginAssetStagingStore } from "./local-plugin-asset-staging.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
@@ -834,7 +839,8 @@ export function createLocalPluginBrokerServices(options: {
             mediaType,
             bytes,
           }) => {
-            const publicConfig = await options.publicAssetStorage!.getPublicConfig();
+            const publicConfig =
+              await options.publicAssetStorage!.getPublicConfig();
             if (!publicConfig.available) return undefined;
             const published = await options.publicAssetStorage!.publish({
               key: `plugins/${pluginId}/${invocationId}/${assetId}`,
@@ -1193,6 +1199,15 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     );
   });
   const localTts = createLocalTtsGenerationHandler(audioConfig);
+  const ffprobePath = localFfprobePath();
+  const inspectAssetResource = ffprobePath
+    ? createLocalFfprobeAssetInspector({ ffprobePath })
+    : undefined;
+  const assetInspection = createLocalAssetInspectionService({
+    dataDir: options.dataDir,
+    clashRoot: clashHome,
+    ...(inspectAssetResource ? { inspectResource: inspectAssetResource } : {}),
+  });
   const app = createLocalApiApp({
     dataDir: options.dataDir,
     projectAssetProjectionOrigin: localOrigin,
@@ -1213,6 +1228,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     publicAssetStorage,
     audioConfig,
     providerPluginExecutor,
+    assetInspection,
     ...(options.providerGenerationDeadlineMs === undefined
       ? {}
       : {
@@ -1266,6 +1282,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   // failed with a bare `fetch failed`.
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
+    assetInspection,
     mediaBaseUrl: resolveMediaBaseUrl(() => boundPort),
     ...(options.providerGenerationDeadlineMs === undefined
       ? {}
@@ -1424,9 +1441,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       await Promise.all([
         localAcp.disposeAll(),
         options.directorStageRenderer?.dispose(),
-        startupRecovery
-          .catch(() => undefined)
-          .then(() => roomHub?.close()),
+        startupRecovery.catch(() => undefined).then(() => roomHub?.close()),
         (pluginRuntimeReady ?? bundledPluginsReady)
           .catch(() => undefined)
           .then(async () => {

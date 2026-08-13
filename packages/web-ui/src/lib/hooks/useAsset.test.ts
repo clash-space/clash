@@ -9,9 +9,13 @@ import {
   invalidateAsset,
   listPersonalGlobalAssets,
   publishProjectAssetToPersonalLibrary,
+  refreshAsset,
   restoreProjectAsset,
+  restorePersonalGlobalAsset,
   trashProjectAsset,
+  trashPersonalGlobalAsset,
   useAsset,
+  watchAssetProjection,
 } from "./useAsset";
 import type { ResolvedAsset } from "@clash/shared-types";
 
@@ -51,6 +55,9 @@ describe("useAsset", () => {
     invalidateAsset("project-1", "asset-3");
     invalidateAsset("project-1", "asset-cover");
     invalidateAsset("project-1", "asset-error");
+    invalidateAsset("project-1", "asset-refresh");
+    invalidateAsset("project-1", "asset-watch");
+    invalidateAsset("project-1", "asset-subscribed");
     invalidateAsset("project-1", "asset-admitted");
     invalidateAsset("project-2", "asset-1");
   });
@@ -226,6 +233,88 @@ describe("useAsset", () => {
     expect(b).toEqual(a);
   });
 
+  it("refreshAsset bypasses a stale unavailable projection and replaces the cache", async () => {
+    const unavailable = makeAsset({
+      id: "asset-refresh",
+      status: "unavailable",
+      url: undefined,
+      thumbnailUrl: undefined,
+      error: "Not installed on this Host",
+    });
+    const ready = makeAsset({ id: "asset-refresh" });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(unavailable))
+      .mockResolvedValueOnce(jsonResponse(ready));
+
+    await expect(getAsset("project-1", "asset-refresh")).resolves.toEqual(
+      unavailable,
+    );
+    await expect(refreshAsset("project-1", "asset-refresh")).resolves.toEqual(
+      ready,
+    );
+    await expect(getAsset("project-1", "asset-refresh")).resolves.toEqual(
+      ready,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("watches retryable Host availability until the projection becomes ready", async () => {
+    const unavailable = makeAsset({
+      id: "asset-watch",
+      status: "unavailable",
+      url: undefined,
+      thumbnailUrl: undefined,
+    });
+    const ready = makeAsset({ id: "asset-watch" });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(unavailable))
+      .mockResolvedValueOnce(jsonResponse(ready));
+    const scheduled: Array<() => void> = [];
+    const onProjection = vi.fn();
+
+    const stop = watchAssetProjection({
+      projectId: "project-1",
+      assetId: "asset-watch",
+      onProjection,
+      schedule: (run) => {
+        scheduled.push(run);
+        return () => undefined;
+      },
+    });
+
+    await waitFor(() => expect(onProjection).toHaveBeenCalledWith(unavailable));
+    expect(scheduled).toHaveLength(1);
+    scheduled.shift()?.();
+    await waitFor(() => expect(onProjection).toHaveBeenLastCalledWith(ready));
+    expect(scheduled).toHaveLength(0);
+    stop();
+  });
+
+  it("publishes refreshed projections to every mounted useAsset consumer", async () => {
+    const unavailable = makeAsset({
+      id: "asset-subscribed",
+      status: "unavailable",
+      url: undefined,
+      thumbnailUrl: undefined,
+    });
+    const ready = makeAsset({ id: "asset-subscribed" });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(unavailable))
+      .mockResolvedValueOnce(jsonResponse(ready));
+
+    const first = renderHook(() => useAsset("project-1", "asset-subscribed"));
+    const second = renderHook(() => useAsset("project-1", "asset-subscribed"));
+    await waitFor(() => expect(first.result.current).toEqual(unavailable));
+
+    await act(async () => {
+      await refreshAsset("project-1", "asset-subscribed");
+    });
+
+    await waitFor(() => expect(first.result.current).toEqual(ready));
+    expect(second.result.current).toEqual(ready);
+  });
+
   it("does not share a cached asset across project scopes", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -362,9 +451,9 @@ describe("useAsset", () => {
     await expect(trashProjectAsset("project-1", "asset-1")).resolves.toEqual(
       trashed,
     );
-    await expect(
-      restoreProjectAsset("project-1", "asset-1"),
-    ).resolves.toEqual(restored);
+    await expect(restoreProjectAsset("project-1", "asset-1")).resolves.toEqual(
+      restored,
+    );
 
     expect(fetchSpy.mock.calls.map(([url]) => url)).toEqual([
       "/api/v1/projects/project-1/assets/asset-1",
@@ -385,6 +474,73 @@ describe("useAsset", () => {
         "x-clash-if-match": "browser-read-receipt",
       }),
     });
+  });
+
+  it("restores a personal Global Asset from the delete operation already observed by the GUI", async () => {
+    const trashed = makeAsset({
+      id: "global:one",
+      lifecycle: {
+        state: "trashed",
+        deleteOperationId: "delete:global-one",
+        deletedAt: "2026-08-13T00:00:00.000Z",
+        purgeAfter: "2026-09-12T00:00:00.000Z",
+      },
+      status: "unavailable",
+      url: undefined,
+      thumbnailUrl: undefined,
+    });
+    const restored = makeAsset({ id: "global:one" });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(restored));
+
+    if (trashed.lifecycle.state !== "trashed") {
+      throw new Error("fixture must expose a trashed lifecycle observation");
+    }
+
+    await expect(
+      restorePersonalGlobalAsset(
+        "global:one",
+        trashed.lifecycle.deleteOperationId,
+      ),
+    ).resolves.toEqual(restored);
+    expect(fetchSpy.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/libraries/personal/assets/global%3Aone/restore",
+    ]);
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ deleteOperationId: "delete:global-one" }),
+    });
+  });
+
+  it("keeps one Global trash operation id when the same GUI command retries an unknown result", async () => {
+    const trashed = makeAsset({
+      id: "global:one",
+      lifecycle: {
+        state: "trashed",
+        deleteOperationId: "delete:returned",
+        deletedAt: "2026-08-13T00:00:00.000Z",
+        purgeAfter: "2026-09-12T00:00:00.000Z",
+      },
+      status: "unavailable",
+    });
+    const requests: RequestInit[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      requests.push(init ?? {});
+      if (requests.length <= 3) throw new TypeError("connection lost");
+      return jsonResponse(trashed);
+    });
+    const command = { globalAssetId: "global:one" };
+
+    await expect(trashPersonalGlobalAsset(command)).rejects.toThrow(
+      "fetchWithRetry gave up",
+    );
+    await trashPersonalGlobalAsset(command);
+    const operationIds = requests
+      .filter(({ body }) => body)
+      .map(({ body }) => JSON.parse(String(body)).deleteOperationId);
+    expect(operationIds[0]).toBeTruthy();
+    expect(operationIds[1]).toBe(operationIds[0]);
   });
 
   it("surfaces ASSET_IN_USE instead of hiding a downstream Action reference", async () => {

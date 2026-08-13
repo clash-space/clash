@@ -26,7 +26,9 @@ vi.mock("./SourceHandleMenu", () => ({
 }));
 
 vi.mock("./DraftPlaceholder", () => ({
-  default: ({ nodeId }: { nodeId: string }) => <div data-testid="draft-placeholder" data-node-id={nodeId} />,
+  default: ({ nodeId }: { nodeId: string }) => (
+    <div data-testid="draft-placeholder" data-node-id={nodeId} />
+  ),
 }));
 
 vi.mock("../MediaViewerContext", () => ({
@@ -54,10 +56,6 @@ vi.mock("./AttributionLine", () => ({
 vi.mock("@clash/web-ui/lib/hooks/useAsset", () => ({
   useAsset: () => undefined,
   invalidateAsset: vi.fn(),
-}));
-
-vi.mock("@clash/web-ui/lib/hooks/useSignedUrl", () => ({
-  useSignedUrl: (url?: string) => url,
 }));
 
 vi.mock("@clash/web-ui/lib/runtimeConfig", () => ({
@@ -89,13 +87,16 @@ describe("media node sizing", () => {
           data={{
             label: "Preview image",
             status: "completed",
-            previewUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E",
+            previewUrl:
+              "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E",
           }}
         />
       </ProjectProvider>,
     );
 
-    const card = container.querySelector(".bg-warm-surface") as HTMLElement | null;
+    const card = container.querySelector(
+      ".bg-warm-surface",
+    ) as HTMLElement | null;
     expect(card?.style.width).toBe("260px");
     expect(card?.style.height).toBe("190px");
   });
@@ -118,7 +119,9 @@ describe("media node sizing", () => {
       </ProjectProvider>,
     );
 
-    const card = container.querySelector(".bg-warm-surface") as HTMLElement | null;
+    const card = container.querySelector(
+      ".bg-warm-surface",
+    ) as HTMLElement | null;
     expect(card?.style.width).toBe("320px");
     expect(card?.style.height).toBe("180px");
   });

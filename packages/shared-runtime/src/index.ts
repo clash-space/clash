@@ -1,6 +1,5 @@
 export {
   apiUrl,
-  assetFallbackUrl,
   defaultRuntimeCapabilities,
   desktopChromeMetrics,
   desktopTrafficLightPosition,
@@ -191,9 +190,11 @@ export const LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
 export const LOCAL_HOST_PROTOCOL_VERSION = 1;
 export const LOCAL_HOST_DATA_SCHEMA_VERSION = 1;
 
-export type HostLaunchMode = "desktop" | "plugin" | "cli-once" | "user-service" | "launchd";
+export type HostLaunchMode =
+  "desktop" | "plugin" | "cli-once" | "user-service" | "launchd";
 
-export type HostStartedBy = "desktop" | "plugin" | "cli" | "user-service" | "launchd";
+export type HostStartedBy =
+  "desktop" | "plugin" | "cli" | "user-service" | "launchd";
 
 export interface LocalHostDiscoveryRecord {
   schemaVersion: typeof LOCAL_HOST_RECORD_SCHEMA_VERSION;
@@ -217,29 +218,36 @@ export interface LocalHostShutdownClient {
   clientId?: string;
 }
 
-export function isLocalHostDiscoveryRecord(value: unknown): value is LocalHostDiscoveryRecord {
+export function isLocalHostDiscoveryRecord(
+  value: unknown,
+): value is LocalHostDiscoveryRecord {
   if (!value || typeof value !== "object") return false;
   const record = value as Partial<LocalHostDiscoveryRecord>;
   return (
-    record.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION
-    && typeof record.protocolVersion === "number"
-    && Number.isInteger(record.protocolVersion)
-    && typeof record.dataSchemaVersion === "number"
-    && Number.isInteger(record.dataSchemaVersion)
-    && typeof record.hostId === "string"
-    && record.hostId.length > 0
-    && typeof record.endpoint === "string"
-    && record.endpoint.length > 0
-    && typeof record.pid === "number"
-    && Number.isInteger(record.pid)
-    && record.pid > 0
-    && isHostLaunchMode(record.launchMode)
-    && isHostStartedBy(record.startedBy)
-    && (record.profile === undefined || record.profile === "dev" || record.profile === "prod")
-    && (record.agentCliPath === undefined || (typeof record.agentCliPath === "string" && record.agentCliPath.length > 0))
-    && (record.ownerClientId === undefined || typeof record.ownerClientId === "string")
-    && typeof record.startedAt === "string"
-    && typeof record.updatedAt === "string"
+    record.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION &&
+    typeof record.protocolVersion === "number" &&
+    Number.isInteger(record.protocolVersion) &&
+    typeof record.dataSchemaVersion === "number" &&
+    Number.isInteger(record.dataSchemaVersion) &&
+    typeof record.hostId === "string" &&
+    record.hostId.length > 0 &&
+    typeof record.endpoint === "string" &&
+    record.endpoint.length > 0 &&
+    typeof record.pid === "number" &&
+    Number.isInteger(record.pid) &&
+    record.pid > 0 &&
+    isHostLaunchMode(record.launchMode) &&
+    isHostStartedBy(record.startedBy) &&
+    (record.profile === undefined ||
+      record.profile === "dev" ||
+      record.profile === "prod") &&
+    (record.agentCliPath === undefined ||
+      (typeof record.agentCliPath === "string" &&
+        record.agentCliPath.length > 0)) &&
+    (record.ownerClientId === undefined ||
+      typeof record.ownerClientId === "string") &&
+    typeof record.startedAt === "string" &&
+    typeof record.updatedAt === "string"
   );
 }
 
@@ -248,8 +256,8 @@ export function isCompatibleHost(
   clientProtocolVersion: number,
 ): boolean {
   return (
-    record.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION
-    && record.protocolVersion <= clientProtocolVersion
+    record.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION &&
+    record.protocolVersion <= clientProtocolVersion
   );
 }
 
@@ -257,7 +265,11 @@ export function shouldClientOwnShutdown(
   record: LocalHostDiscoveryRecord,
   client: LocalHostShutdownClient,
 ): boolean {
-  if (!record.ownerClientId || !client.clientId || record.ownerClientId !== client.clientId) {
+  if (
+    !record.ownerClientId ||
+    !client.clientId ||
+    record.ownerClientId !== client.clientId
+  ) {
     return false;
   }
   if (record.launchMode === "desktop") {
@@ -271,21 +283,21 @@ export function shouldClientOwnShutdown(
 
 function isHostLaunchMode(value: unknown): value is HostLaunchMode {
   return (
-    value === "desktop"
-    || value === "plugin"
-    || value === "cli-once"
-    || value === "user-service"
-    || value === "launchd"
+    value === "desktop" ||
+    value === "plugin" ||
+    value === "cli-once" ||
+    value === "user-service" ||
+    value === "launchd"
   );
 }
 
 function isHostStartedBy(value: unknown): value is HostStartedBy {
   return (
-    value === "desktop"
-    || value === "plugin"
-    || value === "cli"
-    || value === "user-service"
-    || value === "launchd"
+    value === "desktop" ||
+    value === "plugin" ||
+    value === "cli" ||
+    value === "user-service" ||
+    value === "launchd"
   );
 }
 

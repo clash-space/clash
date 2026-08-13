@@ -59,12 +59,19 @@ export interface FrozenProjectAssetDelivery {
 export interface FrozenLocalProviderExecutorInput {
   schemaVersion: 1;
   /** Omitted by records created before custom Actions joined the shared durable graph. */
-  targetKind?: "provider-executor" | "action";
+  targetKind?: "provider-executor" | "action" | "local-executor";
   binding: ExecutablePluginBinding;
   /** Product Action definition identity; execution ownership remains the Canvas node/run. */
   actionId?: string;
   /** User/agent attribution is frozen with a custom Action revision. */
   actor?: ExecutablePluginInvocation["actor"];
+  /** Exact synchronized Action owner used by non-Canvas products such as Timeline render. */
+  publicOwner?: {
+    actionId: string;
+    actionRevisionId: string;
+  };
+  /** Frozen optimistic guard for projecting this immutable run onto a mutable Canvas node. */
+  nodeProjectionRevisionId?: string;
   accountId?: string;
   kind: ProviderKind;
   projectId: string;
@@ -110,6 +117,8 @@ export interface LocalDurableRunCoordinatorOptions {
   journal: SqliteDurableRunJournal;
   providerPluginExecutor: ProviderPluginExecutor;
   executablePluginAction?: ExecutablePluginActionInvoker;
+  /** Host-local work still enters the same Durable Run graph; this is its submit adapter. */
+  localExecutor?: ExecutablePluginActionInvoker;
   outputStore: DurableOutputStore;
   publisher: DurableProjectPublisher;
   retryPolicy: DurableRetryPolicy;
@@ -156,7 +165,11 @@ function parseFrozenExecutorInputUnchecked(
   }
   const binding = ExecutablePluginBindingSchema.parse(json.binding);
   const targetKind = json.targetKind ?? "provider-executor";
-  if (targetKind !== "provider-executor" && targetKind !== "action") {
+  if (
+    targetKind !== "provider-executor" &&
+    targetKind !== "action" &&
+    targetKind !== "local-executor"
+  ) {
     throw new FrozenExecutorInputError(
       "Frozen executable targetKind is not recognized.",
     );
@@ -194,6 +207,8 @@ function parseFrozenExecutorInputUnchecked(
   const nodeId = json.nodeId;
   const actionId = json.actionId;
   const actor = json.actor;
+  const publicOwner = json.publicOwner;
+  const nodeProjectionRevisionId = json.nodeProjectionRevisionId;
   const assetInputs =
     json.assetInputs === undefined
       ? []
@@ -256,7 +271,26 @@ function parseFrozenExecutorInputUnchecked(
         : { id: nonEmptyString(actor.id, "actor.id") }),
     };
   }
-  if (targetKind === "action") {
+  let parsedPublicOwner: FrozenLocalProviderExecutorInput["publicOwner"];
+  if (publicOwner !== undefined) {
+    if (
+      !publicOwner ||
+      typeof publicOwner !== "object" ||
+      Array.isArray(publicOwner)
+    ) {
+      throw new FrozenExecutorInputError(
+        "Frozen executable publicOwner must be an object.",
+      );
+    }
+    parsedPublicOwner = {
+      actionId: nonEmptyString(publicOwner.actionId, "publicOwner.actionId"),
+      actionRevisionId: nonEmptyString(
+        publicOwner.actionRevisionId,
+        "publicOwner.actionRevisionId",
+      ),
+    };
+  }
+  if (targetKind === "action" || targetKind === "local-executor") {
     if (actionId === undefined) {
       throw new FrozenExecutorInputError(
         "Frozen Action executor actionId is missing.",
@@ -275,12 +309,21 @@ function parseFrozenExecutorInputUnchecked(
   }
   return {
     schemaVersion: 1,
-    ...(targetKind === "action" ? { targetKind } : {}),
+    ...(targetKind === "provider-executor" ? {} : { targetKind }),
     binding,
     ...(actionId === undefined
       ? {}
       : { actionId: nonEmptyString(actionId, "actionId") }),
     ...(parsedActor ? { actor: parsedActor } : {}),
+    ...(parsedPublicOwner ? { publicOwner: parsedPublicOwner } : {}),
+    ...(nodeProjectionRevisionId === undefined
+      ? {}
+      : {
+          nodeProjectionRevisionId: nonEmptyString(
+            nodeProjectionRevisionId,
+            "nodeProjectionRevisionId",
+          ),
+        }),
     ...(accountId === undefined
       ? {}
       : { accountId: nonEmptyString(accountId, "accountId") }),
@@ -432,7 +475,10 @@ function customActionStep(
         {
           slot: run.outputSlot,
           kind: "value",
-          value: customActionText(output.value),
+          value:
+            frozen.targetKind === "local-executor"
+              ? output.value
+              : customActionText(output.value),
         },
       ],
     };
@@ -520,7 +566,11 @@ function customActionRequest(
   now: number,
 ): ExecutablePluginActionRequest {
   const frozen = parseFrozenExecutorInput(run.executorInput);
-  if (frozen.targetKind !== "action" || !frozen.actor) {
+  if (
+    (frozen.targetKind !== "action" &&
+      frozen.targetKind !== "local-executor") ||
+    !frozen.actor
+  ) {
     throw new FrozenExecutorInputError(
       "A custom Action request requires a frozen Action target and actor.",
     );
@@ -539,6 +589,7 @@ function customActionRequest(
 function classifyThrownError(
   error: unknown,
   operation: DurableRunOperation,
+  run: DurableRunRecord,
 ): DurableProviderFailure {
   const message = error instanceof Error ? error.message : String(error);
   if (error instanceof FrozenExecutorInputError) {
@@ -563,6 +614,17 @@ function classifyThrownError(
       message,
       retryable: true,
       requestState: operation === "submit" ? "unknown" : "accepted",
+    };
+  }
+  if (
+    operation === "submit" &&
+    parseFrozenExecutorInput(run.executorInput).targetKind === "local-executor"
+  ) {
+    return {
+      code: "execution_failed",
+      message,
+      retryable: true,
+      requestState: "unknown",
     };
   }
   if (operation === "submit" || operation === "poll") {
@@ -661,6 +723,17 @@ export function createLocalDurableRunCoordinator(
     provider: {
       async submit({ run, idempotencyKey }) {
         const frozen = parseFrozenExecutorInput(run.executorInput);
+        if (frozen.targetKind === "local-executor") {
+          if (!options.localExecutor) {
+            throw new ProviderPluginHostUnavailableError(
+              "Host-local durable executor is unavailable.",
+            );
+          }
+          return customActionStep(
+            run,
+            await options.localExecutor(customActionRequest(run, clock.now())),
+          );
+        }
         if (frozen.targetKind === "action") {
           if (!options.executablePluginAction) {
             throw new ProviderPluginHostUnavailableError(
@@ -681,7 +754,10 @@ export function createLocalDurableRunCoordinator(
       },
       async poll({ run, pollState }) {
         const frozen = parseFrozenExecutorInput(run.executorInput);
-        if (frozen.targetKind === "action") {
+        if (
+          frozen.targetKind === "action" ||
+          frozen.targetKind === "local-executor"
+        ) {
           return {
             status: "failed",
             error: {

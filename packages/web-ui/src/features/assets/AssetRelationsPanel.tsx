@@ -123,7 +123,9 @@ export function AssetRelationsPanel({
                 {source.asset ? (
                   <AssetThumbnail
                     kind={source.asset.kind}
-                    src={source.asset.thumbnailUrl ?? source.asset.url ?? ''}
+                    src={source.asset.url ?? ''}
+                    thumbnailSrc={source.asset.thumbnailUrl}
+                    status={source.asset.status}
                     label={source.label}
                     decorative
                   />

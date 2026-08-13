@@ -31,9 +31,10 @@ import {
   getAdaptiveFilmstripSampleCount,
   getBoundedFilmstripCanvasWidth,
   getOrCreatePendingTask,
-  getPersistentVideoCacheId,
+  getPersistentMediaCacheId,
   renderFilmstripToCanvas,
 } from './videoThumbnailUtils';
+import { createBoundedWaveformCache } from './waveformCache';
 import { TimelineTextInput } from '../ui/controls';
 import { useDragGesture } from '../ui/gesture';
 import { getTimelineItemDisplayLabel } from './itemDisplayLabel';
@@ -132,7 +133,11 @@ declare global {
 
 const pendingFilmstripBuilds = new Map<string, Promise<string | undefined>>();
 const enqueueFilmstripBuild = createSerializedTaskQueue();
-const generatedWaveformCache = new Map<string, number[]>();
+const generatedWaveformCache = createBoundedWaveformCache({
+  maxEntries: 48,
+  maxSamples: 48 * 8_192,
+  ttlMs: 30 * 60 * 1_000,
+});
 const pendingWaveformBuilds = new Map<string, Promise<number[]>>();
 
 const formatDb = (db: number) => (
@@ -191,6 +196,8 @@ interface TimelineItemProps {
   presentationTrackHeight?: number;
   /** Override transcript reservation when a track is projected inside another lane. */
   presentationReservesTranscriptWordbar?: boolean;
+  /** Opaque Host authority scope used to isolate disposable media previews. */
+  previewCacheScope?: string;
 }
 
 export const TimelineItem: React.FC<TimelineItemProps> = ({
@@ -218,6 +225,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   onAnnotationTargetContextMenu,
   presentationTrackHeight,
   presentationReservesTranscriptWordbar,
+  previewCacheScope,
 }) => {
   const { fps, primaryTrackId } = useEditorStaticState();
   const dispatch = useEditorDispatch();
@@ -251,6 +259,24 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     return findAssetForItem(item as BaseItem & { src?: string; type?: Item['type'] }, assets);
   }, [item, assets]);
 
+  const sourceNodeId = getItemSourceNodeId(item);
+  const itemProjectAssetId = item.sourceNodeId ? item.assetId : undefined;
+  const persistentMediaCacheId = React.useMemo(
+    () => getPersistentMediaCacheId(
+      asset?.projectAssetId ?? itemProjectAssetId,
+      sourceNodeId,
+      resolvedItemSrc,
+      previewCacheScope,
+    ),
+    [
+      asset?.projectAssetId,
+      itemProjectAssetId,
+      previewCacheScope,
+      resolvedItemSrc,
+      sourceNodeId,
+    ],
+  );
+
   const staticThumbnail = asset?.thumbnail || (resolvedItemType === 'image' ? resolvedItemSrc : undefined);
   const persistedWaveform: number[] | undefined =
     resolvedItemType === 'audio' || resolvedItemType === 'video'
@@ -263,6 +289,7 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     resolvedItemType,
     resolvedItemSrc,
     waveformSampleCount,
+    persistentMediaCacheId ?? undefined,
   );
   const [generatedWaveform, setGeneratedWaveform] = React.useState<number[] | undefined>(
     () => waveformCacheKey ? generatedWaveformCache.get(waveformCacheKey) : undefined,
@@ -310,18 +337,8 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
   const itemWaveform = generatedWaveform ?? persistedWaveform;
   const hasWaveform: boolean = Array.isArray(itemWaveform) && itemWaveform.length > 0;
   const sourceStartInFrames = (item as any).sourceStartInFrames || 0;
-  const sourceNodeId = getItemSourceNodeId(item);
-  const itemProjectAssetId = item.sourceNodeId ? item.assetId : undefined;
-  const persistentVideoCacheId = React.useMemo(
-    () => getPersistentVideoCacheId(
-      asset?.projectAssetId ?? itemProjectAssetId,
-      sourceNodeId,
-      resolvedItemSrc
-    ),
-    [asset?.projectAssetId, itemProjectAssetId, sourceNodeId, resolvedItemSrc]
-  );
-  const fallbackThumbnailCacheKey = persistentVideoCacheId
-    ? `thumb:${persistentVideoCacheId}:${sourceStartInFrames}`
+  const fallbackThumbnailCacheKey = persistentMediaCacheId
+    ? `thumb:${persistentMediaCacheId}:${sourceStartInFrames}`
     : null;
   const [filmstripThumbnail, setFilmstripThumbnail] = React.useState<string | null>(null);
   const [fallbackVideoThumbnail, setFallbackVideoThumbnail] = React.useState<string | null>(null);
@@ -364,8 +381,8 @@ export const TimelineItem: React.FC<TimelineItemProps> = ({
     fullVideoPixelWidth,
     thumbnailHeight: Math.max(16, thumbnailHeight || itemHeight),
   });
-  const filmstripCacheKey = persistentVideoCacheId
-    ? `filmstrip:${persistentVideoCacheId}:${filmstripSampleCount}`
+  const filmstripCacheKey = persistentMediaCacheId
+    ? `filmstrip:${persistentMediaCacheId}:${filmstripSampleCount}`
     : null;
   const filmstripCanvasWidth = React.useMemo(
     () => getBoundedFilmstripCanvasWidth(fullVideoPixelWidth),

@@ -1,6 +1,13 @@
-# Agent-First Local v1 Black-Box E2E Specification
+# Historical: Agent-First Local v1 Black-Box E2E Specification
 
-Status: Required
+> **Status:** Historical release-gate snapshot, not the current coverage gate.
+> The scenarios below remain useful test ideas, but their command list, storage
+> layout, Asset references, and claimed evidence predate the unified Asset SDK
+> and Durable Run Engine. Current acceptance follows the
+> [Asset system](../apps/docs/guide/asset-system.md) and
+> [Durable Run protocol](../apps/docs/guide/durable-run-protocol.md), plus their
+> directed tests, traffic replay, coverage audit, and lint requirements. Cloud
+> Asset storage and Cloud execution remain design-only.
 
 Last updated: 2026-07-11
 

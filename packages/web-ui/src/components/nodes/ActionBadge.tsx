@@ -46,8 +46,10 @@ import { usePeersSelectingNode } from "../PresenceAwarenessContext";
 import PeerSelectionRing from "../PeerSelectionRing";
 import { useLayoutManager } from "@clash/web-ui/lib/layout";
 import { generateSemanticId } from "@clash/web-ui/lib/utils/semanticId";
-import { SignedImg } from "../SignedMedia";
+import { ProjectedImage } from "../ProjectedMedia";
 import { getAsset, useAsset } from "@clash/web-ui/lib/hooks/useAsset";
+import { assetThumbnailImageUrl } from "../../features/assets/media-url";
+import { VideoPoster } from "../../features/assets/VideoPoster";
 import {
   activeModelParameterIds,
   applyModelParameterChange,
@@ -346,7 +348,7 @@ function FrameReferenceSlot({
         {filled ? (
           <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-warm-border bg-warm-muted shadow-sm">
             {thumb ? (
-              <SignedImg
+              <ProjectedImage
                 src={thumb}
                 alt={label}
                 className="h-full w-full object-cover"
@@ -665,7 +667,7 @@ function ActionMentionPicker({
               className="flex w-full cursor-default items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors outline-none hover:bg-warm-muted data-[active-item]:bg-warm-muted"
             >
               {node.thumbnail ? (
-                <SignedImg
+                <ProjectedImage
                   src={node.thumbnail}
                   alt={node.label}
                   className="h-8 w-8 flex-shrink-0 rounded border border-warm-border object-cover"
@@ -1182,9 +1184,7 @@ const PromptActionNode = ({
       .map((nodeId) => getNode(nodeId))
       .filter((node): node is NonNullable<typeof node> => !!node)
       .map(referenceMediaMetadata)
-      .filter(
-        (metadata): metadata is ReferenceMediaMetadata => !!metadata,
-      );
+      .filter((metadata): metadata is ReferenceMediaMetadata => !!metadata);
     return validateReferenceMedia(validationTarget, references, {
       modelParams: activeParams,
     });
@@ -1603,13 +1603,9 @@ const PromptActionNode = ({
         if (!n) continue;
         const assetId = referenceAssetId(n);
         if (!assetId) continue;
-        const modality = referenceModality(n);
         try {
           const asset = await getAsset(projectId, assetId);
-          const previewUrl =
-            modality === "video"
-              ? (asset.thumbnailUrl ?? asset.url)
-              : asset.url;
+          const previewUrl = assetThumbnailImageUrl(asset);
           if (previewUrl) next.set(nid, previewUrl);
         } catch {
           // asset not yet available; skip
@@ -2344,8 +2340,7 @@ const PromptActionNode = ({
     setError(null);
 
     try {
-      if (referenceValidationError)
-        throw new Error(referenceValidationError);
+      if (referenceValidationError) throw new Error(referenceValidationError);
       // Capture and clear pre-allocated asset ID (provided by backend; treat as single-use)
       const preAllocatedAssetId = data.preAllocatedAssetId as
         string | undefined;
@@ -2647,7 +2642,7 @@ const PromptActionNode = ({
                 >
                   <div className="w-10 h-10 rounded-lg overflow-hidden border border-warm-border bg-warm-muted flex items-center justify-center pointer-events-none">
                     {src ? (
-                      <SignedImg
+                      <ProjectedImage
                         src={src}
                         alt={`Image ${i + 1}`}
                         className="w-full h-full object-cover"
@@ -2734,7 +2729,7 @@ const PromptActionNode = ({
                       >
                         <div className="w-7 h-7 rounded overflow-hidden border border-warm-border flex-shrink-0">
                           {refSrc ? (
-                            <SignedImg
+                            <ProjectedImage
                               src={refSrc}
                               className="w-full h-full object-cover"
                             />
@@ -3259,7 +3254,7 @@ const PromptActionNode = ({
                   >
                     <div className="flex h-10 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-video/15 text-video">
                       {thumb ? (
-                        <SignedImg
+                        <ProjectedImage
                           src={thumb}
                           alt={`Source video ${index + 1}`}
                           className="h-full w-full object-cover"
@@ -3468,7 +3463,7 @@ const PromptActionNode = ({
                           <VideoCamera size={14} weight="bold" />
                         </div>
                       ) : (
-                        <SignedImg
+                        <ProjectedImage
                           src={thumb!}
                           alt={(node.data.label as string) || nodeId}
                           className="h-10 w-10 rounded-lg object-cover border border-warm-border shadow-sm pointer-events-none"
@@ -3963,7 +3958,9 @@ const PromptActionNode = ({
                     className="clash-node-primary h-7 min-h-7 flex-shrink-0 px-3 text-xs font-semibold"
                     aria-label={checkpointRunLabel}
                     aria-disabled={
-                      customActionOffline || !!referenceValidationError || undefined
+                      customActionOffline ||
+                      !!referenceValidationError ||
+                      undefined
                     }
                   >
                     Run
@@ -4044,7 +4041,9 @@ const PromptActionNode = ({
                     }
                     aria-label={panelRunLabel}
                     aria-disabled={
-                      customActionOffline || !!referenceValidationError || undefined
+                      customActionOffline ||
+                      !!referenceValidationError ||
+                      undefined
                     }
                     leftIcon={
                       isExecuting ? (
@@ -4170,10 +4169,8 @@ function RefPickerOptionButton({
   onPick: (nodeId: string) => void;
 }) {
   const asset = useAsset(projectId, referenceAssetId(node));
-  const thumb =
-    referenceModality(node) === "video"
-      ? (asset?.thumbnailUrl ?? asset?.url)
-      : asset?.url;
+  const modality = referenceModality(node);
+  const thumb = asset ? assetThumbnailImageUrl(asset) : null;
   const label = (node.data?.label as string) || node.id;
   const handlePick = useCallback(() => {
     onPick(node.id);
@@ -4192,15 +4189,30 @@ function RefPickerOptionButton({
           <div className="h-16 w-full bg-warm-muted flex items-center justify-center text-slate-700 dark:text-slate-300">
             <TextT size={22} weight="bold" />
           </div>
-        ) : node.type === "audio" || !thumb ? (
+        ) : node.type === "audio" ||
+          (!thumb && modality !== "video") ||
+          !asset ? (
           <div
             className={`h-16 w-full flex items-center justify-center text-xl ${node.type === "audio" ? "bg-audio/15 text-audio" : "bg-warm-muted text-slate-500"}`}
           >
             {node.type === "audio" ? "♪" : "?"}
           </div>
+        ) : modality === "video" ? (
+          <VideoPoster
+            thumbnailSrc={asset.thumbnailUrl}
+            videoSrc={asset.url}
+            status={asset.status}
+            alt={label}
+            className="h-16 w-full object-cover"
+            fallback={
+              <div className="flex h-16 w-full items-center justify-center bg-video/15 text-video">
+                <VideoCamera size={18} weight="bold" />
+              </div>
+            }
+          />
         ) : (
-          <SignedImg
-            src={thumb}
+          <ProjectedImage
+            src={thumb ?? undefined}
             alt={label}
             className="h-16 w-full object-cover"
           />

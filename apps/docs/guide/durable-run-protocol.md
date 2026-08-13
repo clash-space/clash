@@ -17,11 +17,29 @@ The current Local implementation is not a second, local-only state machine.
 `@clash/shared-runtime` owns the executable graph, phases, compare-and-set
 transitions, retry decisions, and `(actionRunId, outputSlot)` publication key.
 `local-api` supplies the SQLite journal, local Resource CAS, Project publisher,
-owner guard, and restart scheduler. First-party Google, MiniMax, fal, and Pika
-executors, plus the installed Hilo peer, implement the Provider step contract
-below. Volcengine migration is tracked and verified separately and is not
-claimed by this delivery. A future Cloud adapter must reuse this engine and
-replace only those durability ports.
+owner guard, and restart scheduler. First-party Google, MiniMax, fal, Pika, and
+Volcengine executors, plus the installed Hilo peer, implement the Provider step
+contract below. A future Cloud adapter must reuse this engine and replace only
+those durability ports. Checked-in upstream replay is narrower than executor
+delivery; the evidence-by-cassette matrix is maintained in
+[Traffic Record & Replay](/plugins/traffic-replay).
+
+Timeline render and the built-in `local-acp` / `local-tts` executors use the
+same journal and graph without pretending to be Provider plugins. Their
+Host-local submit adapter performs one renderer or local-model invocation for
+an engine attempt, installs media in CAS under `(actionRunId, outputSlot)`, and
+returns a completed step to the graph. The old in-process
+render/generate/publish loops have been removed. A process restart discovers
+these runs from SQLite exactly like a Provider-backed run; Project Loro is not
+the scheduler.
+
+All media branches call the same Asset metadata-preparation port before
+consumer publication. This is a control-flow guarantee, not a claim that every
+L1 byte fact is already implemented: the inspector-unavailable, caller-hint,
+pre-probe media-type sealing, orientation, and audio-layout limitations are
+explicitly deferred in the Asset System guide. A future probe recipe closes
+those facts inside `stage`; it must not add another Durable graph or re-enter
+Provider/local-model work.
 
 Pika's bundled Local executor is covered by contract tests derived from the
 public catalog schemas and deterministic HTTP fixtures. There is currently no
@@ -70,6 +88,47 @@ The initiating surface selects the owner when it creates the run: Desktop, CLI,
 and MCP select a Local Host; Web selects Cloud when that runtime is available.
 Ownership does not move during the run.
 
+### Revision-scoped Canvas run identity
+
+Every newly created Local Canvas run is identified by the finalized frozen
+execution revision, not by the mutable node alone:
+
+```text
+project:<projectId>:node:<nodeId>:revision:<ActionRevision sha256 hex>
+```
+
+The same rule covers executable Provider plans, built-in Host-local generation
+(`local-acp`, `local-tts`, and mock media), and custom executable plugin
+Actions. The revision is computed only after the Host has selected the exact
+executor and frozen its plugin binding, action/model endpoint, output kind,
+model parameters, execution prompt, and ordered resolved Asset handles with
+their slots, indexes, kinds, and Project Asset IDs. A custom Action's declared
+parameters are part of the same frozen input. Host-private account selection,
+actor attribution, attempt/task routing, mutable coarse status, display name,
+and derived/presentation metadata do not create a different Action revision.
+When a label is the execution-prompt fallback, its resulting prompt value is
+execution semantics and therefore does participate.
+
+The mutable Canvas projection has a separate optimistic revision fingerprint.
+Before writing `generating`, `completed`, or `failed`, the publisher compares
+the frozen fingerprint with the node's current authored semantics and resolved
+mention targets. Thus an old run continues through staging and consumer-CAS
+publication of its immutable Asset/output binding, but cannot overwrite a node
+that has since been rewired or edited. The current revision may create and
+advance its own run immediately; an older polling run does not reserve the
+node. Timeline render is the deliberate special case: its already-frozen
+Timeline Action owner and revision are the projection guard.
+
+Journal rows created before revision-scoped identity used the compatibility
+base key `project:<projectId>:node:<nodeId>` (and custom Actions used
+`local-custom-*`). Restart recovery still advances those rows so a known
+Provider task or staged result is not abandoned. Because those records did not
+freeze all resolved execution semantics, they are fail-closed for mutable
+Canvas projection. They may publish only their immutable consumer-CAS output
+and lineage; they neither block nor masquerade as the current revision. This
+migration deliberately permits bounded at-least-once duplicate computation in
+preference to stale projection or starvation.
+
 ```mermaid
 flowchart LR
   localClients["Desktop / CLI / MCP"] --> localOwner["Local owner<br/>current"]
@@ -77,6 +136,9 @@ flowchart LR
   localOwner --> graph["One shared step graph"]
   cloudOwner --> graph
   graph --> provider["Provider submit / poll"]
+  provider --> broker["Host Asset broker<br/>media: taskId + slot"]
+  broker --> receipt["Immutable Resource + receipt<br/>Local CAS / future OSS"]
+  receipt --> graph
   graph --> localPort["Local adapter<br/>SQLite journal + local CAS"]
   graph -. future .-> cloudPort["Cloud adapter<br/>Workflow journal + OSS staging"]
   localPort --> localPublisher["Local ProjectPublisher"]
@@ -101,12 +163,38 @@ Every owner advances the following logical steps:
 3. Submit at most one Provider request for the current attempt.
 4. Checkpoint the Provider task token, or checkpoint an immediate result.
 5. Poll a checkpointed task with one Provider status request per poll step.
-6. Checkpoint the Provider result, then verify and stage each output.
-7. Publish Project Asset entries and output bindings through
+6. Complete each output through its one defined ordering:
+   - for media, the invocation's Host Asset broker first installs bytes and a
+     durable receipt under the stable `taskId + plugin output slot`, returns an
+     Asset delivery `v0` handle, and only then may the completed result frame be
+     checkpointed;
+   - for text, the completed result frame is checkpointed first, and the
+     finalization stage then installs the immutable text revision.
+7. Run the shared finalization stage. It resolves and verifies a media receipt
+   or installs the checkpointed text, then prepares the Project output.
+8. Publish Project Asset entries and output bindings through
    `ProjectPublisher`.
-8. Publish the public outcome. A conforming future Project `ActionRun` entity
+9. Publish the public outcome. A conforming future Project `ActionRun` entity
    uses the terminal coarse state; the current Local adapter updates the Canvas
    node when present and publishes stable `ActionAssetBinding` lineage.
+
+The media ordering is intentionally different from text. A media result frame
+contains only the Host-issued handle; it never carries an object key, local
+path, or unpersisted vendor URL. The engine's later `stage` operation does not
+write those media bytes again. It verifies the receipt, resolves the immutable
+Resource, and constructs the pending Project Asset. This is also why a broker
+receipt by itself is not a completed Provider result and cannot be published.
+
+```mermaid
+flowchart LR
+  media["Provider media bytes / vendor URL"] --> brokerWrite["Host broker CAS write<br/>stable taskId + slot"]
+  brokerWrite --> mediaReceipt["Asset delivery v0 handle<br/>durable Resource receipt"]
+  mediaReceipt --> completedFrame["completed frame"]
+  text["Provider text"] --> completedFrame
+  completedFrame --> resultCheckpoint["result checkpoint"]
+  resultCheckpoint --> finalStage["shared stage<br/>media: verify receipt<br/>text: install revision"]
+  finalStage --> projectOutput["Project Asset / output binding"]
+```
 
 The graph owns transition rules, checkpoint meaning, idempotency keys, and
 recovery decisions. An adapter owns persistence and byte staging only:
@@ -120,6 +208,71 @@ Cloud must implement these three ports together: **Workflow journal + OSS
 staging + ProjectPublisher**. A Workflow that bypasses the shared graph, writes
 Loro directly, or invents a second output lifecycle is not this protocol.
 
+### Future Cloud adapter port contract (design only)
+
+This subsection is an implementation contract for a later Cloud adapter. None
+of the components or transitions below are claimed as delivered in the current
+work.
+
+The Cloud adapter must bind one `actionRunId` to one Workflow owner and provide
+the same atomic journal operations used by the Local engine:
+
+- `WorkflowRunJournal` stores the frozen Action revision, input and output
+  slots, cloud owner, selected hosted account grant, absolute deadlines,
+  private phase, attempt generation, retry schedule, opaque `pollState`, result
+  checkpoint, staged Resource facts, and publication receipts. Provider
+  credentials remain in the hosted account store and are resolved only for an
+  active invocation; they are not copied into the journal.
+- Every engine `advance()` reads a journal generation and compare-and-set
+  claims exactly one next side effect. Workflow replay, alarm delivery, and a
+  concurrent status wake may all call `advance()`, but only one claim wins.
+  The adapter must not rely on Project Loro status as this compare-and-set
+  record.
+- `OssOutputStager` backs the Host Asset broker during a plugin invocation.
+  For media, it writes or ingests bytes into an owner-private staging object,
+  verifies byte length, digest, media kind, and required format, persists a
+  receipt under the stable invocation `taskId + plugin output slot`, and
+  returns only an Asset delivery `v0` handle. The completed frame containing
+  that handle is checkpointed afterwards. During the shared `stage` step the
+  same port resolves and verifies the receipt, runs the same versioned
+  byte-derived media probe required by Local, and prepares canonical metadata
+  plus the immutable `Resource` fact for Project publication; it does not
+  upload the media again. Probe state is keyed by Resource and recipe, not by a
+  Workflow attempt, so Workflow replay can reuse a verified winner.
+  For text, the result checkpoint comes first and `stage` installs the text
+  Resource/revision. Object keys and upload sessions stay private;
+  `actionRunId + outputSlot` remains the Project publication idempotency key,
+  not the public Resource identity.
+- `HostedProjectPublisher` submits the Project Asset, output binding, and
+  coarse outcome through `ProjectRoom` admission. `ProjectRoom` sequences the
+  Project mutation but does not execute Provider steps or store the attempt
+  journal. The Resource Registry derives the Project claim from the admitted
+  Project Asset; a staging lease protects verified bytes until reconciliation
+  completes.
+
+There is deliberately no distributed transaction across Workflow state, OSS,
+the Registry, and Project Loro. The checkpoint order makes each split outcome
+recoverable:
+
+| Last Cloud durable fact                                      | Required recovery                                                                      | Forbidden recovery                                            |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Journal row exists; no submit result                         | Re-enter the shared submit policy with the same run and idempotency identity           | Reconstruct execution from Loro or let a Local Host take over |
+| Opaque Provider task state is checkpointed                   | Issue one poll step for that exact state                                               | Submit replacement work                                       |
+| Media broker receipt exists; no completed result checkpoint  | Resume the journaled Provider boundary and reuse the same `taskId + slot` receipt      | Treat the receipt alone as Provider completion or publish it  |
+| Completed media handle or text result is checkpointed        | Verify the media receipt or install the text revision, then prepare the Project output | Call the Provider again or upload the media a second time     |
+| Verified Project output is checkpointed                      | Retry idempotent Project publication                                                   | Regenerate or expose the staging object key                   |
+| Project Asset/binding is admitted; Registry claim is pending | Reconcile the claim and retain the staging lease                                       | Publish a second Asset or remove the admitted Project fact    |
+| No Project publication ever occurred                         | Allow staging TTL cleanup after the recovery/retention lease expires                   | Infer deletion of any published Asset                         |
+
+Cloud run creation is admitted only after hosted Project membership, Action
+execute permission, declared output slots, and the selected hosted Provider
+account grant are checked. Publication rechecks the run owner and current
+Project admission. Resource download is authorized through the Project claim,
+not through possession of a `resourceId` or object key. A permission failure is
+a structured non-retryable run failure; a transient Workflow, OSS, Registry,
+or room failure follows the existing stage/publish retry rules and never
+re-enters Provider work after a result checkpoint.
+
 ## Provider step contract
 
 A Provider executor invocation performs exactly one logical Provider step. It
@@ -130,8 +283,14 @@ Project publication.
 | -------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
 | `submit`       | At most one upstream submission                                         | `completed`, `accepted`, or `failed`               |
 | `poll`         | At most one upstream status request for the supplied opaque `pollState` | `completed`, `accepted`, or `failed`               |
-| `stage`        | Host-only verification and immutable byte installation                  | a durable staged output or structured Host failure |
-| `publish`      | Host-only idempotent Project Asset/binding publication                  | success or structured Host failure                 |
+| `stage`        | None; Host verifies a media receipt or installs checkpointed text       | a durable staged output or structured Host failure |
+| `publish`      | None; Host idempotently publishes the Project Asset/binding             | success or structured Host failure                 |
+
+Asset delivery is permanently the single `v0` handle/resolve contract. Media
+outputs are `{ assetId, uri, kind, mediaType? }`; input resolution yields one
+of `bytes`, `provider-url`, or `text`. Compatible additions extend `v0`. There
+is no version negotiation, `v1` alias, or retired `url + reach` compatibility
+dialect.
 
 `accepted.pollState` is deliberately opaque. The Host persists and returns it
 unchanged; it may be a task ID, status URL, cursor, region tuple, or any other
@@ -284,6 +443,26 @@ or return `contended`; they do not both execute it. On restart the scheduler
 scans recoverable journal rows, including overdue polling rows that still need
 their final reconciliation poll.
 
+That claim prevents ordinary duplicate work; it does not pretend to provide
+exactly-once execution across a crash after a side effect and before its next
+checkpoint. The protocol is at-least-once at every replaceable task boundary.
+Consumers make the result stable with compare-and-set publication keys:
+Provider submit reuses its journaled task identity, Resource probing uses
+`(sourceResourceId, probeRecipeVersion)`, and Project output uses
+`(actionRunId, outputSlot)`. A repeated producer may waste bounded work, but a
+consumer inserts one winner, rereads and verifies that winner after contention,
+and never publishes two logical facts. Probe verification means complete fact
+equality, not merely accepting whichever row won; a differing candidate is a
+contract conflict.
+
+Poster frames, waveform peaks, and filmstrips are deliberately outside this
+protocol in the current delivery. Frontend adapters decode them from an
+authorized original-media projection into disposable device caches; no Durable
+step, backend representation identity, publication receipt, metadata field,
+Loro value, or output binding is created, and their availability cannot delay
+or change Durable Run success. A future backend derivation protocol, if chosen,
+is separate deferred work.
+
 ## Provider and Loro boundary
 
 Provider execution and Project Loro publication deliberately do not form a
@@ -292,12 +471,22 @@ request and the owner's durable checkpoint:
 
 - A Provider submit may succeed upstream while its response is lost. If no task
   token or result was checkpointed, the same owner may retry according to the
-  shared policy and can create duplicate upstream work.
+  shared policy and can create duplicate upstream work. A media broker receipt
+  that was written during the lost invocation does not prove that the Provider
+  step completed; the retry reuses that receipt through the same stable
+  `taskId + plugin output slot`.
 - Once a task token is checkpointed, recovery polls that exact task. It must not
   submit replacement work.
-- A synchronous result, or every completed asynchronous result envelope, is
-  checkpointed before staging. Verified Resource identity and staging location
-  are checkpointed separately before any Project binding is published.
+- A media invocation must persist bytes and a Host receipt before it can return
+  a completed frame. The owner then checkpoints the frame's Asset delivery
+  `v0` handle. The shared `stage` step only resolves and verifies that receipt
+  and prepares the Project Asset; it does not write the media again. Preparing
+  a new media Asset includes the versioned Host byte probe and canonical
+  metadata validation. Probe failure keeps the run in retryable finalization
+  with the staged receipt intact and never re-enters Provider work.
+- A text completed frame is checkpointed before `stage` installs its immutable
+  revision. The prepared Project output is checkpointed separately before any
+  Project binding is published.
 - Project publication happens only through `ProjectPublisher`; no Provider
   request holds a Loro transaction open.
 
@@ -312,15 +501,39 @@ not additional Project states.
 
 ## Checkpoints and idempotent publication
 
-The owner journals a token checkpoint immediately after a queued Provider
-submit response, a Provider-result checkpoint before byte staging, and a
-verified staged-output checkpoint before Project publication. Checkpoints are
-monotonic: recovery may advance them but must not erase a known task token or
-replace a verified result with a fresh attempt.
+The owner journals a token checkpoint immediately after an accepted Provider
+submit response. For media, the Host broker first writes a durable Resource
+receipt and the owner then checkpoints the completed frame containing its
+Asset delivery `v0` handle. For text, the owner checkpoints the completed value
+before installing the immutable revision. In both cases, the shared stage
+checkpoints the prepared Project output before publication. Checkpoints are
+monotonic: recovery may advance them but must not erase a known task token,
+replace a verified result with a fresh attempt, or replace the first durable
+media receipt for the same `taskId + plugin output slot`.
 
 Every declared output has the idempotency key
-`(actionRunId, outputSlot)`. `ProjectPublisher` treats publication as an upsert
-of that one logical output:
+`(actionRunId, outputSlot)`.
+
+For Host-local media execution, this tuple is also the consumer-CAS receipt
+identity. An attempt may be repeated after an expired or ambiguous submit. The
+first installed receipt wins even when a non-deterministic retry returns
+different bytes; every loser re-reads that winner, and finalization can publish
+only its one Project Asset. Timeline fixes `outputSlot = "render:output"` and
+uses the already-frozen Timeline Action owner/revision. Built-in image, video,
+audio, and text generation use their normal `media` / `text` slots. A completed
+Timeline node is therefore evidence that Project Asset + output binding
+publication was checkpointed, not merely that Remotion returned bytes.
+
+The serialized form has one canonical, reversible tuple encoding:
+`${actionRunId}:${encodeURIComponent(outputSlot)}`. The output slot is the
+escaped terminal segment, so the last literal `:` is always the tuple boundary;
+the Action run id stays verbatim to preserve keys of existing journaled runs
+whose slots need no escaping. Thus `(a:b, c)` is `a:b:c`, while `(a, b:c)` is
+`a:b%3Ac`. Provider `taskId`, CAS staging identity, and the published output
+binding must all derive from this encoder. Callers must never reconstruct the
+key by joining the two raw values.
+
+`ProjectPublisher` treats publication as an upsert of that one logical output:
 
 - replaying publication cannot create a second Project Asset or binding;
 - an existing binding to the same verified Resource is success;
@@ -331,6 +544,24 @@ of that one logical output:
 This key is shared across realms even though each run has only one owner. It
 makes crash recovery safe; it is not permission for another realm to execute
 the run.
+
+Project publication is the public consumer commit. For an Asset output it
+inserts the verified `ProjectAssetEntry` and its output `ActionAssetBinding` in
+one Project mutation, then the journal records the publication receipt. If the
+process dies between those writes, replay performs the same publication CAS,
+accepts the existing byte-identical winner, and records success. A different
+Resource or binding for that output key is a protocol conflict rather than a
+second winner.
+
+The synchronous Local edit adapter reaches this same consumer boundary without
+claiming to be a Durable Provider run. One Apply carries a stable
+`actionRunId`, declares `outputSlot = "output"`, and derives an opaque Project
+Asset id from the encoded tuple. Client image/frame rendering and server ffmpeg
+crop work may repeat after an unknown HTTP result. Atomic Project publication
+accepts the existing identical entry and bindings, while different output bytes
+or a different frozen invocation returns structured HTTP `409`. Thus edits use
+at-least-once compute plus consumer CAS; they do not introduce an edit-specific
+retry loop or a second journal.
 
 ## Collaboration and the remote sequencer
 
@@ -362,14 +593,17 @@ replicated state.
 Recovery occurs only in the original owner realm and resumes from the latest
 durable checkpoint:
 
-| Last durable fact                             | Recovery action                                                           |
-| --------------------------------------------- | ------------------------------------------------------------------------- |
-| Run exists, no submit token/result            | Resume the submit step under the shared ambiguous-submit policy           |
-| Provider task token exists                    | Poll that token; never resubmit                                           |
-| Result checkpoint exists                      | Resume verification/publication; never regenerate                         |
-| Final poll completed after normal deadline    | Resume only stage/publish until the persisted recovery deadline           |
-| Output binding exists, terminal state missing | Reconcile the same idempotency key, then publish terminal state           |
-| Private journal is unavailable                | Report owner-side recovery failure; do not reconstruct attempts from Loro |
+| Last durable fact                                      | Recovery action                                                                                       |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Run exists, no submit token/result                     | Resume submit under the shared ambiguous-submit policy; reuse any broker receipt with the same key    |
+| Provider task token exists                             | Poll that token; never resubmit                                                                       |
+| Media receipt exists, completed frame is absent        | Resume the journaled Provider boundary; never publish the receipt as if it were a result              |
+| Completed media handle checkpoint exists               | Resolve and verify its receipt, prepare the Project Asset, and never regenerate or upload media again |
+| Completed text checkpoint exists                       | Install/reuse the immutable text revision, prepare the Project output, and never regenerate           |
+| Prepared Project output checkpoint exists              | Retry idempotent publication; never re-enter Provider work or stage known media again                 |
+| Final poll completed after normal deadline             | Resume only stage/publish until the persisted recovery deadline                                       |
+| Output binding exists, terminal state missing          | Reconcile the same publication idempotency key, then publish terminal state                           |
+| Private journal and owner-private receipts unavailable | Report owner-side recovery failure; do not reconstruct attempts from Loro                             |
 
 Workflow replay in the future Cloud adapter and process restart in the Local
 adapter must produce these same decisions. Differences in storage technology

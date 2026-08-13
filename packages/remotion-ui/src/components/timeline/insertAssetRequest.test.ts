@@ -43,25 +43,41 @@ describe("buildTimelineAssetInsertion", () => {
     });
   });
 
-  it("uses media duration for audio and video insertions", () => {
+  it("uses Host-probed duration and dimensions for a real landscape video insertion", () => {
     const result = buildTimelineAssetInsertion({
       asset: {
-        id: "voice",
-        projectAssetId: "asset-voice",
-        type: "audio",
-        src: "/voice.wav",
-        duration: 2.5,
+        id: "talking-head-placement",
+        projectAssetId: "asset-video",
+        sourceNodeId: "talking-head-placement",
+        type: "video",
+        src: "/talking-head.mp4",
+        duration: 32.661,
+        width: 1920,
+        height: 1080,
+        waveform: [0.1, 0.8, 0.3],
       },
       frame: 0,
-      fps: 24,
+      fps: 30,
       compositionWidth: 1080,
       compositionHeight: 1920,
-      requestId: "voice-request",
+      requestId: "video-request",
+    });
+    expect(result.asset).toMatchObject({
+      projectAssetId: "asset-video",
+      duration: 32.661,
+      width: 1920,
+      height: 1080,
     });
     expect(result.track.items[0]).toMatchObject({
-      type: "audio",
-      durationInFrames: 60,
+      type: "video",
+      durationInFrames: 980,
+      properties: {
+        width: 1,
+        height: 0.31640625,
+      },
     });
+    expect(result.asset).not.toHaveProperty("waveform");
+    expect(result.track.items[0]).not.toHaveProperty("waveform");
   });
 
   it("rejects runtime and catalog media that has not been admitted to the Project", () => {

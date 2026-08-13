@@ -23,6 +23,7 @@ export {
   type GlobalAssetClient,
   type GlobalAssetClientPorts,
   type GlobalAssetPurgeInput,
+  type GlobalAssetRestoreInput,
   type GlobalAssetTrashInput,
   type GlobalResourceProjectionPort,
   type GlobalResourceRegistryIntent,

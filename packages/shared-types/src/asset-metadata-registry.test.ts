@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ActionRevisionMetadataTargetSchema,
+  MetadataAttachmentTargetSchema,
   MediaTranscriptMetadataSchema,
+  ProjectAssetMetadataTargetSchema,
   listDeclaredAssetMetadataKinds,
+  metadataAttachmentTargetKey,
   parseAssetMetadataFillAction,
   registerAssetMetadataKind,
   summarizeTranscript,
@@ -25,14 +29,24 @@ const body = {
     { id: "w2", text: "world", startMs: 900, endMs: 1_800, confidence: 0.7 },
   ],
   segments: [
-    { id: "s1", text: "hello world", startMs: 0, endMs: 1_800, wordIds: ["w1", "w2"] },
+    {
+      id: "s1",
+      text: "hello world",
+      startMs: 0,
+      endMs: 1_800,
+      wordIds: ["w1", "w2"],
+    },
   ],
 };
 
 function transcriptAction(overrides: Record<string, unknown> = {}) {
   return {
     actionId: "action-1",
-    targetAssetId: "asset-talk",
+    target: {
+      kind: "project-asset",
+      projectId: "project-cut",
+      assetId: "asset-talk",
+    },
     metadataKind: "media.transcript",
     producer: "clash.local.asr",
     metadata: {
@@ -51,16 +65,68 @@ function transcriptAction(overrides: Record<string, unknown> = {}) {
 }
 
 describe("declared asset metadata registry", () => {
+  it("addresses attachments with storage-free ProjectAsset and ActionRevision targets", () => {
+    const projectAsset = ProjectAssetMetadataTargetSchema.parse({
+      kind: "project-asset",
+      projectId: "project-cut",
+      assetId: "shared-id",
+    });
+    const actionRevision = ActionRevisionMetadataTargetSchema.parse({
+      kind: "action-revision",
+      projectId: "project-cut",
+      actionId: "shared-id",
+      actionRevisionId: "sha256:revision",
+    });
+
+    expect(MetadataAttachmentTargetSchema.parse(projectAsset)).toEqual(
+      projectAsset,
+    );
+    expect(MetadataAttachmentTargetSchema.parse(actionRevision)).toEqual(
+      actionRevision,
+    );
+    expect(metadataAttachmentTargetKey(projectAsset)).not.toBe(
+      metadataAttachmentTargetKey(actionRevision),
+    );
+    expect(() =>
+      MetadataAttachmentTargetSchema.parse({
+        ...projectAsset,
+        path: "/tmp/private.mov",
+      }),
+    ).toThrow();
+    expect(() =>
+      MetadataAttachmentTargetSchema.parse({
+        ...actionRevision,
+        url: "https://storage.example/private.json",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects the pre-target targetAssetId envelope on every new write", () => {
+    const current = transcriptAction();
+    const { target: _target, ...withoutTarget } = current;
+
+    expect(() =>
+      parseAssetMetadataFillAction({
+        ...withoutTarget,
+        targetAssetId: "asset-talk",
+      }),
+    ).toThrow();
+  });
+
   it("carries transcription as a first-class kind attachable to any audio or video asset", () => {
     expect(listDeclaredAssetMetadataKinds()).toContain("media.transcript");
 
     const action = parseAssetMetadataFillAction(transcriptAction());
     expect(action.metadataKind).toBe("media.transcript");
-    expect(MediaTranscriptMetadataSchema.parse(action.metadata).summary.wordCount).toBe(2);
+    expect(
+      MediaTranscriptMetadataSchema.parse(action.metadata).summary.wordCount,
+    ).toBe(2);
   });
 
   it("keeps the word grid out of the attached metadata, so a manifest never carries a body", () => {
-    const attached = MediaTranscriptMetadataSchema.parse(transcriptAction().metadata);
+    const attached = MediaTranscriptMetadataSchema.parse(
+      transcriptAction().metadata,
+    );
     expect(Object.keys(attached)).not.toContain("transcript");
     expect(Object.keys(attached)).not.toContain("words");
     // Three hashes and a summary, whatever the transcript's length.
@@ -73,16 +139,26 @@ describe("declared asset metadata registry", () => {
       text: "Hello world.",
       segments: [
         { id: "s1", text: "hello", startMs: 0, endMs: 800, wordIds: ["w1"] },
-        { id: "s2", text: "world", startMs: 900, endMs: 1_800, wordIds: ["w2"] },
+        {
+          id: "s2",
+          text: "world",
+          startMs: 900,
+          endMs: 1_800,
+          wordIds: ["w2"],
+        },
       ],
     };
-    expect(transcriptContentHashInput(reflowed)).toBe(transcriptContentHashInput(body));
+    expect(transcriptContentHashInput(reflowed)).toBe(
+      transcriptContentHashInput(body),
+    );
 
     const renumbered = {
       ...body,
       words: [{ ...body.words[0], id: "w9" }, body.words[1]],
     };
-    expect(transcriptContentHashInput(renumbered)).not.toBe(transcriptContentHashInput(body));
+    expect(transcriptContentHashInput(renumbered)).not.toBe(
+      transcriptContentHashInput(body),
+    );
   });
 
   it("summarizes a body into the small facts worth indexing", () => {
@@ -117,19 +193,29 @@ describe("declared asset metadata registry", () => {
     expect(() =>
       parseAssetMetadataFillAction({
         actionId: "action-2",
-        targetAssetId: "asset-song",
+        target: {
+          kind: "project-asset",
+          projectId: "project-cut",
+          assetId: "asset-song",
+        },
         metadataKind: "audio.beat-analysis",
         producer: "clash.local.beat",
         metadata: { kind: "audio.beat-analysis", bpm: 120 },
       }),
     ).toThrow(/Undeclared asset metadata kind: audio\.beat-analysis/u);
-    expect(listDeclaredAssetMetadataKinds()).not.toContain("talking-head.analysis");
+    expect(listDeclaredAssetMetadataKinds()).not.toContain(
+      "talking-head.analysis",
+    );
   });
 
   it("declares media.description alongside the transcript", () => {
     const action = parseAssetMetadataFillAction({
       actionId: "action-desc",
-      targetAssetId: "asset-talk",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-talk",
+      },
       metadataKind: "media.description",
       producer: "clash.local.aigc",
       metadata: {
@@ -144,7 +230,11 @@ describe("declared asset metadata registry", () => {
     expect(() =>
       parseAssetMetadataFillAction({
         actionId: "action-desc-bad",
-        targetAssetId: "asset-talk",
+        target: {
+          kind: "project-asset",
+          projectId: "project-cut",
+          assetId: "asset-talk",
+        },
         metadataKind: "media.description",
         producer: "clash.local.aigc",
         metadata: { schemaVersion: 1, kind: "media.description", text: "" },
@@ -156,7 +246,11 @@ describe("declared asset metadata registry", () => {
     expect(() =>
       parseAssetMetadataFillAction({
         actionId: "action-3",
-        targetAssetId: "asset-talk",
+        target: {
+          kind: "project-asset",
+          projectId: "project-cut",
+          assetId: "asset-talk",
+        },
         metadataKind: "totally.invented",
         producer: "someone",
         metadata: { kind: "totally.invented", whatever: true },
@@ -177,19 +271,35 @@ describe("declared asset metadata registry", () => {
     expect(listDeclaredAssetMetadataKinds()).toContain("media.loudness");
     const action = parseAssetMetadataFillAction({
       actionId: "action-4",
-      targetAssetId: "asset-talk",
+      target: {
+        kind: "project-asset",
+        projectId: "project-cut",
+        assetId: "asset-talk",
+      },
       metadataKind: "media.loudness",
       producer: "clash.local.loudness",
-      metadata: { schemaVersion: 1, kind: "media.loudness", integratedLufs: -14 },
+      metadata: {
+        schemaVersion: 1,
+        kind: "media.loudness",
+        integratedLufs: -14,
+      },
     });
     expect(action.metadataKind).toBe("media.loudness");
     expect(() =>
       parseAssetMetadataFillAction({
         actionId: "action-5",
-        targetAssetId: "asset-talk",
+        target: {
+          kind: "project-asset",
+          projectId: "project-cut",
+          assetId: "asset-talk",
+        },
         metadataKind: "media.loudness",
         producer: "clash.local.loudness",
-        metadata: { schemaVersion: 1, kind: "media.loudness", integratedLufs: "quiet" },
+        metadata: {
+          schemaVersion: 1,
+          kind: "media.loudness",
+          integratedLufs: "quiet",
+        },
       }),
     ).toThrow();
   });
